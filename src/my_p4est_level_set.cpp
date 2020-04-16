@@ -10,7 +10,6 @@
 #include <src/point2.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_macros.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #endif
 
@@ -28,2510 +27,902 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order_above_threshold;
-extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
-extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order_above_threshold;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold;
-extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
-extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold;
-extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space;
+extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
+extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
+extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
+extern PetscLogEvent log_my_p4est_level_set_geometric_extrapolation_over_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface_TVD;
 extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
-extern PetscLogEvent log_my_p4est_level_set_compute_derivatives_above_threshold;
-extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
-extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
-extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit )
+void my_p4est_level_set_t::compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM]) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  ngbd->second_derivatives_central(phi, phi_xxyyzz);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_level_set_t::reinitialize_one_iteration(double *phi_np1_p, const std::vector<p4est_locidx_t> &list_of_node_idx,
+                                                      const double *phi_0_p, const double *phi_n_p,
+                                                      const double &phi_0_limit_high_, const double &phi_0_limit_low_,
+                                                      const double *phi_0_xxyyzz_p[P4EST_DIM], const double *phi_n_xxyyzz_p[P4EST_DIM]) const
+{
+  PetscErrorCode ierr;
+  const bool second_order = phi_0_xxyyzz_p != NULL && phi_n_xxyyzz_p != NULL;
+#ifdef CASL_LOG_EVENTS
+  if(second_order)
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
+  else
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
+#endif
+
+  P4EST_ASSERT(phi_0_limit_high_ > phi_0_limit_low_);
+
+  const double phi_0_limit_low  = (phi_0_limit_low_   < -largest_dbl_smaller_than_dbl_max ? -DBL_MAX : phi_0_limit_low_   - MAX(zero_distance_threshold, EPS*fabs(phi_0_limit_low_)));
+  const double phi_0_limit_high = (phi_0_limit_high_  >  largest_dbl_smaller_than_dbl_max ?  DBL_MAX : phi_0_limit_high_  + MAX(zero_distance_threshold, EPS*fabs(phi_0_limit_high_)));
+
+  const bool node_neighbors_are_initialized = ngbd->neighbors_are_initialized();
   quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t n_map = 0; n_map < map.size(); ++n_map)
-  {
-    p4est_locidx_t n = map[n_map];
+  const quad_neighbor_nodes_of_node_t *qnnn_p = (node_neighbors_are_initialized ? NULL : &qnnn); // we'll avoid data copy if possible!
 
-    if(fabs(p0[n]) <= EPS)
-      pnp1[n] = 0.0;
-    else if(fabs(p0[n]) <= limit)
+  for(size_t k = 0; k < list_of_node_idx.size(); ++k)
+  {
+    const p4est_locidx_t& node_idx = list_of_node_idx[k];
+
+    if(fabs(phi_0_p[node_idx]) < zero_distance_threshold)
+      phi_np1_p[node_idx] = 0.0;
+    else if(phi_0_limit_low < phi_0_p[node_idx] && phi_0_p[node_idx] < phi_0_limit_high)
     {
+      if(node_neighbors_are_initialized)
+        ngbd->get_neighbors(node_idx, qnnn_p);
+      else
+        ngbd->get_neighbors(node_idx, qnnn);
 
-      ngbd->get_neighbors(n, qnnn);
+      const double *inputs[2] = {phi_0_p, phi_n_p};
+      double outputs_000[2], outputs_m00[2], outputs_p00[2], outputs_0m0[2], outputs_0p0[2] ONLY3D(COMMA outputs_00m[2] COMMA outputs_00p[2]);
+      qnnn_p->ngbd_with_quadratic_interpolation(inputs, outputs_000, outputs_m00, outputs_p00, outputs_0m0, outputs_0p0 ONLY3D(COMMA outputs_00m COMMA outputs_00p), 2);
+      const double &phi_0_000 = outputs_000[0], &phi_0_m00 = outputs_m00[0], &phi_0_p00 = outputs_p00[0], &phi_0_0m0 = outputs_0m0[0], &phi_0_0p0 = outputs_0p0[0] ONLY3D(COMMA &phi_0_00m = outputs_00m[0] COMMA &phi_0_00p = outputs_00p[0]);
+      double &phi_n_000 = outputs_000[1], &phi_n_m00 = outputs_m00[1], &phi_n_p00 = outputs_p00[1], &phi_n_0m0 = outputs_0m0[1], &phi_n_0p0 = outputs_0p0[1] ONLY3D(COMMA &phi_n_00m = outputs_00m[1] COMMA &phi_n_00p = outputs_00p[1]);
 
-      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
-      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
+      double s_p00 = qnnn_p->d_p00; double s_m00 = qnnn_p->d_m00;
+      double s_0p0 = qnnn_p->d_0p0; double s_0m0 = qnnn_p->d_0m0;
 #ifdef P4_TO_P8
-      double p0_00m, p0_00p;
-      double p_00m,  p_00p ;
+      double s_00p = qnnn_p->d_00p; double s_00m = qnnn_p->d_00m;
 #endif
-      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ONLY3D(COMMA p0_00m COMMA p0_00p));
-      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ONLY3D(COMMA p_00m  COMMA p_00p ));
-      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
-      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
+
+      //---------------------------------------------------------------------
+      // Second Order derivatives - if provided (second-order)
+      //---------------------------------------------------------------------
+      double DIM(phi_n_xx_000 = NAN, phi_n_yy_000 = NAN, phi_n_zz_000 = NAN), DIM(phi_n_xx_m00 = NAN, phi_n_yy_0m0 = NAN, phi_n_zz_00m = NAN), DIM(phi_n_xx_p00 = NAN, phi_n_yy_0p0 = NAN, phi_n_zz_00p = NAN); // initialized to NAN so the compiler doesn't complain
+
+      if(second_order)
+      {
+        phi_n_xx_000 = phi_n_xxyyzz_p[0][node_idx];
+        phi_n_yy_000 = phi_n_xxyyzz_p[1][node_idx];
 #ifdef P4_TO_P8
-      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
+        phi_n_zz_000 = phi_n_xxyyzz_p[2][node_idx];
 #endif
+        phi_n_xx_m00 = qnnn_p->f_m00_linear(phi_n_xxyyzz_p[0]);
+        phi_n_xx_p00 = qnnn_p->f_p00_linear(phi_n_xxyyzz_p[0]);
+        phi_n_yy_0m0 = qnnn_p->f_0m0_linear(phi_n_xxyyzz_p[1]);
+        phi_n_yy_0p0 = qnnn_p->f_0p0_linear(phi_n_xxyyzz_p[1]);
+#ifdef P4_TO_P8
+        phi_n_zz_00m = qnnn_p->f_00m_linear(phi_n_xxyyzz_p[2]);
+        phi_n_zz_00p = qnnn_p->f_00p_linear(phi_n_xxyyzz_p[2]);
+#endif
+      }
+
 
       //---------------------------------------------------------------------
       // check if the node is near interface
       //---------------------------------------------------------------------
-      if (p0_000*p0_m00 < 0.0 || p0_000*p0_p00 < 0.0 || p0_000*p0_0m0 < 0.0 || p0_000*p0_0p0 < 0.0 ONLY3D(|| p0_000*p0_00m < 0.0 || p0_000*p0_00p < 0.0))
+      if (phi_0_000*phi_0_m00 < 0.0 || phi_0_000*phi_0_p00 < 0.0 || phi_0_000*phi_0_0m0 < 0.0 || phi_0_000*phi_0_0p0 < 0.0 ONLY3D(|| phi_0_000*phi_0_00m < 0.0 || phi_0_000*phi_0_00p < 0.0))
       {
-        if(p0_000*p0_m00 < 0.0) { s_m00 = -interface_Location(-s_m00, 0, p0_m00, p0_000); p_m00 = 0.0; }
-        if(p0_000*p0_p00 < 0.0) { s_p00 =  interface_Location( s_p00, 0, p0_p00, p0_000); p_p00 = 0.0; }
-        if(p0_000*p0_0m0 < 0.0) { s_0m0 = -interface_Location(-s_0m0, 0, p0_0m0, p0_000); p_0m0 = 0.0; }
-        if(p0_000*p0_0p0 < 0.0) { s_0p0 =  interface_Location( s_0p0, 0, p0_0p0, p0_000); p_0p0 = 0.0; }
+        double DIM(phi_0_xx_000 = NAN, phi_0_yy_000 = NAN, phi_0_zz_000 = NAN), DIM(phi_0_xx_m00 = NAN, phi_0_yy_0m0 = NAN, phi_0_zz_00m = NAN), DIM(phi_0_xx_p00 = NAN, phi_0_yy_0p0 = NAN, phi_0_zz_00p = NAN); // initialized to NAN so the compiler doesn't complain
+        if(second_order)
+        {
+          phi_0_xx_000 = phi_0_xxyyzz_p[0][node_idx];
+          phi_0_yy_000 = phi_0_xxyyzz_p[1][node_idx];
 #ifdef P4_TO_P8
-        if(p0_000*p0_00m < 0.0) { s_00m = -interface_Location(-s_00m, 0, p0_00m, p0_000); p_00m = 0.0; }
-        if(p0_000*p0_00p < 0.0) { s_00p =  interface_Location( s_00p, 0, p0_00p, p0_000); p_00p = 0.0; }
+          phi_0_zz_000 = phi_0_xxyyzz_p[2][node_idx];
+#endif
+          phi_0_xx_m00 = qnnn_p->f_m00_linear(phi_0_xxyyzz_p[0]);
+          phi_0_xx_p00 = qnnn_p->f_p00_linear(phi_0_xxyyzz_p[0]);
+          phi_0_yy_0m0 = qnnn_p->f_0m0_linear(phi_0_xxyyzz_p[1]);
+          phi_0_yy_0p0 = qnnn_p->f_0p0_linear(phi_0_xxyyzz_p[1]);
+#ifdef P4_TO_P8
+          phi_0_zz_00m = qnnn_p->f_00m_linear(phi_0_xxyyzz_p[2]);
+          phi_0_zz_00p = qnnn_p->f_00p_linear(phi_0_xxyyzz_p[2]);
+#endif
+        }
+        if(phi_0_000*phi_0_m00 < 0.0)
+        {
+          if(second_order)
+            s_m00 = -interface_Location_With_Second_Order_Derivative(-s_m00, 0.0, phi_0_m00, phi_0_000, phi_0_xx_m00, phi_0_xx_000);
+          else
+            s_m00 = -interface_Location(-s_m00, 0.0, phi_0_m00, phi_0_000);
+          phi_n_m00 = 0.0;
+        }
+        if(phi_0_000*phi_0_p00 < 0.0)
+        {
+          if(second_order)
+            s_p00 = interface_Location_With_Second_Order_Derivative(0.0, s_p00, phi_0_000, phi_0_p00, phi_0_xx_000, phi_0_xx_p00);
+          else
+            s_p00 = interface_Location(0.0, s_p00, phi_0_000, phi_0_p00);
+          phi_n_p00 = 0.0;
+        }
+        if(phi_0_000*phi_0_0m0 < 0.0)
+        {
+          if(second_order)
+            s_0m0 = -interface_Location_With_Second_Order_Derivative(-s_0m0, 0.0, phi_0_0m0, phi_0_000, phi_0_yy_0m0, phi_0_yy_000);
+          else
+            s_0m0 = -interface_Location(-s_0m0, 0.0, phi_0_0m0, phi_0_000);
+          phi_n_0m0 = 0.0;
+        }
+        if(phi_0_000*phi_0_0p0 < 0.0)
+        {
+          if(second_order)
+            s_0p0 = interface_Location_With_Second_Order_Derivative(0.0, s_0p0, phi_0_000, phi_0_0p0, phi_0_yy_000, phi_0_yy_0p0);
+          else
+            s_0p0 = interface_Location(0.0, s_0p0, phi_0_000, phi_0_0p0);
+          phi_n_0p0 = 0.0;
+        }
+#ifdef P4_TO_P8
+        if(phi_0_000*phi_0_00m < 0.0)
+        {
+          if(second_order)
+            s_00m = -interface_Location_With_Second_Order_Derivative(-s_00m, 0.0, phi_0_00m, phi_0_000, phi_0_zz_00m, phi_0_zz_000);
+          else
+            s_00m = -interface_Location(-s_00m, 0.0, phi_0_00m, phi_0_000);
+          phi_n_00m = 0.0;
+        }
+        if(phi_0_000*phi_0_00p < 0.0)
+        {
+          if(second_order)
+            s_00p = interface_Location_With_Second_Order_Derivative(0.0, s_00p, phi_0_000, phi_0_00p, phi_0_zz_000, phi_0_zz_00p);
+          else
+            s_00p = interface_Location(0.0, s_00p, phi_0_000, phi_0_00p);
+          phi_n_00p = 0.0;
+        }
 #endif
 
-        s_m00 = MAX(s_m00, EPS);
-        s_p00 = MAX(s_p00, EPS);
-        s_0m0 = MAX(s_0m0, EPS);
-        s_0p0 = MAX(s_0p0, EPS);
+        s_m00 = MAX(s_m00, zero_distance_threshold);
+        s_p00 = MAX(s_p00, zero_distance_threshold);
+        s_0m0 = MAX(s_0m0, zero_distance_threshold);
+        s_0p0 = MAX(s_0p0, zero_distance_threshold);
 #ifdef P4_TO_P8
-        s_00p = MAX(s_00p, EPS);
-        s_00m = MAX(s_00m, EPS);
+        s_00m = MAX(s_00m, zero_distance_threshold);
+        s_00p = MAX(s_00p, zero_distance_threshold);
 #endif
       }
 
       //---------------------------------------------------------------------
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
-      /* first unclamp the node */
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-      p4est_indep_t unclamped_node = *node;
-      p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-      /* wall in the x direction */
-      if(unclamped_node.x == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-        if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00 = p_p00; }
-      }
-      else if(unclamped_node.x == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-        if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00 = p_m00; }
-      }
-
-      /* wall in the y direction */
-      if(unclamped_node.y == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-        if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0 = p_0p0; }
-      }
-      else if(unclamped_node.y == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-        if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0 = p_0m0; }
-      }
+      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
+      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
+      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; phi_n_0m0 = phi_n_0p0; if(second_order) { phi_n_yy_000 = phi_n_yy_0m0 = phi_n_yy_0p0 = 0.0; }}
+      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; phi_n_0p0 = phi_n_0m0; if(second_order) { phi_n_yy_000 = phi_n_yy_0m0 = phi_n_yy_0p0 = 0.0; }}
 #ifdef P4_TO_P8
-      /* wall in the z direction */
-      if(unclamped_node.z == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-        if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; }
-      }
-      else if(unclamped_node.z == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-        if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; }
-      }
+      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; phi_n_00m = phi_n_00p; if(second_order) { phi_n_zz_000 = phi_n_zz_00m = phi_n_zz_00p = 0.0; }}
+      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; phi_n_00p = phi_n_00m; if(second_order) { phi_n_zz_000 = phi_n_zz_00m = phi_n_zz_00p = 0.0; }}
 #endif
+
       //---------------------------------------------------------------------
       // First Order One-Sided Differecing
       //---------------------------------------------------------------------
-      double px_p00 = (p_p00 - p_000)/s_p00; double px_m00 = (p_000 - p_m00)/s_m00;
-      double py_0p0 = (p_0p0 - p_000)/s_0p0; double py_0m0 = (p_000 - p_0m0)/s_0m0;
+      double phi_n_x_p00 = (phi_n_p00 - phi_n_000)/s_p00; double phi_n_x_m00 = (phi_n_000 - phi_n_m00)/s_m00;
+      double phi_n_y_0p0 = (phi_n_0p0 - phi_n_000)/s_0p0; double phi_n_y_0m0 = (phi_n_000 - phi_n_0m0)/s_0m0;
 #ifdef P4_TO_P8
-      double pz_00p = (p_00p - p_000)/s_00p; double pz_00m = (p_000 - p_00m)/s_00m;
+      double phi_n_z_00p = (phi_n_00p - phi_n_000)/s_00p; double phi_n_z_00m = (phi_n_000 - phi_n_00m)/s_00m;
 #endif
+      if(second_order)
+      {
+        //---------------------------------------------------------------------
+        // Second Order One-Sided Differencing
+        //---------------------------------------------------------------------
+        phi_n_xx_m00 = MINMOD(phi_n_xx_m00, phi_n_xx_000);  phi_n_x_m00 += 0.5*s_m00*phi_n_xx_m00;
+        phi_n_xx_p00 = MINMOD(phi_n_xx_p00, phi_n_xx_000);  phi_n_x_p00 -= 0.5*s_p00*phi_n_xx_p00;
+        phi_n_yy_0m0 = MINMOD(phi_n_yy_0m0, phi_n_yy_000);  phi_n_y_0m0 += 0.5*s_0m0*phi_n_yy_0m0;
+        phi_n_yy_0p0 = MINMOD(phi_n_yy_0p0, phi_n_yy_000);  phi_n_y_0p0 -= 0.5*s_0p0*phi_n_yy_0p0;
+#ifdef P4_TO_P8
+        phi_n_zz_00m = MINMOD(phi_n_zz_00m, phi_n_zz_000);  phi_n_z_00m += 0.5*s_00m*phi_n_zz_00m;
+        phi_n_zz_00p = MINMOD(phi_n_zz_00p, phi_n_zz_000);  phi_n_z_00p -= 0.5*s_00p*phi_n_zz_00p;
+#endif
+      }
 
-      double sgn = (p0_000 > 0.0) ? 1.0 : -1.0;
+      const double sgn = (phi_0_000 > 0.0 ? 1.0 : -1.0);
 
       //---------------------------------------------------------------------
       // Upwind Scheme
       //---------------------------------------------------------------------
       double dt = MIN(s_m00, s_p00);
-      dt = MIN(dt, s_0m0);
-      dt = MIN(dt, s_0p0);
+      dt = MIN(dt, s_0m0, s_0p0);
 #ifdef P4_TO_P8
-      dt = MIN(dt, s_00m);
-      dt = MIN(dt, s_00p);
+      dt = MIN(dt, s_00m, s_00p);
 #endif
-      dt = dt/2.;
+      dt /= (double) P4EST_DIM;
 
-      if(sgn > 0) {
-        if(px_p00 > 0.0) px_p00 = 0.0;
-        if(px_m00 < 0.0) px_m00 = 0.0;
-        if(py_0p0 > 0.0) py_0p0 = 0.0;
-        if(py_0m0 < 0.0) py_0m0 = 0.0;
+      if(sgn*phi_n_x_p00 > 0.0) phi_n_x_p00 = 0.0;
+      if(sgn*phi_n_x_m00 < 0.0) phi_n_x_m00 = 0.0;
+      if(sgn*phi_n_y_0p0 > 0.0) phi_n_y_0p0 = 0.0;
+      if(sgn*phi_n_y_0m0 < 0.0) phi_n_y_0m0 = 0.0;
 #ifdef P4_TO_P8
-        if(pz_00p > 0.0) pz_00p = 0.0;
-        if(pz_00m < 0.0) pz_00m = 0.0;
+      if(sgn*phi_n_z_00p > 0.0) phi_n_z_00p = 0.0;
+      if(sgn*phi_n_z_00m < 0.0) phi_n_z_00m = 0.0;
 #endif
-      } else {
-        if(px_p00 < 0.0) px_p00 = 0.0;
-        if(px_m00 > 0.0) px_m00 = 0.0;
-        if(py_0p0 < 0.0) py_0p0 = 0.0;
-        if(py_0m0 > 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p < 0.0) pz_00p = 0.0;
-        if(pz_00m > 0.0) pz_00m = 0.0;
-#endif
-      }
 
-      pnp1[n] = p_000 - dt*sgn*(sqrt( SUMD(MAX(px_p00*px_p00 , px_m00*px_m00), MAX(py_0p0*py_0p0 , py_0m0*py_0m0), MAX(pz_00p*pz_00p , pz_00m*pz_00m)) - 1.));
-      if(p0_000*pnp1[n] < 0.0) pnp1[n] *= -1.0;
+      phi_np1_p[node_idx] = phi_n_000 - dt*sgn*(sqrt(SUMD(MAX(phi_n_x_p00*phi_n_x_p00, phi_n_x_m00*phi_n_x_m00), MAX(phi_n_y_0p0*phi_n_y_0p0, phi_n_y_0m0*phi_n_y_0m0), MAX(phi_n_z_00p*phi_n_z_00p, phi_n_z_00m*phi_n_z_00m))) - 1.);
 
-      ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      if(phi_0_000*phi_np1_p[node_idx] < 0.0)
+        phi_np1_p[node_idx] *= -1.0; // do not allow for a change of sign, I guess
+
+      ierr = PetscLogFlops(second_order ? 30 : 17); CHKERRXX(ierr);
     }
-    /* else : far away from the interface and not in the band ... nothing to do */
+    /* else : outside the desired range for phi_0... nothing to do */
     else
-      pnp1[n] = p0[n];
+      phi_np1_p[node_idx] = phi_0_p[node_idx];
   }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
+#ifdef CASL_LOG_EVENTS
+  if(second_order)
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
+  else
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
+#endif
 }
 
-void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order_Above_Threshold( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double threshold, double limit )
+void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const unsigned char order_space, const unsigned char order_pseudotime,
+                                                              const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold, 0, 0, 0, 0);
-  P4EST_ASSERT(limit > threshold);
+  if(order_space == 0 || order_space > 2 || order_pseudotime == 0 || order_pseudotime > 2)
+    throw std::invalid_argument("my_p4est_level_set_t::reinitialize_within_range_of_phi_0: valid orders of orders of accuracy for space and pseudotime are 1 and 2 only!");
+#ifdef CASL_LOG_EVENTS
+  if(order_pseudotime == 1 && order_space == 1){
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else if (order_pseudotime == 2 && order_space == 1) {
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else if (order_pseudotime == 1 && order_space == 2) {
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else {
+    ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi, 0, 0, 0); CHKERRXX(ierr); }
+#endif
 
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t n_map = 0; n_map < map.size(); ++n_map)
+  // we'll need phi_n
+  double *phi_n_p;
+  ierr = VecGetArray(phi, &phi_n_p); CHKERRXX(ierr);
+  // we'll need a phi_np1, create it
+  Vec phi_np1; double *phi_np1_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_np1, &phi_np1_p);            CHKERRXX(ierr);
+  // if second-order pseudo-time accuracy is required, we'll need a phi_np2 as well
+  Vec phi_np2 = NULL; double *phi_np2_p = NULL;
+  if(order_pseudotime > 1) {
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_np2); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_np2, &phi_np2_p);            CHKERRXX(ierr);
+  }
+  // we need to copy the given phi into phi_0 for interface anchoring:
+  double *phi_0_p = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  memcpy(phi_0_p, phi_n_p, nodes->indep_nodes.elem_count*sizeof(double));
+
+  // if second-order space accuracy is desired, we'll need the second derivatives of phi_0 and the 'current_phi' as well
+  Vec *phi_0_xxyyzz       = NULL; const double **phi_0_xxyyzz_read_p = NULL;
+  Vec *current_phi_xxyyzz = NULL; const double **current_phi_xxyyzz_read_p = NULL;
+  if(order_space > 1)
   {
-    p4est_locidx_t n = map[n_map];
+    phi_0_xxyyzz = new Vec[P4EST_DIM];        phi_0_xxyyzz_read_p       = new const double*[P4EST_DIM];
+    current_phi_xxyyzz = new Vec[P4EST_DIM];  current_phi_xxyyzz_read_p = new const double*[P4EST_DIM];
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_0_xxyyzz[dim]);       CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &current_phi_xxyyzz[dim]); CHKERRXX(ierr);
+    }
+    compute_derivatives(phi, phi_0_xxyyzz);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(phi_0_xxyyzz[dim], &phi_0_xxyyzz_read_p[dim]); CHKERRXX(ierr);
+    }
+  }
 
-    if(fabs(p0[n]) <= EPS)
-      pnp1[n] = 0.0;
-    else if(p0[n] > threshold-EPS && p0[n] <= limit)
+  for(int i = 0; i < number_of_iterations; i++)
+  {
+    /***** Step 1: phi -> phi_np1 *****/
+    if(order_space > 1)
     {
-
-      ngbd->get_neighbors(n, qnnn);
-
-      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
-      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
-#ifdef P4_TO_P8
-      double p0_00m, p0_00p;
-      double p_00m,  p_00p ;
-#endif
-      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ONLY3D(COMMA p0_00m COMMA p0_00p));
-      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ONLY3D(COMMA p_00m  COMMA p_00p ));
-      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
-      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
-#ifdef P4_TO_P8
-      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
-#endif
-
-      //---------------------------------------------------------------------
-      // check if the node is near interface
-      //---------------------------------------------------------------------
-      if (p0_000*p0_m00 < 0.0 || p0_000*p0_p00 < 0.0 || p0_000*p0_0m0 < 0.0 || p0_000*p0_0p0 < 0.0 ONLY3D(|| p0_000*p0_00m < 0.0 || p0_000*p0_00p < 0.0))
-      {
-        if(p0_000*p0_m00 < 0.0) { s_m00 = -interface_Location(-s_m00, 0, p0_m00, p0_000); p_m00 = 0.0; }
-        if(p0_000*p0_p00 < 0.0) { s_p00 =  interface_Location( s_p00, 0, p0_p00, p0_000); p_p00 = 0.0; }
-        if(p0_000*p0_0m0 < 0.0) { s_0m0 = -interface_Location(-s_0m0, 0, p0_0m0, p0_000); p_0m0 = 0.0; }
-        if(p0_000*p0_0p0 < 0.0) { s_0p0 =  interface_Location( s_0p0, 0, p0_0p0, p0_000); p_0p0 = 0.0; }
-#ifdef P4_TO_P8
-        if(p0_000*p0_00m < 0.0) { s_00m = -interface_Location(-s_00m, 0, p0_00m, p0_000); p_00m = 0.0; }
-        if(p0_000*p0_00p < 0.0) { s_00p =  interface_Location( s_00p, 0, p0_00p, p0_000); p_00p = 0.0; }
-#endif
-
-        s_m00 = MAX(s_m00, EPS);
-        s_p00 = MAX(s_p00, EPS);
-        s_0m0 = MAX(s_0m0, EPS);
-        s_0p0 = MAX(s_0p0, EPS);
-#ifdef P4_TO_P8
-        s_00p = MAX(s_00p, EPS);
-        s_00m = MAX(s_00m, EPS);
-#endif
+      /* compute derivatives */
+      compute_derivatives(phi, current_phi_xxyyzz);
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecGetArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_read_p[dim]); CHKERRXX(ierr);
       }
-
-      //---------------------------------------------------------------------
-      // Neumann boundary condition on the walls
-      //---------------------------------------------------------------------
-      /* first unclamp the node */
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-      p4est_indep_t unclamped_node = *node;
-      p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
-
-      /* wall in the x direction */
-      if(unclamped_node.x == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-        if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00 = p_p00; }
-      }
-      else if(unclamped_node.x == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-        if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00 = p_m00; }
-      }
-
-      /* wall in the y direction */
-      if(unclamped_node.y == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-        if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0 = p_0p0; }
-      }
-      else if(unclamped_node.y == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-        if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0 = p_0m0; }
-      }
-#ifdef P4_TO_P8
-      /* wall in the z direction */
-      if(unclamped_node.z == 0)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-        if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; }
-      }
-      else if(unclamped_node.z == P4EST_ROOT_LEN)
-      {
-        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-        if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; }
-      }
-#endif
-      //---------------------------------------------------------------------
-      // First Order One-Sided Differecing
-      //---------------------------------------------------------------------
-      double px_p00 = (p_p00 - p_000)/s_p00; double px_m00 = (p_000 - p_m00)/s_m00;
-      double py_0p0 = (p_0p0 - p_000)/s_0p0; double py_0m0 = (p_000 - p_0m0)/s_0m0;
-#ifdef P4_TO_P8
-      double pz_00p = (p_00p - p_000)/s_00p; double pz_00m = (p_000 - p_00m)/s_00m;
-#endif
-
-      double sgn = (p0_000 > 0.0) ? 1.0 : -1.0;
-
-      //---------------------------------------------------------------------
-      // Upwind Scheme
-      //---------------------------------------------------------------------
-      double dt = MIN(s_m00, s_p00);
-      dt = MIN(dt, s_0m0);
-      dt = MIN(dt, s_0p0);
-#ifdef P4_TO_P8
-      dt = MIN(dt, s_00m);
-      dt = MIN(dt, s_00p);
-#endif
-      dt = dt/2.;
-
-      if(sgn > 0.0) {
-        if(px_p00 > 0.0) px_p00 = 0.0;
-        if(px_m00 < 0.0) px_m00 = 0.0;
-        if(py_0p0 > 0.0) py_0p0 = 0.0;
-        if(py_0m0 < 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p > 0.0) pz_00p = 0.0;
-        if(pz_00m < 0.0) pz_00m = 0.0;
-#endif
-      } else {
-        if(px_p00 < 0.0) px_p00 = 0.0;
-        if(px_m00 > 0.0) px_m00 = 0.0;
-        if(py_0p0 < 0.0) py_0p0 = 0.0;
-        if(py_0m0 > 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p < 0.0) pz_00p = 0.0;
-        if(pz_00m > 0.0) pz_00m = 0.0;
-#endif
-      }
-
-      pnp1[n] = p_000 - dt*sgn*(sqrt(SUMD(MAX(px_p00*px_p00 , px_m00*px_m00), MAX(py_0p0*py_0p0 , py_0m0*py_0m0), MAX(pz_00p*pz_00p , pz_00m*pz_00m))) - 1.);
-      if(p0_000*pnp1[n] < 0.0) pnp1[n] *= -1;
-
-      ierr = PetscLogFlops(17); CHKERRXX(ierr);
     }
-    /* else : far away from the interface and not in the band ... nothing to do */
+
+#ifdef IPM_LOG_EVENTS
+    if(order_pseudotime == 1 && order_space == 1)
+      IPMLogRegionBegin("reinit_1st_1st");
+    else if (order_pseudotime == 2 && order_space == 1)
+      IPMLogRegionBegin("reinit_2nd_1st");
+    else if (order_pseudotime == 1 && order_space == 2)
+      IPMLogRegionBegin("reinit_1st_2nd");
     else
-      pnp1[n] = p0[n];
+      IPMLogRegionBegin("reinit_2nd_2nd");
+#endif
+
+    /* 1) Process layer nodes */
+    reinitialize_one_iteration(phi_np1_p, ngbd->layer_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+                               phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+    /* 2) Begin update process for phi_np1 */
+    ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Process local nodes */
+    reinitialize_one_iteration(phi_np1_p, ngbd->local_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+                               phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+    /* 4) End update process for phi_np1 */
+    ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(order_space > 1)
+    {
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecRestoreArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_read_p[dim]); CHKERRXX(ierr);
+      }
+    }
+
+#ifdef IPM_LOG_EVENTS
+    if(order_pseudotime == 1 && order_space == 1)
+      IPMLogRegionEnd("reinit_1st_1st");
+    else if (order_pseudotime == 2 && order_space == 1)
+      IPMLogRegionEnd("reinit_2nd_1st");
+    else if (order_pseudotime == 1 && order_space == 2)
+      IPMLogRegionEnd("reinit_1st_2nd");
+    else
+      IPMLogRegionEnd("reinit_2nd_2nd");
+#endif
+
+    if(order_pseudotime > 1)
+    {
+      if(order_space > 1)
+      {
+        /* recompute derivatives */
+        compute_derivatives(phi_np1, current_phi_xxyyzz);
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+          ierr = VecGetArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_read_p[dim]); CHKERRXX(ierr);
+        }
+      }
+
+      /***** Step 2 of RK2: phi_np1 -> phi_np2 *****/
+#ifdef IPM_LOG_EVENTS
+      if(order_space == 1)
+        IPMLogRegionBegin("reinit_2nd_1st");
+      else
+        IPMLogRegionBegin("reinit_2nd_2nd");
+#endif
+      /* 1) Process layer nodes */
+      reinitialize_one_iteration(phi_np2_p, ngbd->layer_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+                                 phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+      /* 2) Begin update process for phi_np2 */
+      ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      /* 3) Process local nodes */
+      reinitialize_one_iteration(phi_np2_p, ngbd->local_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+                                 phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+      /* 4) End update process for phi_np2 */
+      ierr = VecGhostUpdateEnd(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef IPM_LOG_EVENTS
+      if(order_space == 1)
+        IPMLogRegionEnd("reinit_2nd_1st");
+      else
+        IPMLogRegionEnd("reinit_2nd_2nd");
+#endif
+      if(order_space > 1)
+      {
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+          ierr = VecRestoreArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_read_p[dim]); CHKERRXX(ierr);
+        }
+      }
+
+      if (show_convergence)
+      {
+        double dxyz[P4EST_DIM];
+        ::dxyz_min(p4est, dxyz);
+
+        double change = 0.0;
+        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
+          {
+            double change_loc = 0.5*fabs(phi_np2_p[n] - phi_n_p[n]);
+            if (change_loc > change) change = change_loc;
+          }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
+      }
+
+      /* update phi */
+      for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+        phi_n_p[n] = .5*(phi_n_p[n] + phi_np2_p[n]);
+    }
+    else
+    {
+      if (show_convergence)
+      {
+        double dxyz[P4EST_DIM];
+        ::dxyz_min(p4est, dxyz);
+
+        double change = 0.0;
+        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
+          {
+            double change_loc = fabs(phi_np1_p[n] - phi_n_p[n]);
+            if (change_loc > change) change = change_loc;
+          }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
+      }
+
+      /* update phi */
+      memcpy(phi_n_p, phi_np1_p, nodes->indep_nodes.elem_count*sizeof(double));
+
+    }
   }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold, 0, 0, 0, 0);
-}
 
-void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
-                                                                    DIM(const double *dxx0, const double *dyy0, const double *dzz0),
-                                                                    DIM(const double *dxx,  const double *dyy,  const double *dzz),
-                                                                    double *p0, double *pn, double *pnp1, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t n_map = 0; n_map < map.size(); ++n_map)
+  /* restore arrays and destroy locally created petsc vectors */
+  ierr = VecRestoreArray(phi,     &phi_n_p);      CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_np1, &phi_np1_p);    CHKERRXX(ierr);
+  ierr = VecDestroy(phi_np1);                     CHKERRXX(ierr);
+  if(order_pseudotime > 1){
+    ierr = VecRestoreArray(phi_np2, &phi_np2_p);  CHKERRXX(ierr);
+    ierr = VecDestroy(phi_np2);                   CHKERRXX(ierr);
+  }
+  if(order_space > 1)
   {
-    p4est_locidx_t n = map[n_map];
-
-    if(fabs(p0[n]) < EPS) {
-      pnp1[n] = 0.0;
-    } else if(fabs(p0[n]) <= limit) {
-      ngbd->get_neighbors(n, qnnn);
-
-      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
-      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
-#ifdef P4_TO_P8
-      double p0_00m, p0_00p;
-      double p_00m,  p_00p ;
-#endif
-      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ONLY3D(COMMA p0_00m COMMA p0_00p));
-      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ONLY3D(COMMA p_00m  COMMA p_00p ));
-
-      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
-      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
-#ifdef P4_TO_P8
-      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
-#endif
-
-      //---------------------------------------------------------------------
-      // Second Order derivatives
-      //---------------------------------------------------------------------
-      double pxx_000 = dxx[n];
-      double pyy_000 = dyy[n];
-#ifdef P4_TO_P8
-      double pzz_000 = dzz[n];
-#endif
-      double pxx_m00 = qnnn.f_m00_linear(dxx);
-      double pxx_p00 = qnnn.f_p00_linear(dxx);
-      double pyy_0m0 = qnnn.f_0m0_linear(dyy);
-      double pyy_0p0 = qnnn.f_0p0_linear(dyy);
-#ifdef P4_TO_P8
-      double pzz_00m = qnnn.f_00m_linear(dzz);
-      double pzz_00p = qnnn.f_00p_linear(dzz);
-#endif
-
-      //---------------------------------------------------------------------
-      // check if the node is near interface
-      //---------------------------------------------------------------------
-      if (p0_000*p0_m00 < 0.0 || p0_000*p0_p00 < 0.0 || p0_000*p0_0m0 < 0.0 || p0_000*p0_0p0 < 0.0 ONLY3D(|| p0_000*p0_00m < 0.0 || p0_000*p0_00p < 0.0))
-      {
-        double p0xx_000 = dxx0[n];
-        double p0yy_000 = dyy0[n];
-#ifdef P4_TO_P8
-        double p0zz_000 = dzz0[n];
-#endif
-        double p0xx_m00 = qnnn.f_m00_linear(dxx0);
-        double p0xx_p00 = qnnn.f_p00_linear(dxx0);
-        double p0yy_0m0 = qnnn.f_0m0_linear(dyy0);
-        double p0yy_0p0 = qnnn.f_0p0_linear(dyy0);
-#ifdef P4_TO_P8
-        double p0zz_00m = qnnn.f_00m_linear(dzz0);
-        double p0zz_00p = qnnn.f_00p_linear(dzz0);
-#endif
-
-        if(p0_000*p0_m00 < 0.0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,     0, p0_m00, p0_000, p0xx_m00, p0xx_000); p_m00 = 0.0; }
-        if(p0_000*p0_p00 < 0.0) { s_p00 = interface_Location_With_Second_Order_Derivative(     0, s_p00, p0_000, p0_p00, p0xx_000, p0xx_p00); p_p00 = 0.0; }
-        if(p0_000*p0_0m0 < 0.0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,     0, p0_0m0, p0_000, p0yy_0m0, p0yy_000); p_0m0 = 0.0; }
-        if(p0_000*p0_0p0 < 0.0) { s_0p0 = interface_Location_With_Second_Order_Derivative(     0, s_0p0, p0_000, p0_0p0, p0yy_000, p0yy_0p0); p_0p0 = 0.0; }
-#ifdef P4_TO_P8
-        if(p0_000*p0_00m < 0.0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,     0, p0_00m, p0_000, p0zz_00m, p0zz_000); p_00m = 0.0; }
-        if(p0_000*p0_00p < 0.0) { s_00p = interface_Location_With_Second_Order_Derivative(     0, s_00p, p0_000, p0_00p, p0zz_000, p0zz_00p); p_00p = 0.0; }
-#endif
-
-        s_m00 = MAX(s_m00, EPS);
-        s_p00 = MAX(s_p00, EPS);
-        s_0m0 = MAX(s_0m0, EPS);
-        s_0p0 = MAX(s_0p0, EPS);
-#ifdef P4_TO_P8
-        s_00m = MAX(s_00m, EPS);
-        s_00p = MAX(s_00p, EPS);
-#endif
-      }
-
-      //---------------------------------------------------------------------
-      // Neumann boundary condition on the walls
-      //---------------------------------------------------------------------
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-
-      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; p_m00 = p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; p_p00 = p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; p_0m0 = p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; p_0p0 = p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-#ifdef P4_TO_P8
-      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; p_00m = p_00p; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; p_00p = p_00m; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-#endif
-
-      //---------------------------------------------------------------------
-      // First Order One-Sided Differecing
-      //---------------------------------------------------------------------
-      double px_p00 = (p_p00 - p_000)/s_p00; double px_m00 = (p_000 - p_m00)/s_m00;
-      double py_0p0 = (p_0p0 - p_000)/s_0p0; double py_0m0 = (p_000 - p_0m0)/s_0m0;
-#ifdef P4_TO_P8
-      double pz_00p = (p_00p - p_000)/s_00p; double pz_00m = (p_000 - p_00m)/s_00m;
-#endif
-
-      //---------------------------------------------------------------------
-      // Second Order One-Sided Differencing
-      //---------------------------------------------------------------------
-      pxx_m00 = MINMOD(pxx_m00, pxx_000);   px_m00 += 0.5*s_m00*pxx_m00;
-      pxx_p00 = MINMOD(pxx_p00, pxx_000);   px_p00 -= 0.5*s_p00*pxx_p00;
-      pyy_0m0 = MINMOD(pyy_0m0, pyy_000);   py_0m0 += 0.5*s_0m0*pyy_0m0;
-      pyy_0p0 = MINMOD(pyy_0p0, pyy_000);   py_0p0 -= 0.5*s_0p0*pyy_0p0;
-#ifdef P4_TO_P8
-      pzz_00m = MINMOD(pzz_00m, pzz_000);   pz_00m += 0.5*s_00m*pzz_00m;
-      pzz_00p = MINMOD(pzz_00p, pzz_000);   pz_00p -= 0.5*s_00p*pzz_00p;
-#endif
-//      px_m00 += 0.5*s_m00*(pxx_m00);
-//      px_p00 -= 0.5*s_p00*(pxx_p00);
-//      py_0m0 += 0.5*s_0m0*(pyy_0m0);
-//      py_0p0 -= 0.5*s_0p0*(pyy_0p0);
-//#ifdef P4_TO_P8
-//      pz_00m += 0.5*s_00m*(pzz_00m);
-//      pz_00p -= 0.5*s_00p*(pzz_00p);
-//#endif
-//      pxx_m00 = MC(pxx_m00, pxx_000);   px_m00 += 0.5*s_m00*(pxx_m00);
-//      pxx_p00 = MC(pxx_p00, pxx_000);   px_p00 -= 0.5*s_p00*(pxx_p00);
-//      pyy_0m0 = MC(pyy_0m0, pyy_000);   py_0m0 += 0.5*s_0m0*(pyy_0m0);
-//      pyy_0p0 = MC(pyy_0p0, pyy_000);   py_0p0 -= 0.5*s_0p0*(pyy_0p0);
-//#ifdef P4_TO_P8
-//      pzz_00m = MC(pzz_00m, pzz_000);   pz_00m += 0.5*s_00m*(pzz_00m);
-//      pzz_00p = MC(pzz_00p, pzz_000);   pz_00p -= 0.5*s_00p*(pzz_00p);
-//#endif
-
-      double sgn = (p0_000 > 0.0) ? 1.0 : -1.0;
-
-      //---------------------------------------------------------------------
-      // Upwind Scheme
-      //---------------------------------------------------------------------
-      double dt = MIN(s_m00, s_p00);
-      dt = MIN(dt, s_0m0);
-      dt = MIN(dt, s_0p0);
-#ifdef P4_TO_P8
-      dt = MIN(dt, s_00m);
-      dt = MIN(dt, s_00p);
-#endif
-      dt /= ((double) P4EST_DIM);
-
-      if(sgn > 0.0) {
-        if(px_p00 > 0.0) px_p00 = 0.0;
-        if(px_m00 < 0.0) px_m00 = 0.0;
-        if(py_0p0 > 0.0) py_0p0 = 0.0;
-        if(py_0m0 < 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p > 0.0) pz_00p = 0.0;
-        if(pz_00m < 0.0) pz_00m = 0.0;
-#endif
-      } else {
-        if(px_p00 < 0.0) px_p00 = 0.0;
-        if(px_m00 > 0.0) px_m00 = 0.0;
-        if(py_0p0 < 0.0) py_0p0 = 0.0;
-        if(py_0m0 > 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p < 0.0) pz_00p = 0.0;
-        if(pz_00m > 0.0) pz_00m = 0.0;
-#endif
-      }
-
-      pnp1[n] = p_000 - dt*sgn*(sqrt(SUMD(MAX(px_p00*px_p00 , px_m00*px_m00), MAX(py_0p0*py_0p0 , py_0m0*py_0m0), MAX(pz_00p*pz_00p , pz_00m*pz_00m))) - 1.);
-
-      if(p0_000*pnp1[n] < 0.0) pnp1[n] *= -1.0;
-
-      ierr = PetscLogFlops(30); CHKERRXX(ierr);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(phi_0_xxyyzz[dim], &phi_0_xxyyzz_read_p[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_0_xxyyzz[dim]);       CHKERRXX(ierr);
+      ierr = VecDestroy(current_phi_xxyyzz[dim]); CHKERRXX(ierr);
     }
-    /* else : far away from the interface and not in the band ... nothing to do */
-    else
-      pnp1[n] = p0[n];
   }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
+  free(phi_0_p);
+
+#ifdef CASL_LOG_EVENTS
+  if(order_pseudotime == 1 && order_space == 1){
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else if (order_pseudotime == 2 && order_space == 1) {
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else if (order_pseudotime == 1 && order_space == 2) {
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi, 0, 0, 0); CHKERRXX(ierr); }
+  else {
+    ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi, 0, 0, 0); CHKERRXX(ierr); }
+#endif
+  return;
 }
 
-void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order_Above_Threshold(std::vector<p4est_locidx_t>& map,
-                                                                                   DIM(const double *dxx0, const double *dyy0, const double *dzz0),
-                                                                                   DIM(const double *dxx,  const double *dyy,  const double *dzz),
-                                                                                   double *p0, double *pn, double *pnp1, double threshold, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold, 0, 0, 0, 0);
-  P4EST_ASSERT(limit > threshold);
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t n_map = 0; n_map < map.size(); ++n_map)
-  {
-    p4est_locidx_t n = map[n_map];
-
-    if(fabs(p0[n]) < EPS) {
-      pnp1[n] = 0.0;
-    } else if(p0[n] > threshold-EPS && p0[n] <= limit) {
-      ngbd->get_neighbors(n, qnnn);
-
-      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
-      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
-#ifdef P4_TO_P8
-      double p0_00m, p0_00p;
-      double p_00m,  p_00p ;
-#endif
-      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ONLY3D(COMMA p0_00m COMMA p0_00p));
-      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ONLY3D(COMMA p_00m  COMMA p_00p ));
-
-      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
-      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
-#ifdef P4_TO_P8
-      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
-#endif
-
-      //---------------------------------------------------------------------
-      // Second Order derivatives
-      //---------------------------------------------------------------------
-      double pxx_000 = dxx[n];
-      double pyy_000 = dyy[n];
-#ifdef P4_TO_P8
-      double pzz_000 = dzz[n];
-#endif
-      double pxx_m00 = qnnn.f_m00_linear(dxx);
-      double pxx_p00 = qnnn.f_p00_linear(dxx);
-      double pyy_0m0 = qnnn.f_0m0_linear(dyy);
-      double pyy_0p0 = qnnn.f_0p0_linear(dyy);
-#ifdef P4_TO_P8
-      double pzz_00m = qnnn.f_00m_linear(dzz);
-      double pzz_00p = qnnn.f_00p_linear(dzz);
-#endif
-
-      //---------------------------------------------------------------------
-      // check if the node is near interface
-      //---------------------------------------------------------------------
-      if (p0_000*p0_m00 < 0.0 || p0_000*p0_p00 < 0.0 || p0_000*p0_0m0 < 0.0 || p0_000*p0_0p0 < 0.0 ONLY3D(|| p0_000*p0_00m < 0.0 || p0_000*p0_00p < 0.0))
-      {
-        double p0xx_000 = dxx0[n];
-        double p0yy_000 = dyy0[n];
-#ifdef P4_TO_P8
-        double p0zz_000 = dzz0[n];
-#endif
-        double p0xx_m00 = qnnn.f_m00_linear(dxx0);
-        double p0xx_p00 = qnnn.f_p00_linear(dxx0);
-        double p0yy_0m0 = qnnn.f_0m0_linear(dyy0);
-        double p0yy_0p0 = qnnn.f_0p0_linear(dyy0);
-#ifdef P4_TO_P8
-        double p0zz_00m = qnnn.f_00m_linear(dzz0);
-        double p0zz_00p = qnnn.f_00p_linear(dzz0);
-#endif
-
-        if(p0_000*p0_m00 < 0.0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,     0, p0_m00, p0_000, p0xx_m00, p0xx_000); p_m00 = 0.0; }
-        if(p0_000*p0_p00 < 0.0) { s_p00 = interface_Location_With_Second_Order_Derivative(     0, s_p00, p0_000, p0_p00, p0xx_000, p0xx_p00); p_p00 = 0.0; }
-        if(p0_000*p0_0m0 < 0.0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,     0, p0_0m0, p0_000, p0yy_0m0, p0yy_000); p_0m0 = 0.0; }
-        if(p0_000*p0_0p0 < 0.0) { s_0p0 = interface_Location_With_Second_Order_Derivative(     0, s_0p0, p0_000, p0_0p0, p0yy_000, p0yy_0p0); p_0p0 = 0.0; }
-#ifdef P4_TO_P8
-        if(p0_000*p0_00m < 0.0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,     0, p0_00m, p0_000, p0zz_00m, p0zz_000); p_00m = 0.0; }
-        if(p0_000*p0_00p < 0.0) { s_00p = interface_Location_With_Second_Order_Derivative(     0, s_00p, p0_000, p0_00p, p0zz_000, p0zz_00p); p_00p = 0.0; }
-#endif
-
-        s_m00 = MAX(s_m00, EPS);
-        s_p00 = MAX(s_p00, EPS);
-        s_0m0 = MAX(s_0m0, EPS);
-        s_0p0 = MAX(s_0p0, EPS);
-#ifdef P4_TO_P8
-        s_00m = MAX(s_00m, EPS);
-        s_00p = MAX(s_00p, EPS);
-#endif
-      }
-
-      //---------------------------------------------------------------------
-      // Neumann boundary condition on the walls
-      //---------------------------------------------------------------------
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-
-      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; p_m00 = p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; p_p00 = p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; p_0m0 = p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; p_0p0 = p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-#ifdef P4_TO_P8
-      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; p_00m = p_00p; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; p_00p = p_00m; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-#endif
-
-      //---------------------------------------------------------------------
-      // First Order One-Sided Differecing
-      //---------------------------------------------------------------------
-      double px_p00 = (p_p00 - p_000)/s_p00; double px_m00 = (p_000 - p_m00)/s_m00;
-      double py_0p0 = (p_0p0 - p_000)/s_0p0; double py_0m0 = (p_000 - p_0m0)/s_0m0;
-#ifdef P4_TO_P8
-      double pz_00p = (p_00p - p_000)/s_00p; double pz_00m = (p_000 - p_00m)/s_00m;
-#endif
-
-      //---------------------------------------------------------------------
-      // Second Order One-Sided Differencing
-      //---------------------------------------------------------------------
-      pxx_m00 = MINMOD(pxx_m00, pxx_000);   px_m00 += 0.5*s_m00*pxx_m00;
-      pxx_p00 = MINMOD(pxx_p00, pxx_000);   px_p00 -= 0.5*s_p00*pxx_p00;
-      pyy_0m0 = MINMOD(pyy_0m0, pyy_000);   py_0m0 += 0.5*s_0m0*pyy_0m0;
-      pyy_0p0 = MINMOD(pyy_0p0, pyy_000);   py_0p0 -= 0.5*s_0p0*pyy_0p0;
-#ifdef P4_TO_P8
-      pzz_00m = MINMOD(pzz_00m, pzz_000);   pz_00m += 0.5*s_00m*pzz_00m;
-      pzz_00p = MINMOD(pzz_00p, pzz_000);   pz_00p -= 0.5*s_00p*pzz_00p;
-#endif
-
-      double sgn = (p0_000 > 0.0) ? 1.0 : -1.0;
-
-      //---------------------------------------------------------------------
-      // Upwind Scheme
-      //---------------------------------------------------------------------
-      double dt = MIN(s_m00, s_p00);
-      dt = MIN(dt, s_0m0);
-      dt = MIN(dt, s_0p0);
-#ifdef P4_TO_P8
-      dt = MIN(dt, s_00m);
-      dt = MIN(dt, s_00p);
-#endif
-      dt /= ((double) P4EST_DIM);
-
-      if(sgn > 0.0) {
-        if(px_p00 > 0.0) px_p00 = 0.0;
-        if(px_m00 < 0.0) px_m00 = 0.0;
-        if(py_0p0 > 0.0) py_0p0 = 0.0;
-        if(py_0m0 < 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p > 0.0) pz_00p = 0.0;
-        if(pz_00m < 0.0) pz_00m = 0.0;
-#endif
-      } else {
-        if(px_p00 < 0.0) px_p00 = 0.0;
-        if(px_m00 > 0.0) px_m00 = 0.0;
-        if(py_0p0 < 0.0) py_0p0 = 0.0;
-        if(py_0m0 > 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-        if(pz_00p < 0.0) pz_00p = 0.0;
-        if(pz_00m > 0.0) pz_00m = 0.0;
-#endif
-      }
-
-      pnp1[n] = p_000 - dt*sgn*(sqrt(SUMD(MAX(px_p00*px_p00 , px_m00*px_m00), MAX(py_0p0*py_0p0 , py_0m0*py_0m0), MAX(pz_00p*pz_00p , pz_00m*pz_00m))) - 1.);
-
-      if(p0_000*pnp1[n] < 0.0) pnp1[n] *= -1.0;
-
-      ierr = PetscLogFlops(30); CHKERRXX(ierr);
-    }
-    /* else : in negative domain and far away the band ... nothing to do */
-    else
-      pnp1[n] = p0[n];
-  }
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold, 0, 0, 0, 0);
-}
-
-void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
-                                                                    DIM(const double *dxx,  const double *dyy, const double *dzz),
-                                                                    const double *pn, double *pnp1)
+void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(const std::vector<p4est_locidx_t> &list_of_node_idx, const double *vn, const double &dt,
+                                                                    const double *phi_n_xxyyzz_p[P4EST_DIM], const double *phi_n_p, double *phi_np1_p) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_1_iter, 0, 0, 0, 0);
 
-
-  bool px = is_periodic(p4est, 0);
-  bool py = is_periodic(p4est, 1);
-#ifdef P4_TO_P8
-  bool pz = is_periodic(p4est, 2);
-#endif
-
+  const bool node_neighbors_are_initialized = ngbd->neighbors_are_initialized();
   quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t n_map = 0; n_map < map.size(); ++n_map)
+  const quad_neighbor_nodes_of_node_t *qnnn_p = (node_neighbors_are_initialized ? NULL : &qnnn); // we'll avoid data copy if possible!
+
+  for(size_t k = 0; k < list_of_node_idx.size(); ++k)
   {
-    p4est_locidx_t n    = map[n_map];
+    const p4est_locidx_t & node_idx = list_of_node_idx[k];
 
-    ngbd->get_neighbors(n, qnnn);
+    if(node_neighbors_are_initialized)
+      ngbd->get_neighbors(node_idx, qnnn_p);
+    else
+      ngbd->get_neighbors(node_idx, qnnn);
 
-    double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0;
+    double phi_n_000, phi_n_m00, phi_n_p00, phi_n_0m0, phi_n_0p0 ONLY3D(COMMA phi_n_00m COMMA phi_n_00p);
+    qnnn_p->ngbd_with_quadratic_interpolation(phi_n_p, phi_n_000, phi_n_m00, phi_n_p00, phi_n_0m0, phi_n_0p0 ONLY3D(COMMA phi_n_00m COMMA phi_n_00p));
+    double s_p00 = qnnn_p->d_p00; double s_m00 = qnnn_p->d_m00;
+    double s_0p0 = qnnn_p->d_0p0; double s_0m0 = qnnn_p->d_0m0;
 #ifdef P4_TO_P8
-    double p_00m, p_00p;
-#endif
-
-    qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 ONLY3D(COMMA p_00m COMMA p_00p));
-    double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
-    double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
-#ifdef P4_TO_P8
-    double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
+    double s_00p = qnnn_p->d_00p; double s_00m = qnnn_p->d_00m;
 #endif
 
     //---------------------------------------------------------------------
     // Second Order derivatives
     //---------------------------------------------------------------------
-    double pxx_000 = dxx[n];
-    double pyy_000 = dyy[n];
+    double phi_n_xx_000 = phi_n_xxyyzz_p[0][node_idx];
+    double phi_n_yy_000 = phi_n_xxyyzz_p[1][node_idx];
 #ifdef P4_TO_P8
-    double pzz_000 = dzz[n];
+    double phi_n_zz_000 = phi_n_xxyyzz_p[2][node_idx];
 #endif
-    double pxx_m00 = qnnn.f_m00_linear(dxx);
-    double pxx_p00 = qnnn.f_p00_linear(dxx);
-    double pyy_0m0 = qnnn.f_0m0_linear(dyy);
-    double pyy_0p0 = qnnn.f_0p0_linear(dyy);
+    double phi_n_xx_m00 = qnnn_p->f_m00_linear(phi_n_xxyyzz_p[0]);
+    double phi_n_xx_p00 = qnnn_p->f_p00_linear(phi_n_xxyyzz_p[0]);
+    double phi_n_yy_0m0 = qnnn_p->f_0m0_linear(phi_n_xxyyzz_p[1]);
+    double phi_n_yy_0p0 = qnnn_p->f_0p0_linear(phi_n_xxyyzz_p[1]);
 #ifdef P4_TO_P8
-    double pzz_00m = qnnn.f_00m_linear(dzz);
-    double pzz_00p = qnnn.f_00p_linear(dzz);
+    double phi_n_zz_00m = qnnn_p->f_00m_linear(phi_n_xxyyzz_p[2]);
+    double phi_n_zz_00p = qnnn_p->f_00p_linear(phi_n_xxyyzz_p[2]);
 #endif
 
     //---------------------------------------------------------------------
     // Neumann boundary condition on the walls
     //---------------------------------------------------------------------
-    /* first unclamp the node */
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
-    p4est_indep_t unclamped_node = *node;
-    p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
+    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-    /* wall in the x direction */
-    if(unclamped_node.x == 0)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
-      if(!px && nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00 = p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-    }
-    else if(unclamped_node.x == P4EST_ROOT_LEN)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
-      if(!px && nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00 = p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0.0; }
-    }
-
-    /* wall in the y direction */
-    if(unclamped_node.y == 0)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
-      if(!py && nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0 = p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-    }
-    else if(unclamped_node.y == P4EST_ROOT_LEN)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
-      if(!py && nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0 = p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0.0; }
-    }
-
+    if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
+    if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
+    if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; phi_n_0m0 = phi_n_0p0; phi_n_yy_000 = phi_n_yy_0m0 = phi_n_yy_0p0 = 0.0; }
+    if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; phi_n_0p0 = phi_n_0m0; phi_n_yy_000 = phi_n_yy_0m0 = phi_n_yy_0p0 = 0.0; }
 #ifdef P4_TO_P8
-    /* wall in the z direction */
-    if(unclamped_node.z == 0)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
-      if(!pz && nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-    }
-    else if(unclamped_node.z == P4EST_ROOT_LEN)
-    {
-      p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
-      p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
-      if(!pz && nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; pzz_000 = pzz_00m = pzz_00p = 0.0; }
-    }
+    if (is_node_zmWall(p4est, node)) { s_00m = s_00p; phi_n_00m = phi_n_00p; phi_n_zz_000 = phi_n_zz_00m = phi_n_zz_00p = 0.0; }
+    if (is_node_zpWall(p4est, node)) { s_00p = s_00m; phi_n_00p = phi_n_00m; phi_n_zz_000 = phi_n_zz_00m = phi_n_zz_00p = 0.0; }
 #endif
 
     //---------------------------------------------------------------------
     // First Order One-Sided Differecing
     //---------------------------------------------------------------------
-    double px_p00 = (p_p00 - p_000)/s_p00; double px_m00 = (p_000 - p_m00)/s_m00;
-    double py_0p0 = (p_0p0 - p_000)/s_0p0; double py_0m0 = (p_000 - p_0m0)/s_0m0;
+    double phi_n_x_p00 = (phi_n_p00 - phi_n_000)/s_p00; double phi_n_x_m00 = (phi_n_000 - phi_n_m00)/s_m00;
+    double phi_n_y_0p0 = (phi_n_0p0 - phi_n_000)/s_0p0; double phi_n_y_0m0 = (phi_n_000 - phi_n_0m0)/s_0m0;
 #ifdef P4_TO_P8
-    double pz_00p = (p_00p - p_000)/s_00p; double pz_00m = (p_000 - p_00m)/s_00m;
+    double phi_n_z_00p = (phi_n_00p - phi_n_000)/s_00p; double phi_n_z_00m = (phi_n_000 - phi_n_00m)/s_00m;
 #endif
 
     //---------------------------------------------------------------------
     // Second Order One-Sided Differencing
     //---------------------------------------------------------------------
-    pxx_m00 = MINMOD(pxx_m00, pxx_000);   px_m00 += 0.5*s_m00*pxx_m00;
-    pxx_p00 = MINMOD(pxx_p00, pxx_000);   px_p00 -= 0.5*s_p00*pxx_p00;
-    pyy_0m0 = MINMOD(pyy_0m0, pyy_000);   py_0m0 += 0.5*s_0m0*pyy_0m0;
-    pyy_0p0 = MINMOD(pyy_0p0, pyy_000);   py_0p0 -= 0.5*s_0p0*pyy_0p0;
+    phi_n_xx_m00 = MINMOD(phi_n_xx_m00, phi_n_xx_000);   phi_n_x_m00 += 0.5*s_m00*phi_n_xx_m00;
+    phi_n_xx_p00 = MINMOD(phi_n_xx_p00, phi_n_xx_000);   phi_n_x_p00 -= 0.5*s_p00*phi_n_xx_p00;
+    phi_n_yy_0m0 = MINMOD(phi_n_yy_0m0, phi_n_yy_000);   phi_n_y_0m0 += 0.5*s_0m0*phi_n_yy_0m0;
+    phi_n_yy_0p0 = MINMOD(phi_n_yy_0p0, phi_n_yy_000);   phi_n_y_0p0 -= 0.5*s_0p0*phi_n_yy_0p0;
 #ifdef P4_TO_P8
-    pzz_00m = MINMOD(pzz_00m, pzz_000);   pz_00m += 0.5*s_00m*pzz_00m;
-    pzz_00p = MINMOD(pzz_00p, pzz_000);   pz_00p -= 0.5*s_00p*pzz_00p;
+    phi_n_zz_00m = MINMOD(phi_n_zz_00m, phi_n_zz_000);   phi_n_z_00m += 0.5*s_00m*phi_n_zz_00m;
+    phi_n_zz_00p = MINMOD(phi_n_zz_00p, phi_n_zz_000);   phi_n_z_00p -= 0.5*s_00p*phi_n_zz_00p;
 #endif
 
-    if(vn[n] > 0.0) {
-      if(px_p00 > 0.0) px_p00 = 0.0;
-      if(px_m00 < 0.0) px_m00 = 0.0;
-      if(py_0p0 > 0.0) py_0p0 = 0.0;
-      if(py_0m0 < 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-      if(pz_00p > 0.0) pz_00p = 0.0;
-      if(pz_00m < 0.0) pz_00m = 0.0;
-#endif
-    } else {
-      if(px_p00 < 0.0) px_p00 = 0.0;
-      if(px_m00 > 0.0) px_m00 = 0.0;
-      if(py_0p0 < 0.0) py_0p0 = 0.0;
-      if(py_0m0 > 0.0) py_0m0 = 0.0;
-#ifdef P4_TO_P8
-      if(pz_00p < 0.0) pz_00p = 0.0;
-      if(pz_00m > 0.0) pz_00m = 0.0;
-#endif
-    }
+    const double sgn = (vn[node_idx] > 0.0 ? +1.0 : -1.0);
 
-    pnp1[n] = p_000 - dt*vn[n]*(sqrt(SUMD(px_p00*px_p00 + px_m00*px_m00, py_0p0*py_0p0 + py_0m0*py_0m0, pz_00p*pz_00p + pz_00m*pz_00m)));
+    if(sgn*phi_n_x_p00 > 0.0) phi_n_x_p00 = 0.0;
+    if(sgn*phi_n_x_m00 < 0.0) phi_n_x_m00 = 0.0;
+    if(sgn*phi_n_y_0p0 > 0.0) phi_n_y_0p0 = 0.0;
+    if(sgn*phi_n_y_0m0 < 0.0) phi_n_y_0m0 = 0.0;
+#ifdef P4_TO_P8
+    if(sgn*phi_n_z_00p > 0.0) phi_n_z_00p = 0.0;
+    if(sgn*phi_n_z_00m < 0.0) phi_n_z_00m = 0.0;
+#endif
+
+    phi_np1_p[node_idx] = phi_n_000 - dt*vn[node_idx]*(sqrt(SUMD(phi_n_x_p00*phi_n_x_p00 + phi_n_x_m00*phi_n_x_m00, phi_n_y_0p0*phi_n_y_0p0 + phi_n_y_0m0*phi_n_y_0m0, phi_n_z_00p*phi_n_z_00p + phi_n_z_00m*phi_n_z_00m)));
 
     ierr = PetscLogFlops(30); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_1_iter, 0, 0, 0, 0);
 }
 
-void my_p4est_level_set_t::reinitialize_1st_order( Vec phi_petsc, int number_of_iteration, double limit )
+void my_p4est_level_set_t::advect_in_normal_direction(Vec phi, const double &dt, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz),
+                                                      const double *node_sampled_vn_p, const double *node_sampled_vnp1_p) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-
-  Vec p1_petsc;
-  double *p1, *phi;
-  ierr = VecDuplicate(phi_petsc, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_petsc, &p1); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
-
-  IPMLogRegionBegin("reinit_1st_1st");
-  for(int i = 0; i < number_of_iteration; i++)
+  Vec current_phi_xxyyzz[P4EST_DIM] = {DIM(phi_xx, phi_yy, phi_zz)};
+  bool local_derivatives = false;
+  if (ANDD(current_phi_xxyyzz[0] == NULL, current_phi_xxyyzz[1] == NULL, current_phi_xxyyzz[2] == NULL))
   {
-
-    /* 1) processes the layer nodes */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    reinitialize_One_Iteration_First_Order( ngbd->layer_nodes, p0, phi, p1, limit);
-
-    /* 2) initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) process the local nodes */
-    reinitialize_One_Iteration_First_Order( ngbd->local_nodes, p0, phi, p1, limit);
-
-    /* 4) finish receiving the ghost layer */
-    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 5) Copy data into phi */
-    for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      phi[n] = p1[n];
-  }
-  IPMLogRegionEnd("reinit_1st_1st");
-
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1_petsc, &p1); CHKERRXX(ierr);
-  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
-
-  free(p0);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::reinitialize_1st_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-
-  Vec p1_petsc;
-  double *p1, *phi;
-  ierr = VecDuplicate(phi_petsc, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_petsc, &p1); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
-
-  IPMLogRegionBegin("reinit_1st_1st");
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-
-    /* 1) processes the layer nodes */
-    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-    reinitialize_One_Iteration_First_Order_Above_Threshold( ngbd->layer_nodes, p0, phi, p1, threshold, limit);
-
-    /* 2) initiate the communication for the ghost layer */
-    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) process the local nodes */
-    reinitialize_One_Iteration_First_Order_Above_Threshold( ngbd->local_nodes, p0, phi, p1, threshold, limit);
-
-    /* 4) finish receiving the ghost layer */
-    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 5) Copy data into phi */
-    for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      phi[n] = p1[n];
-  }
-  IPMLogRegionEnd("reinit_1st_1st");
-
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1_petsc, &p1); CHKERRXX(ierr);
-  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
-
-  free(p0);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-  Vec p1_petsc, p2_petsc;
-  double *p1, *p2, *phi;
-  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
-  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
-
-  Vec dxx0_petsc, dyy0_petsc;
-  double *dxx0, *dyy0;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
-
-  Vec dxx_petsc, dyy_petsc;
-  double *dxx, *dyy;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec dzz_petsc, dzz0_petsc;
-  double *dzz, *dzz0;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
-#endif
-
-  compute_derivatives(phi_petsc, DIM(dxx0_petsc, dyy0_petsc, dzz0_petsc));
-
-  ierr = VecGetArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGetArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
-#endif
-
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-
-    /***** Step 1 of RK2: phi -> p1 *****/
-    /* compute derivatives */
-    compute_derivatives(phi_petsc, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    IPMLogRegionBegin("reinit_2nd_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order( ngbd->layer_nodes,
-                                             DIM(dxx0, dyy0, dzz0),
-                                             DIM(dxx,  dyy,  dzz),
-                                             p0, phi, p1, limit);
-
-    /* 2) Begin update process for p1 */
-    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order( ngbd->local_nodes,
-                                             DIM(dxx0, dyy0, dzz0),
-                                             DIM(dxx,  dyy,  dzz),
-                                             p0, phi, p1, limit);
-
-    /* 4) End update process for p1 */
-    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_2nd_2nd");
-
-    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    /* recompute derivatives */
-    compute_derivatives(p1_petsc, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    /***** Step 2 of RK2: p1 -> p2 *****/
-
-    IPMLogRegionBegin("reinit_2nd_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order( ngbd->layer_nodes,
-                                             DIM(dxx0, dyy0, dzz0),
-                                             DIM(dxx,  dyy,  dzz),
-                                             p0, p1, p2, limit);
-
-    /* 2) Begin update process for p2 */
-    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order( ngbd->local_nodes,
-                                             DIM(dxx0, dyy0, dzz0),
-                                             DIM(dxx,  dyy,  dzz),
-                                             p0, p1, p2, limit);
-
-    /* 4) End update process for p2 */
-    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_2nd_2nd");
-
-    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    if (show_convergence)
-    {
-      double dxyz[P4EST_DIM];
-      ::dxyz_min(p4est, dxyz);
-
-      double change = 0.0;
-      for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      {
-        if (fabs(phi[n]) < show_convergence_band*dxyz[0])
-        {
-          double change_loc = 0.5*fabs(p2[n] - phi[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecCreateGhostNodes(p4est, nodes, &current_phi_xxyyzz[dim]); CHKERRXX(ierr);
     }
-
-    /* update phi */
-    for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (phi[n] + p2[n]);
+    compute_derivatives(phi, current_phi_xxyyzz);
+    local_derivatives = true;
   }
 
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
-#endif
-  ierr = VecRestoreArray(p1_petsc,   &p1);   CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2_petsc,   &p2);   CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc,  &phi);  CHKERRXX(ierr);
+  double *current_phi_p;
+  const double *current_phi_xxyyzz_p[P4EST_DIM];
+  ierr = VecGetArray(phi, &current_phi_p); CHKERRXX(ierr);
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_p[dim]); CHKERRXX(ierr);
+  }
 
-  ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dxx_petsc);  CHKERRXX(ierr);
-  ierr = VecDestroy(dyy_petsc);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(dzz0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dzz_petsc ); CHKERRXX(ierr);
-#endif
-  ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
-  ierr = VecDestroy(p2_petsc);   CHKERRXX(ierr);
+  Vec phi_n, phi_np2;
+  double *phi_n_p, *phi_np2_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_n); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np2); CHKERRXX(ierr);
 
-  free(p0);
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-}
+  ierr = VecGetArray(phi_n, &phi_n_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_np2, &phi_np2_p); CHKERRXX(ierr);
 
-void my_p4est_level_set_t::reinitialize_2nd_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-  Vec p1_petsc, p2_petsc;
-  double *p1, *p2, *phi;
-  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
-  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+  memcpy(phi_n_p, current_phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
+  // layer nodes
+  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  // local nodes
+  advect_in_normal_direction_one_iteration(ngbd->local_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  /* now phi(Lnp1, Bnp1, Gnp1) */
+  compute_derivatives(phi, current_phi_xxyyzz);
+
+  // layer nodes
+  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+                                           dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
+  ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // local nodes
+  advect_in_normal_direction_one_iteration(ngbd->local_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+                                           dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
+  ierr = VecGhostUpdateEnd  (phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
+    current_phi_p[n] = 0.5*(phi_n_p[n] + phi_np2_p[n]);
 
-  Vec dxx0_petsc, dyy0_petsc;
-  double *dxx0, *dyy0;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
-
-  Vec dxx_petsc, dyy_petsc;
-  double *dxx, *dyy;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec dzz_petsc, dzz0_petsc;
-  double *dzz, *dzz0;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
-#endif
-
-  compute_derivatives_above_threshold(phi_petsc, threshold, DIM(dxx0_petsc, dyy0_petsc, dzz0_petsc));
-
-  ierr = VecGetArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGetArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
-#endif
-
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-
-    /***** Step 1 of RK2: phi -> p1 *****/
-    /* compute derivatives */
-    compute_derivatives_above_threshold(phi_petsc, threshold, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    IPMLogRegionBegin("reinit_2nd_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->layer_nodes,
-                                                            DIM(dxx0, dyy0, dzz0),
-                                                            DIM(dxx,  dyy,  dzz),
-                                                            p0, phi, p1, threshold, limit);
-
-    /* 2) Begin update process for p1 */
-    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->local_nodes,
-                                                            DIM(dxx0, dyy0, dzz0),
-                                                            DIM(dxx,  dyy,  dzz),
-                                                            p0, phi, p1, threshold, limit);
-
-    /* 4) End update process for p1 */
-    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_2nd_2nd");
-
-    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    /* recompute derivatives */
-    compute_derivatives_above_threshold(p1_petsc, threshold, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    /***** Step 2 of RK2: p1 -> p2 *****/
-
-    IPMLogRegionBegin("reinit_2nd_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->layer_nodes,
-                                                            DIM(dxx0, dyy0, dzz0),
-                                                            DIM(dxx,  dyy,  dzz),
-                                                            p0, p1, p2, threshold, limit);
-
-    /* 2) Begin update process for p2 */
-    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->local_nodes,
-                                                            DIM(dxx0, dyy0, dzz0),
-                                                            DIM(dxx,  dyy,  dzz),
-                                                            p0, p1, p2, threshold, limit);
-
-    /* 4) End update process for p2 */
-    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_2nd_2nd");
-
-    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
-#endif
-
-    /* update phi */
-    for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (phi[n] + p2[n]);
+  /* restore arrays */
+  ierr = VecRestoreArray(phi,     &current_phi_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_n,   &phi_n_p);        CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_np2, &phi_np2_p);      CHKERRXX(ierr);
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(current_phi_xxyyzz[dim], &current_phi_xxyyzz_p[dim]); CHKERRXX(ierr);
+    if (local_derivatives){
+      ierr = VecDestroy(current_phi_xxyyzz[dim]);   CHKERRXX(ierr);
+    }
   }
+  ierr = VecDestroy(phi_n);   CHKERRXX(ierr);
+  ierr = VecDestroy(phi_np2); CHKERRXX(ierr);
 
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
-#endif
-  ierr = VecRestoreArray(p1_petsc,   &p1);   CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2_petsc,   &p2);   CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc,  &phi);  CHKERRXX(ierr);
+  ierr = PetscLogFlops(nodes->num_owned_indeps * P4EST_DIM); CHKERRXX(ierr);
 
-  ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dxx_petsc);  CHKERRXX(ierr);
-  ierr = VecDestroy(dyy_petsc);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(dzz0_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(dzz_petsc ); CHKERRXX(ierr);
-#endif
-  ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
-  ierr = VecDestroy(p2_petsc);   CHKERRXX(ierr);
-
-  free(p0);
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+  return;
 }
 
-void my_p4est_level_set_t::perturb_level_set_function( Vec phi_petsc, double epsilon )
+void my_p4est_level_set_t::perturb_level_set_function(Vec phi, const double &epsilon) const
 {
   PetscErrorCode ierr;
   double *phi_ptr;
 
-  ierr = VecGetArray(phi_petsc, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
 
   for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-  {
     if(fabs(phi_ptr[n]) < epsilon)
     {
       if(phi_ptr[n] > 0) phi_ptr[n] =  epsilon;
       else               phi_ptr[n] = -epsilon;
     }
-  }
 
-  ierr = VecRestoreArray(phi_petsc, &phi_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi, &phi_ptr); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set_t::reinitialize_2nd_order_time_1st_order_space( Vec phi_petsc, int number_of_iteration, double limit )
+double my_p4est_level_set_t::advect_in_normal_direction(const CF_DIM& vn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz)) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-
-  Vec p1_petsc, p2_petsc;
-  double *p1, *p2, *phi;
-  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
-  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    p0[n] = phi[n];
-
-  IPMLogRegionBegin("reinit_2nd_1st");
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-    /***** Step 1 of RK2: phi -> p1 *****/
-
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_First_Order(ngbd->layer_nodes, p0, phi, p1, limit);
-
-    /* 2) Begin update process for p1 */
-    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_First_Order(ngbd->local_nodes, p0, phi, p1, limit);
-
-    /* 4) End update process for p1 */
-    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /***** Step 2 of RK2: p1 -> p2 *****/
-
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_First_Order(ngbd->layer_nodes, p0, p1, p2, limit);
-
-    /* 2) Begin update process for p2 */
-    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_First_Order(ngbd->local_nodes, p0, p1, p2, limit);
-
-    /* 4) End update process for p2 */
-    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* update phi */
-    for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      phi[n] = .5 * (phi[n] + p2[n]);
-  }
-  IPMLogRegionEnd("reinit_2nd_1st");
-
-  /* restore arrays and destroy uneeded petsc objects */
-
-  ierr = VecRestoreArray(p1_petsc,  &p1);  CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2_petsc,  &p2);  CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
-  ierr = VecDestroy(p2_petsc); CHKERRXX(ierr);
-
-  free(p0);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_time_1st_space, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi, int number_of_iteration, double limit )
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi, 0, 0, 0); CHKERRXX(ierr);
-
-  Vec p1;
-  double *p1_p, *phi_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &p1); CHKERRXX(ierr);
-
-  Vec p1_loc;
-  ierr = VecGhostGetLocalForm(p1, &p1_loc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_loc,  &p1_p);  CHKERRXX(ierr);
-
-  Vec phi_loc;
-  ierr = VecGhostGetLocalForm(phi, &phi_loc); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_loc, &phi_p); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  memcpy(p0, phi_p, nodes->indep_nodes.elem_count*sizeof(double));
-
-  Vec dxx0, dyy0;
-  double *dxx0_p, *dyy0_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0); CHKERRXX(ierr);
-
-  Vec dxx, dyy;
-  double *dxx_p, *dyy_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec dzz, dzz0;
-  double *dzz_p, *dzz0_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz ); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-  compute_derivatives(phi, dxx0, dyy0, dzz0);
-#else
-  compute_derivatives(phi, dxx0, dyy0);
-#endif
-
-  ierr = VecGetArray(dxx0, &dxx0_p); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy0, &dyy0_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGetArray(dzz0, &dzz0_p); CHKERRXX(ierr);
-#endif
-
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-    /* compute derivatives */
-    compute_derivatives(phi, DIM(dxx, dyy, dzz));
-
-    ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
-
-    IPMLogRegionBegin("reinit_1st_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order(ngbd->layer_nodes,
-                                            DIM(dxx0_p, dyy0_p, dzz0_p),
-                                            DIM(dxx_p,  dyy_p,  dzz_p),
-                                            p0, phi_p, p1_p, limit);
-
-    /* 2) Begin update process for p1 */
-    ierr = VecGhostUpdateBegin(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order(ngbd->local_nodes,
-                                            DIM(dxx0_p, dyy0_p, dzz0_p),
-                                            DIM(dxx_p,  dyy_p,  dzz_p),
-                                            p0, phi_p, p1_p, limit);
-
-    /* 4) End update process for p1 */
-    ierr = VecGhostUpdateEnd(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_1st_2nd");
-
-    ierr = VecRestoreArray(dxx, &dxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
-
-    if (show_convergence)
-    {
-      double dxyz[P4EST_DIM];
-      ::dxyz_min(p4est, dxyz);
-
-      double change = 0.0;
-      for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      {
-        if (fabs(phi_p[n]) < show_convergence_band*dxyz[0])
-        {
-          double change_loc = fabs(p1_p[n] - phi_p[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
-    }
-
-    /* update phi */
-    memcpy(phi_p, p1_p, nodes->indep_nodes.elem_count*sizeof(double));
-  }
-
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(dxx0, &dxx0_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy0, &dyy0_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(dzz0, &dzz0_p); CHKERRXX(ierr);
-#endif
-
-  ierr = VecGhostRestoreLocalForm(phi, &phi_loc); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_loc, &phi_p); CHKERRXX(ierr);
-
-  ierr = VecGhostRestoreLocalForm(p1, &p1_loc); CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1_loc, &p1_p); CHKERRXX(ierr);
-
-  ierr = VecDestroy(dxx0); CHKERRXX(ierr);
-  ierr = VecDestroy(dyy0); CHKERRXX(ierr);
-  ierr = VecDestroy(dxx);  CHKERRXX(ierr);
-  ierr = VecDestroy(dyy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(dzz0); CHKERRXX(ierr);
-  ierr = VecDestroy(dzz ); CHKERRXX(ierr);
-#endif
-  ierr = VecDestroy(p1);   CHKERRXX(ierr);
-
-  free(p0);
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space_above_threshold( Vec phi, double threshold, int number_of_iteration, double limit)
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold, phi, 0, 0, 0); CHKERRXX(ierr);
-
-  Vec p1;
-  double *p1_p, *phi_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &p1); CHKERRXX(ierr);
-
-  Vec p1_loc;
-  ierr = VecGhostGetLocalForm(p1, &p1_loc); CHKERRXX(ierr);
-  ierr = VecGetArray(p1_loc,  &p1_p);  CHKERRXX(ierr);
-
-  Vec phi_loc;
-  ierr = VecGhostGetLocalForm(phi, &phi_loc); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_loc, &phi_p); CHKERRXX(ierr);
-
-  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
-  memcpy(p0, phi_p, nodes->indep_nodes.elem_count*sizeof(double));
-
-  Vec dxx0, dyy0;
-  double *dxx0_p, *dyy0_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0); CHKERRXX(ierr);
-
-  Vec dxx, dyy;
-  double *dxx_p, *dyy_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dxx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dyy); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  Vec dzz, dzz0;
-  double *dzz_p, *dzz0_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &dzz ); CHKERRXX(ierr);
-#endif
-
-  compute_derivatives_above_threshold(phi, threshold, DIM(dxx0, dyy0, dzz0));
-
-  ierr = VecGetArray(dxx0, &dxx0_p); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy0, &dyy0_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGetArray(dzz0, &dzz0_p); CHKERRXX(ierr);
-#endif
-
-  for(int i = 0; i < number_of_iteration; i++)
-  {
-    /* compute derivatives */
-    compute_derivatives_above_threshold(phi, threshold, DIM(dxx, dyy, dzz));
-
-    ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
-
-    IPMLogRegionBegin("reinit_1st_2nd");
-    /* 1) Preocess layer nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->layer_nodes,
-                                                            DIM(dxx0_p, dyy0_p, dzz0_p),
-                                                            DIM(dxx_p,  dyy_p,  dzz_p),
-                                                            p0, phi_p, p1_p, threshold, limit);
-
-    /* 2) Begin update process for p1 */
-    ierr = VecGhostUpdateBegin(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    /* 3) Preocess local nodes */
-    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->local_nodes,
-                                                            DIM(dxx0_p, dyy0_p, dzz0_p),
-                                                            DIM(dxx_p,  dyy_p,  dzz_p),
-                                                            p0, phi_p, p1_p, threshold, limit);
-
-    /* 4) End update process for p1 */
-    ierr = VecGhostUpdateEnd(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    IPMLogRegionEnd("reinit_1st_2nd");
-
-    ierr = VecRestoreArray(dxx, &dxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
-
-    /* update phi */
-    memcpy(phi_p, p1_p, nodes->indep_nodes.elem_count*sizeof(double));
-  }
-
-  /* restore arrays and destroy uneeded petsc objects */
-  ierr = VecRestoreArray(dxx0, &dxx0_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy0, &dyy0_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(dzz0, &dzz0_p); CHKERRXX(ierr);
-#endif
-
-  ierr = VecGhostRestoreLocalForm(phi, &phi_loc); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_loc, &phi_p); CHKERRXX(ierr);
-
-  ierr = VecGhostRestoreLocalForm(p1, &p1_loc); CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1_loc, &p1_p); CHKERRXX(ierr);
-
-  ierr = VecDestroy(dxx0); CHKERRXX(ierr);
-  ierr = VecDestroy(dyy0); CHKERRXX(ierr);
-  ierr = VecDestroy(dxx);  CHKERRXX(ierr);
-  ierr = VecDestroy(dyy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(dzz0); CHKERRXX(ierr);
-  ierr = VecDestroy(dzz ); CHKERRXX(ierr);
-#endif
-  ierr = VecDestroy(p1);   CHKERRXX(ierr);
-
-  free(p0);
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold, phi, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::compute_derivatives( Vec phi_petsc, DIM(Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc)) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  ngbd->second_derivatives_central(phi_petsc, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::compute_derivatives_above_threshold(Vec phi_petsc, double threshold, DIM(Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc)) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  ngbd->second_derivatives_central_above_threshold(phi_petsc, threshold, DIM(dxx_petsc, dyy_petsc, dzz_petsc));
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-double my_p4est_level_set_t::advect_in_normal_direction(const CF_DIM& vn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz))
-{
-  /* TODO: do not allocate memory for vn */
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_CF2, 0, 0, 0, 0);
-
-  Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
-#ifdef P4_TO_P8
-  Vec phi_zz_ = phi_zz;
-#endif
-  bool local_derivatives = false;
-  if (ANDD(phi_xx_ == NULL, phi_yy_ == NULL, phi_zz_ == NULL))
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
-#endif
-    compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-    local_derivatives = true;
-  }
-
-  double *phi_p, *phi_xx_p, *phi_yy_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 
   /* compute dt based on CFL condition */
-  double dt_local = DBL_MAX;
-  double dt;
+  double dt = DBL_MAX;
   std::vector<double> vn_vec(nodes->indep_nodes.elem_count);
-  double *vn_p = &vn_vec[0];
+  const bool node_neihbors_are_initialized = ngbd->neighbors_are_initialized();
   quad_neighbor_nodes_of_node_t qnnn;
+  const quad_neighbor_nodes_of_node_t *qnnn_p = (node_neihbors_are_initialized ? NULL : &qnnn); // avoid data copy if possible
   for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n){
-    ngbd->get_neighbors(n, qnnn);
+    if(node_neihbors_are_initialized)
+      ngbd->get_neighbors(n, qnnn_p);
+    else
+      ngbd->get_neighbors(n, qnnn);
 
     double xyzn[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyzn);
 
-    double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
-    double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
+    double s_p00 = fabs(qnnn_p->d_p00); double s_m00 = fabs(qnnn_p->d_m00);
+    double s_0p0 = fabs(qnnn_p->d_0p0); double s_0m0 = fabs(qnnn_p->d_0m0);
 #ifdef P4_TO_P8
-    double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
+    double s_00p = fabs(qnnn_p->d_00p); double s_00m = fabs(qnnn_p->d_00m);
 #endif
     double s_min = MIN(DIM(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m)));
 
     /* choose CFL = 0.8 ... just for fun! */
     vn_vec[n] = vn(xyzn);
-    dt_local = MIN(dt_local, 0.8*fabs(s_min/vn_vec[n]));
+    dt = MIN(dt, 0.8*fabs(s_min/vn_vec[n]));
   }
-  MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-  Vec p1, p2;
-  double *p1_p, *p2_p;
-  ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_yy_, &p2); CHKERRXX(ierr);
+  advect_in_normal_direction(phi, dt, DIM(phi_xx, phi_yy, phi_zz), &vn_vec[0]);
 
-  ierr = VecGetArray(p1, &p1_p); CHKERRXX(ierr);
-  ierr = VecGetArray(p2, &p2_p); CHKERRXX(ierr);
-
-
-  memcpy(p1_p, phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  /* now phi(Lnp1, Bnp1, Gnp1) */
-  compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateBegin(p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
-
-  /* restore arrays */
-  ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-
-  ierr = PetscLogFlops(nodes->num_owned_indeps * P4EST_DIM); CHKERRXX(ierr);
-
-  if (local_derivatives){
-    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
-#endif
-  }
-
-  ierr = VecDestroy(p1); CHKERRXX(ierr);
-  ierr = VecDestroy(p2); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_CF2, 0, 0, 0, 0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return dt;
 }
 
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz))
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, const double &dt, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz)) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 
-  double *vn_p;
-  ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
-
-  Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
-#ifdef P4_TO_P8
-  Vec phi_zz_ = phi_zz;
-#endif
-  bool local_derivatives = false;
-  if (ANDD(phi_xx_ == NULL, phi_yy_ == NULL, phi_zz_ == NULL))
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
-#endif
-    compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-    local_derivatives = true;
-  }
-
-  double *phi_p, *phi_xx_p, *phi_yy_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-
-  Vec p1, p2;
-  double *p1_p, *p2_p;
-  ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_yy_, &p2); CHKERRXX(ierr);
-
-  ierr = VecGetArray(p1, &p1_p); CHKERRXX(ierr);
-  ierr = VecGetArray(p2, &p2_p); CHKERRXX(ierr);
-
-  /* p1(Ln, Gn, Gn) */
-  memcpy(p1_p, phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
-
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  /* now phi(Lnp1, Bnp1, Gnp1) */
-  compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateBegin(p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
-
-  /* restore arrays */
-  ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArray(vn,      &vn_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-  ierr = PetscLogFlops(nodes->num_owned_indeps * P4EST_DIM); CHKERRXX(ierr);
-
-  if (local_derivatives){
-    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
-#endif
-  }
-
-  ierr = VecDestroy(p1); CHKERRXX(ierr);
-  ierr = VecDestroy(p2); CHKERRXX(ierr);
+  const double *vn_read_p;
+  ierr = VecGetArrayRead(vn, &vn_read_p); CHKERRXX(ierr);
+  advect_in_normal_direction(phi, dt, DIM(phi_xx, phi_yy, phi_zz), vn_read_p);
+  ierr = VecRestoreArrayRead(vn, &vn_read_p); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 
   return dt;
 }
 
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, double dt, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz))
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, const double &dt, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz)) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 
-  double *vn_p, *vn_np1_p;
-  ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vn_np1, &vn_np1_p); CHKERRXX(ierr);
-
-  Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
-#ifdef P4_TO_P8
-  Vec phi_zz_ = phi_zz;
-#endif
-  bool local_derivatives = false;
-  if (ANDD(phi_xx_ == NULL, phi_yy_ == NULL, phi_zz_ == NULL))
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
-#endif
-    compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-    local_derivatives = true;
-  }
-
-  double *phi_p, *phi_xx_p, *phi_yy_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-
-  Vec p1, p2;
-  double *p1_p, *p2_p;
-  ierr = VecDuplicate(phi_xx_, &p1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_yy_, &p2); CHKERRXX(ierr);
-
-  ierr = VecGetArray(p1, &p1_p); CHKERRXX(ierr);
-  ierr = VecGetArray(p2, &p2_p); CHKERRXX(ierr);
-
-  /* p1(Ln, Gn, Gn) */
-  memcpy(p1_p, phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
-
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           p1_p, phi_p);
-  ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  /* now phi(Lnp1, Bnp1, Gnp1) */
-  compute_derivatives(phi, DIM(phi_xx_, phi_yy_, phi_zz_));
-
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_np1_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateBegin(p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_np1_p, dt,
-                                           DIM(phi_xx_p, phi_yy_p, phi_zz_p),
-                                           phi_p, p2_p);
-  ierr = VecGhostUpdateEnd  (p2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-    phi_p[n] = 0.5 * (p1_p[n] + p2_p[n]);
-
-  /* restore arrays */
-  ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArray(vn,      &vn_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(vn_np1,  &vn_np1_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-  ierr = PetscLogFlops(nodes->num_owned_indeps * P4EST_DIM); CHKERRXX(ierr);
-
-  if (local_derivatives){
-    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
-#endif
-  }
-
-  ierr = VecDestroy(p1); CHKERRXX(ierr);
-  ierr = VecDestroy(p2); CHKERRXX(ierr);
+  const double *vn_read_p, *vnp1_read_p;
+  ierr = VecGetArrayRead(vn, &vn_read_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vn_np1, &vnp1_read_p); CHKERRXX(ierr);
+  advect_in_normal_direction(phi, dt, DIM(phi_xx, phi_yy, phi_zz), vn_read_p, vnp1_read_p);
+  ierr = VecRestoreArrayRead(vn_np1, &vnp1_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vn, &vn_read_p); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 
   return dt;
 }
 
-void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, BoundaryConditionsDIM &bc, int order, int band_to_extend) const
+void my_p4est_level_set_t::geometric_extrapolation_over_interface(Vec phi, Vec q, const BoundaryConditionsDIM *bc, const unsigned char &degree, const unsigned int &band_to_extend) const
 {
 #ifdef CASL_THROWS
-  if(bc.interfaceType() == NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
-  if(order != 0 && order != 1 && order != 2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
+  if(bc->interfaceType() == NOINTERFACE)
+    throw std::invalid_argument("my_p4est_level_set_t::geometric_extrapolation_across_interface: no interface defined in the boundary condition ... needs to be dirichlet, neumann or mixed.");
+  if(degree > 2)
+    throw std::invalid_argument("my_p4est_level_set_t::geometric_extrapolation_across_interface: the degree of the extrapolant polynomial must be less than or equal to 2.");
 #endif
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_geometric_extrapolation_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
 
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+  // get the (max) number of points to sample in negative domain for every node where extrapolation is required
+  const unsigned char nsamples = number_of_samples_across_the_interface_for_geometric_extrapolation(degree, bc->interfaceType());
+  P4EST_ASSERT(nsamples <= 2);
 
-  /* first compute the phi derivatives */
-  std::vector<double> phi_x(nodes->num_owned_indeps);
-  std::vector<double> phi_y(nodes->num_owned_indeps);
-#ifdef P4_TO_P8
-  std::vector<double> phi_z(nodes->num_owned_indeps);
-#endif
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    ngbd->get_neighbors(n, qnnn);
-    qnnn.gradient(phi, DIM(phi_x[n], phi_y[n], phi_z[n]));
-  }
-
-  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
-  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
-
-  /* find dx and dy smallest */
+  // find the smallest diag and set distances away from the interface for sampling values of q
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+  const double diag_min = sqrt(SUMD(SQR(tree_dimensions[0]/pow(2.,(double) data->max_lvl)), SQR(tree_dimensions[1]/pow(2.,(double) data->max_lvl)), SQR(tree_dimensions[2]/pow(2.,(double) data->max_lvl))));
+  // if bc is not given, we use values in negative domain only
+  // the methodology is to use a DIRICHLET-like condition on the -sampling_distances[0] level of the levelset
+  const double relative_zero_level    = (bc == NULL ? -2.0*diag_min : 0.0);           // signed distance from the 0-level in the normal direction
+  const double relative_phi_level[2]  = {(bc == NULL ? -1.0*diag_min : -2.0*diag_min), (bc == NULL ? -2.0*diag_min : -3.0*diag_min)};
 
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
+  // we'll need local node neighbors to calculate grad_phi
+  const bool node_neighbors_are_initialized = ngbd->neighbors_are_initialized();
+  quad_neighbor_nodes_of_node_t qnnn;
+  const quad_neighbor_nodes_of_node_t *qnnn_p = (node_neighbors_are_initialized ? NULL : &qnnn); // avoid data copy if node neighbors are initialized
 
-  double diag = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
-
-  std::vector<double> q0;
-  std::vector<double> q1;
-  std::vector<double> q2;
-
-  if(bc.interfaceType() == DIRICHLET)                             q0.resize(nodes->num_owned_indeps);
-  if(order >= 1 || (order == 0 && bc.interfaceType() == NEUMANN)) q1.resize(nodes->num_owned_indeps);
-  if(order >= 2)                                                  q2.resize(nodes->num_owned_indeps);
-
+  // get ready
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  my_p4est_interpolation_nodes_t *interp_bc = NULL;
+  if(bc != NULL)
+    interp_bc = new my_p4est_interpolation_nodes_t(ngbd);
+  my_p4est_interpolation_nodes_t interp_q(ngbd);
+  interp_q.set_input(q, quadratic_non_oscillatory);
+  std::map<p4est_locidx_t, data_for_geometric_extapolation> node_data_for_extrapolation; node_data_for_extrapolation.clear();
   /* now buffer the interpolation points */
   for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(-phi_x[n], -phi_y[n], -phi_z[n]));
-
-    if(phi[n] > 0.0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
+    if(phi_p[n] > 0.0 && phi_p[n] < band_to_extend*diag_min)
     {
-      grad_phi /= grad_phi.norm_L2();
+      if(node_neighbors_are_initialized)
+        ngbd->get_neighbors(n, qnnn_p);
+      else
+        ngbd->get_neighbors(n, qnnn);
 
-      double xyz [P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
+      double xyz_node[P4EST_DIM];
+      node_xyz_fr_n(n, p4est, nodes, xyz_node);
 
-      if(bc.interfaceType() == DIRICHLET)
-        q0[n] = bc.interfaceValue(DIM(xyz[0] + grad_phi.x*phi[n], xyz[1] + grad_phi.y*phi[n], xyz[2] + grad_phi.z*phi[n]));
-
-      if(order >= 1 || (order == 0 && bc.interfaceType() == NEUMANN))
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(2.0*diag + phi[n]);
-        interp1.add_point(n, xyz_);
-      }
-
-      if(order >= 2)
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(3.0*diag + phi[n]);
-        interp2.add_point(n, xyz_);
-      }
-
-      ierr = PetscLogFlops(26); CHKERRXX(ierr);
+      double grad_phi[P4EST_DIM];
+      qnnn_p->gradient(phi_p, grad_phi);
+      add_dof_to_extrapolation_map(node_data_for_extrapolation, n, xyz_node, phi_p[n] - relative_zero_level, grad_phi, nsamples,
+                                   relative_phi_level, &interp_q, interp_bc);
     }
-  }
 
-  interp1.interpolate(q1.data());
-  interp2.interpolate(q2.data());
+  std::vector<double> qsamples;
+  std::vector<bc_sample> *calculated_bc_samples = NULL;
+  qsamples.resize((nsamples + (bc == NULL))*node_data_for_extrapolation.size());
+  interp_q.interpolate(qsamples.data());
+  if(bc != NULL)
+  {
+    calculated_bc_samples = new std::vector<bc_sample>(node_data_for_extrapolation.size());
+    interp_bc->evaluate_interface_bc(*bc, calculated_bc_samples->data());
+  }
 
   /* now compute the extrapolated values */
-  double *q;
-  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(phi_x[n], phi_y[n], phi_z[n]));
-
-    if(phi[n] > 0.0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
-    {
-      grad_phi /= grad_phi.norm_L2();
-
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-
-      //      double xy1 [] = {xyz[0] - grad_phi.x*(phi[n]), xyz[1] - grad_phi.y*(phi[n])};
-      //      double xy2 [] = {xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)};
-
-      //      q1[n] = 0.25*(
-      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) +
-      //          bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+2*diag), xyz[1] - grad_phi.y*(phi[n]+2*diag)) );
-      //      q2[n] = bc.interfaceValue(xyz[0] - grad_phi.x*(phi[n]+3*diag), xyz[1] - grad_phi.y*(phi[n]+3*diag));
-
-      if(order == 0)
-      {
-        if(bc.interfaceType() == DIRICHLET)
-          q[n] = q0[n];
-        else /* interface neumann */
-          q[n] = q1[n];
-      }
-
-      else if(order == 1)
-      {
-        if(bc.interfaceType() == DIRICHLET)
-        {
-          double dif01 = (q1[n] - q0[n])/(2*diag - 0);
-          //          double dif01 = (q1[n] - q0[n])/(sqrt(SQR(xy2[0]-xy1[0])+SQR(xy2[1]-xy1[1])) - 0);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01;
-        }
-        else /* interface Neumann */
-        {
-          double dif01 = -bc.interfaceValue(DIM(xyz[0] - grad_phi.x*phi[n], xyz[1] - grad_phi.y*phi[n], xyz[2] - grad_phi.z*phi[n]));
-          q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
-        }
-      }
-
-      else if(order == 2)
-      {
-        if(bc.interfaceType() == DIRICHLET)
-        {
-          double dif01  = (q1[n] - q0[n]) / (2*diag);
-          double dif12  = (q2[n] - q1[n]) / (diag);
-          double dif012 = (dif12 - dif01) / (3*diag);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - 2*diag) * dif012;
-        }
-        else if (bc.interfaceType() == NEUMANN) /* interface Neumann */
-        {
-          double x1 = 2*diag;
-          double x2 = 3*diag;
-          double b = -bc.interfaceValue(DIM(xyz[0] - grad_phi.x*phi[n], xyz[1] - grad_phi.y*phi[n], xyz[2] - grad_phi.z*phi[n]));
-          double a = (q2[n] - q1[n] + b*(x1 - x2)) / (x2*x2 - x1*x1);
-          double c = q1[n] - a*x1*x1 - b*x1;
-
-          double x = -phi[n];
-          q[n] = a*x*x + b*x + c;
-
-          //          double dif01 = (q2[n] - q1[n])/(diag);
-          //#ifdef P4_TO_P8
-          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n], xyz[2]-grad_phi.z*phi[n])) / (2*diag);
-          //#else
-          //          double dif012 = (dif01 + bc.interfaceValue(xyz[0]-grad_phi.x*phi[n], xyz[1]-grad_phi.y*phi[n])) / (2*diag);
-          //#endif
-          //          q[n] = q1[n] + (-phi[n] - diag) * dif01 + (-phi[n] - diag)*(-phi[n] - 2*diag) * dif012;
-        }
-      }
-
-      ierr = PetscLogFlops(48); CHKERRXX(ierr);
-    }
+  double *q_p;
+  ierr = VecGetArray(q, &q_p); CHKERRXX(ierr);
+  std::map<p4est_locidx_t, data_for_geometric_extapolation>::iterator it;
+  for (size_t k = 0; k < ngbd->get_layer_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd->get_layer_node(k);
+    it = node_data_for_extrapolation.find(node_idx);
+    if(it != node_data_for_extrapolation.end())
+      q_p[node_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples, qsamples, calculated_bc_samples);
   }
-  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < ngbd->get_local_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd->get_local_node(k);
+    it = node_data_for_extrapolation.find(node_idx);
+    if(it != node_data_for_extrapolation.end())
+      q_p[node_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples, qsamples, calculated_bc_samples);
+  }
+  ierr = VecGhostUpdateEnd(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  if(bc!= NULL)
+  {
+    delete interp_bc;
+    delete calculated_bc_samples;
+  }
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_geometric_extrapolation_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
-// FIXME: Why is bc_vec not used anywhere?!
-void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, BoundaryConditionType bc_type, Vec /*bc_vec*/, int order, int band_to_extend ) const
-{
-
-#ifdef CASL_THROWS
-  if(bc_type == NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
-  if(order != 0 && order != 1 && order != 2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
-#endif
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
-
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  /* first compute the phi derivatives */
-  std::vector<double> phi_x(nodes->num_owned_indeps);
-  std::vector<double> phi_y(nodes->num_owned_indeps);
-#ifdef P4_TO_P8
-  std::vector<double> phi_z(nodes->num_owned_indeps);
-#endif
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    ngbd->get_neighbors(n, qnnn);
-    qnnn.gradient(phi, DIM(phi_x[n], phi_y[n], phi_z[n]));
-  }
-
-  my_p4est_interpolation_nodes_t interp0(ngbd); interp0.set_input(q_petsc, quadratic_non_oscillatory);
-  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
-  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
-
-  /* find dx and dy smallest */
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-  double diag = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
-
-  std::vector<double> q0;
-  std::vector<double> q1;
-  std::vector<double> q2;
-
-  if(order >  0 || bc_type == DIRICHLET)                q0.resize(nodes->num_owned_indeps);
-  if(order >= 1 || (order == 0 && bc_type == NEUMANN))  q1.resize(nodes->num_owned_indeps);
-  if(order >= 2)                                        q2.resize(nodes->num_owned_indeps);
-
-  /* now buffer the interpolation points */
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(-phi_x[n], -phi_y[n], -phi_z[n]));
-
-    if(phi[n] > 0.0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
-    {
-      grad_phi /= grad_phi.norm_L2();
-
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-
-      if(order > 0 || bc_type == DIRICHLET){
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*phi[n];
-
-        interp0.add_point(n, xyz_);
-      }
-
-      if(order >= 1 || (order == 0 && bc_type == NEUMANN))
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(2.0*diag + phi[n]);
-        interp1.add_point(n, xyz_);
-      }
-
-      if(order >= 2)
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(3.0*diag + phi[n]);
-        interp2.add_point(n, xyz_);
-      }
-
-      ierr = PetscLogFlops(26); CHKERRXX(ierr);
-    }
-  }
-
-  interp0.interpolate(q0.data());
-  interp1.interpolate(q1.data());
-  interp2.interpolate(q2.data());
-
-  /* now compute the extrapolated values */
-  double *q;
-  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(-phi_x[n], -phi_y[n], -phi_z[n]));
-
-    if(phi[n] > 0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
-    {
-      if(order == 0)
-      {
-        if(bc_type == DIRICHLET)
-          q[n] = q0[n];
-        else /* interface neumann */
-          q[n] = q1[n];
-      }
-
-      else if(order == 1)
-      {
-        if(bc_type == DIRICHLET)
-        {
-          double dif01 = (q1[n] - q0[n])/(2*diag - 0);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01;
-        }
-        else /* interface Neumann */
-        {
-          double dif01 = -q0[n];
-          q[n] = q1[n] + (-phi[n] - 2*diag) * dif01;
-        }
-      }
-
-      else if(order == 2)
-      {
-        if(bc_type == DIRICHLET)
-        {
-          double dif01  = (q1[n] - q0[n]) / (2*diag);
-          double dif12  = (q2[n] - q1[n]) / (diag);
-          double dif012 = (dif12 - dif01) / (3*diag);
-          q[n] = q0[n] + (-phi[n] - 0) * dif01 + (-phi[n] - 0)*(-phi[n] - 2*diag) * dif012;
-        }
-        else /* interface Neumann */
-        {
-          double x1 = 2*diag;
-          double x2 = 3*diag;
-          double b = -q0[n];
-          double a = (q2[n] - q1[n] + b*(x1 - x2)) / (x2*x2 - x1*x1);
-          double c = q1[n] - a*x1*x1 - b*x1;
-
-          double x = -phi[n];
-          q[n] = a*x*x + b*x + c;
-        }
-      }
-
-      ierr = PetscLogFlops(48); CHKERRXX(ierr);
-    }
-  }
-  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int order, int band_to_extend ) const
-{
-#ifdef CASL_THROWS
-  if(order != 0 && order != 1 && order != 2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
-#endif
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
-
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  /* first compute the phi derivatives */
-  std::vector<double> phi_x(nodes->num_owned_indeps);
-  std::vector<double> phi_y(nodes->num_owned_indeps);
-#ifdef P4_TO_P8
-  std::vector<double> phi_z(nodes->num_owned_indeps);
-#endif
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    ngbd->get_neighbors(n, qnnn);
-    qnnn.gradient(phi, DIM(phi_x[n], phi_y[n], phi_z[n]));
-  }
-
-  my_p4est_interpolation_nodes_t interp0(ngbd); interp0.set_input(q_petsc, quadratic_non_oscillatory);
-  my_p4est_interpolation_nodes_t interp1(ngbd); interp1.set_input(q_petsc, quadratic_non_oscillatory);
-  my_p4est_interpolation_nodes_t interp2(ngbd); interp2.set_input(q_petsc, quadratic_non_oscillatory);
-
-  /* find dx and dy smallest */
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-  double diag = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
-
-  std::vector<double> q0;
-  std::vector<double> q1;
-  std::vector<double> q2;
-
-  if(order >  0) q0.resize(nodes->num_owned_indeps);
-  if(order >= 1) q1.resize(nodes->num_owned_indeps);
-  if(order >= 2) q2.resize(nodes->num_owned_indeps);
-
-  /* now buffer the interpolation points */
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(-phi_x[n], -phi_y[n], -phi_z[n]));
-
-    if(phi[n] > 0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
-    {
-      grad_phi /= grad_phi.norm_L2();
-
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-
-      if(order > 0){
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(2.0*diag + phi[n]);
-        interp0.add_point(n, xyz_);
-      }
-
-      if(order >= 1)
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(3.0*diag + phi[n]);
-        interp1.add_point(n, xyz_);
-      }
-
-      if(order >= 2)
-      {
-        double xyz_ [P4EST_DIM];
-        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_[dim] = xyz[dim] + grad_phi.xyz(dim)*(4.0*diag + phi[n]);
-        interp2.add_point(n, xyz_);
-      }
-
-      ierr = PetscLogFlops(26); CHKERRXX(ierr);
-    }
-  }
-
-  interp0.interpolate(q0.data());
-  interp1.interpolate(q1.data());
-  interp2.interpolate(q2.data());
-
-  /* now compute the extrapolated values */
-  double *q;
-  ierr = VecGetArray(q_petsc, &q); CHKERRXX(ierr);
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    PointDIM grad_phi(DIM(-phi_x[n], -phi_y[n], -phi_z[n]));
-
-    if(phi[n] > 0 && phi[n] < band_to_extend*diag && grad_phi.norm_L2() > EPS)
-    {
-      if(order == 0)
-        q[n] = q0[n];
-      else if(order == 1)
-      {
-        double dif01 = (q1[n] - q0[n])/(diag);
-        q[n] = q0[n] + (-phi[n] - 2*diag) * dif01;
-      }
-      else if(order == 2)
-      {
-        double dif01  = (q1[n] - q0[n]) / (diag);
-        double dif12  = (q2[n] - q1[n]) / (diag);
-        double dif012 = (dif12 - dif01) / (2*diag);
-        q[n] = q0[n] + (-phi[n] - 2*diag) * dif01 + (-phi[n] - 2*diag)*(-phi[n] - 3*diag) * dif012;
-      }
-
-      ierr = PetscLogFlops(48); CHKERRXX(ierr);
-    }
-  }
-  ierr = VecRestoreArray(q_petsc, &q); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface, phi_petsc, q_petsc, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain(Vec phi, Vec q, Vec q_extended, const unsigned int &band_to_extend) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface, phi, q, q_extended, 0); CHKERRXX(ierr);
 
-  /* find dx and dy smallest */
+  // find the smallest diag and set distances away from the interface for sampling values of q
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / (1<<data->max_lvl);
-  double dy = (ymax-ymin) / (1<<data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / (1<<data->max_lvl);
-#endif
-
-  double diag = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
+  const double diag_min = sqrt(SUMD(SQR(tree_dimensions[0]/pow(2.,(double) data->max_lvl)), SQR(tree_dimensions[1]/pow(2.,(double) data->max_lvl)), SQR(tree_dimensions[2]/pow(2.,(double) data->max_lvl))));
 
   my_p4est_interpolation_nodes_t interp(ngbd);
 
-  double *q_extended;
-  ierr = VecGetArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
+  double *q_extended_p;
+  const double *phi_p;
+  ierr = VecGetArray(q_extended, &q_extended_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &phi_p);            CHKERRXX(ierr);
 
-  double *phi;
-  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
-
-  /* now buffer the interpolation points */
+  // we'll need local node neighbors to calculate grad_phi
+  const bool node_neighbors_are_initialized = ngbd->neighbors_are_initialized();
   quad_neighbor_nodes_of_node_t qnnn;
+  const quad_neighbor_nodes_of_node_t *qnnn_p = (node_neighbors_are_initialized ? NULL : &qnnn); // avoid data copy if node neighbors are initialized
+
   for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
   {
-    ngbd->get_neighbors(n, qnnn);
-
-    PointDIM grad_phi;
-    qnnn.gradient(phi, DIM(grad_phi.x, grad_phi.y, grad_phi.z));
-
-    if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2() > EPS)
+    q_extended_p[n] = 0.0; // initialize value in case we don't go through the following conditions, to avoid NANs
+    if(fabs(phi_p[n]) < band_to_extend*diag_min)
     {
-      grad_phi /= grad_phi.norm_L2();
+      if(node_neighbors_are_initialized)
+        ngbd->get_neighbors(n, qnnn_p);
+      else
+        ngbd->get_neighbors(n, qnnn);
 
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-
-      interp.add_point(n, xyz);
-
+      double normal[P4EST_DIM];
+      qnnn_p->gradient(phi_p, normal);
+      const double mag_normal = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
+      if(mag_normal > EPS)
+      {
+        double xyz_i[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz_i);
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+          xyz_i[dim] -= normal[dim]*phi_p[n]/mag_normal; // we want to interpolate the _interface_ value, don't we? This projection was missing until 04/08/2020 [Raphael]
+        interp.add_point(n, xyz_i);
+      }
       ierr = PetscLogFlops(14); CHKERRXX(ierr);
     }
-    else
-      q_extended[n] = 0.0;
   }
 
-  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
-  ierr = VecRestoreArray(q_extended_petsc, &q_extended); CHKERRXX(ierr);
+  interp.set_input(q, quadratic);
+  interp.interpolate(q_extended_p);
 
-  interp.set_input(q_petsc, quadratic);
-  interp.interpolate(q_extended_petsc);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q_extended, &q_extended_p); CHKERRXX(ierr);
 
-  ierr = VecGhostUpdateBegin(q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q_extended_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(q_extended, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (q_extended, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface, phi_petsc, q_petsc, q_extended_petsc, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface, phi, q, q_extended, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterations, int order,
@@ -3213,7 +1604,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
     int    it     = 0;
-    double change = tol+1;
+    double change = tol + 1;
     while (it < iterations && change > tol_d)
     {
       change = 0.0;
@@ -3393,6 +1784,15 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 #ifdef P4_TO_P8
         qzz_00m = qzz_p[n]*qzz_00m < 0.0 ? 0.0 : (fabs(qzz_p[n]) < fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
         qzz_00p = qzz_p[n]*qzz_00p < 0.0 ? 0.0 : (fabs(qzz_p[n]) < fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
+#endif
+
+        if(nx[n] < 0.0) qx -= .5*qnnn.d_p00*qxx_p00;
+        else            qx += .5*qnnn.d_m00*qxx_m00;
+        if(ny[n] < 0.0) qy -= .5*qnnn.d_0p0*qyy_0p0;
+        else            qy += .5*qnnn.d_0m0*qyy_0m0;
+#ifdef P4_TO_P8
+        if(nz[n] < 0.0) qz -= .5*qnnn.d_00p*qzz_00p;
+        else            qz += .5*qnnn.d_00m*qzz_00m;
 #endif
 
 //#ifdef P4_TO_P8
@@ -5465,15 +3865,12 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 #endif
   double dl = MAX(DIM(dx, dy, dz));
 
-  Vec qxx, qyy;
-  double *qxx_p, *qyy_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec qzz; double *qzz_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
-#endif
-  compute_derivatives(qi, DIM(qxx, qyy, qzz));
+  Vec qxxyyzz[P4EST_DIM];
+  double *qxxyyzz_p[P4EST_DIM];
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostNodes(p4est, nodes, &qxxyyzz[dim]); CHKERRXX(ierr);
+  }
+  compute_derivatives(qi, qxxyyzz);
 
   Vec q1, q2;
   double *q1_p, *q2_p, *q_p, *qi_p, *phi_p;
@@ -5521,23 +3918,18 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 
 
   /* compute second order derivatives of phi for second order accurate location */
-  Vec dxx; double *dxx_p; ierr = VecCreateGhostNodes(p4est, nodes, &dxx); CHKERRXX(ierr);
-  Vec dyy; double *dyy_p; ierr = VecCreateGhostNodes(p4est, nodes, &dyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec dzz; double *dzz_p; ierr = VecCreateGhostNodes(p4est, nodes, &dzz); CHKERRXX(ierr);
-#endif
-
+  Vec dxxyyzz[P4EST_DIM]; double *dxxyyzz_p[P4EST_DIM];
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostNodes(p4est, nodes, &dxxyyzz[dim]); CHKERRXX(ierr);
+  }
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  compute_derivatives(phi, DIM(dxx, dyy, dzz));
+  compute_derivatives(phi, dxxyyzz);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-
-  ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArray(dxxyyzz[dim], &dxxyyzz_p[dim]); CHKERRXX(ierr);
+  }
 
   /* initialization of q */
   const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
@@ -5576,17 +3968,15 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   std::vector<double> qi_00p(nodes->num_owned_indeps);
   std::vector<double> s_00m(nodes->num_owned_indeps);
   std::vector<double> s_00p(nodes->num_owned_indeps);
-  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
-#else
-  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, interpolation_on_interface);
+#endif
+
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+#ifdef P4_TO_P8
+  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
 #endif
 
   my_p4est_interpolation_nodes_t interp_mask(ngbd); interp_mask.set_input(mask, linear);
@@ -5615,18 +4005,18 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     //---------------------------------------------------------------------
     // Second Order derivatives
     //---------------------------------------------------------------------
-    double pxx_000 = dxx_p[n];
-    double pyy_000 = dyy_p[n];
+    double pxx_000 = dxxyyzz_p[0][n];
+    double pyy_000 = dxxyyzz_p[1][n];
 #ifdef P4_TO_P8
-    double pzz_000 = dzz_p[n];
+    double pzz_000 = dxxyyzz_p[2][n];
 #endif
-    double pxx_m00 = qnnn.f_m00_linear(dxx_p);
-    double pxx_p00 = qnnn.f_p00_linear(dxx_p);
-    double pyy_0m0 = qnnn.f_0m0_linear(dyy_p);
-    double pyy_0p0 = qnnn.f_0p0_linear(dyy_p);
+    double pxx_m00 = qnnn.f_m00_linear(dxxyyzz_p[0]);
+    double pxx_p00 = qnnn.f_p00_linear(dxxyyzz_p[0]);
+    double pyy_0m0 = qnnn.f_0m0_linear(dxxyyzz_p[1]);
+    double pyy_0p0 = qnnn.f_0p0_linear(dxxyyzz_p[1]);
 #ifdef P4_TO_P8
-    double pzz_00m = qnnn.f_00m_linear(dzz_p);
-    double pzz_00p = qnnn.f_00p_linear(dzz_p);
+    double pzz_00m = qnnn.f_00m_linear(dxxyyzz_p[2]);
+    double pzz_00p = qnnn.f_00p_linear(dxxyyzz_p[2]);
 #endif
     double dist;
 
@@ -5786,22 +4176,15 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     // q1 = q - dt*sgn(phi)*n \cdot \nabla(q) by the Godunov scheme with ENO-2 and subcell resolution
     //---------------------------------------------------------------------
 
-#ifdef P4_TO_P8
-    compute_derivatives(q, qxx, qyy, qzz);
-#else
-    compute_derivatives(q, qxx, qyy);
-#endif
-
-    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    compute_derivatives(q, qxxyyzz);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    }
 
     /* First do layer nodes */
     extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, DIM(nx, ny, nz),
                                                             q1_p,
-                                                            q_p, DIM(qxx_p, qyy_p, qzz_p),
+                                                            q_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
@@ -5815,7 +4198,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     /* compute the local nodes */
     extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, DIM(nx, ny, nz),
                                                             q1_p,
-                                                            q_p, DIM(qxx_p, qyy_p, qzz_p),
+                                                            q_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
@@ -5826,19 +4209,15 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     /* finish communication for q1 */
     ierr = VecGhostUpdateEnd(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    }
 
-    compute_derivatives(q1, DIM(qxx, qyy, qzz));
+    compute_derivatives(q, qxxyyzz);
 
-    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    }
 
     //---------------------------------------------------------------------
     // q2 = q1 - dt*sgn(phi)*n \cdot \nabla(q1) by the Godunov scheme with ENO-2 and subcell resolution
@@ -5846,7 +4225,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     /* First do layer nodes */
     extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, DIM(nx, ny, nz),
                                                             q2_p,
-                                                            q1_p, DIM(qxx_p, qyy_p, qzz_p),
+                                                            q1_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
@@ -5860,7 +4239,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     /* compute the local nodes */
     extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, DIM(nx, ny, nz),
                                                             q2_p,
-                                                            q1_p, DIM(qxx_p, qyy_p, qzz_p),
+                                                            q1_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
@@ -5871,11 +4250,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     /* finish communication for q2 */
     ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    }
 
     if (show_convergence)
     {
@@ -5912,24 +4289,11 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 
   ierr = VecDestroy(q1); CHKERRXX(ierr);
   ierr = VecDestroy(q2); CHKERRXX(ierr);
-  ierr = VecDestroy(qxx); CHKERRXX(ierr);
-  ierr = VecDestroy(qyy); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  ierr = VecDestroy(qzz); CHKERRXX(ierr);
-#endif
-
-  ierr = VecRestoreArray(dxx, &dxx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(dyy, &dyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
-#endif
-
-  ierr = VecDestroy(dxx);  CHKERRXX(ierr);
-  ierr = VecDestroy(dyy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(dzz); CHKERRXX(ierr);
-#endif
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecDestroy(qxxyyzz[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dxxyyzz[dim], &dxxyyzz_p[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(dxxyyzz[dim]);  CHKERRXX(ierr);
+  }
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 }

@@ -777,55 +777,6 @@ private:
     return;
   }
 
-  inline void ngbd_with_quadratic_interpolation(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays) const
-  {
-#ifdef CASL_LOG_TINY_EVENTS
-    PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
-#endif
-    /*
-    if(quadratic_interpolators_are_set)
-    {
-      for (unsigned int k = 0; k < n_arrays; ++k)
-        f_000[k] = f[k][node_000];
-      quadratic_interpolator[dir::f_m00].calculate(f, f_m00, n_arrays);
-      quadratic_interpolator[dir::f_p00].calculate(f, f_p00, n_arrays);
-      quadratic_interpolator[dir::f_0m0].calculate(f, f_0m0, n_arrays);
-      quadratic_interpolator[dir::f_0p0].calculate(f, f_0p0, n_arrays);
-#ifdef P4_TO_P8
-      quadratic_interpolator[dir::f_00m].calculate(f, f_00m, n_arrays);
-      quadratic_interpolator[dir::f_00p].calculate(f, f_00p, n_arrays);
-#endif
-      return;
-    }
-    */
-
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
-    // third order interpolation
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
-      f_p00[k] -= (0.5*d_p00_m0*d_p00_p0*fyy[k] ONLY3D( + 0.5*d_p00_0m*d_p00_0p*fzz[k]));
-      f_0m0[k] -= (0.5*d_0m0_m0*d_0m0_p0*fxx[k] ONLY3D( + 0.5*d_0m0_0m*d_0m0_0p*fzz[k]));
-      f_0p0[k] -= (0.5*d_0p0_m0*d_0p0_p0*fxx[k] ONLY3D( + 0.5*d_0p0_0m*d_0p0_0p*fzz[k]));
-#ifdef P4_TO_P8
-      f_00m[k] -= (0.5*d_00m_m0*d_00m_p0*fxx[k]         + 0.5*d_00m_0m*d_00m_0p*fyy[k]);
-      f_00p[k] -= (0.5*d_00p_m0*d_00p_p0*fxx[k]         + 0.5*d_00p_0m*d_00p_0p*fyy[k]);
-#endif
-    }
-
-#ifdef CASL_LOG_FLOPS
-#ifdef P4_TO_P8
-    ierr_flops = PetscLogFlops(48*n_arrays); CHKERRXX(ierr_flops);
-#else
-    ierr_flops = PetscLogFlops(16*n_arrays); CHKERRXX(ierr_flops);
-#endif
-#endif
-#ifdef CASL_LOG_TINY_EVENTS
-    ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
-#endif
-    return;
-  }
-
   void x_ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays, const unsigned int &bs) const;
   void x_ngbd_with_quadratic_interpolation_component(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
   void x_ngbd_with_quadratic_interpolation(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays) const;
@@ -1645,6 +1596,55 @@ public:
       serialized_fxxyyzz[l_offset + 2] = fzz[k];
 #endif
     }
+    return;
+  }
+
+  inline void ngbd_with_quadratic_interpolation(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays) const
+  {
+#ifdef CASL_LOG_TINY_EVENTS
+    PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
+#endif
+    /*
+    if(quadratic_interpolators_are_set)
+    {
+      for (unsigned int k = 0; k < n_arrays; ++k)
+        f_000[k] = f[k][node_000];
+      quadratic_interpolator[dir::f_m00].calculate(f, f_m00, n_arrays);
+      quadratic_interpolator[dir::f_p00].calculate(f, f_p00, n_arrays);
+      quadratic_interpolator[dir::f_0m0].calculate(f, f_0m0, n_arrays);
+      quadratic_interpolator[dir::f_0p0].calculate(f, f_0p0, n_arrays);
+#ifdef P4_TO_P8
+      quadratic_interpolator[dir::f_00m].calculate(f, f_00m, n_arrays);
+      quadratic_interpolator[dir::f_00p].calculate(f, f_00p, n_arrays);
+#endif
+      return;
+    }
+    */
+
+    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
+    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
+    // third order interpolation
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
+      f_p00[k] -= (0.5*d_p00_m0*d_p00_p0*fyy[k] ONLY3D( + 0.5*d_p00_0m*d_p00_0p*fzz[k]));
+      f_0m0[k] -= (0.5*d_0m0_m0*d_0m0_p0*fxx[k] ONLY3D( + 0.5*d_0m0_0m*d_0m0_0p*fzz[k]));
+      f_0p0[k] -= (0.5*d_0p0_m0*d_0p0_p0*fxx[k] ONLY3D( + 0.5*d_0p0_0m*d_0p0_0p*fzz[k]));
+#ifdef P4_TO_P8
+      f_00m[k] -= (0.5*d_00m_m0*d_00m_p0*fxx[k]         + 0.5*d_00m_0m*d_00m_0p*fyy[k]);
+      f_00p[k] -= (0.5*d_00p_m0*d_00p_p0*fxx[k]         + 0.5*d_00p_0m*d_00p_0p*fyy[k]);
+#endif
+    }
+
+#ifdef CASL_LOG_FLOPS
+#ifdef P4_TO_P8
+    ierr_flops = PetscLogFlops(48*n_arrays); CHKERRXX(ierr_flops);
+#else
+    ierr_flops = PetscLogFlops(16*n_arrays); CHKERRXX(ierr_flops);
+#endif
+#endif
+#ifdef CASL_LOG_TINY_EVENTS
+    ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
+#endif
     return;
   }
 

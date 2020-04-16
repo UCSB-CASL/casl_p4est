@@ -53,9 +53,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_faces_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
-  friend class my_p4est_interpolation_t;
   friend class my_p4est_level_set_cells_t;
-  friend class my_p4est_level_set_faces_t;
   friend class my_p4est_level_set_t;
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
@@ -552,7 +550,6 @@ public:
   {
     second_derivatives_central(&f, DIM(&fxx, &fyy, &fzz), 1, bs);
   }
-  void second_derivatives_central_above_threshold(const Vec f, double thr, DIM(Vec fxx, Vec fyy, Vec fzz)) const;
 
   /*!
    * \brief second_derivatives_central computes the second derivative

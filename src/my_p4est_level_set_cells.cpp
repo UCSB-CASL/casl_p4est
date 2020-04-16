@@ -27,16 +27,14 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_my_p4est_level_set_cells_extend_over_interface;
+extern PetscLogEvent log_my_p4est_level_set_cells_geometric_extrapolation_over_interface;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
-
-
-double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) const
+double my_p4est_level_set_cells_t::integrate_over_interface(Vec node_sampled_phi, Vec cell_field) const
 {
   PetscErrorCode ierr;
 
@@ -48,256 +46,114 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
   QuadValue phi_vals;
 #endif
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double sum = 0.0;
+  const double *node_sampled_phi_read_p, *cell_field_read_p;
+  const double *tree_dimensions = ngbd_c->get_tree_dimensions();
+  ierr = VecGetArrayRead(node_sampled_phi, &node_sampled_phi_read_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(cell_field, &cell_field_read_p); CHKERRXX(ierr);
 
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-#endif
-
-  double sum = 0;
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-  double *f_p;
-  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
-
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
 
-      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (xmax-xmin) * dmin;
-      double dy = (ymax-ymin) * dmin;
+      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
 
-      double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-
-      cube.xyz_mmm[0] = x - dx/2;
-      cube.xyz_ppp[0] = x + dx/2;
-      cube.xyz_mmm[1] = y - dy/2;
-      cube.xyz_ppp[1] = y + dy/2;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        cube.xyz_mmm[dir] = xyz_quad[dir] - tree_dimensions[dir]*dmin/2.0;
+        cube.xyz_ppp[dir] = xyz_quad[dir] + tree_dimensions[dir]*dmin/2.0;
+      }
 
 #ifdef P4_TO_P8
-      double dz = (zmax-zmin) * dmin;
-      double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.xyz_mmm[2] = z - dz/2;
-      cube.xyz_ppp[2] = z + dz/2;
-
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      for (unsigned char vz = 0; vz < 2; ++vz)
 #endif
+        for (unsigned char vy = 0; vy < 2; ++vy)
+          for (unsigned char vx = 0; vx < 2; ++vx)
+            phi_vals.val[SUMD((1 << (P4EST_DIM - 1))*vx, (1 << (P4EST_DIM - 2))*vy, vz)] = node_sampled_phi_read_p[nodes->local_nodes[quad_idx*P4EST_CHILDREN + SUMD(vx, 2*vy, 4*vz)]];
 
 #ifdef P4_TO_P8
-      sum += f_p[quad_idx]*cube.interface_Area_In_Cell(phi_vals);
+      sum += cell_field_read_p[quad_idx]*cube.interface_Area_In_Cell(phi_vals);
 #else
-      sum += f_p[quad_idx]*cube.interface_Length_In_Cell(phi_vals);
+      sum += cell_field_read_p[quad_idx]*cube.interface_Length_In_Cell(phi_vals);
 #endif
     }
   }
 
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(node_sampled_phi, &node_sampled_phi_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(cell_field, &cell_field_read_p); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   return sum;
 }
 
-
-
-
-void my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f, double *integral) const
+void my_p4est_level_set_cells_t::normal_vector_weighted_integral_over_interface(Vec node_sampled_phi, Vec cell_weight, double *integral, Vec node_sampled_grad_phi) const
 {
   PetscErrorCode ierr;
 
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-  /* first compute the normal to the interface */
-  Vec nxyz[P4EST_DIM];
-  double *nxyz_p[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &nxyz[dir]); CHKERRXX(ierr);
-    ierr = VecGetArray(nxyz[dir], &nxyz_p[dir]); CHKERRXX(ierr);
-    integral[dir] = 0;
-  }
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    nxyz_p[0][n] = -qnnn.dx_central(phi_p);
-    nxyz_p[1][n] = -qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    nxyz_p[2][n] = -qnnn.dz_central(phi_p);
-    double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n] + nxyz_p[2][n]*nxyz_p[2][n]);
-#else
-    double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n]);
-#endif
-
-    nxyz_p[0][n] = norm>EPS ? nxyz_p[0][n]/norm : 0;
-    nxyz_p[1][n] = norm>EPS ? nxyz_p[1][n]/norm : 0;
-#ifdef P4_TO_P8
-    nxyz_p[2][n] = norm>EPS ? nxyz_p[2][n]/norm : 0;
-#endif
-  }
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecGhostUpdateBegin(nxyz[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    nxyz_p[0][n] = -qnnn.dx_central(phi_p);
-    nxyz_p[1][n] = -qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    nxyz_p[2][n] = -qnnn.dz_central(phi_p);
-    double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n] + nxyz_p[2][n]*nxyz_p[2][n]);
-#else
-    double norm = sqrt(nxyz_p[0][n]*nxyz_p[0][n] + nxyz_p[1][n]*nxyz_p[1][n]);
-#endif
-
-    nxyz_p[0][n] = norm>EPS ? nxyz_p[0][n]/norm : 0;
-    nxyz_p[1][n] = norm>EPS ? nxyz_p[1][n]/norm : 0;
-#ifdef P4_TO_P8
-    nxyz_p[2][n] = norm>EPS ? nxyz_p[2][n]/norm : 0;
-#endif
-  }
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecGhostUpdateEnd(nxyz[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+  const double *node_sampled_phi_read_p, *cell_weight_read_p, *node_sampled_grad_phi_read_p;
+  ierr = VecGetArrayRead(node_sampled_phi, &node_sampled_phi_read_p);           CHKERRXX(ierr);
+  ierr = VecGetArrayRead(cell_weight, &cell_weight_read_p);                     CHKERRXX(ierr);
+  ierr = VecGetArrayRead(node_sampled_grad_phi, &node_sampled_grad_phi_read_p); CHKERRXX(ierr);
+  const double *tree_dimensions = ngbd_c->get_tree_dimensions();
 
 #ifdef P4_TO_P8
   Cube3 cube;
-  OctValue f_vals;
+  OctValue n_vals[P4EST_DIM];
   OctValue phi_vals;
 #else
   Cube2 cube;
-  QuadValue f_vals;
+  QuadValue n_vals[P4EST_DIM];
   QuadValue phi_vals;
 #endif
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-#endif
-
-  double *f_p;
-  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
-
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      const p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
 
-      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (xmax-xmin) * dmin;
-      double dy = (ymax-ymin) * dmin;
+      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
 
-      double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-
-      cube.xyz_mmm[0] = x - dx/2;
-      cube.xyz_ppp[0] = x + dx/2;
-      cube.xyz_mmm[1] = y - dy/2;
-      cube.xyz_ppp[1] = y + dy/2;
-
-#ifdef P4_TO_P8
-      double dz = (zmax-zmin) * dmin;
-      double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.xyz_mmm[2] = z - dz/2;
-      cube.xyz_ppp[2] = z + dz/2;
-
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-
-      for(int dir=0; dir<P4EST_DIM; ++dir)
-      {
-#ifdef P4_TO_P8
-        f_vals.val[0] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-        f_vals.val[4] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-        f_vals.val[2] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-        f_vals.val[6] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-        f_vals.val[1] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-        f_vals.val[5] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-        f_vals.val[3] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-        f_vals.val[7] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-        f_vals.val[0] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-        f_vals.val[2] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-        f_vals.val[1] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-        f_vals.val[3] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-
-        integral[dir] += f_p[quad_idx]*cube.integrate_Over_Interface(f_vals, phi_vals);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        cube.xyz_mmm[dir] = xyz_quad[dir] - tree_dimensions[dir]*dmin/2.0;
+        cube.xyz_ppp[dir] = xyz_quad[dir] + tree_dimensions[dir]*dmin/2.0;
       }
+
+#ifdef P4_TO_P8
+      for (unsigned char vz = 0; vz < 2; ++vz)
+#endif
+        for (unsigned char vy = 0; vy < 2; ++vy)
+          for (unsigned char vx = 0; vx < 2; ++vx)
+          {
+            const unsigned char l_idx = SUMD((1 << (P4EST_DIM - 1))*vx, (1 << (P4EST_DIM - 2))*vy, vz);
+            const unsigned char r_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + SUMD(vx, 2*vy, 4*vz)];
+            double normal[P4EST_DIM] = {DIM(node_sampled_grad_phi_read_p[P4EST_DIM*r_idx], node_sampled_grad_phi_read_p[P4EST_DIM*r_idx + 1], node_sampled_grad_phi_read_p[P4EST_DIM*r_idx + 2])};
+            const double mag_normal = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[0])));
+            phi_vals.val[l_idx] = node_sampled_phi_read_p[r_idx];
+            for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+              n_vals[dir].val[l_idx] = (mag_normal > EPS ? normal[dir]/mag_normal : 0.0);
+          }
+
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        integral[dir] += cell_weight_read_p[quad_idx]*cube.integrate_Over_Interface(n_vals[dir], phi_vals);
     }
   }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecRestoreArray(nxyz[dir], &nxyz_p[dir]); CHKERRXX(ierr);
-    ierr = VecDestroy(nxyz[dir]); CHKERRXX(ierr);
-  }
-
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(node_sampled_grad_phi, &node_sampled_grad_phi_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(node_sampled_phi, &node_sampled_phi_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(cell_weight, &cell_weight_read_p); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, integral, P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 }
 
-
-
-double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
+double my_p4est_level_set_cells_t::integrate(Vec node_sampled_phi, Vec cell_field) const
 {
   PetscErrorCode ierr;
 
@@ -309,411 +165,133 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
   QuadValue phi_vals;
 #endif
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double sum = 0.0;
+  const double *node_sampled_phi_read_p, *cell_field_read_p;
+  const double *tree_dimensions = ngbd_c->get_tree_dimensions();
+  ierr = VecGetArrayRead(node_sampled_phi, &node_sampled_phi_read_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(cell_field, &cell_field_read_p); CHKERRXX(ierr);
 
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-#endif
-
-  double sum = 0;
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-  double *f_p;
-  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
-
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
 
-      double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (xmax - xmin) * dmin;
-      double dy = (ymax - ymin) * dmin;
+      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
 
-      double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-      double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-
-      cube.xyz_mmm[0] = x - dx/2;
-      cube.xyz_ppp[0] = x + dx/2;
-      cube.xyz_mmm[1] = y - dy/2;
-      cube.xyz_mmm[1] = y + dy/2;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        cube.xyz_mmm[dir] = xyz_quad[dir] - 0.5*dmin*tree_dimensions[dir];
+        cube.xyz_ppp[dir] = xyz_quad[dir] + 0.5*dmin*tree_dimensions[dir];
+      }
 
 #ifdef P4_TO_P8
-      double dz = (zmax-zmin) * dmin;
-      double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.xyz_mmm[2] = z - dz/2;
-      cube.xyz_mmm[2] = z + dz/2;
-
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      for (unsigned char vz = 0; vz < 2; ++vz)
 #endif
+        for (unsigned char vy = 0; vy < 2; ++vy)
+          for (unsigned char vx = 0; vx < 2; ++vx)
+            phi_vals.val[SUMD((1 << (P4EST_DIM - 1))*vx, (1 << (P4EST_DIM - 2))*vy, vz)] = node_sampled_phi_read_p[nodes->local_nodes[quad_idx*P4EST_CHILDREN + SUMD(vx, 2*vy, 4*vz)]];
 
 #ifdef P4_TO_P8
-      sum += cube.volume_In_Negative_Domain(phi_vals)*f_p[quad_idx];
+      sum += cube.volume_In_Negative_Domain(phi_vals)*cell_field_read_p[quad_idx];
 #else
-      sum += cube.area_In_Negative_Domain(phi_vals)*f_p[quad_idx];
+      sum += cube.area_In_Negative_Domain(phi_vals)*cell_field_read_p[quad_idx];
 #endif
     }
   }
 
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(node_sampled_phi, &node_sampled_phi_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(cell_field, &cell_field_read_p); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   return sum;
 }
 
-
-
-
-#ifdef P4_TO_P8
-void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D *bc, int order, int band_to_extend ) const
-#else
-void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D *bc, int order, int band_to_extend ) const
-#endif
+void my_p4est_level_set_cells_t::geometric_extrapolation_over_interface(Vec cell_field, Vec node_sampled_phi, const my_p4est_interpolation_nodes_t& interp_grad_phi,
+                                                                        const BoundaryConditionsDIM& bc, const unsigned char& degree, const unsigned int& band_to_extend) const
 {
 #ifdef CASL_THROWS
-  if(bc->interfaceType()==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
-  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
+  if(bc.interfaceType() == NOINTERFACE)
+    throw std::invalid_argument("my_p4est_level_set_cells_t::geometric_extrapolation_over_interface(): no interface defined in the boundary condition ... needs to be dirichlet, neumann or mixed.");
+  if(degree > 2)
+    throw std::invalid_argument("my_p4est_level_set_cells_t::geometric_extrapolation_over_interface(): the degree of the extrapolant polynomial must be less than or equal to 2.");
 #endif
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_cells_extend_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_cells_geometric_extrapolation_over_interface, cell_field, node_sampled_phi, 0, 0); CHKERRXX(ierr);
 
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  // get the (max) number of points to sample in negative domain for every node where extrapolation is required
+  const unsigned char nsamples = number_of_samples_across_the_interface_for_geometric_extrapolation(degree, bc.interfaceType());
+  P4EST_ASSERT(nsamples <= 2);
 
-  /* first compute the derivatives of phi */
-  Vec phi_x;
-  ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr);
-  //ierr = VecCreateGhostNodes(p4est, nodes, &phi_x); CHKERRXX(ierr); // ELYCE: Replaced the above commented out statement with this .... saw the same issue in level_set_faces : extend_over_Interface
-  double *phi_x_p;
-  ierr = VecGetArray(phi_x, &phi_x_p); CHKERRXX(ierr);
-  Vec phi_y;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_y); CHKERRXX(ierr);
-  double *phi_y_p;
-  ierr = VecGetArray(phi_y, &phi_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec phi_z;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_z); CHKERRXX(ierr);
-  double *phi_z_p;
-  ierr = VecGetArray(phi_z, &phi_z_p); CHKERRXX(ierr);
-#endif
+  /* find smallest diag */
+  const splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
+  const double *tree_dimensions = ngbd_c->get_tree_dimensions();
+  const double diag_min = sqrt(SUMD(SQR(tree_dimensions[0]), SQR(tree_dimensions[1]), SQR(tree_dimensions[2])))/pow(2., (double) data->max_lvl);
+  // supposed "levels" of the levelset for sampling the values along the normal direction
+  // (--> not the actual values of the levelset function at sampled points but more like
+  // distances between the sampling points)
+  // "signed distances" from the 0-level in the negative normal direction
+  const double phi_sampling_levels[2] = {-2.0*diag_min, -3.0*diag_min};
 
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    phi_x_p[n] = qnnn.dx_central(phi_p);
-    phi_y_p[n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    phi_z_p[n] = qnnn.dz_central(phi_p);
-#endif
-  }
-
-  ierr = VecGhostUpdateBegin(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateBegin(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    phi_x_p[n] = qnnn.dx_central(phi_p);
-    phi_y_p[n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    phi_z_p[n] = qnnn.dz_central(phi_p);
-#endif
-  }
-
-  ierr = VecGhostUpdateEnd(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateEnd(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-
-  ierr = VecRestoreArray(phi_x, &phi_x_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_y, &phi_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_z, &phi_z_p); CHKERRXX(ierr);
-#endif
-
-  my_p4est_interpolation_nodes_t interp_phi  (ngbd_n); interp_phi  .set_input(phi  , linear);
-  my_p4est_interpolation_nodes_t interp_phi_x(ngbd_n); interp_phi_x.set_input(phi_x, linear);
-  my_p4est_interpolation_nodes_t interp_phi_y(ngbd_n); interp_phi_y.set_input(phi_y, linear);
-#ifdef P4_TO_P8
-  my_p4est_interpolation_nodes_t interp_phi_z(ngbd_n); interp_phi_z.set_input(phi_z, linear);
-#endif
-
-  Vec bc_interface_values;
-  ierr = VecDuplicate(phi, &bc_interface_values); CHKERRXX(ierr);
-  double *bc_p;
-  ierr = VecGetArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
-#ifdef P4_TO_P8
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
-#else
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
-#endif
-  }
-  ierr = VecGhostUpdateBegin(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-#ifdef P4_TO_P8
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
-#else
-    bc_p[n] = bc->interfaceValue(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
-#endif
-  }
-  ierr = VecGhostUpdateEnd(bc_interface_values, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecRestoreArray(bc_interface_values, &bc_p); CHKERRXX(ierr);
-
-  my_p4est_interpolation_nodes_t interp0(ngbd_n); interp0.set_input(bc_interface_values, linear);
-  my_p4est_interpolation_cells_t interp1(ngbd_c, ngbd_n); interp1.set_input(q, phi, bc);
-  my_p4est_interpolation_cells_t interp2(ngbd_c, ngbd_n); interp2.set_input(q, phi, bc);
-
-  /* find dx and dy smallest */
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-#ifdef P4_TO_P8
-  double diag = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-  double diag = sqrt(dx*dx + dy*dy);
-#endif
-
-  std::vector<double> q0;
-  std::vector<double> q1;
-  std::vector<double> q2;
-
-  q0.resize(p4est->local_num_quadrants);
-  if(order >= 1 || (order==0 && ((bc->interfaceType()==NEUMANN) || (bc->interfaceType()==MIXED))))
-    q1.resize(p4est->local_num_quadrants);
-  if(order >= 2)
-    q2.resize(p4est->local_num_quadrants);
-
-  double xyz_q[P4EST_DIM];
+  // prepare objects to sample field values and interface boundary conditions at possibly nonlocal points
+  my_p4est_interpolation_nodes_t interp_bc(ngbd_n); // could be _nodes, _cells or _faces, it is irrelevant in this case, we do use base method from my_p4est_interpolation_t anyways
+  my_p4est_interpolation_cells_t interp_cell_field(ngbd_c, ngbd_n);
+  interp_cell_field.set_input(cell_field, node_sampled_phi, &bc);
+  // get point to node-sampled values of the levelset
+  const double *node_sampled_phi_p;
+  ierr = VecGetArrayRead(node_sampled_phi, &node_sampled_phi_p); CHKERRXX(ierr);
+  std::map<p4est_locidx_t, data_for_geometric_extapolation> cell_data_for_extrapolation; cell_data_for_extrapolation.clear();
   /* now buffer the interpolation points */
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t qq = 0; qq < tree->quadrants.elem_count; ++qq)
     {
-      p4est_locidx_t q_idx = quad_idx+tree->quadrants_offset;
-
+      const p4est_locidx_t quad_idx = qq + tree->quadrants_offset;
+      double phi_q;
       /* check if cell is well defined */
-      double phi_q = 0;
-      bool neumann_all_pos = true;
-      for(int i=0; i<P4EST_CHILDREN; ++i)
+      if(!quadrant_value_is_well_defined(phi_q, bc, p4est, ghost, nodes, quad_idx, tree_idx, node_sampled_phi_p) && phi_q < band_to_extend*diag_min)
       {
-        double tmp = phi_p[nodes->local_nodes[P4EST_CHILDREN*q_idx + i]];
-        neumann_all_pos = neumann_all_pos && (tmp>0);
-        phi_q += tmp;
-      }
-      phi_q /= (double) P4EST_CHILDREN;
+        P4EST_ASSERT(phi_q > 0.0); // sanity_check, can't be in negative domain, either way
+        double xyz_q[P4EST_DIM];
+        quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_q);
 
-      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_q);
-
-      if( (bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) || (bc->interfaceType(xyz_q)==NEUMANN && neumann_all_pos) )
-      {
-        double x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
-        double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
-
-#ifdef P4_TO_P8
-        double z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
-        Point3 grad_phi(interp_phi_x(x,y,z), interp_phi_y(x,y,z), interp_phi_z(x,y,z));
-#else
-        Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
-#endif
-
-        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>EPS)
-        {
-          grad_phi /= grad_phi.norm_L2();
-
-          double xyz_i[] =
-          {
-            x - grad_phi.x*phi_q,
-            y - grad_phi.y*phi_q
-    #ifdef P4_TO_P8
-            ,z - grad_phi.z*phi_q
-    #endif
-          };
-          interp0.add_point(q_idx, xyz_i);
-
-          if(order >= 1 || (order==0 && bc->interfaceType(xyz_q)==NEUMANN))
-          {
-            double xyz_ [] =
-            {
-              x - grad_phi.x * (2*diag + phi_q),
-              y - grad_phi.y * (2*diag + phi_q)
-  #ifdef P4_TO_P8
-              , z - grad_phi.z * (2*diag + phi_q)
-  #endif
-            };
-            interp1.add_point(q_idx, xyz_);
-          }
-
-          if(order >= 2)
-          {
-            double xyz_ [] =
-            {
-              x - grad_phi.x * (3*diag + phi_q),
-              y - grad_phi.y * (3*diag + phi_q)
-  #ifdef P4_TO_P8
-              , z - grad_phi.z * (3*diag + phi_q)
-  #endif
-            };
-            interp2.add_point(q_idx, xyz_);
-          }
-        }
+        double grad_phi[P4EST_DIM];
+        interp_grad_phi(xyz_q, grad_phi);
+        add_dof_to_extrapolation_map(cell_data_for_extrapolation, quad_idx, xyz_q, phi_q, grad_phi, nsamples, phi_sampling_levels,
+                                     &interp_cell_field, &interp_bc, NULL);
       }
     }
   }
 
-  interp0.interpolate(q0.data());
-  interp1.interpolate(q1.data());
-  interp2.interpolate(q2.data());
-
+  std::vector<double> cell_field_samples;
+  cell_field_samples.resize(nsamples*cell_data_for_extrapolation.size());
+  std::vector<bc_sample> calculated_bc_samples; calculated_bc_samples.resize(cell_data_for_extrapolation.size());
+  interp_cell_field.interpolate(cell_field_samples.data());
+  interp_bc.evaluate_interface_bc(bc, calculated_bc_samples.data());
   /* now compute the extrapolated values */
-  double *q_p;
-  ierr = VecGetArray(q, &q_p); CHKERRXX(ierr);
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
-  {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
-    {
-      p4est_locidx_t q_idx = quad_idx+tree->quadrants_offset;
-
-      /* check if cell is well defined */
-      double phi_q = 0;
-      bool neumann_all_pos = true;
-      for(int i=0; i<P4EST_CHILDREN; ++i)
-      {
-        double tmp = phi_p[nodes->local_nodes[P4EST_CHILDREN*q_idx + i]];
-        neumann_all_pos = neumann_all_pos && (tmp>0);
-        phi_q += tmp;
-      }
-      phi_q /= (double) P4EST_CHILDREN;
-
-      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_q);
-
-      if( (bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) || (bc->interfaceType(xyz_q)==NEUMANN && neumann_all_pos) )
-      {
-        double x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
-        double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
-
-#ifdef P4_TO_P8
-        double z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
-        Point3 grad_phi(interp_phi_x(x,y,z), interp_phi_y(x,y,z), interp_phi_z(x,y,z));
-#else
-        Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
-#endif
-
-        if(phi_q<band_to_extend*diag && grad_phi.norm_L2()>EPS)
-        {
-          grad_phi /= grad_phi.norm_L2();
-
-          if(order==0)
-          {
-            if(bc->interfaceType(xyz_q)==DIRICHLET)
-              q_p[q_idx] = q0[q_idx];
-            else /* interface neumann */
-              q_p[q_idx] = q1[q_idx];
-          }
-
-          else if(order==1)
-          {
-            if(bc->interfaceType(xyz_q)==DIRICHLET)
-            {
-              double dif01 = (q1[q_idx] - q0[q_idx])/(2*diag - 0);
-              q_p[q_idx] = q0[q_idx] + (-phi_q - 0) * dif01;
-            }
-            else /* interface Neumann */
-            {
-              double dif01 = -q0[q_idx];
-              q_p[q_idx] = q1[q_idx] + (-phi_q - 2*diag) * dif01;
-            }
-          }
-
-          else if(order==2)
-          {
-            if(bc->interfaceType(xyz_q)==DIRICHLET)
-            {
-              double dif01  = (q1[q_idx] - q0[q_idx]) / (2*diag);
-              double dif12  = (q2[q_idx] - q1[q_idx]) / (diag);
-              double dif012 = (dif12 - dif01) / (3*diag);
-              q_p[q_idx] = q0[q_idx] + (-phi_q - 0) * dif01 + (-phi_q - 0)*(-phi_q - 2*diag) * dif012;
-            }
-            else if (bc->interfaceType(xyz_q) == NEUMANN) /* interface Neumann */
-            {
-              double x1 = 2*diag;
-              double x2 = 3*diag;
-
-              double b = -q0[q_idx];
-              double a = (q2[q_idx] - q1[q_idx] + b*(x1 - x2)) / (x2*x2 - x1*x1);
-              double c = q1[q_idx] - a*x1*x1 - b*x1;
-
-              double x = -phi_q;
-              q_p[q_idx] = a*x*x + b*x + c;
-            }
-          }
-        }
-      }
-    }
+  double *cell_field_p;
+  ierr = VecGetArray(cell_field, &cell_field_p); CHKERRXX(ierr);
+  const my_p4est_hierarchy_t* hierarchy = ngbd_c->get_hierarchy();
+  std::map<p4est_locidx_t, data_for_geometric_extapolation>::iterator it;
+  for (size_t k = 0; k < hierarchy->get_layer_size(); ++k) {
+    const p4est_locidx_t quad_idx = hierarchy->get_local_index_of_layer_quadrant(k);
+    it = cell_data_for_extrapolation.find(quad_idx);
+    if(it != cell_data_for_extrapolation.end())
+      cell_field_p[quad_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples, cell_field_samples, &calculated_bc_samples);
   }
-
-  ierr = VecDestroy(phi_x); CHKERRXX(ierr);
-  ierr = VecDestroy(phi_y); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(phi_z); CHKERRXX(ierr);
-#endif
-
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
-
-  ierr = VecDestroy(bc_interface_values); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_cells_extend_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(cell_field, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < hierarchy->get_inner_size(); ++k) {
+    const p4est_locidx_t quad_idx = hierarchy->get_local_index_of_inner_quadrant(k);
+    it = cell_data_for_extrapolation.find(quad_idx);
+    if(it != cell_data_for_extrapolation.end())
+      cell_field_p[quad_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples, cell_field_samples, &calculated_bc_samples);
+  }
+  ierr = VecGhostUpdateEnd(cell_field, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(cell_field, &cell_field_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(node_sampled_phi, &node_sampled_phi_p); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_cells_geometric_extrapolation_over_interface, cell_field, node_sampled_phi, 0, 0); CHKERRXX(ierr);
 }
+
