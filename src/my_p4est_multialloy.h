@@ -106,6 +106,7 @@ private:
   vec_and_ptr_t       history_front_phi_nm1_;
   vec_and_ptr_t       history_front_curvature_;
   vec_and_ptr_t       history_front_velo_norm_;
+  vec_and_ptr_t       history_time_; // temperature at which alloy solidified
   vec_and_ptr_t       history_tf_; // temperature at which alloy solidified
   vec_and_ptr_array_t history_cs_; // composition of solidified region
   vec_and_ptr_t       history_seed_; // seed tag
@@ -335,7 +336,7 @@ public:
       sample_cf_on_nodes(p4est_, nodes_, ts, ts_[i].vec);
     }
 
-    sample_cf_on_nodes(p4est_, nodes_, tf, history_tf_.vec);
+    sample_cf_on_nodes(history_p4est_, history_nodes_, tf, history_tf_.vec);
   }
 
   inline void set_concentration(Vec cl[], Vec cs[])
@@ -368,7 +369,7 @@ public:
         sample_cf_on_nodes(p4est_, nodes_, *cl[j], cl_[i].vec[j]);
       }
 
-      sample_cf_on_nodes(p4est_, nodes_, *cs[j], history_cs_.vec[j]);
+      sample_cf_on_nodes(history_p4est_, history_nodes_, *cs[j], history_cs_.vec[j]);
     }
   }
 
@@ -400,6 +401,8 @@ public:
              sample_cf_on_nodes(p4est_, nodes_, vy, front_velo_[i].vec[1]),
              sample_cf_on_nodes(p4est_, nodes_, vz, front_velo_[i].vec[2]) );
 
+      VecScaleGhost(front_velo_norm_[i].vec, -1.);
+
       if (i == 0) {
         compute_dt();
         for (int j = 1; j < num_time_layers_; ++j) {
@@ -408,7 +411,12 @@ public:
       }
     }
 
-    sample_cf_on_nodes(p4est_, nodes_, vf, history_front_velo_norm_.vec);
+    sample_cf_on_nodes(history_p4est_, history_nodes_, vf, history_front_velo_norm_.vec);
+  }
+
+  inline void set_ft(CF_DIM &ft_cf)
+  {
+    sample_cf_on_nodes(history_p4est_, history_nodes_, ft_cf, history_time_.vec);
   }
 
   inline p4est_t*       get_p4est() { return p4est_; }
@@ -416,10 +424,26 @@ public:
   inline p4est_ghost_t* get_ghost() { return ghost_; }
   inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
 
+  inline p4est_t*       get_history_p4est() { return history_p4est_; }
+  inline p4est_nodes_t* get_history_nodes() { return history_nodes_; }
+  inline p4est_ghost_t* get_history_ghost() { return history_ghost_; }
+  inline my_p4est_node_neighbors_t* get_history_ngbd()  { return history_ngbd_; }
+
   inline Vec  get_contr_phi()    { return contr_phi_.vec; }
   inline Vec  get_front_phi()    { return front_phi_.vec; }
   inline Vec* get_front_phi_dd() { return front_phi_dd_.vec; }
   inline Vec  get_normal_velocity() { return front_velo_norm_[0].vec; }
+
+  inline Vec  get_tl() { return tl_[0].vec; }
+  inline Vec  get_ts() { return ts_[0].vec; }
+  inline Vec* get_cl() { return cl_[0].vec.data(); }
+  inline Vec  get_cl(int idx) { return cl_[0].vec[idx]; }
+
+  inline Vec  get_ft() { return history_time_.vec; }
+  inline Vec  get_tf() { return history_tf_.vec; }
+  inline Vec  get_vf() { return history_front_velo_norm_.vec; }
+  inline Vec* get_cs() { return history_cs_.vec.data(); }
+  inline Vec  get_cs(int idx) { return history_cs_.vec[idx]; }
 
   inline double get_dt() { return dt_[0]; }
   inline double get_front_velocity_max() { return front_velo_norm_max_; }
@@ -478,10 +502,6 @@ public:
 
   void count_dendrites(int iter);
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
-
-  inline Vec  get_tl() { return tl_[0].vec; }
-  inline Vec  get_ts() { return ts_[0].vec; }
-  inline Vec* get_cl() { return cl_[0].vec.data(); }
 
 };
 

@@ -337,10 +337,12 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   history_front_curvature_.create(history_front_phi_.vec);
   history_front_velo_norm_.create(history_front_phi_.vec);
 
+  history_time_.create(history_front_phi_.vec);
   history_tf_.create(history_front_phi_.vec);
   history_cs_.create(history_front_phi_.vec);
   history_seed_.create(history_front_phi_.vec);
 
+  VecSetGhost(history_time_.vec, 0.);
 }
 
 
@@ -871,6 +873,12 @@ void my_p4est_multialloy_t::update_grid_history()
   history_seed_.destroy();
   history_seed_.set(seed_tmp.vec);
 
+  vec_and_ptr_t time_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_time_.vec, linear);
+  history_interp.interpolate(time_tmp.vec);
+  history_time_.destroy();
+  history_time_.set(time_tmp.vec);
+
   p4est_destroy(history_p4est_);       history_p4est_ = history_p4est_np1;
   p4est_ghost_destroy(history_ghost_); history_ghost_ = history_ghost_np1;
   p4est_nodes_destroy(history_nodes_); history_nodes_ = history_nodes_np1;
@@ -1191,14 +1199,22 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
 
   // point data
+  vec_and_ptr_t history_contr_phi(history_front_phi_.vec);
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+  interp.add_all_nodes(history_p4est_, history_nodes_);
+  interp.set_input(contr_phi_.vec, linear);
+  interp.interpolate(history_contr_phi.vec);
+
   std::vector<double *>    point_data;
   std::vector<std::string> point_data_names;
 
+  history_contr_phi       .get_array(); point_data.push_back(history_contr_phi.ptr);        point_data_names.push_back("contr");
   history_front_phi_      .get_array(); point_data.push_back(history_front_phi_.ptr);       point_data_names.push_back("phi");
   history_front_curvature_.get_array(); point_data.push_back(history_front_curvature_.ptr); point_data_names.push_back("kappa");
   history_front_velo_norm_.get_array(); point_data.push_back(history_front_velo_norm_.ptr); point_data_names.push_back("vn");
   history_seed_           .get_array(); point_data.push_back(history_seed_.ptr);            point_data_names.push_back("seed");
   history_tf_             .get_array(); point_data.push_back(history_tf_.ptr);              point_data_names.push_back("tf");
+  history_time_           .get_array(); point_data.push_back(history_time_.ptr);            point_data_names.push_back("time");
   history_cs_             .get_array();
   for (int i = 0; i < num_comps_; ++i)
   {
@@ -1221,12 +1237,16 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
+  history_contr_phi       .restore_array();
   history_front_phi_      .restore_array();
   history_front_curvature_.restore_array();
   history_front_velo_norm_.restore_array();
   history_tf_             .restore_array();
   history_cs_             .restore_array();
   history_seed_           .restore_array();
+  history_time_           .restore_array();
+
+  history_contr_phi.destroy();
 
   PetscPrintf(history_p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1774,6 +1794,9 @@ void my_p4est_multialloy_t::compute_solid()
   vec_and_ptr_t tl_new(history_front_phi_.vec);
   vec_and_ptr_t tl_old(history_front_phi_.vec);
 
+  vec_and_ptr_t vn_new(history_front_phi_.vec);
+  vec_and_ptr_t vn_old(history_front_phi_.vec);
+
   for (int i = 0; i < num_comps_; ++i)
   {
     interp.set_input(cl_[1].vec[i], linear); interp.interpolate(cl_old.vec[i]);
@@ -1783,7 +1806,8 @@ void my_p4est_multialloy_t::compute_solid()
   interp.set_input(tl_[0].vec, linear); interp.interpolate(tl_new.vec);
 
   interp.set_input(front_curvature_.vec,    linear); interp.interpolate(history_front_curvature_.vec);
-  interp.set_input(front_velo_norm_[0].vec, linear); interp.interpolate(history_front_velo_norm_.vec);
+  interp.set_input(front_velo_norm_[1].vec, linear); interp.interpolate(vn_old.vec);
+  interp.set_input(front_velo_norm_[0].vec, linear); interp.interpolate(vn_new.vec);
 
   interp.set_input(seed_map_.vec, linear); interp.interpolate(history_seed_.vec);
 
@@ -1791,9 +1815,13 @@ void my_p4est_multialloy_t::compute_solid()
   cl_new.get_array();
   tl_old.get_array();
   tl_new.get_array();
+  vn_old.get_array();
+  vn_new.get_array();
 
   history_cs_.get_array();
   history_tf_.get_array();
+  history_time_.get_array();
+  history_front_velo_norm_.get_array();
 
   for (unsigned int i = 0; i < freezing_nodes.size(); ++i)
   {
@@ -1808,20 +1836,28 @@ void my_p4est_multialloy_t::compute_solid()
       history_cs_.ptr[i][n] = part_coeff_[i]*(cl_old.ptr[i][n]*(1.-tau) + cl_new.ptr[i][n]*tau);
     }
     history_tf_.ptr[n] = tl_old.ptr[n]*(1.-tau) + tl_new.ptr[n]*tau;
+    history_time_.ptr[n] = (time_-dt_[0])*(1.-tau) + time_*tau;
+    history_front_velo_norm_.ptr[n] = vn_old.ptr[n]*(1.-tau) + vn_new.ptr[n]*tau;
   }
 
   cl_old.restore_array();
   cl_new.restore_array();
   tl_old.restore_array();
   tl_new.restore_array();
+  vn_old.restore_array();
+  vn_new.restore_array();
 
   history_cs_.restore_array();
   history_tf_.restore_array();
+  history_time_.restore_array();
+  history_front_velo_norm_.restore_array();
 
   cl_old.destroy();
   cl_new.destroy();
   tl_old.destroy();
   tl_new.destroy();
+  vn_old.destroy();
+  vn_new.destroy();
 
   my_p4est_level_set_t ls(history_ngbd_);
   VecScaleGhost(history_front_phi_.vec, -1.);
@@ -1833,6 +1869,7 @@ void my_p4est_multialloy_t::compute_solid()
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_curvature_.vec,  5, 1);
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_seed_.vec,  5, 0);
+  ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_time_.vec,  5, 1);
   VecScaleGhost(history_front_phi_.vec, -1.);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }

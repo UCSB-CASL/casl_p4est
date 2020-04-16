@@ -86,7 +86,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 7, "lmax", "Max level of the tree");
 #endif
 
 param_t<double> lip  (pl, 1.0, "lip",  "Fine-to-coarse grid transition width");
@@ -116,9 +116,9 @@ param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
 param_t<bool>   save_analytical      (pl, 1, "save_analytical", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
 param_t<bool>   save_timings         (pl, 0, "save_timings", "");
-param_t<bool>   save_history         (pl, 1, "save_history", "");
+param_t<bool>   save_history         (pl, 0, "save_history", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
-param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
+param_t<bool>   save_vtk             (pl, 0, "save_vtk", "");
 
 param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
@@ -695,6 +695,7 @@ inline double cl_exact(int i, double t, double r) { return Ai[i] + Bi[i] * F(nu(
 inline double rf_exact(double t) { return 2.*sqrt(lam*(t+t_start)); }
 inline double vn_exact(double t) { return sqrt(lam/(t+t_start)); }
 inline double vf_exact(double r) { return -2.*lam/(EPS+fabs(r)); }
+inline double ft_exact(double r) { return .25*SQR(r)/lam-t_start; }
 //inline double vf_exact(double r) { return 0; }
 
 inline double dtl_exact(double t, double r) { return Bl * Fp(nu(al,t,r))*nu(al,t,1.); }
@@ -1173,6 +1174,22 @@ public:
   }
 } vf_cf;
 
+class ft_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (geometry.val) {
+#ifdef P4_TO_P8
+      case -3: return analytic::ft_exact(ABS3(x-xc.val, y-yc.val, z-zc.val));
+#endif
+      case -2: return analytic::ft_exact(ABS2(x-xc.val, y-yc.val));
+      case -1: return analytic::ft_exact(ABS1(y-ymin.val));
+      default: return 0;
+    }
+  }
+} ft_cf;
+
 double smooth_start(double t) { return smoothstep(smoothstep_order.val, (t+EPS)/(starting_time.val+EPS)); }
 
 class bc_value_temp_t : public CF_DIM
@@ -1403,10 +1420,16 @@ int main (int argc, char* argv[])
                                           "phi "
                                           "ts "
                                           "tl "
-                                          "vn "); CHKERRXX(ierr);
+                                          "vn "
+                                          "ft "
+                                          "tf "
+                                          "vf "); CHKERRXX(ierr);
 
     for (int i = 0; i < num_comps.val; ++i) {
-      ierr = PetscFPrintf(mpi.comm(), fich, "cl_%d ", i); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fich, "cl%d ", i); CHKERRXX(ierr);
+    }
+    for (int i = 0; i < num_comps.val; ++i) {
+      ierr = PetscFPrintf(mpi.comm(), fich, "cs%d ", i); CHKERRXX(ierr);
     }
     ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
 
@@ -1604,6 +1627,7 @@ int main (int argc, char* argv[])
   mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
   mas.set_temperature(tl_cf, ts_cf, tf_cf);
   mas.set_concentration(cl_cf_all, cs_cf_all);
+  mas.set_ft(ft_cf);
 
   // set solver parameters
   mas.set_bc_tolerance             (bc_tolerance.val);
@@ -1719,8 +1743,12 @@ int main (int argc, char* argv[])
       ts_cf.t = tn;
       tl_cf.t = tn;
       vn_cf.t = tn;
+      ft_cf.t = tn;
+      tf_cf.t = tn;
+      vf_cf.t = tn;
       for (int i = 0; i < num_comps.val; ++i) {
         cl_cf_all[i]->t = tn;
+        cs_cf_all[i]->t = tn;
       }
 
       p4est_t       *p4est = mas.get_p4est();
@@ -1736,27 +1764,52 @@ int main (int argc, char* argv[])
         cl.vec[i] = mas.get_cl()[i];
       }
 
+      my_p4est_interpolation_nodes_t interp(mas.get_history_ngbd());
+      interp.add_all_nodes(p4est, nodes);
+
+      vec_and_ptr_t ft(front.vec); interp.set_input(mas.get_ft(), linear); interp.interpolate(ft.vec);
+      vec_and_ptr_t tf(front.vec); interp.set_input(mas.get_tf(), linear); interp.interpolate(tf.vec);
+      vec_and_ptr_t vf(front.vec); interp.set_input(mas.get_vf(), linear); interp.interpolate(vf.vec);
+      vec_and_ptr_array_t cs(num_comps.val, front.vec);
+      for (int i = 0; i < num_comps.val; ++i) {
+        interp.set_input(mas.get_cs(i), linear);
+        interp.interpolate(cs.vec[i]);
+      }
+
       vec_and_ptr_t front_exact(front.vec); sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_exact.vec);
       vec_and_ptr_t ts_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ts_cf, ts_exact.vec);
       vec_and_ptr_t tl_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tl_cf, tl_exact.vec);
       vec_and_ptr_t vn_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vn_cf, vn_exact.vec);
+      vec_and_ptr_t ft_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ft_cf, ft_exact.vec);
+      vec_and_ptr_t tf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tf_cf, tf_exact.vec);
+      vec_and_ptr_t vf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vf_cf, vf_exact.vec);
       vec_and_ptr_array_t cl_exact(num_comps.val, front.vec);
+      vec_and_ptr_array_t cs_exact(num_comps.val, front.vec);
       for (int i = 0; i < num_comps.val; ++i) {
         sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl_exact.vec[i]);
+        sample_cf_on_nodes(p4est, nodes, *cs_cf_all[i], cs_exact.vec[i]);
       }
 
       vec_and_ptr_t front_error(front.vec);
       vec_and_ptr_t ts_error(front.vec);
       vec_and_ptr_t tl_error(front.vec);
       vec_and_ptr_t vn_error(front.vec);
+      vec_and_ptr_t ft_error(front.vec);
+      vec_and_ptr_t tf_error(front.vec);
+      vec_and_ptr_t vf_error(front.vec);
       vec_and_ptr_array_t cl_error(num_comps.val, front.vec);
+      vec_and_ptr_array_t cs_error(num_comps.val, front.vec);
 
       contr.get_array();
       front.get_array(); front_exact.get_array(); front_error.get_array();
       ts.get_array(); ts_exact.get_array(); ts_error.get_array();
       tl.get_array(); tl_exact.get_array(); tl_error.get_array();
       vn.get_array(); vn_exact.get_array(); vn_error.get_array();
+      ft.get_array(); ft_exact.get_array(); ft_error.get_array();
+      tf.get_array(); tf_exact.get_array(); tf_error.get_array();
+      vf.get_array(); vf_exact.get_array(); vf_error.get_array();
       cl.get_array(); cl_exact.get_array(); cl_error.get_array();
+      cs.get_array(); cs_exact.get_array(); cs_error.get_array();
 
       double band = 2.*dxyz[0];
       foreach_node(n, nodes) {
@@ -1764,14 +1817,22 @@ int main (int argc, char* argv[])
           if (front.ptr[n] > 0.) {
             ts_error.ptr[n] = fabs(ts.ptr[n] - ts_exact.ptr[n]);
             tl_error.ptr[n] = 0;
+            ft_error.ptr[n] = fabs(ft.ptr[n] - ft_exact.ptr[n]);
+            tf_error.ptr[n] = fabs(tf.ptr[n] - tf_exact.ptr[n]);
+            vf_error.ptr[n] = fabs(vf.ptr[n] - vf_exact.ptr[n]);
             for (int i = 0; i < num_comps.val; ++i) {
               cl_error.ptr[i][n] = 0;
+              cs_error.ptr[i][n] = fabs(cs.ptr[i][n] - cs_exact.ptr[i][n]);
             }
           } else {
             ts_error.ptr[n] = 0;
             tl_error.ptr[n] = fabs(tl.ptr[n] - tl_exact.ptr[n]);
+            ft_error.ptr[n] = 0;
+            tf_error.ptr[n] = 0;
+            vf_error.ptr[n] = 0;
             for (int i = 0; i < num_comps.val; ++i) {
               cl_error.ptr[i][n] = fabs(cl.ptr[i][n] - cl_exact.ptr[i][n]);
+              cs_error.ptr[i][n] = 0;
             }
           }
 
@@ -1802,24 +1863,36 @@ int main (int argc, char* argv[])
       point_data.push_back(tl.ptr); point_data_names.push_back("tl");
       point_data.push_back(ts.ptr); point_data_names.push_back("ts");
       point_data.push_back(vn.ptr); point_data_names.push_back("vn");
+      point_data.push_back(ft.ptr); point_data_names.push_back("ft");
+      point_data.push_back(tf.ptr); point_data_names.push_back("tf");
+      point_data.push_back(vf.ptr); point_data_names.push_back("vf");
 
       point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
       point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
       point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
       point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
+      point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
+      point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
+      point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
 
       point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
       point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
       point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
       point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
+      point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
+      point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
+      point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
 
       for (int i = 0; i < num_comps.val; ++i) {
-        char numstr[21];
-        sprintf(numstr, "%d", i);
+        char numstr[21]; sprintf(numstr, "%d", i);
 
-        std::string name1("cl_");    point_data.push_back(cl.ptr[i]); point_data_names.push_back(name1 + numstr);
-        std::string name2("cl_exact_"); point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(name2 + numstr);
-        std::string name3("cl_error_"); point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(name3 + numstr);
+        point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
+        point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
+        point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
+
+        point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
+        point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
+        point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
       }
 
       my_p4est_vtk_write_all_vector_form(p4est, nodes, mas.get_ghost(),
@@ -1836,16 +1909,24 @@ int main (int argc, char* argv[])
       ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
       tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
       vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+      ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+      tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+      vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
       cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+      cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
 
-      std::vector<double> errors_max(num_comps.val+4, 0);
+      std::vector<double> errors_max(2*num_comps.val+7, 0);
 
       ierr = VecMax(front_error.vec, NULL, &errors_max[0]); CHKERRXX(ierr);
       ierr = VecMax(ts_error.vec, NULL, &errors_max[1]); CHKERRXX(ierr);
       ierr = VecMax(tl_error.vec, NULL, &errors_max[2]); CHKERRXX(ierr);
       ierr = VecMax(vn_error.vec, NULL, &errors_max[3]); CHKERRXX(ierr);
+      ierr = VecMax(ft_error.vec, NULL, &errors_max[4]); CHKERRXX(ierr);
+      ierr = VecMax(tf_error.vec, NULL, &errors_max[5]); CHKERRXX(ierr);
+      ierr = VecMax(vf_error.vec, NULL, &errors_max[6]); CHKERRXX(ierr);
       for (int i = 0; i < num_comps.val; ++i) {
-        ierr = VecMax(cl_error.vec[i], NULL, &errors_max[4+i]); CHKERRXX(ierr);
+        ierr = VecMax(cl_error.vec[i], NULL, &errors_max[7+i]); CHKERRXX(ierr);
+        ierr = VecMax(cs_error.vec[i], NULL, &errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
       }
 
       mpiret = MPI_Allreduce(MPI_IN_PLACE, errors_max.data(), errors_max.size(), MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -1858,8 +1939,12 @@ int main (int argc, char* argv[])
       ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
       ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
       ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
       for (int i = 0; i < num_comps.val; ++i) {
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4+i]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
       }
       ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
@@ -1870,6 +1955,11 @@ int main (int argc, char* argv[])
       tl_exact.destroy(); tl_error.destroy();
       vn_exact.destroy(); vn_error.destroy();
       cl_exact.destroy(); cl_error.destroy();
+
+      ft.destroy(); ft_exact.destroy(); ft_error.destroy();
+      tf.destroy(); tf_exact.destroy(); tf_error.destroy();
+      vf.destroy(); vf_exact.destroy(); vf_error.destroy();
+      cs.destroy(); cs_exact.destroy(); cs_error.destroy();
 
 //      sample_cf_on_nodes(p4est, nodes, front_phi_cf, front.vec);
 //      sample_cf_on_nodes(p4est, nodes, ts_cf, ts.vec);
