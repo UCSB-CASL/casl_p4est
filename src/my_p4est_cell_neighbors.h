@@ -43,36 +43,45 @@ private:
   p4est_t *p4est;
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb;
-  double tree_dimensions[P4EST_DIM];
+  const double tree_dimensions[P4EST_DIM];
 
   // recursive routine used to find the appropriate children of a cell sharing
   /*!
    * \brief find_neighbor_cells_of_cell_recursive: core recursive routine used to find the appropriate child(ren) of
    * the (hypothetical) quadrant Q' in the hierarchy that satisfy the queried neighborhood condition (see illustration
    * in comment here below for interpretation of Q')
-   * \param [inout] ngbd: the set of neighbor cells (not cleared but augmented with all candidates if not present in the list yet);
-   * \param [in] tr:      the tree index of Q'
-   * \param [in] ind:     the the index of the considered HierarchyCell in trees[tr] corresponding to the cell in the Hierarchy being analyzed
-   * \param [in] dir_xyz: the original search direction, as provided to the public routine here below (note that there is a mirror play of
-   *                      search direction for fetching the appropriate child(ren), see the source code in the .cpp file for more details)
+   * \param [inout] ngbd:   the set of neighbor cells (not cleared but augmented with all candidates if not present in the list yet);
+   * \param [in] tr:        the tree index of Q'
+   * \param [in] ind:       the the index of the considered HierarchyCell in trees[tr] corresponding to the cell in the Hierarchy being analyzed
+   * \param [in] dir_xyz:   the original search direction, as provided to the public routine here below (note that there is a mirror play of
+   *                        search direction for fetching the appropriate child(ren), see the source code in the .cpp file for more details)
+   * \param [in] smallest_quad_size: pointer to a p4est_qcoord_t value representing the logical size of the smallest quadrant found in a cell
+   *                        neighborhood, the pointed value is updated every time a smaller quadrant is found. This operation is optional
+   *                        and simply disregarded if the pointer is NULL.
    */
-  void find_neighbor_cells_of_cell_recursive(set_of_neighboring_quadrants& ngbd, const p4est_topidx_t& tr, const int& ind, const char dir_xyz[P4EST_DIM]) const;
+  void find_neighbor_cells_of_cell_recursive(set_of_neighboring_quadrants& ngbd, const p4est_topidx_t& tr, const int& ind, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size) const;
 
 public:
   my_p4est_cell_neighbors_t(my_p4est_hierarchy_t *hierarchy_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb),
+      tree_dimensions{DIM((hierarchy_->myb->xyz_max[0] - hierarchy_->myb->xyz_min[0])/hierarchy_->myb->nxyztrees[0],
+      (hierarchy_->myb->xyz_max[1] - hierarchy_->myb->xyz_min[1])/hierarchy_->myb->nxyztrees[1],
+      (hierarchy_->myb->xyz_max[2] - hierarchy_->myb->xyz_min[2])/hierarchy_->myb->nxyztrees[2])}
   {
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-      tree_dimensions[dim] = (hierarchy_->myb->xyz_max[dim] - hierarchy_->myb->xyz_min[dim])/hierarchy_->myb->nxyztrees[dim];
+
   }
 
   /*!
    * \brief find_neighbor_cells_of_cell finds (all) the neighbor cell(s) of a cell in the direction (dir_x, dir_y [, dir_z]), any
    * combination of directions is accepted.
-   * \param [inout] ngbd:  the set of neighbor cells (not cleared but augmented with all candidates if not present in the list yet);
-   * \param [in] quad_idx: the (local) index of the quadrant whose neighbor(s) is (are) searched;
-   * \param [in] tree_idx: the tree index of that quadrant;
-   * \param [in] dir_xyz:  array of P4EST_DIM Cartesian search directions (all components must be either -1, 0 or +1, no other value accepted)
+   * \param [inout] ngbd:   the set of neighbor cells (not cleared on inuput but augmented with all candidates if not present in the list yet);
+   * \param [in] quad_idx:  the (local) index of the quadrant whose neighbor(s) is (are) searched;
+   * \param [in] tree_idx:  the tree index of that quadrant;
+   * \param [in] dir_xyz:   array of P4EST_DIM Cartesian search directions (all components must be either -1, 0 or +1, no other value accepted)
+   * \param [in] smallest_quad_size: (optional) pointer to a p4est_qcoord_t value representing the logical size of the smallest quadrant found
+   *                        in a cell neighborhood, the pointed value is updated every time a smaller quadrant is found. This operation is optional
+   *                        and simply disregarded if the pointer is NULL.
+   *                        --> relevant for evaluating scaling distance in some least-square interpolation procedure.
    * NOTES AND REMARKS:
    * - ngbd is not cleared on input --> the set can only be larger on output
    * - the p.piggy3 members of the elements of ngbd are filled and valid on outputs (and so must it be on input as well if ngbd is not empty!!!)
@@ -135,34 +144,57 @@ public:
    * ~ with dir_xyz = [-1, -1] --> ngbd = {I}
    *
    */
-  void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char dir_xyz[P4EST_DIM]) const;
+  void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size = NULL) const;
 
   /*!
    * \brief find_neighbor_cells_of_cell: wrapper to the general public function here above with individual
    * Cartesian search components as inputs
    */
-  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, DIM(char dir_x, char dir_y, char dir_z)) const
+  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, DIM(char dir_x, char dir_y, char dir_z), p4est_qcoord_t *smallest_quad_size = NULL) const
   {
     char tmp[P4EST_DIM] = {DIM(dir_x, dir_y, dir_z)};
-    find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, tmp);
+    find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, tmp, smallest_quad_size);
     return;
   }
 
   /*!
    * \brief find_neighbor_cells_of_cell: wrapper to the general public function here above in case of
    * a search for neighbors across a face
+   * (not augmented with "p4est_qcoord_t* smallest_quad_size" feature input argument, since that would
+   * create a series of ambiguous calls because '0' represents either a 0 integer value or the NULL pointer
+   * in c++)
    */
   inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& q, const p4est_topidx_t& tr, const unsigned char& face_dir) const
   {
     char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[face_dir/2] = (face_dir%2 == 1 ? 1 : -1);
-    find_neighbor_cells_of_cell(ngbd, q, tr, DIM(search[0], search[1], search[2]));
+    find_neighbor_cells_of_cell(ngbd, q, tr, search);
     return;
   }
 
   const p4est_t* get_p4est() const { return p4est; }
   const my_p4est_brick_t* get_brick() const { return myb; }
   const double* get_tree_dimensions() const { return tree_dimensions; }
+  const my_p4est_hierarchy_t* get_hierarchy() const { return hierarchy; }
 
+  /*!
+   * \brief gather_neighbor_cells_of_cell finds all neighbor cells of a cell in all cartesian directions (and any of their
+   * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
+   * but it can be extended to second degree neighbors, if desired.
+   * \param [in] quad_with_correct_local_num_in_piggy3 : quadrant whose neighbors are sought. This quadrant is also added to
+   *                        the set.
+   *                        [IMPORTANT REMARK 1:] the p.piggy3 value of the quadrant must be valid
+   *                        [IMPORTANT REMARK 2:] the p.piggy3.local_num must be the CUMULATIVE local quadrant index over the
+   *                                              local trees! (contrary to what is returned by find_smallest_quadrant() in
+   *                                              my_p4est_hierarchy_t)!
+   * \param [inout] ngbd : the set of neighbor cells (not cleared on input but augmented with all candidates if not present
+   *                        in the list yet);
+   * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
+   *                        (default value is false)
+   * \return the logical size of the smallest quadrant found in the nearby cell neighborhood (given quadrant and first-degree
+   *                        neighbors ONLY!!!)
+   *                        --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+   */
+  p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false) const;
 };
 
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc = NULL, const Vec phi = NULL);

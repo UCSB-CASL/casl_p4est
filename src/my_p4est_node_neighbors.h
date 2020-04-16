@@ -105,11 +105,8 @@ class my_p4est_node_neighbors_t {
    * \brief is_initialized: flag that is set to true when 'neighbors' is fully set and determined
    */
   bool is_initialized;
-  /*!
-   * \brief periodic periodicity flag, the domain is periodic along the cartesian directon dir
-   * if periodic[dir] is true.
-   */
-  bool periodic[P4EST_DIM];
+
+  const bool* periodic;
 
   /*!
    * \brief construct_neighbors constructs the full node neighborhood information for a local node
@@ -196,9 +193,8 @@ public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
+    periodic = hierarchy->get_periodicity();
     is_initialized = false;
-    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-      periodic[dd] = is_periodic(p4est, dd);
     set_layer_and_local_nodes();
   }
 
@@ -472,9 +468,22 @@ public:
    * \param [out] nb_tree_idx   the index of the tree in which the quadrant was found (valid and sensible if the quadrant was
    *                            actually found, of course)
    */
-   void find_neighbor_cell_of_node( p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
+   void find_neighbor_cell_of_node(p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx) const;
 
-   double gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors = false) const;
+   /*!
+    * \brief gather_neighbor_cells_of_node finds all neighbor cells of a node in all cartesian directions (and any of their
+    * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
+    * but it can be extended to second degree neighbors, if desired.
+    * \param [inout] cell_neighbors: the set of neighbor cells (not cleared on input but augmented with all candidates if not
+    *                           present in the list yet);
+    * \param [in] cell_ngbd: pointer to the cell_neighborhood information
+    * \param [in] node_idx: local index of the node whose neighbor cells are sought
+    * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
+    *                           (default value is false)
+    * \return the logical size of the smallest quadrant found in the first-degree cell neighborhood (first-degree only!!!)
+    *                           --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+    */
+   p4est_qcoord_t gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors = false) const;
 
   /*!
    * \brief dd_central computes the second derivatives along the cartesian direction der on all nodes and updates the ghosts

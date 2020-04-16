@@ -104,14 +104,11 @@ private:
   const p4est_t *p4est;
 #endif
   const uint8_t max_p4est_lvl;
-  double xyz_min[P4EST_DIM];
-  double xyz_max[P4EST_DIM];
-  // ASSUMPTION : ALL TREES OF SAME SIZE
-  // (if not, get rid of the following)
-  double smallest_dxyz[P4EST_DIM];
-  double tree_dimensions[P4EST_DIM];
-  // END OF ASSUMPTION
-  bool periodic[P4EST_DIM];
+  const double smallest_dxyz[P4EST_DIM];
+  const double* xyz_min;
+  const double* xyz_max;
+  const double* tree_dimensions;
+  const bool*   periodic;
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
   my_p4est_cell_neighbors_t *ngbd_c;
@@ -135,15 +132,15 @@ private:
       if(face_neighborhood.neighbor_face_idx[k] >= 0)
       {
         xyz_fr_f(face_neighborhood.neighbor_face_idx[k], dir, xyz_other_face);
-        for (unsigned char dir = 0; to_return && dir < P4EST_DIM; ++dir)
+        for (unsigned char dim = 0; to_return && dim < P4EST_DIM; ++dim)
         {
-          double dir_distance_between_dof = fabs(xyz_other_face[dir] - xyz_face[dir]);
-          if(periodic[dir])
+          double dim_distance_between_dof = (xyz_other_face[dim] - xyz_face[dim]);
+          if(periodic[dim])
           {
-            dir_distance_between_dof = MIN(dir_distance_between_dof, fabs(xyz_other_face[dir] - xyz_face[dir] - (xyz_max[dir] - xyz_min[dir])));
-            dir_distance_between_dof = MIN(dir_distance_between_dof, fabs(xyz_other_face[dir] - xyz_face[dir] + (xyz_max[dir] - xyz_min[dir])));
+            const double pp = dim_distance_between_dof/(xyz_max[dim] - xyz_min[dim]);
+            dim_distance_between_dof -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
           }
-          to_return = to_return && fabs(dir_distance_between_dof - (k/2 == dir ? smallest_dxyz[dir] : 0.0)) < 0.01*smallest_dxyz[dir]; // we use 0.01*dxyz_min[dir] as tolerance
+          to_return = to_return && fabs(dim_distance_between_dof - (k/2 == dim ? (k%2 == 1 ? +1.0:-1.0)*smallest_dxyz[dim] : 0.0)) < 0.01*smallest_dxyz[dim]; // we use 0.01*dxyz_min[dim] as tolerance
         }
       }
       else
@@ -294,7 +291,9 @@ public:
 
   /* IMPORTANT NOTE: this constructor assumes that p4est->user_pointer already points to a (splitting_criteria_t) type of object with valid max_lvl, when being called.
    * --> important for restart!*/
-  my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces = false);
+  my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, const my_p4est_brick_t *myb_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces = false);
+  my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces = false)
+    : my_p4est_faces_t(p4est_, ghost_, ngbd_c_->get_brick(), ngbd_c_, initialize_neighborhoods_of_fine_faces) {}
 
   /*!
    * \brief q2f return the face of quadrant quad_idx in the direction dir
@@ -525,7 +524,7 @@ public:
   inline const double* get_xyz_min() const { return  xyz_min; }
   inline const double* get_tree_dimensions() const { return  tree_dimensions; }
   inline const bool* get_periodicity() const { return periodic; }
-  inline bool periodicity(const unsigned char &dir) const { P4EST_ASSERT(ORD(dir == dir::x, dir == dir::y, dir == dir::z)); return periodic[dir]; }
+  inline bool periodicity(const unsigned char &dim) const { P4EST_ASSERT(ORD(dim == dir::x, dim == dir::y, dim == dir::z)); return periodic[dim]; }
 
   size_t memory_estimate() const
   {

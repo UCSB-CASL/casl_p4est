@@ -77,8 +77,6 @@ void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_
   p4est = p4est_;
   ghost = ghost_;
   nodes = nodes_;
-  for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-    periodic[dd] = is_periodic(p4est_, dd);
 
   if (is_initialized){
     clear_neighbors();
@@ -97,6 +95,7 @@ void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_
 void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
 {
   hierarchy = hierarchy_;
+  periodic = hierarchy_->get_periodicity();
   update_all_but_hierarchy(hierarchy_->p4est, hierarchy_->ghost, nodes_);
   /*update_all_but_hierarchy(p4est_, ghost_, nodes_, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 }
@@ -1709,15 +1708,15 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
 }
 #endif
 
-double my_p4est_node_neighbors_t::gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors) const
+p4est_qcoord_t my_p4est_node_neighbors_t::gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors) const
 {
 #ifdef CASL_THROWS
   bool at_least_one_direct_neighbor_is_local = false;
 #endif
-  cell_neighbors.clear();
+  p4est_qcoord_t smallest_quad_size = P4EST_ROOT_LEN;
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
-  double min_quad_size = DBL_MAX;
+
   for(char i = -1; i < 2; i += 2)
     for(char j = -1; j < 2; j += 2)
 #ifdef P4_TO_P8
@@ -1744,10 +1743,10 @@ double my_p4est_node_neighbors_t::gather_neighbor_cells_of_node(set_of_neighbori
 #endif
 
           cell_neighbors.insert(quad);
-          min_quad_size = std::min<double>(min_quad_size, (double)P4EST_QUADRANT_LEN(quad.level)/(double) P4EST_ROOT_LEN);
-
+          smallest_quad_size = MIN(smallest_quad_size, P4EST_QUADRANT_LEN(quad.level));
           if(add_second_degree_neighbors)
           {
+            // fetch an extra layer in all nonzero directions and their possible combinations
             cell_ngbd->find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx, DIM(i, 0, 0));
             cell_ngbd->find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx, DIM(0, j, 0));
 #ifdef P4_TO_P8
@@ -1768,7 +1767,7 @@ double my_p4est_node_neighbors_t::gather_neighbor_cells_of_node(set_of_neighbori
     PetscErrorCode ierr = PetscPrintf(p4est->mpicomm, "Warning !! my_p4est_node_neighbors_t::gather_neighbor_cells_of_node(): the node has no direct local neighbor quadrant."); CHKERRXX(ierr); }
 #endif
 
-  return min_quad_size;
+  return smallest_quad_size;
 }
 
 void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned char& der) const

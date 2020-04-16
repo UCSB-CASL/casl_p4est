@@ -9,10 +9,11 @@
 #endif
 
 /*
- * SOURCE FILE REVISED AND CLEANED UP BY RAPHAEL EGAN (FEBRUARY 6, 2020)
+ * + SOURCE FILE REVISED, DEBUGGED (existing bug in 3D) AND CLEANED UP BY on (FEBRUARY 6, 2020) [Raphael Egan]
+ * + added optional functionality to calculate smallest logical size of cells on-the-fly, on April 4, 2020 [Raphael Egan]
  */
 
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char dir_xyz[P4EST_DIM]) const
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size) const
 {
   const p4est_quadrant_t *quad;
   if(quad_idx < p4est->local_num_quadrants)
@@ -102,10 +103,10 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_q
   }
 
   /* now find the children of this constructed cell in the desired direction and add them to the list */
-  find_neighbor_cells_of_cell_recursive(ngbd, nb_tree_idx, ind, dir_xyz);
+  find_neighbor_cells_of_cell_recursive(ngbd, nb_tree_idx, ind, dir_xyz, smallest_quad_size);
 }
 
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_neighboring_quadrants& ngbd, const p4est_topidx_t& tr, const int& ind, const char dir_xyz[P4EST_DIM]) const
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_neighboring_quadrants& ngbd, const p4est_topidx_t& tr, const int& ind, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size) const
 {
   if (hierarchy->trees[tr][ind].child == CELL_LEAF)
   {
@@ -133,6 +134,8 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_nei
 #else
       ngbd.insert(quad);
 #endif
+      if(smallest_quad_size != NULL)
+        *smallest_quad_size = MIN(*smallest_quad_size, P4EST_QUADRANT_LEN(quad.level));
     }
     return;
   }
@@ -142,7 +145,53 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_nei
 #ifdef P4_TO_P8
       for (char child_z = (dir_xyz[2] == 0 ? -1 : -dir_xyz[2]); child_z < (dir_xyz[2] == 0 ? 2 : -dir_xyz[2] + 1); child_z += 2)// child cell in the mirror direction if search is nonzero, sweep {-1, 1} if zero
 #endif
-        find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + SUMD((child_x == -1 ? 0 : 1), (child_y == -1 ? 0 : 2), (child_z == -1 ? 0 : 4)), dir_xyz);
+        find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + SUMD((child_x == -1 ? 0 : 1), (child_y == -1 ? 0 : 2), (child_z == -1 ? 0 : 4)), dir_xyz, smallest_quad_size);
+}
+
+p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors) const
+{
+  /* gather the neighborhood */
+  ngbd.insert(quad_with_correct_local_num_in_piggy3);
+  p4est_qcoord_t smallest_quad_size = P4EST_QUADRANT_LEN(quad_with_correct_local_num_in_piggy3.level);
+  const p4est_locidx_t& quad_idx = quad_with_correct_local_num_in_piggy3.p.piggy3.local_num;
+  const p4est_topidx_t& tree_idx = quad_with_correct_local_num_in_piggy3.p.piggy3.which_tree;
+  set_of_neighboring_quadrants *close_ngbd = &ngbd;
+  if(add_second_degree_neighbors)
+    close_ngbd = new set_of_neighboring_quadrants; // we need to get the close neighbors separately first in that case --> use a temporary buffer set
+
+  for(char i = -1; i < 2; ++i)
+    for(char j = -1; j < 2; ++j)
+#ifdef P4_TO_P8
+      for(char k = -1; k < 2; ++k)
+#endif
+      {
+        if(ANDD(i == 0, j == 0, k == 0)) // no need to search for that one, of course...
+          continue;
+        find_neighbor_cells_of_cell(*close_ngbd, quad_idx, tree_idx, DIM(i, j, k), &smallest_quad_size);
+        if(add_second_degree_neighbors) // in that case, loop through elements of the close_ngbd, insert them in the final set and repeat the operation for those elements
+        {
+          for (set_of_neighboring_quadrants::const_iterator it = close_ngbd->begin(); it != close_ngbd->end(); ++it)
+          {
+            ngbd.insert(*it); // the smallest_quad_size was already done in the operation here above, if needed/desired
+            for(char ii = -1; ii < 2; ++ii)
+              for(char jj = -1; jj < 2; ++jj)
+#ifdef P4_TO_P8
+                for(char kk = -1; kk < 2; ++kk)
+#endif
+                {
+                  if(ANDD(ii == 0, jj == 0, kk == 0))
+                    continue;
+                  find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(ii, jj, kk));
+                }
+          }
+          close_ngbd->clear(); // clear the temporary buffer before going on, to avoid useless steps thereafter
+        }
+      }
+
+  if(add_second_degree_neighbors)
+    delete close_ngbd;
+
+  return smallest_quad_size;
 }
 
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc, const Vec phi)
@@ -153,7 +202,6 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
   const p4est_nodes_t* nodes = n_ngbd->get_nodes();
   const my_p4est_brick_t* brick = c_ngbd->get_brick();
   const double * tree_dimensions = c_ngbd->get_tree_dimensions();
-
 
   double xyz_node[P4EST_DIM];
   node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
@@ -167,9 +215,10 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
   const double *cell_field_p;
   ierr = VecGetArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
 
-  set_of_neighboring_quadrants ngbd_tmp;
-  double scaling = n_ngbd->gather_neighbor_cells_of_node(ngbd_tmp, c_ngbd, node_idx, true);
-  scaling *= 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]));
+  /* gather the neighborhood and get the (logical) size of the smallest quadrant in the first-degree neighborhood */
+  set_of_neighboring_quadrants cell_ngbd; cell_ngbd.clear();
+  const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = n_ngbd->gather_neighbor_cells_of_node(cell_ngbd, c_ngbd, node_idx, true);
+  const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double)logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
 
   matrix_t A;
   A.resize(1, 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
@@ -184,7 +233,7 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
   if(phi != NULL){
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr); }
 
-  for(set_of_neighboring_quadrants::const_iterator it = ngbd_tmp.begin(); it != ngbd_tmp.end(); ++it)
+  for(set_of_neighboring_quadrants::const_iterator it = cell_ngbd.begin(); it != cell_ngbd.end(); ++it)
   {
     const p4est_locidx_t qm_idx = it->p.piggy3.local_num;
     /* check if quadrant is well defined */
