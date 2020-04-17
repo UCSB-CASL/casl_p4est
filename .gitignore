@@ -50,3 +50,6 @@ Default/
 *_BASE_*
 *_LOCAL_*
 *_REMOTE_*
+
+# CLion.
+.idea/
