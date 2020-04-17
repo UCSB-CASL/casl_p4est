@@ -414,7 +414,7 @@ public:
    */
   inline void reinitialize_1st_order_above_threshold(Vec phi, const double &threshold, const int &number_of_iterations = 50, const double &upper_limit_phi_0 = DBL_MAX) const
   {
-    reinitialize_within_range_of_phi_0(phi, upper_limit_phi_0, 1, 1, threshold, number_of_iterations);
+    reinitialize_within_range_of_phi_0(phi, 1, 1, upper_limit_phi_0, threshold, number_of_iterations);
     return;
   }
 
@@ -431,7 +431,7 @@ public:
    */
   inline void reinitialize_2nd_order(Vec phi, const int &number_of_iterations = 50, const double &limit_absolute_value_phi_0 = DBL_MAX) const
   {
-    reinitialize_within_range_of_phi_0(phi, limit_absolute_value_phi_0, 2, 2, -limit_absolute_value_phi_0, number_of_iterations);
+    reinitialize_within_range_of_phi_0(phi, 2, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0, number_of_iterations);
     return;
   }
   /*!
@@ -518,7 +518,7 @@ public:
    */
   inline void reinitialize_1st_order_time_2nd_order_space_above_threshold(Vec phi, const double &threshold, const int &number_of_iterations = 50, const double &upper_limit_phi_0 = DBL_MAX) const
   {
-    reinitialize_within_range_of_phi_0(phi, 2, 1, threshold, upper_limit_phi_0, number_of_iterations);
+    reinitialize_within_range_of_phi_0(phi, 2, 1, upper_limit_phi_0, threshold, number_of_iterations);
     return;
   }
 
