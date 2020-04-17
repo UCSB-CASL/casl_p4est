@@ -40,7 +40,11 @@
   (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
 #endif
 
-#if PETSC_VERSION_GT(3,12,0)
+#if PETSC_VERSION_GE(3,13,0)
+#define PetscBinaryWrite(a, b, c, d, e) PetscBinaryWrite(a, b, c, d)
+#endif
+
+#if PETSC_VERSION_GE(3,12,0)
 #define PetscBinaryRead(a, b, c, d) PetscBinaryRead(a, b, c, NULL, d)
 #endif
 
