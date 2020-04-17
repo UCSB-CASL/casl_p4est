@@ -3,9 +3,9 @@
 cmake_minimum_required( VERSION 3.16 )
 project( fast_sweeping )
 
-set( CMAKE_CXX_STANDARD 14 )
+set( CMAKE_CXX_STANDARD 17 )
 
-######################## Local common sources ########################
+######################## Source code ########################
 
 if( DIM MATCHES 2d )
 	list( APPEND SRC main_2d.cpp )
@@ -24,13 +24,42 @@ set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
 set( CMAKE_C_COMPILER mpicc )
 set( CMAKE_CXX_COMPILER mpicxx )
 
+######################## Libraries ########################
+# These commands must be given prior to defining any target.
+
+find_package( MPI REQUIRED )
+find_package( Boost COMPONENTS filesystem REQUIRED )
+
+# Library linking directories.
+link_directories(
+		/usr/local/lib
+		/usr/local/petsc/lib
+		/usr/local/p4est-2.2/lib )
+
+link_libraries(
+		mpi
+		petsc
+		p4est
+		sc
+		voro++
+		${Boost_FILESYSTEM_LIBRARY} )
+
+include_directories(
+		.
+		${PARCASL}
+		/usr/local/include
+		/usr/local/petsc/include
+		/usr/local/p4est-2.2/include
+		/usr/local/include/voro++
+		${Boost_INCLUDE_DIR} )
+
 ######################## Creating the executable ########################
 
 # Contents extracted from qmake/libparcasl.pri.
 # Multiple level-set integration.
 list( APPEND HEADERS
-		${PARCASL}/src/mls_integration/simplex_utils.h
-		${PARCASL}/src/mls_integration/simplex2_mls_l.h
+		${PARCASL}src/mls_integration/simplex_utils.h
+		${PARCASL}src/mls_integration/simplex2_mls_l.h
 		${PARCASL}/src/mls_integration/simplex2_mls_q.h
 		${PARCASL}/src/mls_integration/simplex3_mls_l.h
 		${PARCASL}/src/mls_integration/simplex3_mls_q.h
@@ -45,7 +74,7 @@ list( APPEND HEADERS
 		${PARCASL}/src/mls_integration/vtk/simplex3_mls_l_vtk.h
 		${PARCASL}/src/mls_integration/vtk/simplex3_mls_q_vtk.h )
 
-list( APPEND SORCES
+list( APPEND SOURCES
 		${PARCASL}/src/mls_integration/simplex2_mls_l.cpp
 		${PARCASL}/src/mls_integration/simplex2_mls_q.cpp
 		${PARCASL}/src/mls_integration/simplex3_mls_l.cpp
@@ -292,31 +321,3 @@ endif()
 
 add_executable( fast_sweeping
 		${SRC} ${HEADERS} ${SOURCES} )
-
-######################## Libraries ########################
-
-# Library linking directories.
-target_link_directories( fast_sweeping PRIVATE
-		/usr/local/lib
-		/usr/local/petsc/lib
-		/usr/local/p4est-2.2/lib )
-
-find_package( MPI REQUIRED )
-find_package( Boost COMPONENTS filesystem REQUIRED )
-
-target_link_libraries( fast_sweeping PRIVATE
-		mpi
-		petsc
-		p4est
-		sc
-		voro++
-		${Boost_FILESYSTEM_LIBRARY} )
-
-target_include_directories( fast_sweeping PRIVATE
-		.
-		${PARCASL}
-		/usr/local/include
-		/usr/local/petsc/include
-		/usr/local/p4est-2.2/include
-		/usr/local/include/voro++
-		${Boost_INCLUDE_DIR} )
