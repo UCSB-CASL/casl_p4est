@@ -385,5 +385,20 @@ int solve_Quartic(double c[ 5 ], double s[ 4 ]);
 */
 int is_Zero(double x);
 
+/**
+ * Compute L^1 norm of a vector of n elements.
+ * @param v Array of values.
+ * @param n Positive number of elements.
+ * @return Sum of v's absolute element values.
+ */
+template<typename T>
+inline T compute_L1_norm( const T v[], unsigned int n )
+{
+	T sum = 0;
+	for( int i = 0; i < n; i++ )
+		sum += ABS( v[i] );
+	return sum;
+}
+
 
 #endif // MY_P4EST_MATH_H

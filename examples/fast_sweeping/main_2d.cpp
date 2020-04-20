@@ -2,7 +2,6 @@
 #include <stdexcept>
 #include <iostream>
 
-// casl_p4est
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -29,129 +28,137 @@
 
 using namespace std;
 
-#ifdef P4_TO_P8
-struct circle:CF_3{
-  circle(double x0_, double y0_, double z0_, double r_): x0(x0_), y0(y0_), z0(z0_), r(r_) {}
-  double operator()(double x, double y, double z) const {
-    return r - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
-  }
-private:
-  double x0, y0, z0, r;
-};
-#else
-struct circle:CF_2
+
+class Circle: public CF_2
 {
-	circle( double x0_, double y0_, double r_ ) : x0( x0_ ), y0( y0_ ), r( r_ )
+private:
+	double _x0, _y0, _r;
+
+public:
+	Circle( double x0, double y0, double r ) : _x0( x0 ), _y0( y0 ), _r( r )
 	{}
 
 	double operator()( double x, double y ) const override
 	{
-		return r - sqrt( SQR( x - x0 ) + SQR( y - y0 ));
+		return sqrt( SQR( x - _x0 ) + SQR( y - _y0 ) ) - _r;
 	}
-
-private:
-	double x0, y0, r;
 };
-#endif
 
-int main (int argc, char* argv[])
+
+int main( int argc, char* argv[] )
 {
 	try
 	{
+		// Initializing parallel environment.
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
+		PetscErrorCode ierr;
 
+		// p4est variables.
 		p4est_t *p4est;
 		p4est_nodes_t *nodes;
-		PetscErrorCode ierr;
+		p4est_connectivity_t *connectivity;
+		my_p4est_brick_t brick;
+		p4est_ghost_t *ghost;
+
+		// Domain information.
+		int n_xyz[] = {1, 1, 1};
+		double xyz_min[] = {-1, -1, -1};
+		double xyz_max[] = {+1, +1, +1};
+		int periodic[] = {0, 0, 0};
+		connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		cmdParser cmd;
 		cmd.add_option( "lmin", "min level for refinement" );
 		cmd.add_option( "lmax", "max level for refinement" );
 		cmd.parse( argc, argv );
 
-#ifdef P4_TO_P8
-		circle circ(0, 0, 0, 0.3);
-#else
-		circle circ( 0, 0, 0.3 );
-#endif
-		splitting_criteria_cf_t cf_circle( cmd.get( "lmin", 3 ), cmd.get( "lmax", 6 ), &circ );
+		Circle circle( 0, 0, 0.3 );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 2 ), cmd.get( "lmax", 4 ), &circle );
 
 		parStopWatch w;
 		w.start( "total time" );
 
-		/* Create the connectivity object */
-		p4est_connectivity_t *connectivity;
-		my_p4est_brick_t brick;
-		int n_xyz[] = {1, 1, 1};
-		double xyz_min[] = {-1, -1, -1};
-		double xyz_max[] = {1, 1, 1};
-		int periodic[] = {0, 0, 0};
-
-		connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
-
-		/* Now create the forest */
+		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
+		p4est->user_pointer = ( void * ) ( &levelSetSC );
 
-		/* refine the forest using a refinement criteria */
-		p4est->user_pointer = ( void * ) (&cf_circle);
+		// Refine and recursively partition forest.
 		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
-
-		/* Finally re-partition */
 		my_p4est_partition( p4est, P4EST_TRUE, nullptr );
 
-		/* Create the ghost structure */
-		p4est_ghost_t *ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
-
-		/* generate the node data structure */
+		// Create the ghost (cell) and node structures.
+		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
 		nodes = my_p4est_nodes_new( p4est, ghost );
 
-		/* initialize the neighbor nodes structure */
+		// Initialize the neighbor nodes structure.
 		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
-		my_p4est_node_neighbors_t node_neighbors( &hierarchy, nodes );
+		my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
 
+		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
 		ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 		CHKERRXX( ierr );
 
-		double *phi_p;
-		ierr = VecGetArray( phi, &phi_p );
+		// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
+		double *phiPtr;
+		ierr = VecGetArray( phi, &phiPtr );
 		CHKERRXX( ierr );
-		for( size_t i = 0; i < nodes->indep_nodes.elem_count; ++i )
+		for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-
-#ifdef P4_TO_P8
-			phi_p[i] = circ(xyz[0], xyz[1], xyz[2]);
-#else
-			phi_p[i] = circ( xyz[0], xyz[1] );
-#endif
+			phiPtr[i] = circle( xyz[0], xyz[1] );
 		}
-
-		ierr = VecRestoreArray( phi, &phi_p );
+		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
-		my_p4est_level_set_t ls( &node_neighbors );
+		// Calculate L^1 norm from each independent node (i.e. locally owned and ghost nodes) to the bottom left reference node.
+		Vec l1Norm_1;
+		ierr = VecCreateGhostNodes( p4est, nodes, &l1Norm_1 );
+		CHKERRXX( ierr );
+
+		double *l1NormPtr_1;
+		ierr = VecGetArray( l1Norm_1, &l1NormPtr_1 );
+		CHKERRXX( ierr );
+
+		for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( i, p4est, nodes, xyz );
+			double diff[P4EST_DIM] = { xyz[0] - xyz_min[0], xyz[1] - xyz_min[1] };
+			l1NormPtr_1[i] = compute_L1_norm( diff, P4EST_DIM );
+		}
+
+		// Reinitialize the level-set function values.
+		my_p4est_level_set_t ls( &nodeNeighbors );
 		ls.reinitialize_2nd_order( phi, 100 );
 
 		std::ostringstream oss;
-		oss << "phi_" << mpi.size() << "_" << P4EST_DIM;
-		ierr = VecGetArray( phi, &phi_p );
+		oss << "fsm_" << mpi.size() << "_" << P4EST_DIM;
+		ierr = VecGetArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								1, 0, oss.str().c_str(),
-								VTK_POINT_DATA, "phi", phi_p );
+								2, 0, oss.str().c_str(),
+								VTK_POINT_DATA, "phi", phiPtr,
+								VTK_POINT_DATA, "L1_1", l1NormPtr_1 );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
-		ierr = VecRestoreArray( phi, &phi_p );
+
+		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
-		/* finally, delete PETSc Vecs by calling 'VecDestroy' function */
+		ierr = VecRestoreArray( l1Norm_1, &l1NormPtr_1 );
+		CHKERRXX( ierr );
+
+		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );
 		CHKERRXX( ierr );
 
-		/* destroy the p4est and its connectivity structure */
+		ierr = VecDestroy( l1Norm_1 );
+		CHKERRXX( ierr );
+
+		// Destroy the p4est and its connectivity structure.
 		p4est_nodes_destroy( nodes );
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
