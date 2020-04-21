@@ -2079,7 +2079,7 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
   return is;
 }
 
-std::string convert_to_string(const dxyz_hodge_component& type)
+std::string convert_to_string(const hodge_control& type)
 {
   switch(type){
   case u_component:
@@ -2096,14 +2096,17 @@ std::string convert_to_string(const dxyz_hodge_component& type)
   case uvw_components:
     return std::string("uvw");
     break;
+  case hodge_value:
+    return std::string("value");
+    break;
   default:
-    return std::string("unknown type of dxyz_hodge_component");
+    return std::string("unknown type of hodge_control");
     break;
   }
 }
 
 
-std::ostream& operator<< (std::ostream& os, dxyz_hodge_component type)
+std::ostream& operator<< (std::ostream& os, hodge_control type)
 {
   switch(type){
   case u_component:
@@ -2111,19 +2114,22 @@ std::ostream& operator<< (std::ostream& os, dxyz_hodge_component type)
 #ifdef P4_TO_P8
   case w_component:
 #endif
-    os << convert_to_string(type) << " component";
+    os << convert_to_string(type) << " velocity component";
     break;
   case uvw_components:
-    os << "all components";
+    os << "all velocity components";
+    break;
+  case hodge_value:
+    os << "value of Hodge variable";
     break;
   default:
-    os << convert_to_string(type);
+    return os << "unknown type of hodge_control";
     break;
   }
   return os;
 }
 
-std::istream& operator>> (std::istream& is, dxyz_hodge_component& type)
+std::istream& operator>> (std::istream& is, hodge_control& type)
 {
   std::string str;
   is >> str;
@@ -2138,8 +2144,10 @@ std::istream& operator>> (std::istream& is, dxyz_hodge_component& type)
 #endif
   else if (str == "UVW" || str == "uvw" || str == "all" || str == "XYZ" || str == "xyz")
     type = uvw_components;
+  else if (str == "VALUE" || str == "Value" || str == "value")
+    type = hodge_value;
   else
-    throw std::invalid_argument("[ERROR]: Unknown dxyz_hodge_component entered");
+    throw std::invalid_argument("[ERROR]: Unknown hodge_control entered");
 
   return is;
 }

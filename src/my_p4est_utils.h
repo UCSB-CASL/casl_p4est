@@ -366,8 +366,9 @@ typedef enum
 #ifdef P4_TO_P8
   w_component = dir::z,
 #endif
-  uvw_components
-} dxyz_hodge_component;
+  uvw_components,
+  hodge_value
+} hodge_control;
 
 class mixed_interface
 {
@@ -379,9 +380,9 @@ public:
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 
-std::string convert_to_string(const dxyz_hodge_component& type);
-std::ostream& operator << (std::ostream& os, dxyz_hodge_component type);
-std::istream& operator >> (std::istream& is, dxyz_hodge_component& type);
+std::string convert_to_string(const hodge_control& type);
+std::ostream& operator << (std::ostream& os, hodge_control type);
+std::istream& operator >> (std::istream& is, hodge_control& type);
 
 class WallBC2D
 {
