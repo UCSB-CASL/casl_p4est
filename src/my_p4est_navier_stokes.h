@@ -374,6 +374,64 @@ public:
 
   void set_velocities(CF_DIM **vnm1, CF_DIM **vn);
 
+  inline void set_vnp1_nodes(CF_DIM **vnp1)
+  {
+    PetscErrorCode ierr;
+    double *vnp1_nodes_p[P4EST_DIM];
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      if(vnp1_nodes[dir] != NULL)
+      {
+        ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+      }
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp1_nodes[dir], &vnp1_nodes_p[dir]); CHKERRXX(ierr);
+    }
+
+    for (size_t k = 0; k < nodes_n->indep_nodes.elem_count; ++k) {
+      double node_xyz[P4EST_DIM];
+      node_xyz_fr_n(k, p4est_n, nodes_n, node_xyz);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        vnp1_nodes_p[dir][k] = (*vnp1[dir])(node_xyz);
+    }
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecRestoreArray(vnp1_nodes[dir], &vnp1_nodes_p[dir]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set_pressure(const CF_DIM &pressure_field)
+  {
+    PetscErrorCode ierr;
+    double *pressure_p;
+    if(pressure != NULL)
+    {
+      ierr = VecDestroy(pressure); CHKERRXX(ierr);
+    }
+    ierr = VecCreateGhostCells(p4est_n, ghost_n, &pressure); CHKERRXX(ierr);
+    ierr = VecGetArray(pressure, &pressure_p); CHKERRXX(ierr);
+
+    for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
+      p4est_tree_t* tree  = p4est_tree_array_index(p4est_n->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        double xyz_quad[P4EST_DIM];
+        quad_xyz_fr_q(quad_idx, tree_idx, p4est_n, ghost_n, xyz_quad);
+        pressure_p[quad_idx] = pressure_field(xyz_quad);
+      }
+    }
+
+    for (size_t k = 0; k < ghost_n->ghosts.elem_count; ++k) {
+      const p4est_quadrant_t* quad = p4est_quadrant_array_index(&ghost_n->ghosts, k);
+      p4est_locidx_t quad_idx = p4est_n->local_num_quadrants + k;
+      double xyz_quad[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, quad->p.piggy3.which_tree, p4est_n, ghost_n, xyz_quad);
+      pressure_p[quad_idx] = pressure_field(xyz_quad);
+    }
+
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecRestoreArray(pressure, &pressure_p); CHKERRXX(ierr);
+    }
+  }
+
   void set_vstar(Vec *vstar);
 
   void set_hodge(Vec hodge);

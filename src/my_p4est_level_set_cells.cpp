@@ -110,6 +110,9 @@ void my_p4est_level_set_cells_t::normal_vector_weighted_integral_over_interface(
   QuadValue phi_vals;
 #endif
 
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    integral[dim] = 0.0; // initialize value
+
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
@@ -122,8 +125,8 @@ void my_p4est_level_set_cells_t::normal_vector_weighted_integral_over_interface(
       double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
 
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-        cube.xyz_mmm[dir] = xyz_quad[dir] - tree_dimensions[dir]*dmin/2.0;
-        cube.xyz_ppp[dir] = xyz_quad[dir] + tree_dimensions[dir]*dmin/2.0;
+        cube.xyz_mmm[dir] = xyz_quad[dir] - 0.5*tree_dimensions[dir]*dmin;
+        cube.xyz_ppp[dir] = xyz_quad[dir] + 0.5*tree_dimensions[dir]*dmin;
       }
 
 #ifdef P4_TO_P8
@@ -133,12 +136,12 @@ void my_p4est_level_set_cells_t::normal_vector_weighted_integral_over_interface(
           for (unsigned char vx = 0; vx < 2; ++vx)
           {
             const unsigned char l_idx = SUMD((1 << (P4EST_DIM - 1))*vx, (1 << (P4EST_DIM - 2))*vy, vz);
-            const unsigned char r_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + SUMD(vx, 2*vy, 4*vz)];
-            double normal[P4EST_DIM] = {DIM(node_sampled_grad_phi_read_p[P4EST_DIM*r_idx], node_sampled_grad_phi_read_p[P4EST_DIM*r_idx + 1], node_sampled_grad_phi_read_p[P4EST_DIM*r_idx + 2])};
-            const double mag_normal = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[0])));
-            phi_vals.val[l_idx] = node_sampled_phi_read_p[r_idx];
+            p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + SUMD(vx, 2*vy, 4*vz)];
+            const double *grad_phi = (node_sampled_grad_phi_read_p + P4EST_DIM*node_idx);
+            const double mag_normal = sqrt(SUMD(SQR(grad_phi[0]), SQR(grad_phi[1]), SQR(grad_phi[2])));
+            phi_vals.val[l_idx] = node_sampled_phi_read_p[node_idx];
             for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-              n_vals[dir].val[l_idx] = (mag_normal > EPS ? normal[dir]/mag_normal : 0.0);
+              n_vals[dir].val[l_idx] = (mag_normal > EPS ? grad_phi[dir]/mag_normal : 0.0);
           }
 
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
