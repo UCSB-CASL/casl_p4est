@@ -94,6 +94,7 @@ int main( int argc, char* argv[] )
 		// Initialize the neighbor nodes structure.
 		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
 		my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
+		nodeNeighbors.init_neighbors(); // This is not mandatory, but it can only help performance given how much we'll neeed the node neighbors.
 
 		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
@@ -113,7 +114,7 @@ int main( int argc, char* argv[] )
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
-		// Calculate L^1 norm from each independent node (i.e. locally owned and ghost nodes) to the bottom left reference node.
+		// Calculate L^1 norm from each locally owned independent node to the bottom left reference node.
 		Vec l1Norm_1;
 		ierr = VecCreateGhostNodes( p4est, nodes, &l1Norm_1 );
 		CHKERRXX( ierr );
@@ -122,13 +123,18 @@ int main( int argc, char* argv[] )
 		ierr = VecGetArray( l1Norm_1, &l1NormPtr_1 );
 		CHKERRXX( ierr );
 
-		for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
 			double diff[P4EST_DIM] = { xyz[0] - xyz_min[0], xyz[1] - xyz_min[1] };
 			l1NormPtr_1[i] = compute_L1_norm( diff, P4EST_DIM );
 		}
+
+		ierr = VecGhostUpdateBegin( l1Norm_1, INSERT_VALUES, SCATTER_FORWARD );		// After we are done with the locally
+		CHKERRXX( ierr );															// owned nodes, scatter them onto the
+		ierr = VecGhostUpdateEnd( l1Norm_1, INSERT_VALUES, SCATTER_FORWARD ); 		// ghost nodes.
+		CHKERRXX( ierr );
 
 		// Reinitialize the level-set function values.
 		my_p4est_level_set_t ls( &nodeNeighbors );
