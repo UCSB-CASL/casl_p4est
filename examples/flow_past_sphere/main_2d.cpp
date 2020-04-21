@@ -340,7 +340,7 @@ struct simulation_setup
       FILE* fp_timing = fopen(file_timings.c_str(), "a");
       if(fp_timing == NULL)
         throw std::invalid_argument("main_flow_past_sphere: could not open file for timings output.");
-      fprintf(fp_timing, "%g %g %g %g %g %u %g %g\n",\
+      fprintf(fp_timing, "%g %g %g %g %g %u %g %g\n",
               tn,
               (timings.find(grid_update) != timings.end() ? timings.at(grid_update).read_total_time() : 0.0),
               timings.at(viscous_step).read_total_time(),

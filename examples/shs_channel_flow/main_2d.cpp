@@ -27,6 +27,7 @@
 #endif
 
 #include <src/Parser.h>
+#include <iomanip>
 
 #undef MIN
 #undef MAX
@@ -102,7 +103,7 @@ const int default_sl_order                    = 2;
 const double default_cfl                      = 1.0;
 const double default_u_tol                    = 1.0e-6;
 const unsigned int default_n_hodge            = 10;
-const dxyz_hodge_component def_hodge_control  = uvw_components;
+const hodge_control def_hodge_control         = uvw_components;
 const unsigned int default_grid_update        = 1;
 const std::string default_pc_cell             = "sor";
 const std::string default_cell_solver         = "bicgstab";
@@ -175,7 +176,7 @@ struct simulation_setup
   // inner convergence parameteres
   const double u_tol;
   const unsigned int niter_hodge_max;
-  const dxyz_hodge_component control_hodge;
+  const hodge_control control_hodge;
 
   // simulation control
   int iter;
@@ -194,7 +195,7 @@ struct simulation_setup
   // exportation
   const std::string export_dir;
   const bool save_vtk;
-  const bool get_timing;
+  const bool save_timing;
   double vtk_dt;
   const bool save_drag;
   const bool do_accuracy_check;
@@ -204,14 +205,15 @@ struct simulation_setup
   const bool save_profiles;
   const unsigned int nexport_avg;
   int export_vtk, save_data_idx;
-  std::string file_monitoring, vtk_path, file_drag;
+  std::string file_monitoring, vtk_path, file_drag, file_timings;
   bool accuracy_check_done;
+  std::map<ns_task, double> global_computational_times;
 
 
   simulation_setup(const mpi_environment_t&mpi, const cmdParser &cmd) :
     u_tol(cmd.get<double>("u_tol", default_u_tol)),
     niter_hodge_max(cmd.get<unsigned int>("niter_hodge", default_n_hodge)),
-    control_hodge(cmd.get<dxyz_hodge_component>("hodge_control", def_hodge_control)),
+    control_hodge(cmd.get<hodge_control>("hodge_control", def_hodge_control)),
     steps_grid_update(cmd.get<unsigned int>("grid_update", default_grid_update)),
     duration(cmd.get<double>("duration", default_duration)),
     use_adapted_dt(cmd.contains("adapted_dt")),
@@ -223,7 +225,7 @@ struct simulation_setup
     Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
     export_dir(cmd.get<std::string>("export_folder", default_export_dir)),
     save_vtk(cmd.contains("save_vtk")),
-    get_timing(cmd.contains("timing")),
+    save_timing(cmd.contains("timing")),
     save_drag(cmd.contains("save_drag")),
     do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
     save_state(cmd.contains("save_state_dt")),
@@ -231,6 +233,9 @@ struct simulation_setup
     save_profiles(cmd.contains("save_mean_profiles")),
     nexport_avg(cmd.get<unsigned int>("nexport_avg", default_nexport_avg))
   {
+    if(control_hodge == hodge_value)
+      throw std::invalid_argument("simulation_setup::simulation_setup: this simulation setup does not allow for control on hodge value (because of singularities at no-slip to free-slip transition regions).");
+
     vtk_dt = -1.0;
     if (save_vtk)
     {
@@ -286,6 +291,12 @@ struct simulation_setup
     export_vtk = -1;
     iter = 0;
     accuracy_check_done = false;
+    // initialize those
+    global_computational_times.clear();
+    global_computational_times[grid_update] = 0.0;
+    global_computational_times[viscous_step] = 0.0;
+    global_computational_times[projection_step] = 0.0;
+    global_computational_times[velocity_interpolation] = 0.0;
   }
 
   int running_save_data_idx() const { return (int) floor(tn/dt_save_data); }
@@ -296,13 +307,110 @@ struct simulation_setup
   void update_export_vtk()        { export_vtk = running_export_vtk(); }
   bool time_to_save_vtk() const   { return (save_vtk && running_export_vtk() != export_vtk); }
 
-
   double max_tolerated_velocity(const mass_flow_controller_t* controller, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t& channel) const
   {
     return 5.0*(flow_condition == constant_mass_flow ? controller->targeted_bulk_velocity() : Reynolds*channel.canonical_u_tau(external_acceleration[0]->get_value()));
   }
 
+  bool set_dt_and_update_grid(my_p4est_navier_stokes_t *ns)
+  {
+    if (use_adapted_dt)
+      ns->compute_adapted_dt();
+    else
+      ns->compute_dt();
+    dt = ns->get_dt();
+
+    if (tn + dt > tstart + duration)
+    {
+      dt = tstart + duration - tn;
+      ns->set_dt(dt);
+    }
+
+    if (save_vtk && dt > vtk_dt)
+    {
+      dt = vtk_dt; // so that we don't miss snapshots...
+      ns->set_dt(dt);
+    }
+
+    return ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update != 0), false);
+  }
+
+  void export_and_accumulate_timings(const my_p4est_navier_stokes_t* ns)
+  {
+    const std::map<ns_task, execution_time_accumulator>& timings = ns->get_timings();
+    P4EST_ASSERT(timings.find(projection_step) != timings.end() && timings.find(viscous_step) != timings.end() && timings.find(velocity_interpolation) != timings.end()); // should *always* find those
+    P4EST_ASSERT(timings.at(projection_step).read_counter() == timings.at(viscous_step).read_counter()); // the number of subiterations should match
+
+    if(timings.find(grid_update) != timings.end())
+      global_computational_times[grid_update]           += timings.at(grid_update).read_total_time();
+    global_computational_times[viscous_step]            += timings.at(viscous_step).read_total_time();
+    global_computational_times[projection_step]         += timings.at(projection_step).read_total_time();
+    global_computational_times[velocity_interpolation]  += timings.at(velocity_interpolation).read_total_time();
+
+    if(!ns->get_mpirank())
+    {
+      FILE* fp_timing = fopen(file_timings.c_str(), "a");
+      if(fp_timing == NULL)
+        throw std::invalid_argument("export_and_accumulate_timings: could not open file for timings output.");
+      fprintf(fp_timing, "%g %g %g %g %g %u %g %g\n",
+              tn,
+              (timings.find(grid_update) != timings.end() ? timings.at(grid_update).read_total_time() : 0.0),
+              timings.at(viscous_step).read_total_time(),
+              timings.at(projection_step).read_total_time(),
+              timings.at(velocity_interpolation).read_total_time(),
+              timings.at(projection_step).read_counter(),
+              timings.at(viscous_step).read_fixed_point_extra_time(),
+              timings.at(projection_step).read_fixed_point_extra_time());
+      fclose(fp_timing);
+    }
+  }
+
+  void print_averaged_timings(const mpi_environment_t &mpi) const
+  {
+    PetscErrorCode ierr;
+
+    ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", global_computational_times.at(viscous_step)/iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", global_computational_times.at(projection_step)/iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", global_computational_times.at(velocity_interpolation)/iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", global_computational_times.at(grid_update)/iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", (global_computational_times.at(viscous_step) + global_computational_times.at(projection_step) + global_computational_times.at(velocity_interpolation) + global_computational_times.at(grid_update))/iter); CHKERRXX(ierr);
+  }
+
 };
+
+void truncate_exportation_file_up_to_tstart(const double &tstart, const std::string &filename, const bool &two_header_lines = false)
+{
+  FILE* fp = fopen(filename.c_str(), "r+");
+  char* read_line = NULL;
+  size_t len = 0;
+  ssize_t len_read;
+  long size_to_keep = 0;
+  if (((len_read = getline(&read_line, &len, fp)) != -1))
+    size_to_keep += (long) len_read;
+  else
+    throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
+  if(two_header_lines)
+  {
+    if (((len_read = getline(&read_line, &len, fp)) != -1))
+      size_to_keep += (long) len_read;
+    else
+      throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the second header line of " + filename);
+  }
+  double time;
+  while ((len_read = getline(&read_line, &len, fp)) != -1) {
+    sscanf(read_line, "%lg %*[^\n]", &time);
+    if (time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
+      size_to_keep += (long) len_read;
+    else
+      break;
+  }
+  fclose(fp);
+  if (read_line)
+    free(read_line);
+  if (truncate(filename.c_str(), size_to_keep))
+    throw std::runtime_error("simulation_setup::truncate_exportation_file_up_to_tstart: couldn't truncate " + filename);
+}
 
 void initialize_velocity_profile_file(const std::string &filename, const my_p4est_navier_stokes_t* ns, const double &tstart)
 {
@@ -323,34 +431,9 @@ void initialize_velocity_profile_file(const std::string &filename, const my_p4es
     }
     else
     {
-      FILE* fp_avg_profile = fopen(filename.c_str(), "r+");
-      char* read_line = NULL;
-      size_t len = 0;
-      ssize_t len_read;
-      long size_to_keep = 0;
-      if (((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_velocity_profile_file: couldn't read the first header line of " + filename);
-      if (((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_velocity_profile_file: couldn't read the second header line of " + filename);
-      double time;
-      while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
-        sscanf(read_line, "%lg %*[^\n]", &time);
-        if (time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
-          size_to_keep += (long) len_read;
-        else
-          break;
-      }
-      fclose(fp_avg_profile);
-      if (read_line)
-        free(read_line);
-      if (truncate(filename.c_str(), size_to_keep))
-        throw std::runtime_error("initialize_velocity_profile_file: couldn't truncate " + filename);
+      truncate_exportation_file_up_to_tstart(tstart, filename, true);
 
-      fp_avg_profile = fopen(filename.c_str(), "a");
+      FILE *fp_avg_profile = fopen(filename.c_str(), "a");
       fprintf(fp_avg_profile, "%.12g", tstart);
       fclose(fp_avg_profile);
     }
@@ -478,7 +561,6 @@ class velocity_profiler_t
     }
     int mpiret = MPI_Barrier(ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
   }
-
 
 public:
   velocity_profiler_t(const cmdParser cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
@@ -656,38 +738,7 @@ void initialize_monitoring(simulation_setup &setup, const my_p4est_navier_stokes
       fclose(fp_monitor);
     }
     else
-    {
-      FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "r+");
-      char* read_line = NULL;
-      size_t len = 0;
-      ssize_t len_read;
-      long size_to_keep = 0;
-      if (((len_read = getline(&read_line, &len, fp_monitor)) != -1))
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_monitoring: couldn't read the first header line of flow_monitoring.dat");
-      double time, time_nm1;
-      double dt = 0.0;
-      bool not_first_line = false;
-      const std::string format_specifier = "%lg %*g %*g";
-      while ((len_read = getline(&read_line, &len, fp_monitor)) != -1) {
-        if (not_first_line)
-          time_nm1 = time;
-        sscanf(read_line, format_specifier.c_str(), &time);
-        if (not_first_line)
-          dt = time - time_nm1;
-        if (time <= setup.tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
-          size_to_keep += (long) len_read;
-        else
-          break;
-        not_first_line=true;
-      }
-      fclose(fp_monitor);
-      if (read_line)
-        free(read_line);
-      if (truncate(setup.file_monitoring.c_str(), size_to_keep))
-        throw std::runtime_error("initialize_monitoring: couldn't truncate flow_monitoring.dat");
-    }
+      truncate_exportation_file_up_to_tstart(setup.tstart, setup.file_monitoring);
 
     const std::string liveplot_Re = setup.export_dir + "/live_monitor.gnu";
     if (!file_exists(liveplot_Re))
@@ -762,41 +813,7 @@ void initialize_drag_force_output(simulation_setup &setup, const my_p4est_navier
       fclose(fp_drag);
     }
     else
-    {
-      FILE* fp_drag = fopen(setup.file_drag.c_str(), "r+");
-      char* read_line = NULL;
-      size_t len = 0;
-      ssize_t len_read;
-      long size_to_keep = 0;
-      if ((len_read = getline(&read_line, &len, fp_drag)) != -1)
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_drag_force_output: couldn't read the first header line of drag_monitoring.dat");
-      if ((len_read = getline(&read_line, &len, fp_drag)) != -1)
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_drag_force_output: couldn't read the second header line of drag_monitoring.dat");
-      double time, time_nm1;
-      double dt = 0.0;
-      bool not_first_line = false;
-      while ((len_read = getline(&read_line, &len, fp_drag)) != -1) {
-        if (not_first_line)
-          time_nm1 = time;
-        sscanf(read_line, (std::string("%lg %*g %*g") ONLY3D( + std::string(" %*g"))).c_str(), &time);
-        if (not_first_line)
-          dt = time - time_nm1;
-        if (time <= setup.tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
-          size_to_keep += (long) len_read;
-        else
-          break;
-        not_first_line=true;
-      }
-      fclose(fp_drag);
-      if (read_line)
-        free(read_line);
-      if (truncate(setup.file_drag.c_str(), size_to_keep))
-        throw std::runtime_error("initialize_drag_force_output: couldn't truncate drag_monitoring.dat");
-    }
+      truncate_exportation_file_up_to_tstart(setup.tstart, setup.file_drag, true);
 
     const std::string liveplot_drag = setup.export_dir + "/live_drag.gnu";
     if (!file_exists(liveplot_drag))
@@ -861,6 +878,88 @@ void initialize_drag_force_output(simulation_setup &setup, const my_p4est_navier
   }
 }
 
+void initialize_timing_output(simulation_setup & setup, const my_p4est_navier_stokes_t *ns)
+{
+  const std::string filename = "timing_monitoring.dat";
+  setup.file_timings = setup.export_dir + "/" + filename;
+  PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Saving timings per time step in ... %s\n", setup.file_timings.c_str()); CHKERRXX(ierr);
+
+  if(ns->get_mpirank() == 0)
+  {
+    if(!file_exists(setup.file_timings))
+    {
+      FILE* fp_timing = fopen(setup.file_timings.c_str(), "w");
+      if(fp_timing == NULL)
+        throw std::runtime_error("initialize_timing_output: could not open file for timing output.");
+      fprintf(fp_timing, "%s", (std::string("%% tn | grid update | viscosity step | projection setp | interpolate velocities || number of fixed-point iterations | extra work on projection | extra work on viscous step \n")).c_str());
+      fclose(fp_timing);
+    }
+    else
+      truncate_exportation_file_up_to_tstart(setup.tstart, setup.file_timings);
+
+    char liveplot_timings[PATH_MAX];
+    sprintf(liveplot_timings, "%s/live_timings.gnu", setup.export_dir.c_str());
+    if(!file_exists(liveplot_timings))
+    {
+      FILE* fp_liveplot_timings = fopen(liveplot_timings, "w");
+      if(fp_liveplot_timings == NULL)
+        throw std::runtime_error("initialize_timing_output: could not open file for timing liveplot.");
+      fprintf(fp_liveplot_timings, "set term wxt noraise\n");
+      fprintf(fp_liveplot_timings, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot_timings, "set xlabel \"Simulation time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_timings, "set ylabel \"Computational effort per time step (in %%) \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_timings, "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n", filename.c_str());
+      fprintf(fp_liveplot_timings, "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Viscous step (approximate projection)',\\\n", filename.c_str());
+      fprintf(fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Projection step (approximate projection)',\\\n", filename.c_str());
+      fprintf(fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 title 'Interpolating velocities from faces to nodes',\\\n", filename.c_str());
+      fprintf(fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 title 'Extra viscous steps (fixed-point iteration(s))', \\\n", filename.c_str());
+      fprintf(fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Extra projection steps (fixed-point iteration(s))' \n", filename.c_str());
+      fprintf(fp_liveplot_timings, "pause 4\n");
+      fprintf(fp_liveplot_timings, "reread");
+      fclose(fp_liveplot_timings);
+    }
+
+    char tex_plot_timing[PATH_MAX];
+    sprintf(tex_plot_timing, "%s/tex_timing.gnu", setup.export_dir.c_str());
+    if(!file_exists(tex_plot_timing))
+    {
+      FILE *fp_tex_plot_timing = fopen(tex_plot_timing, "w");
+      if(fp_tex_plot_timing == NULL)
+        throw std::runtime_error("initialize_timing_output: could not open file for timing tex figure.");
+      fprintf(fp_tex_plot_timing, "set term epslatex color standalone\n");
+      fprintf(fp_tex_plot_timing, "set output 'timing_history.tex'\n");
+      fprintf(fp_tex_plot_timing, "set key top right Right \n");
+      fprintf(fp_tex_plot_timing, "set xlabel \"Simulation time $t$\"\n");
+      fprintf(fp_tex_plot_timing, "set ylabel \"Computational effort per time step (in \\\\%%) \" \n");
+      fprintf(fp_tex_plot_timing, "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n", filename.c_str());
+      fprintf(fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Viscous step (approximate projection)',\\\n", filename.c_str());
+      fprintf(fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Projection step (approximate projection)',\\\n", filename.c_str());
+      fprintf(fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 title 'Interpolating velocities from faces to nodes',\\\n", filename.c_str());
+      fprintf(fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 title 'Extra viscous steps (fixed-point iteration(s))', \\\n", filename.c_str());
+      fprintf(fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Extra projection steps (fixed-point iteration(s))' \n", filename.c_str());
+      fclose(fp_tex_plot_timing);
+    }
+
+    char tex_timing_script[PATH_MAX];
+    sprintf(tex_timing_script, "%s/plot_tex_timing.sh", setup.export_dir.c_str());
+    if(!file_exists(tex_timing_script))
+    {
+      FILE *fp_tex_timing_script = fopen(tex_timing_script, "w");
+      if(fp_tex_timing_script == NULL)
+        throw std::runtime_error("initialize_timing_output: could not open file for bash script plotting timing tex figure.");
+      fprintf(fp_tex_timing_script, "#!/bin/sh\n");
+      fprintf(fp_tex_timing_script, "gnuplot ./tex_timing.gnu\n");
+      fprintf(fp_tex_timing_script, "latex ./timing_history.tex\n");
+      fprintf(fp_tex_timing_script, "dvipdf -dAutoRotatePages=/None ./timing_history.dvi\n");
+      fclose(fp_tex_timing_script);
+
+      std::ostringstream chmod_command;
+      chmod_command << "chmod +x " << tex_timing_script;
+      int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
+    }
+  }
+}
+
 void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
                             my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
                             external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
@@ -868,9 +967,9 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
 {
   const std::string backup_directory = cmd.get<std::string>("restart", "");
   if (!is_folder(backup_directory.c_str()))
-    throw std::invalid_argument("load_from_state: the restart path " + backup_directory + " is not an accessible directory.");
+    throw std::invalid_argument("load_solver_from_state: the restart path " + backup_directory + " is not an accessible directory.");
   if (ORD(cmd.contains("nx"), cmd.contains("ny"), cmd.contains("nz")) || ORD(cmd.contains("length"), cmd.contains("height"), cmd.contains("width")))
-    throw std::invalid_argument("load_from_state: the length, height and width as well as the numbers of trees along x, y and z cannot be reset when restarting a simulation.");
+    throw std::invalid_argument("load_solver_from_state: the length, height and width as well as the numbers of trees along x, y and z cannot be reset when restarting a simulation.");
 
   if (ns != NULL)
     delete  ns;
@@ -881,7 +980,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   p4est_t *p4est_nm1      = ns->get_p4est_nm1();
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     if (is_periodic(p4est_n, dir) != periodicity[dir] || is_periodic(p4est_nm1, dir) != periodicity[dir])
-      throw std::invalid_argument("load_from_state: the periodicity from the loaded state does not match the requirements.");
+      throw std::invalid_argument("load_solver_from_state: the periodicity from the loaded state does not match the requirements.");
 
   if (brick != NULL && brick->nxyz_to_treeid != NULL)
   {
@@ -1193,6 +1292,8 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
   // drag exportation and simulation monitoring
   if (setup.save_drag)
     initialize_drag_force_output(setup, ns);
+  if (setup.save_timing)
+    initialize_timing_output(setup, ns);
   initialize_monitoring(setup, ns);
 
   // exportation of slice-averaged and line-averaged velocity profile(s)
@@ -1333,7 +1434,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
   cmd.add_option("save_mean_profiles",  "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
   cmd.add_option("nexport_avg",         "number of iterations between two exportation of averaged velocity profiles, default is " + std::to_string(default_nexport_avg));
-  cmd.add_option("timing",              "if present, prints timing information (typically for scaling analysis).");
+  cmd.add_option("timing",              "if defined, saves timing information (info for every major N-S task) in a file on disk.");
   cmd.add_option("accuracy_check",      "if present, prints information about accuracy with comparison to analytical solution \n\t(ONLY activated if restarted, supposedly after steady-state reached). \n\tIf save_vtk is activated as well, the errors are exported to the vtk path for visualization in space.");
 
   if (cmd.parse(argc, argv, extra_info))
@@ -1360,10 +1461,9 @@ int main (int argc, char* argv[])
   velocity_profiler_t *profiler = NULL;
   initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
 
-  parStopWatch watch, substep_watch;
-  double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
-  if (setup.get_timing)
-    watch.start("Total runtime");
+  if(setup.save_timing)
+    ns->activate_timer();
+
   setup.tn = setup.tstart;
   setup.update_save_data_idx(); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
@@ -1373,40 +1473,16 @@ int main (int argc, char* argv[])
 
   while (setup.tn + 0.01*setup.dt < setup.tstart + setup.duration && !setup.accuracy_check_done)
   {
-    if (setup.get_timing)
-      substep_watch.start("");
     if (setup.iter > 0)
     {
       if (flow_controller->read_latest_mass_flow() < 0.0)
         std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
-      if (setup.use_adapted_dt)
-        ns->compute_adapted_dt();
-      else
-        ns->compute_dt();
-      setup.dt = ns->get_dt();
 
-      if (setup.tn + setup.dt > setup.tstart + setup.duration)
-      {
-        setup.dt = setup.tstart + setup.duration - setup.tn;
-        ns->set_dt(setup.dt);
-      }
-
-      if (setup.save_vtk && setup.dt > setup.vtk_dt)
-      {
-        setup.dt = setup.vtk_dt; // so that we don't miss snapshots...
-        ns->set_dt(setup.dt);
-      }
-
-      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (setup.iter%setup.steps_grid_update != 0), false);
+      bool solvers_can_be_reused = setup.set_dt_and_update_grid(ns);
       if (cell_solver != NULL && !solvers_can_be_reused){
         delete cell_solver; cell_solver = NULL; }
       if (face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
-    }
-    if (setup.get_timing)
-    {
-      substep_watch.stop();
-      mean_update_time += substep_watch.read_duration();
     }
     if (setup.time_to_save_state())
     {
@@ -1421,24 +1497,14 @@ int main (int argc, char* argv[])
     while (iter_hodge < setup.niter_hodge_max && (!flow_controller->latest_mass_flow_is_known() || convergence_check_on_dxyz_hodge > setup.u_tol*channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho())))
     {
       ns->copy_dxyz_hodge(dxyz_hodge_old);
-      if (setup.get_timing)
-        substep_watch.start("");
+
+
       ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
 #ifdef P4EST_DEBUG
       check_voronoi_tesselation_and_print_warnings_if_wrong(ns, face_solver);
 #endif
-      if (setup.get_timing)
-      {
-        substep_watch.stop();
-        mean_viscosity_step_time += substep_watch.read_duration();
-        substep_watch.start("");
-      }
-      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, dxyz_hodge_old, setup.control_hodge);
-      if (setup.get_timing)
-      {
-        substep_watch.stop();
-        mean_projection_step_time += substep_watch.read_duration();
-      }
+
+      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, NULL, dxyz_hodge_old, setup.control_hodge);
 
       if (setup.flow_condition == constant_mass_flow)
       {
@@ -1467,14 +1533,8 @@ int main (int argc, char* argv[])
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       ierr = VecDestroy(dxyz_hodge_old[dir]); CHKERRXX(ierr); }
 
-    if (setup.get_timing)
-      substep_watch.start("");
     ns->compute_velocity_at_nodes(setup.steps_grid_update > 1);
-    if (setup.get_timing)
-    {
-      substep_watch.stop();
-      mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
-    }
+
     ns->compute_pressure();
 
     setup.tn += setup.dt;
@@ -1491,6 +1551,10 @@ int main (int argc, char* argv[])
     // exporting drag if desired
     if (setup.save_drag)
       export_drag(setup, ns, channel, flow_controller);
+
+    // exporting drag if desired
+    if (setup.save_timing)
+      setup.export_and_accumulate_timings(ns);
 
     // exporting velocity profiles if desired
     if (setup.save_profiles)
@@ -1509,22 +1573,9 @@ int main (int argc, char* argv[])
     setup.iter++;
   }
 
-  if (setup.get_timing)
-  {
-    watch.stop();
-    mean_full_iteration_time             = watch.read_duration()/((double) setup.iter);
-    mean_viscosity_step_time            /= ((double) setup.iter);
-    mean_projection_step_time           /= ((double) setup.iter);
-    mean_compute_velocity_at_nodes_time /= ((double) setup.iter);
-    mean_update_time                    /= ((double) setup.iter);
 
-    ierr = PetscPrintf(ns->get_mpicomm(), "Mean computational time spent on \n");                                           CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), " viscosity step: %.5e\n", mean_viscosity_step_time);                             CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), " projection step: %.5e\n", mean_projection_step_time);                           CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), " computing velocities at nodes: %.5e\n*", mean_compute_velocity_at_nodes_time);  CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), " grid update: %.5e\n", mean_update_time);                                        CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), " full iteration (total): %.5e\n", mean_full_iteration_time);                     CHKERRXX(ierr);
-  }
+  if(setup.save_timing)
+    setup.print_averaged_timings(mpi);
 
   if (cell_solver != NULL)
     delete  cell_solver;
