@@ -75,7 +75,7 @@ int main( int argc, char* argv[] )
 		cmd.parse( argc, argv );
 
 		Circle circle( 0, 0, 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 2 ), &circle );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 3 ), &circle );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -115,6 +115,39 @@ int main( int argc, char* argv[] )
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
+		// Determining the node types.
+		Vec nodeType;
+		ierr = VecCreateGhostNodes( p4est, nodes, &nodeType );
+		CHKERRXX( ierr );
+		double *nodeTypePtr;
+		ierr = VecGetArray( nodeType, &nodeTypePtr );
+		CHKERRXX( ierr );
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+			nodeTypePtr[i] = 0.0;
+		for( size_t g = 0; g < ( nodes->indep_nodes.elem_count - nodes->num_owned_indeps); g++ )
+    		nodeTypePtr[nodes->num_owned_indeps + g] = 1.0 * pow( 3, mpi.rank() );
+
+		VecGhostUpdateBegin( nodeType, ADD_VALUES, SCATTER_REVERSE );
+		VecGhostUpdateEnd( nodeType, ADD_VALUES, SCATTER_REVERSE );
+		VecGhostUpdateBegin( nodeType, INSERT_VALUES, SCATTER_FORWARD );
+		VecGhostUpdateEnd( nodeType, INSERT_VALUES, SCATTER_FORWARD );
+
+		PetscSynchronizedPrintf( mpi.comm(), "Process %d indep_nodes = %d, num_owned_indeps = %d, num_owned_shared = %d\n",
+				mpi.rank(), nodes->indep_nodes.elem_count, nodes->num_owned_indeps, nodes->num_owned_shared );
+		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
+
+		// Determining the process that owns each independent node.
+		Vec process;
+		ierr = VecCreateGhostNodes( p4est, nodes, &process );
+		CHKERRXX( ierr );
+		double *processPtr;
+		ierr = VecGetArray( process, &processPtr );
+		CHKERRXX( ierr );
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+			processPtr[i] = mpi.rank();
+		VecGhostUpdateBegin( process, INSERT_VALUES, SCATTER_FORWARD );
+		VecGhostUpdateEnd( process, INSERT_VALUES, SCATTER_FORWARD );
+
 		/// Testing the fast sweeping algorithm ///
 		FastSweeping fsm{};
 
@@ -138,7 +171,7 @@ int main( int argc, char* argv[] )
 			CHKERRXX( ierr );
 
 			for( int j = 0; j < nodes->num_owned_indeps; j++ )
-				orderingsPtr[i][j] = orderingsSrc[i][j];
+				orderingsPtr[i][orderingsSrc[i][j]] = j;
 
 			ierr = VecGhostUpdateBegin( orderings[i], INSERT_VALUES, SCATTER_FORWARD );		// After we are done with the locally
 			CHKERRXX( ierr );																// owned nodes, scatter them onto the
@@ -156,15 +189,23 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								5, 0, oss.str().c_str(),
+								7, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiPtr,
 								VTK_POINT_DATA, "orderings0", orderingsPtr[0],
 								VTK_POINT_DATA, "orderings1", orderingsPtr[1],
 								VTK_POINT_DATA, "orderings2", orderingsPtr[2],
-								VTK_POINT_DATA, "orderings3", orderingsPtr[3] );
+								VTK_POINT_DATA, "orderings3", orderingsPtr[3],
+								VTK_POINT_DATA, "nodeType", nodeTypePtr,
+								VTK_POINT_DATA, "process", processPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
 		ierr = VecRestoreArray( phi, &phiPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( nodeType, &nodeTypePtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( process, &processPtr );
 		CHKERRXX( ierr );
 
 		for( int i = 0; i < 4; i++ )
@@ -178,6 +219,12 @@ int main( int argc, char* argv[] )
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( nodeType );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( process );
 		CHKERRXX( ierr );
 
 		// Destroy the p4est and its connectivity structure.
