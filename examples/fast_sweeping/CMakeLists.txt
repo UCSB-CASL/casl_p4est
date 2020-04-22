@@ -103,7 +103,8 @@ list( APPEND HEADERS
 		${PARCASL}/src/point3.h
 		${PARCASL}/src/simplex2.h
 		${PARCASL}/src/types.h
-		${PARCASL}/src/petsc_compatibility.h )
+		${PARCASL}/src/petsc_compatibility.h
+		${PARCASL}/src/FastSweeping.h )
 
 list( APPEND SOURCES
 		${PARCASL}/src/parameter_list.cpp
@@ -115,7 +116,8 @@ list( APPEND SOURCES
 		${PARCASL}/src/cube3.cpp
 		${PARCASL}/src/point2.cpp
 		${PARCASL}/src/point3.cpp
-		${PARCASL}/src/simplex2.cpp )
+		${PARCASL}/src/simplex2.cpp
+		${PARCASL}/src/FastSweeping.cpp )
 
 # For dimension based compilation, we must create a Run Configuration.  Go to CLion -> Preferences -> Build, Execution, Deployment
 # -> CMake.  Create a profile (debug or release) and add to "CMake options:" the following: -DDIM=2d, for 2D, or -DDIM=3d for 3D.

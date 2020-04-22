@@ -25,6 +25,7 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
+#include <src/FastSweeping.h>
 
 using namespace std;
 
@@ -74,7 +75,7 @@ int main( int argc, char* argv[] )
 		cmd.parse( argc, argv );
 
 		Circle circle( 0, 0, 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 2 ), cmd.get( "lmax", 4 ), &circle );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 2 ), &circle );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -114,27 +115,36 @@ int main( int argc, char* argv[] )
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
-		// Calculate L^1 norm from each locally owned independent node to the bottom left reference node.
-		Vec l1Norm_1;
-		ierr = VecCreateGhostNodes( p4est, nodes, &l1Norm_1 );
+		/// Testing the fast sweeping algorithm ///
+		FastSweeping fsm{};
+
+		Vec orderings[4];
+		ierr = VecCreateGhostNodes( p4est, nodes, &orderings[0] );			// Verifying the orderings.
+		CHKERRXX( ierr );
+		ierr = VecDuplicate( orderings[0], &orderings[1] );
+		CHKERRXX( ierr );
+		ierr = VecDuplicate( orderings[0], &orderings[2] );
+		CHKERRXX( ierr );
+		ierr = VecDuplicate( orderings[0], &orderings[3] );
 		CHKERRXX( ierr );
 
-		double *l1NormPtr_1;
-		ierr = VecGetArray( l1Norm_1, &l1NormPtr_1 );
-		CHKERRXX( ierr );
+		p4est_locidx_t **orderingsSrc = fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//		fsm.reinitializeLevelSetFunction( phi, xyz_min, xyz_max, l1Norm_1 );
 
-		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+		double *orderingsPtr[4];
+		for( int i = 0; i < 4; i++ )
 		{
-			double xyz[P4EST_DIM];
-			node_xyz_fr_n( i, p4est, nodes, xyz );
-			double diff[P4EST_DIM] = { xyz[0] - xyz_min[0], xyz[1] - xyz_min[1] };
-			l1NormPtr_1[i] = compute_L1_norm( diff, P4EST_DIM );
-		}
+			ierr = VecGetArray( orderings[i], &orderingsPtr[i] );
+			CHKERRXX( ierr );
 
-		ierr = VecGhostUpdateBegin( l1Norm_1, INSERT_VALUES, SCATTER_FORWARD );		// After we are done with the locally
-		CHKERRXX( ierr );															// owned nodes, scatter them onto the
-		ierr = VecGhostUpdateEnd( l1Norm_1, INSERT_VALUES, SCATTER_FORWARD ); 		// ghost nodes.
-		CHKERRXX( ierr );
+			for( int j = 0; j < nodes->num_owned_indeps; j++ )
+				orderingsPtr[i][j] = orderingsSrc[i][j];
+
+			ierr = VecGhostUpdateBegin( orderings[i], INSERT_VALUES, SCATTER_FORWARD );		// After we are done with the locally
+			CHKERRXX( ierr );																// owned nodes, scatter them onto the
+			ierr = VecGhostUpdateEnd( orderings[i], INSERT_VALUES, SCATTER_FORWARD ); 		// ghost nodes.
+			CHKERRXX( ierr );
+		}
 
 		// Reinitialize the level-set function values.
 		my_p4est_level_set_t ls( &nodeNeighbors );
@@ -146,22 +156,28 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								2, 0, oss.str().c_str(),
+								5, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiPtr,
-								VTK_POINT_DATA, "L1_1", l1NormPtr_1 );
+								VTK_POINT_DATA, "orderings0", orderingsPtr[0],
+								VTK_POINT_DATA, "orderings1", orderingsPtr[1],
+								VTK_POINT_DATA, "orderings2", orderingsPtr[2],
+								VTK_POINT_DATA, "orderings3", orderingsPtr[3] );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
 
-		ierr = VecRestoreArray( l1Norm_1, &l1NormPtr_1 );
-		CHKERRXX( ierr );
+		for( int i = 0; i < 4; i++ )
+		{
+			ierr = VecRestoreArray( orderings[i], &orderingsPtr[i] );
+			CHKERRXX( ierr );
+
+			ierr = VecDestroy( orderings[i] );
+			CHKERRXX( ierr );
+		}
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );
-		CHKERRXX( ierr );
-
-		ierr = VecDestroy( l1Norm_1 );
 		CHKERRXX( ierr );
 
 		// Destroy the p4est and its connectivity structure.
