@@ -1481,7 +1481,7 @@ int main (int argc, char* argv[])
   int ngrids = cmd.get<int>("ngrids", ngrids_);
   int test_number = cmd.get<int>("test", test_number_);
 #if defined(STAMPEDE)
-  string work_folder = cmd.get<string>("work_dir", "/work/04965/tg842642/stampede2/cell_xgfm");
+  string work_folder = cmd.get<string>("work_dir", "/scratch/04965/tg842642/cell_xgfm");
 #elif defined(POD_CLUSTER)
   string work_folder = cmd.get<string>("work_dir", "/home/regan/cell_xgfm");
 #else

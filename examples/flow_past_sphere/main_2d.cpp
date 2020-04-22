@@ -51,7 +51,7 @@ static const string extra_info =
 #if defined(POD_CLUSTER)
 const std::string default_export_dir  = "/scratch/regan/flow_past_" + string((P4EST_DIM == 3 ? "sphere" : "cylinder"));
 #elif defined(STAMPEDE)
-const std::string default_export_dir  = "/work/04965/tg842642/stampede2/flow_past_" + string((P4EST_DIM == 3 ? "sphere" : "cylinder"));
+const std::string default_export_dir  = "/scratch/04965/tg842642/flow_past_" + string((P4EST_DIM == 3 ? "sphere" : "cylinder"));
 #elif defined(LAPTOP)
 const std::string default_export_dir  = "/home/raphael/workspace/projects/flow_past_" + string((P4EST_DIM == 3 ? "sphere" : "cylinder"));
 #else
@@ -464,7 +464,6 @@ struct BCWALLVALUE_VELOCITY : CF_DIM
     return (dir == dir::x ? u0 : 0.0);
   }
 };
-
 
 struct initial_velocity_t : CF_DIM
 {
