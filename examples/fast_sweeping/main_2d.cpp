@@ -75,7 +75,7 @@ int main( int argc, char* argv[] )
 		cmd.parse( argc, argv );
 
 		Circle circle( 0, 0, 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 3 ), &circle );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 5 ), &circle );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -136,6 +136,35 @@ int main( int argc, char* argv[] )
 				mpi.rank(), nodes->indep_nodes.elem_count, nodes->num_owned_indeps, nodes->num_owned_shared );
 		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
 
+		// Finding out which ghost nodes should be discarded given that they do not have a well defined neighborhood to
+		// compute their finite differences.
+		Vec badNode;
+		ierr = VecCreateGhostNodes( p4est, nodes, &badNode );
+		CHKERRXX( ierr );
+		double *badNodePtr;
+		ierr = VecGetArray( badNode, &badNodePtr );
+		CHKERRXX( ierr );
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+			badNodePtr[i] = 0;
+		for( size_t g = 0; g < ( nodes->indep_nodes.elem_count - nodes->num_owned_indeps); g++ )
+		{
+			try
+			{
+				const quad_neighbor_nodes_of_node_t *qnnnPtr;							// Works only in DEBUG mode; detecting ghost nodes without
+				nodeNeighbors.get_neighbors( nodes->num_owned_indeps + g, qnnnPtr );	// a well-defined neighborhood.
+				badNodePtr[nodes->num_owned_indeps + g] = 0;
+			}
+			catch( std::exception& e )
+			{
+				badNodePtr[nodes->num_owned_indeps + g] = 1.0 * pow( 3, mpi.rank() );
+			}
+		}
+
+		VecGhostUpdateBegin( badNode, ADD_VALUES, SCATTER_REVERSE );
+		VecGhostUpdateEnd( badNode, ADD_VALUES, SCATTER_REVERSE );
+		VecGhostUpdateBegin( badNode, INSERT_VALUES, SCATTER_FORWARD );
+		VecGhostUpdateEnd( badNode, INSERT_VALUES, SCATTER_FORWARD );
+
 		// Determining the process that owns each independent node.
 		Vec process;
 		ierr = VecCreateGhostNodes( p4est, nodes, &process );
@@ -189,13 +218,14 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								7, 0, oss.str().c_str(),
+								8, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiPtr,
 								VTK_POINT_DATA, "orderings0", orderingsPtr[0],
 								VTK_POINT_DATA, "orderings1", orderingsPtr[1],
 								VTK_POINT_DATA, "orderings2", orderingsPtr[2],
 								VTK_POINT_DATA, "orderings3", orderingsPtr[3],
 								VTK_POINT_DATA, "nodeType", nodeTypePtr,
+								VTK_POINT_DATA, "badNode", badNodePtr,
 								VTK_POINT_DATA, "process", processPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
@@ -203,6 +233,9 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( nodeType, &nodeTypePtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( badNode,&badNodePtr );
 		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( process, &processPtr );
@@ -222,6 +255,9 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		ierr = VecDestroy( nodeType );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( badNode );
 		CHKERRXX( ierr );
 
 		ierr = VecDestroy( process );

@@ -176,7 +176,7 @@ class my_p4est_node_neighbors_t {
       p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
       ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
       // ni->pad8 is the number of remote process(es) that list ni as one of their ghost nodes
-      // Therefore ni is purely local if ni->pad8 is not 0, otherwise it is a layer node
+      // Therefore ni is purely local if ni->pad8 is 0, otherwise it is a layer node
     }
   }
 

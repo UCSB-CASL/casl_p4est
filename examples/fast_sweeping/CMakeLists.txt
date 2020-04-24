@@ -15,6 +15,9 @@ if( DIM MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
 endif()
 
+# Some of the following definitons can be placed in the project profile with -D<definition>=<value>.
+add_compile_definitions( PRIVATE CASL_THROWS )
+
 ######################## Settings ########################
 
 # CASL library root directory.
