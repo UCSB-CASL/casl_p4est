@@ -446,9 +446,9 @@ public:
 
   void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
 
-  void set_velocities(Vec *vnm1, Vec *vn);
+  void set_velocities(Vec *vnm1, Vec *vn, const double *max_L2_norm_u = NULL);
 
-  void set_velocities(CF_DIM **vnm1, CF_DIM **vn);
+  void set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u = false);
 
   inline void set_vnp1_nodes(CF_DIM **vnp1)
   {
@@ -515,6 +515,7 @@ public:
   inline double get_dt() { return dt_n; }
 
   inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
+  inline my_p4est_node_neighbors_t* get_ngbd_nm1() { return ngbd_nm1; }
 
   inline my_p4est_cell_neighbors_t* get_ngbd_c() { return ngbd_c; }
 

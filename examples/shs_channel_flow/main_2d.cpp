@@ -74,7 +74,7 @@ const std::string extra_info =
 #if defined(POD_CLUSTER)
 const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #elif defined(STAMPEDE)
-const std::string default_export_dir  = "/work/04965/tg842642/stampede2/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #elif defined(LAPTOP)
 const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #elif defined(JUPITER)
@@ -82,7 +82,7 @@ const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + 
 #elif defined(NEPTUNE)
 const std::string default_export_dir  = "/home/hlevy/workspace/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #else
-const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/local/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #endif
 
 const int default_lmin                        = 4;
@@ -97,6 +97,7 @@ const double default_height                   = 2.0;
 const double default_width                    = 3.0;
 #endif
 const double default_duration                 = 200.0;
+const double def_white_noise_rms              = 0.00;
 const double default_pitch_to_height          = 3.0/16.0;
 const double default_gas_fraction             = 0.5;
 const int default_sl_order                    = 2;
@@ -130,39 +131,37 @@ class mass_flow_controller_t
 {
 private:
   unsigned char flow_dir;
+  bool forcing_is_on;
   double desired_bulk_velocity;
   double latest_mass_flow;
-  double mean_hodge_derivative;
-  bool latest_mass_flow_is_set;
   double section;
 
 public:
   mass_flow_controller_t(const char &flow_direction, const double& section_) :
-    flow_dir(flow_direction), desired_bulk_velocity(-1.0), latest_mass_flow(-1.0), latest_mass_flow_is_set(false), section(section_) { P4EST_ASSERT(flow_dir < P4EST_DIM); }
+    flow_dir(flow_direction), forcing_is_on(false), desired_bulk_velocity(-1.0), latest_mass_flow(0.0), section(section_) { P4EST_ASSERT(flow_dir < P4EST_DIM); }
 
   void activate_forcing(const double &desired_U_b)
   {
     P4EST_ASSERT(desired_U_b > 0.0);
     desired_bulk_velocity = desired_U_b;
+    forcing_is_on = true;
   }
 
-  double update_external_acceleration_to_enforce_desired_bulk_velocity(my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM])
+  double update_forcing_and_get_mean_streamwise_velocity_correction(my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM]) const
   {
-    evaluate_current_mass_flow(ns);
-    mean_hodge_derivative = ns->get_correction_in_hodge_derivative_for_enforcing_mass_flow(flow_dir, desired_bulk_velocity, &latest_mass_flow);
-    external_acceleration[flow_dir]->update_term(-mean_hodge_derivative*ns->alpha()/ns->get_dt());
-    return mean_hodge_derivative;
+    P4EST_ASSERT(forcing_is_on);
+    double required_correction_to_hodge_derivative = ns->get_correction_in_hodge_derivative_for_enforcing_mass_flow(flow_dir, desired_bulk_velocity, &latest_mass_flow);
+    external_acceleration[flow_dir]->update_term(-required_correction_to_hodge_derivative*ns->alpha()/ns->get_dt());
+    return required_correction_to_hodge_derivative;
   }
 
   void evaluate_current_mass_flow(my_p4est_navier_stokes_t* ns)
   {
     ns->global_mass_flow_through_slice(dir::x, section, latest_mass_flow);
-    latest_mass_flow_is_set = true;
   }
 
-  bool latest_mass_flow_is_known() const  { return latest_mass_flow_is_set;                                 }
-  double read_latest_mass_flow() const    { P4EST_ASSERT(latest_mass_flow_is_set); return latest_mass_flow; }
-  double targeted_bulk_velocity() const   { return desired_bulk_velocity;                                   }
+  double read_latest_mass_flow() const    { return latest_mass_flow; }
+  double targeted_bulk_velocity() const   { P4EST_ASSERT(forcing_is_on); return desired_bulk_velocity; }
 
   ~mass_flow_controller_t(){}
 };
@@ -183,6 +182,7 @@ struct simulation_setup
   const unsigned int steps_grid_update;
   const double duration;
   const bool use_adapted_dt;
+  const double white_noise_rms;
   const int nterms_in_series;
   const std::string des_pc_cell;
   const std::string des_solver_cell;
@@ -217,6 +217,7 @@ struct simulation_setup
     steps_grid_update(cmd.get<unsigned int>("grid_update", default_grid_update)),
     duration(cmd.get<double>("duration", default_duration)),
     use_adapted_dt(cmd.contains("adapted_dt")),
+    white_noise_rms(cmd.get<double>("white_noise_rms", def_white_noise_rms)),
     nterms_in_series(cmd.get<int>("nterms", default_nterms)),
     des_pc_cell(cmd.get<std::string>("pc_cell", default_pc_cell)),
     des_solver_cell(cmd.get<std::string>("cell_solver", default_cell_solver)),
@@ -302,6 +303,11 @@ struct simulation_setup
   int running_save_data_idx() const { return (int) floor(tn/dt_save_data); }
   void update_save_data_idx()       { save_data_idx = running_save_data_idx(); }
   bool time_to_save_state() const   { return (save_state && running_save_data_idx() != save_data_idx); }
+
+  bool done() const
+  {
+    return tn + 0.01*dt > tstart + duration || accuracy_check_done;
+  }
 
   int running_export_vtk() const  { return (int) floor(tn/vtk_dt); }
   void update_export_vtk()        { export_vtk = running_export_vtk(); }
@@ -1139,10 +1145,11 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     P4EST_ASSERT(fabs(channel.Re_b(ns->get_rho()*MULTD(controller->targeted_bulk_velocity(), channel.height(), channel.width()), ns->get_rho(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
 
-
   setup.tstart = 0.0; // no restart so we assume we start from 0.0
-  channel.initialize_velocity_to_analytical_solution(ns, setup.nterms_in_series, setup.flow_condition, setup.Reynolds);
-  setup.dt = ns->get_dt();
+  channel.initialize_velocity(ns, setup.nterms_in_series, setup.flow_condition, setup.Reynolds, setup.white_noise_rms);
+  ns->compute_dt(); // dt_n is now calculated to a correct value but dt_nm1 is still a bit shitty/not well-defined
+  setup.dt = ns->get_dt(); // we get that value of dt_n into dt
+  ns->set_dt(setup.dt, setup.dt); // we set dt_nm1 = dt_n = dt
 
   ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
   CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
@@ -1305,9 +1312,8 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
     profiler = new velocity_profiler_t(cmd, ns, setup, channel);
 }
 
-bool monitor_simulation(const simulation_setup &setup, mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
+bool monitor_simulation(const simulation_setup &setup, const mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
 {
-  controller->evaluate_current_mass_flow(ns);
   if (ns->get_mpirank() == 0)
   {
     FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "a");
@@ -1413,8 +1419,9 @@ int main (int argc, char* argv[])
   cmd.add_option("initial_Re_tau",      "relevant ONLY in case of restart with constant mass flow rate (i.e. restart with Re_b defined by the user). \n\t If present (and defined), this input parameter is used to set the initial value of the bulk driving force f_x. \n\t If not defined, the value is calculated from the analytical laminar cases (which may be way off, expect discontinuities in the monitored Re_tau in such a case).");
   cmd.add_option("pitch",               "pitch, default = " + std::to_string(default_pitch_to_height) + "*height");
   cmd.add_option("GF",                  "gas fraction, default is " + std::to_string(default_gas_fraction));
-  cmd.add_option("adapted_dt",          "activates the calculation of dt based on the local cell sizes if present");
+  cmd.add_option("white_noise_rms",     "sets the intensity of white noise perturbation in initial velocity fields, relative to mean bulk velocity (useless when restarting); default value is " + std::to_string(def_white_noise_rms));
   // method-related parameters
+  cmd.add_option("adapted_dt",          "activates the calculation of dt based on the local cell sizes if present");
   cmd.add_option("sl_order",            "the order for the semi-lagrangian method, either 1 (stable) or 2 (accurate), default is " + std::to_string(default_sl_order) + " or value read from solver state if restarted.");
   cmd.add_option("cfl",                 "dt = cfl * dx/vmax, default is " + std::to_string(default_cfl) + " or value read from solver state if restarted.");
   cmd.add_option("u_tol",               "relative numerical tolerance on the bulk velocity, default is " + std::to_string(default_u_tol));
@@ -1471,11 +1478,11 @@ int main (int argc, char* argv[])
   my_p4est_poisson_faces_t* face_solver = NULL;
   Vec dxyz_hodge_old[P4EST_DIM];
 
-  while (setup.tn + 0.01*setup.dt < setup.tstart + setup.duration && !setup.accuracy_check_done)
+  while (!setup.done())
   {
     if (setup.iter > 0)
     {
-      if (flow_controller->read_latest_mass_flow() < 0.0)
+      if (flow_controller->read_latest_mass_flow() <= 0.0)
         std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
 
       bool solvers_can_be_reused = setup.set_dt_and_update_grid(ns);
@@ -1484,6 +1491,7 @@ int main (int argc, char* argv[])
       if (face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
     }
+
     if (setup.time_to_save_state())
     {
       setup.update_save_data_idx();
@@ -1494,10 +1502,9 @@ int main (int argc, char* argv[])
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       ierr = VecCreateNoGhostFaces(ns->get_p4est(), ns->get_faces(), &dxyz_hodge_old[dir], dir); CHKERRXX(ierr); }
     unsigned int iter_hodge = 0;
-    while (iter_hodge < setup.niter_hodge_max && (!flow_controller->latest_mass_flow_is_known() || convergence_check_on_dxyz_hodge > setup.u_tol*channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho())))
+    while (iter_hodge < setup.niter_hodge_max && (convergence_check_on_dxyz_hodge > setup.u_tol*channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho())))
     {
       ns->copy_dxyz_hodge(dxyz_hodge_old);
-
 
       ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
 #ifdef P4EST_DEBUG
@@ -1506,21 +1513,12 @@ int main (int argc, char* argv[])
 
       convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, NULL, dxyz_hodge_old, setup.control_hodge);
 
+      flow_controller->evaluate_current_mass_flow(ns);
       if (setup.flow_condition == constant_mass_flow)
       {
-        const double required_mean_correction_to_hodge_derivative = flow_controller->update_external_acceleration_to_enforce_desired_bulk_velocity(ns, external_acceleration);
+        const double required_mean_correction_to_hodge_derivative = flow_controller->update_forcing_and_get_mean_streamwise_velocity_correction(ns, external_acceleration);
         if(setup.control_hodge == uvw_components || setup.control_hodge == u_component)
           convergence_check_on_dxyz_hodge = convergence_check_on_dxyz_hodge + fabs(required_mean_correction_to_hodge_derivative); // Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous time-step only but if the required correction is too big, you may have to do it again...
-      }
-      else if(setup.iter == 0)
-      {
-        /* we need the mass flow in the convergence criterion of this inner loop
-         * it will be known for iter > 0 but not for your very first pass --> so evaluate it here for your VERY FIRST pass only
-         * (not for subsequent ones, because 1) the actual value of the parameter is not too critical in the convergence criterion
-         * (it's needed to have a rough estimates of the desired numerical tolerance, that's all), 2) the actual exact value is not
-         * critial to ensure what the user wants in this case, i.e. a constant diving force for the flow
-         */
-        flow_controller->evaluate_current_mass_flow(ns);
       }
 
       if(setup.control_hodge == uvw_components){

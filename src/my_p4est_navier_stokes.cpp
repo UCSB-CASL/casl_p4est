@@ -524,30 +524,31 @@ void my_p4est_navier_stokes_t::set_bc(BoundaryConditionsDIM *bc_v, BoundaryCondi
   }
 }
 
-void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_)
+void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_, const double *max_L2_norm_u_from_user)
 {
   PetscErrorCode ierr;
 
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
+    // destroy current vectors if needed
     if(this->vn_nodes[dir] != NULL && this->vn_nodes[dir] != vn_nodes_[dir]){
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
-    this->vn_nodes[dir]   = vn_nodes_[dir];
-
     if(this->vnm1_nodes[dir] != NULL && this->vnm1_nodes[dir] != vnm1_nodes_[dir]){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
-    this->vnm1_nodes[dir] = vnm1_nodes_[dir];
-
     if(this->vnp1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes [dir]); CHKERRXX(ierr);
     if(this->vstar[dir] != NULL){
       ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir], dir); CHKERRXX(ierr);
     if(this->vnp1[dir] != NULL){
       ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
+    // set to given vectors or create new vectors
+    this->vn_nodes[dir]   = vn_nodes_[dir];
+    this->vnm1_nodes[dir] = vnm1_nodes_[dir];
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes [dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1[dir], dir); CHKERRXX(ierr);
 
+    // create vectors for second derivatives of node-sampled velocities
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
       if(second_derivatives_vn_nodes[dd][dir] != NULL){
         ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr); }
@@ -561,52 +562,76 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes_, Vec *vn_nodes_)
   ngbd_n->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
   ngbd_nm1->second_derivatives_central(vnm1_nodes, DIM(second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2]), P4EST_DIM);
 
+
+  if(max_L2_norm_u_from_user != NULL) {
+    max_L2_norm_u = *max_L2_norm_u_from_user;
+#ifdef P4EST_DEBUG
+    // just to make sure in debug, but otherwise we assume the user knows it should be synchronized
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+#endif
+  }
+
   if(this->vorticity != NULL){
     ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vorticity); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
+void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u)
 {
   PetscErrorCode ierr;
 
-  double *v_p;
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  double *vnm1_p[P4EST_DIM], *vn_p[P4EST_DIM];
+  double max_velocity = 0.0;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
+    // destroy current vectors if needed
     if(this->vnm1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecGetArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
-    for(size_t n=0; n<nodes_nm1->indep_nodes.elem_count; ++n)
-    {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz);
-      v_p[n] = (*vnm1[dir])(xyz);
-    }
-    ierr = VecRestoreArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
-
     if(this->vn_nodes[dir] != NULL){
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecGetArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
-    for(size_t n=0; n<nodes_n->indep_nodes.elem_count; ++n)
-    {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
-      v_p[n] = (*vn[dir])(xyz);
-    }
-    ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
-
     if(this->vnp1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes [dir]); CHKERRXX(ierr);
     if(this->vstar[dir] != NULL){
       ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir], dir); CHKERRXX(ierr);
     if(this->vnp1[dir] != NULL){
       ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1[dir], dir); CHKERRXX(ierr);
+    // create vectors
+    ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[dir]);       CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes[dir]);     CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir], dir);     CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1[dir], dir);      CHKERRXX(ierr);
 
+    // get pointers for sampling given functions at nodes
+    ierr = VecGetArray(vnm1_nodes[dir], &vnm1_p[dir]); CHKERRXX(ierr);
+    ierr = VecGetArray(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+  }
+
+  for(size_t n = 0; n < MAX(nodes_nm1->indep_nodes.elem_count, nodes_n->indep_nodes.elem_count); ++n)
+  {
+    double xyz[P4EST_DIM];
+    if(n < nodes_nm1->indep_nodes.elem_count)
+    {
+      node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        vnm1_p[dir][n] = (*vnm1[dir])(xyz);
+    }
+    if(n < nodes_n->indep_nodes.elem_count)
+    {
+      node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        vn_p[dir][n] = (*vn[dir])(xyz);
+      if(set_max_L2_norm_u)
+        max_velocity = MAX(max_velocity, sqrt(SUMD(SQR(vn_p[dir::x][n]), SQR(vn_p[dir::y][n]), SQR(vn_p[dir::z][n]))));
+    }
+  }
+
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    // restore pointers
+    ierr = VecRestoreArray(vnm1_nodes[dir], &vnm1_p[dir]);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(vn_nodes[dir], &vn_p[dir]);      CHKERRXX(ierr);
+    // create vectors for second derivatives of node-sampled velocities
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
       if(second_derivatives_vn_nodes[dd][dir] != NULL){
         ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr); }
@@ -616,13 +641,16 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
       ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
     }
   }
+
   ngbd_n->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
   ngbd_nm1->second_derivatives_central(vnm1_nodes, DIM(second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2]), P4EST_DIM);
+
+  if(set_max_L2_norm_u) {
+    int mpiret = MPI_Allreduce(&max_velocity, &max_L2_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
 
   if(this->vorticity != NULL){
     ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vorticity); CHKERRXX(ierr);
-
 }
 
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
