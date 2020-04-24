@@ -285,6 +285,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   vorticity = NULL;
   smoke = NULL;
   bc_smoke = NULL;
+  refine_with_smoke = false;
 
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
@@ -2998,7 +2999,7 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
       ierr = PetscBinaryRead(fd, integer_parameters, 5, PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
-    int mpiret = MPI_Bcast(integer_parameters, 5, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    int mpiret = MPI_Bcast(integer_parameters, 5, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
     // Then we save the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
