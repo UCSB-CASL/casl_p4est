@@ -637,6 +637,28 @@ public:
     return memory;
   }
 
+#ifdef CASL_THROWS
+	/**
+	 * Retrieve whether a node in the partition has a valid quad neighborhood.
+	 * @param [in] n Node index in the range [0,
+	 * @return True if node (ghost or locally owned) has a valid neighborhood.
+	 * @throws Exception if neighborhood structure hasn't been initialized yet.
+	 */
+	[[nodiscard]] inline bool has_valid_qnnn( p4est_locidx_t n ) const
+	{
+		if( is_initialized )
+		{
+			return is_qnnn_valid[n];
+		}
+		else
+		{
+			std::ostringstream oss;
+			oss << "bool has_valid_qnnn( p4est_locidx_t n ): cannot be used with uninitialized neighbors; on processor " << p4est->mpirank;
+			throw std::runtime_error( oss.str().c_str() );
+		}
+	}
+#endif
+
 private:
   /*!
    * \brief second_derivatives_central_using_block is a private procedure to shortcut the public second_derivatives_central

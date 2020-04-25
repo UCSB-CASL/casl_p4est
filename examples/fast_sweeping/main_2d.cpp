@@ -180,33 +180,8 @@ int main( int argc, char* argv[] )
 		/// Testing the fast sweeping algorithm ///
 		FastSweeping fsm{};
 
-		Vec orderings[4];
-		ierr = VecCreateGhostNodes( p4est, nodes, &orderings[0] );			// Verifying the orderings.
-		CHKERRXX( ierr );
-		ierr = VecDuplicate( orderings[0], &orderings[1] );
-		CHKERRXX( ierr );
-		ierr = VecDuplicate( orderings[0], &orderings[2] );
-		CHKERRXX( ierr );
-		ierr = VecDuplicate( orderings[0], &orderings[3] );
-		CHKERRXX( ierr );
-
-		p4est_locidx_t **orderingsSrc = fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
-//		fsm.reinitializeLevelSetFunction( phi, xyz_min, xyz_max, l1Norm_1 );
-
-		double *orderingsPtr[4];
-		for( int i = 0; i < 4; i++ )
-		{
-			ierr = VecGetArray( orderings[i], &orderingsPtr[i] );
-			CHKERRXX( ierr );
-
-			for( int j = 0; j < nodes->num_owned_indeps; j++ )
-				orderingsPtr[i][orderingsSrc[i][j]] = j;
-
-			ierr = VecGhostUpdateBegin( orderings[i], INSERT_VALUES, SCATTER_FORWARD );		// After we are done with the locally
-			CHKERRXX( ierr );																// owned nodes, scatter them onto the
-			ierr = VecGhostUpdateEnd( orderings[i], INSERT_VALUES, SCATTER_FORWARD ); 		// ghost nodes.
-			CHKERRXX( ierr );
-		}
+		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//		fsm.reinitializeLevelSetFunction( &phi );
 
 		// Reinitialize the level-set function values.
 		my_p4est_level_set_t ls( &nodeNeighbors );
@@ -218,12 +193,8 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								8, 0, oss.str().c_str(),
+								4, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiPtr,
-								VTK_POINT_DATA, "orderings0", orderingsPtr[0],
-								VTK_POINT_DATA, "orderings1", orderingsPtr[1],
-								VTK_POINT_DATA, "orderings2", orderingsPtr[2],
-								VTK_POINT_DATA, "orderings3", orderingsPtr[3],
 								VTK_POINT_DATA, "nodeType", nodeTypePtr,
 								VTK_POINT_DATA, "badNode", badNodePtr,
 								VTK_POINT_DATA, "process", processPtr );
@@ -240,15 +211,6 @@ int main( int argc, char* argv[] )
 
 		ierr = VecRestoreArray( process, &processPtr );
 		CHKERRXX( ierr );
-
-		for( int i = 0; i < 4; i++ )
-		{
-			ierr = VecRestoreArray( orderings[i], &orderingsPtr[i] );
-			CHKERRXX( ierr );
-
-			ierr = VecDestroy( orderings[i] );
-			CHKERRXX( ierr );
-		}
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );

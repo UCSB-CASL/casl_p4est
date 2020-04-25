@@ -36,12 +36,14 @@
 #include <algorithm>
 #include <vector>
 
+// TODO: Relyng on accessing is_qnnn_valid[.] from my_p4est_node_neighbors.
+
 /**
- * Implementation of the Fast Sweeping Method in a parallel distributed environment using quadtrees (resp. octrees).
- * Algorithm is adapted from the Domain Decomposition Parallel FSM presented in "Hybrid massively parallel fast sweeping
- * method for static Hamilton-Jacobi equations" by M. Detrixhe and F. Gibou, 2016 [1].
- * Orderings are based on grid node distances to reference points as described in "Fast Sweeping Methods for Eikonal
- * Equations on Triangular Meshes" by J. Qian, Y. Zhang, and H. Zhao, 2007 [2].
+ * Implementation of the Fast Sweeping Method in a parallel distributed environment using quadtrees (resp. octrees) to
+ * solve the Eikonal equation $|\nabla u| = 1$, which is effectively the process of building a signed distance function u.
+ * Algorithm is adapted from the "Domain Decomposition Parallel FSM" presented in [4].
+ * Orderings are based on grid node distances to reference points as described in [3].
+ * Updates to the nodal solution, u, of the Eikonal equation are based on the methods given in [1] and [2].
  */
 class FastSweeping
 {
@@ -63,13 +65,41 @@ private:
 	const size_t N_ORDERINGS;								// Number of orderings (depends on number of spatial dimensions).
 
 	p4est_locidx_t **_orderings = nullptr;					// Sweep orderings: 2^d, for d dimensions.
+	Vec *_u = nullptr;										// Parallel PETSc vector to hold solution data.
+	double *_uPtr = nullptr;								// Pointer to solution, which is backed by the _u parallel PETSc vector.
+	double *_uOld = nullptr;								// Dynamic array to store old values of solution.  Used for convergence checks.
+	double *_rhs = nullptr;									// Right-hand-side of Eikonal equation: 1 for updatable node, INF otherwise.
 
-	void _clearOrderings();
+	/**
+	 * Clear and drop supporting data structures such as the matrix of orderings and valid node indices.
+	 * This function just resets structures that directly depend on the tree definition.
+	 */
+	void _clearScaffoldingData();
+
+	/**
+	 * Clear and drop data structures associated with solutions that were computed on top of the tree definition.
+	 */
+	void _clearSolutionData();
+
+	/**
+	 * Copy current solution vector into old u.
+	 */
+	void _copySolutionIntoOldU();
+
+	/**
+	 * Compute new value of solution u at a partition fsm node.
+	 * A partition fsm node is defined as an independent node that is either locally owned (shared and inner) or ghost,
+	 * as long as it has a well defined quad neighborhood.
+	 * @param [in] n Valid node index (i.e. that exists in _nodeIndices).
+	 * @return New value for u, which must be later compared with current u value and choose the minimum.
+	 */
+	double _computeNewUAtNode( p4est_locidx_t n );
 
 	/**
 	 * Comparator function for sorting using std::sort function on NodeParL1 objects.
-	 * @param other Reference to other object of same kind.
-	 * @return True is this point has shorter distance, false otherwise.
+	 * @param [in] o1 First object.
+	 * @param [out] o2 Second object.
+	 * @return True is first point has shorter distance than second, false otherwise.
 	 */
 	inline static bool _comparator( const NodePairL1& o1, const NodePairL1& o2 )
 	{
@@ -89,41 +119,21 @@ public:
 
 	/**
 	 * Prepare fast sweeping process.
-	 * @param p4est Pointer to a p4est object.
-	 * @param ghost Pointer to ghost data structure.
-	 * @param nodes Pointer to nodes data structure.
-	 * @param neighbors Pointer to neighbors data structure.
+	 * @param [in] p4est Pointer to a p4est object.
+	 * @param [in] ghost Pointer to ghost data structure.
+	 * @param [in] nodes Pointer to nodes data structure.
+	 * @param [in] neighbors Pointer to neighbors data structure.
+	 * @param [in] xyzMin Lower-left limits for physical domain.
+	 * @param [in] xyzMax Upper-right limits for physical domain.
 	 */
-	p4est_locidx_t ** prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes,
+	void prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes,
 			const my_p4est_node_neighbors_t *neighbors, const double xyzMin[], const double xyzMax[] );
 
-	void reinitializeLevelSetFunction( Vec& phi, Vec& l1Norm_1 );
-
-	////////////////////////////////////////////////////// Setters /////////////////////////////////////////////////////
-
 	/**
-	 * Set the p4est internal pointer.
-	 * @param p4est Pointer to a p4est object.
+	 * Reinitialize a level-set function using the parallel fast sweeping method.
+	 * @param [in/out] u Pointer to external PETSc parallel vector solution of the Eikonal equation.
 	 */
-	void setP4est( const p4est_t *p4est );
-
-	/**
-	 * Set the internal pointer to quadrants that neighbor local domain.
-	 * @param ghost Pointer to ghost data structure.
-	 */
-	void setGhost( const p4est_ghost_t *ghost );
-
-	/**
-	 * Set the internal pointer to parallel nodes' information data structure.
-	 * @param nodes Pointer to nodes data structure.
-	 */
-	void setNodes( const p4est_nodes_t *nodes );
-
-	/**
-	 * Set the internal pointer to nodes' neighborhood information.
-	 * @param neighbors Pointer to neighbors data structure.
-	 */
-	 void setNeighbors( const my_p4est_node_neighbors_t *neighbors );
+	void reinitializeLevelSetFunction( Vec *u );
 };
 
 
