@@ -273,7 +273,7 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 	_clearSolutionData();
 	_u = u;
 
-	// Getting access to the memory in the parallel vector.
+	// Getting access to the memory in the solution parallel vector.
 	PetscErrorCode ierr = VecGetArray( *_u, &_uPtr );
 	CHKERRXX( ierr );
 
@@ -284,8 +284,22 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 
 	// TODO: Determine the interface and the initial signed distance to adjacent nodes.
 	// TODO: For this, update also _rhs (which will include ghost nodes).
+	// TODO: This is an example using a point at the origin.
 	for( p4est_locidx_t i = 0; i < N_INDEP_NODES; i++ )
-		_rhs[i] = 1.0;
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( i, _p4est, _nodes, xyz );
+		if( sqrt( SQR( xyz[0] ) + SQR( xyz[1] ) ) < EPS )	// Interface?
+		{
+			_uPtr[i] = 0;
+			_rhs[i] = PETSC_INFINITY;						// Fixed point.
+		}
+		else
+		{
+			_uPtr[i] = PETSC_INFINITY;						// Updatable point.
+			_rhs[i] = 1.0;
+		}
+	}
 
 	double relDiffAll = 1;													// Buffer to collect relative difference across processes.
 	double relDiff = relDiffAll;

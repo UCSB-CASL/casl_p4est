@@ -39,6 +39,18 @@
 // TODO: Relyng on accessing is_qnnn_valid[.] from my_p4est_node_neighbors.
 
 /**
+ * Point at the origin.
+ */
+class APoint: public CF_2
+{
+public:
+	double operator()( double x, double y ) const override
+	{
+		return sqrt( SQR( x ) + SQR( y ) );			// Distance to the origin.
+	}
+};
+
+/**
  * Implementation of the Fast Sweeping Method in a parallel distributed environment using quadtrees (resp. octrees) to
  * solve the Eikonal equation $|\nabla u| = 1$, which is effectively the process of building a signed distance function u.
  * Algorithm is adapted from the "Domain Decomposition Parallel FSM" presented in [4].

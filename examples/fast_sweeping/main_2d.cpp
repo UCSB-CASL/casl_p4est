@@ -74,8 +74,8 @@ int main( int argc, char* argv[] )
 		cmd.add_option( "lmax", "max level for refinement" );
 		cmd.parse( argc, argv );
 
-		Circle circle( 0, 0, 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 3 ), &circle );
+		APoint point;
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 3 ), cmd.get( "lmax", 5 ), &point );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -110,7 +110,7 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			phiPtr[i] = circle( xyz[0], xyz[1] );
+			phiPtr[i] = point( xyz[0], xyz[1] );
 		}
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
@@ -178,12 +178,36 @@ int main( int argc, char* argv[] )
 		VecGhostUpdateEnd( process, INSERT_VALUES, SCATTER_FORWARD );
 
 		/// Testing the fast sweeping algorithm ///
+		Vec fsmPhi;
+		ierr = VecCreateGhostNodes( p4est, nodes, &fsmPhi );
+		CHKERRXX( ierr );
+
 		FastSweeping fsm{};
-
 		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &phi );
+		fsm.reinitializeLevelSetFunction( &fsmPhi );
 
-		// Reinitialize the level-set function values.
+		const double *fsmPhiPtr;
+		ierr = VecGetArrayRead( fsmPhi, &fsmPhiPtr );
+		CHKERRXX( ierr );
+
+		/// Collect the absolute error between fast sweeping reinitialization and exact distance ///
+		Vec fsmError;
+		ierr = VecDuplicate( fsmPhi, &fsmError );
+		CHKERRXX( ierr );
+
+		double *fsmErrorPtr;
+		ierr = VecGetArray( fsmError, &fsmErrorPtr );
+		CHKERRXX( ierr );
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( i, p4est, nodes, xyz );
+			fsmErrorPtr[i] = ABS( point( xyz[0], xyz[1] ) - fsmPhiPtr[i] );
+		}
+		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
+		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );
+
+		/// Reinitialize the level-set function values using the transient pseudo-temporal equation ///
 		my_p4est_level_set_t ls( &nodeNeighbors );
 		ls.reinitialize_2nd_order( phi, 100 );
 
@@ -193,14 +217,22 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								4, 0, oss.str().c_str(),
+								6, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiPtr,
+								VTK_POINT_DATA, "fsmPhi", fsmPhiPtr,
+								VTK_POINT_DATA, "fsmError", fsmErrorPtr,
 								VTK_POINT_DATA, "nodeType", nodeTypePtr,
 								VTK_POINT_DATA, "badNode", badNodePtr,
 								VTK_POINT_DATA, "process", processPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
 		ierr = VecRestoreArray( phi, &phiPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArrayRead( fsmPhi, &fsmPhiPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( fsmError, &fsmErrorPtr );
 		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( nodeType, &nodeTypePtr );
@@ -214,6 +246,12 @@ int main( int argc, char* argv[] )
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( fsmPhi );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( fsmError );
 		CHKERRXX( ierr );
 
 		ierr = VecDestroy( nodeType );
