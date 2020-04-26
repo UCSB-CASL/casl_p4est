@@ -75,7 +75,7 @@ int main( int argc, char* argv[] )
 		cmd.parse( argc, argv );
 
 		Circle circle( 0, 0, 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 5 ), &circle );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 3 ), &circle );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -181,7 +181,7 @@ int main( int argc, char* argv[] )
 		FastSweeping fsm{};
 
 		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
-//		fsm.reinitializeLevelSetFunction( &phi );
+		fsm.reinitializeLevelSetFunction( &phi );
 
 		// Reinitialize the level-set function values.
 		my_p4est_level_set_t ls( &nodeNeighbors );

@@ -87,6 +87,21 @@ private:
 	void _copySolutionIntoOldU();
 
 	/**
+	 * Helper function to compute the constants a and h in Hamiltonian discretization.
+	 * @param [in] qnnnPtr Pointer to center node's quad node neighborhood.
+	 * @param [out] a Minimum neighboring nodal approximation to u in each cartesian direction.
+	 * @param [out] h Distance between center node and the chosen minimum neighboring nodal approximation given in a.
+	 */
+	void _defineHamiltonianConstants( const quad_neighbor_nodes_of_node_t *qnnnPtr, double a[], double h[] );
+
+	/**
+	 * Sort Hamiltonian constants in ascending order with respect to a values.
+	 * @param [in/out] a Minimum neighboring nodal approximation to u in each cartesian direction.
+	 * @param [in/out] h Distance between center node and the chosen minimum neighboring nodal approximation given in a.
+	 */
+	static void _sortHamiltonianConstants( double a[], double h[] );
+
+	/**
 	 * Compute new value of solution u at a partition fsm node.
 	 * A partition fsm node is defined as an independent node that is either locally owned (shared and inner) or ghost,
 	 * as long as it has a well defined quad neighborhood.
