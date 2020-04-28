@@ -5,8 +5,8 @@
 DEFINES += POD_CLUSTER
 
 # PETSc
-PETSC_DIR_DEBUG         = /home/regan/libraries/petsc_32_bit_debug
-PETSC_DIR_RELEASE       = /home/regan/libraries/petsc_32_bit
+PETSC_DIR_DEBUG         = /home/regan/libraries/petsc_64_bit_debug
+PETSC_DIR_RELEASE       = /home/regan/libraries/petsc_64_bit
 
 PETSC_INCLUDES_RELEASE  = $$PETSC_DIR_RELEASE/include
 PETSC_INCLUDES_DEBUG    = $$PETSC_DIR_DEBUG/include
