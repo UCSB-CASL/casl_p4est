@@ -86,7 +86,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 7, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 #endif
 
 param_t<double> lip  (pl, 1.0, "lip",  "Fine-to-coarse grid transition width");

@@ -137,7 +137,7 @@ class quad_neighbor_nodes_of_node_t;
 #define  SQRSUM2(a,b)   ( (a)*(a) +  (b)*(b) )
 #define  SQRSUM1(a)     ( (a)*(a) )
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT, V_X, V_Y, V_Z, _X_, _Y_, _Z_ };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
@@ -2523,18 +2523,43 @@ public:
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double phi_eff = -10;
-    double phi_cur = -10;
-    for (int i=0; i<phi_cf.size(); ++i)
+    if (phi_cf.size() > 0)
     {
-      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
-      switch (action[i]) {
-        case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-        case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+        }
       }
+      return phi_eff;
+    } else {
+      return -1;
     }
+  }
 
-    return phi_eff;
+  int get_idx(DIM(double x, double y, double z)) const
+  {
+    if (phi_cf.size() > 0)
+    {
+      int    idx     = 0;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+        }
+      }
+      return idx;
+    } else {
+      return -1;
+    }
   }
 };
 
