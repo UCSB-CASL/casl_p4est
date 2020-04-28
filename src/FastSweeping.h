@@ -80,7 +80,9 @@ private:
 	Vec *_u = nullptr;										// Parallel PETSc vector to hold solution data.
 	double *_uPtr = nullptr;								// Pointer to solution, which is backed by the _u parallel PETSc vector.
 	double *_uOld = nullptr;								// Dynamic array to store old values of solution.  Used for convergence checks.
-	double *_rhs = nullptr;									// Right-hand-side of Eikonal equation: 1 for updatable node, INF otherwise.
+	double *_uCpy = nullptr;								// Dynamic array to store a copy of the original values passed to the reinitialization function.
+	Vec _rhs = nullptr;										// Right-hand-side of Eikonal equation: 1 for updatable node, INF otherwise,
+	double *_rhsPtr = nullptr;								// and its corresponding data pointer.
 
 	/**
 	 * Clear and drop supporting data structures such as the matrix of orderings and valid node indices.
@@ -92,11 +94,6 @@ private:
 	 * Clear and drop data structures associated with solutions that were computed on top of the tree definition.
 	 */
 	void _clearSolutionData();
-
-	/**
-	 * Copy current solution vector into old u.
-	 */
-	void _copySolutionIntoOldU();
 
 	/**
 	 * Helper function to compute the constants a and h in Hamiltonian discretization.
@@ -132,6 +129,31 @@ private:
 	{
 		return o1.distance < o2.distance;
 	}
+
+	/**
+	 * Approximate interface and determine the (fixed) distance of seed points adjacent to it.
+	 * As for non-interface nodes, set their inverse speed on the RHS of the Eikonal equation.
+	 * Assume that the current values for the incoming function u are already loaded into the access array _uPtr and
+	 * that _uCpy has a copy of the latter.
+	 */
+	void _approximateInterfaceAndSeedNodes();
+
+	/**
+	 * Retrieve a convenient 3D matrix with stencil data from the neighborhood of a given node.
+	 * Each layer of the matrix maps to a dimension (i.e. x = 0, y = 1, z = 2), which has the following layout:
+	 * {      Function value   |   Distance
+	 * 	      {    u_m         ,     d_m    },		<--- Negative direction.
+	 * 	      {    u_p         ,     d_p    }		<--- Positive direction.
+	 * }
+	 * @param [in] qnnnPtr Pointer to a valid neighborhood quad of a node.
+	 * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
+	 */
+	void _getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, double data[P4EST_DIM][2][2] );
+
+	/**
+	 * Use the copy of the original signal to fix the sign of the reinitialized solution _u (i.e. _uPtr).
+	 */
+	void _fixSolutionSign();
 
 public:
 	/**

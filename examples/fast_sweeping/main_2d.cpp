@@ -181,6 +181,8 @@ int main( int argc, char* argv[] )
 		Vec fsmPhi;
 		ierr = VecCreateGhostNodes( p4est, nodes, &fsmPhi );
 		CHKERRXX( ierr );
+		ierr = VecCopy( phi, fsmPhi );
+		CHKERRXX( ierr );
 
 		FastSweeping fsm{};
 		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );

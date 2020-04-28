@@ -23,39 +23,22 @@ void FastSweeping::_clearScaffoldingData()
 void FastSweeping::_clearSolutionData()
 {
 	delete [] _uOld;			// Free memory if there were any previously stored old solution values.
-	delete [] _rhs;				// and Eikonal right-hand-side (inverse speed) values.
+	delete [] _uCpy;			// Also if we copied any input solution values.
 
 	// Reset critical variables.
 	_u = nullptr;
 	_uPtr = nullptr;
 	_uOld = nullptr;
-}
-
-void FastSweeping::_copySolutionIntoOldU()
-{
-	for( p4est_locidx_t i = 0; i < _nodes->indep_nodes.elem_count; i++ )
-		_uOld[i] = _uPtr[i];
+	_uCpy = nullptr;
+	_rhs = nullptr;
+	_rhsPtr = nullptr;
 }
 
 void FastSweeping::_defineHamiltonianConstants( const quad_neighbor_nodes_of_node_t *qnnnPtr, double a[], double h[] )
 {
 	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
-	const double data[P4EST_DIM][2][2] = {
-			{
-				{ qnnnPtr->f_m00_linear( _uPtr ), qnnnPtr->d_m00 },			// Left.
-				{ qnnnPtr->f_p00_linear( _uPtr ), qnnnPtr->d_p00 }			// Right.
-			},
-			{
-				{ qnnnPtr->f_0m0_linear( _uPtr ), qnnnPtr->d_0m0 },			// Bottom.
-				{ qnnnPtr->f_0p0_linear( _uPtr ), qnnnPtr->d_0p0 }			// Top.
-			},
-#ifdef P4_TO_P8
-			{
-				{ qnnnPtr->f_00m_linear( _uPtr ), qnnnPtr->d_00m },			// Back.
-				{ qnnnPtr->f_00p_linear( _uPtr ), qnnnPtr->d_00p }			// Front.
-			}
-#endif
-	};
+	double data[P4EST_DIM][2][2];
+	_getStencil( qnnnPtr, data );
 
 	for( size_t i = 0; i < P4EST_DIM; i++ )		// Choose a and h for x, y [and z].
 	{
@@ -120,9 +103,23 @@ void FastSweeping::_sortHamiltonianConstants( double a[], double h[] )
 	h[P4EST_DIM] = -1;					// The h value is irrelevant.
 }
 
+void FastSweeping::_getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, double data[P4EST_DIM][2][2] )
+{
+	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
+	data[0][0][0] = qnnnPtr->f_m00_linear( _uPtr ); data[0][0][1] = qnnnPtr->d_m00;			// Left.
+	data[0][1][0] =	qnnnPtr->f_p00_linear( _uPtr ); data[0][1][1] = qnnnPtr->d_p00;			// Right.
+
+	data[1][0][0] = qnnnPtr->f_0m0_linear( _uPtr ); data[1][0][1] = qnnnPtr->d_0m0;			// Bottom.
+	data[1][1][0] = qnnnPtr->f_0p0_linear( _uPtr ); data[1][1][1] = qnnnPtr->d_0p0;			// Top.
+#ifdef P4_TO_P8
+	data[2][0][0] = qnnnPtr->f_00m_linear( _uPtr ); data[2][0][1] = qnnnPtr->d_00m;			// Back.
+	data[2][1][0] = qnnnPtr->f_00p_linear( _uPtr ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
+#endif
+}
+
 double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 {
-	if( _rhs[n] >= PETSC_INFINITY )		// Is this an adjacent node to the interface (i.e. non-updatable)?
+	if( _rhsPtr[n] >= PETSC_INFINITY )	// Is this an adjacent node to the interface (i.e. non-updatable)?
 		return _uPtr[n];
 
 	// Dealing with nodes off the interface.  We solve the Hamiltonian of the Eikonal equation given by:
@@ -151,13 +148,13 @@ double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 
 	// 2) Begin solution.
 	double uHat, numerator, h0Sqrd, h1Sqrd, h2Sqrd, hSqrdSum;
-	double fSqrd = SQR( _rhs[n] );
+	double fSqrd = SQR( _rhsPtr[n] );
 	for( size_t m = 0; m < P4EST_DIM; m++ )
 	{
 		// 3) Solving \sum_{j=0}^{m} ( (u - a_j)^+ / h_j )^2 = f^2 for u.
 		if( m == 0 )
 		{
-			uHat = a[0] + h[0] * _rhs[n];
+			uHat = a[0] + h[0] * _rhsPtr[n];
 		}
 		else if( m == 1 )
 		{
@@ -184,6 +181,94 @@ double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 	}
 
 	return uHat;
+}
+
+void FastSweeping::_approximateInterfaceAndSeedNodes()
+{
+	// Given two nodes, n1 and n2, connected by an edge e, the interface is located between n1 and n2 iff phi(n1) * phi(n2) < 0.
+	// Furthermore, if |phi(ni)| <= EPS, then ni lies on the interface.
+	// To approximate the interface location, we rely on the fact that a node ni has a well defined quad neighborhood;
+	// this is true for locally owned independent nodes (i.e. we exclude ghost nodes in this case, even if they are part
+	// of the common bounday between processes).
+	// After approximating the interface location, we must scatter the seed nodes' values onto their foreign ghost nodes.
+	// We do this through the _rhs parallel vector.
+	PetscErrorCode ierr;
+
+	// Attention!  We must use a copy of the original nodal values or else we'll be affecting the seed determination as
+	// we progress in our initialization of u.
+	// Notice too that we need to consider the ghost nodes too, even if we only initialize the locally owned nodes below.
+
+	// Use the above u copy to initialize the solution pointer _uPtr.
+	for( p4est_locidx_t n = 0; n < _nodes->num_owned_indeps; n++ )
+	{
+		// The case of a node falling nearly on the \Gamma: seed point.
+		if( ABS( _uCpy[n] ) <= EPS )
+		{
+			_uPtr[n] = 0;
+			_rhsPtr[n] = PETSC_INFINITY;
+			continue;
+		}
+
+		// Check for the case of the interface crossing one of the stencil edges irradiating from the nth node.
+		const quad_neighbor_nodes_of_node_t *qnnnPtr;
+		_neighbors->get_neighbors( n, qnnnPtr );
+
+		double data[P4EST_DIM][2][2];
+		_getStencil( qnnnPtr, data );
+
+		// Verify all 4 (resp. 8) directions, but ignore neighbors that lie on interface.
+		int crossedEdges = 0;
+		for( const auto& axis : data )
+		{
+			for( const auto& dir : axis )		// Negative and positive directions.
+			{
+				if( dir[1] < 0 )				// Negative distances indicate the node is on a wall.
+					continue;
+
+				if( ABS( dir[0] ) > EPS && dir[0] * _uCpy[n] < 0 )		// Crossed edge in current direction?
+					crossedEdges++;
+			}
+		}
+
+		if( crossedEdges > 0 )
+			;		// TODO: Seed point.
+		else
+		{
+			_uPtr[n] = PETSC_INFINITY;			// Updatable point: initialized with an infinite distance from \Gamma.
+			_rhsPtr[n] = 1;
+		}
+	}
+	ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );		// Scatter seed nodes solution onto ghost nodes.
+	CHKERRXX( ierr );
+	VecGhostUpdateEnd( *_u, INSERT_VALUES, SCATTER_FORWARD );
+	CHKERRXX( ierr );
+	ierr = VecGhostUpdateBegin( _rhs, INSERT_VALUES, SCATTER_FORWARD );		// Scatter inverse speed onto ghost nodes.
+	CHKERRXX( ierr );
+	VecGhostUpdateEnd( _rhs, INSERT_VALUES, SCATTER_FORWARD );
+	CHKERRXX( ierr );
+}
+
+void FastSweeping::_fixSolutionSign()
+{
+	// Take care of the negative solution reinitialized values only on the locally owned nodes.
+	size_t updateCount = 0;
+	for( p4est_locidx_t i = 0; i < _nodes->num_owned_indeps; i++ )
+	{
+		if( _uCpy[i] < -EPS )
+		{
+			_uPtr[i] *= -1;
+			updateCount++;
+		}
+	}
+
+	// Scatter sign-corrected updated solution onto foreign ghost nodes only if there were any updates.
+	if( updateCount )
+	{
+		PetscErrorCode ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+		ierr = VecGhostUpdateEnd(*_u, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+	}
 }
 
 /////////////////////////////////////////////// Public member functions ////////////////////////////////////////////////
@@ -272,40 +357,32 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 	// Start afresh with the solution data structures.
 	_clearSolutionData();
 	_u = u;
+	PetscErrorCode ierr = VecDuplicate( *u, &_rhs );
+	CHKERRXX( ierr );
 
-	// Getting access to the memory in the solution parallel vector.
-	PetscErrorCode ierr = VecGetArray( *_u, &_uPtr );
+	// Getting access to the memory in the solution parallel vector and in Eikonal equation's rhs inverse speed.
+	ierr = VecGetArray( *_u, &_uPtr );
+	CHKERRXX( ierr );
+	ierr = VecGetArray( _rhs, &_rhsPtr );
 	CHKERRXX( ierr );
 
 	// Allocate the old solution container.  Notice that it stores the solution for all independent nodes (including all ghosts).
-	// Also, make room for Eikonal equation's rhs inverse speed.
+	// Also, make a copy of the original solution to be reinitialized.  This information is used for seeding and sign fix.
 	_uOld = new double[N_INDEP_NODES];
-	_rhs = new double[N_INDEP_NODES];
+	_uCpy = new double[N_INDEP_NODES];
+	std::copy( _uPtr, _uPtr + N_INDEP_NODES, _uCpy );
 
-	// TODO: Determine the interface and the initial signed distance to adjacent nodes.
-	// TODO: For this, update also _rhs (which will include ghost nodes).
-	// TODO: This is an example using a point at the origin.
-	for( p4est_locidx_t i = 0; i < N_INDEP_NODES; i++ )
-	{
-		double xyz[P4EST_DIM];
-		node_xyz_fr_n( i, _p4est, _nodes, xyz );
-		if( sqrt( SQR( xyz[0] ) + SQR( xyz[1] ) ) < EPS )	// Interface?
-		{
-			_uPtr[i] = 0;
-			_rhs[i] = PETSC_INFINITY;						// Fixed point.
-		}
-		else
-		{
-			_uPtr[i] = PETSC_INFINITY;						// Updatable point.
-			_rhs[i] = 1.0;
-		}
-	}
+	// Approximate location of interface by defining seed nodes.  Also, initialize the inverse speed for each partition
+	// node by setting it as INF for seed nodes and 1 for interface-non-adjacent nodes.
+	// Note: from this point on, we compute *positive* normal distances to interface.  Almost at the end we restore the
+	// sign of the solution; this is the reason why we must keep a copy of the original solution signal.
+	_approximateInterfaceAndSeedNodes();
 
 	double relDiffAll = 1;													// Buffer to collect relative difference across processes.
 	double relDiff = relDiffAll;
 	while( relDiff > EPS )
 	{
-		_copySolutionIntoOldU();											// u_old = u.
+		std::copy( _uPtr, _uPtr + N_INDEP_NODES, _uOld );					// u_old = u.
 
 		for( size_t i = 0; i < N_ORDERINGS; i++ )							// The 2^d sweep orderings.
 		{
@@ -318,12 +395,19 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 		}
 
 		// Gather updated "common boundary" ghost nodes solution onto remotely owned nodes.
-		VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );
-		VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+		if( _p4est->mpisize > 1 )			// Must check this or Petsc fails in the case of a single-process run.
+		{
+			ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );
+			CHKERRXX( ierr );
+			ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+			CHKERRXX( ierr );
 
-		// Scatter minimum solution values from local onto remote ghost nodes.
-		VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );
-		VecGhostUpdateEnd( *_u, INSERT_VALUES, SCATTER_FORWARD );
+			// Scatter minimum solution values from local onto remote ghost nodes.
+			ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+			VecGhostUpdateEnd( *_u, INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+		}
 
 		// Update local relative difference using the solution in this partition.
 		relDiff = 0;
@@ -336,7 +420,17 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 		relDiff = relDiffAll;
 	}
 
+	// Fix sign of expected negative solution nodal values.
+	_fixSolutionSign();
+
 	// Cleaning up.
 	ierr = VecRestoreArray( *_u, &_uPtr );
 	CHKERRXX( ierr );
+
+	ierr = VecRestoreArray( _rhs, &_rhsPtr );
+	CHKERRXX( ierr );
+	ierr = VecDestroy( _rhs );
+	CHKERRXX( ierr );
+
+	_clearSolutionData();
 }
