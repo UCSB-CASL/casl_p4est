@@ -570,20 +570,23 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
   #endif
 
       const double dxyz_min_overall = (double)P4EST_QUADRANT_LEN((int8_t) max_lvl)/(double)P4EST_ROOT_LEN; // Gives min dimension overall --> used for uniform band implementation
-      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // Gives min dimension of the quad--> used to get quad_diag
-      const double dx = (tree_xmax-tree_xmin) * dmin;
-      const double dy = (tree_ymax-tree_ymin) * dmin;
+      const double dlvl = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // dlvl -- the size of the current quad (as a fraction of root length)
+      const double dx = (tree_xmax-tree_xmin) * dlvl;
+      const double dy = (tree_ymax-tree_ymin) * dlvl;
+
+
 
 
   #ifdef P4_TO_P8
-      double dz = (tree_zmax-tree_zmin) * dmin;
+      double dz = (tree_zmax-tree_zmin) * dlvl;
 
   #endif
 
   #ifdef P4_TO_P8
       double d = sqrt(dx*dx + dy*dy + dz*dz);
   #else
-      const double d = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
+      const double diag = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
+      const double d = MAX(dx,dy); // d gives the largest size of the quad
   #endif
       double max_tree_dim = MAX((tree_xmax - tree_xmin),(tree_ymax - tree_ymin));
 
@@ -591,203 +594,447 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       double dxyz_smallest = max_tree_dim*dxyz_min_overall;
 
       // Check possibility of refining or coarsening:
-      bool coarsen_possible = (quad->level > min_lvl); // Will return true if possible to coarsen
-      bool refine_possible = (quad->level < max_lvl);  // Will return true if possible to refine
-
-      // Initialize booleans which will track if any refinement or coarsening is allowed -- which is different than possible
-      // Only one refinement condition must be true to tag the cell for refining
-      // All coarsening conditions must be true to tag the cell for coarsening
-      bool coarsen = false;
-      bool refine = false;
+      bool coarsen = (quad->level > min_lvl); // Will return true if possible to coarsen
+      bool refine = (quad->level < max_lvl);  // Will return true if possible to refine
 
       // Initialize booleans to check if the LSF changes sign within the quadrant --> if not all pos and not all neg, tag for refinement
       bool all_pos = true;
       bool all_neg = true;
 
-      double ref_band,coars_band;
+      // Define the size of the uniform band to refine and coarsen by, determined by the user (default is set to 0 if user does not select this option)
+      double ref_band, coars_band;
       ref_band = enforce_uniform_band? dxyz_smallest*refine_band : 0.0;
       coars_band = enforce_uniform_band? dxyz_smallest*coarsen_band : 0.0;
 
-      if(refine_possible || coarsen_possible){
+
+      // First now, check coarsening arguments if coarsening is possible:
+      if(coarsen){
+          // Initialize node index:
+          p4est_locidx_t node_idx;
+
+          // TO-CLEAN: Initiliaze booleans to help keep track in case we are looking for a sign change for a field
+          bool checking_sign_change = false;
+          bool field_all_pos[num_fields];
+          bool field_all_neg[num_fields];
+          bool below_threshold[num_fields]; // to allow for coarsening, all nodes in the cell for the given field must be below the specified threshold
+
+          // Initialize the checks for all positive or all negative:
+          for(unsigned int n=0; n<num_fields;n++){
+              field_all_pos[n] = true;
+              field_all_neg[n] = true;
+              below_threshold[n] = true;
+          }
+
+          for(unsigned short k=0;k<P4EST_CHILDREN;k++){
+              // Get the appropriate node index:
+              node_idx    = nodes->local_nodes[P4EST_CHILDREN*quad_idx+k];
+
+
+              // Initialize doubles to hold field value and coarsening criteria:
+              double field_val;
+              double criteria_coarsen = -1.; // Initialized to negative 1 so we can check if they are set -- assert this is positive
+
+              // Now consider the LSF coarsening criteria:
+              coarsen = coarsen && ((fabs(phi_p[node_idx]) - coars_band) >= 1.0*lip*diag);
+
+
+              /*Now, if coarsening is still allowed by LSF, check the fields --
+               * if LSF does not allow coarsening, don't bother looping over fields or checking that info unnecessarily*/
+              if(coarsen){
+                  for(unsigned short n = 0; n<num_fields;n++){
+                      if(!coarsen) break; // if coarsen becomes false, no point in checking rest of conditions
+
+                      // Access the field value, depending on whether the user has specified block structure or array of vectors
+                      if(use_block){
+                          // Get the field value from the block vector ptr
+                          field_val = fields_block[num_fields*node_idx + n];
+                      }
+                      else{
+                          // Get the field value from the array of PETSc vector ptrs
+                          field_val = fields[n][node_idx];
+                      }
+
+                      // Get the coarsening criteria value:
+                      criteria_coarsen = criteria[2*n];
+
+                      // Now we enter switch case of possible scenarii (depending on what user has specified)
+                      P4EST_ASSERT(criteria_coarsen>=0.); // Make sure criteria has been defined before continuing
+                      switch(diag_opn[2*n]){
+                      case DIVIDE_BY:{
+                          switch(compare_opn[2*n]){
+                          case GREATER_THAN:{
+                              coarsen = coarsen && ((fabs(field_val)) > criteria_coarsen/d);
+//                              if(n==2) printf("COARSEN IF GREATER THAN %d \n AT LEVEL %d \n",criteria_coarsen/d,quad->level);
+                              break;
+                          }
+                          case LESS_THAN:{
+                              coarsen = coarsen && ((fabs(field_val)) < criteria_coarsen/d);
+                              //                                  if(coarsen && n==0){printf("Coarsened at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
+                              break;
+                          }
+                          case SIGN_CHANGE:{
+                              checking_sign_change = true;
+
+                              field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                              field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                              below_threshold[n] = (fabs(field_val)<criteria_coarsen/d) && below_threshold[n];
+//                                  PetscPrintf(p4est->mpicomm,"CHECKING SIGN CHANGE \n field_all_pos: %s field_all_neg: %s \n",field_all_pos[n]?"true":"false",field_all_neg[n]?"true":"false");
+
+
+                              break;
+                          }
+                          default:{
+                              throw std::invalid_argument("blah");
+                          }
+                        } // end of switch on compare option
+                          break;
+                      } // end of case : divide_by
+                      case MULTIPLY_BY:{
+                          switch(compare_opn[2*n]){
+                          case GREATER_THAN:{
+                              coarsen = coarsen && (fabs(field_val) > criteria_coarsen*d);
+                              break;
+                          }
+                          case LESS_THAN:{
+                              coarsen = coarsen && (fabs(field_val) < criteria_coarsen*d);
+                              break;
+                          }
+                          case SIGN_CHANGE:{
+                              checking_sign_change = true;
+
+                              field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                              field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                              below_threshold[n] = (fabs(field_val)<criteria_coarsen*d) && below_threshold[n];
+
+//                                  PetscPrintf(p4est->mpicomm,"CHECKING SIGN CHANGE \n field_all_pos: %s field_all_neg: %s \n",field_all_pos[n]?"true":"false",field_all_neg[n]?"true":"false");
+
+
+                              break;
+                          }
+
+                          default:{
+                              throw std::invalid_argument("blah");
+                          }
+                        } // end of switch on compare option
+                          break;
+                      } // end of case: multiply_by
+                      case ABSOLUTE:{
+                          switch(compare_opn[2*n]){
+                          case GREATER_THAN:{
+                              coarsen = coarsen && (fabs(field_val) > criteria_coarsen);
+                              break;
+                          }
+                          case LESS_THAN:{
+                              coarsen = coarsen && (fabs(field_val) < criteria_coarsen);
+                              break;
+                          }
+                          case SIGN_CHANGE:{
+                              checking_sign_change = true;
+
+                              field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                              field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                              below_threshold[n] = (fabs(field_val)<criteria_coarsen) && below_threshold[n];
+
+//                                  PetscPrintf(p4est->mpicomm,"CHECKING SIGN CHANGE \n field_all_pos: %s field_all_neg: %s \n",field_all_pos[n]?"true":"false",field_all_neg[n]?"true":"false");
+
+
+                              break;
+                          }
+                          case NO_CHECK:{
+                              continue;
+                          }
+                          default:{
+                              throw std::invalid_argument("blah");
+                          }
+
+                        } // end of switch on compare option
+
+                          break;
+                      } // end of case: absolute
+                      } // End of switch case on diagonal comparison option
+                  } // end of loop over number of fields
+              } // end of if coarsen still allowed within "if coarsen"
+          } // end of loop over children
+
+
+          // If we had a sign change, check if that happened:
+          if(checking_sign_change){
+  //            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE COARSEN CASE: \n");
+              for(unsigned int n=0;n<num_fields;n++){
+                  bool sign_change = !field_all_pos[n] && !field_all_neg[n];
+
+                  coarsen = coarsen && (!sign_change && below_threshold[n]);
+              }
+
+          }
+      } // end of "if coarsen"
+
+
+      // Next we check the refinement arguments if refining is possible:
+
+      if(refine){
+
+        // Now that we are inside refine, set refine to false:
+
+        /*Now tht we are inside refine, set refine to false:
+         *
+         * This is because cell will be refined if ANY of the refinement conditions come back as true
+         * So we take refine = refine || (other refinement conditions)
+         * Thus we need to initialize it to false, otherwise any time refinement is possible, cell will be refined
+         *
+         * */
+        refine = false;
         // Initialize holder for node index in question
         p4est_locidx_t node_idx;
 
-        // Now, loop over the children of the quadrant: -- will check criteria of each field at each node child of the quadrant in question
-        for(unsigned short i=0; i<P4EST_CHILDREN; i++){
-            node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + i];
+        /*Note: looping over children will look different here than for coarsening case,
+         * because we are searching for possible neighbor nodes at higher levels of refinement to provide us some extra info*/
 
-            // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
-            coarsen = coarsen_possible && ((fabs(phi_p[node_idx]) - coars_band) > 1.0*lip*d);
+         /*We loop over the children of the quadrant: -- will check criteria of each field at each node child of the quadrant in question
+         We loop over i,j,k coordinates of the cell where the indices correspond to children
+         In 2D, this looks like:
+         */
 
-/*            if(coarsen_possible) {
-                coarsen = coarsen && ; // ELYCE DEBUGGING
-//                if(coarsen) PetscPrintf(p4est->mpicomm,"COARSEN ALLOWED\n");
-              } // a*/ //t this point, coarsen is a more restrictive flag than coarsen_possible
-//            if (refine_possible) {
-//                refine = ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*d);
-//              }
-            refine = refine_possible && ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*d);
+        /*
+         *    (i=0,j=2)o--------(i=1,j=2)x---------o(i=2,j=2)
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *    (i=0,j=1)x---------------------------x(i=2,j=1)
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *             |                           |
+         *    (i=0.j=0)o-------(i=1,j=0)x----------o(i=2,j=0)
+         *
+         *
+         * The purpose of doing this is to check for T-junction points which may not be owned
+         * by the quadrant we are considering, but may be present nonetheless and can provide
+         * more accurate information about the fields that we may want to be refining by
+         *
+         * In this illustration, the "o" points are nodes that are owned by the quadrant that we
+         * are considering, and "x" points are locations of *possible* neighboring points at a higher
+         * level of refinement
+         * */
 
-            all_pos = all_pos && (phi_p[node_idx]>0);
-            all_neg = all_neg && (phi_p[node_idx]<0);
+        // Initialize boolean that keeps track of if a node exists or not at each child case we iterate through
+        bool node_found;
 
-            // Loop over the number of fields we are taking into consideration: (if still possible to refine or coarsen)
-            if(coarsen || refine_possible){
-                // One of the above statements must be true to proceed because:
-                // --> If any coarsen statement is false, we cannot coarsen, so no point continuing
-                // --> If refinement is possible, we must check all the conditions for possibility of refinement
-                // Note: I check this to save computation time -- no sense looping over all the fields if there is nothing to gain from it
+        // Initialize boolean to keep track of if we found a higher refinement level neighbor point to use or not
+        bool we_had_neighbor_point = false;
 
-                double field_val;
-                double criteria_coarsen = DBL_MAX;
-                double criteria_refine = DBL_MAX;
+        // Initiliaze booleans to help keep track in case we are looking for a sign change for a field
+        bool checking_sign_change = false;
+        bool above_threshold[num_fields]; // To refine in the sign change case, all node values for the given field must be above the specified threshold (this avoids refining around sign changes on order of machine error)
+        bool field_all_pos[num_fields];
+        bool field_all_neg[num_fields];
 
-                for(unsigned short n = 0; n<num_fields;n++){
-//                    if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
-//                        PetscPrintf(p4est->mpicomm,"--> Going to end of function to refine \n");
-//                        goto end_of_function;
-//                      }
-                    // Get the value of the field and store it as a double -- so we don't keep accessing the vector over and over
-                    // Need to get it either from a block vector ptr, or from a vector of PETSc vector ptrs, depending on what the user has specified and provided
-
-                    if(use_block){
-                        // Get the field value from the block vector ptr
-                        field_val = fields_block[num_fields*node_idx + n];
-                      }
-                    else{
-                        // Get the field value from the std::vector of PETSc vector ptrs
-                        field_val = fields[n][node_idx];
-                      }
-
-                    if(coarsen) criteria_coarsen = criteria[2*n];
-                    if(refine_possible) criteria_refine = criteria[2*n + 1];
-
-                    // Switch over the cases for different comparision options to check the refinement and coarsening criteria:
-                    if(coarsen){
-                        P4EST_ASSERT(criteria_coarsen < DBL_MAX); // Make sure criteria has been defined before continuing
-                        switch(diag_opn[2*n]){
-                          case DIVIDE_BY:{
-                              switch(compare_opn[2*n]){
-                                case GREATER_THAN:
-                                  coarsen = coarsen && ((fabs(field_val)) > criteria_coarsen/d);
-                                  break;
-                                case LESS_THAN:
-                                  coarsen = coarsen && ((fabs(field_val)) < criteria_coarsen/d);
-                                  break;
-                                default:
-                                  throw std::invalid_argument("blah");
-                                }
-                            break;
-                            } // end of case : divide_by
-                          case MULTIPLY_BY:{
-                              switch(compare_opn[2*n]){
-                                case GREATER_THAN:
-                                  coarsen = coarsen && (fabs(field_val) > criteria_coarsen*d);
-                                  break;
-                                case LESS_THAN:
-                                  coarsen = coarsen && (fabs(field_val) < criteria_coarsen*d);
-                                  break;
-                                default:
-                                  throw std::invalid_argument("blah");
-                                }
-                            break;
-                            } // end of case: multiply_by
-                          case ABSOLUTE:{
-                              switch(compare_opn[2*n]){
-                                case GREATER_THAN:
-                                  coarsen = coarsen && (fabs(field_val) > criteria_coarsen);
-
-                                  break;
-                                case LESS_THAN:
-                                  coarsen = coarsen && (fabs(field_val) < criteria_coarsen);
-
-                                  break;
-                                default:
-                                  throw std::invalid_argument("blah");
-                                }
-
-                            break;
-                            } // end of case: absolute
-                          } // End of switch case on diagonal comparison option
-                      } // End of if (coarsen)
-                    if(refine_possible){
-                        P4EST_ASSERT(criteria_refine < DBL_MAX); // Make sure criteria has been defined before continuing
-                        switch(diag_opn[2*n + 1]){
-                          case DIVIDE_BY:{
-                              switch(compare_opn[2*n + 1]){
-                                case GREATER_THAN:{
-                                  refine = refine || (fabs(field_val) > criteria_refine/d);
-                                  break;
-                                  }
-                                case LESS_THAN:{
-                                  refine = refine || (fabs(field_val) < criteria_refine/d);
-                                  break;
-                                  }
-                                default:{
-                                  throw std::invalid_argument("blah");
-                                  }
-                                } // end of case : divide by
-                            break;
-                            }
-                          case MULTIPLY_BY:{
-                              switch(compare_opn[2*n + 1]){
-                                case GREATER_THAN:{
-                                  refine = refine || (fabs(field_val) > criteria_refine*d);
-                                  break;
-                                  }
-                                case LESS_THAN:{
-                                  refine = refine || (fabs(field_val) < criteria_refine*d);
-                                  break;
-                                  }
-                                default:{
-                                  throw std::invalid_argument("blah");
-                                  }
-                                }
-                            break;
-                            } // end of case : multiply by
-                          case ABSOLUTE:{
-                              switch(compare_opn[2*n + 1]){
-                                case GREATER_THAN:{
-                                  refine = refine || (fabs(field_val) > criteria_refine);
-                                  break;
-                                  }
-                                case LESS_THAN:{
-                                  refine = refine || (fabs(field_val) < criteria_refine);
-                                  break;
-                                  }
-                                default:{
-                                  throw std::invalid_argument("blah");
-                                  }
-                                }
-                            break;
-                            } // end of case: absolute
-                          } // end of switch case on diagonal option
-                      } // end of if(refine_possible)
-                  } // End of loop over n fields
-              } // End if(coarsen OR refine_possible)
-          } // End of loop over quadrant children
-
-
-        } // End of refine possible OR coarsen possible
-
-      if(refine_possible && (!all_pos && !all_neg)){ // if nodes of the quad have different signs after checking each node --> interface crosses quad
-          refine = true;
+        // Initialize the checks for all positive or all negative:
+        for(unsigned int n=0; n<num_fields;n++){
+            field_all_pos[n] = true;
+            field_all_neg[n] = true;
+            above_threshold[n] = true; // will be set to true if we are checking sign change for this field
         }
-//end_of_function:
+
+
+        const p4est_qcoord_t mid_qh = P4EST_QUADRANT_LEN(quad->level + 1);
+        for(unsigned short i=0; i<3; i++){
+            for (unsigned short j=0;j<3;j++){
+//                for (unsigned short k=0; k<3;k++){} TO-DO: NOT YET IMPLEMENTED IN 3D
+
+                // Search for finer points if they exist:
+                if((i==1) && (j==1)){ // This corresponds to the cell center, so ignore this case and keep looking
+                    continue;
+                }
+                else if (((i==0) || (i==2)) && ((j==0) || (j==2))){
+                    // This corresponds to the 4 nodes which make up the quadrant, which we know exist and know the indices
+                    node_found = true;
+                    node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + 2*(j/2) + (i/2)];
+                }
+                else {
+                    // This corresponds to the case of potential finer points owned by neighboring quadrants
+                    // We will check whether or not these nodes exist, and if so, we will take the node into our consideration
+                    // NOTE: this only looks t the midpoint, so technically we are assuming we are working on a balanced grid (or just only looking one level of refinement higher)
+
+                    // First, define two "quadrants" at the max refinement level -- r we will define ourselves, c we will canonicalize using info from r
+                    // These are defined as a quadrant existing at the maximum p4est level -- this is how the node index function takes the node input to see if it exists
+                    p4est_quadrant_t r,c;
+                    r.level = P4EST_MAXLEVEL;
+                    r.x = quad->x + i*mid_qh;
+                    r.y = quad->y + j*mid_qh;
+
+                    P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
+                    p4est_node_canonicalize(p4est,tree_idx,&r,&c);
+                    node_found = index_of_node(&c,nodes,node_idx);
+
+                    if(node_found) we_had_neighbor_point=true;
+
+                }
+
+                if(node_found){
+                    P4EST_ASSERT(node_idx < ((p4est_locidx_t) nodes->indep_nodes.elem_count));
+
+                    // Now, check refinement conditions on the LSF:
+                    refine = refine || ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*diag);
+
+                    // Additionally, check if there is a sign change across the quadrant in LSF (if so, we will refine)
+                    all_pos = all_pos && (phi_p[node_idx]>0);
+                    all_neg = all_neg && (phi_p[node_idx]<0);
+
+                    // One of the above statements must be true to proceed because:
+                    // --> If any coarsen statement is false, we cannot coarsen, so no point continuing
+                    // --> If refinement is possible, we must check all the conditions for possibility of refinement
+                    // Note: I check this to save computation time -- no sense looping over all the fields if there is nothing to gain from it
+
+                    double field_val;
+                    double criteria_refine = -1.; // Initialize these values to a negative number(which they cannot be), so if they aren't assigned, we can check if they are still less than zero.
+
+                    for(unsigned short n = 0; n<num_fields;n++){
+                        if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
+                            goto end_of_function;
+                        }
+
+                        // Get field val and criteria (same as in coarsen case)
+                        if(use_block){
+                            // Get the field value from the block vector ptr
+                            field_val = fields_block[num_fields*node_idx + n];
+                        }
+                        else{
+                            // Get the field value from the std::vector of PETSc vector ptrs
+                            field_val = fields[n][node_idx];
+                        }
+
+                        criteria_refine = criteria[2*n + 1];
+
+                        P4EST_ASSERT(criteria_refine>=0.); // Make sure criteria has been defined before continuing
+                        switch(diag_opn[2*n + 1]){
+                        case DIVIDE_BY:{
+                            switch(compare_opn[2*n + 1]){
+                            case GREATER_THAN:{
+                                //                                    if((fabs(field_val) > criteria_refine/d) && n==0){
+                                //                                        printf("Refined at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
+                                refine = refine || (fabs(field_val) > criteria_refine/d);
+                                break;
+                            }
+                            case LESS_THAN:{
+                                refine = refine || (fabs(field_val) < criteria_refine/d);
+                                break;
+                            }
+                            case SIGN_CHANGE:{
+                                checking_sign_change = true;
+
+                                field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                                field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                                above_threshold[n] = (fabs(field_val)>criteria_refine/d) && above_threshold[n];
+
+                                break;
+                            }
+                            default:{
+                                throw std::invalid_argument("blah");
+                            }
+                            } // end of case : divide by
+                            break;
+                        }
+                        case MULTIPLY_BY:{
+                            switch(compare_opn[2*n + 1]){
+                            case GREATER_THAN:{
+                                refine = refine || (fabs(field_val) > criteria_refine*d);
+                                break;
+                            }
+                            case LESS_THAN:{
+                                refine = refine || (fabs(field_val) < criteria_refine*d);
+                                break;
+                            }
+                            case SIGN_CHANGE:{
+                                checking_sign_change = true;
+
+                                field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                                field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                                above_threshold[n] = (fabs(field_val)>criteria_refine*d) && above_threshold[n];
+
+                                break;
+                            }
+                            default:{
+                                throw std::invalid_argument("blah");
+                            }
+                            }
+                            break;
+                        } // end of case : multiply by
+                        case ABSOLUTE:{
+                            switch(compare_opn[2*n + 1]){
+                            case GREATER_THAN:{
+                                refine = refine || (fabs(field_val) > criteria_refine);
+                                break;
+                            }
+                            case LESS_THAN:{
+                                refine = refine || (fabs(field_val) < criteria_refine);
+                                break;
+                            }
+                            case SIGN_CHANGE:{
+                                checking_sign_change = true;
+
+                                field_all_pos[n] = field_all_pos[n] && (field_val>0.);
+                                field_all_neg[n] = field_all_neg[n] && (field_val<0.);
+
+                                above_threshold[n] = (fabs(field_val)>criteria_refine) && above_threshold[n];
+
+                                break;
+                            }
+                            case NO_CHECK:{
+                                continue;
+
+                            }
+                            default:{
+                                throw std::invalid_argument("blah");
+                            }
+                            }
+                            break;
+                        } // end of case: absolute
+                        } // end of switch case on diagonal option
+                    } // End of loop over n fields
+                } // end of if node found
+            } // end of loop over j
+
+          } // End of loop over i
+
+        if((!all_pos && !all_neg)){ // if nodes of the quad have different signs of LSF after checking each node --> interface crosses quad, we should refine
+            refine = true;
+
+          }
+        // If we had a sign change, check if that happened:
+        if(checking_sign_change){
+//            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE REFINE CASE: \n");
+            for(unsigned int n=0;n<num_fields;n++){
+                bool sign_change = !field_all_pos[n] && !field_all_neg[n];
+
+                if(sign_change && we_had_neighbor_point && above_threshold[n]){
+                    refine = refine || sign_change;
+                }
+            }
+        } // end of checking sign change
+
+        } // End of if refine possible
+
+
+end_of_function:
       // Now --> Apply the results of the check:
       if(refine){
           quad->p.user_int = REFINE_QUADRANT;
-//          PetscPrintf(p4est->mpicomm,"Quadrant is marked for refining \n");
         }
       else if (coarsen){
           quad->p.user_int = COARSEN_QUADRANT;
-//          PetscPrintf(p4est->mpicomm,"QUAD COARSENED \n");
 
         }
       else {
           quad->p.user_int = SKIP_QUADRANT;
-//          PetscPrintf(p4est->mpicomm,"QUAD SKIPPED \n");
-
         }
     } // End of if statement to check for refine and coarsening
 } // end of function

@@ -46,16 +46,12 @@
 #include <src/Parser.h>
 #include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
+#include <src/parameter_list.h>
 
 
 using namespace std;
+parameter_list_t pl;
 
-// Examples to run:
-int example_ = 2;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water solidifying around cooled cylinder
-
-int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
-
-bool elyce_laptop = false; // Set to true if working on laptop --> changes the output path
 // ---------------------------------------
 // Define geometry:
 // ---------------------------------------
@@ -84,14 +80,30 @@ void set_geometry(){
 
 }
 
-bool test_refine_and_coarsen = false;
 
-bool test_update_p4est = true;
 
-bool refine_by_s1;
-bool refine_by_s2;
+DEFINE_PARAMETER(pl,bool,test_refine_and_coarsen,1,"Test refine and coarsen? Default: true ");
+DEFINE_PARAMETER(pl,bool,test_update_p4est,1,"Test update_p4est? Default: true ");
 
-bool use_block;
+DEFINE_PARAMETER(pl,int,n_coeff,1,"Coefficient of the sinusoid argument \n");
+DEFINE_PARAMETER(pl,int,power,1,"Power of the sinusoid argument \n");
+
+DEFINE_PARAMETER(pl,bool,refine_by_phi1,1,"Refine by LSF #1? Default: true ");
+DEFINE_PARAMETER(pl,bool,refine_by_phi2,1,"Refine by LSF # 2? Default: true ");
+
+DEFINE_PARAMETER(pl,bool,refine_by_s1,1,"Refine by field #1? Default: true ");
+DEFINE_PARAMETER(pl,bool,refine_by_s2,1,"Refine by field # 2? Default: true ");
+DEFINE_PARAMETER(pl,bool,use_block,0,"Use block vector? Default: false ");
+
+DEFINE_PARAMETER(pl,int,lmin,4,"Minimum level of refinement (Default: 4)");
+DEFINE_PARAMETER(pl,int,lmax,8,"Maximum level of refinement (Default: 8)");
+DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz coefficient (Default: 1.5)");
+DEFINE_PARAMETER(pl,bool,enforce_uniform_band,true,"Enforce a uniform band? (Default: true)");
+DEFINE_PARAMETER(pl,double,uniform_band,2.0,"Uniform band size (Default: 2.0)");
+
+DEFINE_PARAMETER(pl,bool,expand_ghost_layer,true,"Expand the ghost layer? (Default: true)");
+DEFINE_PARAMETER(pl,bool,balance_grid,true,"Balance the grid? (Default: true)");
+
 
 double s1_coarsen_criteria;
 double s1_refine_criteria;
@@ -100,31 +112,24 @@ double s2_coarsen_criteria;
 double s2_refine_criteria;
 
 compare_option_t  s1_coarsen_comp, s1_refine_comp, s2_coarsen_comp, s2_refine_comp;
-
 compare_diagonal_option_t  s1_coarsen_diag_comp, s1_refine_diag_comp, s2_coarsen_diag_comp, s2_refine_diag_comp;
 
 
 // ---------------------------------------
 // Grid refinement:
 // ---------------------------------------
-int lmin = 4;
-int lmax = 7;
-double lip = 1.75;
-const unsigned int num_fields = 2; // Number of scalar fields to refine by
-const unsigned int total_num_fields = 4; // Total number of fields we are looking at (including scalar fields and LSFs )
+unsigned int num_fields =0; // Number of scalar fields to refine by
+unsigned int total_num_fields =0; // Total number of fields we are looking at (including scalar fields and LSFs )
 
 
-bool refine_by_phi1 = true;
-bool refine_by_phi2 = true;
-void set_refinement_options(double dxyz_smallest_min){
-  refine_by_s1 = true;
-  refine_by_s2 = true;
 
-  if(!refine_by_phi1 && !refine_by_phi2){
-      throw std::invalid_argument("You must select at least one level set function to refine around \n"); // FOR NOW.... maybe at some point we give an option to skip phi?
-    }
+void set_refinement_options(){
 
-  use_block = false;
+
+  if(refine_by_phi1) total_num_fields++;
+  if(refine_by_phi2) total_num_fields++;
+  if(refine_by_s1) {total_num_fields++;num_fields++;}
+  if(refine_by_s2) {total_num_fields++; num_fields++;}
 
   // s1 coarsen options:
   s1_coarsen_criteria = 0.5;
@@ -132,19 +137,19 @@ void set_refinement_options(double dxyz_smallest_min){
   s1_coarsen_diag_comp = ABSOLUTE;
 
   // s1 refine options:
-  s1_refine_criteria = dxyz_smallest_min*1.0;
+  s1_refine_criteria = 0.2;
   s1_refine_comp = LESS_THAN;
   s1_refine_diag_comp = ABSOLUTE;
 
   // s2 coarsen options:
-  s2_coarsen_criteria = 1.0*lip;
-  s2_coarsen_comp = GREATER_THAN;
-  s2_coarsen_diag_comp = MULTIPLY_BY;
+  s2_coarsen_criteria = 0.6;
+  s2_coarsen_comp = LESS_THAN;
+  s2_coarsen_diag_comp = ABSOLUTE;
 
   // s2 refine options:
-  s2_refine_criteria = 0.5*lip;
-  s2_refine_comp = LESS_THAN;
-  s2_refine_diag_comp = MULTIPLY_BY;
+  s2_refine_criteria = 0.2;
+  s2_refine_comp = GREATER_THAN;
+  s2_refine_diag_comp = ABSOLUTE;
 
 }
 
@@ -171,7 +176,7 @@ struct FUNCTION1 : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
-      return sin(PI*x)*cos(PI*y);
+      return sin(pow(n_coeff*PI*x,power))*cos(pow(n_coeff*PI*y,power));
   }
 } function1;
 
@@ -179,8 +184,8 @@ struct FUNCTION2 : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
-      return r0 - sqrt(SQR(x/1.) + SQR(y/0.5));
-      //return sin(2.*PI*x)*cos(2.*PI*y);
+//      return r0 - sqrt(SQR(x/1.) + SQR(y/0.5));
+      return sin(2.*PI*x)*cos(2.*PI*y);
   }
 } function2;
 
@@ -238,6 +243,12 @@ int main(int argc, char** argv) {
   PetscViewer viewer;
   int mpi_ret; // Check mpi issues
 
+  cmdParser cmd;
+
+  pl.initialize_parser(cmd);
+  cmd.parse(argc,argv);
+
+  pl.get_all(cmd);
   // stopwatch
   parStopWatch w;
   w.start("Running example: refine and coarsen with provided criteria \n \n ");
@@ -270,12 +281,21 @@ int main(int argc, char** argv) {
                          nx,ny,xmin,xmax,ymin,ymax,px,py);
   // Initialize output file name:
   int ex_no = 0;
-  char out_dir[1000];
-  sprintf(out_dir,"/home/elyce/workspace/projects/multialloy_with_fluids/output_refine_with_fields");
+  const char* out_dir = getenv("OUT_DIR_VTK");
+  if(!out_dir){
+      throw std::invalid_argument("You need to set the environment variable 'OUT_DIR_VTK' ");
+  }
   char file_name[1000];
   sprintf(file_name,"%s/refinement_test_ex_%d",out_dir,ex_no);
   PetscPrintf(mpi.comm(),"Output file is %s \n",file_name);
 
+
+  //const char* out_dir_log = getenv("OUT_DIR_LOG");
+
+  //FILE *fich_log;
+  //char name_logfile[1000];
+  //sprintf(name_logfile,"%s/lmin_%d_lmax_%d_method_%d_advection_order_%d_logfile.dat",
+  //        out_dir_log,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
   // -----------------------------------------------
   // Create the grid:
   // -----------------------------------------------
@@ -369,7 +389,7 @@ int main(int argc, char** argv) {
   PetscPrintf(mpi.comm(),"Initial minimum grid size is %0.4f \n",dxyz_min_small);
 
   // Set the refinement options defined by the user:
-  set_refinement_options(dxyz_min_small);
+  set_refinement_options();
 
   // Begin defining the refinement criteria:
   // Order is {coarsen_field_1, refine_field_1, coarsen_field_2, refine_field_2, ...}
@@ -386,11 +406,6 @@ int main(int argc, char** argv) {
       compare_opn.push_back(s1_refine_comp);
       diag_opn.push_back(s1_refine_diag_comp);
       criteria.push_back(s1_refine_criteria);
-
-      PetscPrintf(mpi.comm(),"Will coarsen if fxn is greater than %0.4f \n",s1_coarsen_criteria);
-      PetscPrintf(mpi.comm(),"Will refine if fxn is less than %0.4f \n",s1_refine_criteria);
-
-
     }
   if(refine_by_s2){
       compare_opn.push_back(s2_coarsen_comp);
@@ -544,26 +559,14 @@ int main(int argc, char** argv) {
  } // end of "if use block"
   else{
   // Set the scalar fields to refine by in a PETSc vector:
-  for(int k=0; k<num_fields; k++){
-      VecCreateGhostNodes(p4est,nodes,&fields_old[k]);
-    }
+
+  int idx = 0;
+  if(refine_by_s1){fields_old[idx++] = s_1.vec;}
+  if(refine_by_s2){fields_old[idx++] = s_2.vec;}
+  P4EST_ASSERT(idx == num_fields);
   for(int k=0; k<num_fields; k++){
       VecCreateGhostNodes(p4est,nodes,&fields_new[k]);
-    }
-
-  if(refine_by_s1 && !refine_by_s2){
-      VecCopyGhost(s_1.vec,fields_old[0]);
-      VecCopyGhost(s_1_new.vec,fields_new[0]);
-    }
-  else if (refine_by_s2 && !refine_by_s1){
-      VecCopyGhost(s_2.vec,fields_old[0]);
-      VecCopyGhost(s_2_new.vec,fields_new[0]);
-    }
-  else if (refine_by_s1 && refine_by_s2){
-      VecCopyGhost(s_1.vec,fields_old[0]);
-      VecCopyGhost(s_2.vec,fields_old[1]);
-      VecCopyGhost(s_1_new.vec,fields_new[0]);
-      VecCopyGhost(s_2_new.vec,fields_new[1]);
+      VecCopyGhost(fields_old[k],fields_new[k]);
     }
 
   } // end of "else" for "if use block"
@@ -577,15 +580,43 @@ int main(int argc, char** argv) {
     bool is_grid_changing = true;
     int no_grid_changes = 0;
     int intermediate_no=0;
+
     while(is_grid_changing){
-          if(use_block){
-               // Using block vector:
-              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,false,0.0,NULL,fields_new_block,criteria,compare_opn,diag_opn);
+        // Save the intermediate grid:
+        sprintf(file_name,"%s/intermediate_%d",out_dir,intermediate_no);
+        if(refine_by_phi1 && !refine_by_phi2){
+            if(refine_by_s1 && !refine_by_s2){// FILL IN LATER
             }
-          else{
-              // Using vector of vectors:
-              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,false,0.0,fields_new,NULL,criteria,compare_opn,diag_opn);
+            else if(refine_by_s2 && !refine_by_s1){ // FILL IN LATER
             }
+            else{// FILL IN LATER
+            }
+        }
+        else if (refine_by_phi1 && refine_by_phi2){
+            if(refine_by_s1 && !refine_by_s2){
+                // FILL IN LATER
+            }
+            else if(refine_by_s2 && !refine_by_s1){
+                // FILL IN LATER
+            }
+            else{
+                double* fields_new_p[num_fields];
+                for(unsigned int k=0;k<num_fields;k++){
+                    ierr = VecGetArray(fields_new[k],&fields_new_p[k]);CHKERRXX(ierr);
+                }
+                phi_eff_new.get_array();
+                my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,3,0,file_name,
+                                       VTK_POINT_DATA, "phi_eff", phi_eff_new.ptr,
+                                       VTK_POINT_DATA, "function1",fields_new_p[0],
+                                       VTK_POINT_DATA, "function2",fields_new_p[1]);
+                for(unsigned int k=0;k<num_fields;k++){
+                    ierr = VecRestoreArray(fields_new[k],&fields_new_p[k]);CHKERRXX(ierr);
+                }
+                phi_eff_new.restore_array();
+            }
+        }
+
+        is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,enforce_uniform_band,uniform_band,1.5*uniform_band,fields_new,fields_new_block,criteria,compare_opn,diag_opn);
 
         PetscPrintf(mpi.comm(),"Did the grid change? --> %s \n \n ", is_grid_changing? "yes" : "no");
 
@@ -594,10 +625,11 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"Grid changed (%d time(s) ) \n \n ",no_grid_changes);
 
             // Repartition the grid:
-//            p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
             my_p4est_partition(p4est_np1,P4EST_TRUE,NULL);
 
             // Reset the grid:
+            if(balance_grid)p4est_balance(p4est_np1,P4EST_CONNECT_FULL,NULL);
+
             p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1,P4EST_CONNECT_FULL);
             p4est_ghost_expand(p4est_np1,ghost_np1);
             p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1,ghost_np1);
@@ -644,12 +676,6 @@ int main(int argc, char** argv) {
           } // End of "if grid changing"
         intermediate_no++;
 
-        // If grid is done changing, balance the grid:
-
-
-        // Save the intermediate grid:
-        sprintf(file_name,"%s/intermediate_%d",out_dir,intermediate_no);
-        my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_FALSE,0,0,file_name);
 
         if(intermediate_no>15){ PetscPrintf(mpi.comm(),"Grid not converging \n");break;}
       } // End of "while grid changing"
@@ -659,13 +685,13 @@ int main(int argc, char** argv) {
     my_p4est_interpolation_nodes_t interp_final(ngbd);
 
     Vec all_fields_old[total_num_fields];
-    for (int k=0; k<total_num_fields;k++){
-      VecCreateGhostNodes(p4est,nodes,&all_fields_old[k]);
-      }
-    all_fields_old[0] = phi_1.vec;
-    all_fields_old[1] = phi_2.vec;
-    all_fields_old [2] = s_1.vec;
-    all_fields_old[3] = s_2.vec;
+
+    int idx = 0;
+    if(refine_by_phi1){all_fields_old[idx++]=phi_1.vec;}
+    if(refine_by_phi2){all_fields_old[idx++]=phi_2.vec;}
+    if(refine_by_s1){all_fields_old[idx++]=s_1.vec;}
+    if(refine_by_s1){all_fields_old[idx++]=s_2.vec;}
+    P4EST_ASSERT(idx==total_num_fields);
 
     phi_1_new.destroy(); phi_1_new.create(p4est_np1,nodes_np1);
     phi_2_new.destroy(); phi_2_new.create(phi_1_new.vec);
@@ -676,11 +702,6 @@ int main(int argc, char** argv) {
     for (int k=0; k<total_num_fields;k++){
       VecCreateGhostNodes(p4est_np1,nodes_np1,&all_fields_new[k]);
       }
-    all_fields_new[0] = phi_1_new.vec;
-    all_fields_new[1] = phi_2_new.vec;
-    all_fields_new[2] = s_1_new.vec;
-    all_fields_new[3] = s_2_new.vec;
-
 
     // Interpolate all fields onto new grid:
     double xyz[P4EST_DIM];
@@ -696,8 +717,8 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(),"Interpolation of all fields onto the final grid is complete \n");
 
     // Now, check the interpolation errors on the final grid to make sure nothing is weird:
-    double local_errors_final[5] = {0.0,0.0,0.0,0.0,0.0};// Order is : phi1, phi2, s1, s2, block fields
-    double global_errors_final[5] = {0.0,0.0,0.0,0.0,0.0};
+    double local_errors_final[total_num_fields+1];// Order is : phi1, phi2, s1, s2, block fields
+    double global_errors_final[total_num_fields+1];
 
     double xyz_final[P4EST_DIM];
 
@@ -774,27 +795,24 @@ int main(int argc, char** argv) {
     // Visualize the fields on the final new grid:
     ex_no++;
     sprintf(file_name,"%s/refinement_test_ex_%d",out_dir,ex_no);
-    PetscPrintf(mpi.comm(),"New filename is %s \n",file_name);
-    save_vtk(p4est_np1,nodes_np1,ghost_np1,file_name,phi_1_new,phi_2_new,s_1_new,s_2_new);
-
+    save_vtk(p4est,nodes,ghost,file_name,phi_1_new,phi_2_new,s_1_new,s_2_new);
     // ---------------------------------------------------
     // Destroy objects now that they are no longer in use:
     // ---------------------------------------------------
     if(use_block){
-        VecDestroy(fields_old_block);
         VecDestroy(fields_new_block);
       }
     else{
         for(unsigned int k=0;k<num_fields; k++){
-            VecDestroy(fields_old[k]);
             VecDestroy(fields_new[k]);
           }
+
       }
 
     // This (vvv) takes care of destroying s_1, s_2, phi_1, phi_2, s_1_new, s_2_new, phi_1_new, phi_2_new as well bc those vectors are set in the all_fields_ arrays
     for(unsigned int k=0; k<total_num_fields; k++){
-        VecDestroy(all_fields_old[k]);
         VecDestroy(all_fields_new[k]);
+
       }
   } // end of "if test refine and coarsen"
 
@@ -819,7 +837,7 @@ int main(int argc, char** argv) {
       my_p4est_semi_lagrangian_t sl(&p4est_np1,&nodes_np1,&ghost_np1,ngbd);
 
       // Call the update_p4est function:
-      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,false,0.0,fields_new,fields_new_block,criteria,compare_opn,diag_opn,false);
+      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,enforce_uniform_band,uniform_band,1.5*uniform_band,fields_new,fields_new_block,criteria,compare_opn,diag_opn,expand_ghost_layer);
 
 
       // Interpolate all other fields onto the new grid (besides phi_1_new, which has already been advected):

@@ -367,7 +367,7 @@ void Voronoi2D::clip_interface()
       Point2 u = plr - pmk;
 
       /* the new points are on top of each other ... which can only mean that the value at point k=l is exactly 0 */
-      if(u.norm_L2() < EPS)
+      if(u.norm_L2()<EPS) // [Elyce : if you're getting a bug coming from this function, try -->]if k!=l , PRINT -- breaking our assumption [noticed a bug here in specific case of NS but is currently not resolved 4/29/2020, could not replicate]
       {
         m = r;
         continue;
