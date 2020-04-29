@@ -120,10 +120,10 @@ void select_solvers(){
       break;
     case ICE_AROUND_CYLINDER:
       save_stefan = false;
-      solve_stefan = false;//true;
+      solve_stefan = true;
       solve_navier_stokes = true;
-      save_navier_stokes = true;//false;
-      save_coupled_fields = false;//true;
+      save_navier_stokes = false;//false;
+      save_coupled_fields = true;//true;
       do_advection=true;
       break;
     case NS_GIBOU_EXAMPLE:
