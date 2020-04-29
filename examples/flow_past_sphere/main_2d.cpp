@@ -688,9 +688,9 @@ void initialize_hodge_convergence_output(simulation_setup & setup, const my_p4es
       fprintf(fp_liveplot_hodge, "set ylabel \"Convergence check for Hodge variable (%s)\" font \"Arial,14\"\n", os.str().c_str());
       fprintf(fp_liveplot_hodge, "set format y \"%%.2t*10^%%+03T \n");
       fprintf(fp_liveplot_hodge, "set logscale y \n");
-      fprintf(fp_liveplot_hodge, "plot \t \"%s\" using 1:%u title 'subiteration %u' with lines lw 3", setup.file_hodge_convergence.c_str(), 2 + 0, 0);
+      fprintf(fp_liveplot_hodge, "plot \t \"%s\" using 1:%u title 'subiteration %u' with lines lw 3", filename.str().c_str(), 2 + 0, 0);
       for (unsigned int k = 1; k < setup.niter_hodge_max; ++k)
-        fprintf(fp_liveplot_hodge, ", \\\n\t \"%s\" using 1:%u title 'subiteration %u' with lines lw 3", setup.file_hodge_convergence.c_str(), 2 + k, k);
+        fprintf(fp_liveplot_hodge, ", \\\n\t \"%s\" using 1:%u title 'subiteration %u' with lines lw 3", filename.str().c_str(), 2 + k, k);
       fprintf(fp_liveplot_hodge, "\n");
       fprintf(fp_liveplot_hodge, "pause 4\n");
       fprintf(fp_liveplot_hodge, "reread");
@@ -831,6 +831,9 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, 
   ns->set_external_forces(external_forces);
   if(fix_restarted_grid)
     ns->refine_coarsen_grid_after_restart(&level_set, false);
+
+  if(setup.save_vtk)
+    setup.update_export_vtk(); // so that we don't overwrite visualization files that were possibly already exported...
 
   PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
 }
@@ -1095,7 +1098,7 @@ int main (int argc, char* argv[])
   cmd.add_option("adapted_dt",            "activates the calculation of dt based on the local cell sizes if present");
   cmd.add_option("smoke",                 "no smoke if option not present, with smoke if option present");
   // method-related parameters
-  cmd.add_option("sl_order",              "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is" + to_string(default_sl_order));
+  cmd.add_option("sl_order",              "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + to_string(default_sl_order));
   cmd.add_option("cfl",                   "dt = cfl * dx/vmax, default is " + to_string(default_cfl));
   cmd.add_option("hodge_tol",             "numerical tolerance used for the convergence criterion on the Hodge variable (or its gradient), at all time steps, default is " + to_string(default_hodge_tol));
   cmd.add_option("niter_hodge",           "max number of iterations for convergence of the Hodge variable, at all time steps, default is " + to_string(default_n_hodge));

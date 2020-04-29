@@ -1050,6 +1050,10 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   ns->set_external_forces_per_unit_mass(tmp);
   if (fix_restarted_grid)
     ns->refine_coarsen_grid_after_restart(&channel, false);
+
+  if(setup.save_vtk)
+    setup.update_export_vtk(); // so that we don't overwrite visualization files that were possibly already exported...
+
   PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
 }
 
