@@ -271,11 +271,11 @@ void set_geometry(){
       xmin = 0.0; xmax = PI;
       ymin = 0.0; ymax = PI;
 
-      nx = 1; ny = 1;
+      nx = 2; ny = 2;
       px = 0; py = 0;
 
       scaling = 1.0;
-      r0 = 0.10;
+      r0 = 0.20;
       break;}
 
     case COUPLED_PROBLEM_EXAMPLE:{
@@ -798,9 +798,9 @@ public:
       case ICE_AROUND_CYLINDER:
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE:
-        return 0.2 - sin(x)*sin(y);
+        return r0 - sin(x)*sin(y);
       case COUPLED_PROBLEM_EXAMPLE:
-        return 0.2 - sin(x)*sin(y);
+        return r0 - sin(x)*sin(y);
       default: throw std::invalid_argument("You must choose an example type\n");
       }
   }
