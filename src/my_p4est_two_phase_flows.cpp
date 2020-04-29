@@ -2024,9 +2024,9 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
     }
   }
 
-  //  // this is for hodge correction...
-  //  int global_size_bc_index = bc_index.size();
-  //  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//  // this is for hodge correction...
+//  size_t global_size_bc_index = bc_index.size();
+//  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, my_MPI_SIZE_T, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   //  /* complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) */
   //  if(global_size_bc_index > 0)

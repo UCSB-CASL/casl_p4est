@@ -1006,8 +1006,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
   ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
-  int global_size_bc_index = bc_index.size();
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret); //E: Sum the number of BC additions to the RHS to make across all processors,
+  size_t global_size_bc_index = bc_index.size();
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, my_MPI_SIZE_T, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret); //E: Sum the number of BC additions to the RHS to make across all processors,
                                                                                                                               //store on all processors as global_size_bc_index
 
   /* -----------------------------------------------------------------------------------------------------------------
