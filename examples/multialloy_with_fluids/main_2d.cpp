@@ -2105,7 +2105,8 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
       std::vector<std::string> cell_names = {};
       std::vector<double*> cell_data = {};
 
-      my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+      //my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+      my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
 
     }
 
@@ -3473,7 +3474,9 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   std::vector<std::string> cell_names = {"pressure_cells"};
   std::vector<double*> cell_data = {press_cells.ptr};
 
-  my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+//  my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+
 
   point_names.clear();point_data.clear();
   cell_names.clear(); cell_data.clear();
@@ -3577,7 +3580,9 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
-    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+//    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+
 
 
     // Clear the vectors:
@@ -3627,7 +3632,9 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
     std::vector<std::string> cell_names = {};
     std::vector<double*> cell_data = {};
 
-    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+//    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+
 
     point_names.clear(); point_data.clear();
     cell_names.clear(); cell_data.clear();
@@ -3735,7 +3742,8 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
     std::vector<std::string> cell_names = {};
     std::vector<double*> cell_data = {};
 
-    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+//    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
 
     point_names.clear(); point_data.clear();
     cell_names.clear(); cell_data.clear();
@@ -4123,15 +4131,6 @@ int main(int argc, char** argv) {
   parStopWatch w;
   w.start("Running example: multialloy_with_fluids");
 
-  int num_16_to_17_increases = 0;
-  int num_node_increases = 0;
-  int num_17_to_18_decreases = 0;
-  int num_ns_increases = 0;
-  int num_ns_decreases = 0;
-
-  int num_ngbd_increases = 0;
-  int num_delete_grid_decreases = 0;
-
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
 
     // -----------------------------------------------
@@ -4408,7 +4407,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Initialize the output file for vtk:
     // -----------------------------------------------
-    int out_idx = 0;
+    int out_idx = -1;
 
 
     // -----------------------------------------------
@@ -4683,10 +4682,10 @@ int main(int argc, char** argv) {
         // Saving to VTK: either every specified number of iterations, or every specified dt:
         bool are_we_saving = false;
         if(save_using_dt && save_to_vtk){
-            are_we_saving= (tstep>0) && (( (int) floor(tn/save_every_dt) ) !=out_idx) && (tstep!=load_tstep);
+            are_we_saving= (solve_navier_stokes?(tstep>0):true) && (( (int) floor(tn/save_every_dt) ) !=out_idx) && (tstep!=load_tstep);
           }
         else if (save_using_iter&& save_to_vtk){
-            are_we_saving = (tstep>0) && (( (int) floor(tstep/save_every_iter) ) !=out_idx) && (tstep!=load_tstep);
+            are_we_saving = (solve_navier_stokes?(tstep>0):true) && (( (int) floor(tstep/save_every_iter) ) !=out_idx) && (tstep!=load_tstep);
           }
 
         // Save to VTK if we are saving this timestep:
@@ -4815,6 +4814,7 @@ int main(int argc, char** argv) {
             const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
 
             char output[1000];
+            PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
             sprintf(output,"%s/snapshot_NS_Gibou_test_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
             save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
@@ -5078,6 +5078,7 @@ int main(int argc, char** argv) {
                 phi_cylinder.create(p4est_np1,nodes_np1); // create to refine around, then will destroy
                 sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
               }
+            if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling update_p4est ... \n");
 
             // Call grid advection and update:
             sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec:NULL,num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
@@ -5222,7 +5223,9 @@ int main(int argc, char** argv) {
         // Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
 
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning interpolation onto new grid \n");
         interpolate_values_onto_new_grid(&T_l_n.vec,&T_s_n.vec,v_interface.vec,v_n.vec,nodes_np1,p4est_np1,ngbd,interp_bw_grids);
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolation complete onto new grid \n");
 
         if(solve_stefan){
             // Get the new solid LSF:
@@ -5274,6 +5277,21 @@ int main(int argc, char** argv) {
                                  "[Temperature problem specific info:] \n"
                                  "----------------------------- \n \n");
           if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+
+          if(example_ == FRANK_SPHERE){
+              const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
+
+              char output[1000];
+
+              sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d__before_solve_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+              PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
+
+              save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
+            }
+
+
+
+
           phi_solid_dd.create(p4est_np1,nodes_np1);
           ngbd_np1->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
 
@@ -5287,6 +5305,17 @@ int main(int argc, char** argv) {
               phi_cylinder_dd.create(p4est_np1,nodes_np1);
               ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
             }
+
+          // Check Temperature values:
+          PetscPrintf(mpi.comm(),"BEFORE SOLVING SYSTEM: \n");
+          PetscPrintf(mpi.comm(),"--> Temperature values in the fluid domain: \n");
+
+          check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,true,false,fich_log);
+          PetscPrintf(mpi.comm(),"\n"
+                                 "-->Temperature values in the solid domain: \n");
+
+          check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,false,true,fich_log);
+          PetscPrintf(mpi.comm(),"\n \n");
 
           // ---------------------------------------
           // Compute advection terms (if applicable):
@@ -5484,6 +5513,7 @@ int main(int argc, char** argv) {
               char output[1000];
 
               sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+              PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
               save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
               if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step complete \n\n");
@@ -5526,7 +5556,7 @@ int main(int argc, char** argv) {
 
               PetscPrintf(mpi.comm(),"CFL: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl,rho_l,mu_l);
 
-              ns->set_parameters((1./Re),1.0,NS_advection_sl_order,NULL,NULL,cfl);
+              ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl);
               ns->set_velocities(v_nm1_NS.vec,v_n_NS.vec);
             }
 
