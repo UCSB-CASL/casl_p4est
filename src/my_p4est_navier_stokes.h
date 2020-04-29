@@ -30,6 +30,42 @@ typedef enum
   LOAD
 } save_or_load;
 
+typedef enum {
+  grid_update,
+  viscous_step,
+  projection_step,
+  velocity_interpolation
+} ns_task;
+
+class execution_time_accumulator
+{
+private:
+  unsigned int counter;
+  double total_time;
+  double fixed_point_extra_time;
+public:
+  execution_time_accumulator()
+  {
+    reset();
+  }
+  void reset()
+  {
+    counter = 0;
+    total_time = 0.0;
+    fixed_point_extra_time = 0.0;
+  }
+  void add(const double &execution_time)
+  {
+    total_time += execution_time;
+    if(counter > 0)
+      fixed_point_extra_time += execution_time;
+    counter++;
+  }
+
+  double read_total_time() const { return total_time; }
+  double read_fixed_point_extra_time() const { return fixed_point_extra_time; }
+  unsigned int read_counter() const { return counter; }
+};
 
 class my_p4est_navier_stokes_t
 {
@@ -101,7 +137,7 @@ protected:
   double n_times_dt;
   bool   dt_updated;
 
-  Vec phi;
+  Vec phi, grad_phi;
   Vec hodge;
   Vec dxyz_hodge[P4EST_DIM];
 
@@ -115,8 +151,8 @@ protected:
   // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
   // no need to destroy these, not dynamically allocated...
   bool semi_lagrangian_backtrace_is_done;
-  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
-  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
+  std::vector<double> backtraced_v_n[P4EST_DIM];
+  std::vector<double> backtraced_v_nm1[P4EST_DIM]; // used only if sl_order == 2
 
   // face interpolator to nodes: store them in memory to accelerate execution if static grid
   bool interpolators_from_face_to_nodes_are_set;
@@ -149,9 +185,9 @@ protected:
   CF_DIM *external_forces_per_unit_volume[P4EST_DIM];
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
 
-  my_p4est_interpolation_nodes_t *interp_phi;
+  my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
-  double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir);
+  double compute_dxyz_hodge(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const unsigned char& dir);
 
   double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx);
 
@@ -312,6 +348,62 @@ protected:
    * Raphael EGAN
    */
   void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+
+  /*!
+   * \brief compute_velocity_at_local_node : function for interpolating face-sampled velocity components at a local grid node. Made private
+   * and such to avoid code duplication between loops over layer and inner nodes when interpolating velocities at all grid nodes
+   * \param dir                 [in] : Cartesian component of the velocity component to interpolate
+   * \param node_idx            [in] : local node index of to interpolate the dir^th velocity component at
+   * \param vnp1_dir_read_p     [in] : pointer to (read-only) values of dir^th component of face-sampled velocity, at time (n + 1)
+   * \param store_interpolators [in] : flag activating the storage of local face-interpolators (much faster to re-use when playing with static
+   * grids) --> only valid with homogeneous Neumann boundary conditions if Neumann BC on the walls
+   * \return value of the wegihted-lsqr-interpolated velocity component at the desired node
+   */
+  double compute_velocity_at_local_node(const p4est_locidx_t& node_idx, const unsigned char& dir, const double* vnp1_dir_read_p, const bool& store_interpolators);
+
+  void calculate_viscous_stress_at_local_nodes(const p4est_locidx_t& node_idx, const double* phi_read_p, const double *grad_phi_read_p,
+                                               const double* vnodes_read_p[P4EST_DIM], double* viscous_stress_p[P4EST_DIM]) const;
+
+  class ns_time_step_analyzer_t
+  {
+    bool is_active;
+    bool measuring;
+    ns_task task;
+    double start_time;
+    std::map<ns_task, execution_time_accumulator> timings;
+
+  public:
+    ns_time_step_analyzer_t() : is_active(false), measuring(false) {}
+
+    void reset()
+    {
+      for (std::map<ns_task, execution_time_accumulator>::iterator it = timings.begin(); it != timings.end(); ++it)
+        it->second.reset();
+    }
+    const std::map<ns_task, execution_time_accumulator> & get_execution_times() const { return timings; }
+    void activate()     { is_active = true; }
+    bool is_on() const  { return is_active; }
+    void start(const ns_task &task_)
+    {
+#ifdef CASL_THROWS
+      if(measuring)
+        throw std::runtime_error("my_p4est_navier_stokes_t::ns_timer_t::start_watch(): the watch needs to be stopped before being restarted.");
+#endif
+      measuring  = true;
+      task       = task_;
+      start_time = MPI_Wtime();
+    }
+    void stop()
+    {
+#ifdef CASL_THROWS
+      if(!measuring)
+        throw std::runtime_error("my_p4est_navier_stokes_t::ns_timer_t::stop_watch(): the watch can't be stopped if it wasn't started first.");
+#endif
+      timings[task].add(MPI_Wtime() - start_time);
+      measuring = false;
+    }
+  } ns_time_step_analyzer;
+
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
@@ -354,9 +446,67 @@ public:
 
   void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
 
-  void set_velocities(Vec *vnm1, Vec *vn);
+  void set_velocities(Vec *vnm1, Vec *vn, const double *max_L2_norm_u = NULL);
 
-  void set_velocities(CF_DIM **vnm1, CF_DIM **vn);
+  void set_velocities(CF_DIM **vnm1, CF_DIM **vn, const bool set_max_L2_norm_u = false);
+
+  inline void set_vnp1_nodes(CF_DIM **vnp1)
+  {
+    PetscErrorCode ierr;
+    double *vnp1_nodes_p[P4EST_DIM];
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      if(vnp1_nodes[dir] != NULL)
+      {
+        ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+      }
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp1_nodes[dir], &vnp1_nodes_p[dir]); CHKERRXX(ierr);
+    }
+
+    for (size_t k = 0; k < nodes_n->indep_nodes.elem_count; ++k) {
+      double node_xyz[P4EST_DIM];
+      node_xyz_fr_n(k, p4est_n, nodes_n, node_xyz);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        vnp1_nodes_p[dir][k] = (*vnp1[dir])(node_xyz);
+    }
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecRestoreArray(vnp1_nodes[dir], &vnp1_nodes_p[dir]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set_pressure(const CF_DIM &pressure_field)
+  {
+    PetscErrorCode ierr;
+    double *pressure_p;
+    if(pressure != NULL)
+    {
+      ierr = VecDestroy(pressure); CHKERRXX(ierr);
+    }
+    ierr = VecCreateGhostCells(p4est_n, ghost_n, &pressure); CHKERRXX(ierr);
+    ierr = VecGetArray(pressure, &pressure_p); CHKERRXX(ierr);
+
+    for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
+      p4est_tree_t* tree  = p4est_tree_array_index(p4est_n->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        double xyz_quad[P4EST_DIM];
+        quad_xyz_fr_q(quad_idx, tree_idx, p4est_n, ghost_n, xyz_quad);
+        pressure_p[quad_idx] = pressure_field(xyz_quad);
+      }
+    }
+
+    for (size_t k = 0; k < ghost_n->ghosts.elem_count; ++k) {
+      const p4est_quadrant_t* quad = p4est_quadrant_array_index(&ghost_n->ghosts, k);
+      p4est_locidx_t quad_idx = p4est_n->local_num_quadrants + k;
+      double xyz_quad[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, quad->p.piggy3.which_tree, p4est_n, ghost_n, xyz_quad);
+      pressure_p[quad_idx] = pressure_field(xyz_quad);
+    }
+
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecRestoreArray(pressure, &pressure_p); CHKERRXX(ierr);
+    }
+  }
 
   void set_vstar(Vec *vstar);
 
@@ -365,6 +515,7 @@ public:
   inline double get_dt() { return dt_n; }
 
   inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
+  inline my_p4est_node_neighbors_t* get_ngbd_nm1() { return ngbd_nm1; }
 
   inline my_p4est_cell_neighbors_t* get_ngbd_c() { return ngbd_c; }
 
@@ -373,6 +524,8 @@ public:
   // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
   inline void nullify_p4est_nm1() { p4est_nm1 = NULL; }
 
+
+  inline const BoundaryConditionsDIM &get_bc_hodge() const { return bc_hodge; }
   inline p4est_t *get_p4est_nm1() { return p4est_nm1; }
 
   inline p4est_ghost_t *get_ghost() { return ghost_n; }
@@ -419,9 +572,14 @@ public:
     }
   }
 
-  void copy_hodge(Vec hodge_external){
+  void copy_hodge(Vec hodge_external, const bool with_ghost = true){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(hodge,hodge_external); CHKERRXX(ierr);
+    if(with_ghost){
+      ierr = VecCopyGhost(hodge,hodge_external); CHKERRXX(ierr);
+    }
+    else{
+      ierr = VecCopy(hodge,hodge_external); CHKERRXX(ierr);
+    }
   }
 
   inline Vec get_smoke() { return smoke; }
@@ -443,6 +601,7 @@ public:
   }
 
   inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
+  inline my_p4est_interpolation_nodes_t* get_interp_grad_phi() { return interp_grad_phi; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
@@ -480,7 +639,7 @@ public:
     delete cell_solver;
   }
   double solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR,
-                          const bool& shift_to_zero_mean_if_floating = true, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const dxyz_hodge_component& dxyz_hodge_chek = uvw_components);
+                          const bool& shift_to_zero_mean_if_floating = true, Vec hodge_old = NULL, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const hodge_control& dxyz_hodge_chek = hodge_value);
 
   /*!
    * \brief get_correction_in_hodge_derivative_for_enforcing_mass_flow
@@ -529,7 +688,8 @@ public:
 
   void advect_smoke(my_p4est_node_neighbors_t* ngbd_n_np1, Vec* vnp1, Vec smoke_np1);
 
-  void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
+// [Raphael:] remnant method that wasn't used anywhere
+//  void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
@@ -684,6 +844,9 @@ public:
 
   inline double alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
   inline double beta()  const { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1)); }
+
+  inline void activate_timer() { ns_time_step_analyzer.activate(); }
+  const std::map<ns_task, execution_time_accumulator>& get_timings() const { return  ns_time_step_analyzer.get_execution_times(); }
 
   void coupled_problem_partial_destructor();
 

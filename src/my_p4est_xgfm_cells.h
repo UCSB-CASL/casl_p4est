@@ -277,16 +277,9 @@ class my_p4est_xgfm_cells_t
 #endif
     p4est_quadrant_t best_match;
     std::vector<p4est_quadrant_t> remote_matches;
-    int rank_found = fine_node_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_clamped, best_match, remote_matches);
-    P4EST_ASSERT(rank_found != -1);
-    p4est_locidx_t quad_idx;
-    if(rank_found==fine_p4est->mpirank)
-    {
-      p4est_tree_t *tree = p4est_tree_array_index(fine_p4est->trees, best_match.p.piggy3.which_tree);
-      quad_idx = best_match.p.piggy3.local_num + tree->quadrants_offset;
-    }
-    else
-      quad_idx = best_match.p.piggy3.local_num + fine_p4est->local_num_quadrants;
+    int rank_found = fine_node_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_clamped, best_match, remote_matches, false, true);
+    P4EST_ASSERT(rank_found != -1); (void) rank_found;
+    const p4est_locidx_t& quad_idx = best_match.p.piggy3.local_num;
 
     p4est_qcoord_t best_match_qsize = P4EST_QUADRANT_LEN(best_match.level);
     p4est_qcoord_t best_match_qxyz_min[P4EST_DIM];

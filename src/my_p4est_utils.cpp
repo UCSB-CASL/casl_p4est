@@ -47,19 +47,51 @@ std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 WallBC2D::~WallBC2D() {};
 WallBC3D::~WallBC3D() {};
 
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
+bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                    const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p)
+{
+  bool value_is_well_defined = bc_cell_field.interfaceType() == NOINTERFACE; // always well-defined if no interface (or, equivalently, if no node-sampled levelset is given)
+  if(!value_is_well_defined)
+  {
+    /* check if quadrant is well defined */
+    phi_q = 0.0;
+    bool one_corner_in_neg_domain = false;
+    for(unsigned char i = 0; i < P4EST_CHILDREN; ++i)
+    {
+      const double &tmp = node_sampled_phi_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + i]];
+      one_corner_in_neg_domain = one_corner_in_neg_domain || tmp < 0.0;
+      phi_q += tmp;
+    }
+    phi_q /= (double) P4EST_CHILDREN;
+    // well defined if phi_q < 0.0 no matter which boundary condition is used
+    // or if a corner value is in negative domain and the interface is (constant Neumann)
+    value_is_well_defined = phi_q < 0.0 || (one_corner_in_neg_domain && bc_cell_field.interfaceType() == NEUMANN);
+    if(!value_is_well_defined && one_corner_in_neg_domain && bc_cell_field.interfaceType() == MIXED)
+    {
+      // if mixed interface, phi_q non-negative, but one corner is in negative domain,
+      // the value is well-defined if the local cell is marked "Neumann"
+      double qxyz[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, qxyz);
+      value_is_well_defined = bc_cell_field.interfaceType(qxyz) == NEUMANN;
+    }
+  }
+  return value_is_well_defined;
+}
+
+bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
 #ifdef P4EST_DEBUG
   int clamped = 1;
 #endif
   P4EST_ASSERT(p4est_quadrant_is_node(n, clamped));
-  unsigned int idx_l, idx_u, idx_m;
+  size_t idx_l, idx_u, idx_m;
   const p4est_indep_t *node_l, *node_u, *node_m;
   // check if the candidate can be in the locally owned nodes first, or in the ghost ones
-  idx_l   = 0;
-  idx_u   = nodes->num_owned_indeps-1;
-  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+  idx_l   = 0;                              SC_ASSERT(idx_l < nodes->indep_nodes.elem_count);
+  idx_u   = nodes->num_owned_indeps - 1;    SC_ASSERT(idx_u < nodes->indep_nodes.elem_count);
+
+  node_l  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_l*nodes->indep_nodes.elem_size);
+  node_u  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_u*nodes->indep_nodes.elem_size);
   if((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0))
     goto lookup_in_ghost_nodes;
   while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
@@ -74,17 +106,17 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
       idx = idx_u;
       return true;
     }
-    if(idx_u-idx_l == 1)
+    if(idx_u - idx_l == 1)
       break;
-    idx_m   = (idx_l + idx_u)/2;
-    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
-    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
-    if(p4est_quadrant_compare_piggy(node_m, n) <0)
+    idx_m   = (idx_l + idx_u)/2;  SC_ASSERT(idx_m < nodes->indep_nodes.elem_count);
+    node_m  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_m*nodes->indep_nodes.elem_size);
+    P4EST_ASSERT(p4est_quadrant_compare_piggy(node_l, node_m) <= 0 && p4est_quadrant_compare_piggy(node_u, node_m) >= 0);
+    if(p4est_quadrant_compare_piggy(node_m, n) < 0)
     {
       idx_l   = idx_m;
       node_l  = node_m;
     }
-    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+    else if (p4est_quadrant_compare_piggy(node_m, n) > 0)
     {
       idx_u   = idx_m;
       node_u  = node_m;
@@ -99,12 +131,13 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
   return false;
 lookup_in_ghost_nodes:
   P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
-  idx_l   = nodes->num_owned_indeps;
-  idx_u   = nodes->indep_nodes.elem_count-1;
+
+  idx_l   = nodes->num_owned_indeps;            SC_ASSERT(idx_l < nodes->indep_nodes.elem_count);
+  idx_u   = nodes->indep_nodes.elem_count - 1;  SC_ASSERT(idx_u < nodes->indep_nodes.elem_count);
   if(idx_l <= idx_u) // do this only if there are ghost nodes!
   {
-    node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-    node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+    node_l  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_l*nodes->indep_nodes.elem_size);
+    node_u  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_u*nodes->indep_nodes.elem_size);
     while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
     {
       if(!p4est_quadrant_compare_piggy(node_l, n))
@@ -119,8 +152,8 @@ lookup_in_ghost_nodes:
       }
       if(idx_u - idx_l == 1)
         break;
-      idx_m   = (idx_l + idx_u)/2;
-      node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+      idx_m   = (idx_l + idx_u)/2; SC_ASSERT(idx_m < nodes->indep_nodes.elem_count);
+      node_m  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_m*nodes->indep_nodes.elem_size);
       P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
       if(p4est_quadrant_compare_piggy(node_m, n) <0)
       {
@@ -212,7 +245,7 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   return;
 }
 
-void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN];
@@ -229,7 +262,7 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
   return;
 }
 
-void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -250,7 +283,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
   return;
 }
 
-void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -300,7 +333,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
   return;
 }
 
-void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -358,7 +391,7 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   return;
 }
 
-void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -2046,7 +2079,7 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
   return is;
 }
 
-std::string convert_to_string(const dxyz_hodge_component& type)
+std::string convert_to_string(const hodge_control& type)
 {
   switch(type){
   case u_component:
@@ -2063,14 +2096,17 @@ std::string convert_to_string(const dxyz_hodge_component& type)
   case uvw_components:
     return std::string("uvw");
     break;
+  case hodge_value:
+    return std::string("value");
+    break;
   default:
-    return std::string("unknown type of dxyz_hodge_component");
+    return std::string("unknown type of hodge_control");
     break;
   }
 }
 
 
-std::ostream& operator<< (std::ostream& os, dxyz_hodge_component type)
+std::ostream& operator<< (std::ostream& os, hodge_control type)
 {
   switch(type){
   case u_component:
@@ -2078,19 +2114,22 @@ std::ostream& operator<< (std::ostream& os, dxyz_hodge_component type)
 #ifdef P4_TO_P8
   case w_component:
 #endif
-    os << convert_to_string(type) << " component";
+    os << convert_to_string(type) << " velocity component";
     break;
   case uvw_components:
-    os << "all components";
+    os << "all velocity components";
+    break;
+  case hodge_value:
+    os << "value of Hodge variable";
     break;
   default:
-    os << convert_to_string(type);
+    return os << "unknown type of hodge_control";
     break;
   }
   return os;
 }
 
-std::istream& operator>> (std::istream& is, dxyz_hodge_component& type)
+std::istream& operator>> (std::istream& is, hodge_control& type)
 {
   std::string str;
   is >> str;
@@ -2105,8 +2144,10 @@ std::istream& operator>> (std::istream& is, dxyz_hodge_component& type)
 #endif
   else if (str == "UVW" || str == "uvw" || str == "all" || str == "XYZ" || str == "xyz")
     type = uvw_components;
+  else if (str == "VALUE" || str == "Value" || str == "value")
+    type = hodge_value;
   else
-    throw std::invalid_argument("[ERROR]: Unknown dxyz_hodge_component entered");
+    throw std::invalid_argument("[ERROR]: Unknown hodge_control entered");
 
   return is;
 }

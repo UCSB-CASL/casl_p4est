@@ -236,7 +236,6 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
 
     /* solve the system */
     ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
-
     ierr = KSPSolve(ksp[dir], rhs[dir], solution[dir]); CHKERRXX(ierr);
     ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
 
@@ -532,7 +531,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       }
 
 #ifndef P4_TO_P8
-      for (size_t i=0; i < points->size() && !is_interface; ++i)
+      for (size_t i = 0; i < points->size() && !is_interface; ++i)
         is_interface = is_interface || (*points)[i].n == INTERFACE;
 #endif
 
@@ -817,7 +816,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
               if(bc[dir].wallType(w_xyz) == DIRICHLET) // Dirichlet wall neighbor
               {
                 rhs_p[f_idx] += mu * exchange_surface * bc[dir].wallValue(w_xyz)/wall_distance; // cannot be division by 0 as it would mean that the face is ON the wall --> treated earlier...
-                interp_dxyz_hodge.add_point(bc_index.size(),w_xyz);
+                interp_dxyz_hodge.add_point(bc_index.size(), w_xyz);
                 bc_index.push_back(f_idx);
                 bc_coeffs.push_back(mu * exchange_surface/wall_distance);
                 if(!only_diag_is_modified[dir] && !matrix_is_ready[dir]) {
@@ -891,6 +890,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
     if(!matrix_is_ready[dir]) {
       ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, volume*(desired_diag[dir] - current_diag[dir]), ADD_VALUES); CHKERRXX(ierr); }
     rhs_p[f_idx] *= volume;
+
     if(desired_diag[dir] > 0.0) matrix_has_nullspace[dir] = false;
 
     /* bulk case, finite volume on voronoi cell */

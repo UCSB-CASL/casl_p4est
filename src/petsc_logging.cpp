@@ -111,13 +111,13 @@ PetscLogEvent log_trajectory_from_np1_to_nm1;
 PetscLogEvent log_trajectory_from_np1_to_nm1_faces;
 
 // my_p4est_level_set
+PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
+PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
 PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
 PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
 PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space;
 PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
-PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
-PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
-PetscLogEvent log_my_p4est_level_set_extend_over_interface;
+PetscLogEvent log_my_p4est_level_set_geometric_extrapolation_over_interface;
 PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 PetscLogEvent log_my_p4est_level_set_extend_from_interface_TVD;
@@ -127,10 +127,10 @@ PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
 PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
 
 // my_p4est_level_set_faces_t
-PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
+PetscLogEvent log_my_p4est_level_set_faces_geometric_extrapolation_over_interface;
 
 // my_p4est_level_set_cells_t
-PetscLogEvent log_my_p4est_level_set_cells_extend_over_interface;
+PetscLogEvent log_my_p4est_level_set_cells_geometric_extrapolation_over_interface;
 
 // my_p4est_hierarchy_t
 PetscLogEvent log_my_p4est_hierarchy_t;
@@ -307,7 +307,8 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_2nd_time_1st_space           ", 0, &log_my_p4est_level_set_reinit_2nd_time_1st_space); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_1st_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::reinit_1_iter_2nd_order             ", 0, &log_my_p4est_level_set_reinit_1_iter_2nd_order); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface               ", 0, &log_my_p4est_level_set_extend_over_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set::log_my_p4est_level_set_geometric_extrapolation_over_interface",
+                                                                                           0, &log_my_p4est_level_set_geometric_extrapolation_over_interface); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_over_interface_TVD           ", 0, &log_my_p4est_level_set_extend_over_interface_TVD); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface               ", 0, &log_my_p4est_level_set_extend_from_interface); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_level_set::extend_from_interface_TVD           ", 0, &log_my_p4est_level_set_extend_from_interface_TVD); CHKERRXX(ierr);
@@ -317,10 +318,10 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_level_set::advect_in_normal_direction_Vec      ", 0, &log_my_p4est_level_set_advect_in_normal_direction_Vec); CHKERRXX(ierr);
 
   // my_p4est_level_set_faces_t
-  ierr = PetscLogEventRegister("my_p4est_level_set_faces::extend_over_interface         ", 0, &log_my_p4est_level_set_faces_extend_over_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set_faces::geometric_extrapolation_over_interface", 0, &log_my_p4est_level_set_faces_geometric_extrapolation_over_interface); CHKERRXX(ierr);
 
   // my_p4est_level_set_cells_t
-  ierr = PetscLogEventRegister("my_p4est_level_set_cells::extend_over_interface         ", 0, &log_my_p4est_level_set_cells_extend_over_interface); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_level_set_cells::geometric_extrapolation_over_interface", 0, &log_my_p4est_level_set_cells_geometric_extrapolation_over_interface);  CHKERRXX(ierr);
 
   // my_p4est_hierarchy_t
   ierr = PetscLogEventRegister("my_p4est_hierarchy_t::init                              ", 0, &log_my_p4est_hierarchy_t); CHKERRXX(ierr);

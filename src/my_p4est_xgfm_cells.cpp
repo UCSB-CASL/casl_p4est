@@ -2035,10 +2035,10 @@ void my_p4est_xgfm_cells_t::interpolate_coarse_cell_field_to_fine_nodes(const do
       int rank = fine_node_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_fine_match, remote_matches);
       P4EST_ASSERT(rank != -1);
       p4est_quadrant_t best_coarse_match; remote_matches.resize(0);
-      rank = cell_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_coarse_match, remote_matches);
-      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, best_coarse_match.p.piggy3.which_tree);
-      P4EST_ASSERT(rank != -1);
-      p4est_locidx_t best_coarse_match_local_idx = (rank == p4est->mpirank ? best_coarse_match.p.piggy3.local_num + tree->quadrants_offset : best_coarse_match.p.piggy3.local_num + p4est->local_num_quadrants);
+      rank = cell_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_coarse_match, remote_matches, false, true);
+//      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, best_coarse_match.p.piggy3.which_tree);
+      P4EST_ASSERT(rank != -1); (void) rank;
+      const p4est_locidx_t &best_coarse_match_local_idx = best_coarse_match.p.piggy3.local_num;
       interpolate_cell_field_at_fine_node(fine_node_idx, ni, cell_field_read_p, fine_node_field_p, (best_fine_match.level == data_fine->max_lvl),
                                           &best_coarse_match, best_coarse_match_local_idx, best_coarse_match.p.piggy3.which_tree, ngbd_of_coarse_cells);
     }
@@ -2059,10 +2059,10 @@ void my_p4est_xgfm_cells_t::interpolate_coarse_cell_field_to_fine_nodes(const do
       int rank = fine_node_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_fine_match, remote_matches);
       P4EST_ASSERT(rank != -1);
       p4est_quadrant_t best_coarse_match; remote_matches.resize(0);
-      rank = cell_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_coarse_match, remote_matches);
-      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, best_coarse_match.p.piggy3.which_tree);
-      P4EST_ASSERT(rank != -1);
-      p4est_locidx_t best_coarse_match_local_idx = (rank == p4est->mpirank ? best_coarse_match.p.piggy3.local_num + tree->quadrants_offset : best_coarse_match.p.piggy3.local_num + p4est->local_num_quadrants);
+      rank = cell_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_fine_node, best_coarse_match, remote_matches, false, true);
+//      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, best_coarse_match.p.piggy3.which_tree);
+      P4EST_ASSERT(rank != -1); (void) rank;
+      const p4est_locidx_t &best_coarse_match_local_idx = best_coarse_match.p.piggy3.local_num;
       interpolate_cell_field_at_fine_node(fine_node_idx, ni, cell_field_read_p, fine_node_field_p, (best_fine_match.level == data_fine->max_lvl),
                                           &best_coarse_match, best_coarse_match_local_idx, best_coarse_match.p.piggy3.which_tree, ngbd_of_coarse_cells);
     }

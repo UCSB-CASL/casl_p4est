@@ -1009,9 +1009,9 @@ int main (int argc, char* argv[])
   char file_forces[1000];
 
 #if defined(POD_CLUSTER)
-  string out_dir = cmd.get<string>("out_dir", "/home/regan/free_surface");
+  string out_dir = cmd.get<string>("out_dir", "/scratch/regan/free_surface");
 #elif defined(STAMPEDE)
-  string out_dir = cmd.get<string>("out_dir", "/work/04965/tg842642/stampede2/free_surface");
+  string out_dir = cmd.get<string>("out_dir", "/scratch/04965/tg842642/free_surface");
 #else
   string out_dir = cmd.get<string>("out_dir", "/home/regan/workspace/projects/free_surface");
 #endif

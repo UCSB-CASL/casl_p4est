@@ -9,6 +9,7 @@
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/voronoi3D.h>
 #else
 #include <p4est.h>
@@ -18,6 +19,7 @@
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/voronoi2D.h>
 #endif
 
@@ -104,14 +106,11 @@ private:
   const p4est_t *p4est;
 #endif
   const uint8_t max_p4est_lvl;
-  double xyz_min[P4EST_DIM];
-  double xyz_max[P4EST_DIM];
-  // ASSUMPTION : ALL TREES OF SAME SIZE
-  // (if not, get rid of the following)
-  double smallest_dxyz[P4EST_DIM];
-  double tree_dimensions[P4EST_DIM];
-  // END OF ASSUMPTION
-  bool periodic[P4EST_DIM];
+  const double smallest_dxyz[P4EST_DIM];
+  const double* xyz_min;
+  const double* xyz_max;
+  const double* tree_dimensions;
+  const bool*   periodic;
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
   my_p4est_cell_neighbors_t *ngbd_c;
@@ -135,15 +134,15 @@ private:
       if(face_neighborhood.neighbor_face_idx[k] >= 0)
       {
         xyz_fr_f(face_neighborhood.neighbor_face_idx[k], dir, xyz_other_face);
-        for (unsigned char dir = 0; to_return && dir < P4EST_DIM; ++dir)
+        for (unsigned char dim = 0; to_return && dim < P4EST_DIM; ++dim)
         {
-          double dir_distance_between_dof = fabs(xyz_other_face[dir] - xyz_face[dir]);
-          if(periodic[dir])
+          double dim_distance_between_dof = (xyz_other_face[dim] - xyz_face[dim]);
+          if(periodic[dim])
           {
-            dir_distance_between_dof = MIN(dir_distance_between_dof, fabs(xyz_other_face[dir] - xyz_face[dir] - (xyz_max[dir] - xyz_min[dir])));
-            dir_distance_between_dof = MIN(dir_distance_between_dof, fabs(xyz_other_face[dir] - xyz_face[dir] + (xyz_max[dir] - xyz_min[dir])));
+            const double pp = dim_distance_between_dof/(xyz_max[dim] - xyz_min[dim]);
+            dim_distance_between_dof -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
           }
-          to_return = to_return && fabs(dir_distance_between_dof - (k/2 == dir ? smallest_dxyz[dir] : 0.0)) < 0.01*smallest_dxyz[dir]; // we use 0.01*dxyz_min[dir] as tolerance
+          to_return = to_return && fabs(dim_distance_between_dof - (k/2 == dim ? (k%2 == 1 ? +1.0:-1.0)*smallest_dxyz[dim] : 0.0)) < 0.01*smallest_dxyz[dim]; // we use 0.01*dxyz_min[dim] as tolerance
         }
       }
       else
@@ -294,7 +293,9 @@ public:
 
   /* IMPORTANT NOTE: this constructor assumes that p4est->user_pointer already points to a (splitting_criteria_t) type of object with valid max_lvl, when being called.
    * --> important for restart!*/
-  my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces = false);
+  my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, const my_p4est_brick_t *myb_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces = false);
+  my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces = false)
+    : my_p4est_faces_t(p4est_, ghost_, ngbd_c_->get_brick(), ngbd_c_, initialize_neighborhoods_of_fine_faces) {}
 
   /*!
    * \brief q2f return the face of quadrant quad_idx in the direction dir
@@ -525,7 +526,7 @@ public:
   inline const double* get_xyz_min() const { return  xyz_min; }
   inline const double* get_tree_dimensions() const { return  tree_dimensions; }
   inline const bool* get_periodicity() const { return periodic; }
-  inline bool periodicity(const unsigned char &dir) const { P4EST_ASSERT(ORD(dir == dir::x, dir == dir::y, dir == dir::z)); return periodic[dir]; }
+  inline bool periodicity(const unsigned char &dim) const { P4EST_ASSERT(ORD(dim == dir::x, dim == dir::y, dim == dir::z)); return periodic[dim]; }
 
   size_t memory_estimate() const
   {
@@ -565,18 +566,58 @@ inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4es
   return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
 }
 
+inline bool local_face_is_well_defined(const p4est_locidx_t &f_idx, const my_p4est_faces_t *faces, const my_p4est_interpolation_nodes_t &interp_phi,
+                                       const unsigned char &dir, const BoundaryConditionsDIM &bc_dir)
+{
+  double xyz_face[P4EST_DIM];
+  faces->xyz_fr_f(f_idx, dir, xyz_face);
+  const double *dxyz = faces->get_smallest_dxyz();
+  const double phi_f = interp_phi(xyz_face);
+  bool well_defined = phi_f <= 0.0; // any face in negative domain is well-defined independently of
+  if(!well_defined && (bc_dir.interfaceType() == NEUMANN || bc_dir.interfaceType() == MIXED))
+  {
+    // the face may be well defined if the control volume associated with the current cell
+    // is partly in negative domain. In such a case, the cell is assumed to be (and should
+    // be)the smallest possible and we check the levelset values at the corners
+    bool at_least_one_corner_in_negative_domain = false;
+    bool at_least_one_corner_is_neumann         = false;
+    for (char xxx = -1; xxx < 2 && !well_defined; xxx += 2)
+      for (char yyy = -1; yyy < 2 && !well_defined; yyy += 2)
+#ifdef P4_TO_P8
+        for (char zzz = -1; zzz < 2 && !well_defined; zzz += 2)
+#endif
+        {
+          double xyz_eval[P4EST_DIM] = {DIM(xyz_face[0] + xxx*0.5*dxyz[0], xyz_face[1] + yyy*0.5*dxyz[1], xyz_face[2] + zzz*0.5*dxyz[2])};
+          at_least_one_corner_in_negative_domain = at_least_one_corner_in_negative_domain || interp_phi(xyz_eval) <= 0.0;
+          at_least_one_corner_is_neumann = at_least_one_corner_is_neumann || (bc_dir.interfaceType(xyz_eval) == NEUMANN);
+          well_defined = at_least_one_corner_in_negative_domain && at_least_one_corner_is_neumann;
+        }
+  }
+  return well_defined;
+}
 /*!
  * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
- *   For Dirichlet b.c. the condition is phi(face) <= 0. For Neumann, the control volume of the face must be at least partially in the negative domain.
- * \param ngbd_n the node neighbors structure
- * \param faces the faces structure
- * \param dir the cartesian direction treated, dir::x, dir::y or dir::z
- * \param phi the level-set function
- * \param interface_type the type of boundary condition on the interface
- * \param is_well_defined a Vector the size of the number of faces in direction dir, to be filled
+ * Any face where phi(face) <= 0 is marked well-defined. For Neumann boundary conditions, the control volume of the face must
+ * be at least partially in the negative domain. (In case of MIXED boundary conditions, it can be marked well-defined if the at
+ * least one corner value of the levelset is negative and at least one cornet boundary condition type is NEUMANN, not necessarily
+ * the same cornet).
+ * \param [in] faces                  : the faces structure
+ * \param [in] dir                    : the cartesian direction treated, dir::x, dir::y or dir::z
+ * \param [in] interp_phi             : a node-interpolator for the node-sampled level-set function
+ * \param [out] face_is_well_defined  : a face-sampling PetSc Vector for face of orientation dir, to be filled. The values are
+ *                                      either 1.0 (if the face is well-defined) or 0.0 (if not).
  */
-void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
-                                     Vec phi, BoundaryConditionType interface_type, Vec is_well_defined);
+void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
+                                     const BoundaryConditionsDIM& bc, Vec face_is_well_defined);
+inline void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
+                                            Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
+{
+  my_p4est_interpolation_nodes_t interp_phi(ngbd_n);
+  interp_phi.set_input(phi, linear);
+  BoundaryConditionsDIM bc_tmp; bc_tmp.setInterfaceType(interface_type);
+  check_if_faces_are_well_defined(faces, dir, interp_phi, bc_tmp, face_is_well_defined);
+  return;
+}
 
 // NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
 double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,

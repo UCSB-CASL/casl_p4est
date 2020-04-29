@@ -69,10 +69,10 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *qua
 
     /* now the intermediate cell is split, select the correct child */
     p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    bool i = ( quad->x >= trees[tree_idx][ind].imin + size );
-    bool j = ( quad->y >= trees[tree_idx][ind].jmin + size );
+    const unsigned char i = ( quad->x >= trees[tree_idx][ind].imin + size);
+    const unsigned char j = ( quad->y >= trees[tree_idx][ind].jmin + size);
 #ifdef P4_TO_P8
-    bool k = ( quad->z >= trees[tree_idx][ind].kmin + size );
+    const unsigned char k = ( quad->z >= trees[tree_idx][ind].kmin + size);
 #endif
     ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
   }
@@ -85,10 +85,10 @@ p4est_locidx_t my_p4est_hierarchy_t::quad_idx_of_quad(const p4est_quadrant_t* qu
   while( trees[tree_idx][ind].level != quad->level )
   {
     p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    bool i = (quad->x >= trees[tree_idx][ind].imin + size);
-    bool j = (quad->y >= trees[tree_idx][ind].jmin + size);
+    const unsigned char i = (quad->x >= trees[tree_idx][ind].imin + size);
+    const unsigned char j = (quad->y >= trees[tree_idx][ind].jmin + size);
 #ifdef P4_TO_P8
-    bool k = (quad->z >= trees[tree_idx][ind].kmin + size);
+    const unsigned char k = (quad->z >= trees[tree_idx][ind].kmin + size);
 #endif
     ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
   }
@@ -169,7 +169,8 @@ void my_p4est_hierarchy_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_)
   p4est = p4est_;
   ghost = ghost_;
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    periodic[dir] = is_periodic(p4est, dir);
+    if(periodic[dir] != is_periodic(p4est_, dir))
+      throw std::invalid_argument("my_p4est_hierarchy_t::update : cannot update with a change of periodicity!");
 
   trees.clear();
   trees.resize(p4est->connectivity->num_trees);
@@ -213,7 +214,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 
   fprintf(vtk, "POINTS %ld double \n", P4EST_CHILDREN*num_quads);
 
-  for (size_t i = 0; i<trees.size(); ++i){
+  for (size_t i = 0; i < trees.size(); ++i){
     p4est_topidx_t v_m = connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
     p4est_topidx_t v_p = connectivity->tree_to_vertex[P4EST_CHILDREN*i + P4EST_CHILDREN-1];
 
@@ -226,7 +227,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
     double tree_zmax = connectivity->vertices[3*v_p + 2];
 #endif
 
-    for (size_t j = 0; j<trees[i].size(); j++){
+    for (size_t j = 0; j < trees[i].size(); j++){
       const HierarchyCell& cell = trees[i][j];
       if (cell.child == CELL_LEAF){
         double h = (double) P4EST_QUADRANT_LEN(cell.level) / (double)P4EST_ROOT_LEN;
@@ -252,72 +253,49 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   for (size_t i = 0; i < num_quads; ++i)
   {
     fprintf(vtk, "%d ", P4EST_CHILDREN);
-    for (short j = 0; j < P4EST_CHILDREN; ++j)
+    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
       fprintf(vtk, "%ld ", P4EST_CHILDREN*i+j);
     fprintf(vtk,"\n");
   }
 
   fprintf(vtk, "CELL_TYPES %ld\n", num_quads);
-  for (size_t i = 0; i<num_quads; ++i)
+  for (size_t i = 0; i < num_quads; ++i)
     fprintf(vtk, "%d\n",P4EST_VTK_CELL_TYPE);
   fclose(vtk);
 }
 
-int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
+                                                                  const bool &prioritize_local, const bool &set_cumulative_local_index_in_piggy3_of_best_match) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
 
-  /* rescale xyz to [0,nx] */
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1];
-
-  double xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
-  // we copy the given domain coordinates, first
-  double xyz_[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    xyz_[dir] = xyz[dir];
-
-  // we wrap them within the domain using periodicity if needed
-  if ((xyz_[0] < xmin || xyz_[0] > xmax) && periodic[0]) xyz_[0] = xyz_[0] - floor((xyz_[0] - xmin)/(xmax - xmin))*(xmax - xmin);
-  if ((xyz_[1] < ymin || xyz_[1] > ymax) && periodic[1]) xyz_[1] = xyz_[1] - floor((xyz_[1] - ymin)/(ymax - ymin))*(ymax - ymin);
-#ifdef P4_TO_P8
-  if ((xyz_[2] < zmin || xyz_[2] > zmax) && periodic[2]) xyz_[2] = xyz_[2] - floor((xyz_[2] - zmin)/(zmax - zmin))*(zmax - zmin);
-#endif
-  // at this point, xyz_ MUST be in the computational domain --> critical check in DEBUG
-  P4EST_ASSERT(xmin <= xyz_[0] && xyz_[0] <= xmax);
-  P4EST_ASSERT(ymin <= xyz_[1] && xyz_[1] <= ymax);
-#ifdef P4_TO_P8
-  P4EST_ASSERT(zmin <= xyz_[2] && xyz_[2] <= zmax);
-#endif
-
-  v_p   = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  xmax  = p4est->connectivity->vertices[3*v_p + 0];
-  ymax  = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  zmax  = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
   /* In order to use the standard vectors of HierarchyCell's, i.e. trees[tree_idx], as
    * constructed by this object, we need to rescale these coordinates to
-   * [0, nx]x[0, ny]x[0xny] where nx, ny and nz are the numbers of trees in the brick,
+   * [0, nx] x [0, ny] x [0, nz] where nx, ny and nz are the numbers of trees in the brick,
    * i.e. the numbers of trees along the cartesian directions in the brick
    */
-  xyz_[0] = (xyz_[0] - xmin)/(xmax - xmin); P4EST_ASSERT(0.0 <= xyz_[0] && xyz_[0] <= myb->nxyztrees[0]);
-  xyz_[1] = (xyz_[1] - ymin)/(ymax - ymin); P4EST_ASSERT(0.0 <= xyz_[1] && xyz_[1] <= myb->nxyztrees[1]);
-#ifdef P4_TO_P8
-  xyz_[2] = (xyz_[2] - zmin)/(zmax - zmin); P4EST_ASSERT(0.0 <= xyz_[2] && xyz_[2] <= myb->nxyztrees[2]);
-#endif
+  const double *xyz_min = myb->xyz_min;
+  const double *xyz_max = myb->xyz_max;
+  const double tree_dimensions[P4EST_DIM] = {DIM((xyz_max[0] - xyz_min[0])/myb->nxyztrees[0], (xyz_max[1] - xyz_min[1])/myb->nxyztrees[1], (xyz_max[2] - xyz_min[2])/myb->nxyztrees[2])};
+
+  // Calculate xyz - xyz_min, first
+  double xyz_[P4EST_DIM] = {DIM(xyz[0] - xyz_min[0], xyz[1] - xyz_min[1], xyz[2] - xyz_min[2])};
+
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    // Wrap within the domain using periodicity if needed
+    if (periodic[dim])
+      xyz_[dim] -= floor(xyz_[dim]/(xyz_max[dim] - xyz_min[dim]))*(xyz_max[dim] - xyz_min[dim]);
+    // at this point, xyz_ MUST be in [0 (xyz_max - xyz_min)]the computational domain --> critical check in DEBUG
+    P4EST_ASSERT(0.0 <= xyz_[dim] && xyz_[dim] <= xyz_max[dim] - xyz_min[dim]);
+    // scale by dimensions of the trees
+    xyz_[dim] /= tree_dimensions[dim];
+    // check that it is in [0 nxyz_trees] in DEBUG
+    P4EST_ASSERT(0.0 <= xyz_[dim] && xyz_[dim] <= myb->nxyztrees[dim]);
+  }
 
   int rank = -1; // initialize the return value --> this is what is returned if the quadrant of interest is remote
   P4EST_QUADRANT_INIT(&best_match);
@@ -393,9 +371,17 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 #endif
       {
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
-        PointDIM s(DIM((i == 0 ? ii : (ii + ((double) i)*threshold)), (j == 0 ? jj : (jj + ((double) j)*threshold)), (k == 0 ? kk : (kk + ((double) k)*threshold))));
-        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+        PointDIM s(DIM(i == 0 ? ii : ii + i*threshold, j == 0 ? jj : jj + j*threshold, k == 0 ? kk : kk + k*threshold));
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local);
       }
+
+  if(set_cumulative_local_index_in_piggy3_of_best_match && rank != -1)
+  {
+    if(rank == p4est->mpirank)
+      best_match.p.piggy3.local_num += p4est_tree_array_index(p4est->trees, best_match.p.piggy3.which_tree)->quadrants_offset;
+    else
+      best_match.p.piggy3.local_num += p4est->local_num_quadrants;
+  }
 
 #ifdef CASL_LOG_TINY_EVENTS
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -404,7 +390,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   return rank;
 }
 
-void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
@@ -429,37 +415,41 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   const HierarchyCell *it, *begin; begin = it = &h_tr[0];
   while(CELL_LEAF != it->child){
     p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-    short cj = ((double)(it->jmin + half_h)) <= s.y;
-    short ci = ((double)(it->imin + half_h)) <= s.x;
+    const unsigned char cj = (double)(it->jmin + half_h) <= s.y;
+    const unsigned char ci = (double)(it->imin + half_h) <= s.x;
 #ifdef P4_TO_P8
-    short ck = ((double)(it->kmin + half_h)) <= s.z;
+    const unsigned char ck = (double)(it->kmin + half_h) <= s.z;
 #endif
     it = begin + it->child + SUMD(ci, 2*cj, 4*ck);
   }
 
-  if (it->owner_rank == p4est->mpirank) { // local quadrant
-    p4est_tree_t *p4est_tr = p4est_tree_array_index(p4est->trees, tt);
-    p4est_locidx_t pos = it->quad - p4est_tr->quadrants_offset;
-    p4est_quadrant_t *tmp = p4est_quadrant_array_index(&p4est_tr->quadrants, pos);
-    if (tmp->level >= best_match.level) { // note the >= --> ensures that we pick the local quadrant if we find one!
-      best_match = *tmp;
-      best_match.p.piggy3.which_tree = tt;
-      best_match.p.piggy3.local_num  = pos;
-      rank = it->owner_rank;
+  if (it->owner_rank != REMOTE_OWNER) { // local or ghots quadrant
+    p4est_quadrant_t *tmp;
+    p4est_locidx_t pos;
+    if(it->owner_rank == p4est->mpirank){
+      p4est_tree_t *p4est_tr = p4est_tree_array_index(p4est->trees, tt);
+      pos = it->quad - p4est_tr->quadrants_offset;
+      tmp = p4est_quadrant_array_index(&p4est_tr->quadrants, pos);
     }
-  } else if (it->owner_rank != REMOTE_OWNER) { // ghost quadrant
-    p4est_locidx_t pos = it->quad - p4est->local_num_quadrants;
-    p4est_quadrant_t *tmp = p4est_quadrant_array_index(&ghost->ghosts, pos);
-    if (tmp->level > best_match.level) {
+    else
+    {
+      pos = it->quad - p4est->local_num_quadrants;
+      tmp = p4est_quadrant_array_index(&ghost->ghosts, pos);
+    }
+    // The quadrant was found, now check if it is better than the current candidate
+    if (tmp->level > best_match.level || (prioritize_local && it->owner_rank == p4est->mpirank && tmp->level == best_match.level && current_rank != p4est->mpirank)) {
+      // note the '(prioritize_local && tmp->level >= best_match.level && rank != p4est->mpirank)' here above
+      // --> ensures that we pick a local quadrant over a ghost one, if we find one
+      // --> useful for on-the-fly interpolations up to the very border of the local domain's partition!
       best_match = *tmp;
       best_match.p.piggy3.which_tree = tt;
       best_match.p.piggy3.local_num  = pos;
-      rank = it->owner_rank;
+      current_rank = it->owner_rank;
     }
   } else { // remote quadrant
 #ifdef CASL_THROWS
     if (it->quad != NOT_A_P4EST_QUADRANT)
-      throw std::runtime_error("[ERROR]:my_p4est_hierarchy_t::find_quadrant_containing_point: a quadrant was marked both remote and not remote!");
+      throw std::runtime_error("my_p4est_hierarchy_t::find_quadrant_containing_point: a quadrant was marked both remote and not remote!");
 #endif
     p4est_quadrant_t sq;
     P4EST_QUADRANT_INIT(&sq);

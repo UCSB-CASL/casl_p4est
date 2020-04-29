@@ -1,13 +1,11 @@
 #ifdef P4_TO_P8
 #include "my_p8est_level_set_faces.h"
 #include <src/point3.h>
-#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_faces.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include "my_p4est_level_set_faces.h"
 #include <src/point2.h>
-#include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_faces.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
@@ -25,336 +23,105 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_my_p4est_level_set_faces_extend_over_interface;
+extern PetscLogEvent log_my_p4est_level_set_faces_geometric_extrapolation_over_interface;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
-
-
-#ifdef P4_TO_P8
-void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions3D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge, int order, int band_to_extend ) const
-#else
-void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, BoundaryConditions2D &bc, int dir, Vec face_is_well_defined, Vec dxyz_hodge, int order, int band_to_extend ) const
-#endif
+void my_p4est_level_set_faces_t::geometric_extrapolation_over_interface(Vec face_field_dir, const my_p4est_interpolation_nodes_t &interp_phi, const my_p4est_interpolation_nodes_t &interp_grad_phi,
+                                                                        const BoundaryConditionsDIM &bc_dir, const unsigned char &dir, Vec face_is_well_defined_dir,
+                                                                        Vec dxyz_hodge_dir, const unsigned char& degree, const unsigned int& band_to_extend) const
 {
 #ifdef CASL_THROWS
-  if(bc.interfaceType()==NOINTERFACE) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: no interface defined in the boundary condition ... needs to be dirichlet or neumann.");
-  if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: extend_over_interface: invalid order. Choose 0, 1 or 2");
+  if(bc_dir.interfaceType() == NOINTERFACE)
+    throw std::invalid_argument("my_p4est_level_set_faces_t::geometric_extrapolation_over_interface(): no interface defined in the boundary condition ... needs to be dirichlet, neumann or mixed.");
+  if(degree > 2)
+    throw std::invalid_argument("my_p4est_level_set_faces_t::geometric_extrapolation_over_interface(): the degree of the extrapolant polynomial must be less than or equal to 2.");
 #endif
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_faces_extend_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_faces_geometric_extrapolation_over_interface, phi, field_dir, 0, 0); CHKERRXX(ierr);
 
-  const double *phi_p;
-  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  // get the (max) number of points to sample in negative domain for every node where extrapolation is required
+  const unsigned char nsamples_across = number_of_samples_across_the_interface_for_geometric_extrapolation(degree, bc_dir.interfaceType());
+  P4EST_ASSERT(nsamples_across <= 2);
 
-  /* first compute the derivatives of phi */
-  Vec phi_x;
-  ierr = VecCreateGhostNodes(p4est,nodes,&phi_x); CHKERRXX(ierr);// Elyce debug : why is this done for phi_y and interface_value but NOT for phi_x in the original code?
-//  ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr); // Elyce debug: commented this one out instead and replaced it with the above ^^ -- Run this by Raphael before committing
-  double *phi_x_p;
-  ierr = VecGetArray(phi_x, &phi_x_p); CHKERRXX(ierr);
-  Vec phi_y;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_y); CHKERRXX(ierr);
-  double *phi_y_p;
-  ierr = VecGetArray(phi_y, &phi_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec phi_z;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_z); CHKERRXX(ierr);
-  double *phi_z_p;
-  ierr = VecGetArray(phi_z, &phi_z_p); CHKERRXX(ierr);
-#endif
-  Vec interface_value;
-  ierr = VecCreateGhostNodes(p4est, nodes, &interface_value); CHKERRXX(ierr);
-  double *interface_value_p;
-  ierr = VecGetArray(interface_value, &interface_value_p); CHKERRXX(ierr);
+  const double* dxyz_smallest = faces->get_smallest_dxyz();
+  const double smallest_diag = sqrt(SUMD(SQR(dxyz_smallest[0]), SQR(dxyz_smallest[1]), SQR(dxyz_smallest[2])));
 
-  quad_neighbor_nodes_of_node_t qnnn;
-  double node_xyz[P4EST_DIM];
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+  // supposed "levels" of the levelset for sampling the values along the normal direction
+  // (--> not the actual values of the levelset function at sampled points but more like
+  // distances between the sampling points)
+  // "signed distances" from the 0-level in the negative normal direction
+  const double phi_sampling_levels[2] = {-2.0*smallest_diag, -3.0*smallest_diag};
+
+  // prepare objects to sample field values and interface boundary conditions at possibly nonlocal points
+  my_p4est_interpolation_nodes_t interp_bc(ngbd_n); // could be _nodes, _cells or _faces, it is irrelevant in this case, we do use base method from my_p4est_interpolation_t anyways
+  my_p4est_interpolation_faces_t *interp_dxyz_hodge_dir = NULL;
+  if(dxyz_hodge_dir != NULL)
   {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    phi_x_p[n] = qnnn.dx_central(phi_p);
-    phi_y_p[n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    phi_z_p[n] = qnnn.dz_central(phi_p);
-#endif
-    node_xyz_fr_n(n, p4est, nodes, node_xyz);
-    interface_value_p[n] = bc.interfaceValue(node_xyz);
+    interp_dxyz_hodge_dir = new my_p4est_interpolation_faces_t(ngbd_n, faces); // for correcting DIRICHLET boundary conditions with appropriate partial derivative of hodge variable if required
+    interp_dxyz_hodge_dir->set_input(dxyz_hodge_dir, dir, 1, face_is_well_defined_dir); // degree of lsqr interpolation is 1 because input data is 1st order accurate at best anyways
   }
 
-  ierr = VecGhostUpdateBegin(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateBegin(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-  ierr = VecGhostUpdateBegin(interface_value, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  my_p4est_interpolation_faces_t interp_field(ngbd_n, faces);
+  interp_field.set_input(face_field_dir, dir, 2, face_is_well_defined_dir);
 
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-    ngbd_n->get_neighbors(n, qnnn);
-    phi_x_p[n] = qnnn.dx_central(phi_p);
-    phi_y_p[n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-    phi_z_p[n] = qnnn.dz_central(phi_p);
-#endif
-    node_xyz_fr_n(n, p4est, nodes, node_xyz);
-    interface_value_p[n] = bc.interfaceValue(node_xyz);
-  }
+  std::map<p4est_locidx_t, data_for_geometric_extapolation> face_data_for_extrapolation; face_data_for_extrapolation.clear();
 
-  ierr = VecGhostUpdateEnd(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(phi_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecGhostUpdateEnd(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-  ierr = VecGhostUpdateEnd(interface_value, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_x, &phi_x_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_y, &phi_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_z, &phi_z_p); CHKERRXX(ierr);
-#endif
-  ierr = VecRestoreArray(interface_value, &interface_value_p); CHKERRXX(ierr);
-
-  my_p4est_interpolation_nodes_t interp_phi  (ngbd_n); interp_phi  .set_input(phi  , linear);
-  my_p4est_interpolation_nodes_t interp_phi_x(ngbd_n); interp_phi_x.set_input(phi_x, linear);
-  my_p4est_interpolation_nodes_t interp_phi_y(ngbd_n); interp_phi_y.set_input(phi_y, linear);
-#ifdef P4_TO_P8
-  my_p4est_interpolation_nodes_t interp_phi_z(ngbd_n); interp_phi_z.set_input(phi_z, linear);
-#endif
-  my_p4est_interpolation_nodes_t interp_interface_values(ngbd_n); interp_interface_values.set_input(interface_value, linear);
-  my_p4est_interpolation_faces_t interp0(ngbd_n, faces); interp0.set_input(dxyz_hodge, dir, 1, face_is_well_defined);
-  my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, 2, face_is_well_defined);
-  my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, 2, face_is_well_defined);
-
-  /* find dx and dy smallest */
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-#ifdef P4_TO_P8
-  double diag = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-  double diag = sqrt(dx*dx + dy*dy);
-#endif
-
-  std::vector<double> q0;
-  std::vector<double> q1;
-  std::vector<double> q2;
-
-  q0.resize(faces->num_local[dir]);
-  if(order >= 1 || (order==0 && (bc.interfaceType()==NEUMANN || bc.interfaceType() == MIXED))) q1.resize(faces->num_local[dir]);
-  if(order >= 2)                                              q2.resize(faces->num_local[dir]);
-
-  std::vector<double> q0_dxyz_hodge;
-  if(dxyz_hodge!=NULL) q0_dxyz_hodge.resize(faces->num_local[dir]);
-
-  const PetscScalar *face_is_well_defined_p;
-  ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  const PetscScalar *face_is_well_defined_dir_p;
+  ierr = VecGetArrayRead(face_is_well_defined_dir, &face_is_well_defined_dir_p); CHKERRXX(ierr);
 
   /* now buffer the interpolation points */
-  for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
-  {
-    if(!face_is_well_defined_p[f_idx])
+  for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
+    if(!face_is_well_defined_dir_p[f_idx])
     {
-      double xyz[P4EST_DIM];
-      faces->xyz_fr_f(f_idx, dir, xyz);
+      double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dir, xyz_face);
+      const double phi_f = interp_phi(xyz_face);
 
-      double phi_f = interp_phi(xyz);
-#ifdef P4_TO_P8
-      Point3 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz), interp_phi_z(xyz));
-#else
-      Point2 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz));
-#endif
-
-      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
+      if(phi_f < band_to_extend*smallest_diag)
       {
-        grad_phi /= grad_phi.norm_L2();
-
-        double xyz_i[] =
-        {
-          xyz[0] - grad_phi.x*phi_f,
-          xyz[1] - grad_phi.y*phi_f
-  #ifdef P4_TO_P8
-          ,xyz[2] - grad_phi.z*phi_f
-  #endif
-        };
-
-        interp_interface_values.add_point(f_idx, xyz_i); // [Raphael:] I had to do that in case bc.interfaceValue is a local interpolator...
-//        q0[f_idx] = bc.interfaceValue(xyz_i);
-        if(dxyz_hodge!=NULL)
-        {
-//          for(int dd=0; dd<P4EST_DIM; ++dd) // commented by Raphael, I don't understand why that would be required??? it seems that it would uselessly increase the workload...
-            interp0.add_point(f_idx, xyz_i);
-        }
-
-        if(order >= 1 || (order==0 && bc.interfaceType(xyz)==NEUMANN))
-        {
-          double xyz_ [] =
-          {
-            xyz[0] - grad_phi.x * (2*diag + phi_f),
-            xyz[1] - grad_phi.y * (2*diag + phi_f)
-  #ifdef P4_TO_P8
-            , xyz[2] - grad_phi.z * (2*diag + phi_f)
-  #endif
-          };
-          interp1.add_point(f_idx, xyz_);
-        }
-
-        if(order >= 2)
-        {
-          double xyz_ [] =
-          {
-            xyz[0] - grad_phi.x * (3*diag + phi_f),
-            xyz[1] - grad_phi.y * (3*diag + phi_f)
-  #ifdef P4_TO_P8
-            , xyz[2] - grad_phi.z * (3*diag + phi_f)
-  #endif
-          };
-          interp2.add_point(f_idx, xyz_);
-        }
+        double grad_phi[P4EST_DIM];
+        interp_grad_phi(xyz_face, grad_phi);
+        add_dof_to_extrapolation_map(face_data_for_extrapolation, f_idx, xyz_face, phi_f, grad_phi, nsamples_across, phi_sampling_levels,
+                                     &interp_field, &interp_bc, interp_dxyz_hodge_dir);
       }
     }
-  }
-  interp_interface_values.interpolate(q0.data());
-  interp_interface_values.clear();
 
-  if(dxyz_hodge!=NULL)
-  {
-    interp0.interpolate(q0_dxyz_hodge.data());
-    interp0.clear();
-    for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
-    {
-      if(!face_is_well_defined_p[f_idx])
-      {
-        double xyz[] = {
-          faces->x_fr_f(f_idx, dir),
-          faces->y_fr_f(f_idx, dir)
-    #ifdef P4_TO_P8
-          , faces->z_fr_f(f_idx, dir)
-    #endif
-        };
-        if(bc.interfaceType(xyz) == DIRICHLET) // [RAPHAEL]: fixed because wrong if not DIRICHLET...
-          q0[f_idx] += q0_dxyz_hodge[f_idx];
-      }
-    }
-    q0_dxyz_hodge.clear();
-  }
-
-  interp1.interpolate(q1.data());
-  interp1.clear();
-
-  interp2.interpolate(q2.data());
-  interp2.clear();
+  std::vector<double> field_samples(nsamples_across*face_data_for_extrapolation.size());
+  std::vector<bc_sample> interface_bc(face_data_for_extrapolation.size());
+  interp_field.interpolate(field_samples.data());
+  std::vector<double> *calculated_bc_dxyz_hodge_dir = (interp_dxyz_hodge_dir != NULL ? new std::vector<double>(face_data_for_extrapolation.size(), 0.0) : NULL);
+  if(interp_dxyz_hodge_dir != NULL)
+    interp_dxyz_hodge_dir->interpolate(calculated_bc_dxyz_hodge_dir->data());
+  interp_bc.evaluate_interface_bc(bc_dir, interface_bc.data());
 
   /* now compute the extrapolated values */
-
-  double *q_p;
-  ierr = VecGetArray(q, &q_p); CHKERRXX(ierr);
-  for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
-  {
-    if(!face_is_well_defined_p[f_idx])
-    {
-      double xyz[] = {
-        faces->x_fr_f(f_idx, dir),
-        faces->y_fr_f(f_idx, dir)
-  #ifdef P4_TO_P8
-        , faces->z_fr_f(f_idx, dir)
-  #endif
-      };
-
-      double phi_f = interp_phi(xyz);
-#ifdef P4_TO_P8
-      Point3 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz), interp_phi_z(xyz));
-#else
-      Point2 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz));
-#endif
-
-      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
-      {
-        grad_phi /= grad_phi.norm_L2();
-
-        if(order==0)
-        {
-          if(bc.interfaceType(xyz)==DIRICHLET)
-            q_p[f_idx] = q0[f_idx];
-          else /* interface neumann */
-            q_p[f_idx] = q1[f_idx];
-        }
-
-        else if(order==1)
-        {
-          if(bc.interfaceType(xyz)==DIRICHLET)
-          {
-            double dif01 = (q1[f_idx] - q0[f_idx])/(2*diag - 0);
-            q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01;
-          }
-          else /* interface Neumann */
-          {
-            double dif01 = -q0[f_idx];
-            q_p[f_idx] = q1[f_idx] + (-phi_f - 2*diag) * dif01;
-          }
-        }
-
-        else if(order==2)
-        {
-          if(bc.interfaceType(xyz)==DIRICHLET)
-          {
-            double dif01  = (q1[f_idx] - q0[f_idx]) / (2*diag);
-            double dif12  = (q2[f_idx] - q1[f_idx]) / (diag);
-            double dif012 = (dif12 - dif01) / (3*diag);
-            q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01 + (-phi_f - 0)*(-phi_f - 2*diag) * dif012;
-          }
-          else if (bc.interfaceType(xyz) == NEUMANN) /* interface Neumann */
-          {
-            double x1 = 2*diag;
-            double x2 = 3*diag;
-
-            double b = -q0[f_idx];
-            double a = (q2[f_idx] - q1[f_idx] + b*(x1 - x2)) / (x2*x2 - x1*x1);
-            double c = q1[f_idx] - a*x1*x1 - b*x1;
-
-            double x = -phi_f;
-            q_p[f_idx] = a*x*x + b*x + c;
-          }
-        }
-      }
-      else
-        q_p[f_idx] = 0;
-    }
+  double *face_field_dir_p;
+  ierr = VecGetArray(face_field_dir, &face_field_dir_p); CHKERRXX(ierr);
+  std::map<p4est_locidx_t, data_for_geometric_extapolation>::iterator it;
+  for (size_t k = 0; k < faces->get_layer_size(dir); ++k) {
+    p4est_locidx_t f_idx = faces->get_layer_face(dir, k);
+    it = face_data_for_extrapolation.find(f_idx);
+    if(it != face_data_for_extrapolation.end())
+      face_field_dir_p[f_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples_across, field_samples, &interface_bc, calculated_bc_dxyz_hodge_dir);
   }
+  ierr = VecGhostUpdateBegin(face_field_dir, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < faces->get_local_size(dir); ++k) {
+    p4est_locidx_t f_idx = faces->get_local_face(dir, k);
+    it = face_data_for_extrapolation.find(f_idx);
+    if(it != face_data_for_extrapolation.end())
+      face_field_dir_p[f_idx] = build_extrapolation_data_and_compute_geometric_extrapolation(it->second, degree, nsamples_across, field_samples, &interface_bc, calculated_bc_dxyz_hodge_dir);
+  }
+  ierr = VecGhostUpdateEnd(face_field_dir, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(face_field_dir, &face_field_dir_p); CHKERRXX(ierr);
+  if(calculated_bc_dxyz_hodge_dir != NULL)
+    delete calculated_bc_dxyz_hodge_dir;
+  if(interp_dxyz_hodge_dir != NULL)
+    delete interp_dxyz_hodge_dir;
 
-  ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-  ierr = VecDestroy(phi_x); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_faces_geometric_extrapolation_over_interface, phi, field_dir, 0, 0); CHKERRXX(ierr);
 
-  ierr = VecDestroy(phi_y); CHKERRXX(ierr);
-
-#ifdef P4_TO_P8
-  ierr = VecDestroy(phi_z); CHKERRXX(ierr);
-#endif
-  ierr = VecDestroy(interface_value); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (q, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_faces_extend_over_interface, phi, q, 0, 0); CHKERRXX(ierr);
+  return;
 }

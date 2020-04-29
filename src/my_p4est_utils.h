@@ -286,6 +286,15 @@ const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0
                                                           { nn_000, nn_p00, nn_0p0 } };
 #endif
 
+static double get_largest_dbl_smaller_than_dbl_max()
+{
+  double p = 1.0;
+  while (DBL_MAX - p == DBL_MAX)
+    p *= 2.0;
+  return DBL_MAX - p;
+};
+
+static const double largest_dbl_smaller_than_dbl_max = get_largest_dbl_smaller_than_dbl_max();
 
 enum interpolation_method{
   linear,
@@ -338,7 +347,7 @@ enum {
 inline int WALL_idx(unsigned char oriented_cart_dir)
 {
   P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
-  return (-1-((int) oriented_cart_dir));
+  return (-1 - ((int) oriented_cart_dir));
 }
 
 typedef enum {
@@ -357,8 +366,9 @@ typedef enum
 #ifdef P4_TO_P8
   w_component = dir::z,
 #endif
-  uvw_components
-} dxyz_hodge_component;
+  uvw_components,
+  hodge_value
+} hodge_control;
 
 class mixed_interface
 {
@@ -370,9 +380,9 @@ public:
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 
-std::string convert_to_string(const dxyz_hodge_component& type);
-std::ostream& operator << (std::ostream& os, dxyz_hodge_component type);
-std::istream& operator >> (std::istream& is, dxyz_hodge_component& type);
+std::string convert_to_string(const hodge_control& type);
+std::ostream& operator << (std::ostream& os, hodge_control type);
+std::istream& operator >> (std::istream& is, hodge_control& type);
 
 class WallBC2D
 {
@@ -452,6 +462,11 @@ public:
     p_RobinCoef = &in;
   }
 
+  inline bool InterfaceValueIsDefined() const
+  {
+    return (p_InterfaceValue != NULL);
+  }
+
   inline const CF_2& getInterfaceValue(){
     return *p_InterfaceValue;
   }
@@ -506,7 +521,7 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
-  inline double  interfaceValue(double xyz_[]) const
+  inline double  interfaceValue(const double xyz_[]) const
   {
     return interfaceValue(xyz_[0], xyz_[1]);
   }
@@ -584,6 +599,11 @@ public:
     return *p_WallValue;
   }
 
+  inline bool InterfaceValueIsDefined() const
+  {
+    return (p_InterfaceValue != NULL);
+  }
+
   inline const CF_3& getInterfaceValue(){
     return *p_InterfaceValue;
   }
@@ -635,7 +655,7 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
-  inline double  interfaceValue(double xyz_[]) const
+  inline double  interfaceValue(const double xyz_[]) const
   {
     return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
   }
@@ -654,17 +674,32 @@ public:
   }
 };
 
+struct bc_sample
+{
+  BoundaryConditionType type;
+  double value;
+};
+
+bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                    const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p);
+inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                           const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p)
+{
+  double phi_q;
+  return quadrant_value_is_well_defined(phi_q, bc_cell_field, p4est, ghost, nodes, quad_idx, tree_idx, node_sampled_phi_p);
+}
+
 /*!
  * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!
  *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
  *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
  *        p4est_node_canonicalize beforehand!
- * \param [in]    n node whose local index is queried!
- * \param [in]    nodes the nodes data structure
- * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \param [in]    n     pointer to the node whose local index is queried;
+ * \param [in]    nodes pointer to the nodes data structure
+ * \param [inout] idx   reference of the local index of the node: index of the node on output if found, unchanged if not found (i.e. if the returned value is false)
  * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
  */
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
+bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
 /*!
  * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
@@ -710,7 +745,7 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const size_t &n_results );
 inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {
   double result;
@@ -732,7 +767,7 @@ inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id,
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -740,7 +775,7 @@ inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4es
   return result;
 }
 
-void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -748,7 +783,7 @@ inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_
   return result;
 }
 
-void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -771,7 +806,7 @@ inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -1214,16 +1249,19 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
  * \brief get the x-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
-  p4est_quadrant_t *quad;
+  const p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1271,7 +1309,7 @@ inline double quad_dx(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the y-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -1280,7 +1318,10 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1329,7 +1370,7 @@ inline double quad_dy(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the z-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -1338,7 +1379,10 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1388,7 +1432,7 @@ inline double quad_dz(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the xyz-coordinates of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost, double *xyz)
+inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost, double *xyz)
 {
   xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
   xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);

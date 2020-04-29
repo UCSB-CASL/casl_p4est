@@ -32,24 +32,22 @@ extern PetscLogEvent log_my_p4est_faces_compute_voronoi_cell_t;
 #endif
 
 
-my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces):
-  max_p4est_lvl(((splitting_criteria_t*) p4est->user_pointer)->max_lvl)
+my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, const my_p4est_brick_t *myb_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces)
+  : max_p4est_lvl(((splitting_criteria_t*) p4est_->user_pointer)->max_lvl),
+    smallest_dxyz{DIM(ngbd_c_->get_tree_dimensions()[0]/(1 << (((splitting_criteria_t*) p4est_->user_pointer)->max_lvl)),
+                  ngbd_c_->get_tree_dimensions()[1]/(1 << (((splitting_criteria_t*) p4est_->user_pointer)->max_lvl)),
+    ngbd_c_->get_tree_dimensions()[2]/(1 << (((splitting_criteria_t*) p4est_->user_pointer)->max_lvl)))}
 {
-  this->p4est   = p4est;
-  this->ghost   = ghost;
-  this->myb     = myb;
-  this->ngbd_c  = ngbd_c;
-  // domain-size info
-  const p4est_topidx_t  *t2v = p4est->connectivity->tree_to_vertex;
-  const double          *v2c = p4est->connectivity->vertices;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-  {
-    periodic[dir]         = is_periodic(p4est, dir);
-    tree_dimensions[dir]  = v2c[3*t2v[P4EST_CHILDREN - 1] + dir] - v2c[3*t2v[0] + dir];
-    smallest_dxyz[dir]    = tree_dimensions[dir]/(1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl));
-    xyz_max[dir]          = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count - 1) + P4EST_CHILDREN - 1] + dir];
-    xyz_min[dir]          = v2c[3*t2v[0] + dir];
-  }
+  this->p4est   = p4est_;
+  this->ghost   = ghost_;
+  this->ngbd_c  = ngbd_c_;
+  myb           = myb_;
+
+  tree_dimensions   = ngbd_c->get_tree_dimensions();
+  xyz_min           = myb->xyz_min;
+  xyz_max           = myb->xyz_max;
+  periodic          = ngbd_c->get_hierarchy()->get_periodicity();
+
   finest_faces_neighborhoods_are_set = false;
   init_faces(initialize_neighborhoods_of_fine_faces);
 }
@@ -660,7 +658,7 @@ void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
   double tree_xyz_min[P4EST_DIM];
   for(unsigned char i = 0; i < P4EST_DIM; ++i)
-    tree_xyz_min[i]       = p4est->connectivity->vertices[3*v_m + i];
+    tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
 
   p4est_qcoord_t xc = quad->x;
   if(dir != dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
@@ -821,12 +819,12 @@ PetscErrorCode VecCreateNoGhostFacesBlock(const p4est_t *p4est, const my_p4est_f
   return ierr;
 }
 
-void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
-                                     Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
+void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
+                                     const BoundaryConditionsDIM& bc, Vec face_is_well_defined)
 {
   PetscErrorCode ierr;
 
-  if(interface_type == NOINTERFACE)
+  if(bc.interfaceType() == NOINTERFACE)
   {
     Vec face_is_well_defined_loc;
     ierr = VecGhostGetLocalForm(face_is_well_defined, &face_is_well_defined_loc); CHKERRXX(ierr);
@@ -838,43 +836,21 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
   PetscScalar *face_is_well_defined_p;
   ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  my_p4est_interpolation_nodes_t interp(ngbd_n);
-  interp.set_input(phi, linear);
-
-  const double *dxyz = faces->get_smallest_dxyz();
-  double xyz_face[P4EST_DIM];
-
-  if(interface_type == DIRICHLET)
+  for(size_t k = 0; k < faces->get_layer_size(dir); ++k)
   {
-    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
-    {
-      faces->xyz_fr_f(f_idx, dir, xyz_face);
-      face_is_well_defined_p[f_idx] = interp(xyz_face) <= 0.0;
-    }
+    p4est_locidx_t f_idx = faces->get_layer_face(dir, k);
+    face_is_well_defined_p[f_idx] = local_face_is_well_defined(f_idx, faces, interp_phi, dir, bc); // implicit conversion from bool to PetscScalar
   }
-  else /* NEUMANN */
+  ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < faces->get_local_size(dir); ++k)
   {
-    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
-    {
-      faces->xyz_fr_f(f_idx, dir, xyz_face);
-      bool well_defined = false;
-      for (char xxx = -1; xxx < 2 && !well_defined; xxx+=2)
-        for (char yyy = -1; yyy < 2 && !well_defined; yyy+=2)
-#ifdef P4_TO_P8
-          for (char zzz = -1; zzz < 2 && !well_defined; zzz+=2)
-#endif
-          {
-            double xyz_eval[P4EST_DIM] = {DIM(xyz_face[0] + xxx*0.5*dxyz[0], xyz_face[1] + yyy*0.5*dxyz[1], xyz_face[2] + zzz*0.5*dxyz[2])};
-            well_defined = well_defined || interp(xyz_eval) <= 0.0;
-          }
-      face_is_well_defined_p[f_idx] = well_defined; // implicit conversion from bool to PetscScalar
-    }
+    p4est_locidx_t f_idx = faces->get_local_face(dir, k);
+    face_is_well_defined_p[f_idx] = local_face_is_well_defined(f_idx, faces, interp_phi, dir, bc);
   }
+  ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); // implicit conversion from bool to PetscScalar
 
   ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  return;
 }
 
 double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
@@ -906,13 +882,14 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
     return bc[dir].wallValue(xyz);
   }
 
-  set_of_neighboring_quadrants ngbd_tmp;
+  set_of_neighboring_quadrants cell_neighbors; cell_neighbors.clear();
+  /* gather the neighborhood and get the (logical) size of the smallest nearby quadrant */
+  const p4est_qcoord_t logical_size_smallest_nearby_cell = ngbd_n->gather_neighbor_cells_of_node(cell_neighbors, faces->get_ngbd_c(), node_idx, true);
   const double* tree_dim = faces->get_tree_dimensions();
-  double scaling = ngbd_n->gather_neighbor_cells_of_node(ngbd_tmp, faces->get_ngbd_c(), node_idx, true);
-  scaling *= 0.5*MIN(DIM(tree_dim[0], tree_dim[1], tree_dim[2]));
+  const double scaling = 0.5*MIN(DIM(tree_dim[0], tree_dim[1], tree_dim[2]))*(double)logical_size_smallest_nearby_cell/(double) P4EST_ROOT_LEN;
 
   std::set<indexed_and_located_face> face_ngbd;
-  add_faces_to_set_and_clear_set_of_quad(faces, NO_VELOCITY, dir, face_ngbd, ngbd_tmp); // NO_VELOCITY for 2nd argument, because no "center_seed", we are not constructing a Voronoi cell --> bypass the check
+  add_faces_to_set_and_clear_set_of_quad(faces, NO_VELOCITY, dir, face_ngbd, cell_neighbors); // NO_VELOCITY for 2nd argument, because no "center_seed", we are not constructing a Voronoi cell --> bypass the check
 
   double *velocity_component_p;
   ierr = VecGetArray(velocity_component, &velocity_component_p); CHKERRXX(ierr);
@@ -963,18 +940,14 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
       unsigned char col_idx = 0;
       A.set_value(row_idx, col_idx++, w); // constant term --> what we are after in 99.99% of cases
       if(order >= 1)
-      {
         for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
           if(neumann_wall[comp] == 0)
             A.set_value(row_idx, col_idx++, xyz_t[comp]*w); // linear terms, first partial derivatives
-      }
       P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - nb_neumann_walls : 0));
       if(order >= 2)
-      {
         for (unsigned char comp_1 = 0; comp_1 < P4EST_DIM; ++comp_1)
           for (unsigned char comp_2 = comp_1; comp_2 < P4EST_DIM; ++comp_2)
             A.set_value(row_idx, col_idx++, xyz_t[comp_1]*xyz_t[comp_2]*w); // quadratic terms, second (possibly crossed) partial derivatives
-      }
       P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
 
       const double neumann_term = (order >= 1 && nb_neumann_walls > 0 ? SUMD(neumann_wall[0]*bc[dir].wallValue(xyz)*xyz_t[0]*scaling, neumann_wall[1]*bc[dir].wallValue(xyz)*xyz_t[1]*scaling, neumann_wall[2]*bc[dir].wallValue(xyz)*xyz_t[2]*scaling) : 0.0);
@@ -1013,7 +986,7 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   if(interpolator_from_faces != NULL)
     interp_weights = new std::vector<double>(0);
 
-  double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order, SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])), interp_weights);
+  const double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order, nb_neumann_walls, interp_weights);
 
   if(interpolator_from_faces != NULL)
   {
@@ -1209,9 +1182,9 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
           has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level == qm.level && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY));
 #ifdef P4_TO_P8
         else
-          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qp.level));
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qm.level));
 #endif
-        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qp.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
+        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qm.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
         {
 #ifdef P4_TO_P8
           if(tt != 0)
@@ -1230,8 +1203,14 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
   {
     P4EST_ASSERT(qm.level <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // consistency check
 #ifdef P4EST_DEBUG
-    for (unsigned char k = 0; k < 2*(P4EST_DIM - 1); ++k)
-      P4EST_ASSERT(faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir)); // consistency check
+    for (char tt = -1; tt < 2; ++tt)
+    {
+      // consistency check only in perpendicular tranverse directions (not in diagonals, since they may be bigger cells, there)
+      P4EST_ASSERT(faces->q2f(ngbd_m_[face_dir_to_set_idx[2*first_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[face_dir_to_set_idx[2*first_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir));
+#ifdef P4_TO_P8
+      P4EST_ASSERT(faces->q2f(ngbd_m_[face_dir_to_set_idx[2*second_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[face_dir_to_set_idx[2*second_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir));
+#endif
+    }
 #endif
     const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - qm.level));
     // neighbor faces in the direction of the face orientation, first:

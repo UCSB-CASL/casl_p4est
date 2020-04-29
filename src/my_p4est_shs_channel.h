@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <random>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_navier_stokes.h>
@@ -427,11 +428,48 @@ class my_p4est_shs_channel_t : public CF_DIM
       throw std::invalid_argument("my_p4est_shs_channel_t::check_resolution_pitch_and_gas_fraction(...): the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
   }
 
-
-  // Re_b = SQR(Re_tau)*(1/3 + coeff[0])
   inline double Re_tau_from_Re_b(const double& Re_b) const
   {
     return sqrt(Re_b/(1.0/3.0 + coeff[0]));
+  }
+
+  inline double Re_b_from_Re_tau(const double& Re_tau) const
+  {
+    return SQR(Re_tau)*(1.0/3.0 + coeff[0]);
+  }
+
+  inline double get_corresponding_Re_tau(const flow_setting& flow_setup, const double& Re) const
+  {
+    double Re_tau;
+    switch (flow_setup) {
+    case constant_pressure_gradient:
+      Re_tau = Re; // if constant_pressure_gradient, Re = Re_tau
+      break;
+    case constant_mass_flow:
+      Re_tau = Re_tau_from_Re_b(Re); // if constant_mass_flow, Re = Re_b
+      break;
+    default:
+      throw std::invalid_argument("my_p4est_shs_channel_t::get_corresponding_Re_tau(): unknown flow setup");
+      break;
+    }
+    return Re_tau;
+  }
+
+  inline double get_corresponding_Re_b(const flow_setting& flow_setup, const double& Re) const
+  {
+    double Re_b;
+    switch (flow_setup) {
+    case constant_mass_flow:
+      Re_b = Re; // if constant_mass_flow, Re = Re_b
+      break;
+    case constant_pressure_gradient:
+      Re_b = Re_b_from_Re_tau(Re); // if constant_pressure_gradient, Re = Re_tau
+      break;
+    default:
+      throw std::invalid_argument("my_p4est_shs_channel_t::get_corresponding_Re_b(): unknown flow setup");
+      break;
+    }
+    return Re_b;
   }
 
 public:
@@ -576,23 +614,12 @@ public:
     double xyz_mod[P4EST_DIM];
     normalize_coordinates(xyz_mod, xyz);
 
-    double Re_tau;
-    switch (flow_setup) {
-    case constant_pressure_gradient:
-      Re_tau = Re; // if constant_pressure_gradient, Re = Re_tau
-      break;
-    case constant_mass_flow:
-      Re_tau = Re_tau_from_Re_b(Re); // if constant_mass_flow, Re = Re_b
-      break;
-    default:
-      throw std::invalid_argument("my_p4est_shs_channel_t::check_Reynolds(): unknown flow setup");
-      break;
-    }
-    const double velocity_scale = Re_tau*ns->get_nu()/delta();
-    velocity[0] = velocity_scale*Re_tau*v_x(xyz_mod);
-    velocity[1] = velocity_scale*Re_tau*v_y(xyz_mod);
+    const double Re_tau = get_corresponding_Re_tau(flow_setup, Re);
+    const double velocity_scale =  SQR(Re_tau)*ns->get_nu()/delta();
+    velocity[0] = velocity_scale*v_x(xyz_mod);
+    velocity[1] = velocity_scale*v_y(xyz_mod);
 #ifdef P4_TO_P8
-    velocity[2] = velocity_scale*Re_tau*v_z(xyz_mod);
+    velocity[2] = velocity_scale*v_z(xyz_mod);
 #endif
   }
 
@@ -603,18 +630,7 @@ public:
     double xyz_mod[P4EST_DIM];
     normalize_coordinates(xyz_mod, xyz);
 
-    double Re_tau;
-    switch (flow_setup) {
-    case constant_pressure_gradient:
-      Re_tau = Re; // if constant_pressure_gradient, Re = Re_tau
-      break;
-    case constant_mass_flow:
-      Re_tau = Re_tau_from_Re_b(Re); // if constant_mass_flow, Re = Re_b
-      break;
-    default:
-      throw std::invalid_argument("my_p4est_shs_channel_t::check_Reynolds(): unknown flow setup");
-      break;
-    }
+    const double Re_tau = get_corresponding_Re_tau(flow_setup, Re);
     const double velocity_scale =  SQR(Re_tau)*ns->get_nu()/delta();
     switch (dir) {
     case dir::x:
@@ -669,9 +685,9 @@ public:
 
   inline double acceleration_for_constant_mass_flow(const double& desired_U_b, const double& desired_Re_b, const int& nterms)
   {
-    // canonical_u_tau/U_b = Re_tau/Re_b = 1.0/sqrt((1.0/3.0 + coeff[0])*Re_b)
+    // canonical_u_tau/U_b = Re_tau/Re_b
     solve_for_truncated_series(nterms);
-    return acceleration_for_canonical_u_tau(desired_U_b/sqrt((1.0/3.0 + coeff[0])*desired_Re_b));
+    return acceleration_for_canonical_u_tau(desired_U_b*Re_tau_from_Re_b(desired_Re_b)/desired_Re_b);
   }
 
   inline void create_p4est_ghost_and_nodes(p4est_t* &forest, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, splitting_criteria_cf_and_uniform_band_t* &sp, p4est_connectivity_t *conn, const mpi_environment_t& mpi,
@@ -730,9 +746,16 @@ public:
   inline bool spanwise_grooves() const { return spanwise; }
 #endif
 
-  inline void initialize_velocity_to_analytical_solution(my_p4est_navier_stokes_t* ns, const int &nterms, const flow_setting& flow_setup, const double &Re)
+  inline void initialize_velocity(my_p4est_navier_stokes_t* ns, const int &nterms, const flow_setting& flow_setup, const double &Re, const double &white_noise_rel_rms = 0.0)
   {
     solve_for_truncated_series(nterms);
+
+    std::default_random_engine generator;
+    std::normal_distribution<double> distribution(0.0, 1.0);
+
+    const double mean_rms_noise = white_noise_rel_rms*(get_corresponding_Re_b(flow_setup, Re)*ns->get_nu()/delta());
+
+    double max_norm_u_n = 0.0;
 
     PetscErrorCode ierr;
     Vec vnm1_nodes[P4EST_DIM], vn_nodes[P4EST_DIM];
@@ -744,32 +767,66 @@ public:
       ierr = VecGetArray(vn_nodes[dir], &vn_nodes_p[dir]); CHKERRXX(ierr);
     }
 
-    for (size_t nn = 0; nn < MAX(ns->get_nodes_nm1()->indep_nodes.elem_count, ns->get_nodes()->indep_nodes.elem_count); ++nn) {
-      if(nn < ns->get_nodes_nm1()->indep_nodes.elem_count)
+    for (size_t k = 0; k < MAX(ns->get_ngbd_n()->get_layer_size(), ns->get_ngbd_nm1()->get_layer_size()); ++k) {
+      if(k < ns->get_ngbd_nm1()->get_layer_size())
       {
+        p4est_locidx_t node_idx = ns->get_ngbd_nm1()->get_layer_node(k);
         double xyz[P4EST_DIM], velocity[P4EST_DIM];
-        node_xyz_fr_n(nn, ns->get_p4est_nm1(), ns->get_nodes_nm1(), xyz);
+        node_xyz_fr_n(node_idx, ns->get_ngbd_nm1()->get_p4est(), ns->get_ngbd_nm1()->get_nodes(), xyz);
         v_exact(flow_setup, Re, ns, xyz, velocity);
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          vnm1_nodes_p[dim][nn] = velocity[dim];
+          vnm1_nodes_p[dim][node_idx] = velocity[dim] + mean_rms_noise*distribution(generator);
       }
-      if(nn < ns->get_nodes()->indep_nodes.elem_count)
+
+      if(k < ns->get_ngbd_n()->get_layer_size())
       {
+        p4est_locidx_t node_idx = ns->get_ngbd_n()->get_layer_node(k);
         double xyz[P4EST_DIM], velocity[P4EST_DIM];
-        node_xyz_fr_n(nn, ns->get_p4est(), ns->get_nodes(), xyz);
+        node_xyz_fr_n(node_idx, ns->get_ngbd_n()->get_p4est(), ns->get_ngbd_n()->get_nodes(), xyz);
         v_exact(flow_setup, Re, ns, xyz, velocity);
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          vn_nodes_p[dim][nn] = velocity[dim];
+          vn_nodes_p[dim][node_idx] = velocity[dim] + mean_rms_noise*distribution(generator);
+        max_norm_u_n = MAX(max_norm_u_n, sqrt(SUMD(SQR(vn_nodes_p[dir::x][node_idx]), SQR(vn_nodes_p[dir::y][node_idx]), SQR(vn_nodes_p[dir::z][node_idx]))));
       }
     }
 
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecGhostUpdateBegin(vnm1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vn_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    for (size_t k = 0; k < MAX(ns->get_ngbd_n()->get_local_size(), ns->get_ngbd_nm1()->get_local_size()); ++k) {
+      if(k < ns->get_ngbd_nm1()->get_local_size())
+      {
+        p4est_locidx_t node_idx = ns->get_ngbd_nm1()->get_local_node(k);
+        double xyz[P4EST_DIM], velocity[P4EST_DIM];
+        node_xyz_fr_n(node_idx, ns->get_ngbd_nm1()->get_p4est(), ns->get_ngbd_nm1()->get_nodes(), xyz);
+        v_exact(flow_setup, Re, ns, xyz, velocity);
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+          vnm1_nodes_p[dim][node_idx] = velocity[dim] + mean_rms_noise*distribution(generator);
+      }
+
+      if(k < ns->get_ngbd_n()->get_local_size())
+      {
+        p4est_locidx_t node_idx = ns->get_ngbd_n()->get_local_node(k);
+        double xyz[P4EST_DIM], velocity[P4EST_DIM];
+        node_xyz_fr_n(node_idx, ns->get_ngbd_n()->get_p4est(), ns->get_ngbd_n()->get_nodes(), xyz);
+        v_exact(flow_setup, Re, ns, xyz, velocity);
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+          vn_nodes_p[dim][node_idx] = velocity[dim] + mean_rms_noise*distribution(generator);
+        max_norm_u_n = MAX(max_norm_u_n, sqrt(SUMD(SQR(vn_nodes_p[dir::x][node_idx]), SQR(vn_nodes_p[dir::y][node_idx]), SQR(vn_nodes_p[dir::z][node_idx]))));
+      }
+    }
+
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecGhostUpdateEnd(vnm1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(vn_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecRestoreArray(vnm1_nodes[dir], &vnm1_nodes_p[dir]); CHKERRXX(ierr);
       ierr = VecRestoreArray(vn_nodes[dir], &vn_nodes_p[dir]); CHKERRXX(ierr);
     }
-    ns->set_velocities(vnm1_nodes, vn_nodes);
-    ns->compute_max_L2_norm_u();
-    ns->compute_dt();
+
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_norm_u_n, 1, MPI_DOUBLE, MPI_MAX, ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
+    ns->set_velocities(vnm1_nodes, vn_nodes, &max_norm_u_n);
   }
 
   inline double get_c0() const {

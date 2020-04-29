@@ -471,10 +471,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    double temp_0[n_arrays*bs], temp_1[n_arrays*bs];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays*bs], temp_3[n_arrays*bs];
-#endif
+    double temp_0[n_arrays*bs], temp_1[n_arrays*bs] ONLY3D(COMMA temp_2[n_arrays*bs] COMMA temp_3[n_arrays*bs]);
     ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -516,10 +513,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays], temp_3[n_arrays];
-#endif
+    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
     ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -556,10 +550,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays], temp_3[n_arrays];
-#endif
+    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
     ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -606,10 +597,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    double temp_0[n_arrays*bs], temp_1[n_arrays*bs];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays*bs], temp_3[n_arrays*bs];
-#endif
+    double temp_0[n_arrays*bs], temp_1[n_arrays*bs] ONLY3D(COMMA temp_2[n_arrays*bs] COMMA temp_3[n_arrays*bs]);
     ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -650,10 +638,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays], temp_3[n_arrays];
-#endif
+    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
     ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -690,10 +675,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays];
-#ifdef P4_TO_P8
-    double temp_2[n_arrays], temp_3[n_arrays];
-#endif
+    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
     ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
@@ -853,23 +835,14 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 
   if(second_derivatives_needed)
   {
-    double fxx[nelements],fyy[nelements];
-#ifdef P4_TO_P8
-    double fzz[nelements];
-    if (bs==1)
-      laplace(f, fxx, fyy, fzz, n_arrays);
-    else if ((bs > 1) && (comp<bs))
-      laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
+    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    if (bs == 1)
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+    else if (bs > 1 && comp < bs)
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
-#else
-    if (bs==1)
-      laplace(f, fxx, fyy, n_arrays);
-    else if ((bs > 1) && (comp<bs))
-      laplace_component(f, fxx, fyy, n_arrays, bs, comp);
-    else
-      laplace_all_components(f, fxx, fyy, n_arrays, bs);
-#endif
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
         Dx[k] -= fyy[k]*yy_correction_weight_to_naive_Dx;
@@ -989,23 +962,14 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double fxx[nelements],fyy[nelements];
-#ifdef P4_TO_P8
-    double fzz[nelements];
-    if (bs==1)
-      laplace(f, fxx, fyy, fzz, n_arrays);
-    else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
+    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    if (bs == 1)
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+    else if (bs > 1 && comp < bs)
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
-#else
-    if (bs==1)
-      laplace(f, fxx, fyy, n_arrays);
-    else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx, fyy, n_arrays, bs, comp);
-    else
-      laplace_all_components(f, fxx, fyy, n_arrays, bs);
-#endif
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
         fx[k] -= fyy[k]*yy_correction_weight_to_df_dx;
@@ -1071,23 +1035,13 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double fxx[nelements],fyy[nelements];
-#ifdef P4_TO_P8
-    double fzz[nelements];
-    if (bs==1)
-      laplace(f, fxx, fyy, fzz, n_arrays);
-    else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
+    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    if (bs == 1)
+      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+    else if (bs > 1 && comp < bs)
+      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     else
-      laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
-#else
-    if (bs==1)
-      laplace(f, fxx, fyy, n_arrays);
-    else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx, fyy, n_arrays, bs, comp);
-    else
-      laplace_all_components(f, fxx, fyy, n_arrays, bs);
-#endif
+      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dy_needs_xx_correction)
         fy[k] -= fxx[k]*xx_correction_weight_to_df_dy;

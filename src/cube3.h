@@ -99,7 +99,7 @@ public:
      * \param p the values of the level-set at the corners of the Cube3
      * \return the integral of the quantity f over the negative domain (p<0) in the Cube3
      */
-    double integral(const OctValue &f, const OctValue &level_set_values ) const;
+    double integral(const OctValue &f, const OctValue &level_set_values) const;
 
 
     double integrate_Over_Interface(const OctValue &f, const OctValue &level_set_values ) const;

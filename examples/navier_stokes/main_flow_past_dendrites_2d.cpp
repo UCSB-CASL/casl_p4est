@@ -768,7 +768,7 @@ int main (int argc, char* argv[])
 #if defined(POD_CLUSTER)
   const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/flow_past_sphere");
 #elif defined(STAMPEDE)
-  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/scratch/04965/tg842642/flow_past_sphere");
 #elif defined(LAPTOP)
   const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/flow_past_sphere");
 #else

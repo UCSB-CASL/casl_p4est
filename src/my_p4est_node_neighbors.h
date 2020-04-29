@@ -53,9 +53,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_faces_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
-  friend class my_p4est_interpolation_t;
   friend class my_p4est_level_set_cells_t;
-  friend class my_p4est_level_set_faces_t;
   friend class my_p4est_level_set_t;
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
@@ -105,11 +103,8 @@ class my_p4est_node_neighbors_t {
    * \brief is_initialized: flag that is set to true when 'neighbors' is fully set and determined
    */
   bool is_initialized;
-  /*!
-   * \brief periodic periodicity flag, the domain is periodic along the cartesian directon dir
-   * if periodic[dir] is true.
-   */
-  bool periodic[P4EST_DIM];
+
+  const bool* periodic;
 
   /*!
    * \brief construct_neighbors constructs the full node neighborhood information for a local node
@@ -196,9 +191,8 @@ public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
+    periodic = hierarchy->get_periodicity();
     is_initialized = false;
-    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-      periodic[dd] = is_periodic(p4est, dd);
     set_layer_and_local_nodes();
   }
 
@@ -472,9 +466,22 @@ public:
    * \param [out] nb_tree_idx   the index of the tree in which the quadrant was found (valid and sensible if the quadrant was
    *                            actually found, of course)
    */
-   void find_neighbor_cell_of_node( p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
+   void find_neighbor_cell_of_node(p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx) const;
 
-   double gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors = false) const;
+   /*!
+    * \brief gather_neighbor_cells_of_node finds all neighbor cells of a node in all cartesian directions (and any of their
+    * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
+    * but it can be extended to second degree neighbors, if desired.
+    * \param [inout] cell_neighbors: the set of neighbor cells (not cleared on input but augmented with all candidates if not
+    *                           present in the list yet);
+    * \param [in] cell_ngbd: pointer to the cell_neighborhood information
+    * \param [in] node_idx: local index of the node whose neighbor cells are sought
+    * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
+    *                           (default value is false)
+    * \return the logical size of the smallest quadrant found in the first-degree cell neighborhood (first-degree only!!!)
+    *                           --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+    */
+   p4est_qcoord_t gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors = false) const;
 
   /*!
    * \brief dd_central computes the second derivatives along the cartesian direction der on all nodes and updates the ghosts
@@ -514,8 +521,8 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the f and fdd arrays
    * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f = 1) const;
+  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f = 1) const
   {
     second_derivatives_central(&f, &fdd, 1, bs_f);
   }
@@ -538,21 +545,11 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the above arrays
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  void second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void second_derivatives_central(const Vec f, DIM(Vec fxx, Vec fyy, Vec fzz), const unsigned int &bs=1) const { second_derivatives_central(&f, DIM(&fxx, &fyy, &fzz), 1, bs); }
-
-  /*!
-   * \brief second_derivatives_central_above_threshold computes dxx, dyy, and dzz
-   * central at all points where f is greater than threshold. Similar to the function
-   * but disregards points where f < threshold.
-   *
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [in]  thr double threshold value mentioned above
-   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only in 3D)
-   */
-  void second_derivatives_central_above_threshold(const Vec f, double thr, DIM(Vec fxx, Vec fyy, Vec fzz)) const;
+  void second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void second_derivatives_central(const Vec f, DIM(Vec fxx, Vec fyy, Vec fzz), const unsigned int &bs = 1) const
+  {
+    second_derivatives_central(&f, DIM(&fxx, &fyy, &fzz), 1, bs);
+  }
 
   /*!
    * \brief second_derivatives_central computes the second derivative
@@ -562,12 +559,15 @@ public:
    * \param [in]  n_vecs  number of vectors to handle
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) {
-    second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
-  }
-  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM], const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1)
   {
-    second_derivatives_central(&f, DIM(&fxx[0], &fxx[1], &fxx[2]), 1, bs);
+    second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
+    return;
+  }
+  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1)
+  {
+    second_derivatives_central(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1, bs);
+    return;
   }
 
   /*!
@@ -580,10 +580,10 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the f and fd arrays
    * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f = 1) const;
+  inline void first_derivatives_central(const Vec f, Vec fd, const unsigned int &bs_f = 1) const
   {
-    first_derivatives_central(&f, &fdd, 1, bs_f);
+    first_derivatives_central(&f, &fd, 1, bs_f);
   }
 
   /*!
@@ -604,14 +604,14 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the above arrays
    * \param [in]  bs      block size of the vectors in f, fx, fy and fz (default is 1)
    */
-  void first_derivatives_central(const Vec f[], DIM(Vec fx[], Vec fy[], Vec fz[]), const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, DIM(Vec fx, Vec fy, Vec fz), const unsigned int &bs=1) const { first_derivatives_central(&f, DIM(&fx, &fy, &fz), 1, bs); }
+  void first_derivatives_central(const Vec f[], DIM(Vec fx[], Vec fy[], Vec fz[]), const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void first_derivatives_central(const Vec f, DIM(Vec fx, Vec fy, Vec fz), const unsigned int &bs = 1) const { first_derivatives_central(&f, DIM(&fx, &fy, &fz), 1, bs); }
 
-  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs=1) const
+  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) const
   {
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), n_vecs, bs);
   }
-  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs=1) const
+  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs = 1) const
   {
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), bs);
   }
