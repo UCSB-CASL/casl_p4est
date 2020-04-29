@@ -83,6 +83,7 @@ DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
 DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 
+DEFINE_PARAMETER(pl,bool,save_to_vtk,true,"We save vtk files using a given dt increment if this is set to true \n");
 DEFINE_PARAMETER(pl,bool,save_using_dt,true,"We save vtk files using a given dt increment if this is set to true \n");
 DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number of iterations if this is set to true \n");
 
@@ -119,15 +120,17 @@ void select_solvers(){
       break;
     case ICE_AROUND_CYLINDER:
       save_stefan = false;
-      solve_stefan = true;//true;
+      solve_stefan = false;//true;
       solve_navier_stokes = true;
-      save_navier_stokes = false;//false;
-      save_coupled_fields = true;//true;
+      save_navier_stokes = true;//false;
+      save_coupled_fields = false;//true;
+      do_advection=true;
       break;
     case NS_GIBOU_EXAMPLE:
       save_stefan = false; solve_stefan = false;
       save_navier_stokes = true; solve_navier_stokes = true;
       save_coupled_fields = false;
+
       break;
     case FLOW_PAST_CYLINDER:
       save_stefan = false; solve_stefan = false;
@@ -4406,7 +4409,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Initialize the output file for vtk:
     // -----------------------------------------------
-    int out_idx = -1;
+    int out_idx = 0;
 
 
     // -----------------------------------------------
@@ -4465,16 +4468,19 @@ int main(int argc, char** argv) {
     // (5) For checking ice cylinder problem:
     FILE *fich_ice_radius_info;
     char name_ice_radius_info[1000];
-    const char* out_dir_ice_cyl = getenv("OUT_DIR_ICE");
-    sprintf(name_ice_radius_info,"%s/ice_cyl_info_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
-            out_dir_ice_cyl,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
-    ierr = PetscFOpen(mpi.comm(),name_ice_radius_info,"w",&fich_ice_radius_info); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(),fich_ice_radius_info,"time "
-                        "max_v_norm "
-                        "number_elements "
-                        "theta_N "
-                        "delta_r_N ");CHKERRXX(ierr);
-    ierr = PetscFClose(mpi.comm(),fich_ice_radius_info); CHKERRXX(ierr);
+    if(example_ == ICE_AROUND_CYLINDER){
+
+      const char* out_dir_ice_cyl = getenv("OUT_DIR_ICE");
+      sprintf(name_ice_radius_info,"%s/ice_cyl_info_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
+              out_dir_ice_cyl,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
+      ierr = PetscFOpen(mpi.comm(),name_ice_radius_info,"w",&fich_ice_radius_info); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(),fich_ice_radius_info,"time "
+                                                          "max_v_norm "
+                                                          "number_elements "
+                                                          "theta_N "
+                                                          "delta_r_N ");CHKERRXX(ierr);
+      ierr = PetscFClose(mpi.comm(),fich_ice_radius_info); CHKERRXX(ierr);
+    }
 
 
     // -----------------------------------------------
@@ -4677,10 +4683,10 @@ int main(int argc, char** argv) {
 
         // Saving to VTK: either every specified number of iterations, or every specified dt:
         bool are_we_saving = false;
-        if(save_using_dt){
+        if(save_using_dt && save_to_vtk){
             are_we_saving= (tstep>0) && (( (int) floor(tn/save_every_dt) ) !=out_idx) && (tstep!=load_tstep);
           }
-        else if (save_using_iter){
+        else if (save_using_iter&& save_to_vtk){
             are_we_saving = (tstep>0) && (( (int) floor(tstep/save_every_iter) ) !=out_idx) && (tstep!=load_tstep);
           }
 
@@ -4688,7 +4694,7 @@ int main(int argc, char** argv) {
         if(are_we_saving){
             if(save_using_dt){out_idx = ((int) floor(tn/save_every_dt));}
             else if(save_using_iter){out_idx = ((int) floor(tstep/save_every_iter));}
-            PetscPrintf(mpi.comm(),"SAVING TO VTK \n"
+            PetscPrintf(mpi.comm(),"Saving to vtk... \n"
 /*                                   "floor = %d \n"
                                    "out_idx = %d \n",( (int) floor(tn/save_every_dt) ),out_idx*/);
             PetscFPrintf(mpi.comm(),fich_log,"Saving to vtk ... \n");
@@ -5067,7 +5073,7 @@ int main(int argc, char** argv) {
           }
 
         // Advect the LSF and update the grid under the v_interface field:
-        if(solve_stefan){
+        if(solve_coupled || solve_stefan){
             if(example_ == ICE_AROUND_CYLINDER){
                 // Get the cylinder LSF if we need it
                 phi_cylinder.create(p4est_np1,nodes_np1); // create to refine around, then will destroy
@@ -5199,10 +5205,11 @@ int main(int argc, char** argv) {
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes grid refinement/LSF advection \n");
 
-        // Reinitialize the LSF on the new grid:
+        // Reinitialize the LSF on the new grid (if it has been advected):
         my_p4est_level_set_t ls_new(ngbd_np1);
         if(solve_stefan)ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec);
         if(solve_navier_stokes && !solve_stefan){
+
             // If only solving Navier-Stokes, only need to do this once, not every single timestep
             if(tstep==0){ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec);
               }
@@ -5248,6 +5255,10 @@ int main(int argc, char** argv) {
             normal.destroy();
             if(print_checkpoints) PetscPrintf(mpi.comm(),"Computes normal and curvature \n");
           }
+//        if(solve_navier_stokes && example_ == FLOW_PAST_CYLINDER){
+//            v_interface.destroy();
+//            v_interface.create(p4est_np1,nodes_np1);
+//          }
 
 
         // --------------------------------------------------------------------------------------------------------------
@@ -5500,6 +5511,7 @@ int main(int argc, char** argv) {
 
             // First, initialize the Navier-Stokes solver with the grid:
             if(tstep ==0 || tstep==load_tstep){
+              PetscPrintf(mpi.comm(),"Creates the new ns \n");
               ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
 
               // Set the LSF:
@@ -5785,7 +5797,8 @@ int main(int argc, char** argv) {
             delete ns;
           }
         else{
-            p4est_destroy(p4est); /*ns->nullify_p4est_nm1();*/
+            p4est_destroy(p4est);
+            if(solve_navier_stokes)ns->nullify_p4est_nm1();
             p4est_ghost_destroy(ghost);
             p4est_nodes_destroy(nodes);
             delete ngbd;
