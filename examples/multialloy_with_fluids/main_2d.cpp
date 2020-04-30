@@ -4817,6 +4817,7 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
             sprintf(output,"%s/snapshot_NS_Gibou_test_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+            PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
             save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
           }
 
