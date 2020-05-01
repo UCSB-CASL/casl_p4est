@@ -230,7 +230,7 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 			}
 		}
 
-		if( crossedEdges > 0 )
+		if( crossedEdges )
 			;		// TODO: Seed point.
 		else
 		{

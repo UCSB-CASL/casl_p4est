@@ -107,7 +107,8 @@ list( APPEND HEADERS
 		${PARCASL}/src/simplex2.h
 		${PARCASL}/src/types.h
 		${PARCASL}/src/petsc_compatibility.h
-		${PARCASL}/src/FastSweeping.h )
+		${PARCASL}/src/FastSweeping.h
+		${PARCASL}/src/Geometry.h )
 
 list( APPEND SOURCES
 		${PARCASL}/src/parameter_list.cpp
