@@ -5278,16 +5278,16 @@ int main(int argc, char** argv) {
                                  "----------------------------- \n \n");
           if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
 
-          if(example_ == FRANK_SPHERE){
-              const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
+//          if(example_ == FRANK_SPHERE){
+//              const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
 
-              char output[1000];
+//              char output[1000];
 
-              sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d__before_solve_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-              PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
+//              sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d__before_solve_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+//              PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
-              save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
-            }
+//              save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
+//            }
 
 
 
@@ -5306,16 +5306,16 @@ int main(int argc, char** argv) {
               ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
             }
 
-          // Check Temperature values:
-          PetscPrintf(mpi.comm(),"BEFORE SOLVING SYSTEM: \n");
-          PetscPrintf(mpi.comm(),"--> Temperature values in the fluid domain: \n");
+//          // Check Temperature values:
+//          PetscPrintf(mpi.comm(),"BEFORE SOLVING SYSTEM: \n");
+//          PetscPrintf(mpi.comm(),"--> Temperature values in the fluid domain: \n");
 
-          check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,true,false,fich_log);
-          PetscPrintf(mpi.comm(),"\n"
-                                 "-->Temperature values in the solid domain: \n");
+//          check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,true,false,fich_log);
+//          PetscPrintf(mpi.comm(),"\n"
+//                                 "-->Temperature values in the solid domain: \n");
 
-          check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,false,true,fich_log);
-          PetscPrintf(mpi.comm(),"\n \n");
+//          check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,false,true,fich_log);
+//          PetscPrintf(mpi.comm(),"\n \n");
 
           // ---------------------------------------
           // Compute advection terms (if applicable):
