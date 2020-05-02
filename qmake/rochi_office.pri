@@ -29,7 +29,7 @@ VORO_LIBS_DEBUG       = -Wl,-rpath,/usr/local/bin -L/usr/local/bin -lvoro++
 
 # Boost
 BOOST_DIR       = /home/rochi/libraries/boost/release
-BOOST_INCLUDES  = $$BOOST_DIR/include/boost
+BOOST_INCLUDES  = $$BOOST_DIR/include
 BOOST_LIBS      = -Wl,-rpath,$$BOOST_DIR/lib -L$$BOOST_DIR/lib -lboost_filesystem
 
 QMAKE_CC=/usr/local/bin/mpicc

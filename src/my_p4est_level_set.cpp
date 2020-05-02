@@ -8563,3 +8563,4 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
+
