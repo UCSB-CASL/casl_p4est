@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
   // which molecule(s)
   const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
   //const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "6lu7.");
+  const string pqr_input                    = cmd.get<string>("pqr", "1etn.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
@@ -195,8 +195,8 @@ int main(int argc, char *argv[]) {
   const double rel_side_length_biggest_box  = cmd.get<double>("boxsize", 0.3);
   // grid construction
   const int ntree_per_dim                   = cmd.get<int>("ntree_dim", 1);
-  const int lmin                            = cmd.get<int>("lmin", 5);
-  const int lmax                            = cmd.get<int>("lmax", 9);
+  const int lmin                            = cmd.get<int>("lmin", 6);
+  const int lmax                            = cmd.get<int>("lmax", 8);
   const double lip                          = cmd.get<double>("lip", 1.2);
   const int surf_gen                        = cmd.get<int>("surfgen", 1);
   const double probe_radius                 = cmd.get<double>("rp", 1.4);
@@ -373,7 +373,6 @@ int main(int argc, char *argv[]) {
             Vec phi               = my_biomol.return_phi_vector();
             p4est_nodes_t* nodes  = my_biomol.return_nodes();
             p4est_ghost_t* ghost  = my_biomol.return_ghost();
-            ierr = PetscPrintf(mpi.comm(), "line 377 ok \n"); CHKERRXX(ierr);
 
             if(!boost::iequals(null_str, vtk_name))
             {
@@ -394,8 +393,6 @@ int main(int argc, char *argv[]) {
               ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
               //ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
               string vtk_file = output_folder + vtk_name;
-
-              ierr = PetscPrintf(mpi.comm(), "line 396 ok \n"); CHKERRXX(ierr);
               my_p4est_vtk_write_all_general(p4est, nodes, ghost,
                                              P4EST_TRUE, P4EST_TRUE,
                                              4, 0, 1, 0, 0, 0, vtk_file.c_str(),

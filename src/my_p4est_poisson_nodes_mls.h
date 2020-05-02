@@ -215,6 +215,7 @@ protected:
   int    integration_order_;
   int    cube_refinement_;
   int    jump_scheme_;
+  int    jump_sub_scheme_;
   int    fv_scheme_;
 
   bool   use_taylor_correction_;
@@ -556,6 +557,7 @@ public:
   inline void set_integration_order(int value) { integration_order_ = value; }
   inline void set_cube_refinement  (int value) { cube_refinement_   = value; }
   inline void set_jump_scheme      (int value) { jump_scheme_       = value; }
+  inline void set_jump_sub_scheme      (int value) { jump_sub_scheme_       = value; }
   inline void set_fv_scheme        (int value) { fv_scheme_         = value; }
 
   inline void set_use_taylor_correction   (bool value) { use_taylor_correction_    = value; }
