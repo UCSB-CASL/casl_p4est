@@ -334,8 +334,14 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   // on the closest smallest quadrant in the domain and use it as a way to "extrapolate" the results out of the domain
   for(unsigned char dir=0; dir<P4EST_DIM; ++dir){
     xyz_p[dir] = xyz[dir];
+
+    // make sure a point inside computational domain if it's periodic
     if(periodic[dir] && ((xyz_p[dir]<xyz_min[dir]) || (xyz_p[dir]>xyz_max[dir])))
       xyz_p[dir] = xyz_p[dir] - floor((xyz_p[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+
+    // select closest to the quadrant image of a point
+    if     (periodic[dir] && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+    else if(periodic[dir] && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
   }
 
   /* compute derivatives */

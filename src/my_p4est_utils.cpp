@@ -1,4 +1,4 @@
-#ifdef P4_TO_P8
+﻿#ifdef P4_TO_P8
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
@@ -144,39 +144,41 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
 {
   P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  /* shift xyz to [0,1] */
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
-  double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
-#ifdef P4_TO_P8
-  double zmin = (double)quad.z / (double)(P4EST_ROOT_LEN);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  double d_m00 = x - xmin;
-  double d_p00 = qh - d_m00;
-  double d_0m0 = y - ymin;
-  double d_0p0 = qh - d_0m0;
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
+  }
+
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z - zmin;
-  double d_00p = qh - d_00m;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -206,11 +208,6 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
     results[k] = 0.0;
     for (short j = 0; j<P4EST_CHILDREN; j++)
       results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
-#ifdef P4_TO_P8
-    results[k] /= qh*qh*qh;
-#else
-    results[k] /= qh*qh;
-#endif
   }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
@@ -221,44 +218,41 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
 {
   P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
+  }
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -284,11 +278,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
 #endif
 
   double fdd[P4EST_DIM];
-  double sx = (tree_xmax-tree_xmin)*qh;
-  double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k) {
     results[k] = 0.0;
     for (short j = 0; j < P4EST_CHILDREN; ++j) {
@@ -297,9 +287,9 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
 #ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1] + sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
 #else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1]);
 #endif
   }
 
@@ -309,45 +299,43 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
 
 void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
+  }
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -375,11 +363,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
   // First alternative scheme: first, minmod on every edge, then weight-average
   double fdd[P4EST_DIM];
   unsigned int i, jm, jp;
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
@@ -414,9 +398,9 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
 
 #ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1] + sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
 #else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1]);
 #endif
   }
 
@@ -426,45 +410,43 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
+  }
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -492,11 +474,7 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
   double fdd[P4EST_DIM];
   unsigned int i, jm, jp;
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   double fdd_m, fdd_p;
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
@@ -541,11 +519,10 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
 
 #ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1] + sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
 #else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+    results[k] -= 0.5*(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0] + sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1]);
 #endif
-
 
   }
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
@@ -558,54 +535,40 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
   P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double qxmin = quad_x_fr_i(&quad);
-  double qymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double qzmin = quad_z_fr_k(&quad);
-#endif
-
-#ifdef CASL_THROWS
-  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
-  {
-    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
-    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
-    std::cout << y-qymin << std::endl;
-    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
   }
-#endif
 
-  x = (x-qxmin) / qh;
-  y = (y-qymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-qzmin) / qh;
-#endif
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -632,11 +595,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
 
 
   double fdd[P4EST_DIM];
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k)
   {
     results[k] = 0.0;
@@ -646,11 +605,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
         fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
+    results[k] -= 0.5*SUMD(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0], sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1], sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
@@ -1345,6 +1300,57 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 }
 
 
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx       = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                                    quad_idx + tree->quadrants_offset,
+                                                                    phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
+
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 
@@ -1422,6 +1428,56 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum;
+}
+
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += area_in_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                     quad_idx + tree->quadrants_offset,
+                                                     phi);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
@@ -1574,6 +1630,56 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
+}
+
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_interface_in_one_quadrant(p4est, nodes, quad,
+                                                              quad_idx + tree->quadrants_offset,
+                                                              phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sums */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
@@ -2624,9 +2730,9 @@ PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecSet(ptr, scalar);                 if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2634,9 +2740,9 @@ PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecShift(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2644,9 +2750,9 @@ PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecScale(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2654,13 +2760,13 @@ PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMult(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMult(out, in1, in2);        if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2668,11 +2774,11 @@ PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
 {
   PetscErrorCode ierr;
   Vec X, Y;
-  ierr = VecGhostGetLocalForm(x, &X);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(y, &Y);     CHKERRXX(ierr);
-  ierr = VecAXPBY(Y, alpha, beta, X);     CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(x, &X); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(x, &X);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(y, &Y);     if (ierr != 0) return ierr;
+  ierr = VecAXPBY(Y, alpha, beta, X);     if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(x, &X); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(y, &Y); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2680,13 +2786,13 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMin(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMin(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2694,13 +2800,13 @@ PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMax(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMax(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2708,9 +2814,17 @@ PetscErrorCode VecReciprocalGhost(Vec input)
 {
   PetscErrorCode ierr;
   Vec in;
-  ierr = VecGhostGetLocalForm(input, &in);     CHKERRXX(ierr);
-  ierr = VecReciprocal(in);                    CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &in); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &in);     if (ierr != 0) return ierr;
+  ierr = VecReciprocal(in);                    if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &in); if (ierr != 0) return ierr;
+  return ierr;
+}
+
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode)
+{
+  PetscErrorCode ierr;
+  ierr = VecGhostUpdateBegin(input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
+  ierr = VecGhostUpdateEnd  (input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
   return ierr;
 }
 

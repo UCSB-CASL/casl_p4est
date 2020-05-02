@@ -41,7 +41,9 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dx = (tree_xmax-tree_xmin) * dmin;
     double dy = (tree_ymax-tree_ymin) * dmin;
+    double smallest_dxyz_max = MAX((tree_xmax-tree_xmin), (tree_ymax-tree_ymin))*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
+    smallest_dxyz_max = MAX(smallest_dxyz_max, (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN));
     double dz = (tree_zmax-tree_zmin) * dmin;
 #endif
 
@@ -57,12 +59,9 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
     double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    CF_3&  phi = *(data->phi);
-#else
-    CF_2&  phi = *(data->phi);
-#endif
-    double lip = data->lip;
+    CF_DIM &phi  = *(data->phi);
+    double  lip  = data->lip;
+    double  band = data->band*smallest_dxyz_max;
 
     double f[P4EST_CHILDREN];
 #ifdef P4_TO_P8
@@ -72,11 +71,11 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
         for (unsigned short ci = 0; ci <2; ++ci){
 #ifdef P4_TO_P8
           f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
-          if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
+          if (fabs(f[4*ck+2*cj+ci])-band <= 0.5*lip*d)
             return P4EST_TRUE;
 #else
           f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
-          if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
+          if (fabs(f[2*cj+ci])-band <= 0.5*lip*d)
             return P4EST_TRUE;
 #endif
         }
@@ -190,8 +189,10 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
     double dmin = 2*(double)P4EST_QUADRANT_LEN(quad[0]->level)/(double)P4EST_ROOT_LEN;
     double dx = (tree_xmax-tree_xmin) * dmin;
     double dy = (tree_ymax-tree_ymin) * dmin;
+    double smallest_dxyz_max = MAX((tree_xmax-tree_xmin), (tree_ymax-tree_ymin))*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
     double dz = (tree_zmax-tree_zmin) * dmin;
+    smallest_dxyz_max = MAX(smallest_dxyz_max, (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN));
 #endif
 
 #ifdef P4_TO_P8
@@ -206,12 +207,9 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
     double z = (tree_zmax-tree_zmin)*(double)quad[0]->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    CF_3&  phi = *(data->phi);
-#else
-    CF_2&  phi = *(data->phi);
-#endif
-    double lip = data->lip;
+    CF_DIM &phi  = *(data->phi);
+    double  lip  = data->lip;
+    double  band = data->band*smallest_dxyz_max;
 
     double f[P4EST_CHILDREN];
 #ifdef P4_TO_P8
@@ -221,11 +219,11 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
         for (unsigned short ci = 0; ci <2; ++ci){
 #ifdef P4_TO_P8
           f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
-          if (fabs(f[4*ck+2*cj+ci]) <= 0.5*lip*d)
+          if (fabs(f[4*ck+2*cj+ci])-band <= 0.5*lip*d)
             return P4EST_FALSE;
 #else
           f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
-          if (fabs(f[2*cj+ci]) <= 0.5*lip*d)
+          if (fabs(f[2*cj+ci])-band <= 0.5*lip*d)
             return P4EST_FALSE;
 #endif
         }
@@ -525,9 +523,12 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dx = (tree_xmax-tree_xmin) * dmin;
     double dy = (tree_ymax-tree_ymin) * dmin;
+    double smallest_dxyz_max = MAX((tree_xmax-tree_xmin), (tree_ymax-tree_ymin))*((double)P4EST_QUADRANT_LEN(max_lvl))/((double)P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
     double dz = (tree_zmax-tree_zmin) * dmin;
+    smallest_dxyz_max = MAX(smallest_dxyz_max, (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(max_lvl))/((double)P4EST_ROOT_LEN));
 #endif
+
 
 #ifdef P4_TO_P8
     double d = sqrt(dx*dx + dy*dy + dz*dz);
@@ -535,24 +536,26 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
+    double band_real = band*smallest_dxyz_max;
+
     // refinement based on distance
-		bool refine = false, coarsen = true;
+    bool refine = false, coarsen = true;
 
     for (short i = 0; i < P4EST_CHILDREN; i++) {
-			refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
-			coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
-		}
-		
-		if (refine) {
-			quad->p.user_int = REFINE_QUADRANT;
+      refine  = refine  || (fabs(f[i])-band_real <= 0.5*lip*d && quad->level < max_lvl);
+      coarsen = coarsen && (fabs(f[i])-band_real >= 1.0*lip*d && quad->level > min_lvl);
+    }
 
-		} else if (coarsen) {
-			quad->p.user_int = COARSEN_QUADRANT;
+    if (refine) {
+      quad->p.user_int = REFINE_QUADRANT;
 
-		} else { 
-			quad->p.user_int = SKIP_QUADRANT;
+    } else if (coarsen) {
+      quad->p.user_int = COARSEN_QUADRANT;
 
-		}		
+    } else {
+      quad->p.user_int = SKIP_QUADRANT;
+
+    }
   }
 }
 
@@ -579,8 +582,10 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dx = (tree_xmax-tree_xmin) * dmin;
     double dy = (tree_ymax-tree_ymin) * dmin;
+    double smallest_dxyz_max = MAX((tree_xmax-tree_xmin), (tree_ymax-tree_ymin))*((double)P4EST_QUADRANT_LEN(max_lvl))/((double)P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
     double dz = (tree_zmax-tree_zmin) * dmin;
+    smallest_dxyz_max = MAX(smallest_dxyz_max, (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(max_lvl))/((double)P4EST_ROOT_LEN));
 #endif
 
 #ifdef P4_TO_P8
@@ -589,15 +594,15 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
     double d = sqrt(dx*dx + dy*dy);
 #endif
 
+    double band_real = band*smallest_dxyz_max;
+
     // refinement based on distance
-                bool refine = false, coarsen = true;
+    bool refine = false, coarsen = true;
 
     for (short i = 0; i < P4EST_CHILDREN; i++) {
-//                        refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
-//                        coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
-                        refine  = refine  || (fabs(f[i]) <= 0.5*lip*d );
-                        coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d );
-                }
+      refine  = refine  || (fabs(f[i])-band_real <= 0.5*lip*d );
+      coarsen = coarsen && (fabs(f[i])-band_real >= 1.0*lip*d );
+    }
 
     if (refine && quad->level >= max_lvl) refine = false;
 
@@ -609,16 +614,16 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
 
     if (coarsen && quad->level <= min_lvl && one_negative) coarsen = false;
 
-		if (refine) {
-			quad->p.user_int = REFINE_QUADRANT;
+    if (refine) {
+      quad->p.user_int = REFINE_QUADRANT;
 
-		} else if (coarsen) {
-			quad->p.user_int = COARSEN_QUADRANT;
+    } else if (coarsen) {
+      quad->p.user_int = COARSEN_QUADRANT;
 
-		} else {
-			quad->p.user_int = SKIP_QUADRANT;
+    } else {
+      quad->p.user_int = SKIP_QUADRANT;
 
-                }
+    }
   }
 }
 

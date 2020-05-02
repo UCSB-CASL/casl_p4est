@@ -128,6 +128,26 @@ public:
 #endif
   void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const;
 
+  inline void add_all_nodes(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    double xyz[P4EST_DIM];
+    for (p4est_locidx_t n = 0; n < p4est_locidx_t (nodes->indep_nodes.elem_count); ++n)
+    {
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+      this->add_point(n, xyz);
+    }
+  }
+
+  inline void add_all_local_nodes(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    double xyz[P4EST_DIM];
+    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+    {
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+      this->add_point(n, xyz);
+    }
+  }
+
 };
 
 #endif /* MY_P4EST_INTERPOLATION_NODES */

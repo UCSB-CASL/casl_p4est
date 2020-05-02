@@ -78,10 +78,12 @@ class quad_neighbor_nodes_of_node_t;
 #define ONLY3D(a) a
 #define DIM(a,b,c) a COMMA b COMMA c
 
-#define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
-#define MULTD(a,b,c) ( (a) *  (b) *  (c) )
-#define  ANDD(a,b,c) ( (a) && (b) && (c) )
-#define   ORD(a,b,c) ( (a) || (b) || (c) )
+#define     SUMD(a,b,c) ( (a) +  (b) +  (c) )
+#define    MULTD(a,b,c) ( (a) *  (b) *  (c) )
+#define     ANDD(a,b,c) ( (a) && (b) && (c) )
+#define      ORD(a,b,c) ( (a) || (b) || (c) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
 
 #define CODEDIM(a,b) b
 
@@ -115,17 +117,27 @@ class quad_neighbor_nodes_of_node_t;
 #define ONLY3D(a)
 #define DIM(a,b,c) a COMMA b
 
-#define  SUMD(a,b,c) ( (a) +  (b) )
-#define MULTD(a,b,c) ( (a) *  (b) )
-#define  ANDD(a,b,c) ( (a) && (b) )
-#define   ORD(a,b,c) ( (a) || (b) )
+#define     SUMD(a,b,c) ( (a) +  (b) )
+#define    MULTD(a,b,c) ( (a) *  (b) )
+#define     ANDD(a,b,c) ( (a) && (b) )
+#define      ORD(a,b,c) ( (a) || (b) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b)) )
 
 #define XFOR(a) for (a)
 #define YFOR(a) for (a)
 #define ZFOR(a)
 #endif
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
+#define ABS3(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
+#define ABS2(a,b)   ( sqrt((a)*(a) +  (b)*(b)) )
+#define ABS1(a)     ( fabs(a) )
+
+#define  SQRSUM3(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define  SQRSUM2(a,b)   ( (a)*(a) +  (b)*(b) )
+#define  SQRSUM1(a)     ( (a)*(a) )
+
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT, V_X, V_Y, V_Z, _X_, _Y_, _Z_ };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
@@ -1513,6 +1525,25 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
+ * \brief integrate_over_negative_domain integrate a quantity f over separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi
+ * \param map the characteristic function that identifies separate parts of the domain
+ * \param f the scalar to integrate
+ * \return the integral of f over the phi<0 domain, \int_{\phi<0} f
+ */
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_negative_domain(num, values.data(), p4est, nodes, phi, map, f);
+}
+
+/*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1526,6 +1557,24 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
  * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
  */
 double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
+
+/*!
+ * \brief area_in_negative_domain compute the area of separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
+ */
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map);
+inline void area_in_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  values.assign(num, 0.);
+  area_in_negative_domain(num, values.data(), p4est, nodes, phi, map);
+}
+
 
 /*!
  * \brief integrate_over_interface_in_one_quadrant
@@ -1546,6 +1595,24 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief integrate_over_interface integrate a scalar f over separate parts of the 0-contour of the level-set function phi.
+ *        note: first order convergence only
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param map the characteristic function that identifies separate parts of the interface
+ * \param f the scalar to integrate
+ */
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_interface(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_interface(num, values.data(), p4est, nodes, phi, map, f);
+}
 
 /*!
  * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
@@ -2131,6 +2198,7 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 PetscErrorCode VecReciprocalGhost(Vec input);
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode);
 
 struct vec_and_ptr_t
 {
@@ -2455,18 +2523,43 @@ public:
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double phi_eff = -10;
-    double phi_cur = -10;
-    for (int i=0; i<phi_cf.size(); ++i)
+    if (phi_cf.size() > 0)
     {
-      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
-      switch (action[i]) {
-        case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-        case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+        }
       }
+      return phi_eff;
+    } else {
+      return -1;
     }
+  }
 
-    return phi_eff;
+  int get_idx(DIM(double x, double y, double z)) const
+  {
+    if (phi_cf.size() > 0)
+    {
+      int    idx     = 0;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+        }
+      }
+      return idx;
+    } else {
+      return -1;
+    }
   }
 };
 
