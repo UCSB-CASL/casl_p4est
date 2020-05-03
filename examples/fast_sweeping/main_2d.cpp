@@ -26,7 +26,6 @@
 #include <src/Parser.h>
 #include <src/casl_math.h>
 #include <src/FastSweeping.h>
-#include <src/Geometry.h>
 
 using namespace std;
 
@@ -51,31 +50,7 @@ int main( int argc, char* argv[] )
 {
 	try
 	{
-		/// Testing Geometry functions ///
-		Point3 v0( 3, 0, 3 );				// Triangle vertices.
-		Point3 v1( 0, 3, 3 );
-		Point3 v2( 0, 0, 0 );
-		Point3 p( 1, 0, 0 );				// Query point.
-		Point3 P;							// Projected query point on triangle's plane.
-		double u, v;						// Query point baycentric coordinates in triangle.
-		const Point3 *x, *y;
-		bool within = geom::projectPointOnTriangleAndPlane( &p, &v0, &v1, &v2, u, v, P, x, y );
-		std::cout << "Normal projected point is: " << P << endl;
-		if( within )
-		{
-			std::cout << "Inside triangle!" << endl;
-			std::cout << "Barycentric P's coordinates: [" << u << ", " << v << ", " << 1 - u - v << "]" << std::endl;
-		}
-		else
-		{
-			std::cout << "Outside triangle!" << endl;
-			std::cout << "Closest triangle's side is: " << std::endl
-					  << *x << *y << std::endl;
-
-			// Using the side that failed the in/out test to determine closed point on the triangle w.r.t. projected P.
-			Point3 closest = geom::findClosestPointOnLineSegmentToPoint( P, *x, *y );
-			std::cout << "Closest point on triangle to projected P is " << closest << std::endl;
-		}
+		// TODO: Test Cube functions.
 
 		// Initializing parallel environment.
 		mpi_environment_t mpi{};
@@ -102,7 +77,7 @@ int main( int argc, char* argv[] )
 		cmd.parse( argc, argv );
 
 		APoint point;
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 3 ), cmd.get( "lmax", 5 ), &point );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 2 ), cmd.get( "lmax", 2 ), &point );
 
 		parStopWatch w;
 		w.start( "total time" );

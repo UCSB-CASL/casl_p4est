@@ -4,6 +4,8 @@
 #include "point2.h"
 #include "simplex2.h"
 #include "types.h"
+#include <src/Geometry.h>
+#include <unordered_map>
 
 /*!
  * \file Cube2.h
@@ -138,6 +140,17 @@ public:
      * \return the maximum of f over the 0-level-set in the Cube2
      */
   double max_Over_Interface( const QuadValue& f, const QuadValue& level_set_values ) const;
+
+  	/**
+  	 * Approximate the distance of the nodes in a quad to the interface.  Computations are based on quad's simplices that
+  	 * are cut-out by the interface.  When this is true, a map of nodeal indices to minimum distance is filled and
+  	 * provided back to the caller function.  This map will be empty if no quad's simplex is cut by the interface.
+  	 * @param [in] phiAndIdxQuadOctValues Container of level-set function values and indices associated to the quad nodes.
+  	 * @param [out] distanceMap Minimum approximated distance from nodes belonging to at least one of the quad's simplices cut-out by \Gamma.
+  	 * @param [in] TOL Distance tolerance for zero-checking.
+  	 */
+	void computeDistanceToInterface( const QuadValueExtended& phiAndIdxQuadOctValues,
+			std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL = EPS ) const;
 };
 
 #endif // MY_P4EST_CUBE2_H

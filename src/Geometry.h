@@ -15,7 +15,26 @@
 namespace geom
 {
 	/**
-	 * Compute the closest point on a line segment to another query point.
+	 * Linearly interpolate a point based on level-set function values.
+	 * @param [in] p1 First point.
+	 * @param [in] phi1 Level-set function value at first point.
+	 * @param [in] p2 Second point.
+	 * @param [in] phi2 Level-set function value at second point.
+	 * @param [in] TOL Distance zero-checking tolerance.
+	 * @return Interpolated point between p1 and p2.
+	 * @throws Zero division error if input level-set function values are (almost) equal.
+	 */
+	PointDIM interpolatePoint( const PointDIM *p1, double phi1, const PointDIM *p2, double phi2, double TOL = EPS )
+	{
+#ifdef CASL_THROWS
+		if( ABS( phi2 - phi1 ) <= TOL )
+			throw std::domain_error( "[CASL_ERROR]: geom::interpolatePoint - Division by zero." );
+#endif
+		return ( *p1 * phi2 - *p2 * phi1 ) / ( phi2 - phi1 );
+	}
+
+	/**
+	 * Compute the closest point on a line segment to another query point, in any of 2 or 3D.
 	 * Suppose the line segment, L, goes from the vertex v0 to v1.  Let v = v1 - v0, then a point Q on L can be obtained
 	 * from the pametric equation:
 	 *                          Q = v0 + tv,
@@ -29,11 +48,11 @@ namespace geom
 	 * @param [in] v1 Second line segment's vertex.
 	 * @return Closest point on the line segment v0v1.
 	 */
-	Point3 findClosestPointOnLineSegmentToPoint( const Point3& p, const Point3& v0, const Point3& v1 )
+	PointDIM findClosestPointOnLineSegmentToPoint( const PointDIM& p, const PointDIM& v0, const PointDIM& v1, double tol = EPS )
 	{
-		Point3 v = v1 - v0;
+		PointDIM v = v1 - v0;
 		double denom = v.dot( v );
-		if( sqrt( denom ) <= EPS )						// Degenerate line segment?
+		if( sqrt( denom ) <= tol )						// Degenerate line segment?
 			return v0;
 
 		double t = ( p - v0 ).dot( v ) / denom;			// Parameter t in Q = v0 + tv.
@@ -80,7 +99,7 @@ namespace geom
 		double denom = N.dot( N );
 
 		if( sqrt( denom ) <= EPS )					// Check for colinear points.
-			throw std::runtime_error( "[CASL_ERROR]: geom->projectPointOnTriangleAndPlane: Triangle's vertices are colinear!" );
+			throw std::runtime_error( "[CASL_ERROR]: geom::projectPointOnTriangleAndPlane - Triangle's vertices are colinear!" );
 
 		// Step 1: finding P, the projection of p onto the triangle's plane.
 		double d = N.dot( *v0 );					// Compute the d parameter in plane's equation: ax + by + cz = d.
@@ -137,6 +156,32 @@ namespace geom
 		v /= denom;
 
 		return true; 								// The projected point P falls within the triangle.
+	}
+
+	/**
+	 * Some general purpose functions.
+	 */
+	namespace utils
+	{
+		/**
+		 * Generic function to swap groups of 3 variables with different types.
+		 * @tparam T1 Type for first and fourth values.
+		 * @tparam T2 Type for second and fifth values.
+		 * @tparam T3 Type for third and sixth values.
+		 * @param [in, out] a First value to swap with fourth value.
+		 * @param [in, out] b Second value to swap with fifth value.
+		 * @param [in, out] c Third value to swap with sixth value.
+		 * @param [in, out] u Fourth value to swap with first value.
+		 * @param [in, out] v Fifth value to swap with second value.
+		 * @param [in, out] w Sixth value to swap with third value.
+		 */
+		template<typename T1, typename T2, typename T3>
+		void swapTriplet( T1& a, T2& b, T3& c, T1& u, T2& v, T3& w )
+		{
+			T1 tmpA = a; a = u; u = tmpA;
+			T2 tmpB = b; b = v; v = tmpB;
+			T3 tmpC = c; c = w; w = tmpC;
+		}
 	}
 }
 

@@ -4,7 +4,6 @@
 
 #include "FastSweeping.h"
 
-
 /////////////////////////////////////////////// Private member functions ///////////////////////////////////////////////
 
 void FastSweeping::_clearScaffoldingData()
@@ -183,69 +182,120 @@ double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 	return uHat;
 }
 
+#ifdef P4_TO_P8
+void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( OctValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr );
+#else
+void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( QuadValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr )
+#endif
+{
+	// Load nodal function values and their respective indices.
+	const p4est_locidx_t *q2n = _nodes->local_nodes + P4EST_CHILDREN * quadIdx;
+	for( unsigned char incX = 0; incX < 2; incX++ )
+		for( unsigned char incY = 0; incY < 2; incY++ )
+#ifdef P4_TO_P8
+			for( unsigned char incZ = 0; incZ < 2; incZ++ )
+#endif
+		{
+			unsigned idxInQuadOctValue = SUMD( ( 1u << (unsigned)( P4EST_DIM - 1 ) ) * incX, ( 1u << (unsigned)( P4EST_DIM - 2 ) ) *incY, incZ );
+			p4est_locidx_t nodeSubIdxInQuad = q2n[SUMD( incX, 2 * incY, 4 * incZ )];
+			quadValPtr->val[idxInQuadOctValue] = nodeSampledValuesPtr[nodeSubIdxInQuad];	// Store nodal value and their
+			quadValPtr->indices[idxInQuadOctValue] = nodeSubIdxInQuad;						// indices.
+		}
+}
+
+void FastSweeping::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx )
+{
+#ifdef P4_TO_P8
+	OctValueExtended  phiAndIdxQuadOctValues;
+#else
+	QuadValueExtended phiAndIdxQuadOctValues;
+#endif
+
+	// Populate a quad/oct struct with node values and corresponding node indices belonging to each of them.
+	_fillQuadOctValuesFromNodeSampledVector( &phiAndIdxQuadOctValues, quadIdx, _uCpy );
+
+	p4est_topidx_t vm = _p4est->connectivity->tree_to_vertex[0];
+	p4est_topidx_t vp = _p4est->connectivity->tree_to_vertex[P4EST_CHILDREN-1];
+	const double* tree_xyz_min = _p4est->connectivity->vertices + 3 * vm;
+	const double* tree_xyz_max = _p4est->connectivity->vertices + 3 * vp;
+	double dmin = (double)P4EST_QUADRANT_LEN( quad->level ) / (double)P4EST_ROOT_LEN;		// Side length of current cell.
+
+	// Distance in each Cartesian direction, assuming we start at (0, 0[, 0]) and end at (dx, dy[, dz]).
+	double dx = dmin * ( tree_xyz_max[0] - tree_xyz_min[0] );
+	double dy = dmin * ( tree_xyz_max[1] - tree_xyz_min[1] );
+
+#ifdef P4_TO_P8
+	Cube3 cell( 0, dx, 0, dy, 0, dz );
+#else
+	Cube2 cell( 0, dx, 0, dy );
+#endif
+
+	// Now, approximate interface (if any) within current quad/oct, and compute initial distance to its nodes.
+	// We do this using the methodology explained in ref [5].
+	std::unordered_map<p4est_locidx_t, double> distanceMap;
+	cell.computeDistanceToInterface( phiAndIdxQuadOctValues, distanceMap, _zeroDistanceThreshold );
+	for( const auto& pair : distanceMap )
+	{
+		_uPtr[pair.first] = MIN( pair.second, _uPtr[pair.first] );		// Define seed point by keeping the minimum distance.
+		_rhsPtr[pair.first] = PETSC_INFINITY;							// A seed point is *not* updatable.
+	}
+}
+
 void FastSweeping::_approximateInterfaceAndSeedNodes()
 {
-	// Given two nodes, n1 and n2, connected by an edge e, the interface is located between n1 and n2 iff phi(n1) * phi(n2) < 0.
-	// Furthermore, if |phi(ni)| <= EPS, then ni lies on the interface.
-	// To approximate the interface location, we rely on the fact that a node ni has a well defined quad neighborhood;
-	// this is true for locally owned independent nodes (i.e. we exclude ghost nodes in this case, even if they are part
-	// of the common bounday between processes).
-	// After approximating the interface location, we must scatter the seed nodes' values onto their foreign ghost nodes.
-	// We do this through the _rhs parallel vector.
-	PetscErrorCode ierr;
+	// Given two nodes, n1 and n2, connected by an edge e, the interface is located between n1 and n2 iff phi(n1) * phi(n2) <= 0.
+	// Furthermore, if |phi(ni)| <= scaledEPS, then ni lies on the interface.
+	// To approximate the interface location, we rely on the quads/octants that make up the trees in the p4est struct.
+	// Thus, we check which quads/octs are cut by the interface and approximate the interface so that we can compute the
+	// distance to the (seed) nodes that belong to that cut-out cell.  We base this computations on simplices in 2 and 3D.
 
 	// Attention!  We must use a copy of the original nodal values or else we'll be affecting the seed determination as
 	// we progress in our initialization of u.
-	// Notice too that we need to consider the ghost nodes too, even if we only initialize the locally owned nodes below.
+	// Notice too that we need to consider the ghost quads too.  At the end we must *gather* from foreign ghosts to locally
+	// owned nodes using the MIN operation, and then we must *scatter* forward from local to foreign nodes.
 
-	// Use the above u copy to initialize the solution pointer _uPtr.
+	// Use the u copy to initialize the solution pointer _uPtr.  Start with all nodes being infinitely far and updatable.
 	for( p4est_locidx_t n = 0; n < _nodes->num_owned_indeps; n++ )
 	{
-		// The case of a node falling nearly on the \Gamma: seed point.
-		if( ABS( _uCpy[n] ) <= EPS )
+		_uPtr[n] = PETSC_INFINITY;
+		_rhsPtr[n] = 1;
+	}
+
+	// Go through each quad/octant and check if it's crossed by the interface.  If so, update its (simplices) nodes by
+	// approximating their shortest distance to the interface using a piece-wise linear reconstruction.
+	// Since a node may belong to several quads/octs, we keep the minimum.
+	for(p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
+	{
+		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );			// Check all local trees.
+		for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )		// Check each quadrant in local trees.
 		{
-			_uPtr[n] = 0;
-			_rhsPtr[n] = PETSC_INFINITY;
-			continue;
-		}
-
-		// Check for the case of the interface crossing one of the stencil edges irradiating from the nth node.
-		const quad_neighbor_nodes_of_node_t *qnnnPtr;
-		_neighbors->get_neighbors( n, qnnnPtr );
-
-		double data[P4EST_DIM][2][2];
-		_getStencil( qnnnPtr, data );
-
-		// Verify all 4 (resp. 8) directions, but ignore neighbors that lie on interface.
-		int crossedEdges = 0;
-		for( const auto& axis : data )
-		{
-			for( const auto& dir : axis )		// Negative and positive directions.
-			{
-				if( dir[1] < 0 )				// Negative distances indicate the node is on a wall.
-					continue;
-
-				if( ABS( dir[0] ) > EPS && dir[0] * _uCpy[n] < 0 )		// Crossed edge in current direction?
-					crossedEdges++;
-			}
-		}
-
-		if( crossedEdges )
-			;		// TODO: Seed point.
-		else
-		{
-			_uPtr[n] = PETSC_INFINITY;			// Updatable point: initialized with an infinite distance from \Gamma.
-			_rhsPtr[n] = 1;
+			auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
+			_processQuadOct( quad, quadIdx + tree->quadrants_offset );
 		}
 	}
-	ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );		// Scatter seed nodes solution onto ghost nodes.
-	CHKERRXX( ierr );
-	VecGhostUpdateEnd( *_u, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-	ierr = VecGhostUpdateBegin( _rhs, INSERT_VALUES, SCATTER_FORWARD );		// Scatter inverse speed onto ghost nodes.
-	CHKERRXX( ierr );
-	VecGhostUpdateEnd( _rhs, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
+
+	// Gather and scatter seed nodes and init state across processes.
+	PetscErrorCode ierr;
+	if( _p4est->mpisize > 1 )
+	{
+		ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );			// Gather minimum value for u from foreign ghost nodes.
+		CHKERRXX( ierr );
+		ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+		CHKERRXX( ierr );
+		ierr = VecGhostUpdateBegin( _rhs, MAX_VALUES, SCATTER_REVERSE );		// Gather maximum value for rhs from foreign ghost nodes.
+		CHKERRXX( ierr );
+		ierr = VecGhostUpdateEnd( _rhs, MAX_VALUES, SCATTER_REVERSE );
+		CHKERRXX( ierr );
+
+		ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );		// Scatter seed nodes solution onto ghost nodes.
+		CHKERRXX( ierr );
+		VecGhostUpdateEnd( *_u, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+		ierr = VecGhostUpdateBegin( _rhs, INSERT_VALUES, SCATTER_FORWARD );		// Scatter inverse speed onto ghost nodes.
+		CHKERRXX( ierr );
+		VecGhostUpdateEnd( _rhs, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+	}
 }
 
 void FastSweeping::_fixSolutionSign()
@@ -290,6 +340,11 @@ void FastSweeping::prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, co
 	_ghost = ghost;
 	_nodes = nodes;
 	_neighbors = neighbors;
+
+	// Establish the zero distance threshold as a scaled version of EPS that depends on the local domain resolution.
+	_zeroDistanceThreshold = EPS * MIN( DIM( ( _neighbors->myb->xyz_max[0] - _neighbors->myb->xyz_min[0] ) / _neighbors->myb->nxyztrees[0],
+			( _neighbors->myb->xyz_max[1] - _neighbors->myb->xyz_min[1] ) / _neighbors->myb->nxyztrees[1],
+			( _neighbors->myb->xyz_max[2] - _neighbors->myb->xyz_min[2] ) / _neighbors->myb->nxyztrees[2] ) );
 
 	// Determine the sweep orderings by picking non-colinear reference points and sorting locally owned indep nodes with
 	// respect to those points.  In 2D we need 2 points, in 3D 4 points.  For each reference point we obtain an ordering

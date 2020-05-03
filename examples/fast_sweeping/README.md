@@ -19,3 +19,6 @@
      *Hybrid Massively Parallel Fast Sweeping Method for Static Hamilton-Jacobi Equations*.
      2016.
     
+[5]  C. Min and F. Gibou.
+     *Geometric Integration over Irregular Domains with Application to Level-Set Methods*.
+     2007.

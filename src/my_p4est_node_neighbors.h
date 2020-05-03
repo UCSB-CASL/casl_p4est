@@ -69,6 +69,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
+  friend class FastSweeping;
 
   /* Self-explanatory member variables */
   my_p4est_hierarchy_t *hierarchy;

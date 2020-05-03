@@ -17,6 +17,7 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_macros.h>
+#include <src/cube2.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -29,12 +30,15 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_macros.h>
+#include <src/cube3.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 #include <algorithm>
 #include <vector>
+#include <src/Geometry.h>
+#include <unordered_map>
 
 // TODO: Relyng on accessing is_qnnn_valid[.] from my_p4est_node_neighbors.
 
@@ -69,6 +73,8 @@ private:
 		p4est_locidx_t index;								// From 0 to number of owned indep. nodes - 1.
 		double distance;									// L1-norm distance to a reference point.
 	};
+
+	double _zeroDistanceThreshold = EPS;					// To be a scaled version of EPS, based on my_p4est_level_set.h.
 
 	const p4est_t *_p4est = nullptr;						// Pointer to the parallel p4est data.
 	const p4est_ghost_t *_ghost = nullptr;					// Pointer to the quadrants that neighbor the local domain.
@@ -129,6 +135,32 @@ private:
 	{
 		return o1.distance < o2.distance;
 	}
+
+	/**
+	 * Populate an extended struct with the nodal phi values and their corresponding indices in the current partition's
+	 * _nodes data structure.  The data are provided in a logical order, that is, x changing slower than y, and y
+	 * changing slower than z.  This follows the order given in truth tables, where xyz are the corresponding columns.
+	 * @param [out] quadValPtr Pointer to the extended data structure for nodal level-set function values and indices.
+	 * @param [in] quadIdx Quadrant/octant index in the forest (i.e. must include offset).
+	 * @param [in] nodeSampledValuesPtr Pointer to nodal level-set function values (e.g. pointer for array backed by a parallel vector).
+	 */
+#ifdef P4_TO_P8
+	void _fillQuadOctValuesFromNodeSampledVector( OctValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr );
+#else
+	void _fillQuadOctValuesFromNodeSampledVector( QuadValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr );
+#endif
+
+	/**
+	 * Process a quadrant/octant to determine seed points adjacent to the interface and their distance.  The seed points
+	 * are produced by checking if the input quadrant is crossed by the interface.  Then, the quad/oct is split into
+	 * simplices for which we determine if their vertices are opposite to the interface.  If that's so, those nodes are
+	 * marked as seed points, their initial is set in the solution vector _uPtr, and their inverse speed is set to INF;
+	 * this way, these points are not updated during the iterative process.  This function relies in function from the
+	 * class CubeDIM.
+	 * @param [in] quad Pointer to a quadrant/octant object in the forest.
+	 * @param [in] quadIdx Index of evaluating quadrant/octant, which must be offset accordingly and appropriately.
+	 */
+	void _processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx );
 
 	/**
 	 * Approximate interface and determine the (fixed) distance of seed points adjacent to it.

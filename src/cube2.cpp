@@ -293,3 +293,94 @@ double Cube2::max_Over_Interface( const QuadValue& f, const QuadValue& level_set
 
   return max;
 }
+
+void Cube2::computeDistanceToInterface( const QuadValueExtended& phiAndIdxQuadOctValues,
+		std::unordered_map<p4est_locidx_t, double>& distanceMap, const double TOL ) const
+{
+	// Some shortcuts.  Note the order is: x changes slowly, then y changes twice faster than x, and finally z changes
+	// twice faster than y.  It's like completing a truth table.  This is the order we also followed in phiAndIdxQuadOctValues.
+	const Point2 p00( xyz_mmm[0], xyz_mmm[1] ); double phi00 = phiAndIdxQuadOctValues.val[0]; p4est_locidx_t idx00 = phiAndIdxQuadOctValues.indices[0];
+	const Point2 p01( xyz_mmm[0], xyz_ppp[1] ); double phi01 = phiAndIdxQuadOctValues.val[1]; p4est_locidx_t idx01 = phiAndIdxQuadOctValues.indices[1];
+	const Point2 p10( xyz_ppp[0], xyz_mmm[1] ); double phi10 = phiAndIdxQuadOctValues.val[2]; p4est_locidx_t idx10 = phiAndIdxQuadOctValues.indices[2];
+	const Point2 p11( xyz_ppp[0], xyz_ppp[1] ); double phi11 = phiAndIdxQuadOctValues.val[3]; p4est_locidx_t idx11 = phiAndIdxQuadOctValues.indices[3];
+
+	// Start with a fresh result hashmap.
+	distanceMap.clear();
+
+	// If quad is not cut-out by interface there's nothing to do.
+	if( phi00 <= 0 && phi01 <= 0 && phi10 <= 0 && phi11 <= 0 )
+		return;
+	if( phi00 > 0 && phi01 > 0 && phi10 > 0 && phi11 > 0)
+		return;
+
+	// Iterate over each simplex resulting from triangulating the quad.
+	const Point2* p[3] = { &p00, nullptr, &p11 };		// Triangle corners: still missing one of the three
+	double phi[3] = { phi00, 0, phi11 };				// which is populated below.
+	p4est_locidx_t idx[3] = { idx00, 0, idx11 };
+	for( int n = 0; n < 2; n++ )
+	{
+		// Determine the other vertex in the triangle.
+		p[1] = ( n == 0 )? &p01 : &p10;
+		phi[1] = ( n == 0 )? phi01 : phi10;
+		idx[1] = ( n == 0 )? idx01 : idx10;
+
+		// Simplex not cut-out by interface: skip it.
+		if( phi[0] <= 0 && phi[1] <= 0 && phi[2] <= 0 )
+			continue;
+		if( phi[0] > 0 && phi[1] > 0 && phi[2] > 0 )
+			continue;
+
+		// Normalize to the case of -++.
+		int numberOfNegatives = 0;
+		for( double i : phi )							// Start by counting number of negative cases of phi.
+		{
+			if( i <= 0 )
+				numberOfNegatives++;
+		}
+
+#ifdef CASL_THROWS
+		if( numberOfNegatives != 1 && numberOfNegatives != 2 )
+			throw std::runtime_error("[CASL_ERROR]: Cube2::computeDistanceToInterface: Wrong configuration!");
+#endif
+
+		if( numberOfNegatives == 2 )					// Switch signs so that we have just a single negative phi.
+		{
+			for( double& i : phi )
+				i *= -1;
+		}
+
+		// Sorting for simplification into one case: -++.
+		if( phi[0] > 0 && phi[1] <= 0.0) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[1], idx[1], p[1] );
+		if( phi[0] > 0 && phi[2] <= 0.0) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[2], idx[2], p[2] );
+		if( phi[1] > 0 && phi[2] <= 0.0) geom::utils::swapTriplet( phi[1], idx[1], p[1], phi[2], idx[2], p[2] );
+
+		// Obtain the line segment, L, going from the end points between p0 and p1, and between p0 and p2.
+		Point2 p0_1 = geom::interpolatePoint( p[0], phi[0], p[1], phi[1], TOL );
+		Point2 p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2], TOL );
+
+		if( ( p0_2 - p0_1 ).norm_L2() <= TOL )						// p0 is *on* the interface, while the other two points are not.
+		{
+			double d0_1 = Point2::norm_L2( *p[0], *p[1] );			// Distances from p1 and p2 to p0.
+			double d0_2 = Point2::norm_L2( *p[0], *p[2] );
+			distanceMap[idx[0]] = 0;								// Basically, make the apex being on the interface.
+			distanceMap[idx[1]] = ( distanceMap.find( idx[1] ) == distanceMap.end() )? d0_1 : MIN( d0_1, distanceMap[idx[1]] );
+			distanceMap[idx[2]] = ( distanceMap.find( idx[2] ) == distanceMap.end() )? d0_2 : MIN( d0_2, distanceMap[idx[2]] );
+		}
+		else
+		{
+			// Project each of p0, p1, and p2 normally onto the line segment L, but also check if these points are lying
+			// directly *on* the interface.
+			for( int i = 0; i < 3; i++ )
+			{
+				if( ABS( phi[i] ) <= TOL )							// Point lying on interface?
+					distanceMap[idx[i]] = 0;
+				else												// Projection needed.
+				{
+					Point2 R = geom::findClosestPointOnLineSegmentToPoint( *p[i], p0_1, p0_2, TOL );
+					double d = Point2::norm_L2( *p[i], R );
+					distanceMap[idx[i]] = ( distanceMap.find( idx[i] ) == distanceMap.end() )? d : MIN( d, distanceMap[idx[i]] );
+				}
+			}
+		}
+	}
+}
