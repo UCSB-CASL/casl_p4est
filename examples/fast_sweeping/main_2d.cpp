@@ -51,6 +51,13 @@ int main( int argc, char* argv[] )
 	try
 	{
 		// TODO: Test Cube functions.
+		std::unordered_map<p4est_locidx_t, double> map;
+		QuadValueExtended q( -1, -1, -1, EPS/2, 			// Phi values.
+							 0, 1, 2, 3 );			// Node indices.
+		Cube2 cube( 0, 1, 0, 1 );
+		cube.computeDistanceToInterface( q, map );
+		for( const auto& e : map )
+			std::cout << e.first << ": " << e.second << std::endl;
 
 		// Initializing parallel environment.
 		mpi_environment_t mpi{};

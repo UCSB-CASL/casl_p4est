@@ -24,7 +24,7 @@ namespace geom
 	 * @return Interpolated point between p1 and p2.
 	 * @throws Zero division error if input level-set function values are (almost) equal.
 	 */
-	PointDIM interpolatePoint( const PointDIM *p1, double phi1, const PointDIM *p2, double phi2, double TOL = EPS )
+	inline PointDIM interpolatePoint( const PointDIM *p1, double phi1, const PointDIM *p2, double phi2, double TOL = EPS )
 	{
 #ifdef CASL_THROWS
 		if( ABS( phi2 - phi1 ) <= TOL )
@@ -48,7 +48,7 @@ namespace geom
 	 * @param [in] v1 Second line segment's vertex.
 	 * @return Closest point on the line segment v0v1.
 	 */
-	PointDIM findClosestPointOnLineSegmentToPoint( const PointDIM& p, const PointDIM& v0, const PointDIM& v1, double tol = EPS )
+	inline PointDIM findClosestPointOnLineSegmentToPoint( const PointDIM& p, const PointDIM& v0, const PointDIM& v1, double tol = EPS )
 	{
 		PointDIM v = v1 - v0;
 		double denom = v.dot( v );
@@ -87,7 +87,7 @@ namespace geom
 	 * 		   and pointers to the end-points of first triangle's side to fail the inside/outside test.
 	 * @throws Runtime exception if input triangle vertices are collinear.
 	 */
-	bool projectPointOnTriangleAndPlane( const Point3 *p, const Point3 *v0, const Point3 *v1, const Point3 *v2,
+	inline bool projectPointOnTriangleAndPlane( const Point3 *p, const Point3 *v0, const Point3 *v1, const Point3 *v2,
 										 double& u, double& v, Point3& P, const Point3*& x, const Point3*& y )
 	{
 		// Compute triangle's subtended plane's normal vector.
@@ -176,7 +176,7 @@ namespace geom
 		 * @param [in, out] w Sixth value to swap with third value.
 		 */
 		template<typename T1, typename T2, typename T3>
-		void swapTriplet( T1& a, T2& b, T3& c, T1& u, T2& v, T3& w )
+		inline void swapTriplet( T1& a, T2& b, T3& c, T1& u, T2& v, T3& w )
 		{
 			T1 tmpA = a; a = u; u = tmpA;
 			T2 tmpB = b; b = v; v = tmpB;

@@ -314,11 +314,13 @@ void Cube2::computeDistanceToInterface( const QuadValueExtended& phiAndIdxQuadOc
 		return;
 
 	// Iterate over each simplex resulting from triangulating the quad.
-	const Point2* p[3] = { &p00, nullptr, &p11 };		// Triangle corners: still missing one of the three
-	double phi[3] = { phi00, 0, phi11 };				// which is populated below.
-	p4est_locidx_t idx[3] = { idx00, 0, idx11 };
 	for( int n = 0; n < 2; n++ )
 	{
+		// Defining simplex.
+		const Point2* p[3] = { &p00, nullptr, &p11 };		// Triangle corners: still missing one of the three
+		double phi[3] = { phi00, 0, phi11 };				// which is populated below.
+		p4est_locidx_t idx[3] = { idx00, 0, idx11 };
+
 		// Determine the other vertex in the triangle.
 		p[1] = ( n == 0 )? &p01 : &p10;
 		phi[1] = ( n == 0 )? phi01 : phi10;
@@ -355,8 +357,16 @@ void Cube2::computeDistanceToInterface( const QuadValueExtended& phiAndIdxQuadOc
 		if( phi[1] > 0 && phi[2] <= 0.0) geom::utils::swapTriplet( phi[1], idx[1], p[1], phi[2], idx[2], p[2] );
 
 		// Obtain the line segment, L, going from the end points between p0 and p1, and between p0 and p2.
-		Point2 p0_1 = geom::interpolatePoint( p[0], phi[0], p[1], phi[1], TOL );
-		Point2 p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2], TOL );
+		Point2 p0_1, p0_2;
+		if( ABS( phi[0] ) <= TOL && ABS( phi[1] ) <= TOL )	// Corner case: simplex edge with (-~0, +~0) coincides with
+			p0_1 = ( *p[0] + *p[1] ) / 2.0;					// a simplex edge.  Any point in between p0 and p1 will do
+		else												// do it since we deal with the ~0 case below.
+			p0_1 = geom::interpolatePoint( p[0], phi[0], p[1], phi[1], TOL );
+
+		if( ABS( phi[0] ) <= TOL && phi[2] <= TOL )					// The other corner case.
+			p0_2 = ( *p[0] + *p[2] ) / 2.0;
+		else
+			p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2], TOL );
 
 		if( ( p0_2 - p0_1 ).norm_L2() <= TOL )						// p0 is *on* the interface, while the other two points are not.
 		{
