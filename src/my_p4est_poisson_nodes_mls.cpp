@@ -4675,7 +4675,7 @@ void my_p4est_poisson_nodes_mls_t::load_wall_data(p4est_locidx_t n, vector<int> 
   wall_xyz .clear();
   wall_area.clear();
 
-  for (size_t i=0; i<wall_pieces_map.size[n]; ++i)
+  for (int i=0; i<wall_pieces_map.size[n]; ++i) // wall_piece is a class defined internally and size is a std::vector<int> object
   {
     int idx = wall_pieces_map.get_idx(n,i);
     wall_id  .push_back(wall_pieces_id      [idx]);

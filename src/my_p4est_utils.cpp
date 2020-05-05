@@ -605,8 +605,8 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = nodes->num_owned_indeps;
   P4EST_ASSERT(block_size > 0);
-  P4EST_ASSERT(nodes->indep_nodes.elem_count - num_local>=0);
-  P4EST_ASSERT(p4est->mpisize+1>0);
+  P4EST_ASSERT(nodes->indep_nodes.elem_count >= (size_t) num_local);
+  P4EST_ASSERT(p4est->mpisize >= 0);
   std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
   std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
 

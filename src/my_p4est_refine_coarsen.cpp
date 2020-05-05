@@ -615,7 +615,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
           bool below_threshold[num_fields]; // to allow for coarsening, all nodes in the cell for the given field must be below the specified threshold
 
           // Initialize the checks for all positive or all negative:
-          for(unsigned int n=0; n<num_fields;n++){
+          for(int n=0; n<num_fields;n++){
               field_all_pos[n] = true;
               field_all_neg[n] = true;
               below_threshold[n] = true;
@@ -759,7 +759,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
           // If we had a sign change, check if that happened:
           if(checking_sign_change){
   //            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE COARSEN CASE: \n");
-              for(unsigned int n=0;n<num_fields;n++){
+              for(int n=0;n<num_fields;n++){
                   bool sign_change = !field_all_pos[n] && !field_all_neg[n];
 
                   coarsen = coarsen && (!sign_change && below_threshold[n]);
@@ -832,7 +832,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
         bool field_all_neg[num_fields];
 
         // Initialize the checks for all positive or all negative:
-        for(unsigned int n=0; n<num_fields;n++){
+        for(int n=0; n<num_fields;n++){
             field_all_pos[n] = true;
             field_all_neg[n] = true;
             above_threshold[n] = true; // will be set to true if we are checking sign change for this field
@@ -1008,7 +1008,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
         // If we had a sign change, check if that happened:
         if(checking_sign_change){
 //            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE REFINE CASE: \n");
-            for(unsigned int n=0;n<num_fields;n++){
+            for(int n=0;n<num_fields;n++){
                 bool sign_change = !field_all_pos[n] && !field_all_neg[n];
 
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
