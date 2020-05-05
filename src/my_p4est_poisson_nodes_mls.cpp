@@ -961,7 +961,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       foreach_local_node(n, nodes_)
       {
-        double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n];
+//        double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n]; // [Raphael] : commented because unused
         double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
 
         switch (node_scheme_[n])
@@ -1914,23 +1914,23 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 
   if (a > .5 || b > .5) std::cout << "Warning: face's centroid falls outside the face!\n";
 
-  double mask_specific = -1;
+//  double mask_specific = -1; // [Raphael] : commented because "set but not used"
 
   int num_good_neighbors = 0;
 
   for (int i = 0; i < 9; ++i)
     if (neighbor_exists_face[i]) num_good_neighbors++;
 
-  bool same_line = (num_good_neighbors == 3 &&
-                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
-                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
-                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
-                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
+//  bool same_line = (num_good_neighbors == 3 &&
+//                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
+//                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
+//                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
+//                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) ); // [Raphael] : commented because "set but not used"
 
   if (a < theta && b < theta)
   {
     map_face[nnf_00] = true;  weights_face[nnf_00] = 1;
-    mask_specific = -2;
+//    mask_specific = -2; // [Raphael] : commented because "set but not used"
   }
 
 
@@ -1943,7 +1943,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = a;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B <= 0 && B >= A &&
@@ -1953,7 +1953,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = b;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B <= -A &&
@@ -1963,7 +1963,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = a;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B >= -A &&
@@ -1973,7 +1973,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = b;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B <= -A &&
@@ -1983,7 +1983,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = b;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B >= -A &&
@@ -1993,7 +1993,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = a;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B <= A &&
@@ -2003,7 +2003,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = b;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B >= A &&
@@ -2013,7 +2013,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = a;
-    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
 
@@ -2108,7 +2108,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -11;
+//    mask_specific = -11; // [Raphael] : commented because "set but not used"
   }
   else if (A >= 0 && B <= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2117,7 +2117,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -12;
+//    mask_specific = -12; // [Raphael] : commented because "set but not used"
   }
   else if (A <= 0 && B >= 0 &&
            neighbor_exists_face[nnf_m0] &&
@@ -2126,7 +2126,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -13;
+//    mask_specific = -13; // [Raphael] : commented because "set but not used"
   }
   else if (A >= 0 && B >= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2135,7 +2135,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -14;
+//    mask_specific = -14; // [Raphael] : commented because "set but not used"
   }
 
 
@@ -2279,7 +2279,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B+A;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -A;
-    mask_specific = -15;
+//    mask_specific = -15; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2288,7 +2288,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A+B;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -B;
-    mask_specific = -16;
+//    mask_specific = -16; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0m] &&
@@ -2297,7 +2297,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B-A;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = A;
-    mask_specific = -17;
+//    mask_specific = -17; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2306,7 +2306,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A+B;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = -B;
-    mask_specific = -18;
+//    mask_specific = -18; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2315,7 +2315,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A-B;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = B;
-    mask_specific = -19;
+//    mask_specific = -19; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2324,7 +2324,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B+A;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = -A;
-    mask_specific = -20;
+//    mask_specific = -20; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2333,7 +2333,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A-B;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = B;
-    mask_specific = -21;
+//    mask_specific = -21; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2342,7 +2342,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B-A;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = A;
-    mask_specific = -22;
+//    mask_specific = -22; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
 
@@ -2352,7 +2352,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A+B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -23;
+//    mask_specific = -23; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2361,7 +2361,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A+B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -24;
+//    mask_specific = -24; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2370,7 +2370,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A-B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -25;
+//    mask_specific = -25; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2379,7 +2379,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A-B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -26;
+//    mask_specific = -26; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
 
@@ -2414,7 +2414,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 //    std::cout << "!!!!!! Fallback flux between cells!\n";
 
     int num_good_neighbors = 0;
-    mask_specific = 50;
+//    mask_specific = 50; // [Raphael] : commented because "set but not used"
 
     for (int i = 0; i < 9; ++i)
       if (neighbor_exists_face[i]) num_good_neighbors++;
@@ -4038,11 +4038,11 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     std::vector<double> w_m(num_neighbors_cube, 0);
     std::vector<double> w_p(num_neighbors_cube, 0);
 
-    bool   neighbors_exist_face[num_neighbors_face];
-    bool   map_face            [num_neighbors_face];
-    double weights_face        [num_neighbors_face];
+//    bool   neighbors_exist_face[num_neighbors_face]; // [Raphael] : commented because "set but not used"
+//    bool   map_face            [num_neighbors_face]; // [Raphael] : commented because "set but not used"
+//    double weights_face        [num_neighbors_face]; // [Raphael] : commented because "set but not used"
 
-    double theta = EPS;
+//    double theta = EPS; // [Raphael] : commented because "set but not used"
 
     for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
     {
@@ -4053,7 +4053,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       double *w               = (dom == 0 ? w_m.data()        : w_p.data()        );
       double  mu              = (dom == 0 ? mu_m_             : mu_p_             );
       CF_DIM *mu_interp       = (dom == 0 ? &mu_m_interp_     : &mu_p_interp_     );
-      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     );
+//      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     ); // [Raphael] : commented because "set but not used"
 
       my_p4est_finite_volume_t &fv = (dom == 0 ? fv_m : fv_p);
 
