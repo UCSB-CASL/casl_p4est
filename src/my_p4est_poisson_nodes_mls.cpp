@@ -4322,7 +4322,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         for (char j = 0; j < 3; ++j)
           for (char i = 0; i < 3; ++i)
           {
-            char idx = i + 3*j CODE3D( + 9*k );
+            unsigned char idx = i + 3*j CODE3D( + 9*k ); // for sure never negative --> fix a compilation warning
 
             //              _CODE( col_c[idx] = 1. );
             XCODE( col_x[idx] = ((double) (i-1)) * dxyz_m_[0] );
