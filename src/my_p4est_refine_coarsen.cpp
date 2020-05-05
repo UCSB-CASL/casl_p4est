@@ -582,12 +582,8 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
   #endif
 
-  #ifdef P4_TO_P8
-      double d = sqrt(dx*dx + dy*dy + dz*dz);
-  #else
-      const double diag = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
-      const double d = MAX(dx,dy); // d gives the largest size of the quad
-  #endif
+      const double quad_diag      = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
+      const double max_quad_size  = MAX(DIM(dx, dy, dx)); // max_quad_size gives the largest size of the quad
       double max_tree_dim = MAX((tree_xmax - tree_xmin),(tree_ymax - tree_ymin));
 
       CODE3D(max_tree_dim = MAX(max_tree_dim,(tree_zmax - tree_zmin)));
@@ -635,7 +631,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
               double criteria_coarsen = -1.; // Initialized to negative 1 so we can check if they are set -- assert this is positive
 
               // Now consider the LSF coarsening criteria:
-              coarsen = coarsen && ((fabs(phi_p[node_idx]) - coars_band) >= 1.0*lip*diag);
+              coarsen = coarsen && ((fabs(phi_p[node_idx]) - coars_band) >= 1.0*lip*quad_diag);
 
 
               /*Now, if coarsening is still allowed by LSF, check the fields --
@@ -663,12 +659,12 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                       case DIVIDE_BY:{
                           switch(compare_opn[2*n]){
                           case GREATER_THAN:{
-                              coarsen = coarsen && ((fabs(field_val)) > criteria_coarsen/d);
+                              coarsen = coarsen && ((fabs(field_val)) > criteria_coarsen/max_quad_size);
 //                              if(n==2) printf("COARSEN IF GREATER THAN %d \n AT LEVEL %d \n",criteria_coarsen/d,quad->level);
                               break;
                           }
                           case LESS_THAN:{
-                              coarsen = coarsen && ((fabs(field_val)) < criteria_coarsen/d);
+                              coarsen = coarsen && ((fabs(field_val)) < criteria_coarsen/max_quad_size);
                               //                                  if(coarsen && n==0){printf("Coarsened at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
                               break;
                           }
@@ -678,7 +674,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                               field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                               field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                              below_threshold[n] = (fabs(field_val)<criteria_coarsen/d) && below_threshold[n];
+                              below_threshold[n] = (fabs(field_val)<criteria_coarsen/max_quad_size) && below_threshold[n];
 //                                  PetscPrintf(p4est->mpicomm,"CHECKING SIGN CHANGE \n field_all_pos: %s field_all_neg: %s \n",field_all_pos[n]?"true":"false",field_all_neg[n]?"true":"false");
 
 
@@ -693,11 +689,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                       case MULTIPLY_BY:{
                           switch(compare_opn[2*n]){
                           case GREATER_THAN:{
-                              coarsen = coarsen && (fabs(field_val) > criteria_coarsen*d);
+                              coarsen = coarsen && (fabs(field_val) > criteria_coarsen*max_quad_size);
                               break;
                           }
                           case LESS_THAN:{
-                              coarsen = coarsen && (fabs(field_val) < criteria_coarsen*d);
+                              coarsen = coarsen && (fabs(field_val) < criteria_coarsen*max_quad_size);
                               break;
                           }
                           case SIGN_CHANGE:{
@@ -706,7 +702,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                               field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                               field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                              below_threshold[n] = (fabs(field_val)<criteria_coarsen*d) && below_threshold[n];
+                              below_threshold[n] = (fabs(field_val)<criteria_coarsen*max_quad_size) && below_threshold[n];
 
 //                                  PetscPrintf(p4est->mpicomm,"CHECKING SIGN CHANGE \n field_all_pos: %s field_all_neg: %s \n",field_all_pos[n]?"true":"false",field_all_neg[n]?"true":"false");
 
@@ -881,7 +877,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                     P4EST_ASSERT(node_idx < ((p4est_locidx_t) nodes->indep_nodes.elem_count));
 
                     // Now, check refinement conditions on the LSF:
-                    refine = refine || ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*diag);
+                    refine = refine || ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*quad_diag);
 
                     // Additionally, check if there is a sign change across the quadrant in LSF (if so, we will refine)
                     all_pos = all_pos && (phi_p[node_idx]>0);
@@ -919,11 +915,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                             case GREATER_THAN:{
                                 //                                    if((fabs(field_val) > criteria_refine/d) && n==0){
                                 //                                        printf("Refined at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
-                                refine = refine || (fabs(field_val) > criteria_refine/d);
+                                refine = refine || (fabs(field_val) > criteria_refine/max_quad_size);
                                 break;
                             }
                             case LESS_THAN:{
-                                refine = refine || (fabs(field_val) < criteria_refine/d);
+                                refine = refine || (fabs(field_val) < criteria_refine/max_quad_size);
                                 break;
                             }
                             case SIGN_CHANGE:{
@@ -932,7 +928,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                 field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                                 field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                                above_threshold[n] = (fabs(field_val)>criteria_refine/d) && above_threshold[n];
+                                above_threshold[n] = (fabs(field_val)>criteria_refine/max_quad_size) && above_threshold[n];
 
                                 break;
                             }
@@ -945,11 +941,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         case MULTIPLY_BY:{
                             switch(compare_opn[2*n + 1]){
                             case GREATER_THAN:{
-                                refine = refine || (fabs(field_val) > criteria_refine*d);
+                                refine = refine || (fabs(field_val) > criteria_refine*max_quad_size);
                                 break;
                             }
                             case LESS_THAN:{
-                                refine = refine || (fabs(field_val) < criteria_refine*d);
+                                refine = refine || (fabs(field_val) < criteria_refine*max_quad_size);
                                 break;
                             }
                             case SIGN_CHANGE:{
@@ -958,7 +954,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                 field_all_pos[n] = field_all_pos[n] && (field_val>0.);
                                 field_all_neg[n] = field_all_neg[n] && (field_val<0.);
 
-                                above_threshold[n] = (fabs(field_val)>criteria_refine*d) && above_threshold[n];
+                                above_threshold[n] = (fabs(field_val)>criteria_refine*max_quad_size) && above_threshold[n];
 
                                 break;
                             }
