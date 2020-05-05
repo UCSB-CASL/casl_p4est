@@ -3710,7 +3710,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
               N_mat[i*P4EST_DIM + 0] = normal[0];
               N_mat[i*P4EST_DIM + 1] = normal[1];
+#ifdef P4_TO_P8
               N_mat[i*P4EST_DIM + 2] = normal[2];
+#endif
             }
 
             // wall pieces
