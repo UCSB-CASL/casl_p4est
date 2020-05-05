@@ -1,0 +1,96 @@
+In my .bachrc, I added the following lines (to ensure that I'm using intel compilers)
+
+module unload openmpi/2.1.5
+module unload gnu/5.4.0
+module load intel/19
+
+1) hypre (shared)
+------------------
+step 0 : clone repository into your local home
+--> git clone https://github.com/LLNL/hypre.git
+
+- step 1 depends on the desired/required installation setup (change the '/your/path/to/' of course): in src/, do
+(whatever I try to link with blas/lapack or Intel's mkl, it seems to compile it internally anyways, so I just gave up on trying that) 
+/------------------------------------------------ HYPRE CONFIGURE INSTALLATION BEGIN ----------------------------------------------------------\
+--------- (A) installation setup : SHARED, DEBUG, 32-BIT INTEGERS ----------------
+./configure --prefix=/your/path/to/hypre_32_bit_debug --enable-debug --enable-shared CFLAGS="-O0 -g -Wall -Wuninitialized" CXXFLAGS="-O0 -g -Wall -Wuninitialized" FCLAGS="-O0 -g -Wall -Wuninitialized"
+
+--------- (B) installation setup : SHARED, RELEASE, 32-BIT INTEGERS ----------------
+./configure --prefix=/your/path/to/hypre_32_bit --enable-shared CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="-O3 -march=native -mtune=native" FCFLAGS="-O3 -march=native -mtune=native"
+
+--------- (C) installation setup : SHARED, DEBUG, 64-BIT INTEGERS ----------------
+./configure --prefix=/your/path/to/hypre_64_bit_debug --enable-debug --enable-shared --enable-bigint CFLAGS="-O0 -g -Wall -Wuninitialized" CXXFLAGS="-O0 -g -Wall -Wuninitialized" FCLAGS="-O0 -g -Wall -Wuninitialized"
+
+--------- (D) installation setup : SHARED, RELEASE, 64-BIT INTEGERS ----------------
+./configure --prefix=/your/path/to/hypre_64_bit --enable-shared --enable-bigint CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="-O3 -march=native -mtune=native" FCFLAGS="-O3 -march=native -mtune=native"
+\------------------------------------------------- HYPRE CONFIGURE INSTALLATION END ----------------------------------------------------------/
+
+--> after running the ./configure, check that it went fine and that everything looks correct in the config.log
+
+- step 2 : in src/, do
+make
+make install
+
+NOTE : if installing several configurations, do a 'make clean' between separate builds
+
+2) PetSc (shared)
+------------------
+step 0 : I could not get a safe clean installation of PetSc release after version 3.11.4. The reason seems to be the version of 'make' that is installed on Pod, which is outdated apparently. The execution of the tests is either not supported by the installation or it fails when installing (and testing) PetSc past 3.11.4... So,
+a) download the tar ball corresponding to 3.11.4 from the website and upload it on pod (or use wget rightaway from pod, but I never know the command details)
+b) tar -zxvf petsc-3.11.4.tar.gz
+c) cd petsc-3.11.4
+
+- step 1 depends on the desired/required installation setup (change the '/your/path/to/' of course):
+/------------------------------------------------ PETSC CONFIGURE INSTALLATION BEGIN ----------------------------------------------------------\
+
+--------- (A) installation setup : SHARED, DEBUG, 32-BIT INTEGERS ----------------
+./configure PETSC_ARCH=pod_32_bit_integer_debug --prefix=/your/path/to/petsc_32_bit_debug --with-blaslapack-dir=/sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mkl/lib/intel64 --with-hypre-dir=/your/path/to/hypre_32_bit_debug CFLAGS="-O0 -g -Wall -Wuninitialized" CXXFLAGS="-O0 -g -Wall -Wuninitialized" FFLAGS="-O0 -g -Wall -Wuninitialized" --with-debugging=1 --with-64-bit-indices=0
+
+--------- (B) installation setup : SHARED, RELEASE, 32-BIT INTEGERS ----------------
+./configure PETSC_ARCH=pod_32_bit_integer --prefix=/your/path/to/petsc_32_bit --with-blaslapack-dir=/sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mkl/lib/intel64 --with-hypre-dir=/your/path/to/hypre_32_bit CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="-O3 -march=native -mtune=native" FFLAGS="-O3 -march=native -mtune=native" --with-debugging=0 --with-64-bit-indices=0
+
+--------- (C) installation setup : SHARED, DEBUG, 64-BIT INTEGERS ----------------
+- in the src/directory, 
+./configure PETSC_ARCH=pod_64_bit_integer_debug --prefix=/your/path/to/petsc_64_bit_debug --with-blaslapack-dir=/sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mkl/lib/intel64 --with-hypre-dir=/your/path/to/hypre_64_bit_debug CFLAGS="-O0 -g -Wall -Wuninitialized" CXXFLAGS="-O0 -g -Wall -Wuninitialized" FFLAGS="-O0 -g -Wall -Wuninitialized" --with-debugging=1 --with-64-bit-indices=1
+
+
+--------- (D) installation setup : SHARED, RELEASE, 64-BIT INTEGERS ----------------
+- in the src/directory, 
+./configure PETSC_ARCH=pod_64_bit_integer --prefix=/your/path/to/petsc_64_bit --with-blaslapack-dir=/sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mkl/lib/intel64 --with-hypre-dir=/your/path/to/hypre_64_bit CFLAGS="-O3 -march=native -mtune=native" CXXFLAGS="-O3 -march=native -mtune=native" FFLAGS="-O3 -march=native -mtune=native" --with-debugging=0 --with-64-bit-indices=1
+\------------------------------------------------- PETSC CONFIGURE INSTALLATION END ----------------------------------------------------------/
+
+--> after running the ./configure, check that it went fine and that everything looks correct in the summary printed on screen
+
+- step 2 : follow steps and instructions as displayed on screen
+
+3) p4est (shared by default)
+----------------------------
+- step 0: get the source code somehow (git clone or upload and untar a tar ball)
+
+- step 1 depends on the desired/required installation setup :
+/------------------------------------------------ P4EST CONFIGURE INSTALLATION BEGIN ----------------------------------------------------------\
+
+--------- (A) installation setup : SHARED, DEBUG ----------------
+./configure CFLAGS="-O0 -g -Wall -Wuninitialized" --enable-debug --enable-mpi --prefix=/your/path/to/p4est_debug --with-blas="-lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_def -lpthread" --with-lapack="-lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_def -lpthread"
+
+--------- (B) installation setup : SHARED, RELEASE ----------------
+./configure CFLAGS="-O2 -Wall -Wno-unused-but-set-variable" --enable-mpi --prefix=/your/path/to/p4est --with-blas="-lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_def -lpthread" --with-lapack="-lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lmkl_def -lpthread"
+
+\------------------------------------------------- P4EST CONFIGURE INSTALLATION END ----------------------------------------------------------/
+
+--> after running the ./configure, check that it went fine and that everything looks correct in the summary printed on screen
+
+step 2, 3 and 4:
+make
+make check (--> should be ALL green)
+make install
+
+NOTE : if installing the two configurations, do a 'make clean' between separate builds
+
+4) voro++
+---------
+i) untar your tarball
+ii) change PREFIX=/your/path/to/voro++ in config.mk
+iii) make all
+iv) make install
+

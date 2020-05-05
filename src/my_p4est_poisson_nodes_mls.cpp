@@ -52,13 +52,14 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling;
 
 
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd)
-  : p4est_(ngbd->p4est),
+  :
+    p4est_(ngbd->p4est),
     nodes_(ngbd->nodes),
     ghost_(ngbd->ghost),
     brick_(ngbd->myb),
     ngbd_(ngbd),
-    bdry_(ngbd_, p4est_, nodes_),
-    infc_(ngbd_, p4est_, nodes_),
+    bdry_(ngbd, ngbd->p4est, ngbd->nodes),
+    infc_(ngbd, ngbd->p4est, ngbd->nodes),
     mu_m_interp_(ngbd),
     mu_p_interp_(ngbd)
 {
@@ -117,6 +118,12 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   rtol_   = 1.0e-16;
   dtol_   = PETSC_DEFAULT;
   itmax_  = 100;
+
+  // Tolerances for solving nonlinear equations
+  nonlinear_change_tol_ = 1.0e-12,
+  nonlinear_pde_residual_tol_= 0;
+  nonlinear_itmax_ = 10;
+  nonlinear_method_ = 0;
 
   // local to global node number mapping
   // compute global numbering of nodes
@@ -178,8 +185,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   integration_order_          = 2;
   cube_refinement_            = 0;
   jump_scheme_                = 0;
-  jump_sub_scheme_            = 0;
-  use_sc_scheme_              = 1;
+  fv_scheme_                  = 1;
   use_taylor_correction_      = 1;
   kink_special_treatment_     = 1;
   neumann_wall_first_order_   = 0;
@@ -332,6 +338,12 @@ void my_p4est_poisson_nodes_mls_t::geometry_t::calculate_phi_eff()
       is_phi_eff_owned = true;
     }
   }
+}
+Vec my_p4est_poisson_nodes_mls_t::geometry_t::return_phi_eff()
+{
+  P4EST_ASSERT(phi_eff!=NULL);
+  Vec phi_to_return = phi_eff;
+  return phi_to_return;
 }
 
 void my_p4est_poisson_nodes_mls_t::geometry_t::add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz))
@@ -577,7 +589,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
   if (outcome < 0)
   {
-    ierr = PetscPrintf(p4est_->mpicomm, "Warning! KSP did not converge. Setting solution to 0.\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Warning! KSP did not converge (error code %d). Setting solution to 0.\n", outcome); CHKERRXX(ierr);
     VecSetGhost(solution, 0);
   }
 
@@ -603,7 +615,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   bool assembling_main     = new_submat_main_;
   bool assembling_jump     = new_submat_main_  && there_is_jump_;
   bool assembling_jump_ghost = new_submat_main_  && there_is_jump_  && there_is_jump_mu_;
-  bool assembling_robin_sc = new_submat_robin_ && there_is_robin_ && use_sc_scheme_;
+  bool assembling_robin_sc = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
 
   // arrays to store matrices
   int nm = assembling_main     ? nodes_->num_owned_indeps : 0;
@@ -614,7 +626,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector< std::vector<mat_entry_t> > entries_main    (nm);
   std::vector< std::vector<mat_entry_t> > entries_jump    (nj);
   std::vector< std::vector<mat_entry_t> > entries_jump_ghost(na);
-  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
+//  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
+  if (assembling_robin_sc) entries_robin_sc.assign(nr, std::vector<mat_entry_t>(0));
 
   std::vector<PetscInt> d_nnz_main    (nm, 1);
   std::vector<PetscInt> o_nnz_main    (nm, 0);
@@ -662,7 +675,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
 
-  if (new_submat_robin_ && !use_sc_scheme_ && there_is_robin_)
+  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
   {
     if (submat_robin_sym_ != NULL) { ierr = VecDestroy(submat_robin_sym_); CHKERRXX(ierr); }
     ierr = VecDuplicate(rhs_, &submat_robin_sym_); CHKERRXX(ierr);
@@ -761,6 +774,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     node_scheme_.resize(nodes_->num_owned_indeps, UNDEFINED);
     int num_bdry_fvs = 0;
     int num_infc_fvs = 0;
+//    int num_bdry_cart_points = 0;
+//    int num_bdry_pieces = 0;
+//    int num_infc_pieces = 0;
     int num_wall_pieces = 0;
 
     foreach_local_node(n, nodes_)
@@ -817,14 +833,15 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             {
               switch (bc_[phi_idx].type)
               {
-              case DIRICHLET: is_ngbd_crossed_dirichlet = true; break;
-              case NEUMANN:   is_ngbd_crossed_neumann   = true; break;
-              case ROBIN:     is_ngbd_crossed_neumann   = true; break;
-              default:
+                case DIRICHLET: is_ngbd_crossed_dirichlet = true; break;
+                case NEUMANN:   is_ngbd_crossed_neumann   = true; break;
+                case ROBIN:     is_ngbd_crossed_neumann   = true; break;
+                default:
 #ifdef CASL_THROWS
-                throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: unknown boundary condition type, only DIRICHLET, NEUMANN and ROBIN implemented.");
+                  throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown boundary condition, only DIRICHLET, NEUMANN, and ROBIN implemented.");
 #endif
-                break;
+                      break;
+
               }
             }
           }
@@ -900,27 +917,30 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       {
         switch (node_scheme_[n])
         {
-        case NO_DISCRETIZATION:
-        case WALL_DIRICHLET:
-        case WALL_NEUMANN:
-        case FINITE_DIFFERENCE: break;
-        case FINITE_VOLUME:
-          interpolators_prepare(n);
-          construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
-          bdry_fvs_->push_back(fv);
-          bdry_node_to_fv_[n] = bdry_fvs_->size()-1;
+          case NO_DISCRETIZATION:
+          case WALL_DIRICHLET:
+          case WALL_NEUMANN:
+          case FINITE_DIFFERENCE: break;
+          case FINITE_VOLUME:
+            interpolators_prepare(n);
+            construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            bdry_fvs_->push_back(fv);
+            bdry_node_to_fv_[n] = bdry_fvs_->size()-1;
           break;
-        case IMMERSED_INTERFACE:
-          interpolators_prepare(n);
-          construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
-          infc_fvs_->push_back(fv);
-          infc_node_to_fv_[n] = infc_fvs_->size()-1;
+          case IMMERSED_INTERFACE:
+            interpolators_prepare(n);
+            construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            infc_fvs_->push_back(fv);
+            infc_node_to_fv_[n] = infc_fvs_->size()-1;
           break;
-        default:
+          default:
+
 #ifdef CASL_THROWS
-          throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: unknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+            throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+
 #endif
-          break;
+            break;
+
         }
       }
 
@@ -933,7 +953,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     //-------------------------------------------------------------------------------------
     // determine which nodes will be part of discretization (needed for superconvergent schemes)
     //-------------------------------------------------------------------------------------
-    if (use_sc_scheme_ && !volumes_computed_ && (there_is_neumann_ || there_is_robin_ || there_is_jump_))
+    if ((fv_scheme_ == 1) && !volumes_computed_ && (there_is_neumann_ || there_is_robin_ || there_is_jump_))
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -941,62 +961,66 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       foreach_local_node(n, nodes_)
       {
+//        double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n]; // [Raphael] : commented because unused
         double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
 
         switch (node_scheme_[n])
         {
-        case NO_DISCRETIZATION: areas_m_ptr[n] = 0; areas_p_ptr[n] = 0; break;
-        case WALL_DIRICHLET:
-        case WALL_NEUMANN:
-        case FINITE_DIFFERENCE:
-          if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = 1; areas_p_ptr[n] = 0; }
-          else                      { areas_m_ptr[n] = 0; areas_p_ptr[n] = 1; }
+          case NO_DISCRETIZATION: areas_m_ptr[n] = 0; areas_p_ptr[n] = 0; break;
+          case WALL_DIRICHLET:
+          case WALL_NEUMANN:
+          case FINITE_DIFFERENCE:
+            if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = 1; areas_p_ptr[n] = 0; }
+            else                      { areas_m_ptr[n] = 0; areas_p_ptr[n] = 1; }
           break;
-        case FINITE_VOLUME:
-        {
-          if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
-          else
+          case FINITE_VOLUME:
           {
-            interpolators_prepare(n);
-            construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
+            else
+            {
+              interpolators_prepare(n);
+              construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            }
+
+            double face_area_max = 0;
+
+            foreach_direction(i) face_area_max = MAX(fabs(fv.face_area[i]), face_area_max);
+
+            if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = face_area_max/face_area_scalling_; areas_p_ptr[n] = 0; }
+            else                      { areas_p_ptr[n] = face_area_max/face_area_scalling_; areas_m_ptr[n] = 0; }
           }
-
-          double face_area_max = 0;
-
-          foreach_direction(i) face_area_max = MAX(fabs(fv.face_area[i]), face_area_max);
-
-          if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = face_area_max/face_area_scalling_; areas_p_ptr[n] = 0; }
-          else                      { areas_p_ptr[n] = face_area_max/face_area_scalling_; areas_m_ptr[n] = 0; }
-        }
           break;
 
-        case IMMERSED_INTERFACE:
-        {
-          if (finite_volumes_initialized_) fv = infc_fvs_->at(infc_node_to_fv_[n]);
-          else
+          case IMMERSED_INTERFACE:
           {
-            interpolators_prepare(n);
-            construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            if (finite_volumes_initialized_) fv = infc_fvs_->at(infc_node_to_fv_[n]);
+            else
+            {
+              interpolators_prepare(n);
+              construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            }
+
+            double face_area_max_m = 0;
+            double face_area_max_p = 0;
+
+            foreach_direction(i)
+            {
+              face_area_max_m = MAX(fabs(fv.face_area[i]), face_area_max_m);
+              face_area_max_p = MAX(fabs(fv.full_face_area[i] - fv.face_area[i]), face_area_max_p);
+            }
+
+            areas_m_ptr[n] = face_area_max_m/face_area_scalling_;
+            areas_p_ptr[n] = face_area_max_p/face_area_scalling_;
           }
-
-          double face_area_max_m = 0;
-          double face_area_max_p = 0;
-
-          foreach_direction(i)
-          {
-            face_area_max_m = MAX(fabs(fv.face_area[i]), face_area_max_m);
-            face_area_max_p = MAX(fabs(fv.full_face_area[i] - fv.face_area[i]), face_area_max_p);
-          }
-
-          areas_m_ptr[n] = face_area_max_m/face_area_scalling_;
-          areas_p_ptr[n] = face_area_max_p/face_area_scalling_;
-        }
           break;
-        default:
+          default:
+            {
 #ifdef CASL_THROWS
-          throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: unknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+            throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+
 #endif
-          break;
+             }
+           break;
         }
       }
 
@@ -1039,12 +1063,18 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     row_jump_ghost = assembling_jump_ghost ? &entries_jump_ghost[n] : NULL;
 
     // Main node characteristics
+    p4est_indep_t                       *ni   = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
     const quad_neighbor_nodes_of_node_t  qnnn = ngbd_->get_neighbors(n);
 
     bool is_wall[P4EST_FACES];
+    is_node_Wall(p4est_, ni, is_wall);
 
     double xyz_C[P4EST_DIM];
     node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
+
+//    double DIM( x_C = xyz_C[0],
+//                y_C = xyz_C[1],
+//                z_C = xyz_C[2] );
 
     double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n];
     double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
@@ -1188,7 +1218,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
 
-  if (new_submat_robin_ && !use_sc_scheme_ && there_is_robin_)
+  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
   {
     ierr = VecRestoreArray(submat_robin_sym_, &submat_robin_sym_ptr); CHKERRXX(ierr);
   }
@@ -1255,7 +1285,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         // add jump correction matrix to main matrix
         // variant 1: use PETSc tools (quite slow)
         /*
-        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); */
+        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
 
         // variant 2: do it explicitly by hands taking into account that
         // number of nonzero rows in BC is much less than the total number of rows
@@ -1344,7 +1374,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     }
 
     // explicitly add zeros in place of elements from robin bc to speed up matrix sum later
-    if (there_is_robin_ && use_sc_scheme_)
+    if (there_is_robin_ && (fv_scheme_ == 1))
     {
       PetscInt           offset = global_node_offset_[p4est_->mpirank];
       PetscInt           cur;
@@ -1447,7 +1477,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           {
             if (ia[n+1] > ia[n])
             {
-              PetscInt                  n_gl = petsc_gloidx_[n];
+              PetscInt n_gl = petsc_gloidx_[n];
 
               columns.clear();
               values.clear();
@@ -1486,12 +1516,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
 
-      if (!use_sc_scheme_)
+      if (fv_scheme_ == 0)
       {
         // if symmetric scheme is used then the only correction is to diagonal elements
         ierr = MatDiagonalSet(A_, submat_robin_sym_, ADD_VALUES); CHKERRXX(ierr);
       }
-      else
+      else if (fv_scheme_ == 1)
       {
         // if non-symmetric scheme is used then
 
@@ -1501,7 +1531,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         //{
         //  assemble_matrix(entries_robin_sc, d_nnz_robin_sc, o_nnz_robin_sc, &submat_robin_sc_);
         //}
-        //ierr = MatAXPY(A_, 1., submat_robin_sc_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
+//        ierr = MatAXPY(A_, 1., submat_robin_sc_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
 
         // variant 2: add new elements explicitly by hands taking into account that only small number of rows are affected
         std::vector<PetscInt>    columns;
@@ -1563,10 +1593,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = MatMultAdd(submat_jump_, rhs_jump_, rhs_, rhs_); CHKERRXX(ierr);
 
     // contribution from linear term
-    ierr = VecPointwiseMult(rhs_jump_, rhs_jump_, submat_diag_ghost_);
-    ierr = VecAXPY(rhs_, 1., rhs_jump_);
+    Vec rhs_jump_tmp;
+    ierr = VecDuplicate(rhs_, &rhs_jump_tmp); CHKERRXX(ierr);
+    ierr = VecPointwiseMult(rhs_jump_tmp, rhs_jump_, submat_diag_ghost_); CHKERRXX(ierr);
+    ierr = VecAXPY(rhs_, 1., rhs_jump_tmp); CHKERRXX(ierr);
 
-    ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs_jump_tmp); CHKERRXX(ierr);
 
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
@@ -1882,7 +1914,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 
   if (a > .5 || b > .5) std::cout << "Warning: face's centroid falls outside the face!\n";
 
-//  double mask_specific = -1;
+//  double mask_specific = -1; // [Raphael] : commented because "set but not used"
 
   int num_good_neighbors = 0;
 
@@ -1893,12 +1925,12 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 //                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
 //                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
 //                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
-//                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
+//                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) ); // [Raphael] : commented because "set but not used"
 
   if (a < theta && b < theta)
   {
     map_face[nnf_00] = true;  weights_face[nnf_00] = 1;
-//    mask_specific = -2;
+//    mask_specific = -2; // [Raphael] : commented because "set but not used"
   }
 
 
@@ -1911,7 +1943,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = a;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B <= 0 && B >= A &&
@@ -1921,7 +1953,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = b;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B <= -A &&
@@ -1931,7 +1963,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = a;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B >= -A &&
@@ -1941,7 +1973,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = b;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B <= -A &&
@@ -1951,7 +1983,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = b;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B >= -A &&
@@ -1961,7 +1993,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = a;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B <= A &&
@@ -1971,7 +2003,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = b;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B >= A &&
@@ -1981,7 +2013,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = a;
-//    mask_specific = -1;
+//    mask_specific = -1; // [Raphael] : commented because "set but not used"
 //    semi_fallback = true;
   }
 
@@ -2076,7 +2108,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-//    mask_specific = -11;
+//    mask_specific = -11; // [Raphael] : commented because "set but not used"
   }
   else if (A >= 0 && B <= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2085,7 +2117,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-//    mask_specific = -12;
+//    mask_specific = -12; // [Raphael] : commented because "set but not used"
   }
   else if (A <= 0 && B >= 0 &&
            neighbor_exists_face[nnf_m0] &&
@@ -2094,7 +2126,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-//    mask_specific = -13;
+//    mask_specific = -13; // [Raphael] : commented because "set but not used"
   }
   else if (A >= 0 && B >= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2103,7 +2135,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-//    mask_specific = -14;
+//    mask_specific = -14; // [Raphael] : commented because "set but not used"
   }
 
 
@@ -2247,7 +2279,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B+A;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -A;
-//    mask_specific = -15;
+//    mask_specific = -15; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2256,7 +2288,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A+B;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -B;
-//    mask_specific = -16;
+//    mask_specific = -16; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0m] &&
@@ -2265,7 +2297,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B-A;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = A;
-//    mask_specific = -17;
+//    mask_specific = -17; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2274,7 +2306,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A+B;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = -B;
-//    mask_specific = -18;
+//    mask_specific = -18; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2283,7 +2315,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A-B;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = B;
-//    mask_specific = -19;
+//    mask_specific = -19; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2292,7 +2324,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B+A;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = -A;
-//    mask_specific = -20;
+//    mask_specific = -20; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2301,7 +2333,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A-B;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = B;
-//    mask_specific = -21;
+//    mask_specific = -21; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2310,7 +2342,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B-A;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = A;
-//    mask_specific = -22;
+//    mask_specific = -22; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
 
@@ -2320,7 +2352,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A+B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-//    mask_specific = -23;
+//    mask_specific = -23; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2329,7 +2361,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A+B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-//    mask_specific = -24;
+//    mask_specific = -24; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2338,7 +2370,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A-B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-//    mask_specific = -25;
+//    mask_specific = -25; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2347,7 +2379,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A-B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-//    mask_specific = -26;
+//    mask_specific = -26; // [Raphael] : commented because "set but not used"
     semi_fallback = true;
   }
 
@@ -2382,7 +2414,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 //    std::cout << "!!!!!! Fallback flux between cells!\n";
 
     int num_good_neighbors = 0;
-//    mask_specific = 50;
+//    mask_specific = 50; // [Raphael] : commented because "set but not used"
 
     for (int i = 0; i < 9; ++i)
       if (neighbor_exists_face[i]) num_good_neighbors++;
@@ -3229,7 +3261,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
     }
     else
     {
-      if (use_sc_scheme_)
+      if (fv_scheme_ == 1)
       {
         for (unsigned short idx = 0; idx < num_neighbors_cube; ++idx)
         {
@@ -3286,12 +3318,12 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                                              y_C + fv.face_centroid_y[dir],
                                              z_C + fv.face_centroid_z[dir] )) : mu);
 
-                if (!use_sc_scheme_)
+                if (fv_scheme_ == 0)
                 {
                   w[f2c_m[dir][nnf_00]] += flux;
                   w[f2c_p[dir][nnf_00]] -= flux;
                 }
-                else
+                else if (fv_scheme_ == 1)
                 {
                   for (int nn=0; nn<num_neighbors_face; ++nn)
                   {
@@ -3315,7 +3347,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                       w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
                     }
                   }
-                } // if use_sc_scheme
+                }
+                else throw;
               } // if neighbour exists
             } // if good connection
           } // sign
@@ -3361,7 +3394,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
       if (there_is_robin_ && bdry_area.size() > 0)
       {
         bool sc_scheme_successful = false;
-        if (use_sc_scheme_)
+        if (fv_scheme_ == 1)
         {
           std::vector<double> w_robin(num_neighbors_cube, 0);
           double add_to_rhs = 0;
@@ -3633,11 +3666,11 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
         //*/
 
-        if (!use_sc_scheme_ || !sc_scheme_successful)
+        if ((fv_scheme_ == 0) || !sc_scheme_successful)
         {
           double add_to_matrix = 0;
 
-          if (new_submat_robin_ && use_sc_scheme_)
+          if (new_submat_robin_ && (fv_scheme_ == 1))
           {
             mask_ptr[n] = MAX(mask_ptr[n], -0.1);
             std::cout << "Fallback Robin BC\n";
@@ -3695,10 +3728,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
               N_mat[(wall_offset+i)*P4EST_DIM + 0] = normal[0];
               N_mat[(wall_offset+i)*P4EST_DIM + 1] = normal[1];
-#ifdef P4_TO_P8
-              N_mat[(wall_offset+i)*P4EST_DIM + 2] = normal[2];
-#endif
-            }
+              CODE3D(N_mat[(wall_offset+i)*P4EST_DIM + 2] = normal[2];)            }
 
 #ifdef P4_TO_P8
             /* an ad-hoc: in case of an intersection of 2 interfaces in 3D
@@ -3825,8 +3855,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
           if (new_submat_robin_)
           {
-            if (use_sc_scheme_) row_robin_sc->push_back(mat_entry_t(petsc_gloidx_[n], add_to_matrix));
-            else                submat_robin_sym_ptr[n] = add_to_matrix;
+            if      (fv_scheme_ == 1) row_robin_sc->push_back(mat_entry_t(petsc_gloidx_[n], add_to_matrix));
+            else if (fv_scheme_ == 0) submat_robin_sym_ptr[n] = add_to_matrix;
+            else throw;
           }
 
         } // end of symmetric scheme
@@ -3952,7 +3983,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
   ngbd_->get_all_neighbors(n, neighbors, neighbors_exist);
 
-  if (use_sc_scheme_)
+  if (fv_scheme_ == 1)
   {
     for (int idx = 0; idx < num_neighbors_cube; ++idx)
       if (neighbors_exist[idx])
@@ -3961,7 +3992,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         neighbors_exist_m[idx] = neighbors_exist[idx] && (areas_m_ptr[neighbors[idx]] > interface_rel_thresh_);
       }
   }
-  else
+  else if (fv_scheme_ == 0)
   {
     for (int idx = 0; idx < num_neighbors_cube; ++idx)
       if (neighbors_exist[idx])
@@ -3970,6 +4001,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         neighbors_exist_m[idx] = neighbors_exist[idx];
       }
   }
+  else throw;
 
   if (face_m_area_max < interface_rel_thresh_) { face_m_area_max = 0; volume_cut_cell_m = 0; }
   if (face_p_area_max < interface_rel_thresh_) { face_p_area_max = 0; volume_cut_cell_p = 0; }
@@ -4008,11 +4040,11 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     std::vector<double> w_m(num_neighbors_cube, 0);
     std::vector<double> w_p(num_neighbors_cube, 0);
 
-    bool   neighbors_exist_face[num_neighbors_face];
-    bool   map_face            [num_neighbors_face];
-    double weights_face        [num_neighbors_face];
+//    bool   neighbors_exist_face[num_neighbors_face]; // [Raphael] : commented because "set but not used"
+//    bool   map_face            [num_neighbors_face]; // [Raphael] : commented because "set but not used"
+//    double weights_face        [num_neighbors_face]; // [Raphael] : commented because "set but not used"
 
-    double theta = EPS;
+//    double theta = EPS; // [Raphael] : commented because "set but not used"
 
     for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
     {
@@ -4023,7 +4055,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       double *w               = (dom == 0 ? w_m.data()        : w_p.data()        );
       double  mu              = (dom == 0 ? mu_m_             : mu_p_             );
       CF_DIM *mu_interp       = (dom == 0 ? &mu_m_interp_     : &mu_p_interp_     );
-      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     );
+//      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     ); // [Raphael] : commented because "set but not used"
 
       my_p4est_finite_volume_t &fv = (dom == 0 ? fv_m : fv_p);
 
@@ -4049,30 +4081,30 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   (var_mu_ ? (*mu_interp)(DIM(x_C + fv.face_centroid_x[dir],
                                               y_C + fv.face_centroid_y[dir],
                                               z_C + fv.face_centroid_z[dir])) : mu);
-              if (!use_sc_scheme_)
-              {
+//              if (!use_sc_scheme_)
+//              {
                 w[f2c_m[dir][nnf_00]] += flux;
                 w[f2c_p[dir][nnf_00]] -= flux;
-              }
-              else
-              {
-                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  neighbors_exist_face[nn] = neighbors_exist_pm[f2c_m[dir][nn]] && neighbors_exist_pm[f2c_p[dir][nn]];
+//              }
+//              else
+//              {
+//                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+//                  neighbors_exist_face[nn] = neighbors_exist_pm[f2c_m[dir][nn]] && neighbors_exist_pm[f2c_p[dir][nn]];
 
-                double centroid_xyz[] = { DIM( fv.face_centroid_x[dir]/dx_min_,
-                                          fv.face_centroid_y[dir]/dy_min_,
-                                          fv.face_centroid_z[dir]/dz_min_ ) };
+//                double centroid_xyz[] = { DIM( fv.face_centroid_x[dir]/dx_min_,
+//                                          fv.face_centroid_y[dir]/dy_min_,
+//                                          fv.face_centroid_z[dir]/dz_min_ ) };
 
-                CODE2D( compute_weights_through_face(centroid_xyz[j_idx[dim]],                           neighbors_exist_face, weights_face, theta, map_face) );
-                CODE3D( compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face) );
+//                CODE2D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]],                           neighbors_exist_face, weights_face, theta, map_face) );
+//                CODE3D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face) );
 
-                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  if (map_face[nn])
-                  {
-                    w[f2c_m[dir][nn]] += weights_face[nn] * flux;
-                    w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
-                  }
-              }
+//                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+//                  if (map_face[nn])
+//                  {
+//                    w[f2c_m[dir][nn]] += weights_face[nn] * flux;
+//                    w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
+//                  }
+//              }
 
             }
           }
@@ -4256,7 +4288,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     // determine which side to use based on values of diffusion coefficients and neighbors' availability
     double sign_to_use;
 
-    switch (jump_sub_scheme_)
+    switch (jump_scheme_)
     {
       case 0:
         sign_to_use = (mu_m_proj < mu_p_proj) ? ((num_neg >= P4EST_DIM+1) ? -1 :  1)
@@ -4289,10 +4321,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 #ifdef P4_TO_P8
       for (char k = 0; k < 3; ++k)
 #endif
-        for (unsigned char j = 0; j < 3; ++j)
-          for (unsigned char i = 0; i < 3; ++i)
+        for (char j = 0; j < 3; ++j)
+          for (char i = 0; i < 3; ++i)
           {
-            unsigned char idx = i + 3*j CODE3D( + 9*k );
+            unsigned char idx = i + 3*j CODE3D( + 9*k ); // for sure never negative --> fix a compilation warning
 
             //              _CODE( col_c[idx] = 1. );
             XCODE( col_x[idx] = ((double) (i-1)) * dxyz_m_[0] );
@@ -4645,7 +4677,7 @@ void my_p4est_poisson_nodes_mls_t::load_wall_data(p4est_locidx_t n, vector<int> 
   wall_xyz .clear();
   wall_area.clear();
 
-  for (int i=0; i<wall_pieces_map.size[n]; ++i)
+  for (int i=0; i<wall_pieces_map.size[n]; ++i) // wall_piece is a class defined internally and size is a std::vector<int> object
   {
     int idx = wall_pieces_map.get_idx(n,i);
     wall_id  .push_back(wall_pieces_id      [idx]);
@@ -4700,4 +4732,265 @@ void my_p4est_poisson_nodes_mls_t::find_interface_points(p4est_locidx_t n, const
   find_closest_interface_location(phi_idx[dir::f_00m], dist[dir::f_00m], qnnn.d_00m, opn, phi_000, phi_00m, phi_zz_00m, phi_zz_00m);
   find_closest_interface_location(phi_idx[dir::f_00p], dist[dir::f_00p], qnnn.d_00p, opn, phi_000, phi_00p, phi_zz_00p, phi_zz_00p);
 #endif
+}
+
+
+int my_p4est_poisson_nodes_mls_t::solve_nonlinear(Vec sol, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type)
+{
+  if (!use_nonzero_guess)
+  {
+    ierr = VecSetGhost(sol, 0.0); CHKERRXX(ierr);
+  }
+
+  Vec del_sol;
+  Vec sol_ghost;
+  Vec residual;
+
+  Vec rhs_m_current;
+  Vec rhs_p_current;
+
+  Vec diag_m_current;
+  Vec diag_p_current;
+
+  ierr = VecDuplicate(sol, &del_sol);    CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &sol_ghost);  CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &residual); CHKERRXX(ierr);
+
+  ierr = VecDuplicate(sol, &rhs_m_current); CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &rhs_p_current); CHKERRXX(ierr);
+
+  ierr = VecDuplicate(sol, &diag_m_current); CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &diag_p_current); CHKERRXX(ierr);
+
+  ierr = VecSetGhost(del_sol, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(sol_ghost, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(residual, 0.0); CHKERRXX(ierr);
+
+  // just in case
+  ierr = VecSetGhost(rhs_m_current, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(rhs_p_current, 0.0); CHKERRXX(ierr);
+
+  ierr = VecSetGhost(diag_m_current, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(diag_p_current, 0.0); CHKERRXX(ierr);
+
+  // get original equation parameters
+  Vec diag_m_original = diag_m_;
+  Vec diag_p_original = diag_p_;
+
+  Vec rhs_m_original = rhs_m_;
+  Vec rhs_p_original = rhs_p_;
+
+  // auxiliary stuff
+  double diag_m_original_value = diag_m_scalar_;
+  double diag_p_original_value = diag_p_scalar_;
+
+  double nonlinear_term_m_coeff_value = nonlinear_term_m_coeff_scalar_;
+  double nonlinear_term_p_coeff_value = nonlinear_term_p_coeff_scalar_;
+
+  // iterations
+  int    iter = 0;
+  double change_norm = DBL_MAX;
+  double pde_residual_norm = DBL_MAX;
+
+  setup_linear_system(true);
+
+  while (iter < nonlinear_itmax_ && change_norm > nonlinear_change_tol_ && pde_residual_norm > nonlinear_pde_residual_tol_)
+  {
+    // compute ghost values
+    if (there_is_jump_)
+    {
+      if (there_is_jump_mu_)
+      {
+        ierr = MatMultAdd(submat_jump_ghost_, sol, sol, sol_ghost); CHKERRXX(ierr);
+      }
+      else
+      {
+        ierr = VecCopyGhost(sol, sol_ghost); CHKERRXX(ierr);
+      }
+
+      ierr = VecAXPY(sol_ghost, -1.0, rhs_jump_); CHKERRXX(ierr);
+    }
+
+    // compute current diag and rhs.
+    ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+
+    if (var_nonlinear_term_coeff_)
+    {
+      ierr = VecGetArray(nonlinear_term_m_coeff_, &nonlinear_term_m_coeff_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(nonlinear_term_p_coeff_, &nonlinear_term_p_coeff_ptr); CHKERRXX(ierr);
+    }
+
+    double *diag_m_original_ptr;
+    double *diag_p_original_ptr;
+
+    if (var_diag_)
+    {
+      ierr = VecGetArray(diag_m_original, &diag_m_original_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(diag_p_original, &diag_p_original_ptr); CHKERRXX(ierr);
+    }
+
+    double *diag_m_current_ptr;
+    double *diag_p_current_ptr;
+
+    ierr = VecGetArray(diag_m_current, &diag_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(diag_p_current, &diag_p_current_ptr); CHKERRXX(ierr);
+
+    double *rhs_m_original_ptr;
+    double *rhs_p_original_ptr;
+
+    ierr = VecGetArray(rhs_m_original, &rhs_m_original_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs_p_original, &rhs_p_original_ptr); CHKERRXX(ierr);
+
+    double *rhs_m_current_ptr;
+    double *rhs_p_current_ptr;
+
+    ierr = VecGetArray(rhs_m_current, &rhs_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs_p_current, &rhs_p_current_ptr); CHKERRXX(ierr);
+
+    double *sol_ptr;
+    double *sol_ghost_ptr;
+
+    ierr = VecGetArray(sol, &sol_ptr);CHKERRXX(ierr);
+    ierr = VecGetArray(sol_ghost, &sol_ghost_ptr);CHKERRXX(ierr);
+
+    foreach_local_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] < 0 || mask_p_ptr[n] < 0)
+      {
+        if (mask_m_ptr[n] < 0 && mask_p_ptr[n] < 0) throw;
+        double sol_m = mask_m_ptr[n] < 0 ? sol_ptr[n] : sol_ghost_ptr[n];
+        double sol_p = mask_p_ptr[n] < 0 ? sol_ptr[n] : sol_ghost_ptr[n];
+
+        if (var_diag_)
+        {
+          diag_m_original_value = diag_m_original_ptr[n];
+          diag_p_original_value = diag_p_original_ptr[n];
+        }
+
+        if (var_nonlinear_term_coeff_)
+        {
+          nonlinear_term_m_coeff_value = nonlinear_term_m_coeff_ptr[n];
+          nonlinear_term_p_coeff_value = nonlinear_term_p_coeff_ptr[n];
+        }
+
+        if (mask_m_ptr[n] < 0 || node_scheme_[n] == IMMERSED_INTERFACE)
+        {
+          diag_m_current_ptr[n] = diag_m_original_value + nonlinear_term_m_coeff_value*(*nonlinear_term_m_prime_)(sol_m);
+          rhs_m_current_ptr [n] = rhs_m_original_ptr[n] - nonlinear_term_m_coeff_value*((*nonlinear_term_m_)(sol_m) - (*nonlinear_term_m_prime_)(sol_m)*sol_m);
+        }
+
+        if (mask_p_ptr[n] < 0 || node_scheme_[n] == IMMERSED_INTERFACE)
+        {
+          diag_p_current_ptr[n] = diag_p_original_value + nonlinear_term_p_coeff_value*(*nonlinear_term_p_prime_)(sol_p);
+          rhs_p_current_ptr [n] = rhs_p_original_ptr[n] - nonlinear_term_p_coeff_value*((*nonlinear_term_p_)(sol_p) - (*nonlinear_term_p_prime_)(sol_p)*sol_p);
+        }
+      }
+    }
+
+    ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+
+    if (var_nonlinear_term_coeff_)
+    {
+      ierr = VecRestoreArray(nonlinear_term_m_coeff_, &nonlinear_term_m_coeff_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(nonlinear_term_p_coeff_, &nonlinear_term_p_coeff_ptr); CHKERRXX(ierr);
+    }
+
+    if (var_diag_)
+    {
+      ierr = VecRestoreArray(diag_m_original, &diag_m_original_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(diag_p_original, &diag_p_original_ptr); CHKERRXX(ierr);
+    }
+
+    ierr = VecRestoreArray(diag_m_current, &diag_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(diag_p_current, &diag_p_current_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(rhs_m_original, &rhs_m_original_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs_p_original, &rhs_p_original_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(rhs_m_current, &rhs_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs_p_current, &rhs_p_current_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(sol, &sol_ptr);CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_ghost, &sol_ghost_ptr);CHKERRXX(ierr);
+
+    set_diag(diag_m_current, diag_p_current);
+    set_rhs(rhs_m_current, rhs_p_current);
+
+    // assemble current linear system
+    setup_linear_system(true);
+
+    // compute residual of linear system
+    ierr = MatMult(A_, sol, residual);
+    ierr = VecAYPX(residual, -1.0, rhs_);
+
+    double *residual_ptr;
+
+    ierr = VecGetArray(residual, &residual_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mask_m_,  &mask_m_ptr);   CHKERRXX(ierr);
+    ierr = VecGetArray(mask_p_,  &mask_p_ptr);   CHKERRXX(ierr);
+
+    foreach_local_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) residual_ptr[n] = 0;
+    }
+
+    ierr = VecRestoreArray(residual, &residual_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_m_,  &mask_m_ptr);   CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_p_,  &mask_p_ptr);   CHKERRXX(ierr);
+
+    // solve the linear system
+    switch (nonlinear_method_)
+    {
+      case 0:
+        VecCopyGhost(sol, del_sol);
+        invert_linear_system(sol, true, false, ksp_type, pc_type);
+        ierr = VecAXPY(del_sol, -1., sol);CHKERRXX(ierr);
+        break;
+      case 1:
+      {
+        Vec tmp = rhs_; rhs_ = residual;
+        invert_linear_system(del_sol, false, false, ksp_type, pc_type);
+        rhs_ = tmp;
+        ierr = VecAXPY(sol,  1., del_sol);CHKERRXX(ierr);
+        break;
+      }
+      default:
+        throw;
+    }
+
+    // compute norms of change and residual
+    ierr = VecNorm(residual, NORM_2, &pde_residual_norm); CHKERRXX(ierr);
+    ierr = VecNorm(del_sol,  NORM_2, &change_norm);       CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Iteration no. %d, norm of change: %1.2e, norm of pde residual: %1.2e\n", iter, change_norm, pde_residual_norm); CHKERRXX(ierr);
+
+    iter++;
+  }
+
+  // clean up
+  ierr = VecDestroy(del_sol);   CHKERRXX(ierr);
+  ierr = VecDestroy(sol_ghost); CHKERRXX(ierr);
+  ierr = VecDestroy(residual);  CHKERRXX(ierr);
+
+  ierr = VecDestroy(rhs_m_current); CHKERRXX(ierr);
+  ierr = VecDestroy(rhs_p_current); CHKERRXX(ierr);
+
+  ierr = VecDestroy(diag_m_current); CHKERRXX(ierr);
+  ierr = VecDestroy(diag_p_current); CHKERRXX(ierr);
+
+  diag_m_ = diag_m_original;
+  diag_p_ = diag_p_original;
+
+  rhs_m_ = rhs_m_original;
+  rhs_p_ = rhs_p_original;
+
+  // update ghosts
+  if (update_ghost)
+  {
+    ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  return iter;
 }

@@ -3416,7 +3416,9 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual,
   jump_solver->set_use_centroid_always(true);
   jump_solver->set_store_finite_volumes(true);
   jump_solver->set_jump_scheme(0);
+  /* --> DANIIL AND ROCHI : PLEASE CHECK THIS (function missing? or deleted?)
   jump_solver->set_jump_sub_scheme(0);
+  */
   jump_solver->set_use_sc_scheme(false);
   jump_solver->set_integration_order(2);
   jump_solver->set_lip(biomolecules->parameters.lip());
