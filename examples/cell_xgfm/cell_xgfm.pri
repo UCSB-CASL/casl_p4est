@@ -7,5 +7,7 @@ CONFIG(3d, 2d|3d): {
   SOURCES += $$PWD/main_3d.cpp
 }
 
-include(../../qmake/libparcasl.pri)
+HEADERS += \
+    $$PARCASL/examples/scalar_jump_tests/scalar_tests.h
 
+include(../../qmake/libparcasl.pri)

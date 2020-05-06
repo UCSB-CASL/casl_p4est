@@ -19,1060 +19,44 @@
 #endif
 
 #include <src/Parser.h>
+#include <examples/scalar_jump_tests/scalar_tests.h>
 
-const static std::string main_description = "\
- In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n\
- across an irregular interface. \n\
- The user can choose from several test cases (described in the list of possible 'test'), set various \n\
- Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n\
- the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n\
- can be saved in vtk format as well and the order of accuracy for the localization of interface points\n\
- based on the levelset values can be chosen between 1 and 2. \n\
- Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n";
-
-#ifdef P4_TO_P8
-const static std::string description_of_tests = "choose a test.\n\
-0: \n\
-* domain = [0.0, 1.0] X [0.0, 1.0] X [0.0, 1.0] \n\
-* interface = sphere of radius 1/4, centered in (0.5, 0.5, 0.5), negative inside, positive outside \n\
-* mu_m = 2.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(-x*x-y*y-z*z); \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 4 from Liu, Fedkiw, Kang 2000 \n\
-1: \n\
-* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n\
-r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n\
-negative inside, positive outside \n\
-* mu_m = 2000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = 3.0 + exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z))/500.0; \n\
-* u_p  = exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x)); \n\
-* no periodicity \n\
-Example by Raphael Egan for mildly convoluted 3D interface with large ratio of coefficients \n\
-2: \n\
-* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by \n\
-r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1250.0; \n\
-* u_m  = exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z)); \n\
-* u_p  = -1.0 + atan(0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z))/500.0; \n\
-* no periodicity \n\
-Example by Raphael Egan for very convoluted 3D interface (AMR required) with large ratio of coefficients \n\
-3: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = revolution of the bone-shaped planar level-set around the z-axis, \n\
-centered at (xmin + 0.15*.5*sqrt(2.0)*x_length, ymin + 0.15*.5*sqrt(2.0)*y_length, zmin + 0.20*z_length). \n\
-The full periodicity is enforced.\n\
-* mu_m = 1.0; \n\
-* mu_p = 80.0; \n\
-* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))); \n\
-* fully periodic \n\
-Example by Raphael Egan for full periodicity.";
-#else
-const static std::string description_of_tests = "choose a test.\n\
-0:\n\
-* domain = [0, 1] X [0, 1] \n\
-* interface = circle of radius 1/4, centered in (0.5, 0.5), negative inside, positive outside \n\
-* mu_m = 2.0; \n\
-* mu_p = 1.0; \n\
-* u_m = exp(-x*x-y*y); \n\
-* u_p = 0;\n\
-* no periodicity \n\
-Example 3 from Liu, Fedkiw, Kang 2000 \n\
-1: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m = 1.0; \n\
-* u_p = 1.0 + log(2.0*sqrt(x*x + y*y)); \n\
-* no periodicity \n\
-Example 5 from Liu, Fedkiw, Kang 2000 \n\
-2: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(x)*cos(y); \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 6 from Liu, Fedkiw, Kang 2000 \n\
-3: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = x*x - y*y; \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 7 from Liu, Fedkiw, Kang 2000 \n\
-4: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*cos(t) \n\
-@ y(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*sin(t) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = x*x + y*y; \n\
-* u_p  = 0.1*(x*x + y*y)^2 - 0.01*log(2.0*sqrt(eps+x*x + y*y));\n\
-* no periodicity \n\
-Example 8 from Liu, Fedkiw, Kang 2000 \n\
-5: \n\
-* domain = [-1.5, 1.5] X [0.0, 3.0] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = 1.5 + 0.7*sin(t) - 0.07*sin(3*t) + 0.2.0*sin(7*t) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = exp(x)*(x*x*sin(y) + y*y); \n\
-* u_p  = -x*x - y*y; \n\
-* no periodicity \n\
-Example 9 from Liu, Fedkiw, Kang 2000 \n\
-6: \n\
-* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
--interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
-@ y(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
-negative inside, positive outside \n\
-* mu_m = 10000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(x)*(x*x*sin(y) + y*y)/10000.0; \n\
-* u_p  = 0.5 + (cos(x)*(y^4 + sin(y*y - x*x))); \n\
-* no periodicity \n\
-Example by Raphael Egan for large ratio of diffusion coefficient.\n\
-7: \n\
-* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
--interface = 15 small spherical bubbles in the domain, radius between 0.005 and 0.02 \n\
-negative inside the bubbles, positive outside \n\
-* mu_m = 1000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = (cos(200.0*M_PI*(x+3.0*y)) - sin(100.0*M_PI*(y - 2.0*x)))/10000.0; \n\
-* u_p  = cos(x+y)*exp(-SQR(x*cos(y))); \n\
-* no periodicity \n\
-Example by Raphael Egan for adaptivity (can't be tested with Neumann boundary conditions). \n\
-8: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
-negative inside, positive outside (periodicity along x enforced) \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = cos((2.0*M_PI/3.0)*(x-tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y); \n\
-* periodicity along x, no periodicity along y \n\
-Example by Raphael Egan for periodicity in x.\n\
-9: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = ymin + 0.2*(ymax-ymin)  + 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
-negative inside, positive outside (periodicity along x and y enforced) \n\
-* mu_m = 1.0; \n\
-* mu_p = 100.0; \n\
-* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y))); \n\
-* u_p  = log(1.5+cos((2.0*M_PI/3.0)*(-x+3.0*y))); \n\
-* fully periodic \n\
-Example by Raphael Egan for full periodicity.";
-#endif
-
+using namespace std;
 #undef MIN
 #undef MAX
 
-struct box
-{
-  double xmin, xmax, ymin, ymax ONLY3D(COMMA zmin COMMA zmax);
-};
+const static string main_description =
+ string("In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n")
+ + string("across an irregular interface. \n")
+ + string("The user can choose from several test cases (described in the list of possible 'test'), set various \n")
+ + string("Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n")
+ + string("the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n")
+ + string("can be saved in vtk format as well and the order of accuracy for the localization of interface points\n")
+ + string("based on the levelset values can be chosen between 1 and 2. \n")
+ + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n");
 
+const int default_lmin = 3;
+const int default_lmax = 4;
 
-using namespace std;
+const int default_ngrids  = 4;
+const int default_ntree   = 2;
 
-int lmin_ = 3;
-int lmax_ = 4;
+const BoundaryConditionType default_bc_wtype = DIRICHLET; // NEUMANN;
+const bool default_use_second_order_theta = false; // true;
+const bool default_get_integral = false;
+const bool default_print_summary = false;
+const int default_test_number = 3;
 
-int ngrids_ = 4;
-int ntree_ = 2;
+const bool track_residuals_and_corrections = false;
 
-BoundaryConditionType bc_wtype_ = DIRICHLET;
-//BoundaryConditionType bc_wtype_ = NEUMANN;
-
-//bool use_second_order_theta_ = false;
-bool use_second_order_theta_ = true;
-
-bool get_integral = false;
-bool print_summary = false;
-
-int test_number_ = 5;
-/* run the program with the flag -help to know more about the various tests */
-
-bool track_residuals_and_corrections = false;
-
-class LEVEL_SET : public CF_DIM
-{
-  box domain;
-  int test_nb;
-#ifndef P4_TO_P8
-  const size_t n_bubbles = 15;
-  vector<double> center_bubbles[P4EST_DIM];
-  vector<double> radius_bubbles;
-  vector<double> theta_bubbles;
-  vector<double> dt_bubbles;
-  const double min_bubble_radius = 0.005;
-  const double max_bubble_radius = 0.02;
-#endif
-  double xc, yc, x_length, y_length;
-#ifdef P4_TO_P8
-  double zc, z_length;
-#endif
-  double xtheta(double xc_tmp, double t) const { return xc_tmp + 0.6*cos(t) - 0.3*cos(3.0*t); }
-  double d_xtheta(double t) const { return -0.6*sin(t) + 0.3*3.0*sin(3.0*t); }
-  double dd_xtheta(double t) const { return -0.6*cos(t) + 0.3*3.0*3.0*cos(3.0*t); }
-  double ytheta(double yc_tmp, double t) const { return yc_tmp + 0.7*sin(t) - 0.07*sin(3.0*t) + 0.2*sin(7.0*t); }
-  double d_ytheta(double t) const { return +0.7*cos(t) - 0.07*3.0*cos(3.0*t) + 0.2*7.0*cos(7.0*t); }
-  double dd_ytheta(double t) const { return -0.7*sin(t) + 0.07*3.0*3.0*sin(3.0*t) - 0.2*7.0*7.0*sin(7.0*t); }
-
-  double bone_shaped_ls(double xc_tmp, double yc_tmp, double x, double y) const
-  {
-    double x_tmp        = xc_tmp + fabs(x - xc_tmp);
-    double y_tmp        = yc_tmp + fabs(y - yc_tmp);
-    size_t n_sample     = 21;
-    double theta_start  = 0.0;
-    double theta_end    = 0.5*M_PI;
-    double dist_min     = +DBL_MAX;
-    double theta, theta_opt, distance; theta_opt = 0.0;
-    while (theta_end - theta_start > 0.005*.5*M_PI) {
-      for (size_t kk = 0; kk < n_sample; ++kk) {
-        theta           = theta_start + ((double) kk)*(theta_end - theta_start)/((double) n_sample);
-        distance        = sqrt(SQR(xtheta(xc_tmp, theta) - x_tmp) + SQR(ytheta(yc_tmp, theta) - y_tmp));
-        if(distance <= dist_min)
-        {
-          theta_opt     = theta;
-          dist_min      = distance;
-        }
-      }
-      double dtheta     = (theta_end - theta_start)/((double) n_sample);
-      theta_end         = theta_opt + dtheta;
-      theta_start       = theta_opt - dtheta;
-    }
-
-    double corr = DBL_MAX;
-    double xt, yt, d_xt, d_yt, dd_xt, dd_yt;
-    uint counter = 0;
-    while (abs(corr) > EPS*0.5*M_PI)
-    {
-      xt        = xtheta(xc_tmp, theta_opt);
-      yt        = ytheta(yc_tmp, theta_opt);
-      d_xt      = d_xtheta(theta_opt);
-      dd_xt     = dd_xtheta(theta_opt);
-      d_yt      = d_ytheta(theta_opt);
-      dd_yt     = dd_ytheta(theta_opt);
-      corr      = - ((xt - x_tmp)*d_xt + (yt - y_tmp)*d_yt)/
-          (SQR(d_xt) + (xt - x_tmp)*dd_xt + SQR(d_yt) + (yt-y_tmp)*dd_yt);
-      theta_opt += (((++counter>20) && (fabs(corr) < EPS*5.0*M_PI))?0.5:1.0)*corr; // relaxation needed on very fine grids (oscillatory behavior - and no convergence - observed on a 14/14 grid)
-    }
-    xt = xtheta(xc_tmp, theta_opt);
-    yt = ytheta(yc_tmp, theta_opt);
-    dist_min = sqrt(SQR(x_tmp - xt) + SQR(y_tmp - yt));
-
-    bool is_in = false;
-    if (x_tmp >(xc_tmp + sqrt(5.0/12.0)))
-      is_in = false;
-    else
-    {
-      double cosroot[3];
-      for (unsigned char kk = 0; kk < 3; ++kk)
-        cosroot[kk] = 2.0*sqrt(5.0/12.0)*cos((1.0/3.0)*acos(-(x_tmp - xc_tmp)*sqrt(12.0/5.0)) - 2.0*M_PI*((double) kk)/3.0);
-      double cosroot_tmp;
-      double root;
-      double y_lim[2] = {yc_tmp, yc_tmp};
-      int pp = 1;
-      for (unsigned char kk = 0; kk < 3; ++kk) {
-        for (unsigned char jj = kk+1; jj < 3; ++jj) {
-          if(cosroot[jj] < cosroot[kk])
-          {
-            cosroot_tmp = cosroot[kk];
-            cosroot[kk] = cosroot[jj];
-            cosroot[jj] = cosroot_tmp;
-          }
-        }
-        if((cosroot[kk] >= 0.0) && (cosroot[kk] <= 1.0) && pp >=0)
-        {
-          root = acos(cosroot[kk]);
-          if(fabs(xtheta(xc_tmp, root) - x_tmp) > 10.0*EPS)
-            std::cout << "this can't be..." << std::endl;
-          y_lim[pp--] = ytheta(yc_tmp, root);
-        }
-      }
-      is_in = ((y_tmp >= y_lim[0]) && (y_tmp <= y_lim[1]));
-    }
-    return ((is_in)?-1.0:1.0)*dist_min;
-  }
-
-public:
-  LEVEL_SET(box domain_, int test_nb_) : domain(domain_), test_nb(test_nb_)
-  {
-    xc        = .5*(domain.xmin+domain.xmax);
-    yc        = .5*(domain.ymin+domain.ymax);
-    x_length  = (domain.xmax - domain.xmin);
-    y_length  = (domain.ymax - domain.ymin);
-#ifdef P4_TO_P8
-    zc        = .5*(domain.zmin+domain.zmax);
-    z_length  = (domain.zmax - domain.zmin);
-    if(test_nb == 3)
-    {
-      xc      = domain.xmin + 0.15*x_length*.5*sqrt(2.0);
-      yc      = domain.ymin + 0.15*y_length*.5*sqrt(2.0);
-      zc      = domain.zmin + 0.20*z_length;
-    }
+#if defined(STAMPEDE)
+const string default_work_folder = "/scratch/04965/tg842642/cell_xgfm";
+#elif defined(POD_CLUSTER)
+const string default_work_folder = "/scratch/regan/cell_xgfm";
 #else
-    if(test_nb == 8)
-      xc      = domain.xmin + 0.15*x_length;
-    if(test_nb == 9)
-    {
-      xc      = domain.xmin + 0.15*x_length;
-      yc      = domain.ymin + 0.20*y_length;
-    }
+const string default_work_folder = "/home/regan/workspace/projects/cell_center_xgfm";
 #endif
 
-#ifndef P4_TO_P8
-    if(test_nb == 7)
-    {
-      srand(time(0));
-      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-        center_bubbles[dim].resize(n_bubbles);
-      radius_bubbles.resize(n_bubbles);
-      theta_bubbles.resize(n_bubbles);
-      dt_bubbles.resize(n_bubbles);
-      for (size_t k = 0; k < n_bubbles; ++k)
-      {
-        center_bubbles[0][k]  = domain.xmin + 0.03 + (x_length-2.0*0.03)*((double) rand() / RAND_MAX);
-        center_bubbles[1][k]  = domain.ymin + 0.03 + (y_length-2.0*0.03)*((double) rand() / RAND_MAX);
-        radius_bubbles[k]     = min_bubble_radius + (max_bubble_radius - min_bubble_radius)*((double) rand() / RAND_MAX);
-        theta_bubbles[k]      = 2.0*M_PI*((double) rand() / RAND_MAX);
-        dt_bubbles[k]         = 2.0*((double) rand() / RAND_MAX);
-        if(k >=1)
-        {
-          bool intersect = false;
-          for (size_t kk = 0; kk < k; ++kk)
-            intersect = intersect || (sqrt(SQR(center_bubbles[0][k] - center_bubbles[0][kk]) + SQR(center_bubbles[1][k] - center_bubbles[1][kk])) <= sqrt(5.0)*(radius_bubbles[k] + radius_bubbles[kk]) + 0.001);
-          while(intersect)
-          {
-            center_bubbles[0][k]  = domain.xmin + 0.03 + (x_length-2.0*0.03)*((double) rand() / RAND_MAX);
-            center_bubbles[1][k]  = domain.ymin + 0.03 + (y_length-2.0*0.03)*((double) rand() / RAND_MAX);
-            radius_bubbles[k]     = min_bubble_radius + (max_bubble_radius - min_bubble_radius)*((double) rand() / RAND_MAX);
-            theta_bubbles[k]      = 2.0*M_PI*((double) rand() / RAND_MAX);
-            dt_bubbles[k]         = 2.0*((double) rand() / RAND_MAX);
-            intersect = false;
-            for (size_t kk = 0; kk < k; ++kk)
-              intersect = intersect || (sqrt(SQR(center_bubbles[0][k] - center_bubbles[0][kk]) + SQR(center_bubbles[1][k] - center_bubbles[1][kk])) <= sqrt(5.0)*(radius_bubbles[k] + radius_bubbles[kk]) + 0.001);
-          }
-        }
-      }
-    }
-    else
-    {
-      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-        center_bubbles[dim].resize(0);
-      radius_bubbles.resize(0);
-      theta_bubbles.resize(0);
-      dt_bubbles.resize(0);
-    }
-#endif
-  }
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    switch(test_nb)
-    {
-#ifdef P4_TO_P8
-    case 0:
-      return sqrt(SQR(x - xc) + SQR(y - xc) + SQR(z - zc)) - x_length/4.0;
-    case 1:
-    {
-      double phi, theta;
-      if(fabs(sqrt(SQR(x - xc) + SQR(y - yc)) < EPS*MAX(x_length, y_length)))
-        phi = M_PI_2;
-      else
-        phi = acos((x - xc)/sqrt(SQR(x - xc) + SQR(y - yc))) + ((y > yc)? 0.0 : M_PI);
-      theta = ((sqrt(SQR(x - xc) + SQR(y- yc) + SQR(z - zc)) > EPS*MAX(x_length, y_length, z_length))? acos((z - zc)/sqrt(SQR(x - xc) + SQR(y- yc) + SQR(z - zc))) : 0.0);
-      return SQR(x - xc) + SQR(y - yc) + SQR(z - zc) - SQR(1.25 + 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0-cos(6.0*theta)));
-    }
-    case 2:
-    {
-      double phi, theta;
-      if(fabs(sqrt(SQR(x - xc) + SQR(y - yc)) < EPS*MAX(x_length, y_length)))
-        phi = M_PI_2;
-      else
-        phi = acos((x - xc)/sqrt(SQR(x - xc) + SQR(y - yc))) + ((y > yc)? 0.0 : M_PI);
-      theta = ((sqrt(SQR(x - xc) + SQR(y- yc) + SQR(z - zc)) > EPS*MAX(x_length, y_length, z_length))? acos((z - zc)/sqrt(SQR(x - xc) + SQR(y- yc) + SQR(z - zc))) : 0.0);
-      return SQR(x - xc) + SQR(y - yc) + SQR(z - zc) - SQR(0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)));
-    }
-    case 3:
-    {
-      double phi = DBL_MAX;
-      for (unsigned char ii = 0; ii < 2; ++ii)
-        for (unsigned char jj = 0; jj < 2; ++jj)
-        {
-          double fake_x = sqrt(SQR(x - (xc + ((double) ii)*x_length)) + SQR(y - (yc + ((double) jj)*y_length)));
-          for (unsigned char kk = 0; kk < 2; ++kk)
-            phi = MIN(phi, bone_shaped_ls(0, zc + ((double) kk)*z_length, fake_x, z));
-        }
-      return phi;
-    }
-#else
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-      return sqrt(SQR(x - xc) + SQR(y - xc)) - x_length/4.0;
-    case 4:
-    {
-      double alpha = 0.02*sqrt(5.0);
-      double tt;
-      if(fabs(x-xc-alpha) < EPS*x_length)
-        tt = (y > yc + alpha + EPS*y_length) ? 0.5*M_PI: (((y < yc + alpha - EPS*y_length))? -0.5*M_PI : 0.0);
-      else
-        tt = (x > xc + alpha + EPS*x_length) ? atan((y-yc-alpha)/(x-xc-alpha)) : (( y >= yc+alpha)? (M_PI + atan((y-yc-alpha)/(x-xc-alpha))) : (-M_PI + atan((y-yc-alpha)/(x-xc-alpha))));
-      return SQR(x-xc-alpha) + SQR(y-yc-alpha) - SQR(0.5 + 0.2*sin(5*tt));
-    }
-    case 5:
-      return bone_shaped_ls(xc, yc, x, y);
-    case 6:
-    {
-      double tt;
-      if(fabs(x-xc) < EPS*x_length)
-        tt = (y > yc + EPS*y_length) ? 0.5*M_PI: (((y < yc - EPS*y_length))? -0.5*M_PI : 0.0);
-      else
-        tt = (x > xc + EPS*x_length) ? atan((y-yc)/(x-xc)) : (( y >= yc)? (M_PI + atan((y-yc)/(x-xc))) : (-M_PI + atan((y-yc)/(x-xc))));
-      return SQR(x-xc) + SQR(y-yc) - SQR(0.5 + 0.1*sin(5*tt));
-    }
-    case 7:
-    {
-      double phi = +DBL_MAX;
-      for (size_t k = 0; k < n_bubbles; ++k)
-      {
-        double u      = (x - center_bubbles[0][k])*cos(theta_bubbles[k]) + (y - center_bubbles[1][k])*sin(theta_bubbles[k]);
-        double v      = -(x - center_bubbles[0][k])*sin(theta_bubbles[k]) + (y - center_bubbles[1][k])*cos(theta_bubbles[k]);
-        double vel_v  = (1.0 + SQR(v/max_bubble_radius))*radius_bubbles[k];
-        double uc_adv = -radius_bubbles[k]*dt_bubbles[k];
-        phi = MIN(phi, sqrt(SQR(u - vel_v*dt_bubbles[k] - uc_adv) + SQR(v)) - radius_bubbles[k]);
-      }
-      return phi;
-    }
-    case 8:
-    {
-      double phi = DBL_MAX;
-      for (char ii = -1; ii < 2; ++ii)
-        phi = MIN(phi, bone_shaped_ls(xc + ((double) ii)*(domain.xmax - domain.xmin), yc, x, y));
-      return phi;
-    }
-    case 9:
-    {
-      double phi = DBL_MAX;
-      for (char ii = -1; ii < 2; ++ii)
-        for (char jj = -1; jj < 2; ++jj)
-          phi = MIN(phi, bone_shaped_ls(xc + ((double) ii)*(domain.xmax - domain.xmin), yc + ((double) jj)*(domain.ymax - domain.ymin), x, y));
-      return phi;
-    }
-#endif
-    default:
-      throw std::invalid_argument("Choose a valid level set.");
-    }
-  }
-};
-
-double u_exact_m(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return exp(-x*x-y*y-z*z);
-  case 1:
-    return 3.0+exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z))/500.0;
-  case 2:
-    return exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z));
-  case 3:
-  {
-    double pp = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double qq = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    return atan(pp)*log(qq);
-  }
-#else
-  case 0:
-    return exp(-x*x-y*y);
-  case 1:
-    return 1.0;
-  case 2:
-    return exp(x)*cos(y);
-  case 3:
-    return x*x - y*y;
-  case 4:
-    return x*x + y*y;
-  case 5:
-    return exp(x)*(x*x*sin(y) + y*y);
-  case 6:
-    return exp(x)*(x*x*sin(y) + y*y)/10000.0;
-  case 7:
-    return (cos(2.0*M_PI*(x+3.0*y)/0.04) - sin(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
-  case 8:
-    return cos((2.0*M_PI/3.0)*(x-tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
-  case 9:
-    return atan(sin((2.0*M_PI/3.0)*(2.0*x-y)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double d_u_exact_m_dx(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return -2.0*x*exp(-x*x-y*y-z*z);
-  case 1:
-    return exp(.5*(x-z))*((1.0 + 0.5*x)*sin(y) + (sin(x+y) - 0.5*cos(x+y))*atan(z))/500.0;
-  case 2:
-    return exp(.5*(x-z))*((1.0 + 0.5*x)*sin(y) + (sin(x+y) - 0.5*cos(x+y))*atan(z));
-  case 3:
-  {
-    double pp     = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double dpp_dx = cos((2.0*M_PI/3.0)*(2.0*x-y))*2.0*(2.0*M_PI/3.0);
-    double qq     = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    return (dpp_dx/(1.0 + SQR(pp)))*log(qq);
-  }
-#else
-  case 0:
-    return -2.0*x*exp(-x*x-y*y);
-  case 1:
-    return 0.0;
-  case 2:
-    return exp(x)*cos(y);
-  case 3:
-  case 4:
-    return 2.*x;
-  case 5:
-    return exp(x)*((x*x + 2.0*x)*sin(y) + y*y);
-  case 6:
-    return exp(x)*((x*x + 2.0*x)*sin(y) + y*y)/10000.0;
-  case 7:
-    return (-(2.0*M_PI/0.04)*sin(2.0*M_PI*(x+3.0*y)/0.04) + (2.0*M_PI*2.0/0.04)*cos(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
-  case 8:
-    return -(2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(x-tanh(y))) - 2.0*(2.0*M_PI/3.0)*sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
-  case 9:
-    return (2.0*(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(2.0*x-y)))/(1.0 + SQR(sin((2.0*M_PI/3.0)*(2.0*x-y))));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_m_dxdx(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return  (4.*x*x-2.)*exp(-x*x - y*y - z*z);
-  case 1:
-    return exp(.5*(x-z))*((1.0 + 0.25*x)*sin(y) + (sin(x+y) + 0.75*cos(x+y))*atan(z))/500.0;
-  case 2:
-    return exp(.5*(x-z))*((1.0 + 0.25*x)*sin(y) + (sin(x+y) + 0.75*cos(x+y))*atan(z));
-  case 3:
-  {
-    double pp         = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double dpp_dx     = cos((2.0*M_PI/3.0)*(2.0*x-y))*2.0*(2.0*M_PI/3.0);
-    double ddpp_dxdx  = -sin((2.0*M_PI/3.0)*(2.0*x-y))*SQR(2.0*(2.0*M_PI/3.0));
-    double qq         = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    return ((ddpp_dxdx*(1.0 + SQR(pp)) - 2.0*pp*SQR(dpp_dx))/SQR(1.0 + SQR(pp)))*log(qq);
-  }
-#else
-  case 0:
-    return  (4.*x*x-2.)*exp(-x*x - y*y);
-  case 1:
-    return 0.0;
-  case 2:
-    return exp(x)*cos(y);
-  case 3:
-  case 4:
-    return 2.0;
-  case 5:
-    return exp(x)*((x*x + 4.0*x + 2.0)*sin(y) + y*y);
-  case 6:
-    return exp(x)*((x*x + 4.0*x + 2.0)*sin(y) + y*y)/10000.0;
-  case 7:
-    return (-SQR(2.0*M_PI/0.04)*cos(2.0*M_PI*(x+3.0*y)/0.04) + SQR(2.0*M_PI*2.0/0.04)*sin(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
-  case 8:
-    return -SQR(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(x - tanh(y))) - 2.0*SQR(2.0*2.0*M_PI/3.0)*cos(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))) + SQR(2.0*(2.0*M_PI/3.0)*sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y)))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
-  case 9:
-    return (-SQR(2.0*2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(2.0*x-y))*(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y)))) - SQR(2.0*2.0*M_PI/3.0)*2.0*sin((2.0*M_PI/3.0)*(2.0*x-y))*SQR(cos((2.0*M_PI/3.0)*(2.0*x-y))))/SQR(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y))));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double d_u_exact_m_dy(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return -2.0*y*exp(-x*x-y*y-z*z);
-  case 1:
-    return exp(.5*(x-z))*(x*cos(y) + sin(x+y)*atan(z))/500.0;
-  case 2:
-    return exp(.5*(x-z))*(x*cos(y) + sin(x+y)*atan(z));
-  case 3:
-  {
-    double pp     = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double dpp_dy = cos((2.0*M_PI/3.0)*(2.0*x-y))*(-2.0*M_PI/3.0);
-    double qq     = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    double dqq_dy = -sin((2.0*M_PI/3.0)*(2.0*y-z))*(2.0*(2.0*M_PI/3.0));
-    return (dpp_dy/(1.0 + SQR(pp)))*log(qq) + atan(pp)*dqq_dy/qq;
-  }
-#else
-  case 0:
-    return -2.0*y*exp(-x*x-y*y);
-  case 1:
-    return 0.0;
-  case 2:
-    return -exp(x)*sin(y);
-  case 3:
-    return -2.*y;
-  case 4:
-    return +2.*y;
-  case 5:
-    return exp(x)*(x*x*cos(y) + 2.0*y);
-  case 6:
-    return exp(x)*(x*x*cos(y) + 2.0*y)/10000.0;
-  case 7:
-    return (-(2.0*M_PI*3.0/0.04)*sin(2.0*M_PI*(x+3.0*y)/0.04) - (2.0*M_PI/0.04)*cos(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
-  case 8:
-    return (2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(x-tanh(y)))*(1.0-SQR(tanh(y))) + (2.0*M_PI/3.0)*0.251*sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
-  case 9:
-    return (-(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(2.0*x-y)))/(1.0 + SQR(sin((2.0*M_PI/3.0)*(2.0*x-y))));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_m_dydy(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return  (4.*y*y-2.)*exp(-x*x - y*y - z*z);
-  case 1:
-    return exp(.5*(x-z))*(-x*sin(y) + cos(x+y)*atan(z))/500.0;
-  case 2:
-    return exp(.5*(x-z))*(-x*sin(y) + cos(x+y)*atan(z));
-  case 3:
-  {
-    double pp         = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double dpp_dy     = cos((2.0*M_PI/3.0)*(2.0*x-y))*(-2.0*M_PI/3.0);
-    double ddpp_dydy  = -sin((2.0*M_PI/3.0)*(2.0*x-y))*SQR(-2.0*M_PI/3.0);
-    double qq         = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    double dqq_dy     = -sin((2.0*M_PI/3.0)*(2.0*y-z))*(2.0*(2.0*M_PI/3.0));
-    double ddqq_dydy  = -cos((2.0*M_PI/3.0)*(2.0*y-z))*SQR(2.0*(2.0*M_PI/3.0));
-    return (ddpp_dydy*(1.0+SQR(pp)) - 2.0*pp*SQR(dpp_dy))/SQR(1.0+SQR(pp))*log(qq) + 2.0*(dpp_dy/(1.0 + SQR(pp)))*(dqq_dy/qq) + atan(pp)*(ddqq_dydy*qq-SQR(dqq_dy))/SQR(qq);
-  }
-#else
-  case 0:
-    return  (4.*y*y-2.)*exp(-x*x - y*y);
-  case 1:
-    return 0.0;
-  case 2:
-    return -exp(x)*cos(y);
-  case 3:
-    return -2.0;
-  case 4:
-    return +2.0;
-  case 5:
-    return exp(x)*(-x*x*sin(y) + 2.0);
-  case 6:
-    return exp(x)*(-x*x*sin(y) + 2.0)/10000.0;
-  case 7:
-    return (-SQR(2.0*M_PI*3.0/0.04)*cos(2.0*M_PI*(x+3.0*y)/0.04) + SQR(2.0*M_PI/0.04)*sin(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
-  case 8:
-    return
-        - SQR(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(x-tanh(y)))*SQR(1.0 - SQR(tanh(y)))
-        + (2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(x-tanh(y)))*(-2.0*tanh(y)*(1.0 - SQR(tanh(y))))
-        + (2.0*M_PI/3.0)*0.251*cos(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*(2.0*(2.0*M_PI/3.0)*(-0.251))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))))
-        + SQR((2.0*M_PI/3.0)*0.251)*SQR(sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y)))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
-  case 9:
-    return (-SQR(2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(2.0*x-y))*(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y)))) - SQR(2.0*M_PI/3.0)*2.0*sin((2.0*M_PI/3.0)*(2.0*x-y))*SQR(cos((2.0*M_PI/3.0)*(2.0*x-y))))/SQR(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y))));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-#ifdef P4_TO_P8
-double d_u_exact_m_dz(int test_nb, double x, double y, double z)
-{
-  switch(test_nb)
-  {
-  case 0:
-    return -2.0*z*exp(-x*x-y*y-z*z);
-  case 1:
-    return -exp(.5*(x-z))*(.5*x*sin(y) + cos(x+y)*(1.0/(1.0 + SQR(z)) - .5*atan(z)))/500.0;
-  case 2:
-    return -exp(.5*(x-z))*(.5*x*sin(y) + cos(x+y)*(1.0/(1.0 + SQR(z)) - .5*atan(z)));
-  case 3:
-  {
-    double pp         = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double qq         = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    double dqq_dz     = sin((2.0*M_PI/3.0)*(2.0*y-z))*(2.0*M_PI/3.0);
-    return atan(pp)*dqq_dz/qq;
-  }
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_m_dzdz(int test_nb, double x, double y, double z)
-{
-  switch(test_nb)
-  {
-  case 0:
-    return  (4.*z*z-2.)*exp(-x*x - y*y - z*z);
-  case 1:
-    return exp(.5*(x-z))*(.25*x*sin(y) + cos(x+y)*(2.0*z/(SQR(1.0 + SQR(z))) + 1.0/(1.0 + SQR(z)) - .25*atan(z)))/500.0;
-  case 2:
-    return exp(.5*(x-z))*(.25*x*sin(y) + cos(x+y)*(2.0*z/(SQR(1.0 + SQR(z))) + 1.0/(1.0 + SQR(z)) - .25*atan(z)));
-  case 3:
-  {
-    double pp         = sin((2.0*M_PI/3.0)*(2.0*x-y));
-    double qq         = 1.5+cos((2.0*M_PI/3.0)*(2.0*y-z));
-    double dqq_dz     = sin((2.0*M_PI/3.0)*(2.0*y-z))*(2.0*M_PI/3.0);
-    double ddqq_dzdz  = -cos((2.0*M_PI/3.0)*(2.0*y-z))*SQR(2.0*M_PI/3.0);
-    return atan(pp)*(ddqq_dzdz*qq - SQR(dqq_dz))/SQR(qq);
-  }
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-#endif
-
-double laplacian_u_exact_m(int test_nb, DIM(double x, double y, double z))
-{
-  return (SUMD(dd_u_exact_m_dxdx(test_nb, DIM(x, y, z)), dd_u_exact_m_dydy(test_nb, DIM(x, y, z)), dd_u_exact_m_dzdz(test_nb, x, y, z)));
-}
-
-double u_exact_p(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    return -1.0 + atan(ff)/500.0;
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    return tanh(pp)*acos(qq);
-  }
-#else
-  case 0:
-  case 2:
-  case 3:
-    return 0.0;
-  case 1:
-    return 1.0 + log(2.0*sqrt(EPS + SQR(x) + SQR(y)));
-  case 4:
-    return 0.1*SQR(x*x + y*y) - 0.01*log(2.0*sqrt(EPS + x*x + y*y));
-  case 5:
-    return -x*x -y*y;
-  case 6:
-    return (0.5 + (cos(x)*(pow(y, 4.0) + sin(y*y - x*x))));
-  case 7:
-    return cos(x+y)*exp(-SQR(x*cos(y)));
-  case 8:
-    return tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y);
-  case 9:
-    return log(1.5+cos((2.0*M_PI/3.0)*(-x+3.0*y)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double d_u_exact_p_dx(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(-sin(y)+2.0*z*sin(2.0*x));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dx = 3.0*0.1*x*x*y -y*cos(x+z);
-    return (1.0/500.0)*(1.0/(1.0 + SQR(ff)))*dff_dx;
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double dpp_dx     = -sin((2.0*M_PI/3.0)*(2.0*x+y))*(2.0*2.0*M_PI/3.0);
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    double dqq_dx     = 0.5*cos((2.0*M_PI/3.0)*(2.0*z-x))*(-2.0*M_PI/3.0);
-    return (1.0-SQR(tanh(pp)))*dpp_dx*acos(qq) + tanh(pp)*(-1.0/sqrt(1.0-SQR(qq)))*dqq_dx;
-  }
-#else
-  case 0:
-  case 2:
-  case 3:
-    return 0.0;
-  case 1:
-    return x/(EPS + SQR(x) + SQR(y));
-  case 4:
-    return 0.1*2.0*(x*x + y*y)*2.0*x - 0.01*x/(EPS + x*x + y*y);
-  case 5:
-    return -2.0*x;
-  case 6:
-    return (-sin(x)*(pow(y, 4.0) + sin(y*y - x*x)) - 2.0*x*cos(x)*cos(y*y-x*x));
-  case 7:
-    return -exp(-SQR(x*cos(y)))*(sin(x+y) + 2.0*x*cos(x+y)*SQR(cos(y)));
-  case 8:
-    return (1.0 - SQR(tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)))*(-(2.0*M_PI/3.0)*2.0*sin((2.0*M_PI/3.0)*2.0*x));
-  case 9:
-    return (2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(3.0*y-x))/(1.5+cos((2.0*M_PI/3.0)*(3.0*y-x)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_p_dxdx(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(SQR(-sin(y)+2.0*z*sin(2.0*x)) + 4.0*z*cos(2.0*x));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dx = 3.0*0.1*x*x*y -y*cos(x+z);
-    double ddff_dxdx = 2.0*3.0*0.1*x*y + y*sin(x+z);
-    return (1.0/500.0)*(ddff_dxdx*(1.0 + SQR(ff)) - 2.0*SQR(dff_dx)*ff)/SQR(1.0 + SQR(ff));
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double dpp_dx     = -sin((2.0*M_PI/3.0)*(2.0*x+y))*(2.0*2.0*M_PI/3.0);
-    double ddpp_dxdx  = -cos((2.0*M_PI/3.0)*(2.0*x+y))*SQR(2.0*2.0*M_PI/3.0);
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    double dqq_dx     = 0.5*cos((2.0*M_PI/3.0)*(2.0*z-x))*(-2.0*M_PI/3.0);
-    double ddqq_dxdx   = -0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))*SQR(-2.0*M_PI/3.0);
-    return (-2.0*tanh(pp)*(1.0 - SQR(tanh(pp)))*SQR(dpp_dx) + (1.0 - SQR(tanh(pp)))*ddpp_dxdx)*acos(qq) + 2.0*(1.0-SQR(tanh(pp)))*dpp_dx*(-1.0/sqrt(1.0-SQR(qq)))*dqq_dx - tanh(pp)*((ddqq_dxdx*sqrt(1.0-SQR(qq)) + SQR(dqq_dx)*qq/sqrt(1.0 - SQR(qq)))/(1.0 - SQR(qq)));
-  }
-#else
-  case 0:
-  case 2:
-  case 3:
-    return 0.0;
-  case 1:
-    return (y*y - x*x)/SQR(EPS + SQR(x) + SQR(y));
-  case 4:
-    return 0.1*2.*2.*(3.*x*x + y*y) - 0.01*(y*y - x*x)/(SQR(EPS + x*x + y*y));
-  case 5:
-    return -2.0;
-  case 6:
-    return (-cos(x)*(pow(y, 4.0) + sin(y*y - x*x)) + (4.0*x*sin(x) - 2.0*cos(x))*cos(y*y-x*x) - 4.0*x*x*cos(x)*sin(y*y - x*x));
-  case 7:
-    return exp(-SQR(x*cos(y)))*(4.0*x*x*cos(x+y)*SQR(SQR(cos(y))) + 4.0*x*SQR(cos(y))*sin(x+y) - cos(x+y) - 2.0*cos(x+y)*SQR(cos(y)));
-  case 8:
-    return
-        - 2.0*tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)*(1.0 - SQR(tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)))*SQR(-(2.0*M_PI/3.0)*2.0*sin((2.0*M_PI/3.0)*2.0*x))
-        + (1.0 - SQR(tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)))*(-SQR((2.0*M_PI/3.0)*2.0)*cos((2.0*M_PI/3.0)*2.0*x));
-  case 9:
-    return -SQR(2.0*M_PI/3.0)*(cos((2.0*M_PI/3.0)*(3.0*y-x))*(1.5 + cos((2.0*M_PI/3.0)*(3.0*y-x))) + SQR(sin((2.0*M_PI/3.0)*(3.0*y-x))))/SQR(1.5 + cos((2.0*M_PI/3.0)*(3.0*y-x)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double d_u_exact_p_dy(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(-x*cos(y)-cos(z));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dy = 0.1*x*x*x - 2.0*z*sin(y) - sin(x+z);
-    return (1.0/500.0)*(1.0/(1.0 + SQR(ff)))*dff_dy;
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double dpp_dy     = -sin((2.0*M_PI/3.0)*(2.0*x+y))*(2.0*M_PI/3.0);
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    return (1.0-SQR(tanh(pp)))*dpp_dy*acos(qq);
-  };
-#else
-  case 0:
-  case 2:
-  case 3:
-    return 0.0;
-  case 1:
-    return y/(EPS + SQR(x) + SQR(y));
-  case 4:
-    return 0.1*2.*(x*x + y*y)*2.*y - 0.01*y/(EPS + x*x + y*y);
-  case 5:
-    return -2.0*y;
-  case 6:
-    return (cos(x)*(4.0*pow(y, 3.0) + 2.0*y*cos(y*y - x*x)));
-  case 7:
-    return exp(-SQR(x*cos(y)))*(2.0*x*x*sin(y)*cos(y)*cos(x+y) - sin(x+y));
-  case 8:
-    return -0.24*(1.0 - SQR(tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)));
-  case 9:
-    return -(3.0*(2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(3.0*y-x)))/(1.5 + cos((2.0*M_PI/3.0)*(3.0*y-x)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_p_dydy(int test_nb, DIM(double x, double y, double z))
-{
-  switch(test_nb)
-  {
-#ifdef P4_TO_P8
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(SQR(-x*cos(y)-cos(z)) + x*sin(y));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dy = 0.1*x*x*x - 2.0*z*sin(y) - sin(x+z);
-    double ddff_dydy = -2.0*z*cos(y);
-    return (1.0/500.0)*(ddff_dydy*(1.0 + SQR(ff)) - 2.0*SQR(dff_dy)*ff)/SQR(1.0 + SQR(ff));
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double dpp_dy     = -sin((2.0*M_PI/3.0)*(2.0*x+y))*(2.0*M_PI/3.0);
-    double ddpp_dydy  = -cos((2.0*M_PI/3.0)*(2.0*x+y))*SQR(2.0*M_PI/3.0);
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    return (-2.0*tanh(pp)*(1.0 - SQR(tanh(pp)))*SQR(dpp_dy) + (1.0 - SQR(tanh(pp)))*ddpp_dydy)*acos(qq);
-  }
-#else
-  case 0:
-  case 2:
-  case 3:
-    return 0.0;
-  case 1:
-    return (x*x - y*y)/SQR(EPS + SQR(x) + SQR(y));
-  case 4:
-    return 0.1*2.*2.*(x*x + 3.*y*y)- 0.01*(x*x - y*y)/(SQR(EPS + x*x + y*y));
-  case 5:
-    return -2.0;
-  case 6:
-    return (cos(x)*(12.0*SQR(y) + 2.0*cos(y*y - x*x) - 4.0*y*y*sin(y*y-x*x)));
-  case 7:
-    return exp(-SQR(x*cos(y)))*(4.0*SQR(x*x*cos(y)*sin(y))*cos(x+y) - 2.0*x*x*sin(2.0*y)*sin(x+y) +2.0*x*x*cos(2.0*y)*cos(x+y) -cos(x+y));
-  case 8:
-    return -2.0*SQR(0.24)*tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)*(1.0 - SQR(tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y)));
-  case 9:
-    return -(SQR(3.0*(2.0*M_PI/3.0))*(cos((2.0*M_PI/3.0)*(3.0*y-x))*(1.5 + cos((2.0*M_PI/3.0)*(3.0*y-x))) + SQR(sin((2.0*M_PI/3.0)*(3.0*y-x)))))/SQR(1.5 + cos((2.0*M_PI/3.0)*(3.0*y-x)));
-#endif
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-#ifdef P4_TO_P8
-double d_u_exact_p_dz(int test_nb, double x, double y, double z)
-{
-  switch(test_nb)
-  {
-  case 0:
-    return 0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(+y*sin(z)-cos(2.0*x));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dz = 2.0*cos(y) - y*cos(x+z);
-    return (1.0/500.0)*(1.0/(1.0 + SQR(ff)))*dff_dz;
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    double dqq_dz     = 0.5*cos((2.0*M_PI/3.0)*(2.0*z-x))*(2.0*2.0*M_PI/3.0);
-    return tanh(pp)*(-1.0/sqrt(1.0-SQR(qq)))*dqq_dz;
-  }
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-double dd_u_exact_p_dzdz(int test_nb, double x, double y, double z)
-{
-  switch(test_nb)
-  {
-  case 0:
-    return  0.0;
-  case 1:
-    return exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x))*(SQR(+y*sin(z)-cos(2.0*x)) +y*cos(z));
-  case 2:
-  {
-    double ff = 0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z);
-    double dff_dz = 2.0*cos(y) - y*cos(x+z);
-    double ddff_dzdz = +y*sin(x+z);
-    return (1.0/500.0)*(ddff_dzdz*(1.0 + SQR(ff)) - 2.0*SQR(dff_dz)*ff)/SQR(1.0 + SQR(ff));
-  }
-  case 3:
-  {
-    double pp         = cos((2.0*M_PI/3.0)*(2.0*x+y));
-    double qq         = 0.5*sin((2.0*M_PI/3.0)*(2.0*z-x));
-    double dqq_dz     = 0.5*cos((2.0*M_PI/3.0)*(2.0*z-x))*(2.0*2.0*M_PI/3.0);
-    double ddqq_dzdz   = -0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))*SQR(2.0*2.0*M_PI/3.0);
-    return -tanh(pp)*((ddqq_dzdz*sqrt(1.0-SQR(qq)) + SQR(dqq_dz)*qq/sqrt(1.0 - SQR(qq)))/(1.0 - SQR(qq)));
-  }
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-#endif
-
-double laplacian_u_exact_p(int test_nb, DIM(double x, double y, double z))
-{
-  return (SUMD(dd_u_exact_p_dxdx(test_nb, DIM(x, y, z)), dd_u_exact_p_dydy(test_nb, DIM(x, y, z)), dd_u_exact_p_dzdz(test_nb, x, y, z)));
-}
 
 class BCWALLTYPE : public WallBCDIM
 {
@@ -1087,41 +71,33 @@ public:
 
 class BCWALLVAL : public CF_DIM
 {
-  box domain;
-  LEVEL_SET ls;
-  BoundaryConditionType bc_wall_type;
-  int test_nb;
+  const test_case_for_scalar_jump_problem_t *test_problem;
+  const BCWALLTYPE *bc_wall_type;
 public:
-  BCWALLVAL(box domain_, LEVEL_SET ls_, BoundaryConditionType bc_wall_type_, int test_nb_) : domain(domain_), ls(ls_), bc_wall_type(bc_wall_type_), test_nb(test_nb_){}
+  BCWALLVAL(const test_case_for_scalar_jump_problem_t *test_problem_, const BCWALLTYPE *bc_wall_type_)
+    : test_problem(test_problem_), bc_wall_type(bc_wall_type_) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    if(bc_wall_type == DIRICHLET)
-      return (ls(DIM(x, y, z)) > 0)? u_exact_p(test_nb, DIM(x, y, z)) : u_exact_m(test_nb, DIM(x, y, z));
+    if((*bc_wall_type)(DIM(x, y, z)) == DIRICHLET)
+      return (test_problem->levelset(DIM(x, y, z)) > 0.0 ? test_problem->solution_plus(DIM(x, y, z)) : test_problem->solution_minus(DIM(x, y, z)));
     else
     {
-      double dx = 0; dx = ((fabs(x-domain.xmin)<(domain.xmax - domain.xmin)*EPS) ? -1 :((fabs(x-domain.xmax)<(domain.xmax - domain.xmin)*EPS) ? 1 : 0));
-      double dy = 0; dy = ((fabs(y-domain.ymin)<(domain.ymax - domain.ymin)*EPS) ? -1 :((fabs(y-domain.ymax)<(domain.ymax - domain.ymin)*EPS) ? 1 : 0));
-#ifdef P4_TO_P8
-      double dz = 0; dz = ((fabs(z-domain.zmin)<(domain.zmax - domain.zmin)*EPS) ? -1 :((fabs(z-domain.zmax)<(domain.zmax - domain.zmin)*EPS) ? 1 : 0));
-#endif
-      return (ls(DIM(x, y, z)) > 0.0 ? SUMD(dx*d_u_exact_p_dx(test_nb, DIM(x, y, z)), dy*d_u_exact_p_dy(test_nb, DIM(x, y, z)), dz*d_u_exact_p_dz(test_nb, x, y, z)) :
-                                       SUMD(dx*d_u_exact_m_dx(test_nb, DIM(x, y, z)), dy*d_u_exact_m_dy(test_nb, DIM(x, y, z)), dz*d_u_exact_m_dz(test_nb, x, y, z)));
+      P4EST_ASSERT((*bc_wall_type)(DIM(x, y, z)) == NEUMANN);
+      const domain_t &domain= test_problem->get_domain();
+      const double xyz[P4EST_DIM] = {DIM(x, y, z)};
+      double to_return = 0.0;
+      const double ls_value = test_problem->levelset(xyz);
+      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      {
+        if(fabs(xyz[dim] - domain.xyz_min[dim]) < EPS*(domain.xyz_max[dim] - domain.xyz_min[dim]))
+          to_return -= (ls_value > 0.0 ? test_problem->first_derivative_solution_plus(dim, DIM(x, y, z)) : test_problem->first_derivative_solution_minus(dim, DIM(x, y, z)));
+        else if(fabs(xyz[dim] - domain.xyz_max[dim]) < EPS*(domain.xyz_max[dim] - domain.xyz_min[dim]))
+          to_return += (ls_value > 0.0 ? test_problem->first_derivative_solution_plus(dim, DIM(x, y, z)) : test_problem->first_derivative_solution_minus(dim, DIM(x, y, z)));
+      }
+      return to_return;
     }
   }
 };
-
-
-class JUMP_U : public CF_DIM
-{
-  int test_nb;
-public:
-  JUMP_U(int test_nb_): test_nb(test_nb_){}
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    return u_exact_p(test_nb, DIM(x, y, z)) - u_exact_m(test_nb, DIM(x, y, z));
-  }
-};
-
 
 p4est_bool_t
 refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -1137,49 +113,34 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
     p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
     p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
 
-    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-#ifdef P4_TO_P8
-    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-#endif
+    const double *tree_xyz_min =  p4est->connectivity->vertices + 3*v_m;
+    const double *tree_xyz_max =  p4est->connectivity->vertices + 3*v_p;
+    const double tree_size[P4EST_DIM] = {DIM(tree_xyz_max[0] - tree_xyz_min[0], tree_xyz_max[1] - tree_xyz_min[1], tree_xyz_max[2] - tree_xyz_min[2])};
 
-    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+    const double quad_size = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    const double dxyz[P4EST_DIM] = {DIM(tree_size[0]*quad_size, tree_size[1]*quad_size, tree_size[2]*quad_size)};
+    const double quad_diag = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
+    const double xyz[P4EST_DIM] = {DIM(
+                                   tree_xyz_min[0] + tree_size[0]*(double) quad->x/(double) P4EST_ROOT_LEN,
+                                   tree_xyz_min[1] + tree_size[1]*(double) quad->y/(double) P4EST_ROOT_LEN,
+                                   tree_xyz_min[2] + tree_size[2]*(double) quad->z/(double) P4EST_ROOT_LEN)};
 
-    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dx = (tree_xmax - tree_xmin) * dmin;
-    double dy = (tree_ymax - tree_ymin) * dmin;
-#ifdef P4_TO_P8
-    double dz = (tree_zmax - tree_zmin) * dmin;
-#endif
-
-    double d = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
-
-    double x = (tree_xmax - tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
-    double y = (tree_ymax - tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
-#ifdef P4_TO_P8
-    double z = (tree_zmax - tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
-#endif
-
-    CF_DIM&  phi = *(data->phi);
-    double lip = data->lip;
+    const CF_DIM& phi = *(data->phi);
+    const double& lip = data->lip;
 
     double f[P4EST_CHILDREN];
 #ifdef P4_TO_P8
-    for (unsigned char ck = 0; ck < 2; ++ck)
+    for(unsigned char ck = 0; ck < 2; ++ck)
 #endif
-      for (unsigned char cj = 0; cj < 2; ++cj)
-        for (unsigned char ci = 0; ci < 2; ++ci){
-          f[SUMD(ci, 2*cj, 4*ck)] = phi(DIM(x + ci*dx, y + cj*dy, z + ck*dz));
-          if (f[SUMD(ci, 2*cj, 4*ck)] <= 0.5*lip*d)
+      for(unsigned char cj = 0; cj < 2; ++cj)
+        for(unsigned char ci = 0; ci < 2; ++ci){
+          f[SUMD(ci, 2*cj, 4*ck)] = phi(DIM(xyz[0] + ci*dxyz[0], xyz[1] + cj*dxyz[1], xyz[2] + ck*dxyz[2]));
+          if (f[SUMD(ci, 2*cj, 4*ck)] <= 0.5*lip*quad_diag)
             return P4EST_TRUE;
         }
 
-    if (f[0]*f[1] < 0 || f[0]*f[2] < 0 || f[1]*f[3] < 0 || f[2]*f[3] < 0
-        ONLY3D(|| f[3]*f[4] < 0 || f[4]*f[5] < 0 || f[5]*f[6] < 0 || f[6]*f[7] < 0))
+    if (f[0]*f[1] < 0.0 || f[0]*f[2] < 0.0 || f[1]*f[3] < 0.0 || f[2]*f[3] < 0.0
+        ONLY3D(|| f[3]*f[4] < 0.0 || f[4]*f[5] < 0.0 || f[5]*f[6] < 0.0 || f[6]*f[7] < 0.0))
       return P4EST_TRUE;
 
     return P4EST_FALSE;
@@ -1187,36 +148,29 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
 }
 
 
-void save_VTK(const string out_dir, int test_number,
+void save_VTK(const string out_dir, const int &iter,
               p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
               p4est_t *p4est_fine, p4est_ghost_t *ghost_fine, p4est_nodes_t *nodes_fine,
               my_p4est_brick_t *brick,
-              Vec phi, Vec normals, Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2], Vec correction_jump_mu_grad,
-              Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm
-#ifndef P4_TO_P8
-, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_coarse
-#endif
-)
+              Vec phi, Vec normals, Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2],
+Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_coarse)
 {
   PetscErrorCode ierr;
-  std::ostringstream oss;
 
   splitting_criteria_t* data = (splitting_criteria_t*) p4est->user_pointer;
-  splitting_criteria_t* data_fine = (splitting_criteria_t*) p4est_fine->user_pointer;
 
-  oss << out_dir << "/P" + std::to_string(1 << P4EST_DIM)+ "EST/test_case_" << test_number << "/" << p4est->mpisize << "_procs/" <<
-         brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2]) << "_macromesh/lvl_diff_" << data->max_lvl - data->min_lvl;
 
   ostringstream command;
-  command << "mkdir -p " << oss.str().c_str();
+  command << "mkdir -p " << out_dir.c_str();
   system(command.str().c_str());
-  ostringstream oss_coarse;
 
-  oss_coarse << oss.str() << "/computational_" << data->min_lvl;
+  ostringstream oss_coarse;
+  oss_coarse << out_dir << "/computational_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
+      << "_lmin_" << data->min_lvl - iter << "_lmax_" << data->max_lvl - iter << "_iter_" << iter;
 
   double *phi_p, *sol_cells_p[2], *err_cells_p[2], *extension_xgfm_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for (unsigned char flag = 0; flag < 2; ++flag) {
+  for(unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecGetArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecGetArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
   }
@@ -1232,29 +186,25 @@ void save_VTK(const string out_dir, int test_number,
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
       l_p[tree->quadrants_offset + q] = p4est_quadrant_array_index(&tree->quadrants, q)->level;
   }
 
   for(size_t q = 0; q < ghost->ghosts.elem_count; ++q)
     l_p[p4est->local_num_quadrants + q] = p4est_quadrant_array_index(&ghost->ghosts, q)->level;
 
-#ifndef P4_TO_P8
   double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_coarse_p;
   ierr = VecGetArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecGetArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
-#endif
 
   my_p4est_vtk_write_all_general(p4est, nodes, ghost,
                                  P4EST_TRUE, P4EST_TRUE,
-                                 9 - 3*P4EST_DIM /*3 in 2D, 0 in 3D*/, 0, 0,
+                                 3, 0, 0,
                                  6, 0, 0, oss_coarse.str().c_str(),
-                               #ifndef P4_TO_P8
                                  VTK_NODE_SCALAR, "exact_sol_m", exact_msol_at_nodes_p,
                                  VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
                                  VTK_NODE_SCALAR, "phi", phi_coarse_p,
-                               #endif
                                  VTK_CELL_SCALAR, "sol_gfm", sol_cells_p[0],
       VTK_CELL_SCALAR, "sol_xgfm", sol_cells_p[1],
       VTK_CELL_SCALAR, "err_gfm", err_cells_p[0],
@@ -1262,17 +212,18 @@ void save_VTK(const string out_dir, int test_number,
       VTK_CELL_SCALAR , "leaf_level", l_p,
       VTK_CELL_SCALAR, "extension_xgfm", extension_xgfm_p);
 
-#ifndef P4_TO_P8
   ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
-#endif
-
-
 
   std::ostringstream oss_fine;
-  oss_fine << oss.str() << "/interface_capturing_" << data_fine->min_lvl;
+  oss_fine << out_dir << "/interface_capturing_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
+      << "_lmin_" << data->min_lvl - iter << "_lmax_" << data->max_lvl - iter << "_iter_" << iter;
 
+  Vec correction_jump_mu_grad;
+  ierr = VecDuplicate(jump_mu_grad_u[1], &correction_jump_mu_grad);       CHKERRXX(ierr);
+  ierr = VecCopyGhost(jump_mu_grad_u[1], correction_jump_mu_grad);        CHKERRXX(ierr);
+  ierr = VecAXPYGhost(correction_jump_mu_grad, -1.0, jump_mu_grad_u[0]);  CHKERRXX(ierr);
   double *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
   double *normals_p, *jump_mu_grad_u_p[2], *correction_jump_mu_grad_p;
   ierr = VecGetArray(jump_u, &jump_u_p); CHKERRXX(ierr);
@@ -1280,7 +231,7 @@ void save_VTK(const string out_dir, int test_number,
 
   ierr = VecGetArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
   ierr = VecGetArray(normals, &normals_p); CHKERRXX(ierr);
-  for (unsigned char flag = 0; flag < 2; ++flag) {
+  for(unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecGetArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
   }
   ierr = VecGetArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
@@ -1300,6 +251,7 @@ void save_VTK(const string out_dir, int test_number,
 
   ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
+  ierr = VecDestroy(correction_jump_mu_grad); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
@@ -1309,7 +261,7 @@ void save_VTK(const string out_dir, int test_number,
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  for (unsigned char flag = 0; flag < 2; ++flag) {
+  for(unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecRestoreArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecRestoreArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
@@ -1317,60 +269,61 @@ void save_VTK(const string out_dir, int test_number,
 
   ierr = VecRestoreArray(extension_xgfm, &extension_xgfm_p); CHKERRXX(ierr);
 
-  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());
 }
 
-
-
-void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_fine, my_p4est_node_neighbors_t& ngbd_n_fine, Vec phi, bool use_second_order_theta, int test_number, double mu_p, double mu_m, //input
-                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals, Vec phi_xxyyzz ) // output
+void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_fine, my_p4est_node_neighbors_t *ngbd_n_fine, Vec phi_fine, const bool &use_second_order_theta, const test_case_for_scalar_jump_problem_t *test_problem, //input
+                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals, Vec phi_xxyyzz) // output
 {
   PetscErrorCode ierr;
-  my_p4est_level_set_t ls(&ngbd_n_fine);
-  JUMP_U jump_u_cf(test_number);
-  sample_cf_on_nodes(p4est_fine, nodes_fine, jump_u_cf, jump_u);
+  my_p4est_level_set_t ls(ngbd_n_fine);
 
   if(use_second_order_theta)
-    ngbd_n_fine.second_derivatives_central(phi, phi_xxyyzz);
+    ngbd_n_fine->second_derivatives_central(phi_fine, phi_xxyyzz);
+  compute_normals(*ngbd_n_fine, phi_fine, normals);
 
-  my_p4est_interpolation_nodes_t interp_phi(&ngbd_n_fine);
-  interp_phi.set_input(phi, linear);
-  compute_normals(ngbd_n_fine, phi, normals);
-
-  double *jump_normal_flux_p;
+  double *jump_u_p, *jump_normal_flux_p;
   const double *normals_p;
+  ierr = VecGetArray(jump_u, &jump_u_p); CHKERRXX(ierr);
   ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(normals, &normals_p); CHKERRXX(ierr);
 
   double node_xyz[P4EST_DIM];
-  for (p4est_locidx_t nn = 0; nn < nodes_fine->num_owned_indeps; ++nn) {
-    node_xyz_fr_n(nn, p4est_fine, nodes_fine, node_xyz);
-    jump_normal_flux_p[nn] =
-        SUMD(normals_p[P4EST_DIM*nn + 0]*(mu_p*d_u_exact_p_dx(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2])) - mu_m*d_u_exact_m_dx(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2]))),
-        normals_p[P4EST_DIM*nn + 1]*(mu_p*d_u_exact_p_dy(test_number,       DIM(node_xyz[0], node_xyz[1], node_xyz[2])) - mu_m*d_u_exact_m_dy(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2]))),
-        normals_p[P4EST_DIM*nn + 2]*(mu_p*d_u_exact_p_dz(test_number,           node_xyz[0], node_xyz[1], node_xyz[2])  - mu_m*d_u_exact_m_dz(test_number,      node_xyz[0], node_xyz[1], node_xyz[2])));
+  for(size_t k = 0; k < ngbd_n_fine->get_layer_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n_fine->get_layer_node(k);
+    node_xyz_fr_n(node_idx, p4est_fine, nodes_fine, node_xyz);
+    jump_u_p[node_idx] = test_problem->jump_in_solution(DIM(node_xyz[0], node_xyz[1], node_xyz[2]));
+    jump_normal_flux_p[node_idx] = test_problem->jump_in_normal_flux(normals_p + P4EST_DIM*node_idx, DIM(node_xyz[0], node_xyz[1], node_xyz[2]));
   }
+  ierr = VecGhostUpdateBegin(jump_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < ngbd_n_fine->get_local_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n_fine->get_local_node(k);
+    node_xyz_fr_n(node_idx, p4est_fine, nodes_fine, node_xyz);
+    jump_u_p[node_idx] = test_problem->jump_in_solution(DIM(node_xyz[0], node_xyz[1], node_xyz[2]));
+    jump_normal_flux_p[node_idx] = test_problem->jump_in_normal_flux(normals_p + P4EST_DIM*node_idx, DIM(node_xyz[0], node_xyz[1], node_xyz[2]));
+  }
+  ierr = VecGhostUpdateEnd(jump_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(normals, &normals_p); CHKERRXX(ierr);
-
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(jump_u, &jump_u_p); CHKERRXX(ierr);
 
   Vec jump_u_flattened, jump_normal_flux_flattened;
   ierr = VecDuplicate(jump_u, &jump_u_flattened); CHKERRXX(ierr);
   ierr = VecDuplicate(jump_normal_flux, &jump_normal_flux_flattened); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, jump_u, jump_u_flattened);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, jump_normal_flux, jump_normal_flux_flattened);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_fine, jump_u, jump_u_flattened);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_fine, jump_normal_flux, jump_normal_flux_flattened);
   ierr = VecDestroy(jump_u); CHKERRXX(ierr); jump_u = jump_u_flattened; jump_u_flattened = NULL;
-  ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr); jump_normal_flux = jump_normal_flux_flattened; jump_normal_flux_flattened= NULL;
+  ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr); jump_normal_flux = jump_normal_flux_flattened; jump_normal_flux_flattened = NULL;
 }
 
-void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t& ngbd_n_fine, Vec phi, int test_number, double mu_p, double mu_m, // inputs
+void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t *ngbd_n_fine, Vec phi, const test_case_for_scalar_jump_problem_t *test_problem, // inputs
                    Vec rhs) // output
 {
   PetscErrorCode ierr;
-  my_p4est_interpolation_nodes_t interp_phi(&ngbd_n_fine);
+  my_p4est_interpolation_nodes_t interp_phi(ngbd_n_fine);
   interp_phi.set_input(phi, linear);
 
   double *rhs_p;
@@ -1384,21 +337,25 @@ void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_nei
     {
       p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
       quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      rhs_p[q_idx] = (interp_phi(xyz_quad) > 0.0 ? -mu_p*laplacian_u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])) : -mu_m*laplacian_u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      if(interp_phi(xyz_quad) > 0.0 )
+        rhs_p[q_idx] = -test_problem->get_mu_plus()*test_problem->laplacian_u_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]));
+      else
+        rhs_p[q_idx] = -test_problem->get_mu_minus()*test_problem->laplacian_u_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]));
     }
   }
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 }
 
-void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t& ngbd_n_fine, my_p4est_faces_t* faces, Vec phi, int test_number, double mu_p, double mu_m, Vec sol, Vec flux_components[P4EST_DIM],
+void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t *ngbd_n_fine, my_p4est_faces_t* faces, Vec phi, const test_case_for_scalar_jump_problem_t *test_problem,
+                    Vec sol, Vec flux_components[P4EST_DIM],
                     Vec err_cells, double &err_n, double err_flux_components[P4EST_DIM], double err_derivatives_components[P4EST_DIM])
 {
   PetscErrorCode ierr;
-  my_p4est_interpolation_nodes_t interp_phi(&ngbd_n_fine);
+  my_p4est_interpolation_nodes_t interp_phi(ngbd_n_fine);
   interp_phi.set_input(phi, linear);
   const double *sol_read_p, *flux_components_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecGetArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
 
   double *err_p;
@@ -1406,55 +363,513 @@ void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbor
 
   err_n = 0.0;
   double xyz_quad[P4EST_DIM];
-  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  const my_p4est_hierarchy_t * hierarchy = faces->get_ngbd_c()->get_hierarchy();
+  for(size_t k = 0; k < hierarchy->get_layer_size(); ++k)
   {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
-    {
-      p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
-      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      err_p[q_idx] = (interp_phi(xyz_quad) > 0.0 ? fabs(sol_read_p[q_idx] - u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))) : fabs(sol_read_p[q_idx] - u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))));
-      err_n = MAX(err_n, err_p[q_idx]);
-    }
+    const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_layer_quadrant(k);
+    const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_layer_quadrant(k);
+    quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+    if(interp_phi(xyz_quad) > 0.0)
+      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+    else
+      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+    err_n = MAX(err_n, err_p[q_idx]);
   }
 
+  ierr = VecGhostUpdateBegin(err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < hierarchy->get_inner_size(); ++k)
+  {
+    const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_inner_quadrant(k);
+    const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_inner_quadrant(k);
+    quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+    if(interp_phi(xyz_quad) > 0.0)
+      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+    else
+      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+    err_n = MAX(err_n, err_p[q_idx]);
+  }
+  ierr = VecGhostUpdateEnd  (err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
   double xyz_face[P4EST_DIM];
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     err_flux_components[dim] = 0.0;
     err_derivatives_components[dim] = 0.0;
-    for (p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
+    for(p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
       faces->xyz_fr_f(face_idx, dim, xyz_face);
       const double phi_face = interp_phi(xyz_face);
-      switch (dim) {
-      case dir::x:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? mu_p*d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : mu_m*d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
-        break;
-      case dir::y:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? mu_p*d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : mu_m*d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
-        break;
-#ifdef P4_TO_P8
-      case dir::z:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? (mu_p*d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2]) : d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2]))));
-        break;
-#endif
+      if(phi_face > 0.0)
+      {
+        const double mu_ = test_problem->get_mu_plus();
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+      }
+      else
+      {
+        const double mu_ = test_problem->get_mu_minus();
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
       }
     }
   }
 
   ierr = VecRestoreArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecRestoreArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
   ierr = VecRestoreArray(err_cells, &err_p); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_flux_components[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_derivatives_components[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+void build_computational_grid_data(const mpi_environment_t &mpi, my_p4est_brick_t* brick, p4est_connectivity_t *connectivity, const splitting_criteria_cf_t &data, const test_case_for_scalar_jump_problem_t *test_problem,
+                                   p4est_t* &p4est, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, Vec &phi_comp,
+                                   my_p4est_hierarchy_t* &hierarchy, my_p4est_node_neighbors_t* &ngbd_n, my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces)
+{
+  if(p4est != NULL)
+    p4est_destroy(p4est);
+  p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+  p4est->user_pointer = (void*)(&data);
+
+  for(int i = 0; i < data.max_lvl; ++i) {
+    if(!test_problem->requires_fine_cells_in_negative_domain())
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+    else
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf_finest_in_negative, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  }
+  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+
+  if(ghost != NULL)
+    p4est_ghost_destroy(ghost);
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est, ghost);
+
+  if(nodes != NULL)
+    p4est_nodes_destroy(nodes);
+  nodes = my_p4est_nodes_new(p4est, ghost);
+
+  if(hierarchy != NULL)
+    delete hierarchy;
+  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, brick);
+
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy, nodes); ngbd_n->init_neighbors();
+
+  PetscErrorCode ierr;
+  if(phi_comp != NULL){
+    ierr = VecDestroy(phi_comp); CHKERRXX(ierr);
+  }
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_comp); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, *test_problem->get_levelset_cf(), phi_comp);
+  my_p4est_level_set_t ls_coarse(ngbd_n);
+  ls_coarse.reinitialize_2nd_order(phi_comp);
+
+  const double *phi_comp_read_p;
+  ierr = VecGetArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+  splitting_criteria_tag_t data_tag(data.min_lvl, data.max_lvl, 1.2);
+  p4est_t* new_p4est = p4est_copy(p4est, P4EST_FALSE);
+
+  while(data_tag.refine_and_coarsen(new_p4est, nodes, phi_comp_read_p, test_problem->requires_fine_cells_in_negative_domain()))
+  {
+    ierr = VecRestoreArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+    my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
+    interp_nodes.set_input(phi_comp, linear);
+
+    my_p4est_partition(new_p4est, P4EST_FALSE, NULL);
+    p4est_ghost_t *new_ghost  = my_p4est_ghost_new(new_p4est, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(new_p4est, new_ghost);
+    p4est_nodes_t *new_nodes  = my_p4est_nodes_new(new_p4est, new_ghost);
+    Vec new_coarse_phi;
+    ierr = VecCreateGhostNodes(new_p4est, new_nodes, &new_coarse_phi); CHKERRXX(ierr);
+    for(size_t nn=0; nn<new_nodes->indep_nodes.elem_count; ++nn)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(nn, new_p4est, new_nodes, xyz);
+      interp_nodes.add_point(nn, xyz);
+    }
+    interp_nodes.interpolate(new_coarse_phi);
+
+    p4est_destroy(p4est); p4est = new_p4est; new_p4est = p4est_copy(p4est, P4EST_FALSE);
+    p4est_ghost_destroy(ghost); ghost = new_ghost;
+    hierarchy->update(p4est, ghost);
+    p4est_nodes_destroy(nodes); nodes = new_nodes;
+    ngbd_n->update(hierarchy, nodes);
+
+    ierr = VecDestroy(phi_comp); CHKERRXX(ierr); phi_comp = new_coarse_phi;
+
+    ierr = VecGetArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+  p4est_destroy(new_p4est);
+  if(ngbd_c != NULL)
+    delete ngbd_c;
+  ngbd_c = new my_p4est_cell_neighbors_t(hierarchy);
+
+  if(faces != NULL)
+    delete faces;
+  faces = new my_p4est_faces_t(p4est, ghost, brick, ngbd_c);
+}
+
+void build_interface_capturing_grid_data(p4est_t* p4est_comp, my_p4est_brick_t *brick,  const splitting_criteria_cf_t &data_fine, const test_case_for_scalar_jump_problem_t *test_problem,
+                                         p4est_t* &p4est_fine, p4est_ghost_t* &ghost_fine, p4est_nodes_t* &nodes_fine, Vec &phi_fine,
+                                         my_p4est_hierarchy_t* &hierarchy_fine, my_p4est_node_neighbors_t* &ngbd_n_fine)
+{
+  if(p4est_fine != NULL)
+    p4est_destroy(p4est_fine);
+  p4est_fine = p4est_copy(p4est_comp, P4EST_FALSE);
+  p4est_fine->user_pointer = (void*)(&data_fine);
+  my_p4est_refine(p4est_fine, P4EST_FALSE, refine_levelset_cf, NULL);
+
+  if(ghost_fine != NULL)
+    p4est_ghost_destroy(ghost_fine);
+  ghost_fine = my_p4est_ghost_new(p4est_fine, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_fine, ghost_fine);
+
+  if(nodes_fine != NULL)
+    p4est_nodes_destroy(nodes_fine);
+  nodes_fine = my_p4est_nodes_new(p4est_fine, ghost_fine);
+
+  if(hierarchy_fine != NULL)
+    delete hierarchy_fine;
+  hierarchy_fine = new my_p4est_hierarchy_t(p4est_fine, ghost_fine, brick);
+
+  if(ngbd_n_fine != NULL)
+    delete ngbd_n_fine;
+  ngbd_n_fine = new my_p4est_node_neighbors_t(hierarchy_fine, nodes_fine); ngbd_n_fine->init_neighbors();
+
+  PetscErrorCode ierr;
+  if (phi_fine != NULL){
+    ierr = VecDestroy(phi_fine); CHKERRXX(ierr);
+  }
+  ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_fine); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est_fine, nodes_fine, *test_problem->get_levelset_cf(), phi_fine);
+  my_p4est_level_set_t ls(ngbd_n_fine);
+  ls.reinitialize_2nd_order(phi_fine);
+
+  const double *phi_read_p;
+  ierr = VecGetArrayRead(phi_fine, &phi_read_p); CHKERRXX(ierr);
+  splitting_criteria_tag_t data_tag_fine(data_fine.min_lvl, data_fine.max_lvl, 1.2);
+  p4est_t *new_p4est_fine = p4est_copy(p4est_fine, P4EST_FALSE);
+
+  while(data_tag_fine.refine(new_p4est_fine, nodes_fine, phi_read_p)) // not refine_and_coarsen, because we need the fine grid to be everywhere finer or as coarse as the coarse grid!
+  {
+    ierr = VecRestoreArrayRead(phi_fine, &phi_read_p); CHKERRXX(ierr);
+    my_p4est_interpolation_nodes_t interp_nodes_fine(ngbd_n_fine);
+    interp_nodes_fine.set_input(phi_fine, linear);
+
+    p4est_ghost_t *new_ghost_fine = my_p4est_ghost_new(new_p4est_fine, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(new_p4est_fine, new_ghost_fine);
+    p4est_nodes_t *new_nodes_fine  = my_p4est_nodes_new(new_p4est_fine, new_ghost_fine);
+    Vec new_phi;
+    ierr = VecCreateGhostNodes(new_p4est_fine, new_nodes_fine, &new_phi); CHKERRXX(ierr);
+    for(size_t nn=0; nn<new_nodes_fine->indep_nodes.elem_count; ++nn)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(nn, new_p4est_fine, new_nodes_fine, xyz);
+      interp_nodes_fine.add_point(nn, xyz);
+    }
+    interp_nodes_fine.interpolate(new_phi);
+
+
+    p4est_destroy(p4est_fine); p4est_fine = new_p4est_fine; new_p4est_fine = p4est_copy(p4est_fine, P4EST_FALSE);
+    p4est_ghost_destroy(ghost_fine); ghost_fine = new_ghost_fine;
+    hierarchy_fine->update(p4est_fine, ghost_fine);
+    p4est_nodes_destroy(nodes_fine); nodes_fine = new_nodes_fine;
+    ngbd_n_fine->update(hierarchy_fine, nodes_fine);
+    ls.update(ngbd_n_fine);
+
+    ierr = VecDestroy(phi_fine); CHKERRXX(ierr); phi_fine = new_phi;
+
+    ierr = VecGetArrayRead(phi_fine, &phi_read_p); CHKERRXX(ierr);
+  }
+
+  ierr = VecRestoreArrayRead(phi_fine, &phi_read_p); CHKERRXX(ierr);
+  p4est_destroy(new_p4est_fine);
+}
+
+void shift_solution_to_match_exact_average(Vec sol, const p4est_t *p4est, const p4est_ghost_t* ghost, const double &avg_exa)
+{
+  PetscErrorCode ierr;
+  double *sol_p;
+  ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+
+  double avg_sol = 0.0; // as calculated by PetSc
+  for(p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
+    avg_sol += sol_p[quad_idx];
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &avg_sol, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+  avg_sol /= ((double) p4est->global_num_quadrants);
+
+  if(ISNAN(avg_exa) && p4est->mpirank == 0)
+    std::cerr << "The average of the exact solution is unknown and would be required to check the accuracy " << endl << "of the solution (for shifting the solution and matching average value)" << endl << "Disregard the errors on the solution fields and consider derivatives/fluxes only!" << std::endl;
+
+  if(!ISNAN(avg_exa))
+  {
+    for(p4est_locidx_t quad_idx=0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
+      sol_p[quad_idx] = sol_p[quad_idx] - avg_sol + avg_exa;
+
+    for(size_t quad_idx = 0; quad_idx < ghost->ghosts.elem_count; ++quad_idx)
+      sol_p[quad_idx + p4est->local_num_quadrants] = sol_p[quad_idx + p4est->local_num_quadrants] - avg_sol + avg_exa;
+  }
+
+  ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+}
+
+void print_iteration_info(const mpi_environment_t &mpi, const my_p4est_xgfm_cells_t &solver)
+{
+  vector<double> max_corr = solver.get_max_corrections();
+  vector<double> rel_res = solver.get_relative_residuals();
+  vector<PetscInt> nb_iter = solver.get_numbers_of_ksp_iterations();
+
+  if(mpi.rank() == 0)
+  {
+    PetscInt total_nb_iterations = nb_iter.at(0);
+    for(size_t tt = 1; tt < max_corr.size(); ++tt){
+      total_nb_iterations += nb_iter.at(tt);
+      if(track_residuals_and_corrections)
+        cout << "max corr " << tt << " = " << max_corr[tt] << " and rel residual " << tt << " = " << rel_res[tt] << " after " << nb_iter[tt] << " iterations." << endl;
+    }
+    cout << "The solver converged after a total of " << total_nb_iterations << " iterations." << std::endl;
+  }
+}
+
+void print_errors_and_orders(const mpi_environment_t &mpi, const int &iter, const double err[][2], const double err_flux_components[][2][P4EST_DIM], const double err_derivatives_components[][2][P4EST_DIM])
+{
+  PetscErrorCode ierr;
+  if(iter > 0){
+    ierr = PetscPrintf(mpi.comm(), "Error on cells  for  gfm: %.5e, order = %g\n", err[iter][0], log(err[iter - 1][0]/err[iter][0])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on cells  for xgfm: %.5e, order = %g\n", err[iter][1], log(err[iter - 1][1]/err[iter][1])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-x for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][0], log(err_flux_components[iter - 1][0][0]/err_flux_components[iter][0][0])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-x for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][0], log(err_flux_components[iter - 1][1][0]/err_flux_components[iter][1][0])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-y for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][1], log(err_flux_components[iter - 1][0][1]/err_flux_components[iter][0][1])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-y for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][1], log(err_flux_components[iter - 1][1][1]/err_flux_components[iter][1][1])/log(2)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-z for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][2], log(err_flux_components[iter - 1][0][2]/err_flux_components[iter][0][2])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-z for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][2], log(err_flux_components[iter - 1][1][2]/err_flux_components[iter][1][2])/log(2)); CHKERRXX(ierr);
+#endif
+    ierr = PetscPrintf(mpi.comm(), "Error on x-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][0], log(err_derivatives_components[iter - 1][0][0]/err_derivatives_components[iter][0][0])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on x-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][0], log(err_derivatives_components[iter - 1][1][0]/err_derivatives_components[iter][1][0])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on y-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][1], log(err_derivatives_components[iter - 1][0][1]/err_derivatives_components[iter][0][1])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on y-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][1], log(err_derivatives_components[iter - 1][1][1]/err_derivatives_components[iter][1][1])/log(2)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(mpi.comm(), "Error on z-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][2], log(err_derivatives_components[iter - 1][0][2]/err_derivatives_components[iter][0][2])/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on z-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][2], log(err_derivatives_components[iter - 1][1][2]/err_derivatives_components[iter][1][2])/log(2)); CHKERRXX(ierr);
+#endif
+  }
+  else {
+    ierr = PetscPrintf(mpi.comm(), "Error on cells  for  gfm: %.5e\n", err[iter][0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on cells  for xgfm: %.5e\n", err[iter][1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-x for  gfm: %.5e\n", err_flux_components[iter][0][0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-x for xgfm: %.5e\n", err_flux_components[iter][1][0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-y for  gfm: %.5e\n", err_flux_components[iter][0][1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-y for xgfm: %.5e\n", err_flux_components[iter][1][1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-z for  gfm: %.5e\n", err_flux_components[iter][0][2]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on flux-z for xgfm: %.5e\n", err_flux_components[iter][1][2]); CHKERRXX(ierr);
+#endif
+    ierr = PetscPrintf(mpi.comm(), "Error on x-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on x-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on y-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on y-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(mpi.comm(), "Error on z-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][2]); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Error on z-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][2]); CHKERRXX(ierr);
+#endif
+  }
+}
+
+void get_sampled_exact_solution(Vec exact_msol_at_nodes, Vec exact_psol_at_nodes,
+                                const p4est_t* p4est, const p4est_nodes_t* nodes, const test_case_for_scalar_jump_problem_t *test_problem)
+{
+  PetscErrorCode ierr;
+
+  double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p;
+  ierr = VecGetArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
+  for(size_t node_idx = 0; node_idx < nodes->indep_nodes.elem_count; ++node_idx) {
+    double xyz_node[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
+    exact_msol_at_nodes_p[node_idx] = test_problem->solution_minus(DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
+    exact_psol_at_nodes_p[node_idx] = test_problem->solution_plus(DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
+  }
+  ierr = VecRestoreArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
+}
+
+void print_integral_of_exact_solution(Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_comp, const p4est_t* p4est, const p4est_nodes_t* nodes)
+{
+  PetscErrorCode ierr;
+  P4EST_ASSERT(exact_msol_at_nodes != NULL && exact_psol_at_nodes != NULL);
+  double integral_of_exact = 0.0;
+  integral_of_exact += integrate_over_negative_domain(p4est, nodes, phi_comp, exact_msol_at_nodes);
+  if(ISNAN(integral_of_exact))
+    std::cout << "the first integral part is nan" << std::endl;
+  ierr = VecScaleGhost(phi_comp, -1.0); CHKERRXX(ierr);
+  integral_of_exact += integrate_over_negative_domain(p4est, nodes, phi_comp, exact_psol_at_nodes);
+  ierr = VecScaleGhost(phi_comp, -1.0); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est->mpicomm, "The integral calculated with exact fields is %.12e \n", integral_of_exact); CHKERRXX(ierr);
+}
+
+void print_convergence_summary_in_file(const string& out_folder, const string& test_name, const int &lmin, const int &lmax, const int &ntree, const int &ngrids, const bool &use_second_order_theta, const BoundaryConditionType bc_wtype,
+                                       const double err[][2], const double err_derivatives_components[][2][P4EST_DIM], const double err_flux_components[][2][P4EST_DIM])
+{
+  string summary_folder = out_folder + "/summaries";
+  ostringstream command;
+  command << "mkdir -p " << summary_folder.c_str();
+  system(command.str().c_str()); // create the summary folder
+  string summary_file = summary_folder + "/convergence_summary_" + test_name
+      + "_lmin" + to_string(lmin) + "_lmax" + to_string(lmax) + "_ngrids" + to_string(ngrids) + "_ntree" + to_string(ntree)
+      + "_accuracyls" + to_string(use_second_order_theta ? 2 : 1) + "_" + (bc_wtype == DIRICHLET ? "dirichlet": "neumann") + ".dat";
+
+  FILE *fid = fopen(summary_file.c_str(), "w");
+  fprintf(fid, "=================================================================\n");
+  fprintf(fid, "========================= SUMMARY ===============================\n");
+  fprintf(fid, "=================================================================\n");
+  fprintf(fid, "Test case: %s (%d-D)\n", test_name.c_str(), P4EST_DIM);
+  fprintf(fid, "lmin: %d\n", lmin);
+  fprintf(fid, "lmax: %d\n", lmax);
+  fprintf(fid, "Number of grids: %d\n", ngrids);
+  fprintf(fid, "Number of trees along minimum dimension of domain in macromesh: %d\n", ntree);
+  fprintf(fid, "Order of accuracy for interface localization: %d\n", (use_second_order_theta? 2 : 1));
+  fprintf(fid, "Wall boundary condition: %s\n", (bc_wtype == DIRICHLET ? "dirichlet" : "neumann"));
+  fprintf(fid, "Resolution: " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%d/%d ", ntree*(1<<(lmin+k)), ntree*(1<<(lmax+k)));
+    else
+      fprintf(fid, "%d/%d\n", ntree*(1<<(lmin+k)), ntree*(1<<(lmax+k)));
+  }
+  fprintf(fid, "Error on solution (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err[k][0]);
+    else
+      fprintf(fid, "%.5e\n", err[k][0]);
+  }
+  fprintf(fid, "Error on solution (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err[k][1]);
+    else
+      fprintf(fid, "%.5e\n", err[k][1]);
+  }
+
+  fprintf(fid, "Error on x-derivative (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][0][0]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][0][0]);
+  }
+  fprintf(fid, "Error on x-derivative (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][1][0]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][1][0]);
+  }
+
+  fprintf(fid, "Error on y-derivative (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][0][1]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][0][1]);
+  }
+  fprintf(fid, "Error on y-derivative (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][1][1]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][1][1]);
+  }
+#ifdef P4_TO_P8
+  fprintf(fid, "Error on z-derivative (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][0][2]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][0][2]);
+  }
+  fprintf(fid, "Error on z-derivative (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_derivatives_components[k][1][2]);
+    else
+      fprintf(fid, "%.5e\n", err_derivatives_components[k][1][2]);
+  }
+#endif
+
+  fprintf(fid, "Error on x-flux (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][0][0]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][0][0]);
+  }
+  fprintf(fid, "Error on x-flux (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][1][0]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][1][0]);
+  }
+
+  fprintf(fid, "Error on y-flux (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][0][1]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][0][1]);
+  }
+  fprintf(fid, "Error on y-flux (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][1][1]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][1][1]);
+  }
+#ifdef P4_TO_P8
+  fprintf(fid, "Error on z-flux (gfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][0][2]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][0][2]);
+  }
+  fprintf(fid, "Error on z-flux (xgfm): " );
+  for(int k = 0; k < ngrids; ++k)
+  {
+    if(k!=ngrids-1)
+      fprintf(fid, "%.5e ", err_flux_components[k][1][2]);
+    else
+      fprintf(fid, "%.5e\n", err_flux_components[k][1][2]);
+  }
+#endif
+
+  fprintf(fid, "=================================================================\n");
+  fprintf(fid, "===================== END OF SUMMARY ============================\n");
+  fprintf(fid, "=================================================================");
+  fclose(fid);
+  printf("Summary file printed in %s\n", summary_file.c_str());
 }
 
 int main (int argc, char* argv[])
@@ -1464,35 +879,33 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
-  cmd.add_option("ngrids", "number of computational grids (increasing refinement levels)");
-  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall ('Dirichlet' or 'Neumann')");
-  cmd.add_option("save_vtk", "save the p4est in vtk format");
-  cmd.add_option("work_dir", "exportation directory (required if save_vtk or summary files): work_dir/output for vtk files work_dir/summaries for summary files");
-  cmd.add_option("second_order_ls", "active second order interface localization");
-  cmd.add_option("ntree", "number of trees in the macromesh along the smallest dimension of the computational domain");
-  cmd.add_option("test", description_of_tests);
+  cmd.add_option("lmin", "min level of the tree in the computational grid, default is " + to_string(default_lmin));
+  cmd.add_option("lmax", "max level of the tree in the computational grid, default is " + to_string(default_lmax));
+  cmd.add_option("ngrids", "number of computational grids for accuracy analysis, default is " + to_string(default_ngrids));
+  ostringstream oss; oss << default_bc_wtype;
+  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall ('Dirichlet' or 'Neumann'), default is " + oss.str());
+  cmd.add_option("save_vtk", "saves the p4est's (computational and interface-capturing grids) in vtk format");
+  cmd.add_option("work_dir", "exportation directory, if not defined otherwise in the environment variable OUT_DIR. \n\
+\tThis is required if saving vtk or summary files: work_dir/vtu for vtk files work_dir/summaries for summary files. Default is " + default_work_folder);
+  cmd.add_option("second_order_ls", "activate second order interface localization if present. Default is " + string(default_use_second_order_theta ? "true" : "false"));
+  cmd.add_option("ntree", "number of trees in the macromesh along every dimension of the computational domain. Default value is " + to_string(default_ntree));
+  cmd.add_option("test", "Test problem to choose. Available choices are (default test number is " + to_string(default_test_number) +"): \n" + list_of_test_problems_for_scalar_jump_problems.get_description_of_tests() + "\n");
+  cmd.add_option("get_integral", "Calculates the integral of the solution if present. Default is " + string(default_get_integral ? "true" : "false"));
+  cmd.add_option("summary", "Prints a summary of the convergence results in a file on disk if present. Default is " + string(default_print_summary ? "true" : "false"));
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
-  int lmin = cmd.get<int>("lmin", lmin_);
-  int lmax = cmd.get<int>("lmax", lmax_);
-  int ngrids = cmd.get<int>("ngrids", ngrids_);
-  int test_number = cmd.get<int>("test", test_number_);
-#if defined(STAMPEDE)
-  string work_folder = cmd.get<string>("work_dir", "/scratch/04965/tg842642/cell_xgfm");
-#elif defined(POD_CLUSTER)
-  string work_folder = cmd.get<string>("work_dir", "/home/regan/cell_xgfm");
-#else
-  string work_folder = cmd.get<string>("work_dir", "/home/regan/workspace/projects/bubbles/cell_center_xgfm");
-#endif
-  string out_dir = work_folder + "/output";
-  BoundaryConditionType bc_wtype = cmd.get<BoundaryConditionType>("bc_wtype", bc_wtype_);
-  int ntree = cmd.get<int>("ntree", ntree_);
-  bool use_second_order_theta = cmd.get<bool>("second_order_ls", use_second_order_theta_);
-
-  bool save_vtk = cmd.contains("save_vtk");
+  const int lmin = cmd.get<int>("lmin", default_lmin);
+  const int lmax = cmd.get<int>("lmax", default_lmax);
+  const int ngrids = cmd.get<int>("ngrids", default_ngrids);
+  const int test_number = cmd.get<int>("test", default_test_number);
+  const BoundaryConditionType bc_wtype = cmd.get<BoundaryConditionType>("bc_wtype", default_bc_wtype);
+  const int ntree = cmd.get<int>("ntree", default_ntree);
+  const int n_xyz [P4EST_DIM] = {DIM(ntree, ntree, ntree)};
+  const bool use_second_order_theta = default_use_second_order_theta || cmd.contains("second_order_ls");
+  const bool get_integral = default_get_integral || cmd.contains("get_integral");
+  const bool print_summary = default_print_summary || cmd.contains("summary");
+  const bool save_vtk = cmd.contains("save_vtk");
 
   parStopWatch watch, watch_global;
   watch_global.start("Total run time");
@@ -1500,341 +913,50 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-  box domain;
-  switch (test_number) {
-#ifdef P4_TO_P8
-  case 0:
-    domain.xmin =  0.0;
-    domain.xmax =  1.0;
-    domain.ymin =  0.0;
-    domain.ymax =  1.0;
-    domain.zmin =  0.0;
-    domain.zmax =  1.0;
-    break;
-  case 1:
-  case 2:
-    domain.xmin =  -2.0;
-    domain.xmax =   2.0;
-    domain.ymin =  -2.0;
-    domain.ymax =   2.0;
-    domain.zmin =  -2.0;
-    domain.zmax =   2.0;
-    break;
-  case 3:
-    domain.xmin =  -1.5;
-    domain.xmax =   1.5;
-    domain.ymin =  -1.5;
-    domain.ymax =   1.5;
-    domain.zmin =  -1.5;
-    domain.zmax =   1.5;
-    break;
-#else
-  case 0:
-    domain.xmin =  0.0;
-    domain.xmax =  1.0;
-    domain.ymin =  0.0;
-    domain.ymax =  1.0;
-    break;
-  case 1:
-  case 2:
-  case 3:
-  case 4:
-  case 6:
-  case 7:
-    domain.xmin =  -1.0;
-    domain.xmax =  1.0;
-    domain.ymin =  -1.0;
-    domain.ymax =  1.0;
-    break;
-  case 5:
-    domain.xmin =  -1.5;
-    domain.xmax =  1.5;
-    domain.ymin =  0.0;
-    domain.ymax =  3.0;
-    break;
-  case 8:
-  case 9:
-    domain.xmin =  -1.5;
-    domain.xmax =  1.5;
-    domain.ymin =  -1.5;
-    domain.ymax =  1.5;
-    break;
-#endif
-  default:
-    throw std::invalid_argument("invalid test number.");
-  }
-  int n_xyz [P4EST_DIM]       = {DIM(ntree_, ntree_, ntree_)};
-  double xyz_min [P4EST_DIM]  = {DIM(domain.xmin, domain.ymin, domain.zmin)};
-  double xyz_max [P4EST_DIM]  = {DIM(domain.xmax, domain.ymax, domain.zmax)};
+  const test_case_for_scalar_jump_problem_t *test_problem = list_of_test_problems_for_scalar_jump_problems[test_number];
+  const string out_folder = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR"))) + "/" + test_problem->get_name();
+  const string vtk_out = out_folder + "/vtu";
 
-  int periodic[3];
-  switch (test_number) {
-#ifdef P4_TO_P8
-  case 0:
-  case 1:
-  case 2:
-    periodic[0] = periodic[1] = periodic[2] = 0;
-    break;
-  case 3:
-    periodic[0] = periodic[1] = periodic[2] = 1;
-    break;
-#else
-  case 0:
-  case 1:
-  case 2:
-  case 3:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-    periodic[0] = periodic[1] = periodic[2] = 0;
-    break;
-  case 8:
-    periodic[0] = 1;
-    periodic[1] = periodic[2] = 0;
-    break;
-  case 9:
-    periodic[0] = periodic[1] = 1;
-    periodic[2] = 0;
-    break;
-#endif
-  default:
-    throw std::invalid_argument("invalid test number.");
-    break;
-  }
+  const domain_t &domain = test_problem->get_domain();
 
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
-
-  p4est_t       *p4est, *p4est_fine;
-  p4est_nodes_t *nodes, *nodes_fine;
-  p4est_ghost_t *ghost, *ghost_fine;
+  connectivity = my_p4est_brick_new(n_xyz, test_problem->get_xyz_min(), test_problem->get_xyz_max(), &brick, test_problem->get_periodicity());
 
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
 
-  double avg_exa = 0.0;
-  if(bc_wtype == NEUMANN || test_number == (P4EST_DIM == 3 ? 3 : 9))
-  {
-    switch(test_number)
-    {
-#ifdef P4_TO_P8
-    case 0: avg_exa = 0.030340552739300;  break; // using Richardson's extrapolation between uniform 1024x1024x1024 and 2048x2048x2048 grids (assuming second-order accurate integration)
-    case 1: avg_exa = 197.6819074552000;  break; // using Richardson's extrapolation between uniform 1024x1024x1024 and 2048x2048x2048 grids (assuming second-order accurate integration)
-    case 2: throw std::invalid_argument("Test case 2 cannot be validated with a non-empty nullspace (i.e. Neumann boundary condition). \n\
-This test case is meant to check the AMR feature, hence the interface is supposedly captured with a very fine grid for which an accurate estimate of the mean value is unknown...");
-    case 3: avg_exa = -0.164222868617700; break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
-#else
-    case 0: avg_exa = 0.117241067253686032041502125837326856300828722393373744878; break; // calculated with Wolfram
-    case 1: avg_exa =
-          (double)(domain.xmax-domain.xmin)*(domain.ymax-domain.ymin)
-          + 2.0*M_PI*(0.5*log(2.0)-0.25 + 0.25*0.5*0.5)
-          + (-M_PI_2*2.0 - 6.0 + M_PI*2.0*log(2.0*sqrt(2.0)) + 2.0*2.0*acos(1.0/sqrt(2.0)) + 4.0*sqrt(2.0)*log(2.0*sqrt(2.0))*(1.0/sqrt(2.0) - sqrt(2.0)*acos(1.0/sqrt(2.0))) - 4.0*asin(1.0/sqrt(2.0)))
-          - (-M_PI_2 + M_PI*log(2.0) - 2.0*M_PI); break; // analytically calculated (with Wolfram's help)
-    case 2: avg_exa = 0.785398163397448309615660845819875721049292349843776455243; break; // calculated with Wolfram
-    case 3: avg_exa = 0.0; break;
-    case 4: avg_exa = 0.3782030713479; break; // calculated on a 14/14 grid (1X1 macromesh) on stampede...
-    case 5: avg_exa = -25.59547830010; break; // calculated on a 14/14 grid (1X1 macromesh) on stampede...
-    case 6: avg_exa = 2.415389999053; break; // calculated on a 14/14 grid (1X1 macromesh) on stampede...
-    case 7: throw std::invalid_argument("Test case 7 cannot be validated with a non-empty nullspace (i.e. Neumann boundary condition) because of the random interface...");
-    case 8: avg_exa = 0.6448672580288; break; // calculated on a 14/14 grid (1X1 macromesh) on stampede...
-    case 9: avg_exa = 1.652618403615; break;  // calculated on a 14/14 grid (1X1 macromesh) on stampede...
-#endif
-    default: throw std::invalid_argument("invalid test number.");
-    }
-
-    avg_exa /= MULTD((domain.xmax - domain.xmin), (domain.ymax - domain.ymin), (domain.zmax - domain.zmin));
-  }
-
-  LEVEL_SET levelset(domain, test_number);
-
-  double mu_m, mu_p;
-  switch (test_number) {
-#ifdef P4_TO_P8
-  case 0:
-    mu_m = 2.0;
-    mu_p = 1.0;
-    break;
-  case 1:
-    mu_m = 2000.0;
-    mu_p = 1.0;
-    break;
-  case 2:
-    mu_m = 1.0;
-    mu_p = 1250.0;
-    break;
-  case 3:
-    mu_m = 1.0;
-    mu_p = 80.0;
-    break;
-#else
-  case 0:
-    mu_m = 2.0;
-    mu_p = 1.0;
-    break;
-  case 1:
-  case 2:
-  case 3:
-    mu_m = 1.0;
-    mu_p = 1.0;
-    break;
-  case 4:
-  case 5:
-    mu_m = 1.0;
-    mu_p = 10.0;
-    break;
-  case 6:
-    mu_m = 10000.0;
-    mu_p = 1.0;
-    break;
-  case 7:
-    mu_m = 1000.0;
-    mu_p = 1.0;
-    break;
-  case 8:
-    mu_m = 1.0;
-    mu_p = 10.0;
-    break;
-  case 9:
-    mu_m = 1.0;
-    mu_p = 100.0;
-    break;
-#endif
-  default:
-    throw std::invalid_argument("set mus: unknown test number.");
-  }
+  const bool problem_is_full_periodic = ANDD(test_problem->get_periodicity()[0], test_problem->get_periodicity()[1], test_problem->get_periodicity()[2]);
+  const double avg_exa = (bc_wtype == NEUMANN || problem_is_full_periodic ? NAN : test_problem->get_integral_of_solution()/MULTD(domain.length(), domain.height(), domain.width()));
 
   for(int iter = 0; iter < ngrids; ++iter)
   {
-    ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
-    p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+    ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin + iter, lmax + iter); CHKERRXX(ierr);
 
     /* build the computational grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods, its cell neighborhoods
      * the REINITIALIZED levelset on the computational grid
      */
-    splitting_criteria_cf_t data(lmin+iter, lmax+iter, &levelset, 1.2);
-    p4est->user_pointer = (void*)(&data);
-
-    for (int i = 0; i < lmax+iter; ++i) {
-#ifdef P4_TO_P8
-      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-#else
-      if(test_number != 7)
-        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
-      else
-        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf_finest_in_negative, NULL);
-#endif
-      my_p4est_partition(p4est, P4EST_FALSE, NULL);
-    }
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
-
-    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est, ghost);
-    my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-    nodes = my_p4est_nodes_new(p4est, ghost);
-    my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes); ngbd_n.init_neighbors();
-    Vec phi_coarse;
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_coarse); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, levelset, phi_coarse);
-    my_p4est_level_set_t ls_coarse(&ngbd_n);
-    ls_coarse.reinitialize_2nd_order(phi_coarse);
-
-    const double *phi_coarse_read_p;
-    ierr = VecGetArrayRead(phi_coarse, &phi_coarse_read_p); CHKERRXX(ierr);
-    splitting_criteria_tag_t data_tag(lmin+iter, lmax+iter, 1.2);
-    p4est_t* new_p4est = p4est_copy(p4est, P4EST_FALSE);
-
-    while(data_tag.refine_and_coarsen(new_p4est, nodes, phi_coarse_read_p, test_number==7))
-    {
-      ierr = VecRestoreArrayRead(phi_coarse, &phi_coarse_read_p); CHKERRXX(ierr);
-      my_p4est_interpolation_nodes_t interp_nodes(&ngbd_n);
-      interp_nodes.set_input(phi_coarse, linear);
-
-      my_p4est_partition(new_p4est, P4EST_FALSE, NULL);
-      p4est_ghost_t *new_ghost  = my_p4est_ghost_new(new_p4est, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(new_p4est, new_ghost);
-      p4est_nodes_t *new_nodes  = my_p4est_nodes_new(new_p4est, new_ghost);
-      Vec new_coarse_phi;
-      ierr = VecCreateGhostNodes(new_p4est, new_nodes, &new_coarse_phi); CHKERRXX(ierr);
-      for(size_t nn=0; nn<new_nodes->indep_nodes.elem_count; ++nn)
-      {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(nn, new_p4est, new_nodes, xyz);
-        interp_nodes.add_point(nn, xyz);
-      }
-      interp_nodes.interpolate(new_coarse_phi);
-
-
-      p4est_destroy(p4est); p4est = new_p4est; new_p4est = p4est_copy(p4est, P4EST_FALSE);
-      p4est_ghost_destroy(ghost); ghost = new_ghost;
-      hierarchy.update(p4est, ghost);
-      p4est_nodes_destroy(nodes); nodes = new_nodes;
-      ngbd_n.update(&hierarchy, nodes);
-
-      ierr = VecDestroy(phi_coarse); CHKERRXX(ierr); phi_coarse = new_coarse_phi;
-
-      ierr = VecGetArrayRead(phi_coarse, &phi_coarse_read_p); CHKERRXX(ierr);
-    }
-    ierr = VecRestoreArrayRead(phi_coarse, &phi_coarse_read_p); CHKERRXX(ierr);
-    p4est_destroy(new_p4est);
-    my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
-    my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
+    p4est_t       *p4est = NULL;
+    p4est_nodes_t *nodes = NULL;
+    p4est_ghost_t *ghost = NULL;
+    my_p4est_hierarchy_t* hierarchy = NULL;
+    my_p4est_node_neighbors_t* ngbd_n = NULL;
+    my_p4est_cell_neighbors_t* ngbd_c = NULL;
+    my_p4est_faces_t* faces = NULL;
+    Vec phi_comp = NULL;
+    splitting_criteria_cf_t data(lmin + iter, lmax + iter, test_problem->get_levelset_cf(), 1.2);
+    build_computational_grid_data(mpi, &brick, connectivity, data, test_problem,
+                                  p4est, ghost, nodes, phi_comp, hierarchy, ngbd_n, ngbd_c, faces);
 
     /* build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
      * the REINITIALIZED levelset on the interface-capturing grid
      */
-    p4est_fine = p4est_copy(p4est, P4EST_FALSE);
-    splitting_criteria_cf_t data_fine(lmin+iter, lmax+1+iter, &levelset, 1.2);
-    p4est_fine->user_pointer = (void*)(&data_fine);
-    my_p4est_refine(p4est_fine, P4EST_FALSE, refine_levelset_cf, NULL);
-    ghost_fine = my_p4est_ghost_new(p4est_fine, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est_fine, ghost_fine);
-    my_p4est_hierarchy_t hierarchy_fine(p4est_fine, ghost_fine, &brick);
-    nodes_fine = my_p4est_nodes_new(p4est_fine, ghost_fine);
-    my_p4est_node_neighbors_t ngbd_n_fine(&hierarchy_fine, nodes_fine); ngbd_n_fine.init_neighbors();
-    Vec phi;
-    ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_fine, nodes_fine, levelset, phi);
-    my_p4est_level_set_t ls(&ngbd_n_fine);
-    ls.reinitialize_2nd_order(phi);
-
-    const double *phi_read_p;
-    ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-    splitting_criteria_tag_t data_tag_fine(lmin+iter, lmax+1+iter, 1.2);
-    p4est_t *new_p4est_fine = p4est_copy(p4est_fine, P4EST_FALSE);
-
-    while(data_tag_fine.refine(new_p4est_fine, nodes_fine, phi_read_p)) // not refine_and_corsen, because we need the fine grid to be everywhere finer or as coarse as the coarse grid!
-    {
-      ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-      my_p4est_interpolation_nodes_t interp_nodes_fine(&ngbd_n_fine);
-      interp_nodes_fine.set_input(phi, linear);
-
-      p4est_ghost_t *new_ghost_fine = my_p4est_ghost_new(new_p4est_fine, P4EST_CONNECT_FULL);
-      my_p4est_ghost_expand(new_p4est_fine, new_ghost_fine);
-      p4est_nodes_t *new_nodes_fine  = my_p4est_nodes_new(new_p4est_fine, new_ghost_fine);
-      Vec new_phi;
-      ierr = VecCreateGhostNodes(new_p4est_fine, new_nodes_fine, &new_phi); CHKERRXX(ierr);
-      for(size_t nn=0; nn<new_nodes_fine->indep_nodes.elem_count; ++nn)
-      {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(nn, new_p4est_fine, new_nodes_fine, xyz);
-        interp_nodes_fine.add_point(nn, xyz);
-      }
-      interp_nodes_fine.interpolate(new_phi);
-
-
-      p4est_destroy(p4est_fine); p4est_fine = new_p4est_fine; new_p4est_fine = p4est_copy(p4est_fine, P4EST_FALSE);
-      p4est_ghost_destroy(ghost_fine); ghost_fine = new_ghost_fine;
-      hierarchy_fine.update(p4est_fine, ghost_fine);
-      p4est_nodes_destroy(nodes_fine); nodes_fine = new_nodes_fine;
-      ngbd_n_fine.update(&hierarchy_fine, nodes_fine);
-      ls.update(&ngbd_n_fine);
-
-      ierr = VecDestroy(phi); CHKERRXX(ierr); phi = new_phi;
-
-      ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-    }
-
-    ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-    p4est_destroy(new_p4est_fine);
+    p4est_t       *p4est_fine = NULL;
+    p4est_nodes_t *nodes_fine = NULL;
+    p4est_ghost_t *ghost_fine = NULL;
+    Vec phi_fine = NULL;
+    my_p4est_hierarchy_t* hierarchy_fine = NULL;
+    my_p4est_node_neighbors_t* ngbd_n_fine = NULL;
+    splitting_criteria_cf_t data_fine(data.min_lvl, data.max_lvl + 1, test_problem->get_levelset_cf(), 1.2);
+    build_interface_capturing_grid_data(p4est, &brick, data_fine, test_problem,
+                                        p4est_fine, ghost_fine, nodes_fine, phi_fine, hierarchy_fine, ngbd_n_fine);
 
     /* Get the normals, the second derivatives of the levelset (if required) and the relevant flattened jumps
      */
@@ -1847,31 +969,27 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     if(use_second_order_theta){
       ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &phi_xxyyzz); CHKERRXX(ierr); }
 
-    get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi, use_second_order_theta, test_number, mu_p, mu_m, //input
-                          jump_u, jump_normal_flux, normals, phi_xxyyzz); // output
+    get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi_fine, use_second_order_theta, test_problem, //input
+                                    jump_u, jump_normal_flux, normals, phi_xxyyzz); // output
 
-    /* TEST THE JUMP SOLVER */
+    /* TEST THE JUMP SOLVER AND COMPARE TO ORIGINAL GFM */
     BoundaryConditionsDIM bc;
     BCWALLTYPE bc_wall_type(bc_wtype);
     bc.setWallTypes(bc_wall_type);
-    BCWALLVAL bc_wall_val(domain, levelset, bc_wtype, test_number);
+    BCWALLVAL bc_wall_val(test_problem, &bc_wall_type);
     bc.setWallValues(bc_wall_val);
 
     Vec rhs_original;
     ierr = VecCreateNoGhostCells(p4est, &rhs_original); CHKERRXX(ierr);
-    get_sharp_rhs(p4est, ghost, ngbd_n_fine, phi, test_number, mu_p, mu_m, rhs_original);
+    get_sharp_rhs(p4est, ghost, ngbd_n_fine, phi_fine, test_problem, rhs_original);
 
     Vec sol[2], err_cells[2], extended_field_xgfm, extended_field_fine_nodes_xgfm;
-    Vec exact_msol_at_nodes, exact_psol_at_nodes; // to enable illustration of exact solution with wrap-by-scalar in paraview
     Vec jump_mu_grad_u[2];
-    for (unsigned char flag = 0; flag < 2; ++flag) {
-      my_p4est_xgfm_cells_t solver(&ngbd_c, &ngbd_n, &ngbd_n_fine, flag);
-      if(use_second_order_theta)
-        solver.set_phi(phi, phi_xxyyzz);
-      else
-        solver.set_phi(phi);
+    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
+      my_p4est_xgfm_cells_t solver(ngbd_c, ngbd_n, ngbd_n_fine, xgfm_flag);
+      solver.set_phi(phi_fine, phi_xxyyzz);
       solver.set_normals(normals);
-      solver.set_mus(mu_m, mu_p);
+      solver.set_mus(test_problem->get_mu_minus(), test_problem->get_mu_plus());
       solver.set_jumps(jump_u, jump_normal_flux);
       solver.set_diagonals(0.0, 0.0);
       solver.set_bc(bc);
@@ -1880,190 +998,77 @@ This test case is meant to check the AMR feature, hence the interface is suppose
       ierr = VecCopy(rhs_original, rhs);
       solver.set_rhs(rhs);
 
-
       watch.start("Total time:");
       solver.solve();
       watch.stop(); watch.read_duration();
 
-      if(flag)
+      print_iteration_info(mpi, solver);
+
+      // get extended fields for illustration purposes
+      if(xgfm_flag)
         solver.get_extended_interface_values(extended_field_xgfm, extended_field_fine_nodes_xgfm);
 
+      // compute and get flux components (to check their accuracy as well)
       Vec flux[P4EST_DIM];
-      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecCreateGhostFaces(p4est, &faces, &flux[dim], dim); CHKERRXX(ierr);}
-      solver.get_flux_components(flux, &faces);
+      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecCreateGhostFaces(p4est, faces, &flux[dim], dim); CHKERRXX(ierr); }
+      solver.get_flux_components(flux, faces);
+      // get solution (to check its accuracy as well) and jump terms found by solver (for illustration)
+      sol[xgfm_flag] = solver.get_solution();
+      solver.get_jump_mu_grad_u(jump_mu_grad_u[xgfm_flag]);
 
-      sol[flag] = solver.get_solution();
-      solver.get_jump_mu_grad_u(jump_mu_grad_u[flag]);
-
-
-      vector<double> max_corr = solver.get_max_corrections();
-      vector<double> rel_res = solver.get_relative_residuals();
-      vector<PetscInt> nb_iter = solver.get_numbers_of_ksp_iterations();
-
-      if(mpi.rank() == 0)
-      {
-        PetscInt total_nb_iterations = nb_iter.at(0);
-        for (size_t tt = 1; tt < max_corr.size(); ++tt){
-          total_nb_iterations += nb_iter.at(tt);
-          if(track_residuals_and_corrections)
-            cout << "max corr " << tt << " = " << max_corr[tt] << " and rel residual " << tt << " = " << rel_res[tt] << " after " << nb_iter[tt] << " iterations." << endl;
-        }
-        cout << "The solver converged after a total of " << total_nb_iterations << " iterations." << std::endl;
-      }
-
-      if((save_vtk || get_integral) && flag)
-      {
-        ierr = VecCreateGhostNodes(p4est, nodes, &exact_msol_at_nodes); CHKERRXX(ierr);
-        ierr = VecCreateGhostNodes(p4est, nodes, &exact_psol_at_nodes); CHKERRXX(ierr);
-        double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p;
-        ierr = VecGetArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
-        ierr = VecGetArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-        for (size_t node_idx = 0; node_idx < nodes->indep_nodes.elem_count; ++node_idx) {
-          double xyz_node[P4EST_DIM];
-          node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
-          exact_msol_at_nodes_p[node_idx] = u_exact_m(test_number, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
-          exact_psol_at_nodes_p[node_idx] = u_exact_p(test_number, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
-        }
-        ierr = VecRestoreArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-        ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
-
-        double integral_of_exact = 0.0;
-        integral_of_exact += integrate_over_negative_domain(p4est, nodes, phi_coarse, exact_msol_at_nodes);
-        if(ISNAN(integral_of_exact))
-          std::cout << "the first integral part is nan" << std::endl;
-        Vec phi_coarse_loc;
-        ierr = VecGhostGetLocalForm(phi_coarse, &phi_coarse_loc); CHKERRXX(ierr);
-        ierr = VecScale(phi_coarse_loc, -1.0); CHKERRXX(ierr);
-        ierr = VecGhostRestoreLocalForm(phi_coarse, &phi_coarse_loc); CHKERRXX(ierr);
-        integral_of_exact += integrate_over_negative_domain(p4est, nodes, phi_coarse, exact_psol_at_nodes);
-        ierr = VecGhostGetLocalForm(phi_coarse, &phi_coarse_loc); CHKERRXX(ierr);
-        ierr = VecScale(phi_coarse_loc, -1.0); CHKERRXX(ierr);
-        ierr = VecGhostRestoreLocalForm(phi_coarse, &phi_coarse_loc); CHKERRXX(ierr);
-        ierr = PetscPrintf(mpi.comm(), "The integral calculated with exact fields is %.12e \n", integral_of_exact); CHKERRXX(ierr);
-      }
-
-
-      /* if all NEUMANN boundary conditions, shift solution */
+      /* if null space, shift solution */
       if(solver.get_matrix_has_nullspace())
-      {
-        double *sol_p;
-        ierr = VecGetArray(sol[flag], &sol_p); CHKERRXX(ierr);
+        shift_solution_to_match_exact_average(sol[xgfm_flag], p4est, ghost, avg_exa);
 
-        double avg_sol = 0.0; // as calculated by PetSc
-        for (p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
-          avg_sol += sol_p[quad_idx];
-        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &avg_sol, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-        avg_sol /= ((double) p4est->global_num_quadrants);
-
-        for(p4est_locidx_t quad_idx=0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
-          sol_p[quad_idx] = sol_p[quad_idx] - avg_sol + avg_exa;
-
-        for(size_t quad_idx = 0; quad_idx < ghost->ghosts.elem_count; ++quad_idx)
-          sol_p[quad_idx + p4est->local_num_quadrants] = sol_p[quad_idx + p4est->local_num_quadrants] - avg_sol + avg_exa;
-
-        ierr = VecRestoreArray(sol[flag], &sol_p); CHKERRXX(ierr);
-      }
-
-      /* check the error */
-
-      ierr = VecCreateGhostCells(p4est, ghost, &err_cells[flag]); CHKERRXX(ierr);
-      measure_errors(p4est, ghost, ngbd_n_fine, &faces, phi, test_number, mu_p, mu_m, sol[flag], flux,
-                     err_cells[flag], err[iter][flag], err_flux_components[iter][flag], err_derivatives_components[iter][flag]);
-      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      /* measure the error(s) */
+      ierr = VecCreateGhostCells(p4est, ghost, &err_cells[xgfm_flag]); CHKERRXX(ierr);
+      measure_errors(p4est, ghost, ngbd_n_fine, faces, phi_fine, test_problem, sol[xgfm_flag], flux,
+                     err_cells[xgfm_flag], err[iter][xgfm_flag], err_flux_components[iter][xgfm_flag], err_derivatives_components[iter][xgfm_flag]);
+      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecDestroy(flux[dim]); CHKERRXX(ierr);}
       ierr = VecDestroy(rhs); CHKERRXX(ierr);
     }
 
-    Vec correction_jump_mu_grad, loc_ghost_jump_mu_grad_u_gfm, loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction;
-    ierr = VecDuplicate(jump_mu_grad_u[0], &correction_jump_mu_grad); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecCopy(loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecAXPY(loc_ghost_correction, -1.0, loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-
-    if(iter > 0){
-      ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for  gfm: %.5e, order = %g\n", err[iter][0], log(err[iter-1][0]/err[iter][0])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for xgfm: %.5e, order = %g\n", err[iter][1], log(err[iter-1][1]/err[iter][1])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-x for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][0], log(err_flux_components[iter-1][0][0]/err_flux_components[iter][0][0])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-x for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][0], log(err_flux_components[iter-1][1][0]/err_flux_components[iter][1][0])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-y for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][1], log(err_flux_components[iter-1][0][1]/err_flux_components[iter][0][1])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-y for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][1], log(err_flux_components[iter-1][1][1]/err_flux_components[iter][1][1])/log(2)); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-z for  gfm: %.5e, order = %g\n", err_flux_components[iter][0][2], log(err_flux_components[iter-1][0][2]/err_flux_components[iter][0][2])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-z for xgfm: %.5e, order = %g\n", err_flux_components[iter][1][2], log(err_flux_components[iter-1][1][2]/err_flux_components[iter][1][2])/log(2)); CHKERRXX(ierr);
-#endif
-      ierr = PetscPrintf(p4est->mpicomm, "Error on x-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][0], log(err_derivatives_components[iter-1][0][0]/err_derivatives_components[iter][0][0])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on x-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][0], log(err_derivatives_components[iter-1][1][0]/err_derivatives_components[iter][1][0])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on y-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][1], log(err_derivatives_components[iter-1][0][1]/err_derivatives_components[iter][0][1])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on y-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][1], log(err_derivatives_components[iter-1][1][1]/err_derivatives_components[iter][1][1])/log(2)); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(p4est->mpicomm, "Error on z-der  for  gfm: %.5e, order = %g\n", err_derivatives_components[iter][0][2], log(err_derivatives_components[iter-1][0][2]/err_derivatives_components[iter][0][2])/log(2)); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on z-der  for xgfm: %.5e, order = %g\n", err_derivatives_components[iter][1][2], log(err_derivatives_components[iter-1][1][2]/err_derivatives_components[iter][1][2])/log(2)); CHKERRXX(ierr);
-#endif
-    }
-    else{
-      ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for  gfm: %.5e\n", err[iter][0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for xgfm: %.5e\n", err[iter][1]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-x for  gfm: %.5e\n", err_flux_components[iter][0][0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-x for xgfm: %.5e\n", err_flux_components[iter][1][0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-y for  gfm: %.5e\n", err_flux_components[iter][0][1]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-y for xgfm: %.5e\n", err_flux_components[iter][1][1]); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-z for  gfm: %.5e\n", err_flux_components[iter][0][2]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on flux-z for xgfm: %.5e\n", err_flux_components[iter][1][2]); CHKERRXX(ierr);
-#endif
-      ierr = PetscPrintf(p4est->mpicomm, "Error on x-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on x-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on y-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][1]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on y-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][1]); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(p4est->mpicomm, "Error on z-der  for  gfm: %.5e\n", err_derivatives_components[iter][0][2]); CHKERRXX(ierr);
-      ierr = PetscPrintf(p4est->mpicomm, "Error on z-der  for xgfm: %.5e\n", err_derivatives_components[iter][1][2]); CHKERRXX(ierr);
-#endif
-    }
-
-    if(save_vtk)
-      save_VTK(out_dir, test_number,
-               p4est, ghost, nodes,
-               p4est_fine, ghost_fine, nodes_fine, &brick,
-               phi, normals, jump_u, jump_normal_flux, extended_field_fine_nodes_xgfm, jump_mu_grad_u, correction_jump_mu_grad,
-               sol, err_cells, extended_field_xgfm
-         #ifndef P4_TO_P8
-               , exact_msol_at_nodes, exact_psol_at_nodes, phi_coarse
-         #endif
-               );
-
-
-    ierr = VecDestroy(phi_coarse); CHKERRXX(ierr);
-    ierr = VecDestroy(phi); CHKERRXX(ierr);
-    if(use_second_order_theta){
-      ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }
-    ierr = VecDestroy(jump_u); CHKERRXX(ierr);
-    ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
-    ierr = VecDestroy(normals); CHKERRXX(ierr);
-    for (unsigned char flag = 0; flag < 2; ++flag) {
-      ierr = VecDestroy(jump_mu_grad_u[flag]); CHKERRXX(ierr); }
-    ierr = VecDestroy(correction_jump_mu_grad); CHKERRXX(ierr);
-    ierr = VecDestroy(rhs_original); CHKERRXX(ierr);
-    for (unsigned char flag = 0; flag < 2; ++flag)
-    {
-      ierr = VecDestroy(sol[flag]); CHKERRXX(ierr);
-      ierr = VecDestroy(err_cells[flag]); CHKERRXX(ierr);
-      ierr = VecDestroy(jump_mu_grad_u[flag]); CHKERRXX(ierr);
-    }
+    print_errors_and_orders(mpi, iter, err, err_flux_components, err_derivatives_components);
 
     if(save_vtk || get_integral)
     {
+      Vec exact_msol_at_nodes = NULL, exact_psol_at_nodes  = NULL; // to enable illustration of exact solution with wrap-by-scalar in paraview or to calculate the integral of the exact solution, numerically
+      ierr = VecCreateGhostNodes(p4est, nodes, &exact_msol_at_nodes); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &exact_psol_at_nodes); CHKERRXX(ierr);
+      get_sampled_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, p4est, nodes, test_problem);
+
+      if(get_integral)
+        print_integral_of_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, phi_comp, p4est, nodes);
+
+      if(save_vtk)
+        save_VTK(vtk_out, iter,
+                 p4est, ghost, nodes,
+                 p4est_fine, ghost_fine, nodes_fine, &brick,
+                 phi_fine, normals, jump_u, jump_normal_flux, extended_field_fine_nodes_xgfm, jump_mu_grad_u,
+                 sol, err_cells, extended_field_xgfm, exact_msol_at_nodes, exact_psol_at_nodes, phi_comp);
       ierr = VecDestroy(exact_msol_at_nodes); CHKERRXX(ierr);
       ierr = VecDestroy(exact_psol_at_nodes); CHKERRXX(ierr);
     }
 
+    // destroy data created for this iteration
+    ierr = VecDestroy(phi_comp); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_fine); CHKERRXX(ierr);
+    if(use_second_order_theta) {
+      ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }
+    ierr = VecDestroy(jump_u); CHKERRXX(ierr);
+    ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
+    ierr = VecDestroy(normals); CHKERRXX(ierr);
+    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
+      ierr = VecDestroy(jump_mu_grad_u[xgfm_flag]); CHKERRXX(ierr); }
+    ierr = VecDestroy(rhs_original); CHKERRXX(ierr);
+    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag)
+    {
+      ierr = VecDestroy(sol[xgfm_flag]); CHKERRXX(ierr);
+      ierr = VecDestroy(err_cells[xgfm_flag]); CHKERRXX(ierr);
+      ierr = VecDestroy(jump_mu_grad_u[xgfm_flag]); CHKERRXX(ierr);
+    }
     ierr = VecDestroy(extended_field_xgfm); CHKERRXX(ierr);
     ierr = VecDestroy(extended_field_fine_nodes_xgfm); CHKERRXX(ierr);
 
@@ -2071,165 +1076,15 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     p4est_nodes_destroy(nodes); p4est_nodes_destroy(nodes_fine);
     p4est_ghost_destroy(ghost); p4est_ghost_destroy(ghost_fine);
     p4est_destroy      (p4est); p4est_destroy(p4est_fine);
+    delete hierarchy; delete hierarchy_fine;
+    delete ngbd_n; delete ngbd_n_fine;
+    delete ngbd_c;
+    delete faces;
   }
 
-  if(mpi.rank() == 0)
-  {
-    if(print_summary)
-    {
-      string summary_folder = work_folder + "/summaries/" + to_string(P4EST_DIM) + "D";
-      ostringstream command;
-      command << "mkdir -p " << summary_folder.c_str();
-      system(command.str().c_str()); // create the summary folder
-      string summary_file = summary_folder + "/summary_test" + to_string(test_number) + "_" + to_string(P4EST_DIM) + "D_lmin" + to_string(lmin) + "_lmax" + to_string(lmax) + "_ngrids" + to_string(ngrids) + "_ntree" + to_string(ntree) + "_accuracyls" + to_string(use_second_order_theta?2:1) + "_" + ((bc_wtype == DIRICHLET)? "dirichlet": "neumann") + ".dat";
-
-      FILE *fid = fopen(summary_file.c_str(), "w");
-      fprintf(fid, "=================================================================\n");
-      fprintf(fid, "========================= SUMMARY ===============================\n");
-      fprintf(fid, "=================================================================\n");
-      fprintf(fid, "Test number %d in %d-D\n", test_number, P4EST_DIM);
-      fprintf(fid, "lmin: %d\n", lmin);
-      fprintf(fid, "lmax: %d\n", lmax);
-      fprintf(fid, "Number of grids: %d\n", ngrids);
-      fprintf(fid, "Number of trees along minimum dimension of domain in macromesh: %d\n", ntree);
-      fprintf(fid, "Order of accuracy for interface localization: %d\n", (use_second_order_theta? 2:1));
-      fprintf(fid, "Wall boundary condition: %s\n", ((bc_wtype == DIRICHLET)? "dirichlet" : "neumann"));
-      fprintf(fid, "Resolution: " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%d/%d ", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
-        else
-          fprintf(fid, "%d/%d\n", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
-      }
-      fprintf(fid, "Error on solution (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err[k][0]);
-        else
-          fprintf(fid, "%.5e\n", err[k][0]);
-      }
-      fprintf(fid, "Error on solution (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err[k][1]);
-        else
-          fprintf(fid, "%.5e\n", err[k][1]);
-      }
-
-      fprintf(fid, "Error on x-derivative (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][0][0]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][0]);
-      }
-      fprintf(fid, "Error on x-derivative (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][1][0]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][0]);
-      }
-
-      fprintf(fid, "Error on y-derivative (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][0][1]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][1]);
-      }
-      fprintf(fid, "Error on y-derivative (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][1][1]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][1]);
-      }
-#ifdef P4_TO_P8
-      fprintf(fid, "Error on z-derivative (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][0][2]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][2]);
-      }
-      fprintf(fid, "Error on z-derivative (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_derivatives_components[k][1][2]);
-        else
-          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][2]);
-      }
-#endif
-
-      fprintf(fid, "Error on x-flux (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][0][0]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][0][0]);
-      }
-      fprintf(fid, "Error on x-flux (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][1][0]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][1][0]);
-      }
-
-      fprintf(fid, "Error on y-flux (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][0][1]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][0][1]);
-      }
-      fprintf(fid, "Error on y-flux (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][1][1]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][1][1]);
-      }
-#ifdef P4_TO_P8
-      fprintf(fid, "Error on z-flux (gfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][0][2]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][0][2]);
-      }
-      fprintf(fid, "Error on z-flux (xgfm): " );
-      for (int k = 0; k < ngrids; ++k)
-      {
-        if(k!=ngrids-1)
-          fprintf(fid, "%.5e ", err_flux_components[k][1][2]);
-        else
-          fprintf(fid, "%.5e\n", err_flux_components[k][1][2]);
-      }
-#endif
-
-      fprintf(fid, "=================================================================\n");
-      fprintf(fid, "===================== END OF SUMMARY ============================\n");
-      fprintf(fid, "=================================================================");
-      fclose(fid);
-      printf("Summary file printed in %s\n", summary_file.c_str());
-    }
-  }
+  if(mpi.rank() == 0 && print_summary)
+    print_convergence_summary_in_file(out_folder, test_problem->get_name(), lmin, lmax, ntree, ngrids, use_second_order_theta, bc_wtype,
+                                      err, err_derivatives_components, err_flux_components);
 
   my_p4est_brick_destroy(connectivity, &brick);
 

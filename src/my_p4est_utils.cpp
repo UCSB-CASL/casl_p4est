@@ -2266,6 +2266,17 @@ PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
   return ierr;
 }
 
+PetscErrorCode VecAXPYGhost(Vec y, PetscScalar alpha, Vec x)
+{
+  PetscErrorCode ierr;
+  Vec X, Y;
+  ierr = VecGhostGetLocalForm(x, &X);     CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(y, &Y);     CHKERRQ(ierr);
+  ierr = VecAXPY(Y, alpha, X);            CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(x, &X); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRQ(ierr);
+  return ierr;
+}
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
 {
   PetscErrorCode ierr;

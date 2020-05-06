@@ -22,9 +22,13 @@ class test_case_for_scalar_jump_problem_t
 protected:
   domain_t domain;
   std::string description;
+  std::string test_name;
   double mu_m, mu_p;
-  const CF_DIM *level_set;
+  CF_DIM *level_set;
   double solution_integral;
+  bool with_uniform_finest_in_negative_domain = false;
+
+  void activate_finest_in_negative_domain() { with_uniform_finest_in_negative_domain = true; }
 
 public:
   ~test_case_for_scalar_jump_problem_t()
@@ -73,9 +77,16 @@ public:
   const double *get_xyz_max() const           { return domain.xyz_max; }
   const int *get_periodicity() const          { return domain.periodicity; }
   const std::string& get_description() const  { return description; }
-  double get_avg_solution() const             { return avg_solution; }
+  const std::string& get_name() const         { return test_name; }
+  double get_integral_of_solution() const     { return solution_integral; }
   double get_mu_minus() const                 { return mu_m; }
   double get_mu_plus() const                  { return mu_p; }
+  double levelset(const double xyz[P4EST_DIM]) const { return levelset(DIM(xyz[0], xyz[1], xyz[2])); }
+  double levelset(DIM(const double &x, const double &y, const double &z)) const { return (*level_set)(DIM(x, y, z)); }
+  CF_DIM* get_levelset_cf() const             { return level_set; }
+  const domain_t &get_domain() const          { return domain; }
+
+  bool requires_fine_cells_in_negative_domain() const { return with_uniform_finest_in_negative_domain; }
 };
 
 class level_set_t : public CF_DIM
@@ -97,19 +108,24 @@ public:
   {
     const double xyz[P4EST_DIM] = {DIM(x, y, z)};
     double ls = elementary_function(ls_center, xyz);
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-      if(domain.periodicity[dim])
-      {
-        double ls_center_wrapped[P4EST_DIM] = {DIM(ls_center[0], ls_center[1], ls_center[2])};
-        for (char ii = -1; ii < 2; ii += 2)
-        {
-          ls_center_wrapped[dim] = ls_center[dim] + ii*(domain.xyz_max[dim] - domain.xyz_min[dim]);
-          if(neg_inside)
-            ls = MIN(ls, elementary_function(ls_center_wrapped, xyz));
-          else
-            ls = MAX(ls, elementary_function(ls_center_wrapped, xyz));
-        }
-      }
+    char wrapping[P4EST_DIM];
+    if(ORD(domain.periodicity[0], domain.periodicity[1], domain.periodicity[2]))
+      for (wrapping[0] = (domain.periodicity[0] ? -1 : 0); wrapping[0] < (domain.periodicity[0] ? 2 : 1); wrapping[0] += 1)
+        for (wrapping[1] = (domain.periodicity[1] ? -1 : 0); wrapping[1] < (domain.periodicity[1] ? 2 : 1); wrapping[1] += 1)
+#ifdef P4_TO_P8
+          for (wrapping[2] = (domain.periodicity[2] ? -1 : 0); wrapping[2] < (domain.periodicity[2] ? 2 : 1); wrapping[2] += 1)
+#endif
+          {
+            if(ANDD(wrapping[0] == 0, wrapping[1] == 0, wrapping[2] == 0))
+              continue;
+            double ls_center_wrapped[P4EST_DIM];
+            for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+              ls_center_wrapped[dim] = ls_center[dim] + wrapping[dim]*(domain.xyz_max[dim] - domain.xyz_min[dim]);
+            if(neg_inside)
+              ls = MIN(ls, elementary_function(ls_center_wrapped, xyz));
+            else
+              ls = MAX(ls, elementary_function(ls_center_wrapped, xyz));
+          }
     return ls;
   }
 };
@@ -252,17 +268,9 @@ class level_set_flower : public level_set_t {
 #endif
   }
 public:
-  level_set_flower(const domain_t &domain_, const double *xyz_c, const double &radius_, const double &amplitude_, const bool &negative_inside = true,
-                 #ifndef P4_TO_P8
-                   const unsigned int npetals_phi = 5
-    #else
-                   const unsigned int npetals_phi = 6, const double &phi_mod_ = 0.2, const unsigned int npetals_theta = 3
-    #endif
-      )
-    : level_set_t(domain_, xyz_c, negative_inside), radius(radius_), amplitude(amplitude_), nphi(npetals_phi)
-  #ifdef P4_TO_P8
-    , phi_modulation(phi_mod_) , ntheta(2*npetals_theta)
-  #endif
+  level_set_flower(const domain_t &domain_, const double *xyz_c, const double &radius_, const double &amplitude_, const bool &negative_inside = true, const unsigned int npetals_phi = 3 + P4EST_DIM
+      ONLY3D(COMMA const double &phi_mod_ = 0.2 COMMA const unsigned int npetals_theta = 3))
+    : level_set_t(domain_, xyz_c, negative_inside), radius(radius_), amplitude(amplitude_), nphi(npetals_phi) ONLY3D(COMMA phi_modulation(phi_mod_) COMMA ntheta(2*npetals_theta))
   {}
 };
 
@@ -320,13 +328,12 @@ public:
     theta_bubbles.resize(n_bubbles);
     dt_bubbles.resize(n_bubbles);
     for (size_t k = 0; k < n_bubbles; ++k)
-      while (added_bubble_is_valid(k)) { }
+      while (!added_bubble_is_valid(k)) { }
   }
 };
 #endif
 
 #ifndef P4_TO_P8
-
 static class GFM_example_3_t : public test_case_for_scalar_jump_problem_t
 {
 public:
@@ -349,15 +356,16 @@ public:
         + std::string("* interface = circle of radius 1/4, centered in (0.5, 0.5), negative inside, positive outside \n")
         + std::string("* mu_m = 2.0; \n")
         + std::string("* mu_p = 1.0; \n")
-        + std::string("* u_m  = exp(-x*x - y*y); \n")
+        + std::string("* u_m  = exp(- x*x - y*y); \n")
         + std::string("* u_p  = 0.0; \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 3 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_3";
   }
 
   double solution_minus(const double &x, const double &y) const
   {
-    return exp(-x*x - y*y);
+    return exp(- x*x - y*y);
   }
 
   double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
@@ -410,6 +418,7 @@ public:
   }
 } GFM_example_3;
 
+
 static class GFM_example_5_t : public test_case_for_scalar_jump_problem_t
 {
 public:
@@ -439,6 +448,7 @@ public:
         + std::string("* u_p  = 1.0 + log(2.0*sqrt(x*x + y*y)); \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 5 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_5";
   }
 
   double solution_minus(const double &, const double &) const
@@ -522,6 +532,7 @@ public:
         + std::string("* u_p  = 0.0; \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 6 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_6";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -600,6 +611,7 @@ public:
         + std::string("* u_p  = 0.0; \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 7 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_7";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -681,6 +693,7 @@ public:
         + std::string("* u_p  = 0.1*(x*x + y*y)^2 - 0.01*log(2.0*sqrt(EPS + x*x + y*y)); \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 8 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_8";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -779,6 +792,7 @@ public:
         + std::string("* u_p  =  -x*x - y*y;  \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 9 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_9";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -880,6 +894,7 @@ public:
         + std::string("* u_p  = 0.5 + cos(x)*(y^4 + sin(y*y - x*x)); \n")
         + std::string("* no periodicity \n")
         + std::string("Example for large ratio of diffusion coefficient (example 4.6 of R. Egan, F. Gibou, JCP, May 2020)");
+    test_name = "xGFM_example_4_6";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -936,6 +951,7 @@ public:
       break;
     }
   }
+
   double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
   {
     switch (der) {
@@ -978,12 +994,16 @@ public:
         + std::string("* u_p  = cos(x + y)*exp(-SQR(x*cos(y))); \n")
         + std::string("* no periodicity \n")
         + std::string("Example for adaptivity and large ratio of coefficients (by R. Egan)");
+    test_name = "xGFM_example_random_bubbles";
+
+    activate_finest_in_negative_domain();
   }
 
   double solution_minus(const double &x, const double &y) const
   {
     return (cos(2.0*M_PI*(x + 3.0*y)/0.04) - sin(2.0*M_PI*(y - 2.0*x)/0.04))/mu_m;
   }
+
   double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
   {
     switch (der) {
@@ -1078,6 +1098,7 @@ public:
         + std::string("* u_m  = cos((2.0*M_PI/3.0)*(x - tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x - 0.251*y)))); \n")
         + std::string("* u_p  = tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y); \n")
         + std::string("* Example for periodicity along x, no periodicity along y (by R. Egan)");
+    test_name = "xGFM_example_xperiodic_2D";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -1185,6 +1206,7 @@ public:
         + std::string("* u_p  = log(1.5 + cos((2.0*M_PI/3.0)*(-x + 3.0*y))); \n")
         + std::string("* fully periodic \n")
         + std::string("Example for full periodicity (by R. Egan)");
+    test_name = "xGFM_example_full_periodic_2D";
   }
 
   double solution_minus(const double &x, const double &y) const
@@ -1282,15 +1304,16 @@ public:
         + std::string("* interface = sphere of radius 1/4, centered in (0.5, 0.5, 0.5), negative inside, positive outside \n")
         + std::string("* mu_m = 2.0; \n")
         + std::string("* mu_p = 1.0; \n")
-        + std::string("* u_m  = exp(-x*x - y*y - z*z); \n")
+        + std::string("* u_m  = exp(- x*x - y*y - z*z); \n")
         + std::string("* u_p  = 0.0; \n")
         + std::string("* no periodicity \n")
         + std::string("* Example 4 from Liu, Fedkiw, Kang 2000");
+    test_name = "GFM_example_4";
   }
 
   double solution_minus(const double &x, const double &y, const double &z) const
   {
-    return exp(-x*x - y*y - z*z);
+    return exp(- x*x - y*y - z*z);
   }
 
   double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
@@ -1377,6 +1400,7 @@ public:
         + std::string("* u_p  = exp(-x*sin(y) - y*cos(z) - z*cos(2.0*x)); \n")
         + std::string("* no periodicity \n")
         + std::string("Example for mildly convoluted 3D interface with large ratio of coefficients (by R. Egan)");
+    test_name = "xGFM_example_moderate_flower_large_ratio_3D";
   }
 
   double solution_minus(const double &x, const double &y, const double &z) const
@@ -1481,7 +1505,7 @@ static class xGFM_example_large_ratio_severe_flower_3D_t : public test_case_for_
   {
     return 0.1*x*x*x - 2.0*z*sin(y) - sin(x + z);
   }
-  double ddff_dydy(const double &x, const double &y, const double &z) const
+  double ddff_dydy(const double &, const double &y, const double &z) const
   {
     return -2.0*z*cos(y);
   }
@@ -1521,6 +1545,7 @@ public:
         + std::string("* u_p  = -1.0 + atan(0.1*x*x*x*y + 2.0*z*cos(y) - y*sin(x + z))*2.5/mu_p; \n")
         + std::string("* no periodicity \n")
         + std::string("Example for very convoluted 3D interface with large ratio of coefficients (by R. Egan)");
+    test_name = "xGFM_example_severe_flower_large_ratio_3D";
   }
 
   double solution_minus(const double &x, const double &y, const double &z) const
@@ -1696,7 +1721,7 @@ static class xGFM_example_full_periodic_3D_t : public test_case_for_scalar_jump_
     return -0.5*sin((2.0*M_PI/3.0)*(2.0*z - x))*SQR(-2.0*M_PI/3.0);
   }
   double dss_dy(const double &, const double &, const double &) const { return 0.0;  }
-  double ddss_dydy(const double &x, const double &y, const double &) const { return 0.0; }
+  double ddss_dydy(const double &, const double &, const double &) const { return 0.0; }
   double dss_dz(const double &x, const double &, const double &z) const
   {
     return 0.5*cos((2.0*M_PI/3.0)*(2.0*z - x))*(2.0*2.0*M_PI/3.0);
@@ -1734,6 +1759,7 @@ public:
         + std::string("* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x + y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z - x))); \n")
         + std::string("* full periodicity is enforced \n")
         + std::string("Example for full periodicity in 3D (by R. Egan)");
+    test_name = "xGFM_example_full_periodic_3D";
   }
 
   double solution_minus(const double &x, const double &y, const double &z) const
@@ -1825,5 +1851,50 @@ public:
   }
 } xGFM_example_full_periodic_3D;
 #endif
+
+static class list_of_test_problems_for_scalar_jump_problems_t
+{
+private:
+  std::vector<const test_case_for_scalar_jump_problem_t*> list_of_test_problems;
+public:
+  list_of_test_problems_for_scalar_jump_problems_t()
+  {
+    list_of_test_problems.clear();
+#ifdef P4_TO_P8
+    list_of_test_problems.push_back(&GFM_example_4);
+    list_of_test_problems.push_back(&xGFM_example_large_ratio_moderate_flower_3D);
+    list_of_test_problems.push_back(&xGFM_example_large_ratio_severe_flower_3D);
+    list_of_test_problems.push_back(&xGFM_example_full_periodic_3D);
+#else
+    list_of_test_problems.push_back(&GFM_example_3);
+    list_of_test_problems.push_back(&GFM_example_5);
+    list_of_test_problems.push_back(&GFM_example_6);
+    list_of_test_problems.push_back(&GFM_example_7);
+    list_of_test_problems.push_back(&GFM_example_8);
+    list_of_test_problems.push_back(&GFM_example_9);
+    list_of_test_problems.push_back(&xGFM_example_large_ratio_moderate_flower_2D);
+    list_of_test_problems.push_back(&xGFM_example_random_bubbles);
+    list_of_test_problems.push_back(&xGFM_example_x_periodic_2D);
+    list_of_test_problems.push_back(&xGFM_example_full_periodic_2D);
+#endif
+  }
+
+  std::string get_description_of_tests() const
+  {
+    std::string description;
+    for (size_t k = 0; k < list_of_test_problems.size(); ++k) {
+      description += std::to_string(k) + ":\n" + list_of_test_problems[k]->get_description() + (k < list_of_test_problems.size() - 1 ? "\n" : ".");
+    }
+    return  description;
+  }
+
+  const test_case_for_scalar_jump_problem_t* operator[](size_t k) const
+  {
+    if(k >= list_of_test_problems.size())
+      throw std::invalid_argument("list_of_test_problems_for_scalar_jump_problems_t::get_test_problem(): problem index is too large. Max problem index is " + std::to_string(list_of_test_problems.size() - 1));
+    return list_of_test_problems[k];
+  }
+
+} list_of_test_problems_for_scalar_jump_problems;
 
 #endif // SCALAR_TESTS_H

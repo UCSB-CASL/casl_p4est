@@ -2150,6 +2150,7 @@ PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar);
 PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
+PetscErrorCode VecAXPYGhost(Vec y, PetscScalar alpha, Vec x);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 PetscErrorCode VecReciprocalGhost(Vec input);
 
