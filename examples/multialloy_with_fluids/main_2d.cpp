@@ -4125,6 +4125,7 @@ int main(int argc, char** argv) {
 
 
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
+  PetscPrintf(mpi.comm(),"Number of mpi tasks: %d \n",mpi.size());
   PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
 
   // stopwatch
@@ -5857,13 +5858,13 @@ int main(int argc, char** argv) {
                                            "Memory safety check:\n"
                                            " - Current memory usage is : %0.5e GB \n"
                                            " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
-          if((mem_safety_check>mem_safety_limit/mpi.size())){
-              MPI_Barrier(mpi.comm());
-              PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
-              PetscFPrintf(mpi.comm(),fich_log,"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
+//          if((mem_safety_check>mem_safety_limit/mpi.size())){
+//              MPI_Barrier(mpi.comm());
+//              PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
+//              PetscFPrintf(mpi.comm(),fich_log,"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
 
-              MPI_Abort(mpi.comm(),1);
-            }
+//              MPI_Abort(mpi.comm(),1);
+//            }
         }
 
 
