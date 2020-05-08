@@ -71,8 +71,6 @@ typedef struct
   p4est_locidx_t fine_intermediary_idx;
 } interface_data;
 
-static const double value_not_needed = NAN;
-
 class my_p4est_two_phase_flows_t
 {
 private:
@@ -632,10 +630,6 @@ private:
       char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[loc_face_dir/2] = (loc_face_dir%2 == 1 ? 1 : -1);
       return get_fine_node_idx_of_logical_vertex(quad_idx, tree_idx, DIM(search[0], search[1], search[2]), fine_face_idx, coarse_quad);
     }
-  }
-  inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) const
-  {
-    return ((phi_0 > 0.0 && phi_1 <= 0.0) || (phi_0 <= 0.0 && phi_1 > 0.0));
   }
   inline bool face_is_across(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const unsigned char& dir, const double* fine_phi_p, p4est_locidx_t& fine_center_idx, p4est_locidx_t& fine_face_idx, const p4est_quadrant_t* coarse_quad = NULL)
   {

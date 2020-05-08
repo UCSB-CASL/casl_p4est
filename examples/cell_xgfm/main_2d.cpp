@@ -26,14 +26,14 @@ using namespace std;
 #undef MAX
 
 const static string main_description =
- string("In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n")
- + string("across an irregular interface. \n")
- + string("The user can choose from several test cases (described in the list of possible 'test'), set various \n")
- + string("Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n")
- + string("the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n")
- + string("can be saved in vtk format as well and the order of accuracy for the localization of interface points\n")
- + string("based on the levelset values can be chosen between 1 and 2. \n")
- + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n");
+    string("In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n")
+    + string("across an irregular interface. \n")
+    + string("The user can choose from several test cases (described in the list of possible 'test'), set various \n")
+    + string("Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n")
+    + string("the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n")
+    + string("can be saved in vtk format as well and the order of accuracy for the localization of interface points\n")
+    + string("based on the levelset values can be chosen between 1 and 2. \n")
+    + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n");
 
 const int default_lmin = 3;
 const int default_lmax = 4;
@@ -162,7 +162,7 @@ Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm, Vec exact_msol_at_nodes,
 
   ostringstream command;
   command << "mkdir -p " << out_dir.c_str();
-  system(command.str().c_str());
+  int uu = system(command.str().c_str()); (void) uu;
 
   ostringstream oss_coarse;
   oss_coarse << out_dir << "/computational_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
@@ -720,7 +720,7 @@ void print_convergence_summary_in_file(const string& out_folder, const string& t
   string summary_folder = out_folder + "/summaries";
   ostringstream command;
   command << "mkdir -p " << summary_folder.c_str();
-  system(command.str().c_str()); // create the summary folder
+  int uu = system(command.str().c_str()); (void) uu; // create the summary folder
   string summary_file = summary_folder + "/convergence_summary_" + test_name
       + "_lmin" + to_string(lmin) + "_lmax" + to_string(lmax) + "_ngrids" + to_string(ngrids) + "_ntree" + to_string(ntree)
       + "_accuracyls" + to_string(use_second_order_theta ? 2 : 1) + "_" + (bc_wtype == DIRICHLET ? "dirichlet": "neumann") + ".dat";
@@ -1015,7 +1015,7 @@ int main (int argc, char* argv[])
       solver.get_flux_components(flux, faces);
       // get solution (to check its accuracy as well) and jump terms found by solver (for illustration)
       sol[xgfm_flag] = solver.get_solution();
-      solver.get_jump_mu_grad_u(jump_mu_grad_u[xgfm_flag]);
+      solver.get_jump_flux(jump_mu_grad_u[xgfm_flag]);
 
       /* if null space, shift solution */
       if(solver.get_matrix_has_nullspace())
