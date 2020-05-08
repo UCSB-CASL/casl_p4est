@@ -2750,6 +2750,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
     // delete the extra ones that may exist for whatever reason
     std::vector<std::string> subfolders; subfolders.resize(0);
     get_subdirectories_in(path_to_root_directory, subfolders);
+    char temp_backup_folder_to_delete[PATH_MAX]; unsigned int to_delete_idx = 0;
     for (size_t idx = 0; idx < subfolders.size(); ++idx) {
       if(!subfolders[idx].compare(0, 7, "backup_"))
       {
@@ -2757,9 +2758,12 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
         sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
         if(backup_idx >= n_saved)
         {
+          // delete extra backups existing for whatever reasons (renamed to temporary folders beforehand to avoid issues)
           char full_path[PATH_MAX];
           sprintf(full_path, "%s/%s", path_to_root_directory, subfolders[idx].c_str());
-          delete_directory(full_path, p4est_n->mpirank, p4est_n->mpicomm, true);
+          sprintf(temp_backup_folder_to_delete, "%s/temp_backup_folder_to_delete_%d", path_to_root_directory, to_delete_idx++);
+          rename(full_path, temp_backup_folder_to_delete);
+          delete_directory(temp_backup_folder_to_delete, p4est_n->mpirank, p4est_n->mpicomm, true);
         }
         else
           n_backup_subfolders++;
@@ -2778,12 +2782,14 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
         backup_idx++;
       }
     }
-    if ((n_saved > 1) && (n_backup_subfolders == n_saved))
+    if (n_saved > 1 && n_backup_subfolders == n_saved)
     {
+      // delete the 0th (renamed to a temporary folder beforehand to avoid issues)
       char full_path_zeroth_index[PATH_MAX];
       sprintf(full_path_zeroth_index, "%s/backup_0", path_to_root_directory);
-      // delete the 0th
-      delete_directory(full_path_zeroth_index, p4est_n->mpirank, p4est_n->mpicomm, true);
+      sprintf(temp_backup_folder_to_delete, "%s/temp_backup_folder_to_delete_%d", path_to_root_directory, to_delete_idx++);
+      rename(full_path_zeroth_index, temp_backup_folder_to_delete);
+      delete_directory(temp_backup_folder_to_delete, p4est_n->mpirank, p4est_n->mpicomm, true);
       // shift the others
       for (size_t idx = 1; idx < n_saved; ++idx) {
         char old_name[PATH_MAX], new_name[PATH_MAX];
