@@ -22,22 +22,18 @@ namespace geom
 	 * @param [in] phi2 Level-set function value at second point.
 	 * @param [in] TOL Distance zero-checking tolerance.
 	 * @return Interpolated point between p1 and p2.
+	 * @tparam Point One of Point2 or Point3 types.
 	 * @throws Zero division error if input level-set function values are (almost) equal.
 	 */
-	inline Point2 interpolatePoint( const Point2 *p1, double phi1, const Point2 *p2, double phi2, double TOL = EPS )
+	template<typename Point = Point2>
+	inline Point interpolatePoint( const Point *p1, double phi1, const Point *p2, double phi2, double TOL = EPS )
 	{
-#ifdef CASL_THROWS
-		if( ABS( phi2 - phi1 ) <= TOL )
-			throw std::domain_error( "[CASL_ERROR]: geom::interpolatePoint - Division by zero." );
-#endif
-		return ( *p1 * phi2 - *p2 * phi1 ) / ( phi2 - phi1 );
-	}
+		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
+					   "[CASL_ERROR]: geom::interpolatePoint: Function may be called only by Point2 or Point3 objects!" );
 
-	inline Point3 interpolatePoint( const Point3 *p1, double phi1, const Point3 *p2, double phi2, double TOL = EPS )
-	{
 #ifdef CASL_THROWS
 		if( ABS( phi2 - phi1 ) <= TOL )
-			throw std::domain_error( "[CASL_ERROR]: geom::interpolatePoint - Division by zero." );
+			throw std::domain_error( "[CASL_ERROR]: geom::interpolatePoint: Division by zero!" );
 #endif
 		return ( *p1 * phi2 - *p2 * phi1 ) / ( phi2 - phi1 );
 	}
@@ -56,26 +52,16 @@ namespace geom
 	 * @param [in] v0 First line segment's vertex.
 	 * @param [in] v1 Second line segment's vertex.
 	 * @param [in] TOL Tolerance for zero-distance checking.
+	 * @tparam Point One of Point2 or Point3 types.
 	 * @return Closest point on the line segment v0v1.
 	 */
-	inline Point2 findClosestPointOnLineSegmentToPoint( const Point2& p, const Point2& v0, const Point2& v1, double TOL = EPS )
+	template<typename Point = Point2>
+	inline Point findClosestPointOnLineSegmentToPoint( const Point& p, const Point& v0, const Point& v1, double TOL = EPS )
 	{
-		Point2 v = v1 - v0;
-		double denom = v.dot( v );
-		if( sqrt( denom ) <= TOL )						// Degenerate line segment?
-			return v0;
+		static_assert( std::is_base_of<Point2, Point>::value || std::is_base_of<Point3, Point>::value,
+					   "[CASL_ERROR]: geom::interpolatePoint: Function may be called only by Point2 or Point3 objects!" );
 
-		double t = ( p - v0 ).dot( v ) / denom;			// Parameter t in Q = v0 + tv.
-		if( t <= 0 )
-			return v0;
-		if( t >= 1 )
-			return v1;
-		return v0 + v * t;
-	}
-
-	inline Point3 findClosestPointOnLineSegmentToPoint( const Point3& p, const Point3& v0, const Point3& v1, double TOL = EPS )
-	{
-		Point3 v = v1 - v0;
+		Point v = v1 - v0;
 		double denom = v.dot( v );
 		if( sqrt( denom ) <= TOL )						// Degenerate line segment?
 			return v0;

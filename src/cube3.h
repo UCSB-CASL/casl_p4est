@@ -74,39 +74,31 @@ private:
   static void _updateMinimumDistanceMap( std::unordered_map<p4est_locidx_t, double>& distanceMap, p4est_locidx_t n, double d );
 
   /**
-   * Given arrays of point addresses and corresponding p4est indices and level-set function values, compute the minimum
-   * distance of those referred to by an input vector containing the inner indices in the above arrays to a 3D triangle.
-   * Update a distance map with the minimum distance accordingly.
-   * @param [in] which Vector containing the inner indices in input arrays to calculate their miminum distance to triangle.
-   * @param [in] p Array of pointers to points' coordinates.
-   * @param [in] phi Array of level-set function values.
-   * @param [in] idx Array of p4est nodal indices.
+   * Compute the minimum distance of the cube points to a 3D triangle.
+   * Update a distance map by keeping only the minimum distance.
+   * @param [in] allPoints Array of of cube points' coordinates.
+   * @param [in] phiAndIdxOctValues Level-set function values and p4est partition indices of cube corners.
    * @param [in] v0 Pointer to first triangle vertex.
    * @param [in] v1 Pointer to second triangle vertex.
    * @param [in] v2 Pointer to third triangle vertex.
    * @param [out] distanceMap Hash map to hold the current minimum distance of points to \Gamma.
    * @param [in] TOL Tolerance for zero-distance checking.
    */
-  static void _computeDistanceToTriangle( const std::vector<short>& which,
-  										  const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+  static void _computeDistanceToTriangle( const Point3 allPoints[], const OctValueExtended& phiAndIdxOctValues,
   										  const Point3 *v0, const Point3 *v1, const Point3 *v2,
 										  std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL = EPS );
 
   /**
-   * Given arrays of point addresses and corresponding p4est indices and level-set function values, compute the minimum
-   * distance of those referred to by an input vector containing the inner indices in the above arrays to a 3D line
-   * segment.  Update a distance map with the minimum distance accordingly.
-   * @param [in] which Vector continaing the inner indices in input arrays to calculate their minimum distance to line segment.
-   * @param [in] p Array of pointers to points' coordinates.
-   * @param [in] phi Array of level-set function values.
-   * @param [in] idx Array of p4est nodal indices.
+   * Compute the minimum distance of the cube points to a 3D line segment.
+   * Update a distance map by keeping only the minimum distance.
+   * @param [in] allPoints Array of cube points' coordinates.
+   * @param [in] phiAndIdxOctValues Level-set function values and p4est partition indices of cube corners.
    * @param [in] v0 Pointer to first line segment vertex.
    * @param [in] v1 Pointer to second line segment vertex.
    * @param [out] distanceMap Hash map to hold the current miminum distance of points to \Gamma.
    * @param [in] TOL Tolerance for zero-distance checking.
    */
-  static void _computeDistanceToLineSegment( const std::vector<short>& which,
-  											 const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+  static void _computeDistanceToLineSegment( const Point3 allPoints[], const OctValueExtended& phiAndIdxOctValues,
 											 const Point3 *v0, const Point3 *v1,
 											 std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL = EPS );
 

@@ -33,7 +33,8 @@ double Cube3::volume_In_Negative_Domain(const OctValue& level_set_values) const
   return integral(tmp,level_set_values);
 }
 
-//Finds the volume of domain inside each cell. Takes in values at imaginary points +/-dx/2, +/-dy/2, +/-dz/2 away from the actual node (those values have to be interpolated before the function is called)
+// Finds the volume of domain inside each cell. Takes in values at imaginary points +/-dx/2, +/-dy/2, +/-dz/2 away from
+// the actual node (those values have to be interpolated before the function is called)
 double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
 {
   double sum=0;
@@ -765,18 +766,21 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 {
 	// Some shortcuts.  Note the order is: x changes slowly, then y changes twice faster than x, and finally z changes
 	// twice faster than y.  It's like completing a truth table.  This is the order we also followed in phiAndIdxQuadOctValues.
-	Point3 p000( xyz_mmm[0], xyz_mmm[1], xyz_mmm[2] );
-	Point3 p001( xyz_mmm[0], xyz_mmm[1], xyz_ppp[2] );
-	Point3 p010( xyz_mmm[0], xyz_ppp[1], xyz_mmm[2] );
-	Point3 p011( xyz_mmm[0], xyz_ppp[1], xyz_ppp[2] );
-	Point3 p100( xyz_ppp[0], xyz_mmm[1], xyz_mmm[2] );
-	Point3 p101( xyz_ppp[0], xyz_mmm[1], xyz_ppp[2] );
-	Point3 p110( xyz_ppp[0], xyz_ppp[1], xyz_mmm[2] );
-	Point3 p111( xyz_ppp[0], xyz_ppp[1], xyz_ppp[2] );
+	const short N_POINTS = 8;
+	Point3 allPoints[N_POINTS] = {
+		Point3( xyz_mmm[0], xyz_mmm[1], xyz_mmm[2] ),		// p000.
+		Point3( xyz_mmm[0], xyz_mmm[1], xyz_ppp[2] ),		// p001.
+		Point3( xyz_mmm[0], xyz_ppp[1], xyz_mmm[2] ),		// p010.
+		Point3( xyz_mmm[0], xyz_ppp[1], xyz_ppp[2] ),		// p011.
+		Point3( xyz_ppp[0], xyz_mmm[1], xyz_mmm[2] ),		// p100.
+		Point3( xyz_ppp[0], xyz_mmm[1], xyz_ppp[2] ),		// p101.
+		Point3( xyz_ppp[0], xyz_ppp[1], xyz_mmm[2] ),		// p110.
+		Point3( xyz_ppp[0], xyz_ppp[1], xyz_ppp[2] )		// p111.
+	};
 
 	// Start with a fresh result hashmap and avoid rehashing by stating its capacity upfront.
 	distanceMap.clear();
-	distanceMap.reserve( SQR_P4EST_DIM );
+	distanceMap.reserve( 8 );
 
 	// If octant is not cut-out by interface there's nothing to do.
 	if( phiAndIdxOctValues.val[0] <= 0 && phiAndIdxOctValues.val[1] <= 0 &&
@@ -804,34 +808,34 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 		switch( n )
 		{
 			case 0:
-				p[0] = &p000; phi[0] = phiAndIdxOctValues.val[0]; idx[0] = phiAndIdxOctValues.indices[0];
-				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
-				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
-				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				p[0] = &allPoints[0]; phi[0] = phiAndIdxOctValues.val[0]; idx[0] = phiAndIdxOctValues.indices[0];
+				p[1] = &allPoints[4]; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &allPoints[2]; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &allPoints[1]; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
 				break;
 			case 1:
-				p[0] = &p110; phi[0] = phiAndIdxOctValues.val[6]; idx[0] = phiAndIdxOctValues.indices[6];
-				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
-				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
-				p[3] = &p111; phi[3] = phiAndIdxOctValues.val[7]; idx[3] = phiAndIdxOctValues.indices[7];
+				p[0] = &allPoints[6]; phi[0] = phiAndIdxOctValues.val[6]; idx[0] = phiAndIdxOctValues.indices[6];
+				p[1] = &allPoints[4]; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &allPoints[2]; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &allPoints[7]; phi[3] = phiAndIdxOctValues.val[7]; idx[3] = phiAndIdxOctValues.indices[7];
 				break;
 			case 2:
-				p[0] = &p101; phi[0] = phiAndIdxOctValues.val[5]; idx[0] = phiAndIdxOctValues.indices[5];
-				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
-				p[2] = &p111; phi[2] = phiAndIdxOctValues.val[7]; idx[2] = phiAndIdxOctValues.indices[7];
-				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				p[0] = &allPoints[5]; phi[0] = phiAndIdxOctValues.val[5]; idx[0] = phiAndIdxOctValues.indices[5];
+				p[1] = &allPoints[4]; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &allPoints[7]; phi[2] = phiAndIdxOctValues.val[7]; idx[2] = phiAndIdxOctValues.indices[7];
+				p[3] = &allPoints[1]; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
 				break;
 			case 3:
-				p[0] = &p011; phi[0] = phiAndIdxOctValues.val[3]; idx[0] = phiAndIdxOctValues.indices[3];
-				p[1] = &p111; phi[1] = phiAndIdxOctValues.val[7]; idx[1] = phiAndIdxOctValues.indices[7];
-				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
-				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				p[0] = &allPoints[3]; phi[0] = phiAndIdxOctValues.val[3]; idx[0] = phiAndIdxOctValues.indices[3];
+				p[1] = &allPoints[7]; phi[1] = phiAndIdxOctValues.val[7]; idx[1] = phiAndIdxOctValues.indices[7];
+				p[2] = &allPoints[2]; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &allPoints[1]; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
 				break;
 			case 4:
-				p[0] = &p111; phi[0] = phiAndIdxOctValues.val[7]; idx[0] = phiAndIdxOctValues.indices[7];
-				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
-				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
-				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				p[0] = &allPoints[7]; phi[0] = phiAndIdxOctValues.val[7]; idx[0] = phiAndIdxOctValues.indices[7];
+				p[1] = &allPoints[4]; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &allPoints[2]; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &allPoints[1]; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
 				break;
 			default:
 #ifdef CASL_THROWS
@@ -856,7 +860,6 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 		// By convention, an exact distance of 0 is considered in the negatives side.
 		std::vector<short> zeros;			// These arrays hold indices.
 		std::vector<short> nonZeros;
-		std::vector<short> all = {0, 1, 2, 3};
 		for( short i = 0; i < N_CORNERS; i++ )
 		{
 			if( ABS( phi[i] ) <= TOL )		// Is the ith point lying *on* the interface?
@@ -868,7 +871,7 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 		if( zeros.size() >= 3 )
 		{
 			if( zeros.size() == 3 && nonZeros.size() == 1 ) 	// Validity check: there should be a single non-zero point.
-				_computeDistanceToTriangle( all, p, phi, idx, p[zeros[0]], p[zeros[1]], p[zeros[2]], distanceMap, TOL );
+				_computeDistanceToTriangle( allPoints, phiAndIdxOctValues, p[zeros[0]], p[zeros[1]], p[zeros[2]], distanceMap, TOL );
 #ifdef CASL_THROWS
 			else
 				throw std::runtime_error( "[CASL_ERROR]: Cube3::computeDistanceToInterface: Interface passes through all tetrahedron points!" );
@@ -894,12 +897,7 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 					i *= -1;				// negative, and when we negate the 0s, we end up with [-0, -0, -, +].  This
 			}								// discrupts our assumption of the -+++ and --++ only cases
 
-			// Sorting for simplication into -+++ or --++ or ---+.
-//			for( short i = 0; i < N_CORNERS - 1; i++ )	// Bubble-sort to sort arrays of phi/idx/p.
-//				for( short j = N_CORNERS - 1; j > i; j-- )
-//					if( phi[j] < phi[j-1] )
-//						geom::utils::swapTriplet( phi[j], idx[j], p[j], phi[j-1], idx[j-1], p[j-1] );
-
+			// Move negatives to beginning (left) of p/phi/idx arrays.
 			if( phi[0] > 0 && phi[1] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[1], idx[1], p[1] );
 			if( phi[0] > 0 && phi[2] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[2], idx[2], p[2] );
 			if( phi[0] > 0 && phi[3] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[3], idx[3], p[3] );
@@ -925,17 +923,20 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 					if( z == -1 )			// Case 1: Apex is the only zero point in the -+++ tetrahedron.
 					{
 						_updateMinimumDistanceMap( distanceMap, idx[0], 0 );	// Update appex distance.
-						for( short i = 1; i < N_CORNERS; i++ )					// Take the distance of rest of points to apex.
+						for( short i = 0; i < N_POINTS; i++ )
 						{
-							double d = (*p[i] - *p[0]).norm_L2();
-							_updateMinimumDistanceMap( distanceMap, idx[i], d );
+							if( idx[0] != phiAndIdxOctValues.indices[i] )		// Take the distance of rest of points to apex.
+							{
+								double d = (allPoints[i] - *p[0]).norm_L2();
+								_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], d );
+							}
 						}
 					}
 					else					// Case 2: An edge [p0, pz] of the -+++ tetrahedron is on the interface.
 					{
-						// Compute and update distance from ++ points to edge of tetrahedron on \Gamma.
+						// Compute and update distance from all points to edge of tetrahedron on \Gamma.
 						// Set the other zero points to 0 distance as well.
-						_computeDistanceToLineSegment( all, p, phi, idx, p[0], p[z], distanceMap, TOL );
+						_computeDistanceToLineSegment( allPoints, phiAndIdxOctValues, p[0], p[z], distanceMap, TOL );
 					}
 				}
 				else	// No special cases: use typical formulation for -+++.
@@ -944,9 +945,9 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 					Point3 p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2], TOL );	// Point between 0 and 2.
 					Point3 p0_3 = geom::interpolatePoint( p[0], phi[0], p[3], phi[3], TOL );	// Point between 0 and 3.
 
-					// Compute closest distance of tetrahedron point to triangle formed with midpoints.
+					// Compute closest distance of cube points to triangle formed with midpoints.
 					// Also check for (non apex) points lying on \Gamma if any.
-					_computeDistanceToTriangle( all, p, phi, idx, &p0_1, &p0_2, &p0_3, distanceMap, TOL );
+					_computeDistanceToTriangle( allPoints, phiAndIdxOctValues, &p0_1, &p0_2, &p0_3, distanceMap, TOL );
 				}
 			}
 			else if( phi[0] <= 0 && phi[1] <= 0 && phi[2] > 0 && phi[3] > 0 )
@@ -967,13 +968,13 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 					// Case 1: Zeros with same sign.
 					if( ( phi[zeros[0]] <= 0 && phi[zeros[1]] <= 0 ) || ( phi[zeros[0]] > 0 && phi[zeros[1]] > 0 ) )
 					{
-						// In this case, the non-zeros have a distance to the line segment composed of both points referenced to in zeros vector.
-						_computeDistanceToLineSegment( all, p, phi, idx, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
+						// In this case, compute distance of cube points to the line segment composed of both points referenced to in zeros vector.
+						_computeDistanceToLineSegment( allPoints, phiAndIdxOctValues, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
 					}
 					else	// Case 2: Zeros have distinct signs.
 					{		// Find the midpoint between the non zero points (which also have different signs); form a triangle with zeros.
 						Point3 midPoint = geom::interpolatePoint( p[nonZeros[0]], phi[nonZeros[0]], p[nonZeros[1]], phi[nonZeros[1]], TOL );
-						_computeDistanceToTriangle( all, p, phi, idx, &midPoint, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
+						_computeDistanceToTriangle( allPoints, phiAndIdxOctValues, &midPoint, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
 					}
 				}
 				else if( zeros.size() == 1 )		// Special cases of --++ with one zero
@@ -993,8 +994,8 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 						v2 = geom::interpolatePoint( p[nonZeros[1]], phi[nonZeros[1]], p[nonZeros[2]], phi[nonZeros[2]], TOL );
 					}
 
-					// Now process non-zero points.
-					_computeDistanceToTriangle( all, p, phi, idx, p[z], &v1, &v2, distanceMap, TOL );
+					// Now process all cube points distance.
+					_computeDistanceToTriangle( allPoints, phiAndIdxOctValues, p[z], &v1, &v2, distanceMap, TOL );
 				}
 				else								// No zeros in --++ type.  Apply the generic method with 2 triangles.
 				{
@@ -1009,9 +1010,8 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 						{ &p1_3, &p0_3, &p0_2 }
 					};
 
-					// Basically, nonZeros vector has all of the nodes in the tetrahedron.
 					for( const auto& t : triangles )
-						_computeDistanceToTriangle( all, p, phi, idx, t[0], t[1], t[2], distanceMap, TOL );
+						_computeDistanceToTriangle( allPoints, phiAndIdxOctValues, t[0], t[1], t[2], distanceMap, TOL );
 				}
 			}
 #ifdef CASL_THROWS
@@ -1028,38 +1028,36 @@ void Cube3::_updateMinimumDistanceMap( std::unordered_map<p4est_locidx_t, double
 	distanceMap[n] = ( distanceMap.find( n ) == distanceMap.end() )? d : MIN( d, distanceMap[n] );
 }
 
-void Cube3::_computeDistanceToTriangle( const std::vector<short>& which,
-										const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+void Cube3::_computeDistanceToTriangle( const Point3 allPoints[], const OctValueExtended& phiAndIdxOctValues,
 										const Point3 *v0, const Point3 *v1, const Point3 *v2,
 										std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL )
 {
-	for( auto w : which )
+	for( short i = 0; i < 8; i++ )
 	{
-		if( ABS( phi[w] ) <= TOL )		// Double check for zero distances.
-			_updateMinimumDistanceMap( distanceMap, idx[w], 0 );
+		if( ABS( phiAndIdxOctValues.val[i] ) <= TOL )		// Double check for zero distances.
+			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], 0 );
 		else
 		{
-			Point3 P = geom::findClosestPointOnTriangleToPoint( p[w], v0, v1, v2, TOL );
-			double d = (*p[w] - P).norm_L2();
-			_updateMinimumDistanceMap( distanceMap, idx[w], d );
+			Point3 P = geom::findClosestPointOnTriangleToPoint( &allPoints[i], v0, v1, v2, TOL );
+			double d = (allPoints[i] - P).norm_L2();
+			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], d );
 		}
 	}
 }
 
-void Cube3::_computeDistanceToLineSegment( const std::vector<short>& which,
-										   const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+void Cube3::_computeDistanceToLineSegment( const Point3 allPoints[], const OctValueExtended& phiAndIdxOctValues,
 										   const Point3 *v0, const Point3 *v1,
 										   std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL )
 {
-	for( auto w : which )
+	for( short i = 0; i < 8; i++ )
 	{
-		if( ABS( phi[w] ) <= TOL )		// Double check for zero distances.
-			_updateMinimumDistanceMap( distanceMap, idx[w], 0 );
+		if( ABS( phiAndIdxOctValues.val[i] ) <= TOL )		// Double check for zero distances.
+			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], 0 );
 		else
 		{
-			Point3 P = geom::findClosestPointOnLineSegmentToPoint( *p[w], *v0, *v1, TOL );
-			double d = (*p[w] - P).norm_L2();
-			_updateMinimumDistanceMap( distanceMap, idx[w], d );
+			Point3 P = geom::findClosestPointOnLineSegmentToPoint( allPoints[i], *v0, *v1, TOL );
+			double d = (allPoints[i] - P).norm_L2();
+			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], d );
 		}
 	}
 }
