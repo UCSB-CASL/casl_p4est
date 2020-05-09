@@ -3,18 +3,18 @@
 cmake_minimum_required( VERSION 3.16 )
 project( fast_sweeping )
 
-set( CMAKE_CXX_STANDARD 17 )
+set( CMAKE_CXX_STANDARD 11 )
 
 ######################## Source code ########################
 
-if( DIM MATCHES 2d )
+if( DIMENSION MATCHES 2d )
 	list( APPEND SRC main_2d.cpp )
 endif()
 
-if( DIM MATCHES 3d )
+if( DIMENSION MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
 endif()
-
+#add_compile_definitions( PRIVATE P4_TO_P8 )
 # Some of the following definitons can be placed in the project profile with -D<definition>=<value>.
 add_compile_definitions( PRIVATE CASL_THROWS )
 
@@ -107,8 +107,7 @@ list( APPEND HEADERS
 		${PARCASL}/src/simplex2.h
 		${PARCASL}/src/types.h
 		${PARCASL}/src/petsc_compatibility.h
-		${PARCASL}/src/FastSweeping.h
-		${PARCASL}/src/Geometry.h )
+		${PARCASL}/src/casl_geometry.h )
 
 list( APPEND SOURCES
 		${PARCASL}/src/parameter_list.cpp
@@ -120,14 +119,13 @@ list( APPEND SOURCES
 		${PARCASL}/src/cube3.cpp
 		${PARCASL}/src/point2.cpp
 		${PARCASL}/src/point3.cpp
-		${PARCASL}/src/simplex2.cpp
-		${PARCASL}/src/FastSweeping.cpp )
+		${PARCASL}/src/simplex2.cpp )
 
 # For dimension based compilation, we must create a Run Configuration.  Go to CLion -> Preferences -> Build, Execution, Deployment
-# -> CMake.  Create a profile (debug or release) and add to "CMake options:" the following: -DDIM=2d, for 2D, or -DDIM=3d for 3D.
+# -> CMake.  Create a profile (debug or release) and add to "CMake options:" the following: -DDIMENSION=2d, for 2D, or -DDIMENSION=3d for 3D.
 
 # 2D case.
-if( DIM MATCHES 2d )
+if( DIMENSION MATCHES 2d )
 	# Epitaxy.
 	list( APPEND HEADERS ${PARCASL}/src/my_p4est_epitaxy.h )
 	list( APPEND SOURCES ${PARCASL}/src/my_p4est_epitaxy.cpp )
@@ -176,7 +174,8 @@ if( DIM MATCHES 2d )
 			${PARCASL}/src/my_p4est_tools.h
 			${PARCASL}/src/my_p4est_two_phase_flows.h
 			${PARCASL}/src/my_p4est_xgfm_cells.h
-			${PARCASL}/src/voronoi2D.h )
+			${PARCASL}/src/voronoi2D.h
+			${PARCASL}/src/my_p4est_fast_sweeping.h)
 
 	list( APPEND SOURCES
 			${PARCASL}/src/my_p4est_biofilm.cpp
@@ -220,7 +219,8 @@ if( DIM MATCHES 2d )
 			${PARCASL}/src/my_p4est_tools.c
 			${PARCASL}/src/my_p4est_two_phase_flows.cpp
 			${PARCASL}/src/my_p4est_xgfm_cells.cpp
-			${PARCASL}/src/voronoi2D.cpp )
+			${PARCASL}/src/voronoi2D.cpp
+			${PARCASL}/src/my_p4est_fast_sweeping.cpp )
 
 	# headers-only stuff
 	list( APPEND HEADERS
@@ -229,7 +229,7 @@ if( DIM MATCHES 2d )
 endif()
 
 # 3D case.
-if( DIM MATCHES 3d )
+if( DIMENSION MATCHES 3d )
 	list( APPEND HEADERS
 			${PARCASL}/src/my_p8est_biofilm.h
 			${PARCASL}/src/my_p8est_biomolecules.h
@@ -273,7 +273,8 @@ if( DIM MATCHES 3d )
 			${PARCASL}/src/my_p8est_tools.h
 			${PARCASL}/src/my_p8est_two_phase_flows.h
 			${PARCASL}/src/my_p8est_xgfm_cells.h
-			${PARCASL}/src/voronoi3D.h )
+			${PARCASL}/src/voronoi3D.h
+			${PARCASL}/src/my_p8est_fast_sweeping.h )
 
 	list( APPEND SOURCES
 			${PARCASL}/src/my_p8est_biofilm.cpp
@@ -317,7 +318,8 @@ if( DIM MATCHES 3d )
 			${PARCASL}/src/my_p8est_tools.c
 			${PARCASL}/src/my_p8est_two_phase_flows.cpp
 			${PARCASL}/src/my_p8est_xgfm_cells.cpp
-			${PARCASL}/src/voronoi3D.cpp )
+			${PARCASL}/src/voronoi3D.cpp
+			${PARCASL}/src/my_p8est_fast_sweeping.cpp )
 
 	# Headers-only stuff.
 	list( APPEND HEADERS

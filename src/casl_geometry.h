@@ -2,8 +2,8 @@
 // Created by Im YoungMin on 4/30/20.
 //
 
-#ifndef FAST_SWEEPING_GEOMETRY_H
-#define FAST_SWEEPING_GEOMETRY_H
+#ifndef FAST_SWEEPING_CASL_GEOMETRY_H
+#define FAST_SWEEPING_CASL_GEOMETRY_H
 
 #include <src/casl_math.h>
 #include <src/point2.h>
@@ -24,7 +24,16 @@ namespace geom
 	 * @return Interpolated point between p1 and p2.
 	 * @throws Zero division error if input level-set function values are (almost) equal.
 	 */
-	inline PointDIM interpolatePoint( const PointDIM *p1, double phi1, const PointDIM *p2, double phi2, double TOL = EPS )
+	inline Point2 interpolatePoint( const Point2 *p1, double phi1, const Point2 *p2, double phi2, double TOL = EPS )
+	{
+#ifdef CASL_THROWS
+		if( ABS( phi2 - phi1 ) <= TOL )
+			throw std::domain_error( "[CASL_ERROR]: geom::interpolatePoint - Division by zero." );
+#endif
+		return ( *p1 * phi2 - *p2 * phi1 ) / ( phi2 - phi1 );
+	}
+
+	inline Point3 interpolatePoint( const Point3 *p1, double phi1, const Point3 *p2, double phi2, double TOL = EPS )
 	{
 #ifdef CASL_THROWS
 		if( ABS( phi2 - phi1 ) <= TOL )
@@ -46,13 +55,29 @@ namespace geom
 	 * @param [in] p Query point.
 	 * @param [in] v0 First line segment's vertex.
 	 * @param [in] v1 Second line segment's vertex.
+	 * @param [in] TOL Tolerance for zero-distance checking.
 	 * @return Closest point on the line segment v0v1.
 	 */
-	inline PointDIM findClosestPointOnLineSegmentToPoint( const PointDIM& p, const PointDIM& v0, const PointDIM& v1, double tol = EPS )
+	inline Point2 findClosestPointOnLineSegmentToPoint( const Point2& p, const Point2& v0, const Point2& v1, double TOL = EPS )
 	{
-		PointDIM v = v1 - v0;
+		Point2 v = v1 - v0;
 		double denom = v.dot( v );
-		if( sqrt( denom ) <= tol )						// Degenerate line segment?
+		if( sqrt( denom ) <= TOL )						// Degenerate line segment?
+			return v0;
+
+		double t = ( p - v0 ).dot( v ) / denom;			// Parameter t in Q = v0 + tv.
+		if( t <= 0 )
+			return v0;
+		if( t >= 1 )
+			return v1;
+		return v0 + v * t;
+	}
+
+	inline Point3 findClosestPointOnLineSegmentToPoint( const Point3& p, const Point3& v0, const Point3& v1, double TOL = EPS )
+	{
+		Point3 v = v1 - v0;
+		double denom = v.dot( v );
+		if( sqrt( denom ) <= TOL )						// Degenerate line segment?
 			return v0;
 
 		double t = ( p - v0 ).dot( v ) / denom;			// Parameter t in Q = v0 + tv.
@@ -102,10 +127,8 @@ namespace geom
 			throw std::runtime_error( "[CASL_ERROR]: geom::projectPointOnTriangleAndPlane - Triangle's vertices are colinear!" );
 
 		// Step 1: finding P, the projection of p onto the triangle's plane.
-		double d = N.dot( *v0 );					// Compute the d parameter in plane's equation: ax + by + cz = d.
-		double t = -( N.dot( *p ) + d ) / denom;	// Compute parameter t for ray's equation: r(t) = p + tN, where N is
-													// both the plane's normal and ray's direction.
-		P = *p + N * t;								// Intersection (projection) point.
+		Point3 vp0 = ( *p - *v0 );
+		P = *p - N * vp0.dot( N ) / denom;
 
 		// Step 2: inside-outside test.
 		// This test uses the cross product with a reference vector (i.e. a triangle's side).  When a point is outside
@@ -123,7 +146,6 @@ namespace geom
 		x = y = nullptr;
 
 		Point3 edge0 = *v1 - *v0;					// Edge 0.
-		Point3 vp0 = P - *v0;
 		C = edge0.cross( vp0 );
 		if( N.dot( C ) < 0 )						// P is on the right side of edge 0, opposed to v2.
 		{
@@ -159,6 +181,26 @@ namespace geom
 	}
 
 	/**
+	 * Find the closest point on a triangle to another query point in 3D.
+	 * @param [in] p Query point pointer.
+	 * @param [in] v0 Pointer to first triangle's vertex.
+	 * @param [in] v1 Pointer to second triangle's vertex.
+	 * @param [in] v2 Pointer to third triangle's vertex.
+	 * @param [in] TOL Zero-checking tolerance.
+	 * @return Closest point on triangle.
+	 */
+	inline Point3 findClosestPointOnTriangleToPoint( const Point3 *p, const Point3 *v0, const Point3 *v1, const Point3 *v2, double TOL = EPS )
+	{
+		double a, b;				// (Dummy) barycentric coordinates for projected point on triangle's plane.
+		Point3 P;					// Projected point triangle's plane.
+		const Point3 *u0, *u1;		// Pointers to vertices of line segment closest to P if the latter doesn't fall within the triangle.
+		if( projectPointOnTriangleAndPlane( p, v0, v1, v2, a, b, P, u0, u1 ) )
+			return P;
+		else						// Find closest point from projected point to nearest triangle's segment that failed in/out test.
+			return geom::findClosestPointOnLineSegmentToPoint( P, *u0, *u1, TOL );
+	}
+
+	/**
 	 * Some general purpose functions.
 	 */
 	namespace utils
@@ -185,4 +227,4 @@ namespace geom
 	}
 }
 
-#endif //FAST_SWEEPING_GEOMETRY_H
+#endif //FAST_SWEEPING_CASL_GEOMETRY_H

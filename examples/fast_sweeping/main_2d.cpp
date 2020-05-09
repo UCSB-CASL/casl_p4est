@@ -11,6 +11,8 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_level_set.h>
+#include <src/my_p8est_fast_sweeping.h>
+#include <src/cube3.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
@@ -20,15 +22,15 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_fast_sweeping.h>
+#include <src/cube2.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
-#include <src/FastSweeping.h>
 
 using namespace std;
-
 
 class Circle: public CF_2
 {
@@ -52,10 +54,15 @@ int main( int argc, char* argv[] )
 	{
 		// TODO: Test Cube functions.
 		std::unordered_map<p4est_locidx_t, double> map;
-		QuadValueExtended q( -1, -1, -1, EPS/2, 			// Phi values.
-							 0, 1, 2, 3 );			// Node indices.
-		Cube2 cube( 0, 1, 0, 1 );
-		cube.computeDistanceToInterface( q, map );
+		OctValueExtended o( -1, -1, -1, -1, EPS/2, -0, EPS/2, -0, 	// Phi values.
+							  0, 1, 2, 3, 4, 5, 6, 7 );			// Node indices.
+		Cube3 cube( 0, 1, 0, 1, 0, 1 );
+		cube.computeDistanceToInterface( o, map );
+
+//		QuadValueExtended q( -1, -1, -1, EPS/2, 			// Phi values.
+//							 0, 1, 2, 3 );			// Node indices.
+//		Cube2 cube( 0, 1, 0, 1 );
+//		cube.computeDistanceToInterface( q, map );
 		for( const auto& e : map )
 			std::cout << e.first << ": " << e.second << std::endl;
 
@@ -119,7 +126,7 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			phiPtr[i] = point( xyz[0], xyz[1] );
+			phiPtr[i] = point( DIM( xyz[0], xyz[1], xyz[2] ) );
 		}
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
@@ -193,9 +200,9 @@ int main( int argc, char* argv[] )
 		ierr = VecCopy( phi, fsmPhi );
 		CHKERRXX( ierr );
 
-		FastSweeping fsm{};
-		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &fsmPhi );
+		FastSweeping fsm;
+//		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//		fsm.reinitializeLevelSetFunction( &fsmPhi );
 
 		const double *fsmPhiPtr;
 		ierr = VecGetArrayRead( fsmPhi, &fsmPhiPtr );
@@ -213,7 +220,7 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			fsmErrorPtr[i] = ABS( point( xyz[0], xyz[1] ) - fsmPhiPtr[i] );
+			fsmErrorPtr[i] = ABS( point( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiPtr[i] );
 		}
 		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );

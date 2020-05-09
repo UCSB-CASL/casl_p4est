@@ -2,8 +2,8 @@
 // Created by Im YoungMin on 4/21/20.
 //
 
-#ifndef FAST_SWEEPING_FASTSWEEPING_H
-#define FAST_SWEEPING_FASTSWEEPING_H
+#ifndef FAST_SWEEPING_MY_P4EST_FAST_SWEEPING_H
+#define FAST_SWEEPING_MY_P4EST_FAST_SWEEPING_H
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
@@ -37,7 +37,7 @@
 #include <src/casl_math.h>
 #include <algorithm>
 #include <vector>
-#include <src/Geometry.h>
+#include <src/casl_geometry.h>
 #include <unordered_map>
 
 // TODO: Relyng on accessing is_qnnn_valid[.] from my_p4est_node_neighbors.
@@ -45,12 +45,12 @@
 /**
  * Point at the origin.
  */
-class APoint: public CF_2
+class APoint: public CF_DIM
 {
 public:
-	double operator()( double x, double y ) const override
+	double operator()( DIM( double x, double y, double z ) ) const override
 	{
-		return sqrt( SQR( x ) + SQR( y ) );			// Distance to the origin.
+		return sqrt( SUMD( SQR( x ), SQR( y ), SQR( z ) ) );			// Distance to the origin.
 	}
 };
 
@@ -218,4 +218,4 @@ public:
 };
 
 
-#endif //FAST_SWEEPING_FASTSWEEPING_H
+#endif //FAST_SWEEPING_MY_P4EST_FAST_SWEEPING_H

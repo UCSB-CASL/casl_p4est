@@ -2,7 +2,7 @@
 // Created by Im YoungMin on 4/21/20.
 //
 
-#include "FastSweeping.h"
+#include "my_p4est_fast_sweeping.h"
 
 /////////////////////////////////////////////// Private member functions ///////////////////////////////////////////////
 
@@ -183,7 +183,7 @@ double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 }
 
 #ifdef P4_TO_P8
-void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( OctValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr );
+void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( OctValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr )
 #else
 void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( QuadValueExtended *quadValPtr, const p4est_locidx_t& quadIdx, const double *nodeSampledValuesPtr )
 #endif
@@ -225,6 +225,7 @@ void FastSweeping::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t
 	double dy = dmin * ( tree_xyz_max[1] - tree_xyz_min[1] );
 
 #ifdef P4_TO_P8
+	double dz = dmin * ( tree_xyz_max[2] - tree_xyz_min[2] );
 	Cube3 cell( 0, dx, 0, dy, 0, dz );
 #else
 	Cube2 cell( 0, dx, 0, dy );
@@ -332,7 +333,7 @@ FastSweeping::~FastSweeping()
 }
 
 void FastSweeping::prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes,
-							const my_p4est_node_neighbors_t *neighbors, const double xyzMin[], const double xyzMax[] )
+			const my_p4est_node_neighbors_t *neighbors, const double xyzMin[], const double xyzMax[] )
 {
 	// Start afresh; setting pointers to internal pointers.
 	_clearScaffoldingData();

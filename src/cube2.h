@@ -4,7 +4,7 @@
 #include "point2.h"
 #include "simplex2.h"
 #include "types.h"
-#include <src/Geometry.h>
+#include <src/casl_geometry.h>
 #include <unordered_map>
 
 /*!
@@ -143,7 +143,7 @@ public:
 
   	/**
   	 * Approximate the distance of the nodes in a quad to the interface.  Computations are based on quad's simplices that
-  	 * are cut-out by the interface.  When this is true, a map of nodeal indices to minimum distance is filled and
+  	 * are cut-out by the interface.  When this is true, a map of nodal indices to minimum distance is filled and
   	 * provided back to the caller function.  This map will be empty if no quad's simplex is cut by the interface.
   	 * @param [in] phiAndIdxQuadOctValues Container of level-set function values and indices associated to the quad nodes.
   	 * @param [out] distanceMap Minimum approximated distance from nodes belonging to at least one of the quad's simplices cut-out by \Gamma.

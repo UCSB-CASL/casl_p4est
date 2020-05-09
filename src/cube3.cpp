@@ -759,3 +759,307 @@ double Cube3::max_Over_Interface(const OctValue &f, const OctValue &ls_values) c
   }
   return my_max;
 }
+
+void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValues,
+										std::unordered_map<p4est_locidx_t, double> &distanceMap, double TOL ) const
+{
+	// Some shortcuts.  Note the order is: x changes slowly, then y changes twice faster than x, and finally z changes
+	// twice faster than y.  It's like completing a truth table.  This is the order we also followed in phiAndIdxQuadOctValues.
+	Point3 p000( xyz_mmm[0], xyz_mmm[1], xyz_mmm[2] );
+	Point3 p001( xyz_mmm[0], xyz_mmm[1], xyz_ppp[2] );
+	Point3 p010( xyz_mmm[0], xyz_ppp[1], xyz_mmm[2] );
+	Point3 p011( xyz_mmm[0], xyz_ppp[1], xyz_ppp[2] );
+	Point3 p100( xyz_ppp[0], xyz_mmm[1], xyz_mmm[2] );
+	Point3 p101( xyz_ppp[0], xyz_mmm[1], xyz_ppp[2] );
+	Point3 p110( xyz_ppp[0], xyz_ppp[1], xyz_mmm[2] );
+	Point3 p111( xyz_ppp[0], xyz_ppp[1], xyz_ppp[2] );
+
+	// Start with a fresh result hashmap and avoid rehashing by stating its capacity upfront.
+	distanceMap.clear();
+	distanceMap.reserve( SQR_P4EST_DIM );
+
+	// If octant is not cut-out by interface there's nothing to do.
+	if( phiAndIdxOctValues.val[0] <= 0 && phiAndIdxOctValues.val[1] <= 0 &&
+		phiAndIdxOctValues.val[2] <= 0 && phiAndIdxOctValues.val[3] <= 0 &&
+		phiAndIdxOctValues.val[4] <= 0 && phiAndIdxOctValues.val[5] <= 0 &&
+		phiAndIdxOctValues.val[6] <= 0 && phiAndIdxOctValues.val[7] <= 0 )
+		return;
+
+	if( phiAndIdxOctValues.val[0] > 0 && phiAndIdxOctValues.val[1] > 0.0 &&
+		phiAndIdxOctValues.val[2] > 0 && phiAndIdxOctValues.val[3] > 0 &&
+		phiAndIdxOctValues.val[4] > 0 && phiAndIdxOctValues.val[5] > 0 &&
+		phiAndIdxOctValues.val[6] > 0 && phiAndIdxOctValues.val[7] > 0.0 )
+		return;
+
+	// Split cube into 5 tetrahedra.
+	const int N_CORNERS = 4;							// Number of corners in the tetrahedron.
+	for( short n = 0; n < 5; n++ )
+	{
+		// Tetrahedron points, level-set function data, and nodal indices.
+		const Point3 *p[N_CORNERS];						// Array of pointers to 'const Point3'.
+		double phi[N_CORNERS];
+		p4est_locidx_t idx[N_CORNERS];
+
+		// Populate the arrays of tetrahedron points, level-set values, and indices.
+		switch( n )
+		{
+			case 0:
+				p[0] = &p000; phi[0] = phiAndIdxOctValues.val[0]; idx[0] = phiAndIdxOctValues.indices[0];
+				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				break;
+			case 1:
+				p[0] = &p110; phi[0] = phiAndIdxOctValues.val[6]; idx[0] = phiAndIdxOctValues.indices[6];
+				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &p111; phi[3] = phiAndIdxOctValues.val[7]; idx[3] = phiAndIdxOctValues.indices[7];
+				break;
+			case 2:
+				p[0] = &p101; phi[0] = phiAndIdxOctValues.val[5]; idx[0] = phiAndIdxOctValues.indices[5];
+				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &p111; phi[2] = phiAndIdxOctValues.val[7]; idx[2] = phiAndIdxOctValues.indices[7];
+				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				break;
+			case 3:
+				p[0] = &p011; phi[0] = phiAndIdxOctValues.val[3]; idx[0] = phiAndIdxOctValues.indices[3];
+				p[1] = &p111; phi[1] = phiAndIdxOctValues.val[7]; idx[1] = phiAndIdxOctValues.indices[7];
+				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				break;
+			case 4:
+				p[0] = &p111; phi[0] = phiAndIdxOctValues.val[7]; idx[0] = phiAndIdxOctValues.indices[7];
+				p[1] = &p100; phi[1] = phiAndIdxOctValues.val[4]; idx[1] = phiAndIdxOctValues.indices[4];
+				p[2] = &p010; phi[2] = phiAndIdxOctValues.val[2]; idx[2] = phiAndIdxOctValues.indices[2];
+				p[3] = &p001; phi[3] = phiAndIdxOctValues.val[1]; idx[3] = phiAndIdxOctValues.indices[1];
+				break;
+			default:
+#ifdef CASL_THROWS
+				throw std::runtime_error(
+						"[CASL_ERROR]: Cube3::computeDistanceToInterface: Wrong number of tetrahedra!" );
+#endif
+				for( short i = 0; i < N_CORNERS; i++ )
+				{
+					p[i] = nullptr;
+					phi[i] = 0;
+					idx[i] = -1;
+				}
+		}
+
+		// Tetrahedron not cut-out by interface: skip it.
+		if( phi[0] <= 0 && phi[1] <= 0 && phi[2] <= 0 && phi[3] <= 0 )
+			continue;
+		if( phi[0] > 0 && phi[1] > 0 && phi[2] > 0 && phi[3] > 0 )
+			continue;
+
+		// Count the number of points lying on the interface to deal with the case of a whole face on the interface.
+		// By convention, an exact distance of 0 is considered in the negatives side.
+		std::vector<short> zeros;			// These arrays hold indices.
+		std::vector<short> nonZeros;
+		std::vector<short> all = {0, 1, 2, 3};
+		for( short i = 0; i < N_CORNERS; i++ )
+		{
+			if( ABS( phi[i] ) <= TOL )		// Is the ith point lying *on* the interface?
+				zeros.push_back( i );
+			else
+				nonZeros.push_back( i );	// Keep track of points *not* lying on the interface.
+		}
+
+		if( zeros.size() >= 3 )
+		{
+			if( zeros.size() == 3 && nonZeros.size() == 1 ) 	// Validity check: there should be a single non-zero point.
+				_computeDistanceToTriangle( all, p, phi, idx, p[zeros[0]], p[zeros[1]], p[zeros[2]], distanceMap, TOL );
+#ifdef CASL_THROWS
+			else
+				throw std::runtime_error( "[CASL_ERROR]: Cube3::computeDistanceToInterface: Interface passes through all tetrahedron points!" );
+#endif
+		}
+		else	// Interface not coinciding with a tetrahedon face.  Process the generic configurations: -+++ and --++.
+		{
+			// Normalizing to the cases of having negatives first, positives then.
+			short numberOfNegatives = 0;	// Must be 1, 2, or 3 as we have checked that not all corners have the same sign.
+			for( double& i : phi )
+			{
+				if( i <= 0 )
+				{
+					numberOfNegatives++;	// Test for exact zero.  Make it slightly negative because an exact 0 causes
+					if( i == 0 )			// problems with our normalization to -+++ and --++.  See deatils below.
+						i = 0.0 - std::numeric_limits<double>::epsilon();
+				}
+			}
+
+			if( numberOfNegatives == 3 )	// Normalize to single use case of -+++.
+			{
+				for( double &i : phi )		// Consider the case of two 0s, one +, and one -.  The covention takes 0 as
+					i *= -1;				// negative, and when we negate the 0s, we end up with [-0, -0, -, +].  This
+			}								// discrupts our assumption of the -+++ and --++ only cases
+
+			// Sorting for simplication into -+++ or --++ or ---+.
+//			for( short i = 0; i < N_CORNERS - 1; i++ )	// Bubble-sort to sort arrays of phi/idx/p.
+//				for( short j = N_CORNERS - 1; j > i; j-- )
+//					if( phi[j] < phi[j-1] )
+//						geom::utils::swapTriplet( phi[j], idx[j], p[j], phi[j-1], idx[j-1], p[j-1] );
+
+			if( phi[0] > 0 && phi[1] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[1], idx[1], p[1] );
+			if( phi[0] > 0 && phi[2] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[2], idx[2], p[2] );
+			if( phi[0] > 0 && phi[3] <= 0 ) geom::utils::swapTriplet( phi[0], idx[0], p[0], phi[3], idx[3], p[3] );
+			if( phi[1] > 0 && phi[2] <= 0 ) geom::utils::swapTriplet( phi[1], idx[1], p[1], phi[2], idx[2], p[2] );
+			if( phi[1] > 0 && phi[3] <= 0 ) geom::utils::swapTriplet( phi[1], idx[1], p[1], phi[3], idx[3], p[3] );
+			if( phi[2] > 0 && phi[3] <= 0 ) geom::utils::swapTriplet( phi[2], idx[2], p[2], phi[3], idx[3], p[3] );
+
+			// Evaluate cases for type -+++.
+			if( phi[0] <= 0 && phi[1] > 0 && phi[2] > 0 && phi[3] > 0 )
+			{
+				if( ABS( phi[0] ) <= TOL )						// Two special cases to verify if the apex is ~0.
+				{
+					short z = -1;
+					for( short i = 1; i < N_CORNERS; i++ )		// Search for the other zero (as there can't be more than 2 zeros).
+					{
+						if( phi[i] <= TOL )
+						{
+							z = i;
+							break;
+						}
+					}
+
+					if( z == -1 )			// Case 1: Apex is the only zero point in the -+++ tetrahedron.
+					{
+						_updateMinimumDistanceMap( distanceMap, idx[0], 0 );	// Update appex distance.
+						for( short i = 1; i < N_CORNERS; i++ )					// Take the distance of rest of points to apex.
+						{
+							double d = (*p[i] - *p[0]).norm_L2();
+							_updateMinimumDistanceMap( distanceMap, idx[i], d );
+						}
+					}
+					else					// Case 2: An edge [p0, pz] of the -+++ tetrahedron is on the interface.
+					{
+						// Compute and update distance from ++ points to edge of tetrahedron on \Gamma.
+						// Set the other zero points to 0 distance as well.
+						_computeDistanceToLineSegment( all, p, phi, idx, p[0], p[z], distanceMap, TOL );
+					}
+				}
+				else	// No special cases: use typical formulation for -+++.
+				{
+					Point3 p0_1 = geom::interpolatePoint( p[0], phi[0], p[1], phi[1], TOL );	// Point between 0 and 1.
+					Point3 p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2], TOL );	// Point between 0 and 2.
+					Point3 p0_3 = geom::interpolatePoint( p[0], phi[0], p[3], phi[3], TOL );	// Point between 0 and 3.
+
+					// Compute closest distance of tetrahedron point to triangle formed with midpoints.
+					// Also check for (non apex) points lying on \Gamma if any.
+					_computeDistanceToTriangle( all, p, phi, idx, &p0_1, &p0_2, &p0_3, distanceMap, TOL );
+				}
+			}
+			else if( phi[0] <= 0 && phi[1] <= 0 && phi[2] > 0 && phi[3] > 0 )
+			{
+				// Evaluate cases for type --++.
+				zeros.clear();				// We need to get again the zeros from the re-arranged values to evaluate
+				nonZeros.clear();			// the special cases.
+				for( short i = 0; i < N_CORNERS; i++ )
+				{
+					if( ABS( phi[i] ) <= TOL )		// Lying *on* the interface?
+						zeros.push_back( i );
+					else
+						nonZeros.push_back( i );	// *Not* lying on the interface.
+				}
+
+				if( zeros.size() == 2 )				// Special cases of --++ with two zeros: of opposite sign and equal sign.
+				{
+					// Case 1: Zeros with same sign.
+					if( ( phi[zeros[0]] <= 0 && phi[zeros[1]] <= 0 ) || ( phi[zeros[0]] > 0 && phi[zeros[1]] > 0 ) )
+					{
+						// In this case, the non-zeros have a distance to the line segment composed of both points referenced to in zeros vector.
+						_computeDistanceToLineSegment( all, p, phi, idx, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
+					}
+					else	// Case 2: Zeros have distinct signs.
+					{		// Find the midpoint between the non zero points (which also have different signs); form a triangle with zeros.
+						Point3 midPoint = geom::interpolatePoint( p[nonZeros[0]], phi[nonZeros[0]], p[nonZeros[1]], phi[nonZeros[1]], TOL );
+						_computeDistanceToTriangle( all, p, phi, idx, &midPoint, p[zeros[0]], p[zeros[1]], distanceMap, TOL );
+					}
+				}
+				else if( zeros.size() == 1 )		// Special cases of --++ with one zero
+				{
+					short z = zeros[0];				// In this case there's a single triangle cutting the tetrahedron
+					Point3 v1, v2;					// with a v0 in the zero node.  The other two vertices are found next.
+					if( phi[z] <= 0 )				// Zero is -, non zeros are given in the order -++.
+					{
+						// Midpoints are between the other - and each of the 2 +'s.
+						v1 = geom::interpolatePoint( p[nonZeros[0]], phi[nonZeros[0]], p[nonZeros[1]], phi[nonZeros[1]], TOL );
+						v2 = geom::interpolatePoint( p[nonZeros[0]], phi[nonZeros[0]], p[nonZeros[2]], phi[nonZeros[2]], TOL );
+					}
+					else							// Zero is +.
+					{
+						// Midpoints are between each of the 2 -'s and the remaining +.
+						v1 = geom::interpolatePoint( p[nonZeros[0]], phi[nonZeros[0]], p[nonZeros[2]], phi[nonZeros[2]], TOL );
+						v2 = geom::interpolatePoint( p[nonZeros[1]], phi[nonZeros[1]], p[nonZeros[2]], phi[nonZeros[2]], TOL );
+					}
+
+					// Now process non-zero points.
+					_computeDistanceToTriangle( all, p, phi, idx, p[z], &v1, &v2, distanceMap, TOL );
+				}
+				else								// No zeros in --++ type.  Apply the generic method with 2 triangles.
+				{
+					Point3 p0_2 = geom::interpolatePoint( p[0], phi[0], p[2], phi[2] );			// Point between 0 and 2.
+					Point3 p0_3 = geom::interpolatePoint( p[0], phi[0], p[3], phi[3] );			// Point between 0 and 3.
+					Point3 p1_2 = geom::interpolatePoint( p[1], phi[1], p[2], phi[2] );			// Point between 1 and 2.
+					Point3 p1_3 = geom::interpolatePoint( p[1], phi[1], p[3], phi[3] );			// Point between 1 and 3.
+
+					// Two triangles are formed.
+					const Point3 *triangles[][3] = {
+						{ &p1_2, &p1_3, &p0_2 },
+						{ &p1_3, &p0_3, &p0_2 }
+					};
+
+					// Basically, nonZeros vector has all of the nodes in the tetrahedron.
+					for( const auto& t : triangles )
+						_computeDistanceToTriangle( all, p, phi, idx, t[0], t[1], t[2], distanceMap, TOL );
+				}
+			}
+#ifdef CASL_THROWS
+			else
+				throw std::runtime_error(
+						"[CASL_ERROR]: Cube3::computeDistanceToInterface: Wrong ordering of tetrahedron points!" );
+#endif
+		}
+	}
+}
+
+void Cube3::_updateMinimumDistanceMap( std::unordered_map<p4est_locidx_t, double>& distanceMap, p4est_locidx_t n, double d )
+{
+	distanceMap[n] = ( distanceMap.find( n ) == distanceMap.end() )? d : MIN( d, distanceMap[n] );
+}
+
+void Cube3::_computeDistanceToTriangle( const std::vector<short>& which,
+										const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+										const Point3 *v0, const Point3 *v1, const Point3 *v2,
+										std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL )
+{
+	for( auto w : which )
+	{
+		if( ABS( phi[w] ) <= TOL )		// Double check for zero distances.
+			_updateMinimumDistanceMap( distanceMap, idx[w], 0 );
+		else
+		{
+			Point3 P = geom::findClosestPointOnTriangleToPoint( p[w], v0, v1, v2, TOL );
+			double d = (*p[w] - P).norm_L2();
+			_updateMinimumDistanceMap( distanceMap, idx[w], d );
+		}
+	}
+}
+
+void Cube3::_computeDistanceToLineSegment( const std::vector<short>& which,
+										   const Point3 *p[4], const double phi[4], const p4est_locidx_t idx[4],
+										   const Point3 *v0, const Point3 *v1,
+										   std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL )
+{
+	for( auto w : which )
+	{
+		if( ABS( phi[w] ) <= TOL )		// Double check for zero distances.
+			_updateMinimumDistanceMap( distanceMap, idx[w], 0 );
+		else
+		{
+			Point3 P = geom::findClosestPointOnLineSegmentToPoint( *p[w], *v0, *v1, TOL );
+			double d = (*p[w] - P).norm_L2();
+			_updateMinimumDistanceMap( distanceMap, idx[w], d );
+		}
+	}
+}
