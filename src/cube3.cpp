@@ -767,7 +767,7 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 	// Some shortcuts.  Note the order is: x changes slowly, then y changes twice faster than x, and finally z changes
 	// twice faster than y.  It's like completing a truth table.  This is the order we also followed in phiAndIdxQuadOctValues.
 	const short N_POINTS = 8;
-	Point3 allPoints[N_POINTS] = {
+	const Point3 allPoints[N_POINTS] = {
 		Point3( xyz_mmm[0], xyz_mmm[1], xyz_mmm[2] ),		// p000.
 		Point3( xyz_mmm[0], xyz_mmm[1], xyz_ppp[2] ),		// p001.
 		Point3( xyz_mmm[0], xyz_ppp[1], xyz_mmm[2] ),		// p010.
@@ -780,7 +780,7 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 
 	// Start with a fresh result hashmap and avoid rehashing by stating its capacity upfront.
 	distanceMap.clear();
-	distanceMap.reserve( 8 );
+	distanceMap.reserve( N_POINTS );
 
 	// If octant is not cut-out by interface there's nothing to do.
 	if( phiAndIdxOctValues.val[0] <= 0 && phiAndIdxOctValues.val[1] <= 0 &&
@@ -789,10 +789,10 @@ void Cube3::computeDistanceToInterface( const OctValueExtended &phiAndIdxOctValu
 		phiAndIdxOctValues.val[6] <= 0 && phiAndIdxOctValues.val[7] <= 0 )
 		return;
 
-	if( phiAndIdxOctValues.val[0] > 0 && phiAndIdxOctValues.val[1] > 0.0 &&
+	if( phiAndIdxOctValues.val[0] > 0 && phiAndIdxOctValues.val[1] > 0 &&
 		phiAndIdxOctValues.val[2] > 0 && phiAndIdxOctValues.val[3] > 0 &&
 		phiAndIdxOctValues.val[4] > 0 && phiAndIdxOctValues.val[5] > 0 &&
-		phiAndIdxOctValues.val[6] > 0 && phiAndIdxOctValues.val[7] > 0.0 )
+		phiAndIdxOctValues.val[6] > 0 && phiAndIdxOctValues.val[7] > 0 )
 		return;
 
 	// Split cube into 5 tetrahedra.
