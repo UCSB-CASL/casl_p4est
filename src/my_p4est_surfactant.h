@@ -27,6 +27,13 @@
 //  LOAD
 //} save_or_load;
 
+typedef enum{
+  IEEU1,
+  SBDF2,
+  CNLF2,
+  MCNAB2
+} TimeIntegrator;
+
 class my_p4est_surfactant_t
 {
 protected:
@@ -200,7 +207,7 @@ public:
 
   void advect_interface_one_step();
 
-  void compute_one_step_Gamma();
+  void compute_one_step_Gamma(TimeIntegrator integ=SBDF2, bool use_SL=true, bool extending_rhs=true);
 
 #ifdef P4_TO_P8
   void update_from_tn_to_tnp1(CF_3 **vnp1);

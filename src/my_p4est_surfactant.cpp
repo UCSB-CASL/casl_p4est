@@ -67,7 +67,7 @@ void my_p4est_surfactant_t::splitting_criteria_surfactant_t::tag_quadrant(p4est_
         node_idx  = nodes->local_nodes[P4EST_CHILDREN*quad_idx+v];
 
         coar_intf = coar_intf && ( fabs(phi_p[node_idx]) >= lip*2.0*quad_diag );
-        coar_band = coar_band && ( _prnt->phi_band_gen.band_fn(phi_p[node_idx]) > MAX(1.0,_prnt->uniform_padding)*(_prnt->dxyz_max) );
+        coar_band = coar_band && ( _prnt->phi_band_gen.band_fn(phi_p[node_idx]) > MAX(3.0,_prnt->uniform_padding)*(_prnt->dxyz_max) );
 
         coarsen = coar_intf && coar_band; // need ALL of the coarsening conditions satisfied to coarsen the quadrant
         if(!coarsen)
@@ -88,7 +88,7 @@ void my_p4est_surfactant_t::splitting_criteria_surfactant_t::tag_quadrant(p4est_
         node_idx  = nodes->local_nodes[P4EST_CHILDREN*quad_idx+v];
 
         ref_intf = ref_intf || ( fabs(phi_p[node_idx]) <= lip*quad_diag );
-        ref_band = ref_band || ( _prnt->phi_band_gen.band_fn(phi_p[node_idx]) < MAX(1.0,_prnt->uniform_padding)*(_prnt->dxyz_max) );
+        ref_band = ref_band || ( _prnt->phi_band_gen.band_fn(phi_p[node_idx]) < MAX(3.0,_prnt->uniform_padding)*(_prnt->dxyz_max) ); // WARNING: Review how to optimize (if possible) the 2.0 value
 
         refine = ref_intf || ref_band; // need AT LEAST ONE of the refining conditions satisfied to refine the quadrant
         if(refine)
@@ -302,7 +302,7 @@ my_p4est_surfactant_t::my_p4est_surfactant_t(const mpi_environment_t& mpi,
 
   // Create trees and associated structures at time n (initial time t0)
   splitting_criteria_cf_and_uniform_band_t* ref_data_temp = NULL;
-  ref_data_temp = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, ls_n, MAX(1.0,uniform_padding)+0.5*(phi_band_gen.band_width), ls_n->lip);
+  ref_data_temp = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, ls_n, MAX(3.0,uniform_padding)+0.5*(phi_band_gen.band_width), ls_n->lip);
   p4est_n = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
   p4est_n->user_pointer = (void*) ref_data_temp;
   for(int l=0; l<lmax; ++l)
@@ -332,7 +332,7 @@ my_p4est_surfactant_t::my_p4est_surfactant_t(const mpi_environment_t& mpi,
   {
     p4est_nm1 = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
     delete ref_data_temp;
-    ref_data_temp = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, ls_nm1, MAX(1.0,uniform_padding)+0.5*(phi_band_gen.band_width), ls_nm1->lip);
+    ref_data_temp = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, ls_nm1, MAX(3.0,uniform_padding)+0.5*(phi_band_gen.band_width), ls_nm1->lip);
     p4est_nm1->user_pointer = (void*) ref_data_temp;
     for(int l=0; l<lmax; ++l)
     {
@@ -802,7 +802,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
     ls_extend_nm1.perturb_level_set_function(phi_nm1_temp, EPS*dxyz_min);
   }
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
-    ls_extend_nm1.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, vnm1_nodes[dir], vnm1_s_nodes[dir], 30);
+    ls_extend_nm1.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, vnm1_nodes[dir], vnm1_s_nodes[dir], 50);
 
   my_p4est_level_set_t ls_extend_n(ngbd_n);
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir){
@@ -811,7 +811,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
   {
     for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
     {
-      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi, vn_nodes[dir], vn_s_nodes[dir], 30);
+      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi, vn_nodes[dir], vn_s_nodes[dir], 50);
     }
   }
   else
@@ -826,7 +826,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
     }
     for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
     {
-      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi_n_temp, vn_nodes[dir], vn_s_nodes[dir], 30);
+      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi_n_temp, vn_nodes[dir], vn_s_nodes[dir], 50);
     }
   }
 
@@ -905,13 +905,23 @@ void my_p4est_surfactant_t::compute_stretching_term_nm1(CF_2 *ls_nm1)
   for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecRestoreArrayRead(vnm1_s_nodes[dir], &vnm1_s_p[dir]); CHKERRXX(ierr); }
   ierr = VecRestoreArray(str_nm1_temp, &str_nm1_p); CHKERRXX(ierr);
 
-  Vec phi_nm1_temp = NULL;
-  ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &phi_nm1_temp); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est_nm1, nodes_nm1, *ls_nm1, phi_nm1_temp);
-  my_p4est_level_set_t ls(ngbd_nm1);
   if(str_nm1!=NULL) { ierr = VecDestroy(str_nm1); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &str_nm1); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, str_nm1_temp, str_nm1, 30);
+
+  Vec from_loc, to_loc;
+  ierr = VecGhostGetLocalForm(str_nm1_temp, &from_loc);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(str_nm1, &to_loc);       CHKERRXX(ierr);
+  ierr = VecCopy(from_loc, to_loc);
+  ierr = VecGhostRestoreLocalForm(str_nm1_temp, &from_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(str_nm1, &to_loc);   CHKERRXX(ierr);
+
+//  Vec phi_nm1_temp = NULL;
+//  ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &phi_nm1_temp); CHKERRXX(ierr);
+//  sample_cf_on_nodes(p4est_nm1, nodes_nm1, *ls_nm1, phi_nm1_temp);
+//  my_p4est_level_set_t ls(ngbd_nm1);
+//  if(str_nm1!=NULL) { ierr = VecDestroy(str_nm1); CHKERRXX(ierr); }
+//  ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &str_nm1); CHKERRXX(ierr);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, str_nm1_temp, str_nm1, 50);
 }
 
 #ifdef P4_TO_P8
@@ -963,19 +973,26 @@ void my_p4est_surfactant_t::compute_stretching_term_n(CF_2 *ls_n)
 
   if(str_n!=NULL) { ierr = VecDestroy(str_n); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &str_n); CHKERRXX(ierr);
-  my_p4est_level_set_t ls(ngbd_n);
 
-  if(ls_n==NULL)
-  {
-    ls.extend_from_interface_to_whole_domain_TVD(phi, str_n_temp, str_n, 30);
-  }
-  else
-  {
-    Vec phi_n_temp = NULL;
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_n_temp); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_n, nodes_n, *ls_n, phi_n_temp);
-    ls.extend_from_interface_to_whole_domain_TVD(phi_n_temp, str_n_temp, str_n, 30);
-  }
+  Vec from_loc, to_loc;
+  ierr = VecGhostGetLocalForm(str_n_temp, &from_loc);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(str_n, &to_loc);       CHKERRXX(ierr);
+  ierr = VecCopy(from_loc, to_loc);
+  ierr = VecGhostRestoreLocalForm(str_n_temp, &from_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(str_n, &to_loc);   CHKERRXX(ierr);
+//  my_p4est_level_set_t ls(ngbd_n);
+
+//  if(ls_n==NULL)
+//  {
+//    ls.extend_from_interface_to_whole_domain_TVD(phi, str_n_temp, str_n, 50);
+//  }
+//  else
+//  {
+//    Vec phi_n_temp = NULL;
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_n_temp); CHKERRXX(ierr);
+//    sample_cf_on_nodes(p4est_n, nodes_n, *ls_n, phi_n_temp);
+//    ls.extend_from_interface_to_whole_domain_TVD(phi_n_temp, str_n_temp, str_n, 50);
+//  }
 }
 
 
@@ -1048,127 +1065,323 @@ void my_p4est_surfactant_t::advect_interface_one_step()
 }
 
 
-void my_p4est_surfactant_t::compute_one_step_Gamma()
+void my_p4est_surfactant_t::compute_one_step_Gamma(TimeIntegrator integ, bool use_SL, bool extending_rhs)
 {
   // Create PETSc error flag
   PetscErrorCode ierr;
 
-  // Backtrack characteristics using the EXTENDED velocity and obtain departure points:
-  trajectory_from_np1_to_nm1(p4est_n, nodes_n, ngbd_nm1, ngbd_n,
-                             vnm1_s_nodes, dd_vnm1_s_nodes,
-                             vn_s_nodes, dd_vn_s_nodes,
-                             dt_nm1, dt_n,
-                             xyz_dep_s_nm1, xyz_dep_s_n);
+  // Define ratio of time steps for later use
+  double omega = dt_n/dt_nm1;
 
-  // Obtain Gamma and the stretching term at departure points from interpolation:
-  my_p4est_interpolation_nodes_t interp_n(ngbd_n);
-  my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
-
-  for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
-  {
-    double xyz_tmp[P4EST_DIM];
-
-    xyz_tmp[0] = xyz_dep_s_n[0][n];
-    xyz_tmp[1] = xyz_dep_s_n[1][n];
-#ifdef P4_TO_P8
-    xyz_tmp[2] = xyz_dep_s_n[2][n];
-#endif
-    interp_n.add_point(n, xyz_tmp);
-
-    xyz_tmp[0] = xyz_dep_s_nm1[0][n];
-    xyz_tmp[1] = xyz_dep_s_nm1[1][n];
-#ifdef P4_TO_P8
-    xyz_tmp[2] = xyz_dep_s_nm1[2][n];
-#endif
-    interp_nm1.add_point(n, xyz_tmp);
-  }
-
-  Vec Gamma_dep_n = NULL;
-  Vec str_dep_n = NULL;
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_dep_n); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &str_dep_n); CHKERRXX(ierr);
-  std::vector<Vec> interp_inputs_n; interp_inputs_n.resize(0);
-  interp_inputs_n.push_back(Gamma_n);
-  interp_inputs_n.push_back(str_n);
-  std::vector<Vec> interp_outputs_n; interp_outputs_n.resize(0);
-  interp_outputs_n.push_back(Gamma_dep_n);
-  interp_outputs_n.push_back(str_dep_n);
-  interp_n.set_input(interp_inputs_n,linear);
-  interp_n.interpolate(interp_outputs_n);
-  interp_inputs_n.resize(0);
-  interp_outputs_n.resize(0);
-  interp_n.clear();
-
-  Vec Gamma_dep_nm1 = NULL;
-  Vec str_dep_nm1 = NULL;
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_dep_nm1); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &str_dep_nm1); CHKERRXX(ierr);
-  std::vector<Vec> interp_inputs_nm1; interp_inputs_nm1.resize(0);
-  interp_inputs_nm1.push_back(Gamma_nm1);
-  interp_inputs_nm1.push_back(str_nm1);
-  std::vector<Vec> interp_outputs_nm1; interp_outputs_nm1.resize(0);
-  interp_outputs_nm1.push_back(Gamma_dep_nm1);
-  interp_outputs_nm1.push_back(str_dep_nm1);
-  interp_nm1.set_input(interp_inputs_nm1,linear);
-  interp_nm1.interpolate(interp_outputs_nm1);
-  interp_inputs_nm1.resize(0);
-  interp_outputs_nm1.resize(0);
-  interp_nm1.clear();
-
-  // Interpolation happened only for local nodes, so we need to update the ghost layer:
-  ierr = VecGhostUpdateBegin(Gamma_dep_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(Gamma_dep_nm1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(str_dep_nm1,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(Gamma_dep_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(Gamma_dep_nm1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(str_dep_nm1,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // Compute the right-hand side of the linear system of equations from data at departure points:
-  double alpha = (2*dt_n + dt_nm1)/(dt_n+dt_nm1);
-  double beta  = -dt_n/(dt_n+dt_nm1);
-  double eta   = (dt_nm1+dt_n)/dt_nm1;
-  double zeta  = -dt_n/dt_nm1;
-
+  // Define the RHS vectors
   Vec rhs_Gamma      = NULL;
   Vec rhs_Gamma_temp = NULL;
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &rhs_Gamma_temp); CHKERRXX(ierr);
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &rhs_Gamma);      CHKERRXX(ierr);
 
-  const double *Gamma_dep_nm1_p, *Gamma_dep_n_p, *str_dep_nm1_p, *str_dep_n_p;
-  ierr = VecGetArrayRead(Gamma_dep_nm1 , &Gamma_dep_nm1_p  ); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(Gamma_dep_n   , &Gamma_dep_n_p  );   CHKERRXX(ierr);
-  ierr = VecGetArrayRead(str_dep_nm1   , &str_dep_nm1_p  );   CHKERRXX(ierr);
-  ierr = VecGetArrayRead(str_dep_n     , &str_dep_n_p  );     CHKERRXX(ierr);
-
-  double *rhs_temp_p;
-  ierr = VecGetArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes_n->indep_nodes.elem_count; ++n)
+  if(use_SL)
   {
-    rhs_temp_p[n]    = Gamma_dep_n_p[n]  *( (alpha/dt_n) - (beta/dt_nm1) - eta *(str_dep_n_p[n])   ) +
-                       Gamma_dep_nm1_p[n]*(                (beta/dt_nm1) - zeta*(str_dep_nm1_p[n]) );
+    // Backtrack characteristics using the EXTENDED velocity and obtain departure points:
+    trajectory_from_np1_to_nm1(p4est_n, nodes_n, ngbd_nm1, ngbd_n,
+                               vnm1_s_nodes, dd_vnm1_s_nodes,
+                               vn_s_nodes, dd_vn_s_nodes,
+                               dt_nm1, dt_n,
+                               xyz_dep_s_nm1, xyz_dep_s_n);
+
+    // Obtain Gamma and the stretching term at departure points from interpolation:
+    my_p4est_interpolation_nodes_t interp_n(ngbd_n);
+    my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
+
+    // TO-DO: Do it only for close nodes, then extrapolate
+    for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
+    {
+      double xyz_tmp[P4EST_DIM];
+
+      xyz_tmp[0] = xyz_dep_s_n[0][n];
+      xyz_tmp[1] = xyz_dep_s_n[1][n];
+  #ifdef P4_TO_P8
+      xyz_tmp[2] = xyz_dep_s_n[2][n];
+  #endif
+      interp_n.add_point(n, xyz_tmp);
+
+      xyz_tmp[0] = xyz_dep_s_nm1[0][n];
+      xyz_tmp[1] = xyz_dep_s_nm1[1][n];
+  #ifdef P4_TO_P8
+      xyz_tmp[2] = xyz_dep_s_nm1[2][n];
+  #endif
+      interp_nm1.add_point(n, xyz_tmp);
+    }
+
+    Vec Gamma_dep_n = NULL;
+    Vec str_dep_n = NULL;
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_dep_n); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &str_dep_n); CHKERRXX(ierr);
+    std::vector<Vec> interp_inputs_n; interp_inputs_n.resize(0);
+    interp_inputs_n.push_back(Gamma_n);
+    interp_inputs_n.push_back(str_n);
+    std::vector<Vec> interp_outputs_n; interp_outputs_n.resize(0);
+    interp_outputs_n.push_back(Gamma_dep_n);
+    interp_outputs_n.push_back(str_dep_n);
+    interp_n.set_input(interp_inputs_n,linear);
+    interp_n.interpolate(interp_outputs_n);
+    interp_inputs_n.resize(0);
+    interp_outputs_n.resize(0);
+    interp_n.clear();
+
+    Vec Gamma_dep_nm1 = NULL;
+    Vec str_dep_nm1 = NULL;
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_dep_nm1); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &str_dep_nm1); CHKERRXX(ierr);
+    std::vector<Vec> interp_inputs_nm1; interp_inputs_nm1.resize(0);
+    interp_inputs_nm1.push_back(Gamma_nm1);
+    interp_inputs_nm1.push_back(str_nm1);
+    std::vector<Vec> interp_outputs_nm1; interp_outputs_nm1.resize(0);
+    interp_outputs_nm1.push_back(Gamma_dep_nm1);
+    interp_outputs_nm1.push_back(str_dep_nm1);
+    interp_nm1.set_input(interp_inputs_nm1,linear);
+    interp_nm1.interpolate(interp_outputs_nm1);
+    interp_inputs_nm1.resize(0);
+    interp_outputs_nm1.resize(0);
+    interp_nm1.clear();
+
+    // Interpolation happened only for local nodes, so we need to update the ghost layer:
+    ierr = VecGhostUpdateBegin(Gamma_dep_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(Gamma_dep_nm1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(str_dep_nm1,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(Gamma_dep_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(Gamma_dep_nm1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(str_dep_nm1,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // Compute the right-hand side of the linear system of equations from data at departure points:
+    const double *Gamma_dep_nm1_p, *Gamma_dep_n_p, *str_dep_nm1_p, *str_dep_n_p;
+    ierr = VecGetArrayRead(Gamma_dep_nm1 , &Gamma_dep_nm1_p  ); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Gamma_dep_n   , &Gamma_dep_n_p  );   CHKERRXX(ierr);
+    ierr = VecGetArrayRead(str_dep_nm1   , &str_dep_nm1_p  );   CHKERRXX(ierr);
+    ierr = VecGetArrayRead(str_dep_n     , &str_dep_n_p  );     CHKERRXX(ierr);
+
+    double *rhs_temp_p;
+    ierr = VecGetArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
+
+    for(size_t n=0; n<nodes_n->indep_nodes.elem_count; ++n)
+    {
+      switch(integ)
+      {
+        case IEEU1: {
+          rhs_temp_p[n] = dt_n*( Gamma_dep_n_p[n]  *( 1.0/dt_n - str_dep_n_p[n] ) );
+          break;
+        }
+        case SBDF2: {
+          rhs_temp_p[n] = (dt_n*(1.0+omega)/(1.0+2.0*omega))*( Gamma_dep_n_p[n]  *(  (1.0+omega)/dt_n              - (1.0+omega)*str_dep_n_p[n] ) +
+                                                               Gamma_dep_nm1_p[n]*( -(SQR(omega)/(1.0+omega))/dt_n + omega*str_dep_nm1_p[n]     )   );
+          break;
+        }
+        case CNLF2: {
+          rhs_temp_p[n] = (dt_n*(1.0+omega))*( Gamma_dep_n_p[n]  *( - str_dep_n_p[n] - (omega-1.0)/ dt_n             ) +
+                                               Gamma_dep_nm1_p[n]*(                     SQR(omega)/(dt_n*(1.0+omega)))   );
+          break;
+        }
+        case MCNAB2: {
+          rhs_temp_p[n] = dt_n*( Gamma_dep_n_p[n]  *( 1.0/ dt_n  - (1.0+0.5*omega)*str_dep_n_p[n]   ) +
+                                 Gamma_dep_nm1_p[n]*(                   0.5*omega *str_dep_nm1_p[n] )   );
+          break;
+        }
+        default: throw std::invalid_argument("my_p4est_surfactant_t::compute_one_step_Gamma: please choose a valid time integrator");
+      }
+    }
+
+    ierr = VecRestoreArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
+
+    ierr = VecRestoreArrayRead(Gamma_dep_nm1 , &Gamma_dep_nm1_p ); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Gamma_dep_n   , &Gamma_dep_n_p   ); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(str_dep_nm1   , &str_dep_nm1_p   ); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(str_dep_n     , &str_dep_n_p     ); CHKERRXX(ierr);
   }
-  ierr = VecRestoreArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
+  else
+  {
+    // TO-DO: Adapt to account for wall nodes with half-cells, incorporate 3D
+#ifdef P4_TO_P8
+      throw std::runtime_error("The solver is not setup for 3D FV advection yet");
+#endif
 
-  ierr = VecRestoreArrayRead(Gamma_dep_nm1 , &Gamma_dep_nm1_p ); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(Gamma_dep_n   , &Gamma_dep_n_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(str_dep_nm1   , &str_dep_nm1_p   ); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(str_dep_n     , &str_dep_n_p     ); CHKERRXX(ierr);
+    double *rhs_temp_p;
+    const double *phi_p, *Gamma_n_p,*Gamma_nm1_p;
+    ierr = VecGetArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Gamma_n, &Gamma_n_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(Gamma_nm1, &Gamma_nm1_p); CHKERRXX(ierr);
 
-  // Constant extension of the right-hand side:
-  my_p4est_level_set_t ls(ngbd_n);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, rhs_Gamma_temp, rhs_Gamma, 50);
+    //-----------------------------------------------
+
+    my_p4est_interpolation_nodes_t Gamma_nm1_interp(ngbd_nm1); Gamma_nm1_interp.set_input(Gamma_nm1, linear);
+    my_p4est_interpolation_nodes_t v_nm1_s_interp(ngbd_nm1);   v_nm1_s_interp.set_input(vnm1_s_nodes, linear, P4EST_DIM);
+
+    Vec Gamma_nm1_on_ngbd_n;
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_nm1_on_ngbd_n); CHKERRXX(ierr);
+    Vec v_nm1_s_on_ngbd_n[P4EST_DIM];
+    for(unsigned short dir = 0; dir < P4EST_DIM; ++dir) ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_nm1_s_on_ngbd_n[dir]); CHKERRXX(ierr);
+
+    for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
+      Gamma_nm1_interp.add_point(n, xyz);
+      v_nm1_s_interp.add_point(n, xyz);
+    }
+    Gamma_nm1_interp.interpolate(Gamma_nm1_on_ngbd_n);
+    v_nm1_s_interp.interpolate(v_nm1_s_on_ngbd_n,P4EST_DIM);
+    Gamma_nm1_interp.clear();
+    v_nm1_s_interp.clear();
+
+    ierr = VecGhostUpdateBegin(Gamma_nm1_on_ngbd_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateBegin(v_nm1_s_on_ngbd_n[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    ierr = VecGhostUpdateEnd  (Gamma_nm1_on_ngbd_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(int dir=0; dir<P4EST_DIM; ++dir) { ierr = VecGhostUpdateEnd(v_nm1_s_on_ngbd_n[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+
+    const double *Gamma_nm1_on_ngbd_n_p;
+
+//    char out_name[1024];
+//    sprintf(out_name, "/home/temprano/Output/p4est_surfactant/tests/2d/advection_expansion/CNLF2-FV/%02d_%02d/vtu/test_%04d", ref_data->min_lvl, ref_data->max_lvl, iter);
+//    const double *phi_band_p;
+//    const double *vnm1_p[P4EST_DIM];
+//    ierr = VecGetArrayRead(phi_band, &phi_band_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(Gamma_nm1_on_ngbd_n, &Gamma_nm1_on_ngbd_n_p); CHKERRXX(ierr);
+//    for(int dir=0; dir<P4EST_DIM; ++dir)
+//      ierr = VecGetArrayRead(v_nm1_s_on_ngbd_n[dir], &vnm1_p[dir]); CHKERRXX(ierr);
+//    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+//                                   P4EST_TRUE, P4EST_TRUE,
+//                                   3, // number of VTK_NODE_SCALAR
+//                                   1, // number of VTK_NODE_VECTOR_BY_COMPONENTS
+//                                   0,                  // number of VTK_NODE_VECTOR_BLOCK
+//                                   0,                  // number of VTK_CELL_SCALAR
+//                                   0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
+//                                   0,                  // number of VTK_CELL_VECTOR_BLOCK
+//                                   out_name,
+//                                   VTK_NODE_SCALAR, "Gamma_nm1", Gamma_nm1_on_ngbd_n_p,
+//                                   VTK_NODE_VECTOR_BY_COMPONENTS, "v_nm1", vnm1_p[0],
+//                                                                           vnm1_p[1],
+//                                   VTK_NODE_SCALAR, "phi", phi_p,
+//                                   VTK_NODE_SCALAR, "phi_band", phi_band_p);
+//    ierr = VecRestoreArrayRead(Gamma_nm1_on_ngbd_n, &Gamma_nm1_on_ngbd_n_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(phi_band, &phi_band_p); CHKERRXX(ierr);
+//    for(int dir=0; dir<P4EST_DIM; ++dir)
+//      ierr = VecRestoreArrayRead(v_nm1_s_on_ngbd_n[dir], &vnm1_p[dir]); CHKERRXX(ierr);
+
+    //-----------------------------------------------
+
+    my_p4est_interpolation_nodes_t Gamma_n_interp(ngbd_n);     Gamma_n_interp.set_input(Gamma_n, linear);
+    my_p4est_interpolation_nodes_t v_n_s_interp(ngbd_n);       v_n_s_interp.set_input(vn_s_nodes, linear, P4EST_DIM);
+
+    my_p4est_interpolation_nodes_t Gamma_nm1_on_ngbd_n_interp(ngbd_n); Gamma_nm1_on_ngbd_n_interp.set_input(Gamma_nm1_on_ngbd_n, linear);
+    my_p4est_interpolation_nodes_t v_nm1_s_on_ngbd_n_interp(ngbd_n);   v_nm1_s_on_ngbd_n_interp.set_input(v_nm1_s_on_ngbd_n, linear, P4EST_DIM);
+
+    ierr = VecGetArrayRead(Gamma_nm1_on_ngbd_n, &Gamma_nm1_on_ngbd_n_p); CHKERRXX(ierr);
+    for(p4est_locidx_t n=0; n<nodes_n->num_owned_indeps; ++n)
+    {
+      if(phi_band_gen.band_fn(phi_p[n])<=2.5*dxyz_diag)
+      {
+        double F_n, F_nm1;
+
+        double x_n  = node_x_fr_n(n, p4est_n, nodes_n);
+        double y_n  = node_y_fr_n(n, p4est_n, nodes_n);
+        double v_m0[P4EST_DIM], v_p0[P4EST_DIM], v_0m[P4EST_DIM], v_0p[P4EST_DIM];
+
+        v_n_s_interp(x_n-0.5*dxyz[0], y_n            , v_m0);
+        v_n_s_interp(x_n+0.5*dxyz[0], y_n            , v_p0);
+        v_n_s_interp(x_n            , y_n-0.5*dxyz[1], v_0m);
+        v_n_s_interp(x_n            , y_n+0.5*dxyz[1], v_0p);
+
+        F_n = -( - v_m0[0]*Gamma_n_interp(x_n-0.5*dxyz[0], y_n            )*dxyz[1] +
+                   v_p0[0]*Gamma_n_interp(x_n+0.5*dxyz[0], y_n            )*dxyz[1] -
+                   v_0m[1]*Gamma_n_interp(x_n            , y_n-0.5*dxyz[1])*dxyz[0] +
+                   v_0p[1]*Gamma_n_interp(x_n            , y_n+0.5*dxyz[1])*dxyz[0]   )/(dxyz[0]*dxyz[1]);
+
+        v_nm1_s_on_ngbd_n_interp(x_n-0.5*dxyz[0], y_n            , v_m0);
+        v_nm1_s_on_ngbd_n_interp(x_n+0.5*dxyz[0], y_n            , v_p0);
+        v_nm1_s_on_ngbd_n_interp(x_n            , y_n-0.5*dxyz[1], v_0m);
+        v_nm1_s_on_ngbd_n_interp(x_n            , y_n+0.5*dxyz[1], v_0p);
+
+        F_nm1 = -( - v_m0[0]*Gamma_nm1_on_ngbd_n_interp(x_n-0.5*dxyz[0], y_n            )*dxyz[1] +
+                     v_p0[0]*Gamma_nm1_on_ngbd_n_interp(x_n+0.5*dxyz[0], y_n            )*dxyz[1] -
+                     v_0m[1]*Gamma_nm1_on_ngbd_n_interp(x_n            , y_n-0.5*dxyz[1])*dxyz[0] +
+                     v_0p[1]*Gamma_nm1_on_ngbd_n_interp(x_n            , y_n+0.5*dxyz[1])*dxyz[0]   )/(dxyz[0]*dxyz[1]);
+
+        switch(integ)
+        {
+          case IEEU1: {
+            rhs_temp_p[n] = Gamma_n_p[n] + F_n*dt_n;
+            break;
+          }
+          case SBDF2: {
+            rhs_temp_p[n] = (SQR(1.0+omega)/(1.0+2.0*omega))*Gamma_n_p[n] - (SQR(omega)/(1.0+2.0*omega))*Gamma_nm1_on_ngbd_n_p[n] +
+                               dt_n*((1.0+omega)/(1.0+2.0*omega))*((1.0+omega)*F_n - omega*F_nm1);
+            break;
+          }
+          case CNLF2: {
+            rhs_temp_p[n] = (1.0-SQR(omega))*Gamma_n_p[n] + SQR(omega)*Gamma_nm1_on_ngbd_n_p[n] + dt_n*(1+omega)*F_n;
+            break;
+          }
+          case MCNAB2: {
+            rhs_temp_p[n] = Gamma_n_p[n] + dt_n*((1.0+0.5*omega)*F_n - 0.5*omega*F_nm1);
+            break;
+          }
+          default: throw std::invalid_argument("my_p4est_surfactant_t::compute_one_step_Gamma: please choose a valid time integrator");
+        }
+      }
+    }
+    ierr = VecRestoreArrayRead(Gamma_nm1_on_ngbd_n, &Gamma_nm1_on_ngbd_n_p); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(rhs_Gamma_temp,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(rhs_Gamma_temp,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+//                                   P4EST_TRUE, P4EST_TRUE,
+//                                   2, // number of VTK_NODE_SCALAR
+//                                   0, // number of VTK_NODE_VECTOR_BY_COMPONENTS
+//                                   0,                  // number of VTK_NODE_VECTOR_BLOCK
+//                                   0,                  // number of VTK_CELL_SCALAR
+//                                   0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
+//                                   0,                  // number of VTK_CELL_VECTOR_BLOCK
+//                                   "/home/temprano/Output/p4est_surfactant/tests/2d/advection_expansion/test",
+//                                   VTK_NODE_SCALAR, "rhs_FV", rhs_FV_temp_p,
+//                                   VTK_NODE_SCALAR, "phi", phi_p);
+
+    ierr = VecRestoreArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Gamma_n, &Gamma_n_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(Gamma_nm1, &Gamma_nm1_p); CHKERRXX(ierr);
+
+//    // Extrapolation of the solution outside of the band (outwards)
+//    my_p4est_level_set_t ls(ngbd_n);
+//    ls.extend_Over_Interface_TVD(phi_band, q, 20, 0);
+
+    ierr = VecDestroy(Gamma_nm1_on_ngbd_n); CHKERRXX(ierr);
+    for(unsigned short dir = 0; dir<P4EST_DIM; ++dir) ierr = VecDestroy(v_nm1_s_on_ngbd_n[dir]); CHKERRXX(ierr);
+  }
+
+  // Constant extension of the right-hand side // TO-DO: modify function to meet a tolerance within a band then stop
+  if(extending_rhs) {
+    my_p4est_level_set_t ls(ngbd_n);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, rhs_Gamma_temp, rhs_Gamma, 50);
+  }
+  else {
+    Vec from_loc, to_loc;
+    ierr = VecGhostGetLocalForm(rhs_Gamma_temp, &from_loc);     CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(rhs_Gamma, &to_loc);            CHKERRXX(ierr);
+    ierr = VecCopy(from_loc, to_loc);
+    ierr = VecGhostRestoreLocalForm(rhs_Gamma_temp, &from_loc); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(rhs_Gamma, &to_loc);        CHKERRXX(ierr);
+  }
 
   // Solve for Gamma at t_np1 (at the t_n grid!)
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_np1); CHKERRXX(ierr);
   if(NO_SURFACE_DIFFUSION)
   {
-    // With no surface diffusion, multiply rhs by dt_n/alpha and copy it to Gamma_np1:
+    // With no surface diffusion, just copy the rhs into Gamma_np1
     Vec from_loc, to_loc;
     ierr = VecGhostGetLocalForm(rhs_Gamma, &from_loc);     CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(Gamma_np1, &to_loc);       CHKERRXX(ierr);
-    ierr = VecScale(from_loc, (PetscScalar)dt_n/alpha);    CHKERRXX(ierr);
     ierr = VecCopy(from_loc, to_loc);
     ierr = VecGhostRestoreLocalForm(rhs_Gamma, &from_loc); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(Gamma_np1, &to_loc);   CHKERRXX(ierr);
@@ -1339,7 +1552,7 @@ void my_p4est_surfactant_t::update_from_tn_to_tnp1(CF_2 **vnp1)
     ierr = VecDestroy(vn_s_nodes[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_s_nodes[dir]); CHKERRXX(ierr);
     my_p4est_level_set_t ls_extend_np1(ngbd_np1);
-    ls_extend_np1.extend_from_interface_to_whole_domain_TVD(phi_np1, vn_nodes[dir], vn_s_nodes[dir], 30);
+    ls_extend_np1.extend_from_interface_to_whole_domain_TVD(phi_np1, vn_nodes[dir], vn_s_nodes[dir], 50);
   }
 
   // Slide str_nm1 <- str_n

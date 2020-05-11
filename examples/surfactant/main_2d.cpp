@@ -341,7 +341,7 @@ struct star : public CF_1
   unsigned short n;
 
 public:
-  star(double r0_input=1.0, double alpha_input=0.25, unsigned short n_input=7)
+  star(double r0_input=0.75, double alpha_input=0.25, unsigned short n_input=7)
   {
     r0    = r0_input;
     alpha = alpha_input;
@@ -355,7 +355,7 @@ public:
   {
     return -r0*alpha*n*cos((double)n*phi);
   }
-} r_star(1.0,0.0);
+} r_star(0.75,0.075);
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
@@ -497,7 +497,10 @@ struct initial_Gamma_n_t : public CF_2
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
 
-void compute_and_save_errors(my_p4est_surfactant_t* solver, char error_space_name[], char error_time_name[], int N_sampling=2500)
+void compute_and_save_errors(my_p4est_surfactant_t* solver,
+                             char error_space_name[],
+                             char error_time_name[],
+                             int N_sampling=2500)
 {
   // Sample exact and numerical solutions at points of the exact interface
   my_p4est_interpolation_nodes_t interp_n(solver->get_ngbd_n());
@@ -531,6 +534,7 @@ void compute_and_save_errors(my_p4est_surfactant_t* solver, char error_space_nam
 
   double* data = Gamma_num.data();
   interp_n.interpolate(data);
+  double integrated_Gamma = solver->get_integrated_Gamma();
 
   if(solver->get_p4est_n()->mpirank==0)
   {
@@ -570,11 +574,11 @@ void compute_and_save_errors(my_p4est_surfactant_t* solver, char error_space_nam
         sprintf(error_msg, "compute_and_save_errors: could not open file %s.", error_time_name);
         throw std::invalid_argument(error_msg);
       }
-      fprintf(fp_errors_time, "time         \t l_inf_error_Gamma \n");
+      fprintf(fp_errors_time, "time         \t l_inf_error_Gamma \t     integral_Gamma \n");
       fclose(fp_errors_time);
     }
     fp_errors_time = fopen(error_time_name, "a");
-    fprintf(fp_errors_time, "%.12f \t %.12e \n", tn, l_inf_error);
+    fprintf(fp_errors_time, "%.12f \t %.12e \t %.12e \n", tn, l_inf_error, integrated_Gamma);
     fclose(fp_errors_time);
   }
 }
@@ -765,7 +769,7 @@ int main(int argc, char** argv) {
 
   // Refinement levels
   const int lmin = 3;
-  const int lmax = 8;
+  const int lmax = 7;
 #ifdef P4_TO_P8
   dmin = MIN((xmax-xmin),(ymax-ymin),(zmax-zmin))/pow(2,lmax);
 #else
@@ -773,7 +777,9 @@ int main(int argc, char** argv) {
 #endif
 
   // Time
-  double CFL = 1.0;
+  int integ = 3;
+  bool use_SL = true;
+  double CFL = 0.990;
   double u_max = 1.0;
   switch(test_number)
   {
@@ -807,7 +813,7 @@ int main(int argc, char** argv) {
   level_set_t* ls_nm1 = new level_set_t(-dt);
 
   // Create solver and set data
-  my_p4est_surfactant_t* surf = new my_p4est_surfactant_t(mpi, &brick, conn, lmin, lmax, ls_n, NULL, false, band_width, CFL, 1.2);
+  my_p4est_surfactant_t* surf = new my_p4est_surfactant_t(mpi, &brick, conn, lmin, lmax, ls_n, NULL, false, band_width, CFL, 2.1);
 
 #ifdef P4_TO_P8
   CF_3 *vnm1[P4EST_DIM] = { &initial_u_nm1, &initial_v_nm1, &initial_w_nm1 };
@@ -825,13 +831,25 @@ int main(int argc, char** argv) {
   char out_dir[1024], vtk_path[1024], vtk_name[1024], error_path[1024], dat_error_space_name[1024], dat_error_time_name[1024];
   string export_dir = "/home/temprano/Output/p4est_surfactant/tests";
   string test_name;
+  string integrator_name;
+  switch(integ){
+    case(0): integrator_name = "IEEU1"; break;
+    case(1): integrator_name = "SBDF2"; break;
+    case(2): integrator_name = "CNLF2"; break;
+    case(3): integrator_name = "MCNAB2"; break;
+    default: throw std::invalid_argument("Please choose a valid time integrator.");
+  }
+  string advection_suffix;
+  if(use_SL) advection_suffix = "-SL";
+  else       advection_suffix = "-FV";
+
   switch(test_number)
   {
     case 0: test_name = "advection_expansion";     break;
     case 1: test_name = "advection_vortex";        break;
     default: throw std::invalid_argument("Please choose a valid test.");
   }
-  sprintf(out_dir, "%s/%dd/%s/%02d_%02d", export_dir.c_str(), (int)P4EST_DIM, test_name.c_str(), lmin, lmax);
+  sprintf(out_dir, "%s/%dd/%s/%s%s/%02d_%02d", export_dir.c_str(), (int)P4EST_DIM, test_name.c_str(), integrator_name.c_str(), advection_suffix.c_str(), lmin, lmax);
   sprintf(vtk_path, "%s/vtu",  out_dir);
   sprintf(error_path, "%s/errors",  out_dir);
   sprintf(dat_error_time_name, "%s/errors_t.dat", error_path);
@@ -866,7 +884,7 @@ int main(int argc, char** argv) {
   }
 
   // Time evolution
-  double tf = 1.0;
+  double tf = 2.0;
   int iter = 0;
   PetscErrorCode ierr;
   ierr = PetscPrintf(mpi.comm(), "\nIteration #%04d:  tn = %.5e,  "
@@ -880,13 +898,13 @@ int main(int argc, char** argv) {
                      surf->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
   if(save_vtk)
   {
-    sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
+    sprintf(vtk_name, "%s/snapshot_%04d", vtk_path, iter);
     surf->save_vtk(vtk_name);
     ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
   }
   if(save_errors)
   {
-    sprintf(dat_error_space_name, "%s/error_snapshot_%d.dat", error_path, iter);
+    sprintf(dat_error_space_name, "%s/error_snapshot_%04d.dat", error_path, iter);
     compute_and_save_errors(surf, dat_error_space_name, dat_error_time_name);
     ierr = PetscPrintf(mpi.comm(), "  -> Saving errors dat files in %s...\n", dat_error_space_name); CHKERRXX(ierr);
   }
@@ -900,7 +918,12 @@ int main(int argc, char** argv) {
     }
 
     surf->advect_interface_one_step();
-    surf->compute_one_step_Gamma();
+
+    P4EST_ASSERT(tn >= 0.0);
+//    if(tn > EPS*dt)
+      surf->compute_one_step_Gamma((TimeIntegrator)integ, use_SL, true, iter);
+//    else
+//      surf->compute_one_step_Gamma((TimeIntegrator)0, use_SL, true, iter);
 
     tn+=dt;
     iter++;
@@ -918,13 +941,13 @@ int main(int argc, char** argv) {
                        surf->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
     if(save_vtk)
     {
-      sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
+      sprintf(vtk_name, "%s/snapshot_%04d", vtk_path, iter);
       surf->save_vtk(vtk_name);
       ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
     }
     if(save_errors)
     {
-      sprintf(dat_error_space_name, "%s/error_snapshot_%d.dat", error_path, iter);
+      sprintf(dat_error_space_name, "%s/error_snapshot_%04d.dat", error_path, iter);
       compute_and_save_errors(surf, dat_error_space_name, dat_error_time_name);
       ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", dat_error_space_name); CHKERRXX(ierr);
     }
