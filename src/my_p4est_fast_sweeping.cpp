@@ -138,7 +138,7 @@ double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )
 	_defineHamiltonianConstants( qnnnPtr, a, h );
 
 	// If node n is surrounded by local infinite values, it then should be given a local infinite value.
-	if( MIN( DIM( a[0], a[1], a[2] ) ) == PETSC_INFINITY )
+	if( MIN( DIM( a[0], a[1], a[2] ) ) >= PETSC_INFINITY )
 		return PETSC_INFINITY;
 
 	// Solve for u(x) (i.e. new approximation to u) in the equation above using the method in [1] and [2].
@@ -196,7 +196,7 @@ void FastSweeping::_fillQuadOctValuesFromNodeSampledVector( QuadValueExtended *q
 			for( unsigned char incZ = 0; incZ < 2; incZ++ )
 #endif
 		{
-			unsigned idxInQuadOctValue = SUMD( ( 1u << (unsigned)( P4EST_DIM - 1 ) ) * incX, ( 1u << (unsigned)( P4EST_DIM - 2 ) ) *incY, incZ );
+			unsigned idxInQuadOctValue = SUMD( ( 1u << (unsigned)( P4EST_DIM - 1 ) ) * incX, ( 1u << (unsigned)( P4EST_DIM - 2 ) ) * incY, incZ );
 			p4est_locidx_t nodeSubIdxInQuad = q2n[SUMD( incX, 2 * incY, 4 * incZ )];
 			quadValPtr->val[idxInQuadOctValue] = nodeSampledValuesPtr[nodeSubIdxInQuad];	// Store nodal value and their
 			quadValPtr->indices[idxInQuadOctValue] = nodeSubIdxInQuad;						// indices.
@@ -223,7 +223,6 @@ void FastSweeping::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t
 	// Distance in each Cartesian direction, assuming we start at (0, 0[, 0]) and end at (dx, dy[, dz]).
 	double dx = dmin * ( tree_xyz_max[0] - tree_xyz_min[0] );
 	double dy = dmin * ( tree_xyz_max[1] - tree_xyz_min[1] );
-
 #ifdef P4_TO_P8
 	double dz = dmin * ( tree_xyz_max[2] - tree_xyz_min[2] );
 	Cube3 cell( 0, dx, 0, dy, 0, dz );

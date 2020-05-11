@@ -55,6 +55,25 @@ public:
 };
 
 /**
+ * A sphere level-set function in two/three dimensions.
+ */
+class Sphere: public CF_DIM
+{
+private:
+	double DIM( _x0, _y0, _z0 ), _r;
+
+public:
+	explicit Sphere( DIM( double x0 = 0, double y0 = 0, double z0 = 0 ), double r = 1 ) :
+		DIM( _x0( x0 ), _y0( y0 ), _z0( z0 ) ), _r( r )
+	{}
+
+	double operator()( DIM( double x, double y, double z ) ) const override
+	{
+		return sqrt( SUMD( SQR( x - _x0 ), SQR( y - _y0 ), SQR( z - _z0 ) ) ) - _r;
+	}
+};
+
+/**
  * Implementation of the Fast Sweeping Method in a parallel distributed environment using quadtrees (resp. octrees) to
  * solve the Eikonal equation $|\nabla u| = 1$, which is effectively the process of building a signed distance function u.
  * Algorithm is adapted from the "Domain Decomposition Parallel FSM" presented in [4].

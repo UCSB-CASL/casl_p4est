@@ -12,7 +12,6 @@
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_fast_sweeping.h>
-#include <src/cube3.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
@@ -23,7 +22,6 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_fast_sweeping.h>
-#include <src/cube2.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -31,22 +29,6 @@
 #include <src/casl_math.h>
 
 using namespace std;
-
-class Circle: public CF_2
-{
-private:
-	double _x0, _y0, _r;
-
-public:
-	Circle( double x0, double y0, double r ) : _x0( x0 ), _y0( y0 ), _r( r )
-	{}
-
-	double operator()( double x, double y ) const override
-	{
-		return sqrt( SQR( x - _x0 ) + SQR( y - _y0 ) ) - _r;
-	}
-};
-
 
 int main( int argc, char* argv[] )
 {
@@ -76,8 +58,8 @@ int main( int argc, char* argv[] )
 		cmd.add_option( "lmax", "max level for refinement" );
 		cmd.parse( argc, argv );
 
-		APoint point;
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 2 ), cmd.get( "lmax", 2 ), &point );
+		Sphere sphere( DIM( 0, 0, 0 ), 0.5 );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 4 ), &sphere );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -97,7 +79,8 @@ int main( int argc, char* argv[] )
 		// Initialize the neighbor nodes structure.
 		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
 		my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
-		nodeNeighbors.init_neighbors(); // This is not mandatory, but it can only help performance given how much we'll neeed the node neighbors.
+		nodeNeighbors.init_neighbors(); 	// This is not mandatory, but it can only help performance given how much
+											// we'll neeed the node neighbors.
 
 		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
@@ -112,7 +95,7 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			phiPtr[i] = point( DIM( xyz[0], xyz[1], xyz[2] ) );
+			phiPtr[i] = sphere( DIM( xyz[0], xyz[1], xyz[2] ) );
 		}
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
@@ -187,8 +170,8 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		FastSweeping fsm;
-//		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
-//		fsm.reinitializeLevelSetFunction( &fsmPhi );
+		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
+		fsm.reinitializeLevelSetFunction( &fsmPhi );
 
 		const double *fsmPhiPtr;
 		ierr = VecGetArrayRead( fsmPhi, &fsmPhiPtr );
@@ -206,7 +189,10 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			fsmErrorPtr[i] = ABS( point( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiPtr[i] );
+			fsmErrorPtr[i] = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiPtr[i] );
+
+			if( ABS( fsmErrorPtr[i] ) < 0.1 )
+				cout << i << ": (" << xyz[0] << ", " << xyz[1] << ")  phi = " << fsmPhiPtr[i] <<" error = " << fsmErrorPtr[i] << endl;
 		}
 		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );
