@@ -697,6 +697,14 @@ public:
   void update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
   void compute_pressure();
 
+  /*!
+   * \brief compute_pressure_at_nodes
+   * \param pressure_nodes [inout]
+   * Interpolates pressure at cells and stores the output in the Vec pressure_nodes
+   * Code developed by Raphael Egan, adapted into a function by Elyce Bayat
+   */
+  void compute_pressure_at_nodes(Vec *pressure_nodes);
+
   void compute_forces(double *f);
 
   void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double U_scaling_for_Q_and_lambda_2 = 1.0, const double x_scaling_for_Q_and_lambda_2 = 1.0);

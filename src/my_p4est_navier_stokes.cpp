@@ -2035,22 +2035,6 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  // Elyce trying something:
-  // Reset the semi-lagrangian vectors holding backtrace points
-//  foreach_dimension(d){
-//    foreach_dimension(dd){
-//      xyz_n[d][dd].clear(); xyz_n[d][dd].shrink_to_fit();
-//      std::vector<double>().swap(xyz_n[d][dd]);
-//      if(sl_order==2){
-//          xyz_nm1[d][dd].clear();xyz_nm1[d][dd].shrink_to_fit();
-//          std::vector<double>().swap(xyz_nm1[d][dd]);
-//        }
-//    }
-//  }
-
-
-
-
   // (1) Set phi as the new phi on new grid -------------------------------------
   phi = phi_np1;
   delete interp_phi;
@@ -2183,26 +2167,22 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
+
+
   /* update the variables */ // NOTE: Elyce: We are not destroying anything here because all this deletion will be handled externally of the NS class
   if(p4est_nm1 != p4est_n && p4est_nm1 != NULL)
       p4est_destroy(p4est_nm1);
   p4est_nm1 = p4est_n; p4est_n = p4est_np1;
-//  if(ghost_nm1 != ghost_n)
-//    p4est_ghost_destroy(ghost_nm1);
+
   ghost_nm1 = ghost_n; ghost_n = ghost_np1;
-//  if(nodes_nm1 != nodes_n)
-//    p4est_nodes_destroy(nodes_nm1);
+
   nodes_nm1 = nodes_n; nodes_n = nodes_np1;
-//  if(hierarchy_nm1 != hierarchy_n)
-//    delete hierarchy_nm1;
+
   hierarchy_nm1 = hierarchy_n; hierarchy_n = hierarchy_np1;
-//  if(ngbd_nm1 != ngbd_n)
-//    delete ngbd_nm1;
+
   ngbd_nm1 = ngbd_n; ngbd_n = ngbd_np1;
-//  if(ngbd_c != ngbd_c_np1)
   delete ngbd_c;
   ngbd_c = ngbd_c_np1;
-//  if(faces_n != faces_np1)
   delete faces_n;
   faces_n = faces_np1;
 
@@ -2244,6 +2224,26 @@ void my_p4est_navier_stokes_t::compute_pressure()
   }
 }
 
+void my_p4est_navier_stokes_t::compute_pressure_at_nodes(Vec *pressure_nodes){
+  PetscErrorCode ierr;
+
+  double *pressure_nodes_p;
+  ierr = VecGetArray(*pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
+
+  for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+    pressure_nodes_p[node_idx] = interpolate_cell_field_at_node(node_idx, ngbd_c, ngbd_n, pressure, bc_pressure, phi);
+  }
+  ierr = VecGhostUpdateBegin(*pressure_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+    pressure_nodes_p[node_idx] = interpolate_cell_field_at_node(node_idx, ngbd_c, ngbd_n, pressure, bc_pressure, phi);
+  }
+  ierr = VecGhostUpdateEnd(*pressure_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(*pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
+
+
+}
 void my_p4est_navier_stokes_t::calculate_viscous_stress_at_local_nodes(const p4est_locidx_t& node_idx, const double* phi_read_p, const double *grad_phi_read_p,
                                                                        const double* vnodes_read_p[P4EST_DIM], double* viscous_stress_p[P4EST_DIM]) const
 {
@@ -2352,11 +2352,9 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
 
   /* compute the pressure at nodes for visualization */
   Vec pressure_nodes;
-  double *pressure_nodes_p;
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &pressure_nodes); CHKERRXX(ierr);
-  ierr = VecGetArray(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
 
-//  // [Raphael:] this is how it was done before, I don't like it:
+  //  // [Raphael:] this is how it was done before, I don't like it:
 //  // 1) no synchronization of ghost node values --> sometimes very ugly in paraview, at processors' boundaries
 //  // 2) the quadrant neighborhood of the node depends on the quadrant claimed to be the 'owner' of the node
 //  //    --> this is implementation-dependent (dependence on the particular implementation of 'find_smallest_quadrant_containing_point')
@@ -2371,7 +2369,12 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
 //  }
 //  interp_c.interpolate(pressure_nodes);
 
-  // So I changed it to this:
+//  // So I changed it to this: [Elyce : Raphael -- I moved your new interpolation into it's own function but preserved the behavior (I believe) so it could be called for independent usage without having code duplication/ I've left the original code in comments below though]
+  compute_pressure_at_nodes(&pressure_nodes);
+
+  const double *pressure_nodes_p;
+  ierr = VecGetArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
+  /*
   for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
     p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
     pressure_nodes_p[node_idx] = interpolate_cell_field_at_node(node_idx, ngbd_c, ngbd_n, pressure, bc_pressure, phi);
@@ -2382,6 +2385,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
     pressure_nodes_p[node_idx] = interpolate_cell_field_at_node(node_idx, ngbd_c, ngbd_n, pressure, bc_pressure, phi);
   }
   ierr = VecGhostUpdateEnd(pressure_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  */
 
   Vec leaf_level;
   ierr = VecCreateGhostCells(p4est_n, ghost_n, &leaf_level); CHKERRXX(ierr);
@@ -2483,7 +2487,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
 
   ierr = VecRestoreArrayRead(vorticity, &vort_p); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
   ierr = VecDestroy(pressure_nodes); CHKERRXX(ierr);
 
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
