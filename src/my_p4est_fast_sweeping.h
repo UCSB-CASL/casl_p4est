@@ -93,10 +93,18 @@ private:
 		double distance;									// L1-norm distance to a reference point.
 	};
 
+	enum class SEED_STATE {									// States for candidate seed points during reinitialization.
+		UNDEFINED, 											// - State for candidate hasn't been evaluated.
+		VALID, 												// - Candidate has been found to be a valid candidate
+		INVALID												// - Candidate has been found to not be a viable candidate.
+	};														// A viable candidate has one of its outgoing edges crossed
+															// by the interface.  This prevents seeding points that over
+															// estimate their true distance to \Gamma and allows FSM to
+															// approximate such a distance more accurately.
+
 	double _zeroDistanceThreshold = EPS;					// To be a scaled version of EPS, based on my_p4est_level_set.h.
 
 	const p4est_t *_p4est = nullptr;						// Pointer to the parallel p4est data.
-	const p4est_ghost_t *_ghost = nullptr;					// Pointer to the quadrants that neighbor the local domain.
 	const p4est_nodes_t *_nodes = nullptr;					// Pointer to parallel nodes' information.
 	const my_p4est_node_neighbors_t *_neighbors = nullptr;	// Pointer to nodes' neighborhood information.
 	const size_t N_ORDERINGS;								// Number of orderings (depends on number of spatial dimensions).
@@ -108,6 +116,19 @@ private:
 	double *_uCpy = nullptr;								// Dynamic array to store a copy of the original values passed to the reinitialization function.
 	Vec _rhs = nullptr;										// Right-hand-side of Eikonal equation: 1 for updatable node, INF otherwise,
 	double *_rhsPtr = nullptr;								// and its corresponding data pointer.
+	SEED_STATE *_seedStates = nullptr;						// Our "map" to determine which points are viable seed nodes.
+
+	/**
+	 * Determine whether a node is a viable seed node by checking if it's on the interface or at leat one of its irradi-
+	 * ating edges are crossed by the interface in any direction of 2 or 3 dimensions.  When the node is deemed a viable
+	 * seed point, its state is cached to avoid overcomputations.  Same principle applies for non viable (invalid) grid
+	 * points.  The process to determine a seed-viability is done just once per node as long as their current state is
+	 * undefined (per the enum SEED_STATE).
+	 * Evaluations are performed only on nodes with a valid neighborhood (including ghost nodes).
+	 * @param [in] n Independent node index in current partition.
+	 * @return One of SEED_STATE::VALID or SEED_STATE::INVALID.
+	 */
+	SEED_STATE _checkSeedState( p4est_locidx_t n );
 
 	/**
 	 * Clear and drop supporting data structures such as the matrix of orderings and valid node indices.
@@ -190,16 +211,17 @@ private:
 	void _approximateInterfaceAndSeedNodes();
 
 	/**
-	 * Retrieve a convenient 3D matrix with stencil data from the neighborhood of a given node.
+	 * Retrieve a convenient 3D matrix with a function sampled on a stencil from at the neighborhood of a given node.
 	 * Each layer of the matrix maps to a dimension (i.e. x = 0, y = 1, z = 2), which has the following layout:
 	 * {      Function value   |   Distance
-	 * 	      {    u_m         ,     d_m    },		<--- Negative direction.
-	 * 	      {    u_p         ,     d_p    }		<--- Positive direction.
+	 * 	      {    f_m         ,     d_m    },		<--- Negative direction.
+	 * 	      {    f_p         ,     d_p    }		<--- Positive direction.
 	 * }
 	 * @param [in] qnnnPtr Pointer to a valid neighborhood quad of a node.
+	 * @param [in] f Pointer to the function to sample.
 	 * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
 	 */
-	void _getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, double data[P4EST_DIM][2][2] );
+	static void _getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
 
 	/**
 	 * Use the copy of the original signal to fix the sign of the reinitialized solution _u (i.e. _uPtr).
@@ -220,20 +242,20 @@ public:
 	/**
 	 * Prepare fast sweeping process.
 	 * @param [in] p4est Pointer to a p4est object.
-	 * @param [in] ghost Pointer to ghost data structure.
 	 * @param [in] nodes Pointer to nodes data structure.
 	 * @param [in] neighbors Pointer to neighbors data structure.
 	 * @param [in] xyzMin Lower-left limits for physical domain.
 	 * @param [in] xyzMax Upper-right limits for physical domain.
 	 */
-	void prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes,
-			const my_p4est_node_neighbors_t *neighbors, const double xyzMin[], const double xyzMax[] );
+	void prepare( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *neighbors,
+		const double xyzMin[], const double xyzMax[] );
 
 	/**
 	 * Reinitialize a level-set function using the parallel fast sweeping method.
 	 * @param [in/out] u Pointer to external PETSc parallel vector solution of the Eikonal equation.
+	 * @param [in] maxIter Maximum number of iterations to execute FSM on updatable domain nodes (minimum is 1).
 	 */
-	void reinitializeLevelSetFunction( Vec *u );
+	void reinitializeLevelSetFunction( Vec *u, unsigned maxIter = 1 );
 };
 
 

@@ -21,8 +21,9 @@ void FastSweeping::_clearScaffoldingData()
 
 void FastSweeping::_clearSolutionData()
 {
-	delete [] _uOld;			// Free memory if there were any previously stored old solution values.
-	delete [] _uCpy;			// Also if we copied any input solution values.
+	delete [] _uOld;			// Free memory if there were any previously stored old solution values,
+	delete [] _uCpy;			// if we copied any input solution values,
+	delete [] _seedStates;		// or if we stored the nodes viability as seed nodes.
 
 	// Reset critical variables.
 	_u = nullptr;
@@ -31,13 +32,67 @@ void FastSweeping::_clearSolutionData()
 	_uCpy = nullptr;
 	_rhs = nullptr;
 	_rhsPtr = nullptr;
+	_seedStates = nullptr;
+}
+
+FastSweeping::SEED_STATE FastSweeping::_checkSeedState( p4est_locidx_t n )
+{
+	// If we already determined that the nth node is a viable/non-viable seed point, just return that.
+	if( _seedStates[n] == SEED_STATE::UNDEFINED )
+	{
+		// At this point, the seed state is UNDEFINED: we need to verify whether the point is a viable seed node or not by
+		// checking if it lies exactly on the interface or at least one of its outgoing edges is crossed by \Gamma.
+		if( _neighbors->has_valid_qnnn( n ) )
+		{
+			if( ABS( _uCpy[n] ) <= _zeroDistanceThreshold )		// Point lies in on the interface.  It's then a valid
+				_seedStates[n] = SEED_STATE::VALID;				// seed node.
+			else
+			{
+				const quad_neighbor_nodes_of_node_t *qnnnPtr;	// Evaluate neighborhood.
+				_neighbors->get_neighbors( n, qnnnPtr );
+
+				double data[P4EST_DIM][2][2];
+				_getStencil( qnnnPtr, _uCpy, data );			// Retrieve the 2 or 3 dimensional stencil.
+				const short F = 0, S = 1;						// Meaning: function index, distance index.
+				bool crossed = false;
+
+				for( const auto& dim : data )					// Check irradiating edges in each dimension.
+				{
+					for( const auto& dir : dim )				// And in each direction: left/bottom/back - right/top/front
+					{
+						if( dir[S] < 0 )						// Is current node on a wall?
+							continue;
+						if( dir[F] * _uCpy[n] <= 0 )			// Crossed by interface?
+						{
+							crossed = true;
+							break;
+						}
+					}
+
+					if( crossed )								// Just find a single edge crossed by \Gamma.
+						break;
+				}
+
+				if( crossed )
+					_seedStates[n] = SEED_STATE::VALID;
+				else
+					_seedStates[n] = SEED_STATE::INVALID;
+			}
+		}
+		else
+		{
+			_seedStates[n] = SEED_STATE::INVALID;		// Point is a ghost node with no well defined neighborhood.
+		}
+	}
+
+	return _seedStates[n];
 }
 
 void FastSweeping::_defineHamiltonianConstants( const quad_neighbor_nodes_of_node_t *qnnnPtr, double a[], double h[] )
 {
 	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
 	double data[P4EST_DIM][2][2];
-	_getStencil( qnnnPtr, data );
+	_getStencil( qnnnPtr, _uPtr, data );
 
 	for( size_t i = 0; i < P4EST_DIM; i++ )		// Choose a and h for x, y [and z].
 	{
@@ -102,17 +157,17 @@ void FastSweeping::_sortHamiltonianConstants( double a[], double h[] )
 	h[P4EST_DIM] = -1;					// The h value is irrelevant.
 }
 
-void FastSweeping::_getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, double data[P4EST_DIM][2][2] )
+void FastSweeping::_getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] )
 {
 	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
-	data[0][0][0] = qnnnPtr->f_m00_linear( _uPtr ); data[0][0][1] = qnnnPtr->d_m00;			// Left.
-	data[0][1][0] =	qnnnPtr->f_p00_linear( _uPtr ); data[0][1][1] = qnnnPtr->d_p00;			// Right.
+	data[0][0][0] = qnnnPtr->f_m00_linear( f ); data[0][0][1] = qnnnPtr->d_m00;			// Left.
+	data[0][1][0] =	qnnnPtr->f_p00_linear( f ); data[0][1][1] = qnnnPtr->d_p00;			// Right.
 
-	data[1][0][0] = qnnnPtr->f_0m0_linear( _uPtr ); data[1][0][1] = qnnnPtr->d_0m0;			// Bottom.
-	data[1][1][0] = qnnnPtr->f_0p0_linear( _uPtr ); data[1][1][1] = qnnnPtr->d_0p0;			// Top.
+	data[1][0][0] = qnnnPtr->f_0m0_linear( f ); data[1][0][1] = qnnnPtr->d_0m0;			// Bottom.
+	data[1][1][0] = qnnnPtr->f_0p0_linear( f ); data[1][1][1] = qnnnPtr->d_0p0;			// Top.
 #ifdef P4_TO_P8
-	data[2][0][0] = qnnnPtr->f_00m_linear( _uPtr ); data[2][0][1] = qnnnPtr->d_00m;			// Back.
-	data[2][1][0] = qnnnPtr->f_00p_linear( _uPtr ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
+	data[2][0][0] = qnnnPtr->f_00m_linear( f ); data[2][0][1] = qnnnPtr->d_00m;			// Back.
+	data[2][1][0] = qnnnPtr->f_00p_linear( f ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
 #endif
 }
 
@@ -218,7 +273,7 @@ void FastSweeping::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t
 	p4est_topidx_t vp = _p4est->connectivity->tree_to_vertex[P4EST_CHILDREN-1];
 	const double* tree_xyz_min = _p4est->connectivity->vertices + 3 * vm;
 	const double* tree_xyz_max = _p4est->connectivity->vertices + 3 * vp;
-	double dmin = (double)P4EST_QUADRANT_LEN( quad->level ) / (double)P4EST_ROOT_LEN;		// Side length of current cell.
+	double dmin = (double)P4EST_QUADRANT_LEN( quad->level ) / (double)P4EST_ROOT_LEN;	// Side length of current cell.
 
 	// Distance in each Cartesian direction, assuming we start at (0, 0[, 0]) and end at (dx, dy[, dz]).
 	double dx = dmin * ( tree_xyz_max[0] - tree_xyz_min[0] );
@@ -236,8 +291,15 @@ void FastSweeping::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t
 	cell.computeDistanceToInterface( phiAndIdxQuadOctValues, distanceMap, _zeroDistanceThreshold );
 	for( const auto& pair : distanceMap )
 	{
-		_uPtr[pair.first] = MIN( pair.second, _uPtr[pair.first] );		// Define seed point by keeping the minimum distance.
-		_rhsPtr[pair.first] = PETSC_INFINITY;							// A seed point is *not* updatable.
+		// Determine viability of seed node if it has a valid neighborhood and its outgoing edges are crossed by \Gamma.
+		// Note that we must not check for *all* nodes in the current partition; only for those whose quad/oct has at
+		// least one corner on \Gamma, or if the quad/oct is cut-out by the interface, which at this point has been
+		// already accounted for by ignoring distanceMaps that are empty.
+		if( _checkSeedState( pair.first ) == SEED_STATE::VALID )
+		{
+			_uPtr[pair.first] = MIN( pair.second, _uPtr[pair.first] );		// Define seed point by keeping the minimum distance.
+			_rhsPtr[pair.first] = PETSC_INFINITY;							// A seed point is *not* updatable.
+		}
 	}
 }
 
@@ -255,15 +317,17 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 	// owned nodes using the MIN operation, and then we must *scatter* forward from local to foreign nodes.
 
 	// Use the u copy to initialize the solution pointer _uPtr.  Start with all nodes being infinitely far and updatable.
+	// Also begin with undefined seed state for nodes.
 	for( p4est_locidx_t n = 0; n < _nodes->num_owned_indeps; n++ )
 	{
 		_uPtr[n] = PETSC_INFINITY;
 		_rhsPtr[n] = 1;
+		_seedStates[n] = SEED_STATE::UNDEFINED;		// Not yet known if the node will be used as seed point or not.
 	}
 
-	// Go through each quad/octant and check if it's crossed by the interface.  If so, update its (simplices) nodes by
-	// approximating their shortest distance to the interface using a piece-wise linear reconstruction.
-	// Since a node may belong to several quads/octs, we keep the minimum.
+	// Go through each quad/octant and check if it's crossed by the interface.  If so, update its nodes that can be used
+	// as seed points by approximating their shortest distance to the interface using a piece-wise linear reconstruction.
+	// Since a node may belong to several quads/octs, we keep the minimum as long as it is a valid seed point.
 	for(p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
 	{
 		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );			// Check all local trees.
@@ -331,13 +395,12 @@ FastSweeping::~FastSweeping()
 	_clearSolutionData();
 }
 
-void FastSweeping::prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes,
-			const my_p4est_node_neighbors_t *neighbors, const double xyzMin[], const double xyzMax[] )
+void FastSweeping::prepare( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *neighbors,
+	const double xyzMin[], const double xyzMax[] )
 {
 	// Start afresh; setting pointers to internal pointers.
 	_clearScaffoldingData();
 	_p4est = p4est;
-	_ghost = ghost;
 	_nodes = nodes;
 	_neighbors = neighbors;
 
@@ -405,9 +468,10 @@ void FastSweeping::prepare( const p4est_t *p4est, const p4est_ghost_t *ghost, co
 	}
 }
 
-void FastSweeping::reinitializeLevelSetFunction( Vec *u )
+void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 {
 	const p4est_locidx_t N_INDEP_NODES = _nodes->indep_nodes.elem_count;	// We need to account for ghost nodes too.
+	maxIter = MAX( 1u, maxIter );
 
 	// Start afresh with the solution data structures.
 	_clearSolutionData();
@@ -422,9 +486,10 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 	CHKERRXX( ierr );
 
 	// Allocate the old solution container.  Notice that it stores the solution for all independent nodes (including all ghosts).
-	// Also, make a copy of the original solution to be reinitialized.  This information is used for seeding and sign fix.
+	// Also, make a copy of the original solution to be reinitialized.  This information is used for seeding and sign-fix.
 	_uOld = new double[N_INDEP_NODES];
 	_uCpy = new double[N_INDEP_NODES];
+	_seedStates = new SEED_STATE[N_INDEP_NODES];
 	std::copy( _uPtr, _uPtr + N_INDEP_NODES, _uCpy );
 
 	// Approximate location of interface by defining seed nodes.  Also, initialize the inverse speed for each partition
@@ -435,7 +500,8 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 
 	double relDiffAll = 1;													// Buffer to collect relative difference across processes.
 	double relDiff = relDiffAll;
-	while( relDiff > EPS )
+	unsigned iter = 0;
+	while( relDiff > EPS && iter < maxIter )
 	{
 		std::copy( _uPtr, _uPtr + N_INDEP_NODES, _uOld );					// u_old = u.
 
@@ -473,6 +539,7 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u )
 		// Broadcast relDiff to all processes and collect the max of them.  We must wait until all partitions converge.
 		MPI_Allreduce( &relDiff, &relDiffAll, 1, MPI_DOUBLE, MPI_MAX, _p4est->mpicomm );
 		relDiff = relDiffAll;
+		iter++;
 	}
 
 	// Fix sign of expected negative solution nodal values.

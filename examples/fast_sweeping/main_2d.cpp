@@ -58,8 +58,8 @@ int main( int argc, char* argv[] )
 		cmd.add_option( "lmax", "max level for refinement" );
 		cmd.parse( argc, argv );
 
-		Sphere sphere( DIM( 0, 0, 0 ), 0.5 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 4 ), &sphere );
+		Sphere sphere( DIM( 0, 0, 0 ), 0.3 );
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 5 ), &sphere );
 
 		parStopWatch w;
 		w.start( "total time" );
@@ -170,7 +170,7 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		FastSweeping fsm;
-		fsm.prepare( p4est, ghost, nodes, &nodeNeighbors, xyz_min, xyz_max );
+		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
 		fsm.reinitializeLevelSetFunction( &fsmPhi );
 
 		const double *fsmPhiPtr;
@@ -190,9 +190,6 @@ int main( int argc, char* argv[] )
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
 			fsmErrorPtr[i] = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiPtr[i] );
-
-			if( ABS( fsmErrorPtr[i] ) < 0.1 )
-				cout << i << ": (" << xyz[0] << ", " << xyz[1] << ")  phi = " << fsmPhiPtr[i] <<" error = " << fsmErrorPtr[i] << endl;
 		}
 		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );
