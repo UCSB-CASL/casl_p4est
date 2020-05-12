@@ -1,4 +1,16 @@
-// System
+/**
+ * Running and testing the Fast Sweeping Method on p4est.
+ * The method has been implemented to run serially per partition, but parallelly across processes using the MPI
+ * infrastructure to communicate reinitialization results.
+ * The current implementation of the Fast Sweeping Method solves the Eikonal equation | \nabla u | = 1, which in our
+ * case approximates a signed distance function from the interface.
+ * Our method uses simplices in 2 and 3 dimensions to seed distance values for nodes adjacent to the interface (i.e.
+ * that belong to an edge that is cut by the interface).
+ * Literature references are provided in the accompanying README.md file.
+ *
+ * Developer: Luis Ángel.
+ * Date: May 12, 2020.
+ */
 #include <stdexcept>
 #include <iostream>
 
@@ -58,8 +70,12 @@ int main( int argc, char* argv[] )
 		cmd.add_option( "lmax", "max level for refinement" );
 		cmd.parse( argc, argv );
 
-		Sphere sphere( DIM( 0, 0, 0 ), 0.3 );
-		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 5 ), &sphere );
+		// Definining the level-set function and its signed-distance function version for error testing.
+		const double RADIUS = 0.3;
+		const double X0 = 0, Y0 = 0, Z0 = 0;
+		geom::Sphere sphere( DIM( X0, Y0, Z0 ), RADIUS );			// Signed distance function.
+		geom::SphereNSD sphereNsd( DIM( X0, Y0, Z0 ), RADIUS );	// Non-signed distance function to reinitialize.
+		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 6 ), &sphereNsd );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -92,7 +108,7 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			phiPtr[i] = sphere( DIM( xyz[0], xyz[1], xyz[2] ) );
+			phiPtr[i] = sphereNsd( DIM( xyz[0], xyz[1], xyz[2] ) );		// Using the non-signed distance function.
 		}
 		ierr = VecRestoreArray( phi, &phiPtr );
 		CHKERRXX( ierr );
@@ -114,7 +130,7 @@ int main( int argc, char* argv[] )
 		VecGhostUpdateBegin( nodeType, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( nodeType, INSERT_VALUES, SCATTER_FORWARD );
 
-		PetscSynchronizedPrintf( mpi.comm(), "Process %d indep_nodes = %d, num_owned_indeps = %d, num_owned_shared = %d\n",
+		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d indep_nodes = %d, num_owned_indeps = %d, num_owned_shared = %d\n",
 				mpi.rank(), nodes->indep_nodes.elem_count, nodes->num_owned_indeps, nodes->num_owned_shared );
 		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
 
@@ -178,11 +194,11 @@ int main( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		parStopWatch fsmReinitTimer;
-		fsmReinitTimer.start( "Fast sweeping reinitialization" );
+		fsmReinitTimer.start( "FSM reinitialization" );
 
 		FastSweeping fsm;
 		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &fsmPhi, 4 );
+		fsm.reinitializeLevelSetFunction( &fsmPhi, 8 );
 
 		fsmReinitTimer.stop();
 		fsmReinitTimer.read_duration();
@@ -191,17 +207,7 @@ int main( int argc, char* argv[] )
 		ierr = VecGetArrayRead( fsmPhi, &fsmPhiReadPtr );
 		CHKERRXX( ierr );
 
-/*		if( p4est->mpirank == 0 )
-		{
-			for( size_t i= 0; i < nodes->indep_nodes.elem_count; i++ )		// Check that we got all data.
-			{
-				double xyz[P4EST_DIM];
-				node_xyz_fr_n( i, p4est, nodes, xyz );
-				cout << i << ": (" << xyz[0] << ", " << xyz[1] << ")  " << fsmPhiReadPtr[i] << endl;
-			}
-		}*/
-
-		/// Collect the absolute error between fast sweeping reinitialization and exact distance ///
+		/// Collect the absolute error between FSM reinitialization and exact distance ///
 		Vec fsmError;
 		ierr = VecDuplicate( fsmPhi, &fsmError );
 		CHKERRXX( ierr );
@@ -209,29 +215,51 @@ int main( int argc, char* argv[] )
 		double *fsmErrorPtr;
 		ierr = VecGetArray( fsmError, &fsmErrorPtr );
 		CHKERRXX( ierr );
+		double fsmMAE = 0;						// Mean absolute error for FSM for current partition.
 		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
 			fsmErrorPtr[i] = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiReadPtr[i] );
+			fsmMAE += fsmErrorPtr[i];
 		}
 		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );
+		fsmMAE /= nodes->num_owned_indeps;
 
-		/// Reinitialize the level-set function values using the transient pseudo-temporal equation ///
-		parStopWatch temporalReinitTimer;
-		temporalReinitTimer.start( "Temporal reinitialization" );
+		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d: FSM MAE = %f\n",
+								 mpi.rank(), fsmMAE );
+		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
+
+		/// Reinitialize the level-set function values using the transient PDE-based equation ///
+		parStopWatch pdeReinitTimer;
+		pdeReinitTimer.start( "PDE reinitialization" );
 
 		my_p4est_level_set_t ls( &nodeNeighbors );
 		ls.reinitialize_2nd_order( phi, 5 );			// Using x iterations.
 
-		temporalReinitTimer.stop();
-		temporalReinitTimer.read_duration();
+		pdeReinitTimer.stop();
+		pdeReinitTimer.read_duration();
+
+		/// Collect the absolute error between PDE-based reinitialization and exact distance ///
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+
+		double pdeMAE = 0;								// Mean absolute error for PDE-based reinit for current partition.
+		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( i, p4est, nodes, xyz );
+			pdeMAE += ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - phiReadPtr[i] );
+		}
+		pdeMAE /= nodes->num_owned_indeps;
+
+		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d: PDE MAE = %f\n",
+								 mpi.rank(), pdeMAE );
+		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
 
 		std::ostringstream oss;
 		oss << "fsm_" << mpi.size() << "_" << P4EST_DIM;
-		ierr = VecGetArrayRead( phi, &phiReadPtr );
-		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								6, 0, oss.str().c_str(),

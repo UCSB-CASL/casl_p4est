@@ -498,7 +498,11 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 	// sign of the solution; this is the one of the reasons to keep a copy of the original solution signal.  The other
 	// reason is to check when a node is a viable seed point (i.e. it's on the interface or at least one of its edges
 	// is crossed by \Gamma).
+//	parStopWatch seedingTimer;
+//	seedingTimer.start( "FSM seeding" );									// Timing seeding process.
 	_approximateInterfaceAndSeedNodes();
+//	seedingTimer.stop();
+//	seedingTimer.read_duration();
 
 	double relDiffAll = 1;													// Buffer to collect relative difference across processes.
 	double relDiff = relDiffAll;

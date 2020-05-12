@@ -2,18 +2,71 @@
 // Created by Im YoungMin on 4/30/20.
 //
 
-#ifndef FAST_SWEEPING_CASL_GEOMETRY_H
-#define FAST_SWEEPING_CASL_GEOMETRY_H
+#ifndef CASL_GEOMETRY_H
+#define CASL_GEOMETRY_H
 
 #include <src/casl_math.h>
 #include <src/point2.h>
 #include <src/point3.h>
 
 /**
- * A collection of geometric functions involving points, vectors, planes, polygons, etc.
+ * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  */
 namespace geom
 {
+	//////////////////////////////////////////////// Level-Set Classes /////////////////////////////////////////////////
+
+	/**
+	 * Point at the origin.
+	 */
+	class APoint: public CF_DIM
+	{
+	public:
+		double operator()( DIM( double x, double y, double z ) ) const override
+		{
+			return sqrt( SUMD( SQR( x ), SQR( y ), SQR( z ) ) );			// Distance to the origin.
+		}
+	};
+
+	/**
+	 * A sphere level-set function in two/three dimensions.
+	 * This is a signed distance function version of the sphere.
+	 */
+	class Sphere: public CF_DIM
+	{
+	protected:
+		double DIM( _x0, _y0, _z0 ), _r;
+
+	public:
+		explicit Sphere( DIM( double x0 = 0, double y0 = 0, double z0 = 0 ), double r = 1 ) :
+			DIM( _x0( x0 ), _y0( y0 ), _z0( z0 ) ), _r( r )
+		{}
+
+		double operator()( DIM( double x, double y, double z ) ) const override
+		{
+			return sqrt( SUMD( SQR( x - _x0 ), SQR( y - _y0 ), SQR( z - _z0 ) ) ) - _r;
+		}
+	};
+
+	/**
+	 * A sphere level-set function in two/three dimensions.
+	 * This is the *non* signed distance function version of the sphere.
+	 */
+	class SphereNSD: public Sphere
+	{
+	public:
+		explicit SphereNSD( DIM( double x0 = 0, double y0 = 0, double z0 = 0 ), double r = 1 ) :
+			Sphere( DIM( x0, y0, z0 ), r )
+		{}
+
+		double operator()( DIM( double x, double y, double z ) ) const override
+		{
+			return SUMD( SQR( x - _x0 ), SQR( y - _y0 ), SQR( z - _z0 ) ) - SQR( _r );
+		}
+	};
+
+	/////////////////////////////////////////////// Geometric functions ////////////////////////////////////////////////
+
 	/**
 	 * Linearly interpolate a point based on level-set function values.
 	 * @param [in] p1 First point.
@@ -213,4 +266,4 @@ namespace geom
 	}
 }
 
-#endif //FAST_SWEEPING_CASL_GEOMETRY_H
+#endif // CASL_GEOMETRY_H

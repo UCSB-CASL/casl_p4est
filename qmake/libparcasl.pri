@@ -49,7 +49,8 @@ HEADERS += \
   $$PARCASL/src/point3.h \
   $$PARCASL/src/simplex2.h \
   $$PARCASL/src/types.h \
-  $$PARCASL/src/petsc_compatibility.h
+  $$PARCASL/src/petsc_compatibility.h \
+  $$PARCASL/src/casl_geometry.h
 
 SOURCES += \
   $$PARCASL/src/parameter_list.cpp \
@@ -115,7 +116,8 @@ HEADERS += \
   $$PARCASL/src/my_p4est_tools.h \
   $$PARCASL/src/my_p4est_two_phase_flows.h \
   $$PARCASL/src/my_p4est_xgfm_cells.h \
-  $$PARCASL/src/voronoi2D.h
+  $$PARCASL/src/voronoi2D.h \
+  $$PARCASL/src/my_p4est_fast_sweeping.h
 
 SOURCES += \
   $$PARCASL/src/my_p4est_biofilm.cpp \
@@ -159,7 +161,8 @@ SOURCES += \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_two_phase_flows.cpp \
   $$PARCASL/src/my_p4est_xgfm_cells.cpp \
-  $$PARCASL/src/voronoi2D.cpp
+  $$PARCASL/src/voronoi2D.cpp \
+  $$PARCASL/src/my_p4est_fast_sweeping.cpp
 
 # headers-only stuff
 HEADERS += \
@@ -211,7 +214,8 @@ HEADERS += \
   $$PARCASL/src/my_p8est_tools.h \
   $$PARCASL/src/my_p8est_two_phase_flows.h \
   $$PARCASL/src/my_p8est_xgfm_cells.h \
-  $$PARCASL/src/voronoi3D.h
+  $$PARCASL/src/voronoi3D.h \
+  $$PARCASL/src/my_p8est_fast_sweeping.h
 
 SOURCES += \
   $$PARCASL/src/my_p8est_biofilm.cpp \
@@ -255,7 +259,8 @@ SOURCES += \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_two_phase_flows.cpp \
   $$PARCASL/src/my_p8est_xgfm_cells.cpp \
-  $$PARCASL/src/voronoi3D.cpp
+  $$PARCASL/src/voronoi3D.cpp \
+  $$PARCASL/src/my_p8est_fast_sweeping.cpp
 
 # headers-only stuff
 HEADERS += \

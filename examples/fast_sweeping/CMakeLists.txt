@@ -15,7 +15,6 @@ if( DIMENSION MATCHES 3d )
 	list( APPEND SRC main_3d.cpp )
 endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
-# Some of the following definitons can be placed in the project profile with -D<definition>=<value>.
 add_compile_definitions( PRIVATE CASL_THROWS )
 
 ######################## Settings ########################
@@ -175,7 +174,7 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}/src/my_p4est_two_phase_flows.h
 			${PARCASL}/src/my_p4est_xgfm_cells.h
 			${PARCASL}/src/voronoi2D.h
-			${PARCASL}/src/my_p4est_fast_sweeping.h)
+			${PARCASL}/src/my_p4est_fast_sweeping.h )
 
 	list( APPEND SOURCES
 			${PARCASL}/src/my_p4est_biofilm.cpp
