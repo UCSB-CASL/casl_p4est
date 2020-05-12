@@ -61,9 +61,6 @@ int main( int argc, char* argv[] )
 		Sphere sphere( DIM( 0, 0, 0 ), 0.3 );
 		splitting_criteria_cf_t levelSetSC( cmd.get( "lmin", 1 ), cmd.get( "lmax", 5 ), &sphere );
 
-		parStopWatch w;
-		w.start( "total time" );
-
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = ( void * ) ( &levelSetSC );
@@ -163,19 +160,46 @@ int main( int argc, char* argv[] )
 		VecGhostUpdateEnd( process, INSERT_VALUES, SCATTER_FORWARD );
 
 		/// Testing the fast sweeping algorithm ///
-		Vec fsmPhi;
+		double *fsmPhiPtr;
+		const double *phiReadPtr;
+
+		Vec fsmPhi;													// Save here the solution from FSM.
 		ierr = VecCreateGhostNodes( p4est, nodes, &fsmPhi );
 		CHKERRXX( ierr );
-		ierr = VecCopy( phi, fsmPhi );
+
+		ierr = VecGetArray( fsmPhi, &fsmPhiPtr );					// Copy current phi values into FSM parallel vector.
 		CHKERRXX( ierr );
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+		std::copy( phiReadPtr, phiReadPtr + nodes->indep_nodes.elem_count, fsmPhiPtr );
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+		ierr = VecRestoreArray( fsmPhi, &fsmPhiPtr );
+		CHKERRXX( ierr );
+
+		parStopWatch fsmReinitTimer;
+		fsmReinitTimer.start( "Fast sweeping reinitialization" );
 
 		FastSweeping fsm;
 		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &fsmPhi );
+		fsm.reinitializeLevelSetFunction( &fsmPhi, 4 );
 
-		const double *fsmPhiPtr;
-		ierr = VecGetArrayRead( fsmPhi, &fsmPhiPtr );
+		fsmReinitTimer.stop();
+		fsmReinitTimer.read_duration();
+
+		const double *fsmPhiReadPtr;
+		ierr = VecGetArrayRead( fsmPhi, &fsmPhiReadPtr );
 		CHKERRXX( ierr );
+
+/*		if( p4est->mpirank == 0 )
+		{
+			for( size_t i= 0; i < nodes->indep_nodes.elem_count; i++ )		// Check that we got all data.
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( i, p4est, nodes, xyz );
+				cout << i << ": (" << xyz[0] << ", " << xyz[1] << ")  " << fsmPhiReadPtr[i] << endl;
+			}
+		}*/
 
 		/// Collect the absolute error between fast sweeping reinitialization and exact distance ///
 		Vec fsmError;
@@ -189,34 +213,40 @@ int main( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			fsmErrorPtr[i] = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiPtr[i] );
+			fsmErrorPtr[i] = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiReadPtr[i] );
 		}
 		VecGhostUpdateBegin( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 		VecGhostUpdateEnd( fsmError, INSERT_VALUES, SCATTER_FORWARD );
 
 		/// Reinitialize the level-set function values using the transient pseudo-temporal equation ///
+		parStopWatch temporalReinitTimer;
+		temporalReinitTimer.start( "Temporal reinitialization" );
+
 		my_p4est_level_set_t ls( &nodeNeighbors );
-		ls.reinitialize_2nd_order( phi, 100 );
+		ls.reinitialize_2nd_order( phi, 5 );			// Using x iterations.
+
+		temporalReinitTimer.stop();
+		temporalReinitTimer.read_duration();
 
 		std::ostringstream oss;
 		oss << "fsm_" << mpi.size() << "_" << P4EST_DIM;
-		ierr = VecGetArray( phi, &phiPtr );
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								6, 0, oss.str().c_str(),
-								VTK_POINT_DATA, "phi", phiPtr,
-								VTK_POINT_DATA, "fsmPhi", fsmPhiPtr,
+								VTK_POINT_DATA, "phi", phiReadPtr,
+								VTK_POINT_DATA, "fsmPhi", fsmPhiReadPtr,
 								VTK_POINT_DATA, "fsmError", fsmErrorPtr,
 								VTK_POINT_DATA, "nodeType", nodeTypePtr,
 								VTK_POINT_DATA, "badNode", badNodePtr,
 								VTK_POINT_DATA, "process", processPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
-		ierr = VecRestoreArray( phi, &phiPtr );
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 
-		ierr = VecRestoreArrayRead( fsmPhi, &fsmPhiPtr );
+		ierr = VecRestoreArrayRead( fsmPhi, &fsmPhiReadPtr );
 		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( fsmError, &fsmErrorPtr );
@@ -255,9 +285,6 @@ int main( int argc, char* argv[] )
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
 		p4est_connectivity_destroy( connectivity );
-
-		w.stop();
-		w.read_duration();
 	}
 	catch( const std::exception &e )
 	{

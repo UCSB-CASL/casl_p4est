@@ -317,8 +317,8 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 	// owned nodes using the MIN operation, and then we must *scatter* forward from local to foreign nodes.
 
 	// Use the u copy to initialize the solution pointer _uPtr.  Start with all nodes being infinitely far and updatable.
-	// Also begin with undefined seed state for nodes.
-	for( p4est_locidx_t n = 0; n < _nodes->num_owned_indeps; n++ )
+	// Also begin with UNDEFINED seed state for nodes.
+	for( p4est_locidx_t n = 0; n < _nodes->indep_nodes.elem_count; n++ )	// Notice we consider ghost nodes too.
 	{
 		_uPtr[n] = PETSC_INFINITY;
 		_rhsPtr[n] = 1;
@@ -328,7 +328,7 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 	// Go through each quad/octant and check if it's crossed by the interface.  If so, update its nodes that can be used
 	// as seed points by approximating their shortest distance to the interface using a piece-wise linear reconstruction.
 	// Since a node may belong to several quads/octs, we keep the minimum as long as it is a valid seed point.
-	for(p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
+	for( p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
 	{
 		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );			// Check all local trees.
 		for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )		// Check each quadrant in local trees.
@@ -339,9 +339,9 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 	}
 
 	// Gather and scatter seed nodes and init state across processes.
-	PetscErrorCode ierr;
 	if( _p4est->mpisize > 1 )
 	{
+		PetscErrorCode ierr;
 		ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );			// Gather minimum value for u from foreign ghost nodes.
 		CHKERRXX( ierr );
 		ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
@@ -495,13 +495,15 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 	// Approximate location of interface by defining seed nodes.  Also, initialize the inverse speed for each partition
 	// node by setting it as INF for seed nodes and 1 for interface-non-adjacent nodes.
 	// Note: from this point on, we compute *positive* normal distances to interface.  Almost at the end we restore the
-	// sign of the solution; this is the reason why we must keep a copy of the original solution signal.
+	// sign of the solution; this is the one of the reasons to keep a copy of the original solution signal.  The other
+	// reason is to check when a node is a viable seed point (i.e. it's on the interface or at least one of its edges
+	// is crossed by \Gamma).
 	_approximateInterfaceAndSeedNodes();
 
 	double relDiffAll = 1;													// Buffer to collect relative difference across processes.
 	double relDiff = relDiffAll;
 	unsigned iter = 0;
-	while( relDiff > EPS && iter < maxIter )
+	while( relDiff > _zeroDistanceThreshold && iter < maxIter )
 	{
 		std::copy( _uPtr, _uPtr + N_INDEP_NODES, _uOld );					// u_old = u.
 
@@ -541,6 +543,9 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 		relDiff = relDiffAll;
 		iter++;
 	}
+
+	if( _p4est->mpirank == 0 )
+		std::cout << ">> Number of iterations: " << iter << ".  Convergence maximum relative difference: " << relDiffAll << std::endl;
 
 	// Fix sign of expected negative solution nodal values.
 	_fixSolutionSign();
