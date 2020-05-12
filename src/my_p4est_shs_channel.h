@@ -157,7 +157,7 @@ class my_p4est_shs_channel_t : public CF_DIM
 
   inline double k_(const int& n) const
   {
-    return 2.0*M_PI*n/pitch;
+    return 2.0*M_PI*n/pitch_to_delta();
   }
 
   inline double beta_(const double & k) const
@@ -381,7 +381,7 @@ class my_p4est_shs_channel_t : public CF_DIM
     xyz_mod[0] = (my_fmod(xyz[0] - brick->xyz_min[0] + 0.5*pitch*(1.0 - gas_frac), pitch) - 0.5*pitch)/delta();
     xyz_mod[1] = (xyz[1] - 0.5*(brick->xyz_min[1] + brick->xyz_max[1]))/delta();
 #ifdef P4_TO_P8
-    xyz_mod[2] = (my_fmod(xyz[2] - 0.5*brick->xyz_min[2] + 0.5*pitch*(1.0 - gas_frac), pitch) - 0.5*pitch)/delta();
+    xyz_mod[2] = (my_fmod(xyz[2] - brick->xyz_min[2] + 0.5*pitch*(1.0 - gas_frac), pitch) - 0.5*pitch)/delta();
 #endif
     return;
   }
