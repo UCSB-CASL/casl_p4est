@@ -84,13 +84,11 @@ private:
   int num_comps_;
   vector<double> conc_diag_;
   vector<double> conc_diff_;
-  vector<double> part_coeff_;
 
   // thermal parameters
   double temp_diag_l_, temp_diff_l_;
   double temp_diag_s_, temp_diff_s_;
   double latent_heat_;
-  double melting_temp_;
 
   // front conditions
   CF_DIM           *c0_guess_;
@@ -101,6 +99,7 @@ private:
 
   double (*liquidus_value_)(double *);
   double (*liquidus_slope_)(int, double *);
+  double (*part_coeff_)(int, double *);
 
   // right-hand sides
   vec_and_ptr_t         rhs_zero_;
@@ -130,13 +129,12 @@ private:
 
 public:
 
-  inline void set_composition_parameters(double conc_diag[], double conc_diff[], double part_coeff[])
+  inline void set_composition_parameters(double conc_diag[], double conc_diff[])
   {
     for (int i = 0; i < num_comps_; ++i)
     {
       conc_diag_ [i] = conc_diag [i];
       conc_diff_ [i] = conc_diff [i];
-      part_coeff_[i] = part_coeff[i];
     }
   }
 
@@ -150,11 +148,11 @@ public:
   }
 
   inline void set_gibbs_thomson(CF_DIM &gibbs_thomson) { gibbs_thomson_ = &gibbs_thomson; }
-  inline void set_liquidus(double melting_temp, double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *))
+  inline void set_liquidus(double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *), double (*part_coeff)(int, double *))
   {
-    melting_temp_   = melting_temp;
     liquidus_value_ = liquidus_value;
     liquidus_slope_ = liquidus_slope;
+    part_coeff_     = part_coeff;
   }
 
   inline void set_undercoolings(int num_seeds, Vec seed_map, CF_DIM *eps_v[], CF_DIM *eps_c[])
@@ -389,19 +387,19 @@ public:
     max_iterations_ = max_iterations;
   }
 
-  inline double compute_vn(double *xyz)
-  {
-    double nd;
-    double c0n = 0;
-    foreach_dimension(dim)
-    {
-      interp_.set_input(front_normal_.vec[dim], linear); nd = interp_.value(xyz);
-      interp_.set_input(c0d_.vec[dim],          linear); c0n += nd*interp_.value(xyz);
-    }
+//  inline double compute_vn(double *xyz)
+//  {
+//    double nd;
+//    double c0n = 0;
+//    foreach_dimension(dim)
+//    {
+//      interp_.set_input(front_normal_.vec[dim], linear); nd = interp_.value(xyz);
+//      interp_.set_input(c0d_.vec[dim],          linear); c0n += nd*interp_.value(xyz);
+//    }
 
-    interp_.set_input(c_[0].vec, DIM(c_dd_[0].vec[0], c_dd_[0].vec[1], c_dd_[0].vec[2]), quadratic_non_oscillatory_continuous_v2);
-    return (conc_diff_[0]*c0n - front_conc_flux_[0]->value(xyz))/interp_.value(xyz)/(1.0-part_coeff_[0]);
-  }
+//    interp_.set_input(c_[0].vec, DIM(c_dd_[0].vec[0], c_dd_[0].vec[1], c_dd_[0].vec[2]), quadratic_non_oscillatory_continuous_v2);
+//    return (conc_diff_[0]*c0n - front_conc_flux_[0]->value(xyz))/interp_.value(xyz)/(1.0-part_coeff_[0]);
+//  }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MULTIALLOY_H

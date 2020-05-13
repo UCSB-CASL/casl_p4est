@@ -109,6 +109,7 @@ private:
   vec_and_ptr_t       history_time_; // temperature at which alloy solidified
   vec_and_ptr_t       history_tf_; // temperature at which alloy solidified
   vec_and_ptr_array_t history_cs_; // composition of solidified region
+  vec_and_ptr_array_t history_part_coeff_; // partition coefficient at freezing
   vec_and_ptr_t       history_seed_; // seed tag
 
   //--------------------------------------------------
@@ -117,17 +118,16 @@ private:
   // composition parameters
   int            num_comps_;
   vector<double> solute_diff_;
-  vector<double> part_coeff_;
 
   // thermal parameters
   double density_l_, heat_capacity_l_, thermal_cond_l_;
   double density_s_, heat_capacity_s_, thermal_cond_s_;
   double latent_heat_;
 
-  // front conditions
-  double melting_temp_;
+  // phase diagram
   double (*liquidus_value_)(double *);
   double (*liquidus_slope_)(int, double *);
+  double (*part_coeff_)(int, double *);
 
   // undercoolings
   int              num_seeds_;
@@ -196,26 +196,35 @@ private:
   double         front_velo_norm_max_;
 
   static my_p4est_node_neighbors_t *v_ngbd;
-  static double *v_c_p, **v_c_d_p, **v_c_dd_p, **v_normal_p;
+  static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
   static double v_factor;
+  static double (*v_part_coeff)(int, double *);
+  static int v_num_comps;
 
-  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double *c_p, double **c_d_p, double **c_dd_p, double **normal_p, double factor)
+  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double **c_p, double **c0_d_p, double **c0_dd_p,
+                              double **normal_p, double factor)
   {
-    v_ngbd     = ngbd;
-    v_c_p      = c_p;
-    v_c_d_p    = c_d_p;
-    v_c_dd_p   = c_dd_p;
-    v_normal_p = normal_p;
-    v_factor   = factor;
+    v_ngbd       = ngbd;
+    v_c_p        = c_p;
+    v_c0_d_p     = c0_d_p;
+    v_c0_dd_p    = c0_dd_p;
+    v_normal_p   = normal_p;
+    v_factor     = factor;
+    v_part_coeff = part_coeff_;
+    v_num_comps  = num_comps_;
   }
 
   static double velo(p4est_locidx_t n, int dir, double dist)
   {
     const quad_neighbor_nodes_of_node_t &qnnn = (*v_ngbd)[n];
-    return -v_factor*
-        ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
-        + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
-        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
+    vector<double> cl_all (v_num_comps);
+    for (int j = 0; j < v_num_comps; ++j) {
+      cl_all[j] = qnnn.interpolate_in_dir(dir, dist, v_c_p[j]);
+    }
+    return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
+        ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
+        + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
+        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7);
   }
 
 
@@ -226,12 +235,11 @@ public:
   void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
 
   inline void set_scaling(double value) { scaling_ = value; }
-  inline void set_composition_parameters(double solute_diff[], double part_coeff[])
+  inline void set_composition_parameters(double solute_diff[])
   {
     for (int i = 0; i < num_comps_; ++i)
     {
       solute_diff_[i] = solute_diff[i];
-      part_coeff_ [i] = part_coeff [i];
     }
   }
 
@@ -244,11 +252,11 @@ public:
     density_s_ = density_s; heat_capacity_s_ = heat_capacity_s; thermal_cond_s_ = thermal_cond_s;
   }
 
-  inline void set_liquidus(double melting_temp, double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *))
+  inline void set_liquidus(double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *), double (*part_coeff)(int, double *))
   {
-    melting_temp_   = melting_temp;
     liquidus_value_ = liquidus_value;
     liquidus_slope_ = liquidus_slope;
+    part_coeff_ = part_coeff;
   }
 
   inline void set_undercoolings(int num_seeds, Vec seed_map, CF_DIM *eps_v[], CF_DIM *eps_c[])
@@ -496,7 +504,7 @@ public:
   void update_grid();
   void update_grid_eno();
   void update_grid_history();
-  int  one_step();
+  int  one_step(double &bc_error_max, int it_scheme=2);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
 
