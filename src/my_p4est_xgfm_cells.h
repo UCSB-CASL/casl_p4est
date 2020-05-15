@@ -61,6 +61,28 @@ struct interface_neighbor
   p4est_locidx_t quad_fine_node_idx;
   p4est_locidx_t nb_fine_node_idx;
 #endif
+  double interface_value(const double &mu_m, const double &mu_p, const p4est_locidx_t& quad_idx, const u_char dir, const double *dxyz_min,
+                         const double *solution_p, const double* jump_u_p, const double* jump_flux_p) const
+  {
+    P4EST_ASSERT(signs_of_phi_are_different(phi_q, phi_nb));
+    P4EST_ASSERT(mid_point_fine_node_idx >= 0);
+
+    const double theta_fine = (theta >= 0.5 ? 2.0*theta - 1.0 : 2.0*theta);
+    const p4est_locidx_t &fine_idx_this_side  = (theta >= 0.5 ? mid_point_fine_node_idx : quad_fine_node_idx);
+    const p4est_locidx_t &fine_idx_across     = (theta >= 0.5 ? nb_fine_node_idx        : mid_point_fine_node_idx);
+
+    const double jump_solution       = (1.0 - theta_fine)*jump_u_p[fine_idx_this_side]                      + theta_fine*jump_u_p[fine_idx_across];
+    const double jump_flux_component = (1.0 - theta_fine)*jump_flux_p[P4EST_DIM*fine_idx_this_side + dir/2] + theta_fine*jump_flux_p[P4EST_DIM*fine_idx_across + dir/2];
+
+    const double &mu_this_side  = (phi_q   > 0.0 ? mu_p : mu_m);
+    const double &mu_across     = (phi_nb  > 0.0 ? mu_p : mu_m);
+    const double mu_tilde       = (1.0 - theta)*mu_this_side + theta*mu_across;
+    const bool on_slow_side     = (mu_m >= mu_p) == (phi_q <= 0.0);
+
+    return ((1.0 - theta)*mu_this_side*(solution_p[quad_idx] + (!on_slow_side ? (phi_q  <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
+         + theta*mu_across*(solution_p[quad_nb_idx] + (on_slow_side ? (phi_nb <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
+        + ((dir%2 == 1) == (phi_q > 0.0) ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz_min[dir/2]*jump_flux_component)/mu_tilde;
+  }
 #ifdef DEBUG
   bool is_consistent_with_neighbor_across(const interface_neighbor nb_across) const
   {
@@ -68,7 +90,8 @@ struct interface_neighbor
         && fabs(phi_q - nb_across.phi_nb) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
         && fabs(phi_nb - nb_across.phi_q) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
         && fabs(theta + nb_across.theta - 1.0) < EPS
-        && fabs(int_value - nb_across.int_value) < 0.000001*MAX(fabs(int_value), 1.0);
+//        && fabs(int_value - nb_across.int_value) < 0.000001*MAX(fabs(int_value), 1.0)
+        ;
   }
 #endif
 };

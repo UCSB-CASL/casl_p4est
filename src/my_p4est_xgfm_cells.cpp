@@ -176,10 +176,8 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components()
 void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
                                                                       const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p)
 {
-  double grad_jump_u_cdot_normal = 0.0;
-  double grad_extension_cdot_normal = 0.0;
-  double norm_n = 0.0;
-  double n_comp[P4EST_DIM], grad_jump_u[P4EST_DIM], grad_extension[P4EST_DIM];
+  double grad_jump_u[P4EST_DIM];
+  double grad_extension[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)}; // set to 0.0 to avoid undefined behavior if extension_on_nodes_p == NULL
 
   const quad_neighbor_nodes_of_node_t *qnnn;
   if(activate_xGFM)
@@ -194,47 +192,23 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_for_node(const p4es
     else
       qnnn->gradient(jump_u_p, grad_jump_u);
   }
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-  {
-    n_comp[dim] = normals_p[P4EST_DIM*node_idx + dim];
-    if(activate_xGFM)
-    {
-      grad_jump_u_cdot_normal += n_comp[dim]*grad_jump_u[dim];
-      if(extension_on_nodes_p != NULL)
-        grad_extension_cdot_normal  += n_comp[dim]*grad_extension[dim];
-    }
-    norm_n += SQR(n_comp[dim]);
-  }
-  norm_n = sqrt(norm_n);
-  if(norm_n > EPS)
-  {
-    if(activate_xGFM)
-    {
-      grad_jump_u_cdot_normal /= norm_n;
-      if(extension_on_nodes_p != NULL)
-        grad_extension_cdot_normal /= norm_n;
-    }
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      n_comp[dim] /= norm_n;
-  }
-  else
-  {
-    if(activate_xGFM)
-    {
-      grad_jump_u_cdot_normal = 0.0;
-      if(extension_on_nodes_p != NULL)
-        grad_extension_cdot_normal = 0.0;
-    }
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      n_comp[dim] = 0.0;
-  }
+
+  const double *grad_phi = normals_p + P4EST_DIM*node_idx;
+  const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi[0]), SQR(grad_phi[1]), SQR(grad_phi[2])));
+  const double normal[P4EST_DIM] = {DIM((mag_grad_phi > EPS ? grad_phi[0]/mag_grad_phi : 0.0),
+                                    (mag_grad_phi > EPS ? grad_phi[1]/mag_grad_phi : 0.0),
+                                    (mag_grad_phi > EPS ? grad_phi[2]/mag_grad_phi : 0.0))};
+
+  const double grad_jump_u_cdot_normal    = SUMD(normal[0]*grad_jump_u[0], normal[1]*grad_jump_u[1], normal[2]*grad_jump_u[2]);
+  const double grad_extension_cdot_normal = SUMD(normal[0]*grad_extension[0], normal[1]*grad_extension[1], normal[2]*grad_extension[2]);
+
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    jump_flux_p[P4EST_DIM*node_idx + dim] = jump_normal_flux_p[node_idx]*n_comp[dim];
+    jump_flux_p[P4EST_DIM*node_idx + dim] = jump_normal_flux_p[node_idx]*normal[dim];
     if(activate_xGFM)
     {
-      jump_flux_p[P4EST_DIM*node_idx + dim] += get_smaller_mu()*(grad_jump_u[dim] - grad_jump_u_cdot_normal*n_comp[dim]);
+      jump_flux_p[P4EST_DIM*node_idx + dim] += get_smaller_mu()*(grad_jump_u[dim] - grad_jump_u_cdot_normal*normal[dim]);
       if(extension_on_nodes_p != NULL)
-        jump_flux_p[P4EST_DIM*node_idx + dim] += get_jump_in_mu()*(grad_extension[dim] - grad_extension_cdot_normal*n_comp[dim]);
+        jump_flux_p[P4EST_DIM*node_idx + dim] += get_jump_in_mu()*(grad_extension[dim] - grad_extension_cdot_normal*normal[dim]);
     }
   }
 }
@@ -383,6 +357,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
         if(!(fine_node_idx_for_quad >= 0 && fine_node_idx_for_neighbor_quad >= 0))
           std::cout << "fine_node_idx_for_quad = " << fine_node_idx_for_quad  << ", fine_node_idx_for_neighbor_quad" << fine_node_idx_for_neighbor_quad << std::endl;
         P4EST_ASSERT(fine_node_idx_for_quad >= 0 && fine_node_idx_for_neighbor_quad >= 0);
+        P4EST_ASSERT(quad->level == neighbor_quad.level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
         interface_neighbor jump_data = get_interface_neighbor(quad_idx, dir, neighbor_quad.p.piggy3.local_num, fine_node_idx_for_quad, fine_node_idx_for_neighbor_quad, phi_p, phi_xxyyzz_p);
         const double& mu_across = (phi_neighbor_quad  > 0.0 ? mu_p : mu_m);
         const double mu_jump = mu_m*mu_p/((1.0 - jump_data.theta)*mu_q + jump_data.theta*mu_across);
@@ -508,7 +483,7 @@ void my_p4est_xgfm_cells_t::setup_linear_system()
     ierr  = VecGetArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
     ierr  = VecGetArrayRead(jump_flux, &jump_flux_p); CHKERRXX(ierr);
   }
-  int nullspace_contains_constant_vector = !matrix_is_set; // integer because of required MPI collective determination thereafter
+  int nullspace_contains_constant_vector = !matrix_is_set; // integer because of required MPI collective determination thereafter, we don't care about that if the matrix is already set
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
     const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
@@ -876,7 +851,6 @@ interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_loc
                                                                  const double *phi_p, const double *phi_xxyyzz_p)
 {
   P4EST_ASSERT(quad_idx >= 0 && quad_idx < p4est->local_num_quadrants && dir >= 0 && dir < P4EST_FACES); // must be a local quadrant
-//  P4EST_ASSERT(quad.level == nb_quad.level && quad.level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
 
   interface_neighbor interface_nb;
   if(interface_neighbor_is_found(quad_idx, dir, interface_nb))
@@ -1769,6 +1743,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             {
               p4est_quadrant_t this_quad = *quad;
               this_quad.p.piggy3.local_num = quad_idx; this_quad.p.piggy3.which_tree = tree_idx;
+              P4EST_ASSERT(this_quad.level == neighbor_quad.level && this_quad.level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
               const interface_neighbor int_nb = get_interface_neighbor(this_quad.p.piggy3.local_num, dir, neighbor_quad.p.piggy3.local_num, fine_node_idx_for_quad, fine_node_idx_for_neighbor_quad, phi_p, phi_xxyyzz_p);
               P4EST_ASSERT(int_nb.mid_point_fine_node_idx == fine_node_idx_for_face);
 
