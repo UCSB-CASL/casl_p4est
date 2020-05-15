@@ -566,6 +566,21 @@ inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4es
   return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
 }
 
+inline bool VecsAreSetForFaces(const Vec v[P4EST_DIM], const my_p4est_faces_t* faces, const unsigned int& blocksize, const bool& ghosted = true)
+{
+  P4EST_ASSERT(v != NULL && ANDD(v[0] != NULL, v[1] != NULL, v[2] != NULL));
+  P4EST_ASSERT(blocksize > 0);
+  PetscInt local_size, ghosted_size;
+  int my_test = 1;
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    VecGetLocalAndGhostSizes(v[dim], local_size, ghosted_size, ghosted);
+    my_test = my_test && (local_size == (PetscInt) (blocksize*faces->num_local[dim]) && (!ghosted || ghosted_size == (PetscInt) (blocksize*(faces->num_local[dim] + faces->num_ghost[dim]))) ? 1 : 0);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, faces->get_p4est()->mpicomm); SC_CHECK_MPI(mpiret);
+  return my_test;
+}
+
+
 inline bool local_face_is_well_defined(const p4est_locidx_t &f_idx, const my_p4est_faces_t *faces, const my_p4est_interpolation_nodes_t &interp_phi,
                                        const unsigned char &dir, const BoundaryConditionsDIM &bc_dir)
 {

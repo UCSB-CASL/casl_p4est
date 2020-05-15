@@ -160,7 +160,7 @@ const double zero_threshold_qnnn = EPS;
 
 class quad_neighbor_nodes_of_node_t {
 private:
-  inline bool check_if_zero(const double& value) const { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
+  static inline bool check_if_zero(const double& value) { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
   // very elementary operations in the most synthetic forms
   inline double dd_correction_weight_to_naive_first_derivative(const double &d_m, const double &d_p, const double &d_m_m, const double &d_m_p, const double &d_p_m, const double &d_p_p) const
   {
@@ -2194,44 +2194,60 @@ public:
 
   inline p4est_locidx_t neighbor_m00() const
   {
-    if      (check_if_zero(d_m00_p0) ONLY3D(&& check_if_zero(d_m00_0m)))  return node_m00_pm;
-    else if (check_if_zero(d_m00_m0) ONLY3D(&& check_if_zero(d_m00_0m)))  return node_m00_mm;
+    const double max_hy = MAX(d_0m0, d_0p0);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_m00_m0)        && check_if_zero(d_m00_0p))   return node_m00_mp;
-    else if (check_if_zero(d_m00_p0)        && check_if_zero(d_m00_0p))   return node_m00_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_m00_p0/max_hy) ONLY3D(&& check_if_zero(d_m00_0m/max_hz)))  return node_m00_pm;
+    else if (check_if_zero(d_m00_m0/max_hy) ONLY3D(&& check_if_zero(d_m00_0m/max_hz)))  return node_m00_mm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_m00_m0/max_hy)        && check_if_zero(d_m00_0p/max_hz))   return node_m00_mp;
+    else if (check_if_zero(d_m00_p0/max_hy)        && check_if_zero(d_m00_0p/max_hz))   return node_m00_pp;
 #endif
     else return -1;
     //  else            throw std::invalid_argument("No neighbor in m00 direction \n");
   }
   inline p4est_locidx_t neighbor_p00() const
   {
-    if      (check_if_zero(d_p00_m0) ONLY3D(&& check_if_zero(d_p00_0m)))  return node_p00_mm;
-    else if (check_if_zero(d_p00_p0) ONLY3D(&& check_if_zero(d_p00_0m)))  return node_p00_pm;
+    const double max_hy = MAX(d_0m0, d_0p0);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_p00_m0)        && check_if_zero(d_p00_0p))   return node_p00_mp;
-    else if (check_if_zero(d_p00_p0)        && check_if_zero(d_p00_0p))   return node_p00_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_p00_m0/max_hy) ONLY3D(&& check_if_zero(d_p00_0m/max_hz)))  return node_p00_mm;
+    else if (check_if_zero(d_p00_p0/max_hy) ONLY3D(&& check_if_zero(d_p00_0m/max_hz)))  return node_p00_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_p00_m0/max_hy)        && check_if_zero(d_p00_0p/max_hz))   return node_p00_mp;
+    else if (check_if_zero(d_p00_p0/max_hy)        && check_if_zero(d_p00_0p/max_hz))   return node_p00_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in p00 direction \n");
   }
   inline p4est_locidx_t neighbor_0m0() const
   {
-    if      (check_if_zero(d_0m0_m0) ONLY3D(&& check_if_zero(d_0m0_0m)))  return node_0m0_mm;
-    else if (check_if_zero(d_0m0_p0) ONLY3D(&& check_if_zero(d_0m0_0m)))  return node_0m0_pm;
+    const double max_hx = MAX(d_m00, d_p00);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_0m0_m0)        && check_if_zero(d_0m0_0p))   return node_0m0_mp;
-    else if (check_if_zero(d_0m0_p0)        && check_if_zero(d_0m0_0p))   return node_0m0_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_0m0_m0/max_hx) ONLY3D(&& check_if_zero(d_0m0_0m/max_hz)))  return node_0m0_mm;
+    else if (check_if_zero(d_0m0_p0/max_hx) ONLY3D(&& check_if_zero(d_0m0_0m/max_hz)))  return node_0m0_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_0m0_m0/max_hx)        && check_if_zero(d_0m0_0p/max_hz))   return node_0m0_mp;
+    else if (check_if_zero(d_0m0_p0/max_hx)        && check_if_zero(d_0m0_0p/max_hz))   return node_0m0_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in 0m0 direction \n");
   }
   inline p4est_locidx_t neighbor_0p0() const
   {
-    if      (check_if_zero(d_0p0_m0) ONLY3D(&& check_if_zero(d_0p0_0m)))  return node_0p0_mm;
-    else if (check_if_zero(d_0p0_p0) ONLY3D(&& check_if_zero(d_0p0_0m)))  return node_0p0_pm;
+    const double max_hx = MAX(d_m00, d_p00);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_0p0_m0)        && check_if_zero(d_0p0_0p))   return node_0p0_mp;
-    else if (check_if_zero(d_0p0_p0)        && check_if_zero(d_0p0_0p))   return node_0p0_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_0p0_m0/max_hx) ONLY3D(&& check_if_zero(d_0p0_0m/max_hz)))  return node_0p0_mm;
+    else if (check_if_zero(d_0p0_p0/max_hx) ONLY3D(&& check_if_zero(d_0p0_0m/max_hz)))  return node_0p0_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_0p0_m0/max_hx)        && check_if_zero(d_0p0_0p/max_hz))   return node_0p0_mp;
+    else if (check_if_zero(d_0p0_p0/max_hx)        && check_if_zero(d_0p0_0p/max_hz))   return node_0p0_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in 0p0 direction \n");
@@ -2239,19 +2255,23 @@ public:
 #ifdef P4_TO_P8
   inline p4est_locidx_t neighbor_00m() const
   {
-    if      (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0m)) return node_00m_mm;
-    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0m)) return node_00m_pm;
-    else if (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0p)) return node_00m_mp;
-    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0p)) return node_00m_pp;
+    const double max_hx = MAX(d_m00, d_p00);
+    const double max_hy = MAX(d_0m0, d_0p0);
+    if      (check_if_zero(d_00m_m0/max_hx) && check_if_zero(d_00m_0m/max_hy)) return node_00m_mm;
+    else if (check_if_zero(d_00m_p0/max_hx) && check_if_zero(d_00m_0m/max_hy)) return node_00m_pm;
+    else if (check_if_zero(d_00m_m0/max_hx) && check_if_zero(d_00m_0p/max_hy)) return node_00m_mp;
+    else if (check_if_zero(d_00m_p0/max_hx) && check_if_zero(d_00m_0p/max_hy)) return node_00m_pp;
     else return -1;
     //  else throw std::invalid_argument("No neighbor in m00 direction \n");
   }
   inline p4est_locidx_t neighbor_00p() const
   {
-    if      (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0m)) return node_00p_mm;
-    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0m)) return node_00p_pm;
-    else if (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0p)) return node_00p_mp;
-    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0p)) return node_00p_pp;
+    const double max_hx = MAX(d_m00, d_p00);
+    const double max_hy = MAX(d_0m0, d_0p0);
+    if      (check_if_zero(d_00p_m0/max_hx) && check_if_zero(d_00p_0m/max_hy)) return node_00p_mm;
+    else if (check_if_zero(d_00p_p0/max_hx) && check_if_zero(d_00p_0m/max_hy)) return node_00p_pm;
+    else if (check_if_zero(d_00p_m0/max_hx) && check_if_zero(d_00p_0p/max_hy)) return node_00p_mp;
+    else if (check_if_zero(d_00p_p0/max_hx) && check_if_zero(d_00p_0p/max_hy)) return node_00p_pp;
     else return -1;
     //  else throw std::invalid_argument("No neighbor in m00 direction \n");
   }

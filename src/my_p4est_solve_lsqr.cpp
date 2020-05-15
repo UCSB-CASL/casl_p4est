@@ -206,7 +206,7 @@ void solve_lsqr_system(const matrix_t& A, const vector<double> p[], const size_t
       throw std::invalid_argument("my_p4est_solve_lsqr::solve_lsqr_system(...): (all of) the right hand side(s) must have the same size as the number of rows in the matrix!");
 #endif
   P4EST_ASSERT(nconstraints <= P4EST_DIM);
-  int m = A.num_rows();
+  const int m = A.num_rows();
   matrix_t *M = new matrix_t();
   vector<double> Atp[n_vectors];
   vector<double> coeffs[n_vectors];

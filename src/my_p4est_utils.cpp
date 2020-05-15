@@ -176,6 +176,30 @@ lookup_in_ghost_nodes:
   return false;
 }
 
+#ifdef SUBREFINED
+bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+                                         const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
+                                         p4est_locidx_t& fine_vertex_idx)
+{
+  p4est_quadrant_t fine_node_to_fetch;
+  fine_node_to_fetch.level = P4EST_MAXLEVEL; fine_node_to_fetch.p.which_tree = tree_idx;
+  XCODE(fine_node_to_fetch.x = quad.x + (vx + 1)*P4EST_QUADRANT_LEN(quad.level + 1));
+  YCODE(fine_node_to_fetch.y = quad.y + (vy + 1)*P4EST_QUADRANT_LEN(quad.level + 1));
+  ZCODE(fine_node_to_fetch.z = quad.z + (vz + 1)*P4EST_QUADRANT_LEN(quad.level + 1));
+  P4EST_ASSERT (p4est_quadrant_is_node (&fine_node_to_fetch, 0));
+  const p4est_quadrant_t *tmp_ptr = &fine_node_to_fetch;
+  // but if it lies on the edge of the tree, we need to canonicalize it first, or it won't be fetched correctly
+  if(ORD(fine_node_to_fetch.x == 0 || fine_node_to_fetch.x == P4EST_ROOT_LEN, fine_node_to_fetch.y == 0 || fine_node_to_fetch.y == P4EST_ROOT_LEN, fine_node_to_fetch.z == 0 || fine_node_to_fetch.z == P4EST_ROOT_LEN))
+  {
+    p4est_quadrant_t n;
+    p4est_node_canonicalize(fine_p4est, tree_idx, &fine_node_to_fetch, &n);
+    tmp_ptr = &n;
+  }
+
+  return index_of_node(tmp_ptr, fine_nodes, fine_vertex_idx);
+}
+#endif
+
 void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
                            double *xyz_rel, int64_t* logical_qcoord_diff)
 {
@@ -542,61 +566,74 @@ return_time:
   return result;
 }
 
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
+p4est_bool_t ghosts_are_equal(const p4est_ghost_t* ghost_1, const p4est_ghost_t* ghost_2)
 {
   if(ghost_1 == ghost_2)
     return P4EST_TRUE;
 
   const p4est_quadrant_t *quad_1, *quad_2;
   int mpisize = ghost_1->mpisize;
-  p4est_bool_t result = (ghost_2->mpisize == mpisize);
-  result = result && (ghost_1->ghosts.elem_count == ghost_2->ghosts.elem_count);
-  result = result && (ghost_1->num_trees == ghost_2->num_trees);
-  result = result && (ghost_1->btype == ghost_2->btype);
+  p4est_bool_t result = ghost_2->mpisize == mpisize;
+  result = result && ghost_1->ghosts.elem_count == ghost_2->ghosts.elem_count;
+  result = result && ghost_1->num_trees == ghost_2->num_trees;
+  result = result && ghost_1->btype == ghost_2->btype;
   if(!result)
-    goto return_time;
+    return result;
   for (size_t k = 0; k < ghost_1->ghosts.elem_count; ++k) {
-    quad_1 = p4est_quadrant_array_index(&ghost_1->ghosts, k);
-    quad_2 = p4est_quadrant_array_index(&ghost_2->ghosts, k);
+    quad_1 = p4est_const_quadrant_array_index(&ghost_1->ghosts, k);
+    quad_2 = p4est_const_quadrant_array_index(&ghost_2->ghosts, k);
     result = result && p4est_quadrant_is_equal(quad_1, quad_2);
-    result = result && (quad_1->p.piggy3.local_num == quad_2->p.piggy3.local_num);
-    result = result && (quad_1->p.piggy3.which_tree == quad_2->p.piggy3.which_tree);
+    result = result && quad_1->p.piggy3.local_num == quad_2->p.piggy3.local_num;
+    result = result && quad_1->p.piggy3.which_tree == quad_2->p.piggy3.which_tree;
     if(!result)
-      goto return_time;
+      return result;
   }
-  for (int r = 0; r < mpisize+1; ++r) {
-    result = result && (ghost_1->proc_offsets[r] == ghost_2->proc_offsets[r]);
+  for (int r = 0; r < mpisize + 1; ++r) {
+    result = result && ghost_1->proc_offsets[r] == ghost_2->proc_offsets[r];
     if(!result)
-      goto return_time;
+      return result;
   }
   for (p4est_topidx_t tree_idx = 0; tree_idx < ghost_1->num_trees+1; ++tree_idx) {
-    result = result && (ghost_1->tree_offsets[tree_idx] == ghost_2->tree_offsets[tree_idx]);
+    result = result && ghost_1->tree_offsets[tree_idx] == ghost_2->tree_offsets[tree_idx];
     if(!result)
-       goto return_time;
+      return result;
   }
-return_time:
   return result;
 }
 
-PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size)
+PetscErrorCode VecGetLocalAndGhostSizes(const Vec& v, PetscInt& local_size, PetscInt& ghosted_size, const bool &ghosted)
 {
   PetscErrorCode ierr = 0;
-  Vec v_loc;
-  ierr = VecGetLocalSize(v, &local_size); CHKERRQ(ierr);
-  ierr = VecGhostGetLocalForm(v, &v_loc); CHKERRQ(ierr);
-  ierr = VecGetSize(v_loc, &ghosted_size); CHKERRQ(ierr);
-  ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
+  ierr = VecGetLocalSize(v, &local_size);       CHKERRQ(ierr);
+  if(ghosted)
+  {
+    Vec v_loc;
+    ierr = VecGhostGetLocalForm(v, &v_loc);     CHKERRQ(ierr);
+    ierr = VecGetSize(v_loc, &ghosted_size);    CHKERRQ(ierr);
+    ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
+  }
   return ierr;
 }
 
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int& blocksize)
+bool VecIsSetForNodes(const Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int& blocksize, const bool& ghosted)
 {
-  P4EST_ASSERT(v!=NULL);
-  P4EST_ASSERT(blocksize>0);
+  P4EST_ASSERT(v != NULL);
+  P4EST_ASSERT(blocksize > 0);
   PetscInt local_size, ghosted_size;
-  VecGetLocalAndGhostSizes(v, local_size, ghosted_size);
-  int my_test = (local_size==((PetscInt)(blocksize*nodes->num_owned_indeps)) && ghosted_size!=((PetscInt)(blocksize*nodes->indep_nodes.elem_count)))?1:0;
+  VecGetLocalAndGhostSizes(v, local_size, ghosted_size, ghosted);
+  int my_test = (local_size == (PetscInt) (blocksize*nodes->num_owned_indeps) && (!ghosted || ghosted_size == (PetscInt) (blocksize*nodes->indep_nodes.elem_count))) ? 1 : 0;
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, mpicomm); SC_CHECK_MPI(mpiret);
+  return my_test;
+}
+
+bool VecIsSetForCells(const Vec& v, const p4est_t* p4est, const p4est_ghost_t* ghost, const unsigned int &blocksize, const bool &ghosted)
+{
+  P4EST_ASSERT(v != NULL);
+  P4EST_ASSERT(blocksize > 0);
+  PetscInt local_size, ghosted_size;
+  VecGetLocalAndGhostSizes(v, local_size, ghosted_size, ghosted);
+  int my_test = (local_size == (PetscInt) (blocksize*p4est->local_num_quadrants) && (!ghosted || ghosted_size == (PetscInt) (blocksize*(p4est->local_num_quadrants + ghost->ghosts.elem_count)))) ? 1 : 0;
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   return my_test;
 }
 

@@ -190,13 +190,89 @@ public:
    *                        in the list yet);
    * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
    *                        (default value is false)
+   * \param [in] no_search : (optional) array of P4EST_DIM boolean flags de-activating search in Cartesian directions.
+   *                        The neighbor in direction dir are not sought if no_search[dir] is true. All Cartesian directions
+   *                        are probed by default.
    * \return the logical size of the smallest quadrant found in the nearby cell neighborhood (given quadrant and first-degree
    *                        neighbors ONLY!!!)
    *                        --> relevant for evaluating scaling distance in some least-square interpolation procedures.
    */
-  p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false) const;
+  p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false,
+                                               const bool *no_search = NULL) const;
 };
 
+class cell_field_interpolator_t
+{
+  struct cell_interpolation_factor
+  {
+    p4est_locidx_t quad_idx;
+    double weight;
+    cell_interpolation_factor(const p4est_locidx_t &quad_idx_, const double &weight_) : quad_idx(quad_idx_), weight(weight_) {}
+    bool operator ==(const cell_interpolation_factor &other) const { return (this->quad_idx == other.quad_idx); }
+  };
+  std::vector<cell_interpolation_factor> interpolator;
+public:
+  cell_field_interpolator_t(){}
+
+  void add_interpolation_factor(const p4est_locidx_t &quad_idx_, const double &interpolation_weight)
+  {
+    cell_interpolation_factor factor(quad_idx_, interpolation_weight);
+    interpolator.push_back(factor);
+  }
+
+  void scale_interpolation_weights_by(const double &scaling) {
+    for (size_t k = 0; k < interpolator.size(); ++k)
+      interpolator[k].weight *= scaling;
+  }
+
+  void scale_interpolation_weights_by(const std::vector<double>& scaling, const double &normalization_factor = 1.0) {
+    P4EST_ASSERT(scaling.size() == interpolator.size());
+    for (size_t k = 0; k < interpolator.size(); ++k)
+      interpolator[k].weight *= scaling[k]/normalization_factor;
+  }
+
+  void clear() { interpolator.clear(); }
+
+  double interpolate(const double *cell_sampled_field_p) const
+  {
+    double interpolated_value = 0.0;
+    for (size_t k = 0; k < interpolator.size(); ++k)
+      interpolated_value += interpolator[k].weight*cell_sampled_field_p[interpolator[k].quad_idx];
+    return  interpolated_value ;
+  }
+
+  size_t size() const { return interpolator.size(); }
+};
+
+
+/*!
+ * \brief interpolate_cell_field_at_node interpolates a cell-sampled-field at a grid node using least-square interpolation
+ * \param [in] node_idx   : local index of the node where the least-square interpolated value is desired;
+ * \param [in] c_ngbd     : cell neighborhood information (built on the p4est grid)l
+ * \param [in] n_ngbd     : node-neighborhood information (built on the nodes of the p4est grid)l
+ * \param [in] cell_field : cell-sampled field to interpolatel
+ * \param [in] bc         : (optional) boundary condition associated with the cell-sampled field to interpolatel
+ * \param [in] phi        : (optional) node-sampled levelset function.
+ * \return result of the least-square interpolation, at node of index nbode_idx, of valid neighboring cell-sampled values
+ * of cell_field.
+ * NOTES:
+ * - if bc is disregarded (i.e. NULL) or if the interface-type is NOINTERFACE, all neighboring cell-sampled values are considered valid;
+ * - if bc is NOT disregarded and if the interface-type is _not_ NOINTERFACE, then phi is REQUIRED and must be provided
+ * (a local cell value is considered valid if the arithmetic average of the levelset sampled over the vertices of the cell is negative
+ * OR if the corresponding cell is crossed by the levelset and the interface-type is NEUMANN.
+ */
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc = NULL, const Vec phi = NULL);
+
+double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
+                                      const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
+                                      const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
+                                      const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, cell_field_interpolator_t* interpolator = NULL);
+
+inline double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
+                                             const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
+                                             const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, cell_field_interpolator_t* interpolator = NULL)
+{
+  return get_lsqr_interpolation_at_node(node, xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
+}
 
 #endif /* !MY_P4EST_CELL_NEIGHBORS_H */

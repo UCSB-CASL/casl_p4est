@@ -72,7 +72,7 @@ p4est_node_peer_t;
 #endif
 
 void
-p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
+p4est_node_canonicalize (const p4est_t * p4est, p4est_topidx_t treeid,
                          const p4est_quadrant_t * n, p4est_quadrant_t * c)
 {
   p4est_connectivity_t *conn = p4est->connectivity;

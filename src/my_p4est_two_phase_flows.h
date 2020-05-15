@@ -839,11 +839,11 @@ private:
     return ierr;
   }
 
-  PetscErrorCode inline create_node_vector_if_needed(Vec& vv, const p4est_t* forest, const p4est_nodes_t* nodes, const unsigned int &block_size=1)
+  PetscErrorCode inline create_node_vector_if_needed(Vec& vv, const p4est_t* forest, const p4est_nodes_t* nodes, const unsigned int &block_size = 1)
   {
     PetscErrorCode ierr = 0;
     // destroy and nullify the vector if it is not correctly set
-    if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes, forest->mpicomm, block_size)){
+    if(vv != NULL && !VecIsSetForNodes(vv, nodes, forest->mpicomm, block_size)){
       ierr = VecDestroy(vv); CHKERRQ(ierr);
       vv = NULL;
     }

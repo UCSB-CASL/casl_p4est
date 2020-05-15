@@ -701,6 +701,12 @@ inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_
  */
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
+#ifdef SUBREFINED
+bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+                                         const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
+                                         p4est_locidx_t& fine_vertex_idx);
+#endif
+
 /*!
  * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
  * interpolation). The method also returns the cartesian difference in terms of logical coordinates units (in order to efficiently and
@@ -791,7 +797,6 @@ inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_
   return result;
 }
 
-
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
  * \param [in]    p4est the forest
@@ -816,9 +821,24 @@ inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
 
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+p4est_bool_t ghosts_are_equal(const p4est_ghost_t* ghost_1, const p4est_ghost_t* ghost_2);
 
-PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
+inline void * sc_const_array_index (const sc_array_t * array, size_t iz) // same as p4est's function but works with constant data, too
+{
+  SC_ASSERT (iz < array->elem_count);
+
+  return (void *) (array->array + (array->elem_size * iz));
+}
+
+inline const p4est_quadrant_t * p4est_const_quadrant_array_index (const sc_array_t * array, size_t it) // same as p4est's function but works with constant data, too
+{
+  P4EST_ASSERT (array->elem_size == sizeof (p4est_quadrant_t));
+  P4EST_ASSERT (it < array->elem_count);
+
+  return (const p4est_quadrant_t *) (array->array + sizeof (p4est_quadrant_t) * it);
+}
+
+PetscErrorCode VecGetLocalAndGhostSizes(const Vec& v, PetscInt& local_size, PetscInt& ghosted_size, const bool &ghosted = true);
 
 /*!
  * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
@@ -829,14 +849,27 @@ PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& 
 PetscErrorCode VecGhostCopy(Vec src, Vec dst);
 
 /*!
- * \brief vectorIsWellSetForNodes
- * \param v
- * \param nodes
- * \param mpicomm
- * \param block_size
- * \return
+ * \brief VecIsSetForNodes checks if a Petsc parallel vector has the appropriate layout for a node-sampled field.
+ * \param [in] v          : the vector whose layout needs to be checked
+ * \param [in] nodes      : a pointer to the p4est_nodes on which the node-sampled field must be defined
+ * \param [in] mpicomm    : the mpi communicator
+ * \param [in] blocksize  : the block size of the vector and/or of the field to be sampled within it
+ * \param [in] ghosted    : a flag indicating if the vector must be ghosted or not
+ * \return true is the layout fits (this function is a collective check across all processes)
  */
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
+bool VecIsSetForNodes(const Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &blocksize, const bool &ghosted = true);
+
+/*!
+ * \brief VecIsSetForCells checks if a Petsc parallel vector has the appropriate layout for a cell-sampled field.
+ * \param [in] v          : the vector whose layout needs to be checked
+ * \param [in] p4est      : a pointer to the p4est on which the cell-sampled field must be defined
+ * \param [in] ghost      : a pointer to the ghost of the p4est on which the cell-sampled field must be defined
+ *                          (relevant only if ghosted is true, can be set to NULL otherwise)
+ * \param [in] blocksize  : the block size of the vector and/or of the field to be sampled within it
+ * \param [in] ghosted    : a flag indicating if the vector must be ghosted or not
+ * \return true is the layout fits (this function is a collective check across all processes)
+ */
+bool VecIsSetForCells(const Vec& v, const p4est_t* p4est, const p4est_ghost_t* ghost, const unsigned int &blocksize, const bool &ghosted = true);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
