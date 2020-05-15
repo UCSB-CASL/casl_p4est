@@ -628,7 +628,7 @@ void my_p4est_xgfm_cells_t::solve(KSPType ksp_type, PCType pc_type,
     ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells); CHKERRXX(ierr);
     double *solution_p;
     ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
-    extend_interface_values(solution_p, extension_on_cells, NULL);
+    extend_interface_values(solution_p, extension_on_cells);
     // interpolate it on the fine grid
     ierr = VecCreateGhostNodes(fine_p4est, fine_nodes, &extension_on_nodes); CHKERRXX(ierr);
     double *extension_cell_values_p;
@@ -730,7 +730,8 @@ void my_p4est_xgfm_cells_t::solve(KSPType ksp_type, PCType pc_type,
       ierr = VecGhostUpdateBegin(solution_tilde, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(solution_tilde, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-      extend_interface_values(solution_tilde_p, extension_cell_values_tilde, extension_on_nodes_p);
+      compute_jumps_in_flux_components();
+      extend_interface_values(solution_tilde_p, extension_cell_values_tilde);
       interpolate_cell_field_to_nodes(extension_cell_values_tilde_p, extension_on_nodes_tilde);
       get_corrected_rhs(corrected_rhs_tilde, extension_on_nodes_tilde_p);
 
@@ -872,56 +873,30 @@ interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_loc
   interface_nb.mid_point_fine_node_idx  = qnnn->neighbor(dir);
   P4EST_ASSERT(interface_nb.mid_point_fine_node_idx >= 0 && interface_nb.mid_point_fine_node_idx == fine_node_ngbd->get_neighbors(nb_fine_node_idx).neighbor(dir + (dir%2 == 0 ? +1 : -1)));
 
+  const double &mid_point_phi   = phi_p[interface_nb.mid_point_fine_node_idx];
+  const bool no_past_mid_point  = signs_of_phi_are_different(interface_nb.phi_q, mid_point_phi);
+  const double &phi_this_side   = (no_past_mid_point ? interface_nb.phi_q : mid_point_phi);
+  const double &phi_across      = (no_past_mid_point ? mid_point_phi      : interface_nb.phi_nb);
+  const p4est_locidx_t& fine_idx_this_side  = (no_past_mid_point ? quad_fine_node_idx                   : interface_nb.mid_point_fine_node_idx);
+  const p4est_locidx_t& fine_idx_across     = (no_past_mid_point ? interface_nb.mid_point_fine_node_idx : nb_fine_node_idx);
 
-  const double &mid_point_phi = phi_p[interface_nb.mid_point_fine_node_idx];
-  double dd_phi_q, dd_phi_mid_point, dd_phi_tmp;
-  dd_phi_q = dd_phi_mid_point = dd_phi_tmp = 0.0;
   if(phi_xxyyzz_p != NULL)
-  {
-    dd_phi_q          = phi_xxyyzz_p[P4EST_DIM*quad_fine_node_idx + dir/2];
-    dd_phi_tmp        = phi_xxyyzz_p[P4EST_DIM*nb_fine_node_idx + dir/2];
-    dd_phi_mid_point  = phi_xxyyzz_p[P4EST_DIM*interface_nb.mid_point_fine_node_idx + dir/2];
-  }
-
-  if (!signs_of_phi_are_different(mid_point_phi, interface_nb.phi_q)) // mid_point on same side
-  {
-    if(phi_xxyyzz_p != NULL)
-      interface_nb.theta = (interface_nb.phi_q <= 0.0 ?
-                              0.5*(1.0 + fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(mid_point_phi, interface_nb.phi_nb, dd_phi_mid_point, dd_phi_tmp, .5*dxyz_min[dir/2])):
-          0.5*(2.0 - fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(mid_point_phi, interface_nb.phi_nb, dd_phi_mid_point, dd_phi_tmp, .5*dxyz_min[dir/2])));
-    else
-      interface_nb.theta = (interface_nb.phi_q <= 0.0 ?
-                              0.5*(1.0 + fraction_Interval_Covered_By_Irregular_Domain(mid_point_phi, interface_nb.phi_nb, .5*dxyz_min[dir/2], .5*dxyz_min[dir/2])):
-        0.5*(2.0 - fraction_Interval_Covered_By_Irregular_Domain(mid_point_phi, interface_nb.phi_nb, .5*dxyz_min[dir/2], .5*dxyz_min[dir/2])));
-  }
+    interface_nb.theta  = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_this_side, phi_across, phi_xxyyzz_p[P4EST_DIM*fine_idx_this_side + dir/2], phi_xxyyzz_p[P4EST_DIM*fine_idx_across + dir/2], 0.5*dxyz_min[dir/2]);
   else
-  {
-    // mid_point on the other side
-    if(phi_xxyyzz_p != NULL)
-      interface_nb.theta = (interface_nb.phi_q <= 0.0 ?
-                              0.5*(fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(interface_nb.phi_q, mid_point_phi, dd_phi_q, dd_phi_mid_point, .5*dxyz_min[dir/2])):
-          0.5*(1.0 - fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(interface_nb.phi_q, mid_point_phi, dd_phi_q, dd_phi_mid_point, .5*dxyz_min[dir/2])));
-    else
-      interface_nb.theta = (interface_nb.phi_q <= 0.0 ?
-                              0.5*(fraction_Interval_Covered_By_Irregular_Domain(interface_nb.phi_q, mid_point_phi, .5*dxyz_min[dir/2], .5*dxyz_min[dir/2])):
-        0.5*(1.0 - fraction_Interval_Covered_By_Irregular_Domain(interface_nb.phi_q, mid_point_phi, .5*dxyz_min[dir/2], .5*dxyz_min[dir/2])));
-  }
-  interface_nb.theta = MAX(0.0, MIN(1.0, interface_nb.theta));
+    interface_nb.theta  = fraction_Interval_Covered_By_Irregular_Domain(phi_this_side, phi_across, 0.5*dxyz_min[dir/2], 0.5*dxyz_min[dir/2]);
+  interface_nb.theta = (phi_this_side > 0.0 ? 1.0 - interface_nb.theta : interface_nb.theta);
+  interface_nb.theta = MAX(0.0, MIN(interface_nb.theta, 1.0));
+  interface_nb.theta = 0.5*(interface_nb.theta + (no_past_mid_point ? 0.0 : 1.0));
 
   map_of_interface_neighbors[quad_idx][dir] = interface_nb; // add it to the map so that future access is read from memory;
   return interface_nb;
 }
 
-void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, const double *solution_p, const double *extension_on_nodes_p)
+void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, const double *solution_p)
 {
   P4EST_ASSERT(VecIsSetForCells(new_cell_extension, p4est, ghost, 1));
   P4EST_ASSERT(levelset_has_been_set() && jumps_have_been_set());
-
-#ifdef DEBUG
-  bool node_extension_is_defined = (extension_on_nodes_p != NULL);
-#endif
   P4EST_ASSERT(normals_have_been_set());
-  P4EST_ASSERT(!interface_values_are_set ? !node_extension_is_defined : node_extension_is_defined);
 
   const double *phi_p, *normals_p, *phi_xxyyzz_p, *jump_u_p, *jump_flux_p;
   ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
@@ -942,84 +917,7 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
       {
         u_char dir           = itt->first;
         interface_neighbor& int_nb  = map_of_interface_neighbors[quad_idx][dir];
-        P4EST_ASSERT(signs_of_phi_are_different(int_nb.phi_q, int_nb.phi_nb));
-        P4EST_ASSERT(int_nb.mid_point_fine_node_idx >= 0);
-
-        double jump_sol_across, jump_flux_comp_across;
-        double jump_mu_mid_point = .5*(mu_p + mu_p - mu_m - mu_m);
-        double jump_mu_other_fine_node;
-        p4est_locidx_t other_fine_node_idx;
-        if (int_nb.theta >= 0.5)
-        {
-          P4EST_ASSERT(int_nb.theta <= 1.0);
-          // mid_point and point across are fine nodes!
-          jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_p[int_nb.mid_point_fine_node_idx]                      + (2.0*int_nb.theta - 1.0)*jump_u_p[int_nb.nb_fine_node_idx];
-          jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_flux_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+(dir/2)] + (2.0*int_nb.theta - 1.0)*jump_flux_p[P4EST_DIM*int_nb.nb_fine_node_idx+(dir/2)];
-          jump_mu_other_fine_node = mu_p - mu_m;
-          other_fine_node_idx     = int_nb.nb_fine_node_idx;
-        }
-        else
-        {
-          P4EST_ASSERT(int_nb.theta>=0.0);
-          // quad and mid-point are fine nodes!
-          jump_sol_across         = 2.0*int_nb.theta*jump_u_p[int_nb.mid_point_fine_node_idx]                      + (1.0 - 2.0*int_nb.theta)*jump_u_p[int_nb.quad_fine_node_idx];
-          jump_flux_comp_across   = 2.0*int_nb.theta*jump_flux_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+(dir/2)] + (1.0 - 2.0*int_nb.theta)*jump_flux_p[P4EST_DIM*int_nb.quad_fine_node_idx + (dir/2)];
-          jump_mu_other_fine_node = mu_p - mu_m;
-          other_fine_node_idx     = int_nb.quad_fine_node_idx;
-        }
-
-        const quad_neighbor_nodes_of_node_t *qnnn_mid_point_fine_node, *qnnn_other_fine_node;
-        fine_node_ngbd->get_neighbors(int_nb.mid_point_fine_node_idx, qnnn_mid_point_fine_node);
-        fine_node_ngbd->get_neighbors(other_fine_node_idx, qnnn_other_fine_node);
-        double jump_correction_mid_point[P4EST_DIM];
-        double jump_correction_other_fine_node[P4EST_DIM];
-        qnnn_mid_point_fine_node->gradient(extension_on_nodes_p, jump_correction_mid_point);
-        qnnn_other_fine_node->gradient(extension_on_nodes_p, jump_correction_other_fine_node);
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-        {
-          jump_correction_mid_point[dim]        *=jump_mu_mid_point;
-          jump_correction_other_fine_node[dim]  *=jump_mu_other_fine_node;
-        }
-        double normal_vector_mid_point[P4EST_DIM], normal_vector_other_fine_node[P4EST_DIM], norm_normal_vector_mid_point, norm_normal_vector_other_fine_node, inner_product_mid_point, inner_product_other_fine_node;
-        norm_normal_vector_mid_point          = norm_normal_vector_other_fine_node = inner_product_mid_point = inner_product_other_fine_node = 0.0;
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-        {
-          normal_vector_mid_point[dim]        = normals_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+dim];
-          normal_vector_other_fine_node[dim]  = normals_p[P4EST_DIM*other_fine_node_idx+dim];
-          norm_normal_vector_mid_point       += SQR(normal_vector_mid_point[dim]);
-          norm_normal_vector_other_fine_node += SQR(normal_vector_other_fine_node[dim]);
-          inner_product_mid_point            += jump_correction_mid_point[dim]*normal_vector_mid_point[dim];
-          inner_product_other_fine_node      += jump_correction_other_fine_node[dim]*normal_vector_other_fine_node[dim];
-        }
-        norm_normal_vector_mid_point          = sqrt(norm_normal_vector_mid_point);
-        norm_normal_vector_other_fine_node    = sqrt(norm_normal_vector_other_fine_node);
-        P4EST_ASSERT((norm_normal_vector_mid_point > EPS) && (norm_normal_vector_other_fine_node > EPS));
-        inner_product_mid_point              /= norm_normal_vector_mid_point;
-        inner_product_other_fine_node        /= norm_normal_vector_other_fine_node;
-
-        double jump_correction[P4EST_DIM];
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-        {
-          normal_vector_mid_point[dim]         /= norm_normal_vector_mid_point;
-          normal_vector_other_fine_node[dim]   /= norm_normal_vector_other_fine_node;
-          jump_correction_mid_point[dim]       -= normal_vector_mid_point[dim]*inner_product_mid_point;
-          jump_correction_other_fine_node[dim] -= normal_vector_other_fine_node[dim]*inner_product_other_fine_node;
-          if (int_nb.theta >= 0.5) // mid_point and point across are fine nodes!
-            jump_correction[dim]                = (2.0 - 2.0*int_nb.theta)*jump_correction_mid_point[dim] + (2.0*int_nb.theta - 1.0)*jump_correction_other_fine_node[dim];
-          else // quad and mid-point are fine nodes!
-            jump_correction[dim]                = 2.0*int_nb.theta*jump_correction_mid_point[dim] + (1.0 - 2.0*int_nb.theta)*jump_correction_other_fine_node[dim];
-        }
-        jump_flux_comp_across  += jump_correction[dir/2];
-
-        const double &mu_this_side  = (int_nb.phi_q   > 0.0 ? mu_p : mu_m);
-        const double &mu_across     = (int_nb.phi_nb  > 0.0 ? mu_p : mu_m);
-        const double mu_tilde       = (1.0 - int_nb.theta)*mu_this_side + int_nb.theta*mu_across;
-        const bool on_slow_side     = mu_m_is_larger() == (int_nb.phi_q <= 0.0);
-
-        int_nb.int_value =
-            ((1.0 - int_nb.theta)*mu_this_side*(solution_p[quad_idx] + (!on_slow_side ? (int_nb.phi_q  <= 0.0 ? +1.0 : -1.0)*jump_sol_across : 0.0))
-             + int_nb.theta*mu_across*(solution_p[int_nb.quad_nb_idx] + (on_slow_side ? (int_nb.phi_nb <= 0.0 ? +1.0 : -1.0)*jump_sol_across : 0.0))
-            + ((dir%2 == 1) == (int_nb.phi_q > 0.0) ? +1.0 : -1.0)*int_nb.theta*(1.0 - int_nb.theta)*dxyz_min[dir/2]*jump_flux_comp_across)/mu_tilde;
+        int_nb.int_value = int_nb.interface_value(mu_m, mu_p, quad_idx, dir, dxyz_min, solution_p, jump_u_p, jump_flux_p);
       }
     }
   }
@@ -1073,37 +971,10 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
               if(signs_of_phi_are_different(phi_q, phi_tmp))
               {
                 P4EST_ASSERT(is_quad_a_fine_node && is_neighbor_quad_a_fine_node);
+                P4EST_ASSERT(quad->level == neighbor_quad.level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
                 interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, neighbor_quad.p.piggy3.local_num, fine_node_idx_for_quad, fine_node_idx_for_neighbor_quad, phi_p, phi_xxyyzz_p);
                 P4EST_ASSERT(interface_neighbor_is_found(quad_idx, dir, int_nb));
-
-                double jump_sol_across, jump_flux_comp_across;
-                if (int_nb.theta >=0.5)
-                {
-                  // mid_point on same side
-                  P4EST_ASSERT(int_nb.theta <= 1.0);
-                  // mid_point and point across are fine nodes!
-                  jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_p[int_nb.mid_point_fine_node_idx]                        + (2.0*int_nb.theta - 1.0)*jump_u_p[int_nb.nb_fine_node_idx];
-                  jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_flux_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)] + (2.0*int_nb.theta - 1.0)*jump_flux_p[P4EST_DIM*int_nb.nb_fine_node_idx+(dir/2)];
-                }
-                else
-                {
-                  // mid_point on the other side
-                  P4EST_ASSERT(int_nb.theta >=0.0);
-                  // quad and mid-point are fine nodes!
-                  jump_sol_across         = 2.0*int_nb.theta*jump_u_p[int_nb.mid_point_fine_node_idx]                        + (1.0 - 2.0*int_nb.theta)*jump_u_p[int_nb.quad_fine_node_idx];
-                  jump_flux_comp_across   = 2.0*int_nb.theta*jump_flux_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)] + (1.0 - 2.0*int_nb.theta)*jump_flux_p[P4EST_DIM*int_nb.quad_fine_node_idx + (dir/2)];
-                }
-
-
-                const double &mu_this_side  = (int_nb.phi_q   > 0.0 ? mu_p : mu_m);
-                const double &mu_across     = (int_nb.phi_nb  > 0.0 ? mu_p : mu_m);
-                const double mu_tilde       = (1.0 - int_nb.theta)*mu_this_side + int_nb.theta*mu_across;
-                const bool on_slow_side     = mu_m_is_larger() == (int_nb.phi_q <= 0.0);
-
-                map_of_interface_neighbors[quad_idx][dir].int_value =
-                    ((1.0 - int_nb.theta)*mu_this_side*(solution_p[quad_idx] + (!on_slow_side ? (int_nb.phi_q  <= 0.0 ? +1.0 : -1.0)*jump_sol_across : 0.0))
-                     + int_nb.theta*mu_across*(solution_p[neighbor_quad.p.piggy3.local_num]  + (on_slow_side ? (int_nb.phi_nb <= 0.0 ? +1.0 : -1.0)*jump_sol_across : 0.0))
-                    + ((dir%2 == 1) == (int_nb.phi_q > 0.0) ? +1.0 : -1.0)*int_nb.theta*(1.0 - int_nb.theta)*dxyz_min[dir/2]*jump_flux_comp_across)/mu_tilde;
+                map_of_interface_neighbors[quad_idx][dir].int_value = int_nb.interface_value(mu_m, mu_p, quad_idx, dir, dxyz_min, solution_p, jump_u_p, jump_flux_p);
               }
             }
           }
@@ -1335,7 +1206,7 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(Vec new_cell_
     delete interp_normal;
 }
 
-void my_p4est_xgfm_cells_t::extend_interface_values(const double *solution_p, Vec new_cell_extension, const double* extension_on_nodes_p, double threshold, uint niter_max)
+void my_p4est_xgfm_cells_t::extend_interface_values(const double *solution_p, Vec new_cell_extension, double threshold, uint niter_max)
 {
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_extend_field, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(new_cell_extension != NULL && VecIsSetForCells(new_cell_extension, p4est, ghost, 1));
@@ -1343,7 +1214,7 @@ void my_p4est_xgfm_cells_t::extend_interface_values(const double *solution_p, Ve
 
   // Update (or set) the map of interface information before iterative procedure
   // and build the educated guess for cell_extension_p if extension_not_defined_yet
-  update_interface_values(new_cell_extension, solution_p, extension_on_nodes_p);
+  update_interface_values(new_cell_extension, solution_p);
   // TVD cell-centered extension
   cell_TVD_extension_of_interface_values(new_cell_extension, threshold, niter_max);
 

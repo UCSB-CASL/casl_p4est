@@ -278,7 +278,7 @@ class my_p4est_xgfm_cells_t
   void interpolate_cell_field_to_nodes(const double *cell_field_p, Vec interpolated_node_field);
 
   // using PDE extrapolation
-  void extend_interface_values(const double *solution_p, Vec new_cell_extension, const double* extension_on_fine_nodes_p, double threshold = 1.0e-10, uint niter_max = 20);
+  void extend_interface_values(const double *solution_p, Vec new_cell_extension, double threshold = 1.0e-10, uint niter_max = 20);
   // get the correction jump terms
   void get_corrected_rhs(Vec corrected_rhs, const double *fine_extension_interface_values_p);
 
@@ -299,7 +299,7 @@ class my_p4est_xgfm_cells_t
 //                          const p4est_locidx_t& quad_fine_node_idx, const p4est_locidx_t& nb_fine_node_idx,
 //                          const double *phi_p, const double *phi_xxyyzz_p, const double *jump_u_p, const double *jump_flux_p);
 
-  void update_interface_values(Vec new_cell_extension, const double *solution_p, const double *extension_on_fine_nodes_p);
+  void update_interface_values(Vec new_cell_extension, const double *solution_p);
   void cell_TVD_extension_of_interface_values(Vec new_cell_extension, const double& threshold, const uint& niter_max);
 
   inline bool quad_center_is_fine_node(const p4est_quadrant_t &quad, const p4est_locidx_t &tree_idx, p4est_locidx_t& fine_node_idx_of_quad_center) const
