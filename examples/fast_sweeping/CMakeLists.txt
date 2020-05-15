@@ -8,11 +8,11 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d.cpp )
+	list( APPEND SRC sphere_datasets_2d.cpp )
 endif()
 
 if( DIMENSION MATCHES 3d )
-	list( APPEND SRC main_3d.cpp )
+	list( APPEND SRC sphere_datasets_3d.cpp )
 endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )

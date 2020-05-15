@@ -2982,3 +2982,149 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
       throw;
   }
 }
+
+/////////////////////////////////////////// Uniform, full stencil functions ////////////////////////////////////////////
+
+void getFullStencilsOfInterfaceNodes( const p4est_t *p4est, const signed char maxLevel, const p4est_nodes_t *nodes,
+									  const my_p4est_node_neighbors_t *neighbors,
+									  const Vec *phi, std::vector<std::vector<p4est_locidx_t>>& stencils )
+{
+	PetscErrorCode ierr;
+	const double *phiPtr;
+	ierr = VecGetArrayRead( *phi, &phiPtr );			// Access the parallel vector with level-set function values.
+	CHKERRXX( ierr );
+
+	stencils.clear();												// Start afresh, and initialize a vector to keep  
+	std::vector<bool> visited( nodes->num_owned_indeps, false );	// track of visited local nodes.
+
+	// Go through each quad/octant and check if it's crossed by the interface.  As a shortcut, we can skip quads/octs
+	// that are not at the maximum level of refinement since that means they are not detailed enough to contain the
+	// interface.
+	for( p4est_topidx_t treeIdx = p4est->first_local_tree; treeIdx <= p4est->last_local_tree; treeIdx++ )
+	{
+		auto *tree = (p4est_tree_t*)sc_array_index( p4est->trees, treeIdx );	// Check all local trees that posses local
+		if( tree->maxlevel == maxLevel )										// quads/octs with max level of refinement.
+		{
+			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )		// Check each quadrant in local trees.
+			{
+				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
+				if( quad->level == maxLevel )			// Is this quad potentially crossed by the interface?
+					;//_processQuadOct( quad, quadIdx + tree->quadrants_offset );
+			}
+		}
+	}
+
+	ierr = VecRestoreArrayRead( *phi, &phiPtr );		// Cleaning up.
+	CHKERRXX( ierr );
+}
+
+bool getFullStencilOfNode( const p4est_locidx_t nodeIdx, const my_p4est_node_neighbors_t *neighbors,
+						   const p4est_nodes_t *nodes, std::vector<p4est_locidx_t>& stencil,
+						   const double h, const double TOL )
+{
+	// The stencil is valid if all neighboring nodes are at the same distance in each Cartesian direction, and if the
+	// center node is locally owned.
+	const int STEPS = 3;
+	stencil.clear();
+	stencil.resize( (int)pow( STEPS, P4EST_DIM ), -1 );
+	if( nodeIdx < 0 || nodeIdx >= nodes->num_owned_indeps )
+	{
+#ifdef CASL_THROWS
+		throw std::runtime_error( "[CASL_ERROR]: my_p4est_utils::getFullStencilOfNode: Node " + std::to_string( nodeIdx ) + " is not locally owned!" );
+#endif
+		return false;
+	}
+
+	const quad_neighbor_nodes_of_node_t& qnnn = neighbors->get_neighbors( nodeIdx );	// Quad neighborhood of current node.
+
+	const double LOWER_B = h - TOL;								// Range for distance between nodes in each Cartesian
+	const double UPPER_B = h + TOL;								// direction.
+	for( int xStep = 0; xStep < STEPS; xStep++ )
+	{
+		const quad_neighbor_nodes_of_node_t* xQnnn;				// Choose which neighborhood to look at along X direction.
+		if( xStep == 0 && qnnn.neighbor_m00() != -1 && qnnn.d_m00 >= LOWER_B && qnnn.d_m00 <= UPPER_B )			// Left?
+			neighbors->get_neighbors( qnnn.neighbor_m00(), xQnnn );
+		else if( xStep == 1 )																					// Center?
+			xQnnn = &qnnn;
+		else if( xStep == 2 && qnnn.neighbor_p00() != -1 && qnnn.d_p00 >= LOWER_B && qnnn.d_p00 <= UPPER_B )	// Right?
+			neighbors->get_neighbors( qnnn.neighbor_p00(), xQnnn );
+		else
+		{
+#ifdef CASL_THROWS
+			throw std::runtime_error( "[CASL_ERROR]: my_p4est_utils::getFullStencilOfNode: Wrong stencil along x-dimension" );
+#endif
+			return false;
+		}
+
+		for( int yStep = 0; yStep < STEPS; yStep++ )
+		{
+#ifdef P4_TO_P8
+			const quad_neighbor_nodes_of_node_t* xyQnnn;			// Choose which neighborhood to look at along X, Y direction.
+			if( yStep == 0 && xQnnn->neighbor_0m0() != -1 && xQnnn->d_0m0 >= LOWER_B && xQnnn->d_0m0 <= UPPER_B )		// Bottom?
+				neighbors->get_neighbors( xQnnn->neighbor_0m0(), xyQnnn );
+			else if( yStep == 1 )																						// Center?
+				xyQnnn = xQnnn;
+			else if( yStep == 2 && xQnnn->neighbor_0p0() != -1 && xQnnn->d_0p0 >= LOWER_B && xQnnn->d_0p0 <= UPPER_B )	// Top?
+				neighbors->get_neighbors( xQnnn->neighbor_0p0(), xyQnnn );
+#else
+			// Using this index to store information as a truth table with 3 states per dimension: m (minus),
+			// 0 (center), and p (plus), so that the most significan "bit" is x, then y.
+			int innerIdx = xStep * (int)pow( STEPS, P4EST_DIM - 1 ) + yStep * (int)pow( STEPS, P4EST_DIM - 2 );
+			if( yStep == 0 && xQnnn->neighbor_0m0() != -1 && xQnnn->d_0m0 >= LOWER_B && xQnnn->d_0m0 <= UPPER_B )		// Bottom?
+				stencil[innerIdx] = xQnnn->neighbor_0m0();
+			else if( yStep == 1 )																						// Center?
+				stencil[innerIdx] = xQnnn->node_000;
+			else if( yStep == 2 && xQnnn->neighbor_0p0() != -1 && xQnnn->d_0p0 >= LOWER_B && xQnnn->d_0p0 <= UPPER_B )	// Top?
+				stencil[innerIdx] = xQnnn->neighbor_0p0();
+#endif
+			else
+			{
+#ifdef CASL_THROWS
+				throw std::runtime_error( "[CASL_ERROR]: my_p4est_utils::getFullStencilOfNode: Wrong stencil along y-dimension" );
+#endif
+				return false;
+			}
+
+#ifdef P4_TO_P8
+			for( int zStep = 0; zStep < STEPS; zStep++ )
+			{
+				// Using this index to store information as a truth table with 3 states per dimension: m (minus),
+				// 0 (center), and p (plus), so that the most significan "bit" is x, then y [, then z].
+				int innerIdx = SUMD( xStep * (int)pow( STEPS, P4EST_DIM - 1 ), yStep * (int)pow( STEPS, P4EST_DIM - 2 ), zStep );
+				if( zStep == 0 && xyQnnn->neighbor_00m() != -1 && xyQnnn->d_00m >= LOWER_B && xyQnnn->d_00m <= UPPER_B )		// Back?
+					stencil[innerIdx] = xyQnnn->neighbor_00m();
+				else if( zStep == 1 )																							// Center?
+					stencil[innerIdx] = xyQnnn->node_000;
+				else if( zStep == 2 && xyQnnn->neighbor_00p() != -1 && xyQnnn->d_00p >= LOWER_B && xyQnnn->d_00p <= UPPER_B )	// Front?
+					stencil[innerIdx] = xyQnnn->neighbor_00p();
+				else
+				{
+#ifdef CASL_THROWS
+					throw std::runtime_error( "[CASL_ERROR]: my_p4est_utils::getFullStencilOfNode: Wrong stencil along z-dimension" );
+#endif
+					return false;
+				}
+			}
+#endif
+		}
+	}
+
+	return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

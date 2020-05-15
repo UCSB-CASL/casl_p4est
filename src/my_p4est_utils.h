@@ -3189,6 +3189,99 @@ struct interface_conditions_t
 double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
+
+/////////////////////////////////////////// Uniform, full stencil functions ////////////////////////////////////////////
+
+/**
+ * Retrieve the all-direction stencils of nodes that are adjacent to the interface, have a uniform spacing (h) in all
+ * directions, and whose central node belongs to the locally owned points associated with the current partition.  In 2D,
+ * The full stencil is given by the indices of the nodes:
+ *
+ * Two dimensions:				[0](i-1, j+1)   [1](  i, j+1)    [2](i+1, j+1)
+ * 								[3](i-1,   j)   [4](  i,   j)    [5](i+1,   j)
+ * 								[6](i-1, j-1)   [7](  i, j-1)    [8](i+1, j-1)
+ *
+ * Three dimensions:
+ *                     [0](i-1, j+1, k+1)   [1](  i, j+1, k+1)    [2](i+1, j+1, k+1)
+ * 	                   [3](i-1,   j, k+1)   [4](  i,   j, k+1)    [5](i+1,   j, k+1)
+ *                     [6](i-1, j-1, k+1)   [7](  i, j-1, k+1)    [8](i+1, j-1, k+1)
+ *
+ *                     [9](i-1, j+1,   k)   [10](  i, j+1,   k)    [11](i+1, j+1,   k)
+ * 	                  [12](i-1,   j,   k)   [13](  i,   j,   k)    [14](i+1,   j,   k)
+ *                    [15](i-1, j-1,   k)   [16](  i, j-1,   k)    [17](i+1, j-1,   k)
+ *
+ *                    [18](i-1, j+1, k-1)   [19](  i, j+1, k-1)    [20](i+1, j+1, k-1)
+ * 	                  [21](i-1,   j, k-1)   [22](  i,   j, k-1)    [23](i+1,   j, k-1)
+ *                    [24](i-1, j-1, k-1)   [25](  i, j-1, k-1)    [26](i+1, j-1, k-1)
+ * @param [in] p4est Pointer to the p4est data structure.
+ * @param [in] maxLevel Maximum level of refinement set for the whole forest.
+ * @param [in] nodes Pointer to the nodes data structure.
+ * @param [in] neighbors Pointer to the neighbors data structure.
+ * @param [in] phi Pointer to a ghosted PETSc parallel vector with level-set function values (possibly reinitialized).
+ * @param [out] stencils A vector of node-index-based all-direction stencils following the above format.
+ * @throws Runtime exception if CASL_THROWS macro is defined and a local point is adjacent to the interface but its
+ * immediate neighborhood doesn't have a uniform spacing, h.
+ */
+void getFullStencilsOfInterfaceNodes( const p4est_t *p4est, signed char maxLevel, const p4est_nodes_t *nodes,
+									  const my_p4est_node_neighbors_t *neighbors,
+									  const Vec *phi, std::vector<std::vector<p4est_locidx_t>>& stencils );
+
+/**
+ * Retrieve the full stencil of neighbor-node indices to a locally owned node if and only if all of them have uniform
+ * distances in all Cartesian direction.  The full stencil of neighbor-nodes to a node are defined as follows:
+ *
+ *        Two-dimensional                                    Three-dimensional
+ *     [2]------[5]------[8]  p                    [06]    ····     [15]    ····     [24]  p
+ *      |        |        |                       / |              / |              / |    |
+ *      |        |        |                    [07] |           [16] |           [25] |    |
+ *     [1]------[4]------[7]  0 y             / | [03]         / | [12]         / | [21]   0 y
+ *      |        |        |                [08] | / |       [17] | / |       [26] | / |    |
+ *      |        |        |                  | [04] |         | [13] |         | [22] |    |
+ *     [0]------[3]------[6]  m              | /| [00]        | /| [09]        | /| [18]   m
+ *      m        0        p                [05] | /         [14] | /         [23] | /     /
+ *               x                           | [01]           | [10]           | [19]   0  z
+ *                                           | /              | /              | /     /
+ *                                          [02]    ····    [11]    ····    [20]    p
+ *                                           m                0               p
+ *                                                            x
+ *
+ * The order of the nodes is depicted on the 0-based indices in each of the diagrams above.  The stencil is returned to
+ * the caller in that particular order if the stencil is well defined.  Assuming that each Cartesian dimension is a
+ * 3-state variable, the returned data is organized as a "truth" table, where the columns are provided, strictly, as
+ * x-y-z.  X changing slowly, Y changing faster than X, and Z changing faster than Y.  That is, if {m,0,p} are the three
+ * states for each dimension variable, then,
+ *
+ *              Two-dimensional                  Three-dimensional                  States:
+ *                # | x | y                        # | x | y | z                   m: Left/Bottom/Back
+ *               ---+---+---                      ---+---+---+---                  0: Center
+ *                0 | m | m                        0 | m | m | m                   p: Right/Top/Front
+ *                1 | m | 0                        1 | m | m | 0
+ *                2 | m | p                        2 | m | m | p                   (This is based on how quadrant or
+ *                3 | 0 | m                        3 | m | 0 | m                   octants are filled up with function
+ *                4 | 0 | 0                        4 | m | 0 | 0                   values.  See types.h).
+ *                5 | 0 | p                        5 | m | 0 | p
+ *                6 | p | m                        6 | m | p | m
+ *                7 | p | 0                        7 | m | p | 0
+ *                8 | p | p                        8 | m | p | p
+ *               ---+---+---                       9 | 0 | m | m
+ *                                                 : | : | : | :
+ *                                                18 | p | m | m
+ *                                                 : | : | : | :
+ *                                                26 | p | p | p
+ *                                                ---+---+---+---
+ * @param [in] nodeIdx Query node index, which must be locally owned by partition.
+ * @param [in] neighbors Pointer to neighbors data structure.
+ * @param [in] nodes Pointer to nodes data structure.
+ * @param [out] stencil Output vector with node indices sorted as above (in x-y[-z]).  Invalid if function returns false.
+ * @param [in] h Expected uniform spacing for full stencil, plus/minus some variation given by TOL.
+ * @param [in] TOL Tolerance for zero-distance checking together with h.
+ * @return True if uniform stencil is well defined, false otherwise.
+ * @throws Runtime exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
+ */
+bool getFullStencilOfNode( p4est_locidx_t nodeIdx, const my_p4est_node_neighbors_t *neighbors,
+						   const p4est_nodes_t *nodes, std::vector<p4est_locidx_t>& stencil,
+						   double h, double TOL = EPS );
+
 #endif // UTILS_H
 
 
