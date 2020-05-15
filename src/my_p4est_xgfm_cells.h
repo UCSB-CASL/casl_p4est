@@ -183,7 +183,6 @@ class my_p4est_xgfm_cells_t
 #endif
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction, except if returned before-hand) */
   Vec rhs;                  // cell-sampled, discretized rhs
-//  Vec corrected_rhs;        // cell-sampled, discretized rhs
   Vec solution;             // cell-sampled
   Vec extension_on_cells;   // cell-sampled
   Vec extension_on_nodes;   // node-sampled (fine nodes if subrefined)
@@ -269,18 +268,18 @@ class my_p4est_xgfm_cells_t
    * grid) at all nodes (of the interface-capturing grid if using subrefinement). This function will do the
    * hardwork on the very first call, but will store the relevant interpolation data internally to shortcut the
    * task thereafter.
-   * \param [in]  cell_field_p            : pointer to the cell-sampled data field to interpolate (sampled on the
-   *                                        computational grid)
+   * \param [in]  cell_field              : Petsc Vector of cell-sampled data field to interpolate (sampled on the
+   *                                        quadrants of the computational grid)
    * \param [out] interpolated_node_field : node-sampled vector containing the result of the interpolation operation
    *                                        on output (sampled on the nodes of the computational grid if not using
    *                                        subrefinement, on the nodes of the interface-capturing grid otherwise)
    */
-  void interpolate_cell_field_to_nodes(const double *cell_field_p, Vec interpolated_node_field);
+  void interpolate_cell_field_to_nodes(Vec cell_field, Vec interpolated_node_field);
 
   // using PDE extrapolation
-  void extend_interface_values(const double *solution_p, Vec new_cell_extension, double threshold = 1.0e-10, uint niter_max = 20);
+  void extend_interface_values(Vec cell_solution, Vec new_cell_extension, double threshold = 1.0e-10, uint niter_max = 20);
   // get the correction jump terms
-  void get_corrected_rhs(Vec corrected_rhs, const double *fine_extension_interface_values_p);
+  void get_corrected_rhs(Vec corrected_rhs);
 
 #ifdef DEBUG
   int is_map_consistent() const;
@@ -432,16 +431,10 @@ public:
       P4EST_ASSERT(jump_flux != NULL); // the extended interface values cannot be calculated if the jumps in flux components have been returned to the used beforehand
       P4EST_ASSERT((!activate_xGFM || mus_are_equal()) && extension_on_nodes == NULL); // those are the (only) conditions under which the extension on cells can possibly be not defined
 
-      const double *solution_p;
-      ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
       ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells); CHKERRXX(ierr);
-      extend_interface_values(solution_p, extension_on_cells, NULL);
-      const double *extension_cell_values_p;
-      ierr = VecGetArrayRead(extension_on_cells, &extension_cell_values_p); CHKERRXX(ierr);
+      extend_interface_values(solution, extension_on_cells);
       ierr = VecCreateGhostNodes(fine_p4est, fine_nodes, &extension_on_nodes); CHKERRXX(ierr);
-      interpolate_cell_field_to_nodes(extension_cell_values_p, extension_on_nodes);
-      ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(extension_on_cells, &extension_cell_values_p); CHKERRXX(ierr);
+      interpolate_cell_field_to_nodes(extension_on_cells, extension_on_nodes);
     }
     cell_centered_extension = extension_on_cells;
     extension_on_cells = NULL; // will be handled by the new owner (hopefully :-P)...
