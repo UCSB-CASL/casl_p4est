@@ -110,7 +110,7 @@ param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shi
 param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
 param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int>    lmax (pl, 8, "lmax", "Max level of the tree");
+param_t<int>    lmax (pl, 5, "lmax", "Max level of the tree");
 
 param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 5, "num_splits_per_split", "Number of additional resolutions");
@@ -125,7 +125,7 @@ param_t<double> band (pl, 2.0, "band", "Width of the uniform band around boundar
 
 param_t<bool>   refine_strict  (pl, 0, "refine_strict",  "Refines every cell starting from the coarsest case if yes");
 param_t<bool>   refine_rand    (pl, 0, "refine_rand",    "Add randomness into adaptive grid");
-param_t<bool>   balance_grid   (pl, 0, "balance_grid",   "Enforce 1:2 ratio for adaptive grid");
+param_t<bool>   balance_grid   (pl, 1, "balance_grid",   "Enforce 1:2 ratio for adaptive grid");
 param_t<bool>   coarse_outside (pl, 0, "coarse_outside", "Use the coarsest possible grid outside the domain (0/1)");
 param_t<int>    expand_ghost   (pl, 0, "expand_ghost",   "Number of ghost layer expansions");
 param_t<int>    iter_start     (pl, 0, "iter_start",     "Skip n first iterations (for debugging)");
@@ -224,7 +224,7 @@ param_t<int>    infc_01_flux_jump  (pl, 0, "infc_01_flux_jump", "0 - automatic, 
 param_t<int>    infc_02_flux_jump  (pl, 0, "infc_02_flux_jump", "0 - automatic, others - hardcoded");
 param_t<int>    infc_03_flux_jump  (pl, 0, "infc_03_flux_jump", "0 - automatic, others - hardcoded");
 
-param_t<int>    example (pl, 8, "example", "Predefined example:\n"
+param_t<int>    example (pl, 4, "example", "Predefined example:\n"
                                             "0 - no interfaces, no boudaries\n"
                                             "1 - sphere interior\n"
                                             "2 - sphere exterior\n"
@@ -467,10 +467,10 @@ void set_example(int example)
       infc_02_present.val = 0;
       infc_03_present.val = 0;
 
-      bdry_00_present.val = 1; bdry_00_geometry.val = 5; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
-      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
-      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
-      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 5; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = DIRICHLET;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = DIRICHLET;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = DIRICHLET;
 
       break;
 
@@ -1714,7 +1714,7 @@ public:
       case 5: // highly start-shaped domain
       {
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, 1, 0.3);
         switch (what) {
           _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
           XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );

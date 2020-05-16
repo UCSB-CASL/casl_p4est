@@ -1772,6 +1772,8 @@ int main (int argc, char* argv[])
              dy = dxyz[1],
              dz = dxyz[2]);
 
+  PetscPrintf(mpi.comm(), "Conc dt: %1.3e, Temp dt: %1.3e, Velo dt: %1.3e\n", .5*dx*dx/solute_diff_0.val, .5*dx*dx*density_l.val*heat_capacity_l.val/thermal_cond_l.val, cfl_number.val*dx/cooling_velocity.val);
+
   // perturb level set
   if (enforce_planar_front.val) init_perturb.val = 0;
 
@@ -2273,7 +2275,7 @@ int main (int argc, char* argv[])
 
     bc_error_max = 0;
     // solve nonlinear system for temperature, concentration and velocity at t_n
-    sub_iterations += mas.one_step(bc_error_max, 2);
+    sub_iterations += mas.one_step(bc_error_max, 0);
     tn             += mas.get_dt();
 
     // compute total growth

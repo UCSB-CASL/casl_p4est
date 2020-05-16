@@ -257,11 +257,12 @@ protected:
   enum discretization_scheme_t
   {
     UNDEFINED,
-    NO_DISCRETIZATION,
+    DOMAIN_OUTSIDE,
+    DOMAIN_INSIDE,
     WALL_DIRICHLET,
     WALL_NEUMANN,
-    FINITE_DIFFERENCE,
-    FINITE_VOLUME,
+    BOUNDARY_DIRICHLET,
+    BOUNDARY_NEUMANN,
     IMMERSED_INTERFACE,
   };
 
@@ -284,20 +285,29 @@ protected:
   // discretization
   void setup_linear_system (bool setup_rhs);
 
-  void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
+  void discretize_inside      (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
 
-  void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+  void discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
 
-  void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
-                            std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
+  void discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
+
+
+  void discretize_robin       (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                               std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+
+  void discretize_jump        (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                               std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
+                               std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
