@@ -180,19 +180,6 @@ private:
 	void _approximateInterfaceAndSeedNodes();
 
 	/**
-	 * Retrieve a convenient 3D matrix with a function sampled on a stencil from at the neighborhood of a given node.
-	 * Each layer of the matrix maps to a dimension (i.e. x = 0, y = 1, z = 2), which has the following layout:
-	 * {      Function value   |   Distance
-	 * 	      {    f_m         ,     d_m    },		<--- Negative direction.
-	 * 	      {    f_p         ,     d_p    }		<--- Positive direction.
-	 * }
-	 * @param [in] qnnnPtr Pointer to a valid neighborhood quad of a node.
-	 * @param [in] f Pointer to the function to sample.
-	 * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
-	 */
-	static void _getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
-
-	/**
 	 * Use the copy of the original signal to fix the sign of the reinitialized solution _u (i.e. _uPtr).
 	 */
 	void _fixSolutionSign();

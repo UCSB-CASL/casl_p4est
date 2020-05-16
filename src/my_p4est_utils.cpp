@@ -2983,51 +2983,180 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
   }
 }
 
-/////////////////////////////////////////// Uniform, full stencil functions ////////////////////////////////////////////
+void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] )
+{
+	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
+	data[0][0][0] = qnnnPtr->f_m00_linear( f ); data[0][0][1] = qnnnPtr->d_m00;			// Left.
+	data[0][1][0] =	qnnnPtr->f_p00_linear( f ); data[0][1][1] = qnnnPtr->d_p00;			// Right.
 
-void getFullStencilsOfInterfaceNodes( const p4est_t *p4est, const signed char maxLevel, const p4est_nodes_t *nodes,
-									  const my_p4est_node_neighbors_t *neighbors,
-									  const Vec *phi, std::vector<std::vector<p4est_locidx_t>>& stencils )
+	data[1][0][0] = qnnnPtr->f_0m0_linear( f ); data[1][0][1] = qnnnPtr->d_0m0;			// Bottom.
+	data[1][1][0] = qnnnPtr->f_0p0_linear( f ); data[1][1][1] = qnnnPtr->d_0p0;			// Top.
+#ifdef P4_TO_P8
+	data[2][0][0] = qnnnPtr->f_00m_linear( f ); data[2][0][1] = qnnnPtr->d_00m;			// Back.
+	data[2][1][0] = qnnnPtr->f_00p_linear( f ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
+#endif
+}
+
+/////////////////////////////////////////// Full, uniform stencil functions ////////////////////////////////////////////
+
+void FullUniformStencil::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx,
+										  std::vector<p4est_locidx_t>& indices )
+{
+#ifdef P4_TO_P8
+	OctValueExtended  phiAndIdxValues;
+#else
+	QuadValueExtended phiAndIdxValues;
+#endif
+
+	// Get node indices belonging to current quadrant.
+	const p4est_locidx_t *q2n = _nodes->local_nodes + P4EST_CHILDREN * quadIdx;
+	for( unsigned char incX = 0; incX < 2; incX++ )			// Truth table with x changing slowly, y changing faster
+		for( unsigned char incY = 0; incY < 2; incY++ )		// than x, and z changing faster than y.
+#ifdef P4_TO_P8
+			for( unsigned char incZ = 0; incZ < 2; incZ++ )
+#endif
+		{
+			unsigned idxInQuadOctValue = SUMD( ( 1u << (unsigned)( P4EST_DIM - 1 ) ) * incX,
+											   ( 1u << (unsigned)( P4EST_DIM - 2 ) ) * incY,
+											   incZ );
+			p4est_locidx_t nodeSubIdxInQuad = q2n[SUMD( incX, 2 * incY, 4 * incZ )];
+			phiAndIdxValues.val[idxInQuadOctValue] = _phiPtr[nodeSubIdxInQuad];		// Store nodal value and their
+			phiAndIdxValues.indices[idxInQuadOctValue] = nodeSubIdxInQuad;			// indices.
+		}
+
+	// Discard quad/oct if not crossed by \Gamma.
+	if( phiAndIdxValues.val[0] <= 0 && phiAndIdxValues.val[1] <= 0 &&
+		phiAndIdxValues.val[2] <= 0 && phiAndIdxValues.val[3] <= 0
+		ONLY3D( && phiAndIdxValues.val[4] <= 0 && phiAndIdxValues.val[5] <= 0 &&
+				   phiAndIdxValues.val[6] <= 0 && phiAndIdxValues.val[7] <= 0 ) )
+		return;
+
+	if( phiAndIdxValues.val[0] > 0 && phiAndIdxValues.val[1] > 0 &&
+		phiAndIdxValues.val[2] > 0 && phiAndIdxValues.val[3] > 0
+		ONLY3D( && phiAndIdxValues.val[4] > 0 && phiAndIdxValues.val[5] > 0 &&
+				   phiAndIdxValues.val[6] > 0 && phiAndIdxValues.val[7] > 0 ) )
+		return;
+
+	// Check each non-visited node with an irradiating edge being crossed by \Gamma.
+	double data[P4EST_DIM][2][2];
+	const short F = 0, S = 1;								// Meaning: function index, distance index.
+	for( auto n : phiAndIdxValues.indices )
+	{
+		if( n >= _nodes->num_owned_indeps || _visited[n] )
+			continue;
+
+		if( ABS( _phiPtr[n] ) <= _zEPS )					// Point lies on the interface.
+			indices.push_back( n );
+		else
+		{
+			const quad_neighbor_nodes_of_node_t *qnnnPtr;	// Evaluate neighborhood.
+			_neighbors->get_neighbors( n, qnnnPtr );
+
+			getStencil( qnnnPtr, _phiPtr, data );			// Retrieve the 2 or 3 dimensional stencil.
+			bool crossed = false;
+
+			for( const auto& dim : data )					// Check irradiating edges in each dimension.
+			{
+				for( const auto& dir : dim )				// And in each direction: left/bottom/back - right/top/front
+				{
+					if( dir[S] < 0 )						// Is current node on a wall?
+						continue;
+					if( dir[F] * _phiPtr[n] <= 0 )			// Crossed by interface?
+					{
+						crossed = true;
+						break;
+					}
+				}
+
+				if( crossed )								// Just find a single edge crossed by \Gamma.
+					break;
+			}
+
+			if( crossed )
+				indices.push_back( n );
+		}
+
+		_visited[n] = true;
+	}
+}
+
+/////////////////////////////////////////////// Public interface methods ///////////////////////////////////////////////
+
+FullUniformStencil::FullUniformStencil( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *neighbors,
+										signed char maxLevelOfRefinement ) :
+										_p4est( p4est ), _nodes( nodes ), _neighbors( neighbors ),
+										_maxLevelOfRefinement( maxLevelOfRefinement )
+{
+	// Establish the zero distance threshold as a scaled version of EPS that depends on the local domain resolution.
+	_zEPS = EPS * MIN( DIM( ( _neighbors->myb->xyz_max[0] - _neighbors->myb->xyz_min[0] ) / _neighbors->myb->nxyztrees[0],
+							( _neighbors->myb->xyz_max[1] - _neighbors->myb->xyz_min[1] ) / _neighbors->myb->nxyztrees[1],
+							( _neighbors->myb->xyz_max[2] - _neighbors->myb->xyz_min[2] ) / _neighbors->myb->nxyztrees[2] ) );
+
+	// Set the minimum spacing for cells crossed by the interface.  We require the minimum spacing to be uniform for
+	// all directions.
+	p4est_topidx_t vm = _p4est->connectivity->tree_to_vertex[0];
+	p4est_topidx_t vp = _p4est->connectivity->tree_to_vertex[P4EST_CHILDREN-1];
+	const double* tree_xyz_min = _p4est->connectivity->vertices + 3 * vm;
+	const double* tree_xyz_max = _p4est->connectivity->vertices + 3 * vp;
+	double dmin = (double)P4EST_QUADRANT_LEN( _maxLevelOfRefinement ) / (double)P4EST_ROOT_LEN;	// Side length proportion of smallest quad/oct.
+
+	// Minimum cell width in any tree.
+	double dx = dmin * ( tree_xyz_max[0] - tree_xyz_min[0] );
+	double dy = dmin * ( tree_xyz_max[1] - tree_xyz_min[1] );
+#ifdef P4_TO_P8
+	double dz = dmin * ( tree_xyz_max[2] - tree_xyz_min[2] );
+#endif
+
+	// Do not accept any adaptive grid with non-square quads/octs.
+	if( ABS( dx - dy ) <= _zEPS ONLY3D( && ABS( dx - dz ) <= _zEPS ) )
+		_h = dx;
+	else
+		throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::FullUniformStencil: smallest quad is not uniform!" );
+}
+
+void FullUniformStencil::getIndicesOfInterfaceLocalNodes( const Vec *phi, std::vector<p4est_locidx_t>& indices )
 {
 	PetscErrorCode ierr;
-	const double *phiPtr;
-	ierr = VecGetArrayRead( *phi, &phiPtr );			// Access the parallel vector with level-set function values.
+	ierr = VecGetArrayRead( *phi, &_phiPtr );		// Access the parallel vector with level-set function values.
 	CHKERRXX( ierr );
 
-	stencils.clear();												// Start afresh, and initialize a vector to keep  
-	std::vector<bool> visited( nodes->num_owned_indeps, false );	// track of visited local nodes.
+	// Reserve space only for locally-owned nodes.
+	indices.clear();								// Clean the output vector of indices.
+	indices.reserve( _nodes->num_owned_indeps );
+	_visited.clear();								// Clean visited status caching vector and reset it to false.
+	_visited.resize( _nodes->num_owned_indeps );
+	for( auto&& i : _visited)
+		i = false;
 
 	// Go through each quad/octant and check if it's crossed by the interface.  As a shortcut, we can skip quads/octs
-	// that are not at the maximum level of refinement since that means they are not detailed enough to contain the
-	// interface.
-	for( p4est_topidx_t treeIdx = p4est->first_local_tree; treeIdx <= p4est->last_local_tree; treeIdx++ )
+	// that are not at the max level of refinement since that means they are not detailed enough to contain the \Gamma.
+	for( p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
 	{
-		auto *tree = (p4est_tree_t*)sc_array_index( p4est->trees, treeIdx );	// Check all local trees that posses local
-		if( tree->maxlevel == maxLevel )										// quads/octs with max level of refinement.
+		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );	// Check all local trees that posses local
+		if( tree->maxlevel == _maxLevelOfRefinement )							// quads/octs with max level of refinement.
 		{
-			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )		// Check each quadrant in local trees.
+			// Check each quadrant in local trees.
+			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
 			{
 				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
-				if( quad->level == maxLevel )			// Is this quad potentially crossed by the interface?
-					;//_processQuadOct( quad, quadIdx + tree->quadrants_offset );
+				if( quad->level == _maxLevelOfRefinement )	// Is this quad/oct potentially crossed by the interface?
+					_processQuadOct( quad, quadIdx + tree->quadrants_offset, indices );
 			}
 		}
 	}
 
-	ierr = VecRestoreArrayRead( *phi, &phiPtr );		// Cleaning up.
+	ierr = VecRestoreArrayRead( *phi, &_phiPtr );	// Cleaning up.
 	CHKERRXX( ierr );
 }
 
-bool getFullStencilOfNode( const p4est_locidx_t nodeIdx, const my_p4est_node_neighbors_t *neighbors,
-						   const p4est_nodes_t *nodes, std::vector<p4est_locidx_t>& stencil,
-						   const double h, const double TOL )
+bool FullUniformStencil::getFullStencilOfNode( const p4est_locidx_t nodeIdx, std::vector<p4est_locidx_t>& stencil )
 {
 	// The stencil is valid if all neighboring nodes are at the same distance in each Cartesian direction, and if the
 	// center node is locally owned.
 	const int STEPS = 3;
 	stencil.clear();
 	stencil.resize( (int)pow( STEPS, P4EST_DIM ), -1 );
-	if( nodeIdx < 0 || nodeIdx >= nodes->num_owned_indeps )
+	if( nodeIdx < 0 || nodeIdx >= _nodes->num_owned_indeps )
 	{
 #ifdef CASL_THROWS
 		throw std::runtime_error( "[CASL_ERROR]: my_p4est_utils::getFullStencilOfNode: Node " + std::to_string( nodeIdx ) + " is not locally owned!" );
@@ -3035,19 +3164,19 @@ bool getFullStencilOfNode( const p4est_locidx_t nodeIdx, const my_p4est_node_nei
 		return false;
 	}
 
-	const quad_neighbor_nodes_of_node_t& qnnn = neighbors->get_neighbors( nodeIdx );	// Quad neighborhood of current node.
+	const quad_neighbor_nodes_of_node_t& qnnn = _neighbors->get_neighbors( nodeIdx );	// Quad neighborhood of node.
 
-	const double LOWER_B = h - TOL;								// Range for distance between nodes in each Cartesian
-	const double UPPER_B = h + TOL;								// direction.
+	const double LOWER_B = _h - _zEPS;							// Range for distance between nodes in each Cartesian
+	const double UPPER_B = _h + _zEPS;							// direction.
 	for( int xStep = 0; xStep < STEPS; xStep++ )
 	{
 		const quad_neighbor_nodes_of_node_t* xQnnn;				// Choose which neighborhood to look at along X direction.
 		if( xStep == 0 && qnnn.neighbor_m00() != -1 && qnnn.d_m00 >= LOWER_B && qnnn.d_m00 <= UPPER_B )			// Left?
-			neighbors->get_neighbors( qnnn.neighbor_m00(), xQnnn );
+			_neighbors->get_neighbors( qnnn.neighbor_m00(), xQnnn );
 		else if( xStep == 1 )																					// Center?
 			xQnnn = &qnnn;
 		else if( xStep == 2 && qnnn.neighbor_p00() != -1 && qnnn.d_p00 >= LOWER_B && qnnn.d_p00 <= UPPER_B )	// Right?
-			neighbors->get_neighbors( qnnn.neighbor_p00(), xQnnn );
+			_neighbors->get_neighbors( qnnn.neighbor_p00(), xQnnn );
 		else
 		{
 #ifdef CASL_THROWS
@@ -3061,11 +3190,11 @@ bool getFullStencilOfNode( const p4est_locidx_t nodeIdx, const my_p4est_node_nei
 #ifdef P4_TO_P8
 			const quad_neighbor_nodes_of_node_t* xyQnnn;			// Choose which neighborhood to look at along X, Y direction.
 			if( yStep == 0 && xQnnn->neighbor_0m0() != -1 && xQnnn->d_0m0 >= LOWER_B && xQnnn->d_0m0 <= UPPER_B )		// Bottom?
-				neighbors->get_neighbors( xQnnn->neighbor_0m0(), xyQnnn );
+				_neighbors->get_neighbors( xQnnn->neighbor_0m0(), xyQnnn );
 			else if( yStep == 1 )																						// Center?
 				xyQnnn = xQnnn;
 			else if( yStep == 2 && xQnnn->neighbor_0p0() != -1 && xQnnn->d_0p0 >= LOWER_B && xQnnn->d_0p0 <= UPPER_B )	// Top?
-				neighbors->get_neighbors( xQnnn->neighbor_0p0(), xyQnnn );
+				_neighbors->get_neighbors( xQnnn->neighbor_0p0(), xyQnnn );
 #else
 			// Using this index to store information as a truth table with 3 states per dimension: m (minus),
 			// 0 (center), and p (plus), so that the most significan "bit" is x, then y.

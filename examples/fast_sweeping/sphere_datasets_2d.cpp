@@ -157,7 +157,8 @@ int main ( int argc, char* argv[] )
 
 		/// Obtaining location of locally owned nodes for debugging ///
 		std::vector<p4est_locidx_t> stencil;			// In 3D, node 4723 has full uniform stencil.  In 2D: 291.
-		getFullStencilOfNode( 291, &nodeNeighbors, nodes, stencil, 2. / ( 1u << MAX_LEVEL ) );
+		FullUniformStencil fullUniformStencil( p4est, nodes, &nodeNeighbors, MAX_LEVEL );
+		fullUniformStencil.getFullStencilOfNode( 291, stencil );
 
 		for( p4est_locidx_t n : stencil )
 		{

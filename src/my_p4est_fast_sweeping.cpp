@@ -52,7 +52,7 @@ FastSweeping::SEED_STATE FastSweeping::_checkSeedState( p4est_locidx_t n )
 				_neighbors->get_neighbors( n, qnnnPtr );
 
 				double data[P4EST_DIM][2][2];
-				_getStencil( qnnnPtr, _uCpy, data );			// Retrieve the 2 or 3 dimensional stencil.
+				getStencil( qnnnPtr, _uCpy, data );				// Retrieve the 2 or 3 dimensional stencil.
 				const short F = 0, S = 1;						// Meaning: function index, distance index.
 				bool crossed = false;
 
@@ -92,7 +92,7 @@ void FastSweeping::_defineHamiltonianConstants( const quad_neighbor_nodes_of_nod
 {
 	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
 	double data[P4EST_DIM][2][2];
-	_getStencil( qnnnPtr, _uPtr, data );
+	getStencil( qnnnPtr, _uPtr, data );			// Located in my_p4est_utils.
 
 	for( size_t i = 0; i < P4EST_DIM; i++ )		// Choose a and h for x, y [and z].
 	{
@@ -155,20 +155,6 @@ void FastSweeping::_sortHamiltonianConstants( double a[], double h[] )
 	// Finally, set a_dim = infinity.
 	a[P4EST_DIM] = PETSC_INFINITY;
 	h[P4EST_DIM] = -1;					// The h value is irrelevant.
-}
-
-void FastSweeping::_getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] )
-{
-	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
-	data[0][0][0] = qnnnPtr->f_m00_linear( f ); data[0][0][1] = qnnnPtr->d_m00;			// Left.
-	data[0][1][0] =	qnnnPtr->f_p00_linear( f ); data[0][1][1] = qnnnPtr->d_p00;			// Right.
-
-	data[1][0][0] = qnnnPtr->f_0m0_linear( f ); data[1][0][1] = qnnnPtr->d_0m0;			// Bottom.
-	data[1][1][0] = qnnnPtr->f_0p0_linear( f ); data[1][1][1] = qnnnPtr->d_0p0;			// Top.
-#ifdef P4_TO_P8
-	data[2][0][0] = qnnnPtr->f_00m_linear( f ); data[2][0][1] = qnnnPtr->d_00m;			// Back.
-	data[2][1][0] = qnnnPtr->f_00p_linear( f ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
-#endif
 }
 
 double FastSweeping::_computeNewUAtNode( p4est_locidx_t n )

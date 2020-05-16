@@ -3190,97 +3190,121 @@ double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
 
-/////////////////////////////////////////// Uniform, full stencil functions ////////////////////////////////////////////
+/**
+ * Retrieve a convenient 3D matrix with a function sampled on a stencil from at the neighborhood of a given node.
+ * Each layer of the matrix maps to a dimension (i.e. x = 0, y = 1, z = 2), which has the following layout:
+ * {      Function value   |   Distance
+ * 	      {    f_m         ,     d_m    },		<--- Negative direction.
+ * 	      {    f_p         ,     d_p    }		<--- Positive direction.
+ * }
+ * @param [in] qnnnPtr Pointer to a valid neighborhood quad of a node.
+ * @param [in] f Pointer to the function to sample.
+ * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
+ */
+void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
+
+
+/////////////////////////////////////////// Full, uniform stencil functions ////////////////////////////////////////////
 
 /**
- * Retrieve the all-direction stencils of nodes that are adjacent to the interface, have a uniform spacing (h) in all
- * directions, and whose central node belongs to the locally owned points associated with the current partition.  In 2D,
- * The full stencil is given by the indices of the nodes:
- *
- * Two dimensions:				[0](i-1, j+1)   [1](  i, j+1)    [2](i+1, j+1)
- * 								[3](i-1,   j)   [4](  i,   j)    [5](i+1,   j)
- * 								[6](i-1, j-1)   [7](  i, j-1)    [8](i+1, j-1)
- *
- * Three dimensions:
- *                     [0](i-1, j+1, k+1)   [1](  i, j+1, k+1)    [2](i+1, j+1, k+1)
- * 	                   [3](i-1,   j, k+1)   [4](  i,   j, k+1)    [5](i+1,   j, k+1)
- *                     [6](i-1, j-1, k+1)   [7](  i, j-1, k+1)    [8](i+1, j-1, k+1)
- *
- *                     [9](i-1, j+1,   k)   [10](  i, j+1,   k)    [11](i+1, j+1,   k)
- * 	                  [12](i-1,   j,   k)   [13](  i,   j,   k)    [14](i+1,   j,   k)
- *                    [15](i-1, j-1,   k)   [16](  i, j-1,   k)    [17](i+1, j-1,   k)
- *
- *                    [18](i-1, j+1, k-1)   [19](  i, j+1, k-1)    [20](i+1, j+1, k-1)
- * 	                  [21](i-1,   j, k-1)   [22](  i,   j, k-1)    [23](i+1,   j, k-1)
- *                    [24](i-1, j-1, k-1)   [25](  i, j-1, k-1)    [26](i+1, j-1, k-1)
- * @param [in] p4est Pointer to the p4est data structure.
- * @param [in] maxLevel Maximum level of refinement set for the whole forest.
- * @param [in] nodes Pointer to the nodes data structure.
- * @param [in] neighbors Pointer to the neighbors data structure.
- * @param [in] phi Pointer to a ghosted PETSc parallel vector with level-set function values (possibly reinitialized).
- * @param [out] stencils A vector of node-index-based all-direction stencils following the above format.
- * @throws Runtime exception if CASL_THROWS macro is defined and a local point is adjacent to the interface but its
- * immediate neighborhood doesn't have a uniform spacing, h.
+ * Class to hold methods related to retrieving nodes along the interface and full stencils with uniform metrics along
+ * the Cartesian directions.
  */
-void getFullStencilsOfInterfaceNodes( const p4est_t *p4est, signed char maxLevel, const p4est_nodes_t *nodes,
-									  const my_p4est_node_neighbors_t *neighbors,
-									  const Vec *phi, std::vector<std::vector<p4est_locidx_t>>& stencils );
+class FullUniformStencil
+{
+private:
+	const p4est_t *_p4est = nullptr;							// Pointer to the parallel p4est data.
+	const p4est_nodes_t *_nodes = nullptr;						// Pointer to parallel nodes' information.
+	const my_p4est_node_neighbors_t *_neighbors = nullptr;		// Pointer to nodes' neighborhood information.
+	const signed char _maxLevelOfRefinement = P4EST_MAXLEVEL;	// Expected maximum level of refinement, possibly different
+																// to actual maximum level of refinement reached by trees.
+	double _h = 0.0;											// Uniform minimum spacing for quads/octs crossed by \Gamma.
+	double _zEPS = EPS;											// To be a scaled version of EPS, based on my_p4est_level_set.h.
+	const double *_phiPtr = nullptr;							// Read-pointer for a queried level-set function.
+	std::vector<bool> _visited;									// Cache vector of visited nodes when collecting points
+																// by the interface.
 
-/**
- * Retrieve the full stencil of neighbor-node indices to a locally owned node if and only if all of them have uniform
- * distances in all Cartesian direction.  The full stencil of neighbor-nodes to a node are defined as follows:
- *
- *        Two-dimensional                                    Three-dimensional
- *     [2]------[5]------[8]  p                    [06]    ····     [15]    ····     [24]  p
- *      |        |        |                       / |              / |              / |    |
- *      |        |        |                    [07] |           [16] |           [25] |    |
- *     [1]------[4]------[7]  0 y             / | [03]         / | [12]         / | [21]   0 y
- *      |        |        |                [08] | / |       [17] | / |       [26] | / |    |
- *      |        |        |                  | [04] |         | [13] |         | [22] |    |
- *     [0]------[3]------[6]  m              | /| [00]        | /| [09]        | /| [18]   m
- *      m        0        p                [05] | /         [14] | /         [23] | /     /
- *               x                           | [01]           | [10]           | [19]   0  z
- *                                           | /              | /              | /     /
- *                                          [02]    ····    [11]    ····    [20]    p
- *                                           m                0               p
- *                                                            x
- *
- * The order of the nodes is depicted on the 0-based indices in each of the diagrams above.  The stencil is returned to
- * the caller in that particular order if the stencil is well defined.  Assuming that each Cartesian dimension is a
- * 3-state variable, the returned data is organized as a "truth" table, where the columns are provided, strictly, as
- * x-y-z.  X changing slowly, Y changing faster than X, and Z changing faster than Y.  That is, if {m,0,p} are the three
- * states for each dimension variable, then,
- *
- *              Two-dimensional                  Three-dimensional                  States:
- *                # | x | y                        # | x | y | z                   m: Left/Bottom/Back
- *               ---+---+---                      ---+---+---+---                  0: Center
- *                0 | m | m                        0 | m | m | m                   p: Right/Top/Front
- *                1 | m | 0                        1 | m | m | 0
- *                2 | m | p                        2 | m | m | p                   (This is based on how quadrant or
- *                3 | 0 | m                        3 | m | 0 | m                   octants are filled up with function
- *                4 | 0 | 0                        4 | m | 0 | 0                   values.  See types.h).
- *                5 | 0 | p                        5 | m | 0 | p
- *                6 | p | m                        6 | m | p | m
- *                7 | p | 0                        7 | m | p | 0
- *                8 | p | p                        8 | m | p | p
- *               ---+---+---                       9 | 0 | m | m
- *                                                 : | : | : | :
- *                                                18 | p | m | m
- *                                                 : | : | : | :
- *                                                26 | p | p | p
- *                                                ---+---+---+---
- * @param [in] nodeIdx Query node index, which must be locally owned by partition.
- * @param [in] neighbors Pointer to neighbors data structure.
- * @param [in] nodes Pointer to nodes data structure.
- * @param [out] stencil Output vector with node indices sorted as above (in x-y[-z]).  Invalid if function returns false.
- * @param [in] h Expected uniform spacing for full stencil, plus/minus some variation given by TOL.
- * @param [in] TOL Tolerance for zero-distance checking together with h.
- * @return True if uniform stencil is well defined, false otherwise.
- * @throws Runtime exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
- */
-bool getFullStencilOfNode( p4est_locidx_t nodeIdx, const my_p4est_node_neighbors_t *neighbors,
-						   const p4est_nodes_t *nodes, std::vector<p4est_locidx_t>& stencil,
-						   double h, double TOL = EPS );
+	/**
+	 * Process a quadrant/octant and obtain the indices of nodes that lie on or next to the interface.  That is, check
+	 * for the nodes in the quad/oct and verify if there are some whose irradiating edges are crossed by \Gamma.  If so,
+	 * place their indices in an output dynamic vector.
+	 * @param [in] quad Pointer to quadrant object to analyze.
+	 * @param [in] quadIdx Absolute index of quadrant in macromesh.
+	 * @param [out] indices Vector of nodal indices to be populated.
+	 */
+	void _processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx, std::vector<p4est_locidx_t>& indices );
+
+public:
+
+	/**
+	 * Constructor.
+	 * @param [in] p4est Pointer to the p4est data structure.
+	 * @param [in] nodes Pointer to the nodes data structure.
+	 * @param [in] neighbors Pointer to neighbors data structure.
+	 * @param [in] maxLevelOfRefinement Expected maximum level of refinement in any tree in the forest.
+	 * @throws Runtime exception if expected smallest quad/oct is not square.
+	 */
+	FullUniformStencil( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *neighbors,
+						signed char maxLevelOfRefinement );
+
+	/**
+	 * Retrieve indices of locally-owned nodes that are on or adjacent to the interface.
+	 * @param [in] phi A PETSc parallel vector with nodal level-set function values.
+	 * @param [out] indices Dynamic vector of nodal indices on or adjacent to \Gamma.
+	 */
+	void getIndicesOfInterfaceLocalNodes( const Vec *phi, std::vector<p4est_locidx_t>& indices );
+
+	/**
+	 * Retrieve the full stencil of neighbor-node indices to a locally owned node if and only if all of them have uniform
+	 * distances in all Cartesian direction.  The full stencil of neighbor-nodes to a node are defined as follows:
+	 *
+	 *        Two-dimensional                                    Three-dimensional
+	 *     [2]------[5]------[8]  p                    [06]    ····     [15]    ····     [24]  p
+	 *      |        |        |                       / |              / |              / |    |
+	 *      |        |        |                    [07] |           [16] |           [25] |    |
+	 *     [1]------[4]------[7]  0 y             / | [03]         / | [12]         / | [21]   0 y
+	 *      |        |        |                [08] | / |       [17] | / |       [26] | / |    |
+	 *      |        |        |                  | [04] |         | [13] |         | [22] |    |
+	 *     [0]------[3]------[6]  m              | /| [00]        | /| [09]        | /| [18]   m
+	 *      m        0        p                [05] | /         [14] | /         [23] | /     /
+	 *               x                           | [01]           | [10]           | [19]   0  z
+	 *                                           | /              | /              | /     /
+	 *                                          [02]    ····    [11]    ····    [20]    p
+	 *                                           m                0               p
+	 *                                                            x
+	 *
+	 * The order of the nodes is depicted on the 0-based indices in each of the diagrams above.  The stencil is returned to
+	 * the caller in that particular order if the stencil is well defined.  Assuming that each Cartesian dimension is a
+	 * 3-state variable, the returned data is organized as a "truth" table, where the columns are provided, strictly, as
+	 * x-y-z.  X changing slowly, Y changing faster than X, and Z changing faster than Y.  That is, if {m,0,p} are the three
+	 * states for each dimension variable, then,
+	 *
+	 *              Two-dimensional                  Three-dimensional                  States:
+	 *                # | x | y                        # | x | y | z                   m: Left/Bottom/Back
+	 *               ---+---+---                      ---+---+---+---                  0: Center
+	 *                0 | m | m                        0 | m | m | m                   p: Right/Top/Front
+	 *                1 | m | 0                        1 | m | m | 0
+	 *                2 | m | p                        2 | m | m | p                   (This is based on how quadrant or
+	 *                3 | 0 | m                        3 | m | 0 | m                   octants are filled up with function
+	 *                4 | 0 | 0                        4 | m | 0 | 0                   values.  See types.h).
+	 *                5 | 0 | p                        5 | m | 0 | p
+	 *                6 | p | m                        6 | m | p | m
+	 *                7 | p | 0                        7 | m | p | 0
+	 *                8 | p | p                        8 | m | p | p
+	 *               ---+---+---                       9 | 0 | m | m
+	 *                                                 : | : | : | :
+	 *                                                18 | p | m | m
+	 *                                                 : | : | : | :
+	 *                                                26 | p | p | p
+	 *                                                ---+---+---+---
+	 * @param [in] nodeIdx Query node index, which must be locally owned by partition.
+	 * @param [out] stencil Output vector with node indices sorted as above (in x-y[-z]).  Invalid if function returns false.
+	 * @param [in] h Expected uniform spacing for full stencil, plus/minus some variation given by TOL.
+	 * @return True if uniform stencil is well defined, false otherwise.
+	 * @throws Runtime exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
+	 */
+	bool getFullStencilOfNode( p4est_locidx_t nodeIdx, std::vector<p4est_locidx_t>& stencil );
+};
 
 #endif // UTILS_H
 
