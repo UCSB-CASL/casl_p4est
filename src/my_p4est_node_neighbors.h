@@ -70,7 +70,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
   friend class FastSweeping;
-  friend class FullUniformStencil;
+  friend class NodesAlongInterface;
 
   /* Self-explanatory member variables */
   my_p4est_hierarchy_t *hierarchy;

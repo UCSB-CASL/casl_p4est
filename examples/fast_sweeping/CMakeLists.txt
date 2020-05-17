@@ -174,7 +174,8 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}/src/my_p4est_two_phase_flows.h
 			${PARCASL}/src/my_p4est_xgfm_cells.h
 			${PARCASL}/src/voronoi2D.h
-			${PARCASL}/src/my_p4est_fast_sweeping.h )
+			${PARCASL}/src/my_p4est_fast_sweeping.h
+			${PARCASL}/src/my_p4est_nodes_along_interface.h )
 
 	list( APPEND SOURCES
 			${PARCASL}/src/my_p4est_biofilm.cpp
@@ -219,7 +220,8 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}/src/my_p4est_two_phase_flows.cpp
 			${PARCASL}/src/my_p4est_xgfm_cells.cpp
 			${PARCASL}/src/voronoi2D.cpp
-			${PARCASL}/src/my_p4est_fast_sweeping.cpp )
+			${PARCASL}/src/my_p4est_fast_sweeping.cpp
+			${PARCASL}/src/my_p4est_nodes_along_interface.cpp )
 
 	# headers-only stuff
 	list( APPEND HEADERS
@@ -273,7 +275,8 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}/src/my_p8est_two_phase_flows.h
 			${PARCASL}/src/my_p8est_xgfm_cells.h
 			${PARCASL}/src/voronoi3D.h
-			${PARCASL}/src/my_p8est_fast_sweeping.h )
+			${PARCASL}/src/my_p8est_fast_sweeping.h
+			${PARCASL}/src/my_p8est_nodes_along_interface.h )
 
 	list( APPEND SOURCES
 			${PARCASL}/src/my_p8est_biofilm.cpp
@@ -318,7 +321,8 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}/src/my_p8est_two_phase_flows.cpp
 			${PARCASL}/src/my_p8est_xgfm_cells.cpp
 			${PARCASL}/src/voronoi3D.cpp
-			${PARCASL}/src/my_p8est_fast_sweeping.cpp )
+			${PARCASL}/src/my_p8est_fast_sweeping.cpp
+			${PARCASL}/src/my_p8est_nodes_along_interface.cpp )
 
 	# Headers-only stuff.
 	list( APPEND HEADERS

@@ -19,6 +19,7 @@
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_fast_sweeping.h>
+#include <src/my_p8est_nodes_along_interface.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
@@ -29,6 +30,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_fast_sweeping.h>
+#include <src/my_p4est_nodes_along_interface.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -38,6 +40,7 @@
 #include <iterator>
 #include <fstream>
 #include <cassert>
+#include <set>
 
 int main ( int argc, char* argv[] )
 {
@@ -66,7 +69,7 @@ int main ( int argc, char* argv[] )
 
 		// Definining the level-set function and its signed-distance function version for error testing.
 		const double RADIUS = 0.3;
-		const double X0 = 0, Y0 = 0, Z0 = 0;
+		const double X0 = 0, Y0 = 0, Z0 = 0;						// Interface center coordinates.
 		geom::Sphere sphere( DIM( X0, Y0, Z0 ), RADIUS );			// Signed distance function.
 		geom::SphereNSD sphereNsd( DIM( X0, Y0, Z0 ), RADIUS );		// Non-signed distance function to reinitialize.
 		splitting_criteria_cf_t levelSetSC( MIN_LEVEL, MAX_LEVEL, &sphereNsd );
@@ -151,20 +154,54 @@ int main ( int argc, char* argv[] )
 		fsmReinitTimer.stop();
 		fsmReinitTimer.read_duration();
 
-		const double *fsmPhiReadPtr;
-		ierr = VecGetArrayRead( fsmPhi, &fsmPhiReadPtr );
-		CHKERRXX( ierr );
+		/// Collecting points along the interface for debugging ///
+		int outputRank = 0;
+		NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_LEVEL );
 
-		/// Obtaining location of locally owned nodes for debugging ///
-		std::vector<p4est_locidx_t> stencil;			// In 3D, node 4723 has full uniform stencil.  In 2D: 291.
-		FullUniformStencil fullUniformStencil( p4est, nodes, &nodeNeighbors, MAX_LEVEL );
-		fullUniformStencil.getFullStencilOfNode( 291, stencil );
-
-		for( p4est_locidx_t n : stencil )
+		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d: Points along the interface...\n", mpi.rank() );
+		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
+		std::vector<p4est_locidx_t> indices;
+		nodesAlongInterface.getIndices( &fsmPhi, indices );
+		std::set<p4est_locidx_t> indicesSet;
+		for( auto n : indices )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
-			std::cout << n << ": (" << xyz[0] << ", " << xyz[1] ONLY3D( << ", " << xyz[2] ) << ")" << std::endl;
+			if( mpi.rank() == outputRank )
+				std::cout << xyz[0] << ", " << xyz[1] ONLY3D( << ", " << xyz[2] ) << ";" << std::endl;
+			indicesSet.insert( n );
+		}
+
+		if( indices.size() != indicesSet.size() )					// This shouldn't occur!
+			throw std::runtime_error( "Duplicate indices found!" );
+
+		/// Getting the full uniform stencils of interface points ///
+		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d: Full stencils of interface nodes...\n", mpi.rank() );
+		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
+
+		indicesSet.clear();
+		for( auto n : indices )
+		{
+			std::vector<p4est_locidx_t> stencil;
+			try
+			{
+				nodesAlongInterface.getFullStencilOfNode( n , stencil );
+				for( auto s : stencil )
+					indicesSet.insert( s );							// Remove duplicates.
+			}
+			catch( std::exception &e )
+			{
+				std::cerr << "Process " << mpi.rank() << ": " << e.what() << std::endl;
+			}
+		}
+
+		for( auto n : indicesSet )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			if( mpi.rank() == outputRank )
+				std::cout << xyz[0] << ", " << xyz[1] ONLY3D( << ", " << xyz[2] ) << ";" << std::endl;
+			indicesSet.insert( n );
 		}
 
 		/// Reinitialize the level-set function values using the transient PDE-based equation ///
@@ -177,22 +214,13 @@ int main ( int argc, char* argv[] )
 		pdeReinitTimer.stop();
 		pdeReinitTimer.read_duration();
 
-		/// Collect the absolute error between PDE-based reinitialization and exact distance ///
-		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		/// Read contents of phi and fsmPhi parallel vectors with reinitialized level-set function values ///
+		const double *fsmPhiReadPtr;
+		ierr = VecGetArrayRead( fsmPhi, &fsmPhiReadPtr );
 		CHKERRXX( ierr );
 
-		double pdeMAE = 0;								// Mean absolute error for PDE-based reinit for current partition.
-		for( size_t i = 0; i < nodes->num_owned_indeps; i++ )
-		{
-			double xyz[P4EST_DIM];
-			node_xyz_fr_n( i, p4est, nodes, xyz );
-			pdeMAE += ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - phiReadPtr[i] );
-		}
-		pdeMAE /= nodes->num_owned_indeps;
-
-		PetscSynchronizedPrintf( mpi.comm(), ">> Process %d: PDE MAE = %f\n",
-								 mpi.rank(), pdeMAE );
-		PetscSynchronizedFlush( mpi.comm(), PETSC_STDOUT );
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
 
 		std::ostringstream oss;
 		oss << "fsm_" << mpi.size() << "_" << P4EST_DIM;
