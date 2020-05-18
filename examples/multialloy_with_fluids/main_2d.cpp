@@ -107,7 +107,9 @@ DEFINE_PARAMETER(pl,bool,solve_stefan,false,"Solve stefan ?");
 DEFINE_PARAMETER(pl,bool,solve_navier_stokes,false,"Solve navier stokes?");
 DEFINE_PARAMETER(pl,bool,solve_coupled,true,"Solve the coupled problem?");
 DEFINE_PARAMETER(pl,bool,do_advection,1,"Boolean flag whether or not to do advection (default : 1)");
-DEFINE_PARAMETER(pl,double,Re_overwrite,0.0,"overwrite the examples set Reynolds number");
+DEFINE_PARAMETER(pl,double,Re_overwrite,-100.0,"overwrite the examples set Reynolds number");
+DEFINE_PARAMETER(pl,double,duration_overwrite,-100.0,"overwrite the duration");
+
 DEFINE_PARAMETER(pl,bool,use_uniform_band,true,"Boolean whether or not to refine using a uniform band");
 
 void select_solvers(){
@@ -453,6 +455,7 @@ void set_NS_info(){
 
 void set_nondimensional_groups(){
     if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER)){
+        if(Re_overwrite>0.) Re = Re_overwrite;
         u_inf=Re*mu_l/rho_l/d_cyl;
         Pr = mu_l/(alpha_l*rho_l);
         Pe = Re*Pr;
@@ -485,6 +488,7 @@ void simulation_time_info(){
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
       tfinal = (40.*60.)*(u_inf/d_cyl); // 40 minutes
+      if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)*(u_inf/d_cyl);
       dt_max_allowed = save_every_dt;
       tstart = 0.0;
       dt = 1.e-5;
@@ -3999,8 +4003,9 @@ int main(int argc, char** argv) {
 
       }
 
-    // Get the simulation time info (it is example dependent):
+    // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
+    if(solve_navier_stokes)PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*d_cyl/(60.*u_inf),tfinal);
 
     // -----------------------------------------------
     // Create the grid:
@@ -5144,12 +5149,12 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
             check_coupled_problem_error(phi,v_n,press_nodes,T_l_n,p4est_np1,nodes_np1,ngbd,dxyz_close_to_interface,name_coupled_errors,fich_coupled_errors,tstep);
           }
-        bool check_ice_around_cylinder=false;
-        if(save_using_dt) check_ice_around_cylinder = ( (int) floor(tn/save_every_dt) ) ==out_idx;
-        else if(save_using_iter) check_ice_around_cylinder = ( (int) floor(tstep/save_every_iter) ) ==out_idx;
-        if(example_ == ICE_AROUND_CYLINDER && solve_stefan && check_ice_around_cylinder ){
-            check_ice_cylinder_v_and_radius(phi,p4est_np1,nodes_np1,dxyz_close_to_interface,name_ice_radius_info,fich_ice_radius_info);
-          }
+//        bool check_ice_around_cylinder=false;
+//        if(save_using_dt) check_ice_around_cylinder = ( (int) floor(tn/save_every_dt) ) ==out_idx;
+//        else if(save_using_iter) check_ice_around_cylinder = ( (int) floor(tstep/save_every_iter) ) ==out_idx;
+//        if(example_ == ICE_AROUND_CYLINDER && solve_stefan && check_ice_around_cylinder ){
+//            check_ice_cylinder_v_and_radius(phi,p4est_np1,nodes_np1,dxyz_close_to_interface,name_ice_radius_info,fich_ice_radius_info);
+//          }
 
         // --------------------------------------------------------------------------------------------------------------
         // Delete the old grid:
