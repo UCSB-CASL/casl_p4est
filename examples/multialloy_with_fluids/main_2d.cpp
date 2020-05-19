@@ -3647,7 +3647,7 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
 }
 
-void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved, splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes, vec_and_ptr_t phi,vec_and_ptr_t T_l_n,vec_and_ptr_t T_l_nm1, vec_and_ptr_t T_s_n, vec_and_ptr_dim_t v_NS, vec_and_ptr_dim_t v_NS_nm1,vec_and_ptr_t vorticity,vec_and_ptr_t press_nodes){
+void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved, splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec T_l_n,Vec T_l_nm1, Vec T_s_n,Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]){
   if(!file_exists(path_to_directory)){
     create_directory(path_to_directory,p4est->mpirank,p4est->mpicomm);
   }
@@ -3657,9 +3657,7 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
         char error_msg[1024];
         sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory);
         throw std::invalid_argument(error_msg);
-
       }
-
     }
 
   unsigned int backup_idx = 0;
@@ -3738,37 +3736,45 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
     // Save the p4est and corresponding data:
     if(solve_coupled){
         if(advection_sl_order==2){
-            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                          "p4est",8,
-                                          "phi",1,&phi.vec,
-                                          "T_l_n",1, &T_l_n.vec,
-                                          "T_l_nm1",1, &T_l_nm1.vec,
-                                          "T_s_n",1,&T_s_n.vec,
-                                          "v_NS_n",P4EST_DIM,v_NS.vec,
-                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
-                                          "vorticity",1,&vorticity.vec,
-                                          "pressure",1,&press_nodes.vec);
+          my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
+                                        "p4est",6,
+                                        "phi",1,&phi,
+                                        "T_l_n",1, &T_l_n,
+                                        "T_l_nm1",1, &T_l_nm1,
+                                        "T_s_n",1,&T_s_n,
+                                        "v_NS_n",P4EST_DIM,v_NS,
+                                        "v_NS_nm1",P4EST_DIM,v_NS_nm1);
+//            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
+//                                          "p4est",8,
+//                                          "phi",1,&phi.vec,
+//                                          "T_l_n",1, &T_l_n.vec,
+//                                          "T_l_nm1",1, &T_l_nm1.vec,
+//                                          "T_s_n",1,&T_s_n.vec,
+//                                          "v_NS_n",P4EST_DIM,v_NS.vec,
+//                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
+//                                          "vorticity",1,&vorticity.vec,
+//                                          "pressure",1,&press_nodes.vec);
         }
         else{
-            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                          "p4est",7,
-                                          "phi",1,&phi.vec,
-                                          "T_l_n",1, &T_l_n.vec,
-                                          "T_s_n",1,&T_s_n.vec,
-                                          "v_NS_n",P4EST_DIM,v_NS.vec,
-                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
-                                          "vorticity",1,&vorticity.vec,
-                                          "pressure",1,&press_nodes.vec);
+//            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
+//                                          "p4est",7,
+//                                          "phi",1,&phi.vec,
+//                                          "T_l_n",1, &T_l_n.vec,
+//                                          "T_s_n",1,&T_s_n.vec,
+//                                          "v_NS_n",P4EST_DIM,v_NS.vec,
+//                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
+//                                          "vorticity",1,&vorticity.vec,
+//                                          "pressure",1,&press_nodes.vec);
         }
     }
     else if (solve_navier_stokes && !solve_stefan){
-            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                          "p4est",5,
-                                          "phi",1,&phi.vec,
-                                          "v_NS_n",P4EST_DIM,v_NS.vec,
-                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
-                                          "vorticity",1,&vorticity.vec,
-                                          "pressure",1,&press_nodes.vec);
+//            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
+//                                          "p4est",5,
+//                                          "phi",1,&phi.vec,
+//                                          "v_NS_n",P4EST_DIM,v_NS.vec,
+//                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
+//                                          "vorticity",1,&vorticity.vec,
+//                                          "pressure",1,&press_nodes.vec);
 
     }
 
@@ -3777,7 +3783,7 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
 }
 
-void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,p4est_ghost_t* &ghost, p4est_connectivity* &conn, Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n, Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM], Vec *vorticity, Vec *press_nodes)/*vec_and_ptr_t phi, vec_and_ptr_t T_l_n, vec_and_ptr_t T_l_nm1, vec_and_ptr_t T_s_n, vec_and_ptr_dim_t v_NS,vec_and_ptr_dim_t v_NS_nm1)*/{
+void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,p4est_ghost_t* &ghost, p4est_connectivity* &conn, Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n, Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]){
   PetscErrorCode ierr;
 
 
@@ -3794,39 +3800,34 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitti
   if(solve_coupled){
       if(advection_sl_order==2){
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",8,
+                                        "p4est",6,
                                         "phi",NODE_DATA,1,phi,
                                         "T_l_n",NODE_DATA,1,T_l_n,
                                         "T_l_nm1",NODE_DATA,1,T_l_nm1,
                                         "T_s_n",NODE_DATA,1,T_s_n,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,1,vorticity,
-                                        "pressure",NODE_DATA,1,press_nodes);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
       }
       else{
           PetscPrintf(mpi.comm(),"Uses first order load \n");
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",7,
+                                        "p4est",5,
                                         "phi",NODE_DATA,1,phi,
                                         "T_l_n",NODE_DATA,1,T_l_n,
                                         "T_s_n",NODE_DATA,1,T_s_n,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,1,vorticity,
-                                        "pressure",NODE_DATA,1,press_nodes);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
       }
   }
   else if (solve_navier_stokes && !solve_stefan){
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",5,
+                                        "p4est",3,
                                         "phi",NODE_DATA,1,phi,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,1,vorticity,
-                                        "pressure",NODE_DATA,1,press_nodes);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
   }
 
+  P4EST_ASSERT(find_max_level(p4est) == sp->max_lvl);
 
   // Update the user pointer:
   splitting_criteria_cf_and_uniform_band_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp);
@@ -3872,10 +3873,14 @@ int main(int argc, char** argv) {
   p4est_ghost_t*        ghost;
   p4est_connectivity_t* conn;
   my_p4est_brick_t      brick;
+  my_p4est_hierarchy_t* hierarchy;
+  my_p4est_node_neighbors_t* ngbd;
 
   p4est_t               *p4est_np1;
   p4est_nodes_t         *nodes_np1;
   p4est_ghost_t         *ghost_np1;
+  my_p4est_hierarchy_t* hierarchy_np1;
+  my_p4est_node_neighbors_t* ngbd_np1;
 
   // Level set function(s):---------------------------
   vec_and_ptr_t phi;
@@ -4012,44 +4017,90 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     if(print_checkpoints) PetscPrintf(mpi.comm(),"Creating the grid ... \n");
 
-
-    conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
-    p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
+    int load_tstep=-1;
 
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
-    p4est->user_pointer = &sp;
+    conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
-    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+    if(!loading_from_previous_state){
+      PetscPrintf(mpi.comm(),"A \n");
+      p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
 
-    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est,ghost);
-    nodes = my_p4est_nodes_new(p4est, ghost); //same
+//      splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+      p4est->user_pointer = &sp;
 
-    my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-    my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-    ngbd->init_neighbors();
+      my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
-    int load_tstep=-1;
-    if(loading_from_previous_state){
+      ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      my_p4est_ghost_expand(p4est,ghost);
+      nodes = my_p4est_nodes_new(p4est, ghost); //same
+
+      hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+      ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+      ngbd->init_neighbors();
+    }
+    else{
+      PetscPrintf(mpi.comm(),"A \n");
+
+      p4est=NULL;
+      conn=NULL;
+      p4est=NULL; ghost=NULL;nodes=NULL;
+      hierarchy=NULL;ngbd=NULL;
+
+      phi.vec=NULL;
+      T_l_n.vec=NULL; T_l_nm1.vec=NULL;
+      T_s_n.vec=NULL;
+      foreach_dimension(d){
+        v_n.vec[d]=NULL;
+        v_nm1.vec[d]=NULL;
+
+      }
+      vorticity.vec=NULL;
+      press_nodes.vec=NULL;
+      PetscPrintf(mpi.comm(),"B \n");
+
+
+//      splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+
+
       const char* load_path = getenv("LOAD_STATE_PATH");
       if(!load_path){
           throw std::invalid_argument("You need to set the  directory for the desired load state");
         }
       PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
-      load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,&phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,v_n.vec,v_nm1.vec,&vorticity.vec,&press_nodes.vec);
+
+
+      PetscPrintf(mpi.comm(),"C \n");
+
+      load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,&phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,v_n.vec,v_nm1.vec);
       PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
+
+      int no;
+      no = nodes->num_owned_indeps;
+      MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
+
+      PetscPrintf(mpi.comm(),"After load, num = %d \n",no);
+
+      int size_phi,size_Tl,size_Tlnm1;
+      VecGetSize(phi.vec,&size_phi);
+      VecGetSize(T_l_n.vec,&size_Tl);
+      VecGetSize(T_l_nm1.vec,&size_Tlnm1);
+
+      PetscPrintf(mpi.comm(),"Size phi : %d \n",size_phi);
+      PetscPrintf(mpi.comm(),"Size Tl : %d \n",size_Tl);
+      PetscPrintf(mpi.comm(),"Size Tlnm1 : %d \n",size_Tlnm1);
 
       // Update the neigborhood and hierarchy:
       if(hierarchy!=NULL) {
         delete hierarchy;
         }
-      hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
-
       if(ngbd!=NULL) {delete ngbd;}
 
+      hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
       ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
       ngbd->init_neighbors();
+
       load_tstep =tstep;
       tstart=tn;
       }
@@ -4304,7 +4355,22 @@ int main(int argc, char** argv) {
                 throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
               }
             sprintf(output,"%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes);
-            save_state(mpi,output,20,&sp,p4est,nodes,phi,T_l_n,T_l_nm1,T_s_n,v_n,v_nm1,vorticity,press_nodes);
+
+            int no = nodes->num_owned_indeps;
+            MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
+
+            PetscPrintf(mpi.comm(),"Before save, num = %d \n",no);
+            int size_phi,size_Tl,size_Tlnm1;
+            VecGetSize(phi.vec,&size_phi);
+            VecGetSize(T_l_n.vec,&size_Tl);
+            VecGetSize(T_l_nm1.vec,&size_Tlnm1);
+
+            PetscPrintf(mpi.comm(),"Size phi : %d \n",size_phi);
+            PetscPrintf(mpi.comm(),"Size Tl : %d \n",size_Tl);
+            PetscPrintf(mpi.comm(),"Size Tlnm1 : %d \n",size_Tlnm1);
+
+            save_state(mpi,output,20,&sp,p4est,nodes,phi.vec,T_l_n.vec,T_l_nm1.vec,T_s_n.vec,v_n.vec,v_nm1.vec);
+
             PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
           }
 
@@ -4387,6 +4453,7 @@ int main(int argc, char** argv) {
             T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
             ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
             ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+            PetscPrintf(mpi.comm(),"Used ngbd to take derivatives \n");
 
             // Create vector to hold the jump values:
             jump.create(p4est,nodes);
