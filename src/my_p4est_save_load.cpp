@@ -292,8 +292,9 @@ PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, const in
     PetscInt expected_global_size, global_size;
     ierr = VecGetSize(vector_as_loaded, &expected_global_size); CHKERRQ(ierr);
     ierr = VecGetSize(x[kk], &global_size); CHKERRQ(ierr);
-    if(global_size != expected_global_size)
-      throw std::invalid_argument("LoadVec: the passed vector and the vector on disk are not of the same size");
+    if(global_size != expected_global_size){
+      printf("Global size = %d, expected global size = %d \n");
+      throw std::invalid_argument("LoadVec: the passed vector and the vector on disk are not of the same size");}
     VecScatter ctx; ctx = NULL;
     ierr = VecScatterCreateChangeLayout(vector_as_loaded, x[kk], dtype, augmented_forest, ghost, nodes, faces, kk%P4EST_DIM, ctx); CHKERRQ(ierr);
     ierr = VecGhostChangeLayoutBegin(ctx, vector_as_loaded, x[kk]); CHKERRQ(ierr);
