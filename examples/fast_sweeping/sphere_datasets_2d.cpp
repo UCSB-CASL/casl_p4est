@@ -3,6 +3,9 @@
  * from a reinitialized level-set function with the fast sweeping method.
  * NOTE: This hasn't been tested on 3D, but the code is prepared for the 3D scenario.
  *
+ * To collect samples for a signed distance function with spherical interface set the variable SIGN_DIST_FUNC to true.
+ * To collect samples for a reinitialized level-set function with the fast sweeping method set SIGN_DIST_FUNC to false.
+ *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
  */
@@ -113,16 +116,31 @@ int main ( int argc, char* argv[] )
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
+		// Determining if we want samples from a signed distance function or from a reinitialized level-set.
+		int answer;
+		std::cout << ":: Do you want samples from a signed distance function [1]? Or from a reinitialized level-set function [0]? ";
+		do
+		{
+			answer = getchar();
+		}
+		while( answer == 10 || answer == 13 );
+
+		const bool SIGN_DIST_FUNC = answer == '1';
+		if( SIGN_DIST_FUNC )
+			std::cout << "Collecting samples from a signed distance function..." << std::endl;
+		else
+			std::cout << "Collecting samples from a reinitialized level-set function using fast sweeping method..." << std::endl;
+
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i circles with maximum refinement level of %i and finest h = %f\n",
+		printf( ">> Began to generate datasets for %i spheres with maximum refinement level of %i and finest h = %f\n",
 			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
 		// Prepare samples file: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
 		std::ofstream outputFile;
-		std::string fileName = DATA_PATH + "rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		std::string fileName = DATA_PATH + ( SIGN_DIST_FUNC? "sdf_" : "rls_" ) + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
 		outputFile.open( fileName, std::ofstream::trunc );
 		if( !outputFile.is_open() )
 			throw std::runtime_error( "Output file " + fileName + " couldn't be opened!" );
@@ -142,7 +160,7 @@ int main ( int argc, char* argv[] )
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
 
-		// Domain information, applicable to all circular interfaces.
+		// Domain information, applicable to all spherical interfaces.
 		int n_xyz[] = {1, 1, 1};									// One tree per dimension.
 		double xyz_min[] = {MIN_D, MIN_D, MIN_D};					// Square domain.
 		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
@@ -175,10 +193,11 @@ int main ( int argc, char* argv[] )
 				p4est_ghost_t *ghost;
 				p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-				// Definining the non-signed distance level-set function to be reinitialized.
+				// Definining the non-signed distance level-set function to be reinitialized.  Remains unused if
+				// SIGN_DIST_FUNC is true.
 				geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
 				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );	// Signed-distance level-set function for error checking.
-				splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sphereNsd );
+				splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, SIGN_DIST_FUNC? &sphere : &sphereNsd );
 
 				// Create the forest using a level set as refinement criterion.
 				p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -199,37 +218,45 @@ int main ( int argc, char* argv[] )
 													// how much we'll neeed the node neighbors.
 
 				// A ghosted parallel PETSc vector to store level-set function values.
-				Vec fsmPhi;
-				ierr = VecCreateGhostNodes( p4est, nodes, &fsmPhi );
+				Vec phi;
+				ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 				CHKERRXX( ierr );
 
 				// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
-				double *fsmPhiPtr;
-				ierr = VecGetArray( fsmPhi, &fsmPhiPtr );
+				double *phiPtr;
+				ierr = VecGetArray( phi, &phiPtr );
 				CHKERRXX( ierr );
 				for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
 				{
 					double xyz[P4EST_DIM];
 					node_xyz_fr_n( i, p4est, nodes, xyz );
-					fsmPhiPtr[i] = sphereNsd( DIM( xyz[0], xyz[1], xyz[2] ) );		// Using the non-signed distance function.
+					if( SIGN_DIST_FUNC )
+						phiPtr[i] = sphere( DIM( xyz[0], xyz[1], xyz[2] ) );	// Using the signed distance function.
+					else
+						phiPtr[i] = sphereNsd( DIM( xyz[0], xyz[1], xyz[2] ) );	// Using the non-signed distance function.
 				}
-				ierr = VecRestoreArray( fsmPhi, &fsmPhiPtr );
+				ierr = VecRestoreArray( phi, &phiPtr );
 				CHKERRXX( ierr );
 
 				// Reinitialize level-set function using the fast sweeping method.
-				FastSweeping fsm;
-				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-				fsm.reinitializeLevelSetFunction( &fsmPhi, 8 );
+				if( !SIGN_DIST_FUNC )
+				{
+					FastSweeping fsm;
+					fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+					fsm.reinitializeLevelSetFunction( &phi, 8 );
+//					my_p4est_level_set_t ls( &nodeNeighbors );
+//					ls.reinitialize_2nd_order( phi, 5 );
+				}
 
-				// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these
-				// are the point we'll use to create our sample files.
+				// Once the level-set function is reinitialized (if user chose to), collect nodes on or adjacent to the
+				// interface; these are the point we'll use to create our sample files.
 				NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
 				std::vector<p4est_locidx_t> indices;
-				nodesAlongInterface.getIndices( &fsmPhi, indices );
+				nodesAlongInterface.getIndices( &phi, indices );
 
 				// Getting the full uniform stencils of interface points.
-				const double *fsmPhiReadPtr;
-				ierr = VecGetArrayRead( fsmPhi, &fsmPhiReadPtr );
+				const double *phiReadPtr;
+				ierr = VecGetArrayRead( phi, &phiReadPtr );
 				CHKERRXX( ierr );
 
 				for( auto n : indices )
@@ -245,12 +272,12 @@ int main ( int argc, char* argv[] )
 						{
 							for( auto s : stencil )
 							{
-								dataPve.push_back( +fsmPhiReadPtr[s] );		// Positive curvature phi values.
-								dataNve.push_back( -fsmPhiReadPtr[s] );		// Negative curvature phi values.
+								dataPve.push_back( +phiReadPtr[s] );		// Positive curvature phi values.
+								dataNve.push_back( -phiReadPtr[s] );		// Negative curvature phi values.
 
 								double xyz[P4EST_DIM];						// Error checking.
 								node_xyz_fr_n( s, p4est, nodes, xyz );
-								double error = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - fsmPhiReadPtr[s] ) / H;
+								double error = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - phiReadPtr[s] ) / H;
 								maxRE = MAX( maxRE, error );
 							}
 
@@ -271,11 +298,11 @@ int main ( int argc, char* argv[] )
 
 				randomnessCount++;
 
-				ierr = VecRestoreArrayRead( fsmPhi, &fsmPhiReadPtr );
+				ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 				CHKERRXX( ierr );
 
 				// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
-				ierr = VecDestroy( fsmPhi );
+				ierr = VecDestroy( phi );
 				CHKERRXX( ierr );
 
 				// Destroy the p4est and its connectivity structure.
