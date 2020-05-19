@@ -534,8 +534,8 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 		iter++;
 	}
 
-	if( _p4est->mpirank == 0 )
-		std::cout << ">> Number of iterations: " << iter << ".  Convergence maximum relative difference: " << relDiffAll << std::endl;
+//	if( _p4est->mpirank == 0 )
+//		std::cout << ">> Number of iterations: " << iter << ".  Convergence maximum relative difference: " << relDiffAll << std::endl;
 
 	// Fix sign of expected negative solution nodal values.
 	_fixSolutionSign();
