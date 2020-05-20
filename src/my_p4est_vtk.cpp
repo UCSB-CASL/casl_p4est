@@ -95,14 +95,14 @@ extern PetscLogEvent log_my_p4est_vtk_write_all;
 #define PetscLogFlops(n) 0
 #endif
 
-static inline bool is_tree_xpWall(p4est_t* p4est, p4est_topidx_t tr)
+static inline bool is_tree_xpWall(const p4est_t* p4est, p4est_topidx_t tr)
 {
   p4est_topidx_t tr_xp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_p00];
   return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_pmm] !=
       p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr_xp + dir::v_mmm];
 }
 
-static inline bool is_tree_ypWall(p4est_t* p4est, p4est_topidx_t tr)
+static inline bool is_tree_ypWall(const p4est_t* p4est, p4est_topidx_t tr)
 {
   p4est_topidx_t tr_yp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_0p0];
   return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mpm] !=
@@ -110,7 +110,7 @@ static inline bool is_tree_ypWall(p4est_t* p4est, p4est_topidx_t tr)
 }
 
 #ifdef P4_TO_P8
-inline bool is_tree_zpWall(p4est_t* p4est, p4est_topidx_t tr)
+inline bool is_tree_zpWall(const p4est_t* p4est, p4est_topidx_t tr)
 {
   p4est_topidx_t tr_zp = p4est->connectivity->tree_to_tree[P4EST_FACES*tr + dir::f_00p];
   return p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tr + dir::v_mmp] !=
@@ -119,7 +119,7 @@ inline bool is_tree_zpWall(p4est_t* p4est, p4est_topidx_t tr)
 #endif
 
 void
-my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+my_p4est_vtk_write_all_wrapper (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                 int write_rank, int write_tree,
                                 int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
                                 int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
@@ -322,7 +322,7 @@ my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes_t *nodes, p4est_gho
 }
 
 void
-my_p4est_vtk_write_all_general(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+my_p4est_vtk_write_all_general(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                int write_rank, int write_tree,
                                int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
                                int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
@@ -339,7 +339,7 @@ my_p4est_vtk_write_all_general(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghos
 }
 
 void
-my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+my_p4est_vtk_write_all (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                         int write_rank, int write_tree,
                         int num_point_scalars, int num_cell_scalars,
                         const char *filename, ...)
@@ -355,7 +355,7 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
 }
 
 int
-my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+my_p4est_vtk_write_header (const p4est_t * p4est, const p4est_nodes_t *nodes,const  p4est_ghost_t *ghost,
                            const char *filename)
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
@@ -390,10 +390,10 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   p4est_locidx_t      quad_count, Ntotal;
   p4est_locidx_t      il;
   P4EST_VTK_FLOAT_TYPE *float_data;
-  sc_array_t         *quadrants, *indeps;
+  const sc_array_t   *quadrants, *indeps;
   p4est_tree_t       *tree;
-  p4est_quadrant_t   *quad;
-  p4est_indep_t      *in;
+  const p4est_quadrant_t   *quad;
+  const p4est_indep_t      *in;
   p4est_locidx_t     *local_nodes;
   char                vtufilename[BUFSIZ];
   char                foldername[BUFSIZ];
@@ -484,7 +484,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     // check ghost quadrants
     if (ghost != NULL) {
       for (size_t q = 0; q < ghost->ghosts.elem_count; q++) {
-        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+        const p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_const_array_index(&ghost->ghosts, q);
         p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
         p4est_locidx_t quad_idx = nodes->num_local_quadrants + q;
 
@@ -591,7 +591,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
       /* loop over the elements in tree and calculated vertex coordinates */
       for (zz = 0; zz < num_quads; ++zz, ++quad_count) {
-        quad = p4est_quadrant_array_index (quadrants, zz);
+        quad = p4est_const_quadrant_array_index(quadrants, zz);
         h2 = .5 * intsize * P4EST_QUADRANT_LEN (quad->level);
         k = 0;
 #ifdef P4_TO_P8
@@ -640,7 +640,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   else {
     // first add the indep nodes
     for (zz = 0; zz < indeps->elem_count; ++zz) {
-      in = (p4est_indep_t *) sc_array_index (indeps, zz);
+      in = (p4est_indep_t *) sc_const_array_index(indeps, zz);
 
       p4est_indep_t in_unclamped = *in;
       p4est_node_unclamp((p4est_quadrant_t*)&in_unclamped);
@@ -746,7 +746,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
       // check ghost quadrants
       if (ghost != NULL) {
         for (size_t q = 0; q < ghost->ghosts.elem_count; q++) {
-          p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+          const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_const_array_index(&ghost->ghosts, q);
           p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
           p4est_locidx_t quad_idx = p4est->local_num_quadrants + q;
 
@@ -999,7 +999,7 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 }
 
 int
-my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, const char *filename,
+my_p4est_vtk_write_node_data (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost, const char *filename,
                               const int num_scalar, const int num_vector_block, const int num_vector_by_component,
                               const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
                               const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
@@ -1096,7 +1096,7 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
     // check ghost quadrants
     if (ghost != NULL) {
       for (size_t q = 0; q < ghost->ghosts.elem_count; q++) {
-        p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+        const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_const_array_index(&ghost->ghosts, q);
         p4est_qcoord_t qh = P4EST_QUADRANT_LEN(quad->level);
         p4est_locidx_t quad_idx = nodes->num_local_quadrants + q;
 
@@ -1475,7 +1475,7 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
 }
 
 int
-my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
+my_p4est_vtk_write_cell_data (const p4est_t * p4est, const p4est_ghost_t *ghost,
                               int write_rank, int write_tree, const char *filename,
                               const int num_scalar, const int num_vector_block, const int num_vector_by_component,
                               const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
@@ -1876,7 +1876,7 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
 }
 
 int
-my_p4est_vtk_write_footer (p4est_t * p4est, const char *filename)
+my_p4est_vtk_write_footer (const p4est_t * p4est, const char *filename)
 {
   char                vtufilename[BUFSIZ];
   int                 p;
@@ -2060,7 +2060,7 @@ void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
 }
 
 void
-my_p4est_vtk_write_all_lists(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                              int write_rank, int write_tree, const char *filename,
                              std::vector<double *> point_data, std::vector<std::string> point_data_names,
                              std::vector<double *> cell_data,  std::vector<std::string> cell_data_names)
