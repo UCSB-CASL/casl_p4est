@@ -40,7 +40,6 @@ inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1)
  * theta    : fraction of the grid spacing covered by the domain in which the cell of interest is;
  * mu_this_side : value of the diffusion coefficient as seen from the the cell of interest;
  * mu_other_side: value of the diffusion coefficient across the interface (as seen from the neighbor cell);
- * int_value    : value of u^- (or u^+) at the interface point;
  * quad_nb_idx  : local index of the neighbor cell in the computational grid (across the interface);
  * mid_point_fine_node_idx: local index of the grid node in between those two cells on the
  *                          interface-capturing grid (if using subrefinement);
@@ -54,7 +53,6 @@ struct interface_neighbor
   double  phi_q;
   double  phi_nb;
   double  theta;
-  double  int_value;
   p4est_locidx_t quad_nb_idx;
 #ifdef SUBREFINED
   p4est_locidx_t mid_point_fine_node_idx;
@@ -80,8 +78,8 @@ struct interface_neighbor
     const bool on_slow_side     = (mu_m >= mu_p) == (phi_q <= 0.0);
 
     return ((1.0 - theta)*mu_this_side*(solution_p[quad_idx] + (!on_slow_side ? (phi_q  <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
-         + theta*mu_across*(solution_p[quad_nb_idx] + (on_slow_side ? (phi_nb <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
-        + ((dir%2 == 1) == (phi_q > 0.0) ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz_min[dir/2]*jump_flux_component)/mu_tilde;
+            + theta*mu_across*(solution_p[quad_nb_idx] + (on_slow_side ? (phi_nb <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
+            + ((dir%2 == 1) == (phi_q > 0.0) ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz_min[dir/2]*jump_flux_component)/mu_tilde;
   }
 #ifdef DEBUG
   bool is_consistent_with_neighbor_across(const interface_neighbor nb_across) const
@@ -89,9 +87,7 @@ struct interface_neighbor
     return ((phi_q > 0.0) != (nb_across.phi_q > 0.0))
         && fabs(phi_q - nb_across.phi_nb) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
         && fabs(phi_nb - nb_across.phi_q) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
-        && fabs(theta + nb_across.theta - 1.0) < EPS
-//        && fabs(int_value - nb_across.int_value) < 0.000001*MAX(fabs(int_value), 1.0)
-        ;
+        && fabs(theta + nb_across.theta - 1.0) < EPS;
   }
 #endif
 };
@@ -183,6 +179,7 @@ class my_p4est_xgfm_cells_t
 #endif
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction, except if returned before-hand) */
   Vec rhs;                  // cell-sampled, discretized rhs
+  Vec residual;             // cell-sampled, vector of the residual r_k = A*solution_k - rhs(jump_u, jump_normal_flux_u, extension_on_nodes_k)
   Vec solution;             // cell-sampled
   Vec extension_on_cells;   // cell-sampled
   Vec extension_on_nodes;   // node-sampled (fine nodes if subrefined)
@@ -191,26 +188,83 @@ class my_p4est_xgfm_cells_t
   Mat A;
   MatNullSpace A_null_space;
   KSP ksp;
-  PetscErrorCode ierr;
+
+  inline bool mu_m_is_larger()                        const { return mu_m >= mu_p; }
+  inline bool mus_are_equal()                         const { return fabs(mu_m - mu_p) < EPS*MAX(fabs(mu_m), fabs(mu_p)); }
+  inline bool diffusion_coefficients_have_been_set()  const { return mu_m > 0.0 && mu_p > 0.0; }
+  inline double get_smaller_mu()                      const { return (mu_m_is_larger() ? mu_p : mu_m); }
+  inline double get_jump_in_mu()                      const { return (mu_p - mu_m); }
 
   const BoundaryConditionsDIM *bc;
 
-  // solver monitoring
-  std::vector<PetscInt> numbers_of_ksp_iterations;
-  std::vector<double> max_corrections, relative_residuals;
+  class convergence_monitoring_tool {
+    typedef struct
+    {
+      PetscInt n_ksp_iterations;
+      PetscReal L2_norm_residual;
+      PetscReal L2_norm_rhs;
+      double max_correction;
+    } solver_iteration_log;
+    std::vector<solver_iteration_log> logger;
+  public:
+    void clear() { logger.clear(); }
+    void log_iteration(const double& max_correction, const my_p4est_xgfm_cells_t* solver)
+    {
+      PetscErrorCode ierr;
+      solver_iteration_log log_entry;
+      ierr = KSPGetIterationNumber(solver->ksp, &log_entry.n_ksp_iterations); CHKERRXX(ierr);
+      if(solver->residual != NULL){
+        ierr = VecNorm(solver->residual, NORM_2, &log_entry.L2_norm_residual); CHKERRXX(ierr);
+      }
+      else
+        log_entry.L2_norm_residual = NAN; // can't be computed (should happen only when logging the only iteration in standard GFM use)
+      ierr = VecNorm(solver->rhs, NORM_2, &log_entry.L2_norm_rhs); CHKERRXX(ierr);
+      log_entry.max_correction = max_correction;
+      logger.push_back(log_entry);
+    }
+    size_t nsteps() const { return logger.size(); }
+    size_t last_step() const { P4EST_ASSERT(nsteps() > 0); return nsteps() - 1; }
+    double relative_residual(const size_t& k) const { return logger[k].L2_norm_residual/logger[k].L2_norm_rhs; }
+    double latest_L2_norm_of_residual() const { return logger[last_step()].L2_norm_residual; }
+    double latest_relative_residual() const { return relative_residual(last_step()); }
+    size_t get_number_of_xGFM_corrections() const { return nsteps() - 1; }
+    std::vector<PetscInt> get_n_ksp_iterations() const {
+      std::vector<PetscInt> nksp_iter(nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        nksp_iter[k] = logger[k].n_ksp_iterations;
+      return nksp_iter;
+    }
+    std::vector<double> get_max_corrections() const
+    {
+      std::vector<double> max_corrections(nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        max_corrections[k] = logger[k].max_correction;
+      return max_corrections;
+    }
+    std::vector<double> get_relative_residuals() const {
+      std::vector<double> relative_residuals(nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        relative_residuals[k] = relative_residual(k);
+      return relative_residuals;
+    }
+
+    bool reached_converged_within_desired_bounds(const double& absolute_accuracy_threshold, const double& tolerance_on_rel_residual) const
+    {
+      return logger[last_step()].max_correction < absolute_accuracy_threshold && // the latest max_correction must be below the desired absolute accuracy requirement AND
+          (relative_residual(last_step()) < tolerance_on_rel_residual || // either the latest relative residual is below the desired threshold as well OR
+           (last_step() != 0 && fabs(relative_residual(last_step()) - relative_residual(last_step() - 1)) < 1.0e-6*MAX(relative_residual(last_step()), relative_residual(last_step() - 1)))); // or we have done at least two solves and we have reached a fixed-point for which the relative residual is above the desired threshold but can't really be made any smaller, apparently
+    }
+  } solver_monitor;
 
   // flags
-  bool matrix_is_preallocated, matrix_is_set, rhs_is_set;
-  bool interface_values_are_set;
-  bool solution_is_set, use_initial_guess;
+  bool matrix_is_set, rhs_is_set;
   const bool activate_xGFM;
 
-  // interface_jump_info:
+  // map_of_interface_neighbors:
   // key    = local index of the considered quadrant
   // value  = another map such that
   //      - key   = (oriented) Cartesian direction in which the jump info is sought;
   //      - value = structure encapsulating the jump info.
-//  std::map<p4est_locidx_t, std::map<u_char, jump_data> > interface_jump_data;
   std::map<p4est_locidx_t, std::map<u_char, interface_neighbor> > map_of_interface_neighbors;
 
   // memorized local extension operators
@@ -227,6 +281,9 @@ class my_p4est_xgfm_cells_t
   // internal procedures
   void preallocate_matrix();
   void setup_linear_system();
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const;
+  KSPConvergedReason solve_linear_system();
+  bool solve_for_fixpoint_solution(Vec& former_solution);
   inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
   inline void reset_linear_system() { matrix_is_set = rhs_is_set = false; setup_linear_system(); }
@@ -264,28 +321,27 @@ class my_p4est_xgfm_cells_t
    */
   double interpolate_cell_field_at_local_node(const p4est_locidx_t &node_idx, const double *cell_field_p);
   /*!
-   * \brief interpolate_cell_field_to_nodes interpolates the cell-sampled field (sampled on the cells of computational
-   * grid) at all nodes (of the interface-capturing grid if using subrefinement). This function will do the
-   * hardwork on the very first call, but will store the relevant interpolation data internally to shortcut the
-   * task thereafter.
-   * \param [in]  cell_field              : Petsc Vector of cell-sampled data field to interpolate (sampled on the
-   *                                        quadrants of the computational grid)
-   * \param [out] interpolated_node_field : node-sampled vector containing the result of the interpolation operation
-   *                                        on output (sampled on the nodes of the computational grid if not using
-   *                                        subrefinement, on the nodes of the interface-capturing grid otherwise)
+   * \brief interpolate_cell_extension_to_nodes interpolates the cell-sampled field of the appropriate interface-
+   * defined values, i.e., from extension_on_cells, to all nodes (of the interface-capturing grid if using sub-
+   * refinement), i.e., to extension_on_nodes. This function will do the hardwork on the very first call, but will
+   * store the relevant interpolation data internally to shortcut the task thereafter and optimize execution.
    */
-  void interpolate_cell_field_to_nodes(Vec cell_field, Vec interpolated_node_field);
+  void interpolate_cell_extension_to_nodes();
 
-  // using PDE extrapolation
-  void extend_interface_values(Vec cell_solution, Vec new_cell_extension, double threshold = 1.0e-10, uint niter_max = 20);
-  // get the correction jump terms
-  void get_corrected_rhs(Vec corrected_rhs);
+  // using PDE extrapolation : uses the current solution results and jump conditions to extend the appropriate
+  // interface-defined values in the normal directions, using ASLAM's PDE-based extrapolation on the cells
+  void extend_interface_values(Vec &former_extension_on_cells, Vec &former_extension_on_nodes, const double& threshold = 1.0e-10, const uint& niter_max = 20);
+  // updates the right-hand side terms for cells involving jump terms (after extension_on_nodes has been updated)
+  void update_rhs_and_residual(Vec& former_rhs, Vec& former_residual);
+  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_extension_on_nodes,
+                                                         Vec former_rhs, Vec former_residual);
 
 #ifdef DEBUG
   int is_map_consistent() const;
 #endif
 
-  void compute_jumps_in_flux_components();
+  void compute_jumps_in_flux_components_at_all_nodes();
+  void compute_jumps_in_flux_components_at_relevant_nodes_only();
   void compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
                                                  const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p);
 
@@ -293,12 +349,12 @@ class my_p4est_xgfm_cells_t
   interface_neighbor get_interface_neighbor(const p4est_locidx_t& quad_idx, const u_char& dir, const p4est_locidx_t& nb_quad_idx,
                                             const p4est_locidx_t& quad_fine_node_idx, const p4est_locidx_t& nb_fine_node_idx,
                                             const double *phi_p, const double *phi_xxyyzz_p);
-//  bool jump_data_is_found(const p4est_locidx_t& quad_idx, const u_char& dir, jump_data& int_nb) const ;
-//  jump_data get_jump_data(const p4est_quadrant_t& quad, const u_char& dir, const p4est_quadrant_t& nb_quad,
-//                          const p4est_locidx_t& quad_fine_node_idx, const p4est_locidx_t& nb_fine_node_idx,
-//                          const double *phi_p, const double *phi_xxyyzz_p, const double *jump_u_p, const double *jump_flux_p);
 
-  void update_interface_values(Vec new_cell_extension, const double *solution_p);
+  void initialize_extension_on_cells();
+  void initialize_extension_on_cells_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                                      const my_p4est_interpolation_nodes_t &interp_phi_and_jump_u, const double* const &phi_p, const double* const &jump_u_p,
+                                                      const double* const &solution_p, double* const &extension_on_cells_p) const;
+
   void cell_TVD_extension_of_interface_values(Vec new_cell_extension, const double& threshold, const uint& niter_max);
 
   inline bool quad_center_is_fine_node(const p4est_quadrant_t &quad, const p4est_locidx_t &tree_idx, p4est_locidx_t& fine_node_idx_of_quad_center) const
@@ -325,7 +381,55 @@ class my_p4est_xgfm_cells_t
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                      const double *phi_p, const double* phi_xxyyzz_p, const my_p4est_interpolation_nodes_t& interp_phi,
                                      const double *user_rhs_p, const double *jump_u_p, const double *jump_flux_p,
-                                     int &nullspace_contains_constant_vector, double* rhs_p);
+                                     double* rhs_p, int &nullspace_contains_constant_vector);
+  inline void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                            const double *phi_p, const double* phi_xxyyzz_p, const my_p4est_interpolation_nodes_t& interp_phi,
+                                            const double *user_rhs_p, const double *jump_u_p, const double *jump_flux_p,
+                                            double* rhs_p)
+  {
+    int not_needed;
+    build_discretization_for_quad(quad_idx, tree_idx,
+                                  phi_p, phi_xxyyzz_p, interp_phi,
+                                  user_rhs_p, jump_u_p, jump_flux_p,
+                                  rhs_p, not_needed);
+    (void) not_needed;
+    return;
+  }
+
+  inline void make_sure_solution_is_set()
+  {
+    if(solution == NULL)
+      solve();
+    P4EST_ASSERT(solution != NULL);
+  }
+
+  inline void make_sure_extensions_are_defined()
+  {
+    make_sure_solution_is_set();
+    if(extension_on_cells == NULL)
+    {
+      P4EST_ASSERT(jump_flux != NULL);
+      P4EST_ASSERT(extension_on_nodes == NULL); // those can't be set if extenson_on_cells is not set
+      P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
+      extend_interface_values(extension_on_cells, extension_on_nodes);
+    }
+    P4EST_ASSERT(extension_on_cells != NULL && extension_on_nodes != NULL);
+    return;
+  }
+
+  inline void make_sure_jumps_in_flux_are_defined(const bool& at_all_nodes)
+  {
+    if(activate_xGFM)
+    {
+      make_sure_solution_is_set(); // the (accurate) jumps in flux components are functions of the solution (through the extended interface-values) in case of xGFM so make sure it is defined, first
+      P4EST_ASSERT(extension_on_nodes != NULL);
+    }
+    if(at_all_nodes)
+      compute_jumps_in_flux_components_at_all_nodes();
+    else
+      compute_jumps_in_flux_components_at_relevant_nodes_only();
+    P4EST_ASSERT(jump_flux != NULL);
+  }
 
 public:
 
@@ -370,7 +474,7 @@ public:
   inline void set_bc(const BoundaryConditionsDIM& bc_)
   {
     bc = &bc_;
-    // we can't really check for unchanged behavior in this cass, --> play safe
+    // we can't really check for unchanged behavior in this cass, --> play it safe
     matrix_is_set = false;
     rhs_is_set    = false;
   }
@@ -387,11 +491,6 @@ public:
     }
     P4EST_ASSERT(diffusion_coefficients_have_been_set()); // must be both strictly positive
   }
-  inline bool mu_m_is_larger() const { return mu_m >= mu_p; }
-  inline bool mus_are_equal() const { return fabs(mu_m - mu_p) < EPS*MAX(fabs(mu_m), fabs(mu_p)); }
-  inline bool diffusion_coefficients_have_been_set() const { return mu_m > 0.0 && mu_p > 0.0; }
-  inline double get_smaller_mu() const { return (mu_m_is_larger() ? mu_p : mu_m); }
-  inline double get_jump_in_mu() const { return (mu_p - mu_m); }
 
   inline void set_diagonals(const double& add_m, const double& add_p)
   {
@@ -410,10 +509,6 @@ public:
     user_rhs = user_rhs_;
     rhs_is_set = false;
   }
-  inline bool get_matrix_has_nullspace() const
-  {
-    return A_null_space != NULL;
-  }
 
   /* Benchmark tests revealed that PCHYPRE is MUCH faster than PCSOR as PCType!
    * The linear systme is supposed to be symmetric positive (semi-) definite, so KSPCG is ok as KSPType
@@ -421,39 +516,32 @@ public:
    * */
   void solve(KSPType ksp_type = KSPCG, PCType pc_type = PCHYPRE, double absolute_accuracy_threshold = 1e-8, double tolerance_on_rel_residual = 1e-12);
 
-  inline void get_extended_interface_values(Vec& cell_centered_extension, Vec& fine_node_sampled_extension)
-  {
-    P4EST_ASSERT(!solution_is_set || solution != NULL || extension_on_cells != NULL); // the extended interface values cannot be calculated if the solution has been returned to the user beforehand
-    if(!solution_is_set)
-      solve();
-    if(extension_on_cells == NULL)
-    {
-      P4EST_ASSERT(jump_flux != NULL); // the extended interface values cannot be calculated if the jumps in flux components have been returned to the used beforehand
-      P4EST_ASSERT((!activate_xGFM || mus_are_equal()) && extension_on_nodes == NULL); // those are the (only) conditions under which the extension on cells can possibly be not defined
-
-      ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells); CHKERRXX(ierr);
-      extend_interface_values(solution, extension_on_cells);
-      ierr = VecCreateGhostNodes(fine_p4est, fine_nodes, &extension_on_nodes); CHKERRXX(ierr);
-      interpolate_cell_field_to_nodes(extension_on_cells, extension_on_nodes);
-    }
-    cell_centered_extension = extension_on_cells;
-    extension_on_cells = NULL; // will be handled by the new owner (hopefully :-P)...
-    fine_node_sampled_extension = extension_on_nodes;
-    extension_on_nodes = NULL; // will be handled by the new owner (hopefully :-P)...
-  }
-
-  inline void get_jump_flux(Vec& to_return)
-  {
-    if(activate_xGFM && !solution_is_set)
-      solve();
-    to_return = jump_flux;
-    jump_flux = NULL; // will be handled by the new owner (hopefully :-P)...
-  };
-
-  int get_number_of_corrections() const {return numbers_of_ksp_iterations.size()-1; }
-  std::vector<PetscInt> get_numbers_of_ksp_iterations() const {return numbers_of_ksp_iterations; }
-  std::vector<double> get_max_corrections() const {return max_corrections; }
-  std::vector<double> get_relative_residuals() const {return relative_residuals; }
+  inline Vec get_extended_interface_values()                                    { make_sure_extensions_are_defined();               return extension_on_cells;  }
+  inline Vec get_extended_interface_values_interpolated_on_nodes()              { make_sure_extensions_are_defined();               return extension_on_nodes;  }
+  inline Vec get_jump_in_flux(const bool& everywhere = true)                    { make_sure_jumps_in_flux_are_defined(everywhere);  return jump_flux;           }
+  inline Vec get_solution()                                                     { make_sure_solution_is_set();                      return solution;            }
+  inline int get_number_of_xGFM_corrections()                             const { return solver_monitor.get_number_of_xGFM_corrections();                       }
+  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()            const { return solver_monitor.get_n_ksp_iterations();                                 }
+  inline std::vector<double> get_max_corrections()                        const { return solver_monitor.get_max_corrections();                                  }
+  inline std::vector<double> get_relative_residuals()                     const { return solver_monitor.get_relative_residuals();                               }
+  inline bool is_using_xGFM()                                             const { return activate_xGFM;                                                         }
+  inline bool get_matrix_has_nullspace()                                  const { return A_null_space != NULL;                                                  }
+  inline const p4est_t* get_computational_p4est()                         const { return p4est;                                                                 }
+  inline const p4est_ghost_t* get_computational_ghost()                   const { return ghost;                                                                 }
+  inline const p4est_nodes_t* get_computational_nodes()                   const { return nodes;                                                                 }
+  inline const my_p4est_hierarchy_t* get_computational_hierarchy()        const { return cell_ngbd->get_hierarchy();                                            }
+#ifdef SUBREFINED
+  inline Vec get_subrefined_phi()                                         const { return phi;                                                                   }
+  inline Vec get_subrefined_normals()                                     const { return normals;                                                               }
+  inline Vec get_subrefined_jump()                                        const { return jump_u;                                                                }
+  inline Vec get_subrefined_jump_in_normal_flux()                         const { return jump_normal_flux_u;                                                    }
+  inline const my_p4est_node_neighbors_t* get_subrefined_node_neighbors() const { return fine_node_ngbd;                                                        }
+  inline const p4est_t* get_subrefined_p4est()                            const { return fine_p4est;                                                            }
+  inline const p4est_ghost_t* get_subrefined_ghost()                      const { return fine_ghost;                                                            }
+  inline const p4est_nodes_t* get_subrefined_nodes()                      const { return fine_nodes;                                                            }
+  inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()           const { return fine_node_ngbd->get_hierarchy();                                       }
+#else
+#endif
 
   void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
   inline void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)
@@ -461,27 +549,32 @@ public:
     get_flux_components_and_subtract_them_from_velocities(flux, faces);
   }
 
-  inline Vec get_solution()
+  inline Vec return_ownership_of_solution()
   {
-    if(!solution_is_set)
-      solve();
+    make_sure_solution_is_set();
     Vec to_return = solution;
-    solution = NULL; // will be handled by user, hopefully!
+    solution = NULL; // will be handled by user from now on, hopefully!
     return to_return;
   }
 
   /*!
-   * \brief set_initial_guess self-explanatory, the user loses ownership of the object 'initial_guess'
+   * \brief set_initial_guess self-explanatory
    * \param initial_guess self-explanatory
    */
-  inline void set_initial_guess(Vec& initial_guess)
+  inline void set_initial_guess(Vec initial_guess)
   {
     P4EST_ASSERT(VecIsSetForCells(initial_guess, p4est, ghost, 1));
-    if(solution != NULL){
-      ierr = VecDestroy(solution); CHKERRXX(ierr); } // make sure we don't have a memory leak here
-    solution          = initial_guess;  // --> the solver gets the ownership of the object
-    initial_guess     = NULL;           // --> the user loses the ownership of the object
-    use_initial_guess = true;           // --> the solver will use this object as its initial guess!
+    PetscErrorCode ierr;
+    if(solution != NULL && !VecIsSetForCells(solution, p4est, ghost, 1)){
+      ierr = VecDestroy(solution); CHKERRXX(ierr);
+      solution = NULL;
+    }
+    if(solution == NULL){
+      ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); }
+
+    ierr = VecCopyGhost(initial_guess, solution); CHKERRXX(ierr); // set the solution to the given guess
+    ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr); // activates initial guess
+    return;
   }
 
 };

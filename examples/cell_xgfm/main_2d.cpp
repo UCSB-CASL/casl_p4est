@@ -87,7 +87,7 @@ public:
       const double xyz[P4EST_DIM] = {DIM(x, y, z)};
       double to_return = 0.0;
       const double ls_value = test_problem->levelset(xyz);
-      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      for(u_char dim = 0; dim < P4EST_DIM; ++dim)
       {
         if(fabs(xyz[dim] - domain.xyz_min[dim]) < EPS*(domain.xyz_max[dim] - domain.xyz_min[dim]))
           to_return -= (ls_value > 0.0 ? test_problem->first_derivative_solution_plus(dim, DIM(x, y, z)) : test_problem->first_derivative_solution_minus(dim, DIM(x, y, z)));
@@ -130,10 +130,10 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
 
     double f[P4EST_CHILDREN];
 #ifdef P4_TO_P8
-    for(unsigned char ck = 0; ck < 2; ++ck)
+    for(u_char ck = 0; ck < 2; ++ck)
 #endif
-      for(unsigned char cj = 0; cj < 2; ++cj)
-        for(unsigned char ci = 0; ci < 2; ++ci){
+      for(u_char cj = 0; cj < 2; ++cj)
+        for(u_char ci = 0; ci < 2; ++ci){
           f[SUMD(ci, 2*cj, 4*ck)] = phi(DIM(xyz[0] + ci*dxyz[0], xyz[1] + cj*dxyz[1], xyz[2] + ck*dxyz[2]));
           if (f[SUMD(ci, 2*cj, 4*ck)] <= 0.5*lip*quad_diag)
             return P4EST_TRUE;
@@ -148,17 +148,12 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
 }
 
 
-void save_VTK(const string out_dir, const int &iter,
-              p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
-              p4est_t *p4est_fine, p4est_ghost_t *ghost_fine, p4est_nodes_t *nodes_fine,
-              my_p4est_brick_t *brick,
-              Vec phi, Vec normals, Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2],
-Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_coarse)
+void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_solver, my_p4est_xgfm_cells_t& xGFM_solver,
+              my_p4est_brick_t *brick, Vec GFM_error, Vec xGFM_error, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_comp)
 {
   PetscErrorCode ierr;
 
-  splitting_criteria_t* data = (splitting_criteria_t*) p4est->user_pointer;
-
+  splitting_criteria_t* data = (splitting_criteria_t*) GFM_solver.get_computational_p4est()->user_pointer;
 
   ostringstream command;
   command << "mkdir -p " << out_dir.c_str();
@@ -168,108 +163,109 @@ Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm, Vec exact_msol_at_nodes,
   oss_coarse << out_dir << "/computational_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
       << "_lmin_" << data->min_lvl - iter << "_lmax_" << data->max_lvl - iter << "_iter_" << iter;
 
-  double *phi_p, *sol_cells_p[2], *err_cells_p[2], *extension_xgfm_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for(unsigned char flag = 0; flag < 2; ++flag) {
-    ierr = VecGetArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
-    ierr = VecGetArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
-  }
+  const p4est_t* p4est = xGFM_solver.get_computational_p4est();
+  const p4est_nodes_t* nodes = xGFM_solver.get_computational_nodes();
+  const p4est_ghost_t* ghost = xGFM_solver.get_computational_ghost();
 
-  ierr = VecGetArray(extension_xgfm, &extension_xgfm_p); CHKERRXX(ierr);
-
-  /* save the size of the leaves */
-  Vec leaf_level;
-  ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
-  double *l_p;
-  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
-
-  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
-  {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
-      l_p[tree->quadrants_offset + q] = p4est_quadrant_array_index(&tree->quadrants, q)->level;
-  }
-
-  for(size_t q = 0; q < ghost->ghosts.elem_count; ++q)
-    l_p[p4est->local_num_quadrants + q] = p4est_quadrant_array_index(&ghost->ghosts, q)->level;
-
-  double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_coarse_p;
-  ierr = VecGetArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecGetArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
+#ifndef SUBREFINED
+  const double *xGFM_node_extension_p;
+#endif
+  const double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_comp_p;
+  const double *GFM_solution_p, *GFM_error_p;
+  const double *xGFM_solution_p, *xGFM_error_p, *xGFM_cell_extension_p;
+  ierr = VecGetArrayRead(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
+#ifndef SUBREFINED
+  ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &xGFM_node_extension_p); CHKERRXX(ierr);
+#endif
+  ierr = VecGetArrayRead(GFM_solver.get_solution(), &GFM_solution_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_solution(), &xGFM_solution_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(GFM_error, &GFM_error_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_error, &xGFM_error_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values(), &xGFM_cell_extension_p); CHKERRXX(ierr);
 
   my_p4est_vtk_write_all_general(p4est, nodes, ghost,
                                  P4EST_TRUE, P4EST_TRUE,
+                               #ifdef SUBREFINED
                                  3, 0, 0,
-                                 6, 0, 0, oss_coarse.str().c_str(),
+                               #else
+                                 4, 0, 0,
+                               #endif
+                                 5, 0, 0, oss_coarse.str().c_str(),
                                  VTK_NODE_SCALAR, "exact_sol_m", exact_msol_at_nodes_p,
                                  VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
-                                 VTK_NODE_SCALAR, "phi", phi_coarse_p,
-                                 VTK_CELL_SCALAR, "sol_gfm", sol_cells_p[0],
-      VTK_CELL_SCALAR, "sol_xgfm", sol_cells_p[1],
-      VTK_CELL_SCALAR, "err_gfm", err_cells_p[0],
-      VTK_CELL_SCALAR, "err_xgfm", err_cells_p[1],
-      VTK_CELL_SCALAR , "leaf_level", l_p,
-      VTK_CELL_SCALAR, "extension_xgfm", extension_xgfm_p);
+                                 VTK_NODE_SCALAR, "phi", phi_comp_p,
+                               #ifndef SUBREFINED
+                                 VTK_NODE_SCALAR, "extension_xgfm_nodes", xGFM_node_extension_p,
+                               #endif
+                                 VTK_CELL_SCALAR, "sol_gfm", GFM_solution_p,
+                                 VTK_CELL_SCALAR, "sol_xgfm", xGFM_solution_p,
+                                 VTK_CELL_SCALAR, "err_gfm", GFM_error_p,
+                                 VTK_CELL_SCALAR, "err_xgfm", xGFM_error_p,
+                                 VTK_CELL_SCALAR, "extension_xgfm", xGFM_cell_extension_p);
 
-  ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
+#ifndef SUBREFINED
+  ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &xGFM_node_extension_p); CHKERRXX(ierr);
+#endif
+  ierr = VecRestoreArrayRead(GFM_solver.get_solution(), &GFM_solution_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_solution(), &xGFM_solution_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(GFM_error, &GFM_error_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_error, &xGFM_error_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values(), &xGFM_cell_extension_p); CHKERRXX(ierr);
 
+#ifdef SUBREFINED
   std::ostringstream oss_fine;
   oss_fine << out_dir << "/interface_capturing_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
       << "_lmin_" << data->min_lvl - iter << "_lmax_" << data->max_lvl - iter << "_iter_" << iter;
 
+  const p4est_t* fine_p4est = xGFM_solver.get_subrefined_p4est();
+  const p4est_nodes_t* fine_nodes = xGFM_solver.get_subrefined_nodes();
+  const p4est_ghost_t* fine_ghost = xGFM_solver.get_subrefined_ghost();
+
   Vec correction_jump_mu_grad;
-  ierr = VecDuplicate(jump_mu_grad_u[1], &correction_jump_mu_grad);       CHKERRXX(ierr);
-  ierr = VecCopyGhost(jump_mu_grad_u[1], correction_jump_mu_grad);        CHKERRXX(ierr);
-  ierr = VecAXPYGhost(correction_jump_mu_grad, -1.0, jump_mu_grad_u[0]);  CHKERRXX(ierr);
-  double *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
-  double *normals_p, *jump_mu_grad_u_p[2], *correction_jump_mu_grad_p;
-  ierr = VecGetArray(jump_u, &jump_u_p); CHKERRXX(ierr);
-  ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
+  ierr = VecDuplicate(xGFM_solver.get_jump_in_flux(), &correction_jump_mu_grad);      CHKERRXX(ierr);
+  ierr = VecCopyGhost(xGFM_solver.get_jump_in_flux(), correction_jump_mu_grad);       CHKERRXX(ierr);
+  ierr = VecAXPYGhost(correction_jump_mu_grad, -1.0, GFM_solver.get_jump_in_flux());  CHKERRXX(ierr);
+  const double *phi_p, *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
+  const double *normals_p, *jump_flux_GFM_p, *jump_flux_xGFM_p, *correction_jump_mu_grad_p;
+  ierr = VecGetArrayRead(xGFM_solver.get_subrefined_jump(), &jump_u_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_subrefined_jump_in_normal_flux(), &jump_normal_flux_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_subrefined_phi(), &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_subrefined_normals(), &normals_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(GFM_solver.get_jump_in_flux(), &jump_flux_GFM_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(xGFM_solver.get_jump_in_flux(), &jump_flux_xGFM_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
 
-  ierr = VecGetArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
-  ierr = VecGetArray(normals, &normals_p); CHKERRXX(ierr);
-  for(unsigned char flag = 0; flag < 2; ++flag) {
-    ierr = VecGetArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
-  }
-  ierr = VecGetArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
-
-  my_p4est_vtk_write_all_general(p4est_fine, nodes_fine, ghost_fine,
+  my_p4est_vtk_write_all_general(fine_p4est, fine_nodes, fine_ghost,
                                  P4EST_TRUE, P4EST_TRUE,
                                  4, 0, 4, 0, 0, 0, oss_fine.str().c_str(),
                                  VTK_NODE_SCALAR, "phi", phi_p,
                                  VTK_NODE_SCALAR, "jump", jump_u_p,
-                                 VTK_NODE_SCALAR, "jump_flux", jump_normal_flux_p,
+                                 VTK_NODE_SCALAR, "jump_normal_flux", jump_normal_flux_p,
                                  VTK_NODE_VECTOR_BLOCK, "normal", normals_p,
-                                 VTK_NODE_VECTOR_BLOCK, "gfm_jump_mu_du", jump_mu_grad_u_p[0],
-      VTK_NODE_VECTOR_BLOCK, "xgfm_jump_mu_du", jump_mu_grad_u_p[1],
-      VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p,
-      VTK_NODE_SCALAR, "extension_xgfm", extended_field_fine_nodes_xgfm_p);
+                                 VTK_NODE_VECTOR_BLOCK, "gfm_jump_flux", jump_flux_GFM_p,
+                                 VTK_NODE_VECTOR_BLOCK, "xgfm_jump_flux", jump_flux_xGFM_p,
+                                 VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p,
+                                 VTK_NODE_SCALAR, "extension_xgfm_nodes", extended_field_fine_nodes_xgfm_p);
 
-
-  ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_subrefined_jump(), &jump_u_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_subrefined_jump_in_normal_flux(), &jump_normal_flux_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_subrefined_phi(), &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_subrefined_normals(), &normals_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(GFM_solver.get_jump_in_flux(), &jump_flux_GFM_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(xGFM_solver.get_jump_in_flux(), &jump_flux_xGFM_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
   ierr = VecDestroy(correction_jump_mu_grad); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_u, &jump_u_p); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  for(unsigned char flag = 0; flag < 2; ++flag) {
-    ierr = VecRestoreArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
-  }
-
-  ierr = VecRestoreArray(extension_xgfm, &extension_xgfm_p); CHKERRXX(ierr);
-
-  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());
+  PetscPrintf(fine_p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());
+#endif
+  return;
 }
 
 void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_fine, my_p4est_node_neighbors_t *ngbd_n_fine, Vec phi_fine, const bool &use_second_order_theta, const test_case_for_scalar_jump_problem_t *test_problem, //input
@@ -346,76 +342,87 @@ void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_nei
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 }
 
-void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t *ngbd_n_fine, my_p4est_faces_t* faces, Vec phi, const test_case_for_scalar_jump_problem_t *test_problem,
-                    Vec sol, Vec flux_components[P4EST_DIM],
+void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
+                    const test_case_for_scalar_jump_problem_t *test_problem,
                     Vec err_cells, double &err_n, double err_flux_components[P4EST_DIM], double err_derivatives_components[P4EST_DIM])
 {
   PetscErrorCode ierr;
-  my_p4est_interpolation_nodes_t interp_phi(ngbd_n_fine);
-  interp_phi.set_input(phi, linear);
-  const double *sol_read_p, *flux_components_read_p[P4EST_DIM];
-  ierr = VecGetArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
+
+  const p4est_t* p4est                  = solver.get_computational_p4est();
+  const p4est_ghost_t* ghost            = solver.get_computational_ghost();
+  const my_p4est_hierarchy_t* hierarchy = solver.get_computational_hierarchy();
+#ifdef SUBREFINED
+  my_p4est_interpolation_nodes_t interp_phi(solver.get_subrefined_node_neighbors());
+  interp_phi.set_input(solver.get_subrefined_phi(), linear);
+#else
+#endif
+  Vec flux[P4EST_DIM];
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostFaces(p4est, faces, &flux[dim], dim); CHKERRXX(ierr); }
+  solver.get_flux_components(flux, faces);
+
+  const double *sol_p, *flux_components_p[P4EST_DIM];
+  ierr = VecGetArrayRead(solver.get_solution(), &sol_p); CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArrayRead(flux[dim], &flux_components_p[dim]); CHKERRXX(ierr);}
 
   double *err_p;
   ierr = VecGetArray(err_cells, &err_p); CHKERRXX(ierr);
 
   err_n = 0.0;
-  double xyz_quad[P4EST_DIM];
-  const my_p4est_hierarchy_t * hierarchy = faces->get_ngbd_c()->get_hierarchy();
   for(size_t k = 0; k < hierarchy->get_layer_size(); ++k)
   {
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_layer_quadrant(k);
     const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_layer_quadrant(k);
-    quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+    double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
     if(interp_phi(xyz_quad) > 0.0)
-      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     else
-      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     err_n = MAX(err_n, err_p[q_idx]);
   }
-
   ierr = VecGhostUpdateBegin(err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for(size_t k = 0; k < hierarchy->get_inner_size(); ++k)
   {
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_inner_quadrant(k);
     const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_inner_quadrant(k);
-    quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+    double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
     if(interp_phi(xyz_quad) > 0.0)
-      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     else
-      err_p[q_idx] = fabs(sol_read_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     err_n = MAX(err_n, err_p[q_idx]);
   }
   ierr = VecGhostUpdateEnd  (err_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 
-  double xyz_face[P4EST_DIM];
-  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
     err_flux_components[dim] = 0.0;
     err_derivatives_components[dim] = 0.0;
     for(p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
-      faces->xyz_fr_f(face_idx, dim, xyz_face);
+      double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
       const double phi_face = interp_phi(xyz_face);
       if(phi_face > 0.0)
       {
         const double mu_ = test_problem->get_mu_plus();
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
       }
       else
       {
         const double mu_ = test_problem->get_mu_minus();
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
       }
     }
   }
 
-  ierr = VecRestoreArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
+  ierr = VecRestoreArrayRead(solver.get_solution(), &sol_p); CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(flux[dim], &flux_components_p[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(flux[dim]); CHKERRXX(ierr);
+  }
+
   ierr = VecRestoreArray(err_cells, &err_p); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -468,14 +475,13 @@ void build_computational_grid_data(const mpi_environment_t &mpi, my_p4est_brick_
   my_p4est_level_set_t ls_coarse(ngbd_n);
   ls_coarse.reinitialize_2nd_order(phi_comp);
 
-  const double *phi_comp_read_p;
-  ierr = VecGetArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+  const double *phi_comp_p;
+  ierr = VecGetArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
   splitting_criteria_tag_t data_tag(data.min_lvl, data.max_lvl, 1.2);
   p4est_t* new_p4est = p4est_copy(p4est, P4EST_FALSE);
 
-  while(data_tag.refine_and_coarsen(new_p4est, nodes, phi_comp_read_p, test_problem->requires_fine_cells_in_negative_domain()))
+  while(data_tag.refine_and_coarsen(new_p4est, nodes, phi_comp_p, test_problem->requires_fine_cells_in_negative_domain()))
   {
-    ierr = VecRestoreArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
     my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
     interp_nodes.set_input(phi_comp, linear);
 
@@ -499,11 +505,11 @@ void build_computational_grid_data(const mpi_environment_t &mpi, my_p4est_brick_
     p4est_nodes_destroy(nodes); nodes = new_nodes;
     ngbd_n->update(hierarchy, nodes);
 
+    ierr = VecRestoreArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
     ierr = VecDestroy(phi_comp); CHKERRXX(ierr); phi_comp = new_coarse_phi;
-
-    ierr = VecGetArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
   }
-  ierr = VecRestoreArrayRead(phi_comp, &phi_comp_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
   p4est_destroy(new_p4est);
   if(ngbd_c != NULL)
     delete ngbd_c;
@@ -597,7 +603,7 @@ void shift_solution_to_match_exact_average(Vec sol, const p4est_t *p4est, const 
   double *sol_p;
   ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
 
-  double avg_sol = 0.0; // as calculated by PetSc
+  double avg_sol = 0.0; // as calculated by PetSc (should be 0.0? but play it safe)
   for(p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
     avg_sol += sol_p[quad_idx];
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &avg_sol, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -619,7 +625,7 @@ void shift_solution_to_match_exact_average(Vec sol, const p4est_t *p4est, const 
   ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
 }
 
-void print_iteration_info(const mpi_environment_t &mpi, const my_p4est_xgfm_cells_t &solver)
+void print_iteration_info(const mpi_environment_t &mpi, const my_p4est_xgfm_cells_t& solver)
 {
   vector<double> max_corr = solver.get_max_corrections();
   vector<double> rel_res = solver.get_relative_residuals();
@@ -924,7 +930,7 @@ int main (int argc, char* argv[])
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
 
   const bool problem_is_full_periodic = ANDD(test_problem->get_periodicity()[0], test_problem->get_periodicity()[1], test_problem->get_periodicity()[2]);
-  const double avg_exa = (bc_wtype == NEUMANN || problem_is_full_periodic ? NAN : test_problem->get_integral_of_solution()/MULTD(domain.length(), domain.height(), domain.width()));
+  const double avg_exa = (bc_wtype == NEUMANN || problem_is_full_periodic ? test_problem->get_integral_of_solution()/MULTD(domain.length(), domain.height(), domain.width()) : NAN);
 
   for(int iter = 0; iter < ngrids; ++iter)
   {
@@ -951,12 +957,12 @@ int main (int argc, char* argv[])
     p4est_t       *p4est_fine = NULL;
     p4est_nodes_t *nodes_fine = NULL;
     p4est_ghost_t *ghost_fine = NULL;
-    Vec phi_fine = NULL;
     my_p4est_hierarchy_t* hierarchy_fine = NULL;
     my_p4est_node_neighbors_t* ngbd_n_fine = NULL;
+    Vec phi = NULL;
     splitting_criteria_cf_t data_fine(data.min_lvl, data.max_lvl + 1, test_problem->get_levelset_cf(), 1.2);
     build_interface_capturing_grid_data(p4est, &brick, data_fine, test_problem,
-                                        p4est_fine, ghost_fine, nodes_fine, phi_fine, hierarchy_fine, ngbd_n_fine);
+                                        p4est_fine, ghost_fine, nodes_fine, phi, hierarchy_fine, ngbd_n_fine);
 
     /* Get the normals, the second derivatives of the levelset (if required) and the relevant flattened jumps
      */
@@ -969,7 +975,7 @@ int main (int argc, char* argv[])
     if(use_second_order_theta){
       ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &phi_xxyyzz); CHKERRXX(ierr); }
 
-    get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi_fine, use_second_order_theta, test_problem, //input
+    get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi, use_second_order_theta, test_problem, //input
                                     jump_u, jump_normal_flux, normals, phi_xxyyzz); // output
 
     /* TEST THE JUMP SOLVER AND COMPARE TO ORIGINAL GFM */
@@ -979,56 +985,40 @@ int main (int argc, char* argv[])
     BCWALLVAL bc_wall_val(test_problem, &bc_wall_type);
     bc.setWallValues(bc_wall_val);
 
-    Vec rhs_original;
-    ierr = VecCreateNoGhostCells(p4est, &rhs_original); CHKERRXX(ierr);
-    get_sharp_rhs(p4est, ghost, ngbd_n_fine, phi_fine, test_problem, rhs_original);
+    Vec sharp_rhs;
+    ierr = VecCreateNoGhostCells(p4est, &sharp_rhs); CHKERRXX(ierr);
+    get_sharp_rhs(p4est, ghost, ngbd_n_fine, phi, test_problem, sharp_rhs);
 
-    Vec sol[2], err_cells[2], extended_field_xgfm, extended_field_fine_nodes_xgfm;
-    Vec jump_mu_grad_u[2];
-    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
-      my_p4est_xgfm_cells_t solver(ngbd_c, ngbd_n, ngbd_n_fine, xgfm_flag);
-      solver.set_phi(phi_fine, phi_xxyyzz);
-      solver.set_normals(normals);
-      solver.set_mus(test_problem->get_mu_minus(), test_problem->get_mu_plus());
-      solver.set_jumps(jump_u, jump_normal_flux);
-      solver.set_diagonals(0.0, 0.0);
-      solver.set_bc(bc);
-      Vec rhs;
-      ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr);
-      ierr = VecCopy(rhs_original, rhs);
-      solver.set_rhs(rhs);
+    my_p4est_xgfm_cells_t *GFM_solver = new my_p4est_xgfm_cells_t(ngbd_c, ngbd_n, ngbd_n_fine, false); // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
+    my_p4est_xgfm_cells_t *xGFM_solver = new my_p4est_xgfm_cells_t(ngbd_c, ngbd_n, ngbd_n_fine, true);  // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
+    for(u_char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
+      my_p4est_xgfm_cells_t& jump_solver = (xgfm_flag == 0 ? *GFM_solver : *xGFM_solver);
+      jump_solver.set_phi(phi, phi_xxyyzz);
+      jump_solver.set_normals(normals);
+      jump_solver.set_mus(test_problem->get_mu_minus(), test_problem->get_mu_plus());
+      jump_solver.set_jumps(jump_u, jump_normal_flux);
+      jump_solver.set_diagonals(0.0, 0.0);
+      jump_solver.set_bc(bc);
+      jump_solver.set_rhs(sharp_rhs);
 
       watch.start("Total time:");
-      solver.solve();
+      jump_solver.solve();
       watch.stop(); watch.read_duration();
 
-      print_iteration_info(mpi, solver);
-
-      // get extended fields for illustration purposes
-      if(xgfm_flag)
-        solver.get_extended_interface_values(extended_field_xgfm, extended_field_fine_nodes_xgfm);
-
-      // compute and get flux components (to check their accuracy as well)
-      Vec flux[P4EST_DIM];
-      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecCreateGhostFaces(p4est, faces, &flux[dim], dim); CHKERRXX(ierr); }
-      solver.get_flux_components(flux, faces);
-      // get solution (to check its accuracy as well) and jump terms found by solver (for illustration)
-      sol[xgfm_flag] = solver.get_solution();
-      solver.get_jump_flux(jump_mu_grad_u[xgfm_flag]);
+      print_iteration_info(mpi, jump_solver);
 
       /* if null space, shift solution */
-      if(solver.get_matrix_has_nullspace())
-        shift_solution_to_match_exact_average(sol[xgfm_flag], p4est, ghost, avg_exa);
+      if(jump_solver.get_matrix_has_nullspace())
+        shift_solution_to_match_exact_average(jump_solver.get_solution(), p4est, ghost, avg_exa);
 
-      /* measure the error(s) */
-      ierr = VecCreateGhostCells(p4est, ghost, &err_cells[xgfm_flag]); CHKERRXX(ierr);
-      measure_errors(p4est, ghost, ngbd_n_fine, faces, phi_fine, test_problem, sol[xgfm_flag], flux,
-                     err_cells[xgfm_flag], err[iter][xgfm_flag], err_flux_components[iter][xgfm_flag], err_derivatives_components[iter][xgfm_flag]);
-      for(unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecDestroy(flux[dim]); CHKERRXX(ierr);}
-      ierr = VecDestroy(rhs); CHKERRXX(ierr);
     }
+
+    /* measure the error(s) */
+    Vec err_GFM, err_xGFM;
+    ierr = VecCreateGhostCells(p4est, ghost, &err_GFM); CHKERRXX(ierr);
+    ierr = VecCreateGhostCells(p4est, ghost, &err_xGFM); CHKERRXX(ierr);
+    measure_errors(*GFM_solver, faces, test_problem, err_GFM, err[iter][0], err_flux_components[iter][0], err_derivatives_components[iter][0]);
+    measure_errors(*xGFM_solver, faces, test_problem, err_xGFM, err[iter][1], err_flux_components[iter][1], err_derivatives_components[iter][1]);
 
     print_errors_and_orders(mpi, iter, err, err_flux_components, err_derivatives_components);
 
@@ -1043,34 +1033,22 @@ int main (int argc, char* argv[])
         print_integral_of_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, phi_comp, p4est, nodes);
 
       if(save_vtk)
-        save_VTK(vtk_out, iter,
-                 p4est, ghost, nodes,
-                 p4est_fine, ghost_fine, nodes_fine, &brick,
-                 phi_fine, normals, jump_u, jump_normal_flux, extended_field_fine_nodes_xgfm, jump_mu_grad_u,
-                 sol, err_cells, extended_field_xgfm, exact_msol_at_nodes, exact_psol_at_nodes, phi_comp);
+        save_VTK(vtk_out, iter, *GFM_solver, *xGFM_solver, &brick,
+                 err_GFM, err_xGFM, exact_msol_at_nodes, exact_psol_at_nodes, phi_comp);
       ierr = VecDestroy(exact_msol_at_nodes); CHKERRXX(ierr);
       ierr = VecDestroy(exact_psol_at_nodes); CHKERRXX(ierr);
     }
 
     // destroy data created for this iteration
     ierr = VecDestroy(phi_comp); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_fine); CHKERRXX(ierr);
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
     if(use_second_order_theta) {
       ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }
     ierr = VecDestroy(jump_u); CHKERRXX(ierr);
     ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
     ierr = VecDestroy(normals); CHKERRXX(ierr);
-    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
-      ierr = VecDestroy(jump_mu_grad_u[xgfm_flag]); CHKERRXX(ierr); }
-    ierr = VecDestroy(rhs_original); CHKERRXX(ierr);
-    for(unsigned char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag)
-    {
-      ierr = VecDestroy(sol[xgfm_flag]); CHKERRXX(ierr);
-      ierr = VecDestroy(err_cells[xgfm_flag]); CHKERRXX(ierr);
-      ierr = VecDestroy(jump_mu_grad_u[xgfm_flag]); CHKERRXX(ierr);
-    }
-    ierr = VecDestroy(extended_field_xgfm); CHKERRXX(ierr);
-    ierr = VecDestroy(extended_field_fine_nodes_xgfm); CHKERRXX(ierr);
+    ierr = VecDestroy(err_GFM); CHKERRXX(ierr);
+    ierr = VecDestroy(err_xGFM); CHKERRXX(ierr);
 
 
     p4est_nodes_destroy(nodes); p4est_nodes_destroy(nodes_fine);
@@ -1080,6 +1058,8 @@ int main (int argc, char* argv[])
     delete ngbd_n; delete ngbd_n_fine;
     delete ngbd_c;
     delete faces;
+    delete GFM_solver;
+    delete xGFM_solver;
   }
 
   if(mpi.rank() == 0 && print_summary)
