@@ -133,7 +133,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   poisson_use_nonzero_guess_ = true;
 
-  iteration_scheme_ = 0;
+  iteration_scheme_ = 2;
 }
 
 my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
@@ -871,10 +871,15 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+//  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+//  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
+//      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+//      liquid_normal_.vec, NULL, bc,
+//      false, c_d_[0].vec, c_dd_[0].vec.data());
+
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
       extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
-      liquid_normal_.vec, NULL, bc,
+      liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
       false, c_d_[0].vec, c_dd_[0].vec.data());
 
 //  node_neighbors_->second_derivatives_central(c_[0].vec, c_dd_[0].vec.data());
@@ -1013,11 +1018,15 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
   ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+//  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+//  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
+//      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+//      liquid_normal_.vec, NULL, bc,
+//      false, psi_c_d_[0].vec);
 
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
       extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
-      liquid_normal_.vec, NULL, bc,
+      liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
       false, psi_c_d_[0].vec);
 
 //  node_neighbors_->second_derivatives_central(psi_c_[0].vec, psi_c_dd_[0].vec);

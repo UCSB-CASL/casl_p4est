@@ -110,7 +110,7 @@ param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shi
 param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
 param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int>    lmax (pl, 5, "lmax", "Max level of the tree");
+param_t<int>    lmax (pl, 8, "lmax", "Max level of the tree");
 
 param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 5, "num_splits_per_split", "Number of additional resolutions");

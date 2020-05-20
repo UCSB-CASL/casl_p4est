@@ -34,7 +34,7 @@ MATLAB_LIBS = -Wl,-rpath,$$MATLAB_DIR/bin/glnxa64/ -L$$MATLAB_DIR/bin/glnxa64/ -
 # mpi
 MPI_DIR = /usr/lib/x86_64-linux-gnu/
 
-#MPI_INCLUDES = $$MPI_DIR/include
+MPI_INCLUDES = /usr/include/mpich
 MPI_LIBS = -lmpich
 
 # Boost

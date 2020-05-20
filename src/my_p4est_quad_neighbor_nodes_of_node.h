@@ -2072,6 +2072,17 @@ public:
     return;
   }
 
+
+  inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double f_nei[]) const
+  {
+#ifdef P4_TO_P8
+    ngbd_with_quadratic_interpolation(&f, &f_000, &f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0], &f_nei[dir::f_00m], &f_nei[dir::f_00p], 1);
+#else
+    ngbd_with_quadratic_interpolation(&f, &f_000, &f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0],                                         1);
+#endif
+    return;
+  }
+
   inline void x_ngbd_with_quadratic_interpolation(const double *f, double &f_m00, double &f_000, double &f_p00) const
   {
     x_ngbd_with_quadratic_interpolation(&f, &f_m00, &f_000, &f_p00, 1);

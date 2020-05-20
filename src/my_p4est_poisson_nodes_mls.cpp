@@ -81,6 +81,8 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   rhs_ptr       = NULL;
   rhs_jump_     = NULL;
   rhs_jump_ptr  = NULL;
+  rhs_gf_       = NULL;
+  rhs_gf_ptr    = NULL;
 
   // rhs_ gonna serve as a template vector for VecDuplicate
   ierr = VecCreateGhostNodes(p4est_, nodes_, &rhs_); CHKERRXX(ierr);
@@ -96,6 +98,9 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   submat_robin_sc_     = NULL;
   submat_robin_sym_    = NULL;
   submat_robin_sym_ptr = NULL;
+
+  submat_gf_           = NULL;
+  submat_gf_ghost_     = NULL;
 
   new_submat_main_  = true;
   new_submat_diag_  = true;
@@ -185,6 +190,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   cube_refinement_            = 0;
   jump_scheme_                = 0;
   fv_scheme_                  = 1;
+  dirichlet_scheme_           = 0;
   use_taylor_correction_      = 1;
   kink_special_treatment_     = 1;
   neumann_wall_first_order_   = 0;
@@ -227,6 +233,8 @@ my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
   if (submat_jump_ghost_ != NULL) { ierr = MatDestroy(submat_jump_ghost_); CHKERRXX(ierr); }
   if (submat_robin_sc_   != NULL) { ierr = MatDestroy(submat_robin_sc_  ); CHKERRXX(ierr); }
   if (submat_robin_sym_  != NULL) { ierr = VecDestroy(submat_robin_sym_ ); CHKERRXX(ierr); }
+  if (submat_gf_         != NULL) { ierr = MatDestroy(submat_gf_        ); CHKERRXX(ierr); }
+  if (submat_gf_ghost_   != NULL) { ierr = MatDestroy(submat_gf_ghost_  ); CHKERRXX(ierr); }
 
   // PETSc solver
   if (ksp_ != NULL) { ierr = KSPDestroy(ksp_); CHKERRXX(ierr); }
@@ -265,6 +273,7 @@ my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
   if (A_            != NULL) { ierr = MatDestroy(A_           ); CHKERRXX(ierr); }
   if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_); CHKERRXX(ierr); }
   if (rhs_jump_     != NULL) { ierr = VecDestroy(rhs_jump_    ); CHKERRXX(ierr); }
+  if (rhs_gf_       != NULL) { ierr = VecDestroy(rhs_gf_      ); CHKERRXX(ierr); }
   if (rhs_          != NULL) { ierr = VecDestroy(rhs_         ); CHKERRXX(ierr); } // must be deleted last since it's a parent for others
 }
 
@@ -611,31 +620,38 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   set_boundary_phi_eff (bdry_.phi_eff);
   set_interface_phi_eff(infc_.phi_eff);
 
-  bool assembling_main     = new_submat_main_;
-  bool assembling_jump     = new_submat_main_  && there_is_jump_;
+  bool assembling_main       = new_submat_main_;
+  bool assembling_jump       = new_submat_main_  && there_is_jump_;
   bool assembling_jump_ghost = new_submat_main_  && there_is_jump_  && there_is_jump_mu_;
-  bool assembling_robin_sc = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
+  bool assembling_robin_sc   = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
+  bool assembling_gf         = new_submat_main_  && there_is_dirichlet_ && dirichlet_scheme_ > 0;
 
   // arrays to store matrices
-  int nm = assembling_main     ? nodes_->num_owned_indeps : 0;
-  int nj = assembling_jump     ? nodes_->num_owned_indeps : 0;
+  int nm = assembling_main       ? nodes_->num_owned_indeps : 0;
+  int nj = assembling_jump       ? nodes_->num_owned_indeps : 0;
   int na = assembling_jump_ghost ? nodes_->num_owned_indeps : 0;
-  int nr = assembling_robin_sc ? nodes_->num_owned_indeps : 0;
+  int nr = assembling_robin_sc   ? nodes_->num_owned_indeps : 0;
+  int nd = assembling_gf         ? nodes_->num_owned_indeps : 0;
 
-  std::vector< std::vector<mat_entry_t> > entries_main    (nm);
-  std::vector< std::vector<mat_entry_t> > entries_jump    (nj);
+  std::vector< std::vector<mat_entry_t> > entries_main      (nm);
+  std::vector< std::vector<mat_entry_t> > entries_jump      (nj);
   std::vector< std::vector<mat_entry_t> > entries_jump_ghost(na);
-//  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
+  std::vector< std::vector<mat_entry_t> > entries_gf        (nd);
+  std::vector< std::vector<mat_entry_t> > entries_gf_ghost  (nd);
   if (assembling_robin_sc) entries_robin_sc.assign(nr, std::vector<mat_entry_t>(0));
 
-  std::vector<PetscInt> d_nnz_main    (nm, 1);
-  std::vector<PetscInt> o_nnz_main    (nm, 0);
-  std::vector<PetscInt> d_nnz_jump    (nj, 1);
-  std::vector<PetscInt> o_nnz_jump    (nj, 0);
+  std::vector<PetscInt> d_nnz_main      (nm, 1);
+  std::vector<PetscInt> o_nnz_main      (nm, 0);
+  std::vector<PetscInt> d_nnz_jump      (nj, 1);
+  std::vector<PetscInt> o_nnz_jump      (nj, 0);
   std::vector<PetscInt> d_nnz_jump_ghost(na, 1);
   std::vector<PetscInt> o_nnz_jump_ghost(na, 0);
-  std::vector<PetscInt> d_nnz_robin_sc(nr, 1);
-  std::vector<PetscInt> o_nnz_robin_sc(nr, 0);
+  std::vector<PetscInt> d_nnz_robin_sc  (nr, 1);
+  std::vector<PetscInt> o_nnz_robin_sc  (nr, 0);
+  std::vector<PetscInt> d_nnz_gf        (nj, 1);
+  std::vector<PetscInt> o_nnz_gf        (nj, 0);
+  std::vector<PetscInt> d_nnz_gf_ghost  (na, 1);
+  std::vector<PetscInt> o_nnz_gf_ghost  (na, 0);
 
   if (assembling_main)
   {
@@ -714,6 +730,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   // rhs
   if (setup_rhs)
   {
+    VecSetGhost(rhs_, 0);
     ierr = VecGetArray(rhs_,   &rhs_ptr);   CHKERRXX(ierr);
     ierr = VecGetArray(rhs_m_, &rhs_m_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(rhs_p_, &rhs_p_ptr); CHKERRXX(ierr);
@@ -761,6 +778,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
   }
 
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  {
+    if (rhs_gf_ != NULL) { ierr = VecDestroy(rhs_gf_); CHKERRXX(ierr); }
+    ierr = VecDuplicate(rhs_, &rhs_gf_); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs_gf_, &rhs_gf_ptr); CHKERRXX(ierr);
+  }
+
+
   // interpolators
   interpolators_initialize();
 
@@ -773,9 +798,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     node_scheme_.resize(nodes_->num_owned_indeps, UNDEFINED);
     int num_bdry_fvs = 0;
     int num_infc_fvs = 0;
-    int num_bdry_cart_points = 0;
-    int num_bdry_pieces = 0;
-    int num_infc_pieces = 0;
+//    int num_bdry_cart_points = 0;
+//    int num_bdry_pieces = 0;
+//    int num_infc_pieces = 0;
     int num_wall_pieces = 0;
 
     foreach_local_node(n, nodes_)
@@ -1013,12 +1038,71 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     }
   }
 
+  // prepare stuff for ghost-fluid method for imposing dirichlet bc
+  std::vector<int>    gf_map;
+  std::vector<double> gf_nodes;
+  std::vector<double> gf_phi;
+  if (assembling_main && there_is_dirichlet_ && dirichlet_scheme_ > 0) {
+    gf_map.assign(nodes_->num_owned_indeps, -1);
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+    int ghost_nodes_count = 0;
+    foreach_local_node (n, nodes_) {
+      if (node_scheme_[n] == BOUNDARY_DIRICHLET) {
+        if (bdry_.phi_eff_value(n) > 0) {
+          const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd_)[n];
+          double delta_xyz[P4EST_DIM];
+          if (is_dirichlet_ghost_node(qnnn, delta_xyz)) { // check if a node is a ghost node
+            // add points to interpolator
+            double xyz_c[P4EST_DIM];
+            node_xyz_fr_n(n, p4est_, nodes_, xyz_c);
+
+            for (int i = -1; i < gf_stencil_size(); ++i) {
+              double xyz[P4EST_DIM] = { DIM( xyz_c[0] + double(i)*delta_xyz[0],
+                                             xyz_c[1] + double(i)*delta_xyz[1],
+                                             xyz_c[2] + double(i)*delta_xyz[2]) };
+              interp.add_point(ghost_nodes_count*gf_stencil_size() + i, xyz);
+            }
+
+            gf_map[n] = ghost_nodes_count;
+            ghost_nodes_count++;
+          }
+        }
+      }
+    }
+
+    gf_nodes.resize(ghost_nodes_count*gf_stencil_size());
+    gf_phi.resize(ghost_nodes_count*gf_stencil_size());
+
+    // get values of level-set function
+    interp.set_input(bdry_.phi_eff, linear);
+    interp.interpolate(gf_phi.data());
+
+    // get global node indices
+    Vec     node_numbers;
+    double *node_numbers_ptr;
+    ierr = VecDuplicate(rhs_, &node_numbers); CHKERRXX(ierr);
+    ierr = VecGetArray(node_numbers, &node_numbers_ptr); CHKERRXX(ierr);
+
+    foreach_node(n, nodes_) {
+      node_numbers_ptr[n] = petsc_gloidx_[n];
+    }
+
+    ierr = VecRestoreArray(node_numbers, &node_numbers_ptr); CHKERRXX(ierr);
+
+    interp.set_input(node_numbers, linear);
+    interp.interpolate(gf_nodes.data());
+
+    ierr = VecDestroy(node_numbers); CHKERRXX(ierr);
+  }
+
 
   // pointers to rows for convenience
   std::vector<mat_entry_t> *row_main;
   std::vector<mat_entry_t> *row_robin_sc;
   std::vector<mat_entry_t> *row_jump;
   std::vector<mat_entry_t> *row_jump_ghost;
+  std::vector<mat_entry_t> *row_gf;
+  std::vector<mat_entry_t> *row_gf_ghost;
 
 
   //-------------------------------------------------------------------------------------
@@ -1035,24 +1119,26 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   foreach_local_node(n, nodes_)
   {
-    row_main     = assembling_main     ? &entries_main    [n] : NULL;
-    row_robin_sc = assembling_robin_sc ? &entries_robin_sc[n] : NULL;
-    row_jump     = assembling_jump     ? &entries_jump    [n] : NULL;
+    row_main       = assembling_main       ? &entries_main      [n] : NULL;
+    row_robin_sc   = assembling_robin_sc   ? &entries_robin_sc  [n] : NULL;
+    row_jump       = assembling_jump       ? &entries_jump      [n] : NULL;
     row_jump_ghost = assembling_jump_ghost ? &entries_jump_ghost[n] : NULL;
+    row_gf         = assembling_gf         ? &entries_gf        [n] : NULL;
+    row_gf_ghost   = assembling_gf         ? &entries_gf_ghost  [n] : NULL;
 
     // Main node characteristics
-    p4est_indep_t                       *ni   = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+//    p4est_indep_t                       *ni   = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
     const quad_neighbor_nodes_of_node_t  qnnn = ngbd_->get_neighbors(n);
 
     bool is_wall[P4EST_FACES];
-    bool is_wall_any = is_node_Wall(p4est_, ni, is_wall);
+//    bool is_wall_any = is_node_Wall(p4est_, ni, is_wall);
 
     double xyz_C[P4EST_DIM];
     node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
 
-    double DIM( x_C = xyz_C[0],
-                y_C = xyz_C[1],
-                z_C = xyz_C[2] );
+//    double DIM( x_C = xyz_C[0],
+//                y_C = xyz_C[1],
+//                z_C = xyz_C[2] );
 
     double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n];
     double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
@@ -1135,9 +1221,18 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       case BOUNDARY_DIRICHLET:
       {
-        discretize_dirichlet_sw(setup_rhs, n, qnnn,
-                             infc_phi_eff_000, is_wall,
-                             row_main, d_nnz_main[n], o_nnz_main[n]);
+        if (dirichlet_scheme_ == 0) {
+          discretize_dirichlet_sw(setup_rhs, n, qnnn,
+                                  infc_phi_eff_000, is_wall,
+                                  row_main, d_nnz_main[n], o_nnz_main[n]);
+        } else {
+          discretize_dirichlet_gf(setup_rhs, n, qnnn,
+                                  infc_phi_eff_000, is_wall,
+                                  gf_map, gf_nodes, gf_phi,
+                                  row_main, d_nnz_main[n], o_nnz_main[n],
+                                  row_gf, d_nnz_gf[n], o_nnz_gf[n],
+                                  row_gf_ghost, d_nnz_gf_ghost[n], o_nnz_gf_ghost[n]);
+        }
         break;
       }
 
@@ -1237,6 +1332,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(rhs_, &rhs_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(rhs_m_, &rhs_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(rhs_p_, &rhs_p_ptr); CHKERRXX(ierr);
+
+//    ierr = VecGhostUpdateBegin(rhs_, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (rhs_, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   if (there_is_neumann_ || there_is_robin_ || there_is_jump_)
@@ -1248,13 +1346,123 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(areas_p_, &areas_p_ptr); CHKERRXX(ierr);
   }
 
-  if (there_is_jump_ && setup_rhs)
+  if (setup_rhs && there_is_jump_)
   {
     ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
   }
 
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  {
+    ierr = VecRestoreArray(rhs_gf_, &rhs_gf_ptr); CHKERRXX(ierr);
+  }
+
   if (assembling_main)
   {
+    if (there_is_dirichlet_ && dirichlet_scheme_ > 0)
+    {
+//      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
+      // assemble sub matrices
+      assemble_matrix(entries_gf, d_nnz_jump, o_nnz_jump, &submat_gf_);
+      assemble_matrix(entries_gf_ghost, d_nnz_gf_ghost, o_nnz_gf_ghost, &submat_gf_ghost_);
+
+//      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+//      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
+      // compute correction doing matrix product
+      Mat mat_product;
+      ierr = MatMatMult(submat_gf_, submat_gf_ghost_, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &mat_product); CHKERRXX(ierr);
+
+      // add jump correction matrix to main matrix
+      // variant 1: use PETSc tools (quite slow)
+      /*
+        ierr = MatAYPX(submat_main_, 1., mat_product, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
+
+      // variant 2: do it explicitly by hands taking into account that
+      // number of nonzero rows in mat_product is much less than the total number of rows
+      //*
+      PetscInt            offset = global_node_offset_[p4est_->mpirank];
+      PetscInt            N;
+      PetscBool           done;
+      const PetscInt     *ia;
+      const PetscInt     *ja;
+      Mat                 mat_product_local;
+      PetscScalar        *data;
+      mat_entry_t         ent;
+      std::set<PetscInt>  d_elems;
+      std::set<PetscInt>  o_elems;
+      PetscInt            cur;
+
+      // get access to matrix structure of matrix product
+      if (p4est_->mpisize > 1)
+      {
+        ierr = MatMPIAIJGetLocalMat(mat_product, MAT_INITIAL_MATRIX, &mat_product_local); CHKERRXX(ierr);
+      } else {
+        mat_product_local = mat_product;
+      }
+      ierr = MatGetRowIJ(mat_product_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+      ierr = MatSeqAIJGetArray(mat_product_local, &data); CHKERRXX(ierr);
+
+      // iterate through nonzero rows of mat_product
+      foreach_local_node(n, nodes_)
+      {
+        if (node_scheme_[n] == BOUNDARY_DIRICHLET)
+        {
+          if (ia[n+1] > ia[n])
+          {
+            // for better allocations we will recount exact numbers of diagonal and off-diagonal elements
+            // using std::set's
+            d_elems.clear();
+            o_elems.clear();
+
+            //
+            for (int i = 0; i < entries_main[n].size(); ++i)
+            {
+              cur = entries_main[n][i].n;
+
+              if (cur < offset || cur >= offset + nodes_->num_owned_indeps)
+                o_elems.insert(cur);
+              else
+                d_elems.insert(cur);
+            }
+
+            for (int i = ia[n]; i < ia[n+1]; ++i)
+            {
+              // add element from mat_product to submat_main
+              if (fabs(data[i]) > EPS)
+              {
+                ent.n   = ja[i];
+                ent.val = data[i];
+                entries_main[n].push_back(ent);
+
+                //
+                if (ent.n < offset || ent.n >= offset + nodes_->num_owned_indeps)
+                  o_elems.insert(ent.n);
+                else
+                  d_elems.insert(ent.n);
+              }
+            }
+
+            d_nnz_main[n] = d_elems.size();
+            o_nnz_main[n] = o_elems.size();
+          }
+        }
+      }
+
+      // restore matrix structure
+      ierr = MatSeqAIJRestoreArray(mat_product_local, &data); CHKERRXX(ierr);
+      ierr = MatRestoreRowIJ(mat_product_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+      if (p4est_->mpisize > 1)
+      {
+        ierr = MatDestroy(mat_product_local); CHKERRXX(ierr);
+      }
+      //*/
+
+      ierr = MatDestroy(mat_product); CHKERRXX(ierr);
+
+//      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+    }
+
     if (there_is_jump_)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1265,28 +1473,28 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       {
         ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
 
-        Mat BC;
+        Mat mat_product;
 
         // assemble matrix that expresses additional degrees of freedom (ghost values) through regular node values
         assemble_matrix(entries_jump_ghost, d_nnz_jump_ghost, o_nnz_jump_ghost, &submat_jump_ghost_);
 
         // compute correction doing matrix product
-        ierr = MatMatMult(submat_jump_, submat_jump_ghost_, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
+        ierr = MatMatMult(submat_jump_, submat_jump_ghost_, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &mat_product); CHKERRXX(ierr);
 
         // add jump correction matrix to main matrix
         // variant 1: use PETSc tools (quite slow)
         /*
-        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
+        ierr = MatAYPX(submat_main_, 1., mat_product, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
 
         // variant 2: do it explicitly by hands taking into account that
-        // number of nonzero rows in BC is much less than the total number of rows
+        // number of nonzero rows in mat_product is much less than the total number of rows
         //*
         PetscInt            offset = global_node_offset_[p4est_->mpirank];
         PetscInt            N;
         PetscBool           done;
         const PetscInt     *ia;
         const PetscInt     *ja;
-        Mat                 BC_local;
+        Mat                 mat_product_local;
         PetscScalar        *data;
         mat_entry_t         ent;
         std::set<PetscInt>  d_elems;
@@ -1296,14 +1504,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         // get access to matrix structure of matrix product
         if (p4est_->mpisize > 1)
         {
-          ierr = MatMPIAIJGetLocalMat(BC, MAT_INITIAL_MATRIX, &BC_local); CHKERRXX(ierr);
+          ierr = MatMPIAIJGetLocalMat(mat_product, MAT_INITIAL_MATRIX, &mat_product_local); CHKERRXX(ierr);
         } else {
-          BC_local = BC;
+          mat_product_local = mat_product;
         }
-        ierr = MatGetRowIJ(BC_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
-        ierr = MatSeqAIJGetArray(BC_local, &data); CHKERRXX(ierr);
+        ierr = MatGetRowIJ(mat_product_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+        ierr = MatSeqAIJGetArray(mat_product_local, &data); CHKERRXX(ierr);
 
-        // iterate through nonzero rows of BC
+        // iterate through nonzero rows of mat_product
         foreach_local_node(n, nodes_)
         {
           if (node_scheme_[n] == IMMERSED_INTERFACE)
@@ -1328,7 +1536,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
               for (int i = ia[n]; i < ia[n+1]; ++i)
               {
-                // add element from BC to submat_main
+                // add element from mat_product to submat_main
                 if (fabs(data[i]) > EPS)
                 {
                   ent.n   = ja[i];
@@ -1350,15 +1558,15 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         }
 
         // restore matrix structure
-        ierr = MatSeqAIJRestoreArray(BC_local, &data); CHKERRXX(ierr);
-        ierr = MatRestoreRowIJ(BC_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+        ierr = MatSeqAIJRestoreArray(mat_product_local, &data); CHKERRXX(ierr);
+        ierr = MatRestoreRowIJ(mat_product_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
         if (p4est_->mpisize > 1)
         {
-          ierr = MatDestroy(BC_local); CHKERRXX(ierr);
+          ierr = MatDestroy(mat_product_local); CHKERRXX(ierr);
         }
         //*/
 
-        ierr = MatDestroy(BC); CHKERRXX(ierr);
+        ierr = MatDestroy(mat_product); CHKERRXX(ierr);
 
         ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
       }
@@ -1576,7 +1784,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
-  if (there_is_jump_ && setup_rhs)
+  if (setup_rhs && there_is_jump_)
   {
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1595,6 +1803,19 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  {
+//    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
+    // contribution from Laplace term
+//    ierr = VecScaleGhost(rhs_gf_, -1); CHKERRXX(ierr);
+    ierr = MatMultAdd(submat_gf_, rhs_gf_, rhs_, rhs_); CHKERRXX(ierr);
+
+    // contribution from linear term
+
+//    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+  }
+
   if (setup_rhs && enfornce_diag_scaling_)
   {
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1604,8 +1825,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   // check for null space
   // FIXME: the return value should be checked for errors ...
-  if (new_submat_main_ || new_submat_diag_ || new_submat_robin_)
+  if (new_submat_main_ || new_submat_diag_ || new_submat_robin_) {
     MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace_, 1, MPI_INT, MPI_LAND, p4est_->mpicomm);
+  }
 
 //  if (matrix_has_nullspace) {
 //    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
@@ -1646,24 +1868,25 @@ void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_
 
   foreach_local_node(n, nodes_)
   {
-    PetscInt                  n_gl = petsc_gloidx_[n];
     std::vector<mat_entry_t> *row  = &entries[n];
+    if (row->size() > 0) {
+      PetscInt n_gl = petsc_gloidx_[n];
 
-//    for (int m=0; m < row->size(); ++m)
-//    {
-//      ierr = MatSetValue(*matrix, n_gl, row->at(m).n, row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
-//    }
+      //    for (int m=0; m < row->size(); ++m)
+      //    {
+      //      ierr = MatSetValue(*matrix, n_gl, row->at(m).n, row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
+      //    }
 
-    columns.clear();
-    values.clear();
-    for (int m=0; m < row->size(); ++m)
-    {
-      columns.push_back(row->at(m).n);
-      values.push_back(row->at(m).val);
+      columns.clear();
+      values.clear();
+      for (int m=0; m < row->size(); ++m)
+      {
+        columns.push_back(row->at(m).n);
+        values.push_back(row->at(m).val);
+      }
+
+      ierr = MatSetValues(*matrix, 1, &n_gl, row->size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
     }
-
-    ierr = MatSetValues(*matrix, 1, &n_gl, row->size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
-
   }
 
   /* assemble the matrix */
@@ -3233,9 +3456,31 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
   }
 }
 
+bool my_p4est_poisson_nodes_mls_t::is_dirichlet_ghost_node(const quad_neighbor_nodes_of_node_t &qnnn, double del_xyz[])
+{
+  if (bdry_.num_phi > 0) {
+    if (bdry_.phi_eff_ptr[qnnn.node_000] > 0) {
+      foreach_direction (nei) {
+        if (bdry_.phi_eff_ptr[qnnn.neighbor(nei)] < 0) {
+          compute_normals(qnnn, bdry_.phi_eff_ptr, del_xyz);
+          foreach_dimension(dim) {
+            del_xyz[dim] = qnnn.distance(2*dim)*round(del_xyz[dim]);
+            // TODO: need to be fixed for non-1:1 aspect ratios;
+          }
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                            double infc_phi_eff_000, bool is_wall[],
-                                                           std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz)
+                                                           vector<int> &gf_map, vector<double> &gf_nodes, vector<double> &gf_phi,
+                                                           std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                                                           std::vector<mat_entry_t> *row_gf, int &d_nnz_gf, int &o_nnz_gf,
+                                                           std::vector<mat_entry_t> *row_gf_ghost, int &d_nnz_gf_ghost, int &o_nnz_gf_ghost)
 {
   double  mu;
   double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
@@ -3265,24 +3510,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
 
   double bdry_phi_eff_000 = bdry_.num_phi == 0 ? -1. : bdry_.phi_eff_ptr[n];
 
-  if (new_submat_main_) {
-    row_main->clear();
-  }
-
-  // far away from the boundary
-  if (bdry_phi_eff_000 > 0.) {
-
-    if (new_submat_main_) {
-      row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
-      mask_ptr[n] = 1.;
-    }
-
-    if (setup_rhs) {
-      rhs_ptr[n] = 0;
-    }
-
-    return;
-  }
+//  if (new_submat_main_) {
+//    entries_main->at(n).clear();
+//  }
 
   double xyz_C[P4EST_DIM];
   node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
@@ -3291,75 +3521,123 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
               y_C = xyz_C[1],
               z_C = xyz_C[2] );
 
-  // check if any boundary crosses ngbd
-  std::vector<bool>   is_interface     (P4EST_FACES, false);
-  std::vector<int>    bdry_point_id    (P4EST_FACES, 0);
-  std::vector<double> bdry_point_dist  (P4EST_FACES, 0);
-  std::vector<double> bdry_point_weight(P4EST_FACES, 0);
+//  // check whether boundary goes exactly through the node
+//  int node_on_boundary_phi_id = -1;
+//  foreach_direction(dim) {
+//    if (is_interface[dim] && (fabs(bdry_point_dist[dim]) < EPS*diag_min_)) {
+//      throw;
+//      node_on_boundary_phi_id = bdry_point_id[dim];
+//    }
+//  }
 
-  if (new_submat_main_) {
-    find_interface_points(n, ngbd_, bdry_.opn, bdry_.phi_ptr,
-                          DIM(bdry_.phi_xx_ptr, bdry_.phi_yy_ptr, bdry_.phi_zz_ptr),
-                          bdry_point_id.data(), bdry_point_dist.data());
+//  // interface boundary
+//  if (node_on_boundary_phi_id != -1) {
 
-    int num_interfaces = 0;
-    foreach_direction(i) {
-      if (bdry_point_id[i] >= 0) {
-        is_interface[i] = true;
-        ++num_interfaces;
+//    // compute submat_main
+//    if (new_submat_main_) {
+//      // re-asssign boundary points data
+//      is_interface.assign(P4EST_FACES, false);
+//      is_interface     [0] = true;
+//      bdry_point_id    [0] = node_on_boundary_phi_id;
+//      bdry_point_dist  [0] = 0.5*EPS*diag_min_;
+//      bdry_point_weight[0] = 1;
+
+//      row_main->push_back(mat_entry_t(n, 1));
+//      matrix_has_nullspace_ = false;
+//    }
+
+//    // compute submat_rhs
+//    if (setup_rhs) {
+//      boundary_conditions_t *bc = &bc_[node_on_boundary_phi_id];
+//      rhs_ptr[n] = bc->pointwise ? bc->get_value_pw(n,0) :
+//                                   bc->get_value_cf(xyz_C);
+//    }
+
+//  }
+  if (bdry_phi_eff_000 > 0.) {
+    double delta_xyz[P4EST_DIM];
+    double xyz_bc[P4EST_DIM];
+    double weight_bc;
+    if (is_dirichlet_ghost_node(qnnn, delta_xyz)) {
+      if (new_submat_main_) {
+        double del = ABSD(delta_xyz[0], delta_xyz[1], delta_xyz[2]);
+        // find interface location
+        double phi0 = gf_phi[gf_stencil_size()*gf_map[n]+0];
+        double phi1 = gf_phi[gf_stencil_size()*gf_map[n]+1];
+        double phi2 = gf_phi[gf_stencil_size()*gf_map[n]+2];
+        double phi3 = gf_phi[gf_stencil_size()*gf_map[n]+3];
+
+        if (phi2 > 0) throw;
+
+        double phi1_dd = (phi2-2.*phi1+phi0)/del/del;
+        double phi2_dd = (phi3-2.*phi2+phi1)/del/del;
+
+        double dist = interface_Location_With_Second_Order_Derivative(0, del, phi1, phi2, phi1_dd, phi2_dd);
+
+        double theta = (del-dist)/del;
+
+        double w2 = 2.*(1.-theta)/theta;
+        double w3 = -(1.-theta)/(1.+theta);
+        double weight_bc = -2./theta/(1.+theta);
+
+        PetscInt gloidx1 = gf_nodes[gf_stencil_size()*gf_map[n]+1];
+        PetscInt gloidx2 = gf_nodes[gf_stencil_size()*gf_map[n]+2];
+        PetscInt gloidx3 = gf_nodes[gf_stencil_size()*gf_map[n]+3];
+
+        row_gf_ghost->push_back(mat_entry_t(gloidx1, 1));
+        row_gf_ghost->push_back(mat_entry_t(gloidx2, w2));
+        row_gf_ghost->push_back(mat_entry_t(gloidx3, w3));
+
+        // compute weights
+        d_nnz_gf_ghost += 2;
+        o_nnz_gf_ghost += 2;
+        mask_ptr[n] = -1.;
+
+        foreach_dimension(dim) {
+          xyz_bc[dim] = xyz_C[dim] + (1.-theta)*delta_xyz[dim];
+        }
+
+        bc_[0].add_fd_pt(n, 0, dist, xyz_bc, weight_bc);
+      } else {
+        int idx = bc_[0].idx_value_pt(n,0);
+        interface_point_cartesian_t *pt = &bc_[0].dirichlet_pts[idx];
+
+        weight_bc = bc_[0].dirichlet_weights[idx];
+        pt->get_xyz(xyz_bc);
+      }
+
+      if (setup_rhs) {
+        double bc_value;
+        if (bc_[0].pointwise) {
+          int idx = bc_[0].idx_value_pt(n, 0);
+          bc_value = (bc_[0].value_pw)->at(idx);
+        } else {
+          bc_value = (bc_[0].value_cf)->value(xyz_bc);
+        }
+        rhs_gf_ptr[n] = bc_value*weight_bc;
+      }
+    } else {
+      if (new_submat_main_) {
+        row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
+        mask_ptr[n] = 1.;
+      }
+
+      if (setup_rhs) {
+        rhs_gf_ptr[n] = 0;
       }
     }
   } else {
-    load_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
-  }
 
-  // check whether boundary goes exactly through the node
-  int node_on_boundary_phi_id = -1;
-  foreach_direction(i) {
-    if (is_interface[i] && fabs(bdry_point_dist[i]) < EPS*diag_min_) {
-      node_on_boundary_phi_id = bdry_point_id[i];
-    }
-  }
-
-  // interface boundary
-  if (node_on_boundary_phi_id != -1)
-  {
-    // compute submat_main
-    if (new_submat_main_)
-    {
-      // re-asssign boundary points data
-      is_interface.assign(P4EST_FACES, false);
-      is_interface     [0] = true;
-      bdry_point_id    [0] = node_on_boundary_phi_id;
-      bdry_point_dist  [0] = 0.5*EPS*diag_min_;
-      bdry_point_weight[0] = 1;
-
-      row_main->push_back(mat_entry_t(n, 1));
-      matrix_has_nullspace_ = false;
-    }
-
-    // compute submat_rhs
-    if (setup_rhs)
-    {
-      boundary_conditions_t *bc = &bc_[node_on_boundary_phi_id];
-      rhs_ptr[n] = bc->pointwise ? bc->get_value_pw(n,0) :
-                                   bc->get_value_cf(xyz_C);
-    }
-  }
-  else
-  {
-    // if far away from the interface or close to it but with dirichlet
-    // then finite difference method
     double mue_000 = var_mu_ ? mue_ptr[n] : mu;
 
     //---------------------------------------------------------------------
     // compute submat_diag
     //---------------------------------------------------------------------
-    if (new_submat_diag_ && there_is_diag_)
-    {
-      // assemble submat_diag
+    if (new_submat_diag_ && there_is_diag_) {
       submat_diag_ptr[n] = diag_add;
-      if (fabs(diag_add) > EPS) matrix_has_nullspace_ = false;
+      if (fabs(diag_add) > EPS) {
+        matrix_has_nullspace_ = false;
+      }
     }
 
     //---------------------------------------------------------------------
@@ -3367,353 +3645,65 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
     //---------------------------------------------------------------------
     if (new_submat_main_)
     {
-      p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;
-      p4est_locidx_t node_p00_mm=qnnn.node_p00_mm; p4est_locidx_t node_p00_pm=qnnn.node_p00_pm;
-      p4est_locidx_t node_0m0_mm=qnnn.node_0m0_mm; p4est_locidx_t node_0m0_pm=qnnn.node_0m0_pm;
-      p4est_locidx_t node_0p0_mm=qnnn.node_0p0_mm; p4est_locidx_t node_0p0_pm=qnnn.node_0p0_pm;
-#ifdef P4_TO_P8
-      p4est_locidx_t node_m00_mp=qnnn.node_m00_mp; p4est_locidx_t node_m00_pp=qnnn.node_m00_pp;
-      p4est_locidx_t node_p00_mp=qnnn.node_p00_mp; p4est_locidx_t node_p00_pp=qnnn.node_p00_pp;
-      p4est_locidx_t node_0m0_mp=qnnn.node_0m0_mp; p4est_locidx_t node_0m0_pp=qnnn.node_0m0_pp;
-      p4est_locidx_t node_0p0_mp=qnnn.node_0p0_mp; p4est_locidx_t node_0p0_pp=qnnn.node_0p0_pp;
+      // neighboring nodes information
+      p4est_locidx_t node [P4EST_FACES]; // node numbers
+      double         d    [P4EST_FACES]; // distances
+      double         w    [P4EST_FACES]; // discretization weights
+      double         mue  [P4EST_FACES]; // diffusion coefficients
 
-      p4est_locidx_t node_00m_mm=qnnn.node_00m_mm; p4est_locidx_t node_00m_mp=qnnn.node_00m_mp;
-      p4est_locidx_t node_00m_pm=qnnn.node_00m_pm; p4est_locidx_t node_00m_pp=qnnn.node_00m_pp;
-      p4est_locidx_t node_00p_mm=qnnn.node_00p_mm; p4est_locidx_t node_00p_mp=qnnn.node_00p_mp;
-      p4est_locidx_t node_00p_pm=qnnn.node_00p_pm; p4est_locidx_t node_00p_pp=qnnn.node_00p_pp;
-#endif
-
-      double d_m00 = qnnn.d_m00; double d_p00 = qnnn.d_p00;
-      double d_0m0 = qnnn.d_0m0; double d_0p0 = qnnn.d_0p0;
-#ifdef P4_TO_P8
-      double d_00m = qnnn.d_00m; double d_00p = qnnn.d_00p;
-#endif
-
-      double d_m00_m0=qnnn.d_m00_m0; double d_m00_p0=qnnn.d_m00_p0;
-      double d_p00_m0=qnnn.d_p00_m0; double d_p00_p0=qnnn.d_p00_p0;
-      double d_0m0_m0=qnnn.d_0m0_m0; double d_0m0_p0=qnnn.d_0m0_p0;
-      double d_0p0_m0=qnnn.d_0p0_m0; double d_0p0_p0=qnnn.d_0p0_p0;
-#ifdef P4_TO_P8
-      double d_m00_0m=qnnn.d_m00_0m; double d_m00_0p=qnnn.d_m00_0p;
-      double d_p00_0m=qnnn.d_p00_0m; double d_p00_0p=qnnn.d_p00_0p;
-      double d_0m0_0m=qnnn.d_0m0_0m; double d_0m0_0p=qnnn.d_0m0_0p;
-      double d_0p0_0m=qnnn.d_0p0_0m; double d_0p0_0p=qnnn.d_0p0_0p;
-
-      double d_00m_m0=qnnn.d_00m_m0; double d_00m_p0=qnnn.d_00m_p0;
-      double d_00p_m0=qnnn.d_00p_m0; double d_00p_p0=qnnn.d_00p_p0;
-      double d_00m_0m=qnnn.d_00m_0m; double d_00m_0p=qnnn.d_00m_0p;
-      double d_00p_0m=qnnn.d_00p_0m; double d_00p_0p=qnnn.d_00p_0p;
-#endif
-
-      // interpolate diffusion coefficient if needed
-      double DIM( mue_m00=mu, mue_0m0=mu, mue_00m=mu );
-      double DIM( mue_p00=mu, mue_0p0=mu, mue_00p=mu );
-
-      if (var_mu_)
-      {
-        CODE2D( qnnn.ngbd_with_quadratic_interpolation(mue_ptr, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0) );
-        CODE3D( qnnn.ngbd_with_quadratic_interpolation(mue_ptr, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0, mue_00m, mue_00p) );
-
-        if (is_interface[dir::f_m00]) mue_m00 = qnnn.interpolate_in_dir(dir::f_m00, bdry_point_dist[dir::f_m00], mue_ptr, mue_dd_ptr);
-        if (is_interface[dir::f_p00]) mue_p00 = qnnn.interpolate_in_dir(dir::f_p00, bdry_point_dist[dir::f_p00], mue_ptr, mue_dd_ptr);
-
-        if (is_interface[dir::f_0m0]) mue_0m0 = qnnn.interpolate_in_dir(dir::f_0m0, bdry_point_dist[dir::f_0m0], mue_ptr, mue_dd_ptr);
-        if (is_interface[dir::f_0p0]) mue_0p0 = qnnn.interpolate_in_dir(dir::f_0p0, bdry_point_dist[dir::f_0p0], mue_ptr, mue_dd_ptr);
-#ifdef P4_TO_P8
-        if (is_interface[dir::f_00m]) mue_00m = qnnn.interpolate_in_dir(dir::f_00m, bdry_point_dist[dir::f_00m], mue_ptr, mue_dd_ptr);
-        if (is_interface[dir::f_00p]) mue_00p = qnnn.interpolate_in_dir(dir::f_00p, bdry_point_dist[dir::f_00p], mue_ptr, mue_dd_ptr);
-#endif
+      foreach_direction (nei) {
+        node [nei] = qnnn.neighbor(nei);
+        d    [nei] = qnnn.distance(nei);
+        w    [nei] = 0;
+        mue  [nei] = mue_000;
       }
 
-      // adjust stencil's arms
-      if (is_interface[dir::f_m00]) { d_m00 = bdry_point_dist[dir::f_m00]; d_m00_m0 = d_m00_p0 = CODE3D( d_m00_0m = d_m00_0p = ) 0; }
-      if (is_interface[dir::f_p00]) { d_p00 = bdry_point_dist[dir::f_p00]; d_p00_m0 = d_p00_p0 = CODE3D( d_p00_0m = d_p00_0p = ) 0; }
-
-      if (is_interface[dir::f_0m0]) { d_0m0 = bdry_point_dist[dir::f_0m0]; d_0m0_m0 = d_0m0_p0 = CODE3D( d_0m0_0m = d_0m0_0p = ) 0; }
-      if (is_interface[dir::f_0p0]) { d_0p0 = bdry_point_dist[dir::f_0p0]; d_0p0_m0 = d_0p0_p0 = CODE3D( d_0p0_0m = d_0p0_0p = ) 0; }
-#ifdef P4_TO_P8
-      if (is_interface[dir::f_00m]) { d_00m = bdry_point_dist[dir::f_00m]; d_00m_m0 = d_00m_p0 = CODE3D( d_00m_0m = d_00m_0p = ) 0; }
-      if (is_interface[dir::f_00p]) { d_00p = bdry_point_dist[dir::f_00p]; d_00p_m0 = d_00p_p0 = CODE3D( d_00p_0m = d_00p_0p = ) 0; }
-#endif
+      if (var_mu_) { // interpolate diffusion coefficient if needed
+        qnnn.ngbd_with_quadratic_interpolation(mue_ptr, mue_000, mue);
+      }
 
       // discretization of Laplace operator
-      double w_m00_mm=0, w_m00_pm=0;
-      double w_p00_mm=0, w_p00_pm=0;
-      double w_0m0_mm=0, w_0m0_pm=0;
-      double w_0p0_mm=0, w_0p0_pm=0;
-#ifdef P4_TO_P8
-      double w_m00_mp=0, w_m00_pp=0;
-      double w_p00_mp=0, w_p00_pp=0;
-      double w_0m0_mp=0, w_0m0_pp=0;
-      double w_0p0_mp=0, w_0p0_pp=0;
+      // note: if node is at wall, what's below will apply Neumann BC
+      double w_000 = 0;
+      foreach_dimension (dim) {
+        int dir_m = dim*2;
+        int dir_p = dim*2+1;
 
-      double w_00m_mm=0, w_00m_pm=0;
-      double w_00p_mm=0, w_00p_pm=0;
-      double w_00m_mp=0, w_00m_pp=0;
-      double w_00p_mp=0, w_00p_pp=0;
+        if      (is_wall[dir_m]) { w[dir_p] = -2.0*mue_000/(d[dir_p]*d[dir_p]); }
+        else if (is_wall[dir_p]) { w[dir_m] = -2.0*mue_000/(d[dir_m]*d[dir_m]); }
+        else {
+          w[dir_m] = -(mue_000+mue[dir_m])/d[dir_m]/(d[dir_m]+d[dir_p]);
+          w[dir_p] = -(mue_000+mue[dir_p])/d[dir_p]/(d[dir_m]+d[dir_p]);
+        }
 
-      //------------------------------------
-      // Dfxx =   fxx + a*fyy + b*fzz
-      // Dfyy = c*fxx +   fyy + d*fzz
-      // Dfzz = e*fxx + f*fyy +   fzz
-      //------------------------------------
-      double a = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ;
-      double b = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ;
-
-      double c = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ;
-      double d = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ;
-
-      double e = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ;
-      double f = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ;
-
-      //------------------------------------------------------------
-      // compensating the error of linear interpolation at T-junction using
-      // the derivative in the transversal direction
-      //
-      // Laplace = wi*Dfxx +
-      //           wj*Dfyy +
-      //           wk*Dfzz
-      //------------------------------------------------------------
-      double det = 1.-a*c-b*e-d*f+a*d*e+b*c*f;
-      double wi = (1.-c-e+c*f+e*d-d*f)/det;
-      double wj = (1.-a-f+a*e+f*b-b*e)/det;
-      double wk = (1.-b-d+b*c+d*a-a*c)/det;
-
-      //---------------------------------------------------------------------
-      // Shortley-Weller method, dimension by dimension
-      //---------------------------------------------------------------------
-      double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
-
-      // if node is at wall, what's below will apply Neumann BC
-      if      (is_wall[dir::f_m00]) w_p00 += -1.0/(d_p00*d_p00);
-      else if (is_wall[dir::f_p00]) w_m00 += -1.0/(d_m00*d_m00);
-      else                          w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
-
-      if      (is_wall[dir::f_p00]) w_m00 += -1.0/(d_m00*d_m00);
-      else if (is_wall[dir::f_m00]) w_p00 += -1.0/(d_p00*d_p00);
-      else                          w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
-
-      if      (is_wall[dir::f_0m0]) w_0p0 += -1.0/(d_0p0*d_0p0);
-      else if (is_wall[dir::f_0p0]) w_0m0 += -1.0/(d_0m0*d_0m0);
-      else                          w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
-
-      if      (is_wall[dir::f_0p0]) w_0m0 += -1.0/(d_0m0*d_0m0);
-      else if (is_wall[dir::f_0m0]) w_0p0 += -1.0/(d_0p0*d_0p0);
-      else                          w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
-
-      if      (is_wall[dir::f_00m]) w_00p += -1.0/(d_00p*d_00p);
-      else if (is_wall[dir::f_00p]) w_00m += -1.0/(d_00m*d_00m);
-      else                          w_00m += -2.0*wk/d_00m/(d_00m+d_00p);
-
-      if      (is_wall[dir::f_00p]) w_00m += -1.0/(d_00m*d_00m);
-      else if (is_wall[dir::f_00m]) w_00p += -1.0/(d_00p*d_00p);
-      else                          w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
-
-      if(!is_interface[dir::f_m00] && !is_wall[dir::f_m00]) {
-        w_m00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_mm]) : mu)*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_mp]) : mu)*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_pm]) : mu)*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_pp]) : mu)*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
-      } else {
-        w_m00 *= (var_mu_ ? 0.5*(mue_000 + mue_m00) : mu);
+        w_000 -= w[dir_m] + w[dir_p];
       }
-
-      if(!is_interface[dir::f_p00] && !is_wall[dir::f_p00]) {
-        w_p00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_mm]) : mu)*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_mp]) : mu)*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_pm]) : mu)*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_pp]) : mu)*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
-      } else {
-        w_p00 *= (var_mu_ ? 0.5*(mue_000 + mue_p00) : mu);
-      }
-
-      if(!is_interface[dir::f_0m0] && !is_wall[dir::f_0m0]) {
-        w_0m0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_mm]) : mu)*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_mp]) : mu)*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_pm]) : mu)*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_pp]) : mu)*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
-      } else {
-        w_0m0 *= (var_mu_ ? 0.5*(mue_000 + mue_0m0) : mu);
-      }
-
-      if(!is_interface[dir::f_0p0] && !is_wall[dir::f_0p0]) {
-        w_0p0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_mm]) : mu)*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_mp]) : mu)*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_pm]) : mu)*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_pp]) : mu)*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
-      } else {
-        w_0p0 *= (var_mu_ ? 0.5*(mue_000 + mue_0p0) : mu);
-      }
-
-      if(!is_interface[dir::f_00m] && !is_wall[dir::f_00m]) {
-        w_00m_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_mm]) : mu)*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_mp]) : mu)*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_pm]) : mu)*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_pp]) : mu)*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
-      } else {
-        w_00m *= (var_mu_ ? 0.5*(mue_000 + mue_00m) : mu);
-      }
-
-      if(!is_interface[dir::f_00p] && !is_wall[dir::f_00p]) {
-        w_00p_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_mm]) : mu)*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_mp]) : mu)*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_pm]) : mu)*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_pp]) : mu)*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
-      } else {
-        w_00p *= (var_mu_ ? 0.5*(mue_000 + mue_00p) : mu);
-      }
-#else
-      //---------------------------------------------------------------------
-      // compensating the error of linear interpolation at T-junction using
-      // the derivative in the transversal direction
-      //---------------------------------------------------------------------
-      double wi = 1.0 - d_0m0_m0*d_0m0_p0/d_0m0/(d_0m0+d_0p0) - d_0p0_m0*d_0p0_p0/d_0p0/(d_0m0+d_0p0);
-      double wj = 1.0 - d_m00_p0*d_m00_m0/d_m00/(d_m00+d_p00) - d_p00_p0*d_p00_m0/d_p00/(d_m00+d_p00);
-
-      //---------------------------------------------------------------------
-      // Shortley-Weller method, dimension by dimension
-      //---------------------------------------------------------------------
-      double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0;
-
-      // if node is at wall, what's below will apply Neumann BC
-      if      (is_wall[dir::f_m00]) w_p00 += -1.0/(d_p00*d_p00);
-      else if (is_wall[dir::f_p00]) w_m00 += -1.0/(d_m00*d_m00);
-      else                          w_m00 += -2.0*wi/d_m00/(d_m00+d_p00);
-
-      if      (is_wall[dir::f_p00]) w_m00 += -1.0/(d_m00*d_m00);
-      else if (is_wall[dir::f_m00]) w_p00 += -1.0/(d_p00*d_p00);
-      else                          w_p00 += -2.0*wi/d_p00/(d_m00+d_p00);
-
-      if      (is_wall[dir::f_0m0]) w_0p0 += -1.0/(d_0p0*d_0p0);
-      else if (is_wall[dir::f_0p0]) w_0m0 += -1.0/(d_0m0*d_0m0);
-      else                          w_0m0 += -2.0*wj/d_0m0/(d_0m0+d_0p0);
-
-      if      (is_wall[dir::f_0p0]) w_0m0 += -1.0/(d_0m0*d_0m0);
-      else if (is_wall[dir::f_0m0]) w_0p0 += -1.0/(d_0p0*d_0p0);
-      else                          w_0p0 += -2.0*wj/d_0p0/(d_0m0+d_0p0);
-
-      //---------------------------------------------------------------------
-      // addition to diagonal elements
-      //---------------------------------------------------------------------
-      if (!is_interface[dir::f_m00] && !is_wall[dir::f_m00])
-      {
-        w_m00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_mm]) : mu)*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
-        w_m00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_pm]) : mu)*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
-        w_m00 = w_m00_mm + w_m00_pm;
-      } else {
-        w_m00 *= var_mu_ ? 0.5*(mue_000 + mue_m00) : mu;
-      }
-
-      if (!is_interface[dir::f_p00] && !is_wall[dir::f_p00])
-      {
-        w_p00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_mm]) : mu)*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
-        w_p00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_pm]) : mu)*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
-        w_p00    = w_p00_mm + w_p00_pm;
-      } else {
-        w_p00 *= var_mu_ ? 0.5*(mue_000 + mue_p00) : mu;
-      }
-
-      if (!is_interface[dir::f_0m0] && !is_wall[dir::f_0m0])
-      {
-        w_0m0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_mm]) : mu)*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
-        w_0m0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_pm]) : mu)*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
-        w_0m0 = w_0m0_mm + w_0m0_pm;
-      } else {
-        w_0m0 *= var_mu_ ? 0.5*(mue_000 + mue_0m0) : mu;
-      }
-
-      if (!is_interface[dir::f_0p0] && !is_wall[dir::f_0p0])
-      {
-        w_0p0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_mm]) : mu)*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
-        w_0p0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_pm]) : mu)*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
-        w_0p0 = w_0p0_mm + w_0p0_pm;
-      } else {
-        w_0p0 *= var_mu_ ? 0.5*(mue_000 + mue_0p0) : mu;
-      }
-#endif
-
-      double w_000 = - ( w_m00 + w_p00 + w_0m0 + w_0p0 CODE3D( + w_00m + w_00p ) );
 
       //---------------------------------------------------------------------
       // add coefficients in the matrix
       //---------------------------------------------------------------------
-      mat_entry_t ent;
-      ent.n = petsc_gloidx_[qnnn.node_000]; ent.val = w_000; row_main->push_back(ent);
+      mat_entry_t ent; ent.n = petsc_gloidx_[qnnn.node_000]; ent.val = w_000; row_main->push_back(ent);
 
-      if(!is_interface[dir::f_m00] && !is_wall[dir::f_m00]) {
-        if (ABS(w_m00_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_m00_mm]; ent.val = w_m00_mm; row_main->push_back(ent); (qnnn.node_m00_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_m00_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_m00_pm]; ent.val = w_m00_pm; row_main->push_back(ent); (qnnn.node_m00_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#ifdef P4_TO_P8
-        if (ABS(w_m00_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_m00_mp]; ent.val = w_m00_mp; row_main->push_back(ent); (qnnn.node_m00_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_m00_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_m00_pp]; ent.val = w_m00_pp; row_main->push_back(ent); (qnnn.node_m00_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#endif
+      foreach_direction (nei) {
+        if (!is_wall[nei]) {
+          ent.n   = petsc_gloidx_[node[nei]];
+          ent.val = w[nei];
+
+          if (bdry_.phi_eff_ptr[node[nei]] < 0) {
+            row_main->push_back(ent);
+            node[nei] < nodes_->num_owned_indeps ? d_nnz_main++ : o_nnz_main++;
+          } else {
+            row_gf->push_back(ent);
+            node[nei] < nodes_->num_owned_indeps ? d_nnz_gf++ : o_nnz_gf++;
+          }
+
+        }
       }
 
-      if(!is_interface[dir::f_p00] && !is_wall[dir::f_p00]) {
-        if (ABS(w_p00_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_p00_mm]; ent.val = w_p00_mm; row_main->push_back(ent); (qnnn.node_p00_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_p00_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_p00_pm]; ent.val = w_p00_pm; row_main->push_back(ent); (qnnn.node_p00_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#ifdef P4_TO_P8
-        if (ABS(w_p00_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_p00_mp]; ent.val = w_p00_mp; row_main->push_back(ent); (qnnn.node_p00_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_p00_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_p00_pp]; ent.val = w_p00_pp; row_main->push_back(ent); (qnnn.node_p00_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#endif
-      }
-
-      if(!is_interface[dir::f_0m0] && !is_wall[dir::f_0m0]) {
-        if (ABS(w_0m0_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0m0_mm]; ent.val = w_0m0_mm; row_main->push_back(ent); (qnnn.node_0m0_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_0m0_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0m0_pm]; ent.val = w_0m0_pm; row_main->push_back(ent); (qnnn.node_0m0_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#ifdef P4_TO_P8
-        if (ABS(w_0m0_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0m0_mp]; ent.val = w_0m0_mp; row_main->push_back(ent); (qnnn.node_0m0_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_0m0_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0m0_pp]; ent.val = w_0m0_pp; row_main->push_back(ent); (qnnn.node_0m0_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#endif
-      }
-
-      if(!is_interface[dir::f_0p0] && !is_wall[dir::f_0p0]) {
-        if (ABS(w_0p0_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0p0_mm]; ent.val = w_0p0_mm; row_main->push_back(ent); (qnnn.node_0p0_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_0p0_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0p0_pm]; ent.val = w_0p0_pm; row_main->push_back(ent); (qnnn.node_0p0_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#ifdef P4_TO_P8
-        if (ABS(w_0p0_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0p0_mp]; ent.val = w_0p0_mp; row_main->push_back(ent); (qnnn.node_0p0_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_0p0_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_0p0_pp]; ent.val = w_0p0_pp; row_main->push_back(ent); (qnnn.node_0p0_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-#endif
-      }
-#ifdef P4_TO_P8
-      if(!is_interface[dir::f_00m] && !is_wall[dir::f_00m]) {
-        if (ABS(w_00m_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00m_mm]; ent.val = w_00m_mm; row_main->push_back(ent); (qnnn.node_00m_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00m_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00m_pm]; ent.val = w_00m_pm; row_main->push_back(ent); (qnnn.node_00m_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00m_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00m_mp]; ent.val = w_00m_mp; row_main->push_back(ent); (qnnn.node_00m_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00m_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00m_pp]; ent.val = w_00m_pp; row_main->push_back(ent); (qnnn.node_00m_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-      }
-
-      if(!is_interface[dir::f_00p] && !is_wall[dir::f_00p]) {
-        if (ABS(w_00p_mm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00p_mm]; ent.val = w_00p_mm; row_main->push_back(ent); (qnnn.node_00p_mm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00p_pm) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00p_pm]; ent.val = w_00p_pm; row_main->push_back(ent); (qnnn.node_00p_pm < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00p_mp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00p_mp]; ent.val = w_00p_mp; row_main->push_back(ent); (qnnn.node_00p_mp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-        if (ABS(w_00p_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00p_pp]; ent.val = w_00p_pp; row_main->push_back(ent); (qnnn.node_00p_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
-      }
-#endif
-
-      foreach_direction(i) if (is_interface[i]) matrix_has_nullspace_ = false;
-
-      if (petsc_gloidx_[n] < fixed_value_idx_g_)
-      {
+      if (petsc_gloidx_[n] < fixed_value_idx_g_) {
         fixed_value_idx_l_ = n;
         fixed_value_idx_g_ = petsc_gloidx_[n];
       }
-
-      bdry_point_weight[dir::f_m00] = w_m00;
-      bdry_point_weight[dir::f_p00] = w_p00;
-
-      bdry_point_weight[dir::f_0m0] = w_0m0;
-      bdry_point_weight[dir::f_0p0] = w_0p0;
-#ifdef P4_TO_P8
-      bdry_point_weight[dir::f_00m] = w_00m;
-      bdry_point_weight[dir::f_00p] = w_00p;
-#endif
     }
 
     //---------------------------------------------------------------------
@@ -3722,43 +3712,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
     if (setup_rhs)
     {
       rhs_ptr[n] = rhs_loc_ptr[n];
-
-      if (there_is_dirichlet_)
-      {
-        // sample boundary conditions
-        std::vector<double> bc_values(P4EST_FACES, 0);
-
-        // first get pointwise given values
-        for (int i = 0; i < bc_.size(); ++i)
-        {
-          if (bc_[i].type == DIRICHLET && bc_[i].pointwise)
-          {
-            for (int j = 0; j < bc_[i].num_value_pts(n); ++j)
-            {
-              // TODO: this is kind of ugly, fix this
-              int idx = bc_[i].idx_value_pt(n, j);
-              bc_values[ bc_[i].dirichlet_pts[idx].dir ] = (*bc_[i].value_pw)[idx];
-            }
-          }
-        }
-
-        // second get function-given values
-        if(is_interface[dir::f_m00] && (!bc_[bdry_point_id[dir::f_m00]].pointwise)) bc_values[dir::f_m00] = (*bc_[bdry_point_id[dir::f_m00]].value_cf)( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
-        if(is_interface[dir::f_p00] && (!bc_[bdry_point_id[dir::f_p00]].pointwise)) bc_values[dir::f_p00] = (*bc_[bdry_point_id[dir::f_p00]].value_cf)( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
-
-        if(is_interface[dir::f_0m0] && (!bc_[bdry_point_id[dir::f_0m0]].pointwise)) bc_values[dir::f_0m0] = (*bc_[bdry_point_id[dir::f_0m0]].value_cf)( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
-        if(is_interface[dir::f_0p0] && (!bc_[bdry_point_id[dir::f_0p0]].pointwise)) bc_values[dir::f_0p0] = (*bc_[bdry_point_id[dir::f_0p0]].value_cf)( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
-#ifdef P4_TO_P8
-        if(is_interface[dir::f_00m] && (!bc_[bdry_point_id[dir::f_00m]].pointwise)) bc_values[dir::f_00m] = (*bc_[bdry_point_id[dir::f_00m]].value_cf)( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
-        if(is_interface[dir::f_00p] && (!bc_[bdry_point_id[dir::f_00p]].pointwise)) bc_values[dir::f_00p] = (*bc_[bdry_point_id[dir::f_00p]].value_cf)( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
-#endif
-
-        // add to rhs boundary conditions
-        foreach_direction(i)
-        {
-          if (is_interface[i]) rhs_ptr[n] -= bdry_point_weight[i] * bc_values[i];
-        }
-      }
 
       // add to rhs wall conditions
       XCODE( double eps_x = is_wall[dir::f_m00] ? 2.*EPS*diag_min_ : (is_wall[dir::f_p00] ? -2.*EPS*diag_min_ : 0) );
@@ -3775,12 +3728,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
       if (is_wall[dir::f_00p]) rhs_ptr[n] += 2.*mue_000*(*wc_value_)( DIM(x_C+eps_x, y_C+eps_y, z_C) ) / qnnn.d_00m;
 #endif
     }
-  }
-
-  // save information about interface points
-  if (new_submat_main_ & there_is_dirichlet_)
-  {
-    save_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
   }
 }
 

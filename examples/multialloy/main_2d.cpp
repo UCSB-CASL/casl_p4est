@@ -98,7 +98,7 @@ param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-param_t<bool> use_points_on_interface   (pl, 1, "use_points_on_interface", "");
+param_t<bool> use_points_on_interface   (pl, 0, "use_points_on_interface", "");
 param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
@@ -124,7 +124,7 @@ param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 
-param_t<int>    save_every_dn (pl, 50, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -335,7 +335,7 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 0.5e-5;
+      eps_c.val = 0.2e-5;
       eps_v.val = 0*5e-2;
       eps_a.val = 0*0.05;
       symmetry.val = 4;
@@ -2275,7 +2275,7 @@ int main (int argc, char* argv[])
 
     bc_error_max = 0;
     // solve nonlinear system for temperature, concentration and velocity at t_n
-    sub_iterations += mas.one_step(bc_error_max, 0);
+    sub_iterations += mas.one_step(bc_error_max, 2);
     tn             += mas.get_dt();
 
     // compute total growth
