@@ -3647,7 +3647,7 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
 }
 
-void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved, splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec T_l_n,Vec T_l_nm1, Vec T_s_n,Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]){
+void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved, splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec T_l_n,Vec T_l_nm1, Vec T_s_n,Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec vorticity){
   if(!file_exists(path_to_directory)){
     create_directory(path_to_directory,p4est->mpirank,p4est->mpicomm);
   }
@@ -3737,13 +3737,14 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
     if(solve_coupled){
         if(advection_sl_order==2){
           my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                        "p4est",6,
+                                        "p4est",7,
                                         "phi",1,&phi,
                                         "T_l_n",1, &T_l_n,
                                         "T_l_nm1",1, &T_l_nm1,
                                         "T_s_n",1,&T_s_n,
                                         "v_NS_n",P4EST_DIM,v_NS,
-                                        "v_NS_nm1",P4EST_DIM,v_NS_nm1);
+                                        "v_NS_nm1",P4EST_DIM,v_NS_nm1,
+                                        "vorticity",1,&vorticity);
 //            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
 //                                          "p4est",8,
 //                                          "phi",1,&phi.vec,
@@ -3783,10 +3784,7 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
 }
 
-void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,p4est_ghost_t* &ghost, p4est_connectivity* &conn, Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n, Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM]){
-  PetscErrorCode ierr;
-
-
+void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* &p4est, p4est_nodes_t* &nodes,p4est_ghost_t* &ghost, p4est_connectivity* &conn, Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n, Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM],Vec *vorticity){
 
   char filename[PATH_MAX];
   if(!is_folder(path_to_folder)) throw std::invalid_argument("Load state: path to directory is invalid \n");
@@ -3800,31 +3798,34 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitti
   if(solve_coupled){
       if(advection_sl_order==2){
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",6,
+                                        "p4est",7,
                                         "phi",NODE_DATA,1,phi,
                                         "T_l_n",NODE_DATA,1,T_l_n,
                                         "T_l_nm1",NODE_DATA,1,T_l_nm1,
                                         "T_s_n",NODE_DATA,1,T_s_n,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
+                                        "vorticity",NODE_DATA,1,vorticity);
       }
       else{
           PetscPrintf(mpi.comm(),"Uses first order load \n");
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",5,
+                                        "p4est",6,
                                         "phi",NODE_DATA,1,phi,
                                         "T_l_n",NODE_DATA,1,T_l_n,
                                         "T_s_n",NODE_DATA,1,T_s_n,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
+                                        "vorticity",NODE_DATA,1,vorticity);
       }
   }
   else if (solve_navier_stokes && !solve_stefan){
           my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",3,
+                                        "p4est",4,
                                         "phi",NODE_DATA,1,phi,
                                         "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1);
+                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
+                                        "vorticity",NODE_DATA,P4EST_DIM,vorticity);
   }
 
   P4EST_ASSERT(find_max_level(p4est) == sp->max_lvl);
@@ -4023,7 +4024,6 @@ int main(int argc, char** argv) {
     conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
     if(!loading_from_previous_state){
-      PetscPrintf(mpi.comm(),"A \n");
       p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
 
 //      splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
@@ -4041,8 +4041,6 @@ int main(int argc, char** argv) {
       ngbd->init_neighbors();
     }
     else{
-      PetscPrintf(mpi.comm(),"A \n");
-
       p4est=NULL;
       conn=NULL;
       p4est=NULL; ghost=NULL;nodes=NULL;
@@ -4058,7 +4056,6 @@ int main(int argc, char** argv) {
       }
       vorticity.vec=NULL;
       press_nodes.vec=NULL;
-      PetscPrintf(mpi.comm(),"B \n");
 
 
 //      splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
@@ -4070,10 +4067,7 @@ int main(int argc, char** argv) {
         }
       PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
 
-
-      PetscPrintf(mpi.comm(),"C \n");
-
-      load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,&phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,v_n.vec,v_nm1.vec);
+      load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,&phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,v_n.vec,v_nm1.vec,&vorticity.vec);
       PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
 
       int no;
@@ -4081,15 +4075,6 @@ int main(int argc, char** argv) {
       MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
 
       PetscPrintf(mpi.comm(),"After load, num = %d \n",no);
-
-      int size_phi,size_Tl,size_Tlnm1;
-      VecGetSize(phi.vec,&size_phi);
-      VecGetSize(T_l_n.vec,&size_Tl);
-      VecGetSize(T_l_nm1.vec,&size_Tlnm1);
-
-      PetscPrintf(mpi.comm(),"Size phi : %d \n",size_phi);
-      PetscPrintf(mpi.comm(),"Size Tl : %d \n",size_Tl);
-      PetscPrintf(mpi.comm(),"Size Tlnm1 : %d \n",size_Tlnm1);
 
       // Update the neigborhood and hierarchy:
       if(hierarchy!=NULL) {
@@ -4360,16 +4345,8 @@ int main(int argc, char** argv) {
             MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
 
             PetscPrintf(mpi.comm(),"Before save, num = %d \n",no);
-            int size_phi,size_Tl,size_Tlnm1;
-            VecGetSize(phi.vec,&size_phi);
-            VecGetSize(T_l_n.vec,&size_Tl);
-            VecGetSize(T_l_nm1.vec,&size_Tlnm1);
 
-            PetscPrintf(mpi.comm(),"Size phi : %d \n",size_phi);
-            PetscPrintf(mpi.comm(),"Size Tl : %d \n",size_Tl);
-            PetscPrintf(mpi.comm(),"Size Tlnm1 : %d \n",size_Tlnm1);
-
-            save_state(mpi,output,20,&sp,p4est,nodes,phi.vec,T_l_n.vec,T_l_nm1.vec,T_s_n.vec,v_n.vec,v_nm1.vec);
+            save_state(mpi,output,20,&sp,p4est,nodes,phi.vec,T_l_n.vec,T_l_nm1.vec,T_s_n.vec,v_n.vec,v_nm1.vec,vorticity.vec);
 
             PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
           }
