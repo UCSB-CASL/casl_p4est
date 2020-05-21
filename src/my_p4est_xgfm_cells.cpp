@@ -140,6 +140,57 @@ void my_p4est_xgfm_cells_t::set_jumps(Vec node_sampled_jump_u, Vec node_sampled_
   rhs_is_set = false;
 }
 
+void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_IF_SUBREFINED(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
+                                                                     double& negative_volume, double& positive_volume) const
+{
+  if(quad_idx >= p4est->local_num_quadrants)
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
+  const p4est_tree* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+
+  const double logical_size_quad = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  const double cell_dxyz[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_size_quad, tree_dimensions[1]*logical_size_quad, tree_dimensions[2]*logical_size_quad)};
+  const double quad_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
+
+#ifdef SUBREFINED
+  p4est_locidx_t fine_node_idx_for_quad;
+  double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
+  if(quad_center_is_fine_node(*quad, tree_idx, fine_node_idx_for_quad)) // the quadrant is subrefined, find all subrefining quads and sum up their volumes
+  {
+    std::vector<p4est_locidx_t> indices_of_subrefining_quads;
+    fine_node_ngbd->get_hierarchy()->get_all_quadrants_in(quad, tree_idx, indices_of_subrefining_quads);
+    P4EST_ASSERT(indices_of_subrefining_quads.size() > 0);
+    negative_volume = 0.0;
+    const p4est_tree* fine_tree = p4est_tree_array_index(fine_p4est->trees, tree_idx);
+    for (size_t k = 0; k < indices_of_subrefining_quads.size(); ++k)
+    {
+      const p4est_locidx_t& fine_quad_idx = indices_of_subrefining_quads[k];
+      const p4est_quadrant_t* fine_quad = p4est_const_quadrant_array_index(&fine_tree->quadrants, fine_quad_idx - fine_tree->quadrants_offset);
+      negative_volume += area_in_negative_domain_in_one_quadrant(fine_p4est, fine_nodes, fine_quad, fine_quad_idx, phi);
+    }
+  }
+  else
+  {
+    const double phi_q = interp_phi(xyz_quad);
+#ifdef P4EST_DEBUG
+    for (char kx = -1; kx < 2; kx += 2)
+      for (char ky = -1; ky < 2; ky += 2)
+        for (char kz = -1; kz < 2; kz += 2)
+        {
+          double xyz_vertex[P4EST_DIM] = {DIM(xyz_quad[0] + kx*0.5*cell_dxyz[0], xyz_quad[1] + ky*0.5*cell_dxyz[1], xyz_quad[2] + kz*0.5*cell_dxyz[2])};
+          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, interp_phi(xyz_vertex)));
+        }
+#endif
+    negative_volume = (phi_q <= 0.0 ? quad_volume : 0.0);
+  }
+#else
+  throw std::runtime_error("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): not implemented, yet");
+#endif
+  P4EST_ASSERT(0.0 <= negative_volume && negative_volume <= quad_volume);
+  positive_volume = MAX(0.0, MIN(quad_volume, quad_volume - negative_volume));
+  return;
+}
+
 void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_all_nodes()
 {
   if(!normals_have_been_set() || !diffusion_coefficients_have_been_set() || !jumps_have_been_set())

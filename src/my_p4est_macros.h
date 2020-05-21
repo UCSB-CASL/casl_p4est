@@ -82,6 +82,19 @@ class Point2;
 
 #endif
 
+#ifdef P4EST_DEBUG
+#define ONLY_WITH_P4EST_DEBUG(a) a
+#else
+#define ONLY_WITH_P4EST_DEBUG(a)
+#endif
+
+#ifdef SUBREFINED
+#define ONLY_IF_SUBREFINED(a) a
+#else
+#define ONLY_IF_SUBREFINED(a)
+#endif
+
+
 #define foreach_dimension(dim) \
   for (short dim = 0; dim<P4EST_DIM; ++dim)
 

@@ -58,7 +58,7 @@
 struct HierarchyCell {
   /*!
    * \brief child index of the 0th child of the cell in the std::vector<HierarchyCell>.
-   * The kth child cell (0 <= k < P4EST_CHILDREN) is located at index child+k in the
+   * The kth child cell (0 <= k < P4EST_CHILDREN) is located at index child + k in the
    * same std::vector<HierarchyCell> of the my_p4est_hirerachy_t object.
    * k has the following values for the children cells in 2D
    *                 --- ---
@@ -78,8 +78,10 @@ struct HierarchyCell {
    * To summarize, a child cell is uniquely identified by P4EST_DIM boolean values
    * {is_toward_positive_x, is_toward_positive_y (, is_toward_positive_z)}
    * and the corresponding k value is then given by
-   * k = 4*(is_toward_positive_z?1:0)+2*(is_toward_positive_y?1:0)+(is_toward_positive_x?1:0), in 3D,
-   * k =                              2*(is_toward_positive_y?1:0)+(is_toward_positive_x?1:0), in 2D.
+   * k = 4*(is_toward_positive_z ? 1 : 0) + 2*(is_toward_positive_y ? 1 : 0) + (is_toward_positive_x ? 1 : 0), in 3D,
+   * k =                                    2*(is_toward_positive_y ? 1 : 0) + (is_toward_positive_x ? 1 : 0), in 2D.
+   *
+   * (see function get_index_of_child_containing_quad, here below)
    *
    * If the current HierarchyCell is a leaf, child is set to CELL_LEAF
    */
@@ -92,10 +94,10 @@ struct HierarchyCell {
    * - if 0 <= quad < num_quadrant, the corresponding p4est_quadrant_t is owned by this process
    *   and it can be accessed with the 'quadrant' pointer obtained by
    *      p4est_tree_t *tree          = p4est_tree_array_index(p4est->trees, tree_index)
-   *      p4est_quadrant_t *quadrant  = p4est_quadrant_array_index(tree->quadrants, quad-tree->quadrants_offset)
+   *      p4est_quadrant_t *quadrant  = p4est_quadrant_array_index(tree->quadrants, quad - tree->quadrants_offset)
    * - if num_quadrants <= quad, the corresponding quadrant is in the ghost layer and it can be accessed locally
    *   with the 'quadrant' pointer obtained by
-   *      p4est_quadrant_t *quadrant  = p4est_quadrant_array_index(&ghost->ghosts, quad-p4est->local_num_quadrants)
+   *      p4est_quadrant_t *quadrant  = p4est_quadrant_array_index(&ghost->ghosts, quad - p4est->local_num_quadrants)
    *
    * If the HierarchyCell is not a leaf or if it is nothing but a space-filling HierarchyCell (i.e. representing
    * the rest of the computational domain that is not known by the local domain partition including ghost), quad is
@@ -125,6 +127,41 @@ struct HierarchyCell {
    * local domain partition including ghost), owner_rank is set to REMOTE_OWNER.
    */
   int owner_rank;
+
+
+  /*!
+   * \brief get_index_of_child_containing finds the index of the appropriate child of the current HierarchyCell
+   * that contains the given object. The given object must contain member variables x, y (, z) (i.e., a
+   * p4est_quadrant_t object or a PointDim object, for instance) and those x, y, z variables must be set to
+   * __LOGICAL__ coordinates, i.e., range from 0 to P4EST_ROOT_LEN (within the current tree of interest).
+   * See explanation for member variable child here above for more details about the internal procedure.
+   * \param [in] object a reference to a constant object (with x, y, and z member variables) whose owner
+   *                    HierarchyCell child is sought
+   * \return the index in the std::vector<HierarchyCell> of the appropriate child containing the given object
+   */
+  template<typename T> inline p4est_locidx_t get_index_of_child_containing(const T& object) const
+  {
+    P4EST_ASSERT(child != CELL_LEAF);
+    const p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(level + 1);
+    const u_char i = (object.x >= imin + half_h);
+    const u_char j = (object.y >= jmin + half_h);
+#ifdef P4_TO_P8
+    const u_char k = (object.z >= kmin + half_h);
+#endif
+    return child + SUMD(i, 2*j, 4*k);
+  }
+
+  void add_all_inner_leaves_to(std::vector<p4est_locidx_t>& list_of_local_quad_indices, const std::vector<HierarchyCell>& hierarchy_tree) const
+  {
+    if(child == CELL_LEAF)
+    {
+      list_of_local_quad_indices.push_back(quad);
+      return;
+    }
+    for (u_char k = 0; k < P4EST_CHILDREN; ++k)
+      hierarchy_tree[child + k].add_all_inner_leaves_to(list_of_local_quad_indices, hierarchy_tree);
+    return;
+  }
 };
 
 struct local_and_tree_indices
@@ -287,6 +324,7 @@ class my_p4est_hierarchy_t {
    * \param [in] ind      index of the HierarchyCell to be split in trees[tree_idx]
    */
   void split(int tree_idx, int ind );
+
   /*!
    * \brief update_tree further refines the local hierarchy to match the existence of a given local quadrant
    * \param [in] tree_idx tree index in which the given quadrant exists
@@ -294,7 +332,7 @@ class my_p4est_hierarchy_t {
    * \return the index of the HierachyCell in trees[tree_idx] that matches the given quadrant, i.e.
    *          trees[tree_idx][returned value] is a HierarchyCell representation of quad
    */
-  int update_tree( int tree_idx, const p4est_quadrant_t *quad );
+  p4est_locidx_t update_tree(int tree_idx, const p4est_quadrant_t *quad);
 
   /*!
    * \brief construct_tree loops through every quadrant locally known (locally owned or ghost) and adds it to
@@ -322,6 +360,17 @@ class my_p4est_hierarchy_t {
   void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const;
   const bool periodic[P4EST_DIM];
 
+
+  /*!
+   * \brief get_index_of_hierarchy_cell_matching_quad finds the index idx such that trees[tree_idx][idx] is the HierarchyCell
+   * matching a given quadrant (which may be a leaf or not)
+   * \param [in] quad       pointer to the quadrant whose hierarchy index idx is sought
+   * \param [in] tree_idx   index of the tree in which the quadrant lives
+   * \param [in] (optional, in debug only) must_be_leaf flag activating a check for the found HierarchyCell to be a leaf cell if set to true (default)
+   * \return idx as defined here above
+   */
+  p4est_locidx_t get_index_of_hierarchy_cell_matching_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx ONLY_WITH_P4EST_DEBUG(COMMA const bool& must_be_leaf = true)) const;
+
 public:
   /*!
    * \brief my_p4est_hierarchy_t constructor for my_p4est_hierarchy objects
@@ -333,7 +382,7 @@ public:
   my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
     : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees), periodic{DIM(is_periodic(p4est_, dir::x), is_periodic(p4est_, dir::y), is_periodic(p4est_, dir::z))}
   {
-    for( size_t tr=0; tr<trees.size(); tr++)
+    for (size_t tr = 0; tr < trees.size(); tr++)
     {
       HierarchyCell root =
       {
@@ -412,13 +461,7 @@ public:
   int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
                                               const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false) const;
 
-  /*!
-   * \brief quad_idx_of_quad finds the index in the hierarchy tree of a quadrant
-   * \param [in] quad     pointer to the quadrant whose local index is sought
-   * \param [in] tree_idx index of the tree in which the quadrant lives
-   * \return the index in the hierarchy tree of the HierarchyCell corresponding to the given quadrant
-   */
-  p4est_locidx_t quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const;
+  void get_all_quadrants_in(const p4est_quadrant_t* const &quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const;
 
   /*!
    * \brief update update the my_p4est_hiearchy to match the new p4est and ghost

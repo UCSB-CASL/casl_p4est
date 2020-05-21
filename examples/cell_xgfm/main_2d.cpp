@@ -149,7 +149,7 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
 
 
 void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_solver, my_p4est_xgfm_cells_t& xGFM_solver,
-              my_p4est_brick_t *brick, Vec GFM_error, Vec xGFM_error, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_comp)
+              my_p4est_brick_t *brick, Vec GFM_error, Vec xGFM_error, Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_on_computational_grid_nodes)
 {
   PetscErrorCode ierr;
 
@@ -170,12 +170,12 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
 #ifndef SUBREFINED
   const double *xGFM_node_extension_p;
 #endif
-  const double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_comp_p;
+  const double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_p;
   const double *GFM_solution_p, *GFM_error_p;
   const double *xGFM_solution_p, *xGFM_error_p, *xGFM_cell_extension_p;
   ierr = VecGetArrayRead(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_on_computational_grid_nodes, &phi_p); CHKERRXX(ierr);
 #ifndef SUBREFINED
   ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &xGFM_node_extension_p); CHKERRXX(ierr);
 #endif
@@ -195,7 +195,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
                                  5, 0, 0, oss_coarse.str().c_str(),
                                  VTK_NODE_SCALAR, "exact_sol_m", exact_msol_at_nodes_p,
                                  VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
-                                 VTK_NODE_SCALAR, "phi", phi_comp_p,
+                                 VTK_NODE_SCALAR, "phi", phi_p,
                                #ifndef SUBREFINED
                                  VTK_NODE_SCALAR, "extension_xgfm_nodes", xGFM_node_extension_p,
                                #endif
@@ -207,10 +207,10 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
 
   ierr = VecRestoreArrayRead(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(phi_comp, &phi_comp_p); CHKERRXX(ierr);
 #ifndef SUBREFINED
   ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values_interpolated_on_nodes(), &xGFM_node_extension_p); CHKERRXX(ierr);
 #endif
+  ierr = VecRestoreArrayRead(phi_on_computational_grid_nodes, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(GFM_solver.get_solution(), &GFM_solution_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(xGFM_solver.get_solution(), &xGFM_solution_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(GFM_error, &GFM_error_p); CHKERRXX(ierr);
@@ -230,7 +230,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
   ierr = VecDuplicate(xGFM_solver.get_jump_in_flux(), &correction_jump_mu_grad);      CHKERRXX(ierr);
   ierr = VecCopyGhost(xGFM_solver.get_jump_in_flux(), correction_jump_mu_grad);       CHKERRXX(ierr);
   ierr = VecAXPYGhost(correction_jump_mu_grad, -1.0, GFM_solver.get_jump_in_flux());  CHKERRXX(ierr);
-  const double *phi_p, *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
+  const double *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
   const double *normals_p, *jump_flux_GFM_p, *jump_flux_xGFM_p, *correction_jump_mu_grad_p;
   ierr = VecGetArrayRead(xGFM_solver.get_subrefined_jump(), &jump_u_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(xGFM_solver.get_subrefined_jump_in_normal_flux(), &jump_normal_flux_p); CHKERRXX(ierr);
@@ -597,32 +597,18 @@ void build_interface_capturing_grid_data(p4est_t* p4est_comp, my_p4est_brick_t *
   p4est_destroy(new_p4est_fine);
 }
 
-void shift_solution_to_match_exact_average(Vec sol, const p4est_t *p4est, const p4est_ghost_t* ghost, const double &avg_exa)
+void shift_solution_to_match_exact_integral(my_p4est_xgfm_cells_t& solver, const test_case_for_scalar_jump_problem_t* test_problem)
 {
-  PetscErrorCode ierr;
-  double *sol_p;
-  ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
-
-  double avg_sol = 0.0; // as calculated by PetSc (should be 0.0? but play it safe)
-  for(p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
-    avg_sol += sol_p[quad_idx];
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &avg_sol, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-  avg_sol /= ((double) p4est->global_num_quadrants);
-
-  if(ISNAN(avg_exa) && p4est->mpirank == 0)
-    std::cerr << "The average of the exact solution is unknown and would be required to check the accuracy " << endl << "of the solution (for shifting the solution and matching average value)" << endl << "Disregard the errors on the solution fields and consider derivatives/fluxes only!" << std::endl;
-
-  if(!ISNAN(avg_exa))
+  if(ISNAN(test_problem->get_integral_of_solution()) && solver.get_computational_p4est()->mpirank == 0)
   {
-    for(p4est_locidx_t quad_idx=0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
-      sol_p[quad_idx] = sol_p[quad_idx] - avg_sol + avg_exa;
-
-    for(size_t quad_idx = 0; quad_idx < ghost->ghosts.elem_count; ++quad_idx)
-      sol_p[quad_idx + p4est->local_num_quadrants] = sol_p[quad_idx + p4est->local_num_quadrants] - avg_sol + avg_exa;
+    std::cerr << "The average of the exact solution is unknown and would be required to check the accuracy " << endl << "of the solution (for shifting the solution and matching average value)" << endl;
+    std::cerr << "Disregard the errors on the solution fields and consider derivatives/fluxes only!" << std::endl << std::endl;
+    return;
   }
+  const double shift = (test_problem->get_integral_of_solution() - solver.get_sharp_integral_solution())/MULTD(test_problem->get_domain().length(), test_problem->get_domain().height(), test_problem->get_domain().width());
 
-  ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
+  PetscErrorCode ierr = VecShiftGhost(solver.get_solution(), shift); CHKERRXX(ierr);
+  return;
 }
 
 void print_iteration_info(const mpi_environment_t &mpi, const my_p4est_xgfm_cells_t& solver)
@@ -710,6 +696,7 @@ void print_integral_of_exact_solution(Vec exact_msol_at_nodes, Vec exact_psol_at
 {
   PetscErrorCode ierr;
   P4EST_ASSERT(exact_msol_at_nodes != NULL && exact_psol_at_nodes != NULL);
+
   double integral_of_exact = 0.0;
   integral_of_exact += integrate_over_negative_domain(p4est, nodes, phi_comp, exact_msol_at_nodes);
   if(ISNAN(integral_of_exact))
@@ -878,6 +865,33 @@ void print_convergence_summary_in_file(const string& out_folder, const string& t
   printf("Summary file printed in %s\n", summary_file.c_str());
 }
 
+#ifdef SUBREFINED
+Vec create_phi_on_computational_nodes(const my_p4est_xgfm_cells_t& solver)
+{
+  PetscErrorCode ierr;
+  my_p4est_interpolation_nodes_t interp_phi(solver.get_subrefined_node_neighbors()); interp_phi.set_input(solver.get_subrefined_phi(), linear);
+  Vec phi_comp; double *phi_comp_p;
+  ierr = VecCreateGhostNodes(solver.get_computational_p4est(), solver.get_computational_nodes(), &phi_comp); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_comp, &phi_comp_p); CHKERRXX(ierr);
+  const my_p4est_node_neighbors_t* node_ngbd_comp = solver.get_computational_node_neighbors();
+  for (size_t k = 0; k < node_ngbd_comp->get_layer_size(); ++k) {
+    const p4est_locidx_t node_idx = node_ngbd_comp->get_layer_node(k);
+    double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, node_ngbd_comp->get_p4est(), node_ngbd_comp->get_nodes(), xyz_node);
+    phi_comp_p[node_idx] = interp_phi(xyz_node);
+  }
+  ierr = VecGhostUpdateBegin(phi_comp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < node_ngbd_comp->get_local_size(); ++k) {
+    const p4est_locidx_t node_idx = node_ngbd_comp->get_local_node(k);
+    double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, node_ngbd_comp->get_p4est(), node_ngbd_comp->get_nodes(), xyz_node);
+    phi_comp_p[node_idx] = interp_phi(xyz_node);
+  }
+  ierr = VecGhostUpdateEnd(phi_comp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_comp, &phi_comp_p); CHKERRXX(ierr);
+
+  return phi_comp;
+}
+#endif
+
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
@@ -923,15 +937,9 @@ int main (int argc, char* argv[])
   const string out_folder = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR"))) + "/" + test_problem->get_name();
   const string vtk_out = out_folder + "/vtu";
 
-  const domain_t &domain = test_problem->get_domain();
-
   connectivity = my_p4est_brick_new(n_xyz, test_problem->get_xyz_min(), test_problem->get_xyz_max(), &brick, test_problem->get_periodicity());
 
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
-
-  const bool problem_is_full_periodic = ANDD(test_problem->get_periodicity()[0], test_problem->get_periodicity()[1], test_problem->get_periodicity()[2]);
-  const double avg_exa = (bc_wtype == NEUMANN || problem_is_full_periodic ? test_problem->get_integral_of_solution()/MULTD(domain.length(), domain.height(), domain.width()) : NAN);
-
   for(int iter = 0; iter < ngrids; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin + iter, lmax + iter); CHKERRXX(ierr);
@@ -946,10 +954,10 @@ int main (int argc, char* argv[])
     my_p4est_node_neighbors_t* ngbd_n = NULL;
     my_p4est_cell_neighbors_t* ngbd_c = NULL;
     my_p4est_faces_t* faces = NULL;
-    Vec phi_comp = NULL;
+    Vec phi = NULL;
     splitting_criteria_cf_t data(lmin + iter, lmax + iter, test_problem->get_levelset_cf(), 1.2);
     build_computational_grid_data(mpi, &brick, connectivity, data, test_problem,
-                                  p4est, ghost, nodes, phi_comp, hierarchy, ngbd_n, ngbd_c, faces);
+                                  p4est, ghost, nodes, phi, hierarchy, ngbd_n, ngbd_c, faces);
 
     /* build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
      * the REINITIALIZED levelset on the interface-capturing grid
@@ -959,7 +967,6 @@ int main (int argc, char* argv[])
     p4est_ghost_t *ghost_fine = NULL;
     my_p4est_hierarchy_t* hierarchy_fine = NULL;
     my_p4est_node_neighbors_t* ngbd_n_fine = NULL;
-    Vec phi = NULL;
     splitting_criteria_cf_t data_fine(data.min_lvl, data.max_lvl + 1, test_problem->get_levelset_cf(), 1.2);
     build_interface_capturing_grid_data(p4est, &brick, data_fine, test_problem,
                                         p4est_fine, ghost_fine, nodes_fine, phi, hierarchy_fine, ngbd_n_fine);
@@ -1009,9 +1016,9 @@ int main (int argc, char* argv[])
 
       /* if null space, shift solution */
       if(jump_solver.get_matrix_has_nullspace())
-        shift_solution_to_match_exact_average(jump_solver.get_solution(), p4est, ghost, avg_exa);
-
+        shift_solution_to_match_exact_integral(jump_solver, test_problem);
     }
+    MPI_Barrier(mpi.comm());
 
     /* measure the error(s) */
     Vec err_GFM, err_xGFM;
@@ -1028,19 +1035,26 @@ int main (int argc, char* argv[])
       ierr = VecCreateGhostNodes(p4est, nodes, &exact_msol_at_nodes); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &exact_psol_at_nodes); CHKERRXX(ierr);
       get_sampled_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, p4est, nodes, test_problem);
+#ifdef SUBREFINED
+      Vec phi_on_computational_grid_nodes = create_phi_on_computational_nodes(*xGFM_solver);
+#else
+      Vec phi_on_computational_grid_nodes = phi;
+#endif
 
       if(get_integral)
-        print_integral_of_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, phi_comp, p4est, nodes);
+        print_integral_of_exact_solution(exact_msol_at_nodes, exact_psol_at_nodes, phi_on_computational_grid_nodes, p4est, nodes);
 
       if(save_vtk)
         save_VTK(vtk_out, iter, *GFM_solver, *xGFM_solver, &brick,
-                 err_GFM, err_xGFM, exact_msol_at_nodes, exact_psol_at_nodes, phi_comp);
+                 err_GFM, err_xGFM, exact_msol_at_nodes, exact_psol_at_nodes, phi_on_computational_grid_nodes);
       ierr = VecDestroy(exact_msol_at_nodes); CHKERRXX(ierr);
       ierr = VecDestroy(exact_psol_at_nodes); CHKERRXX(ierr);
+#ifdef SUBREFINED
+    ierr = VecDestroy(phi_on_computational_grid_nodes); CHKERRXX(ierr);
+#endif
     }
 
     // destroy data created for this iteration
-    ierr = VecDestroy(phi_comp); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     if(use_second_order_theta) {
       ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }

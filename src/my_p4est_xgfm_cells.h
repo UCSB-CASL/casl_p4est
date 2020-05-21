@@ -26,11 +26,6 @@
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 static const double value_not_needed = NAN;
 
-inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1)
-{
-  return (phi_0 > 0.0) != (phi_1 > 0.0);
-}
-
 /*!
  * \brief The interface_neighbor struct contains all relevant data regarding interface-neighbor,
  * i.e., intersection between the interface and the segment joining the current cell of interest
@@ -107,7 +102,7 @@ struct extension_matrix_entry
 };
 struct extension_interface_value_entry
 {
-  int dir;
+  u_char dir;
   double coeff;
 };
 
@@ -197,7 +192,7 @@ class my_p4est_xgfm_cells_t
 
   const BoundaryConditionsDIM *bc;
 
-  class convergence_monitoring_tool {
+  class solver_monitor_t {
     typedef struct
     {
       PetscInt n_ksp_iterations;
@@ -431,6 +426,9 @@ class my_p4est_xgfm_cells_t
     P4EST_ASSERT(jump_flux != NULL);
   }
 
+  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_IF_SUBREFINED(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
+                                                double& negative_volume, double& positive_volume) const;
+
 public:
 
   my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ngbd_n, const bool &activate_xGFM_ = true);
@@ -516,32 +514,62 @@ public:
    * */
   void solve(KSPType ksp_type = KSPCG, PCType pc_type = PCHYPRE, double absolute_accuracy_threshold = 1e-8, double tolerance_on_rel_residual = 1e-12);
 
-  inline Vec get_extended_interface_values()                                    { make_sure_extensions_are_defined();               return extension_on_cells;  }
-  inline Vec get_extended_interface_values_interpolated_on_nodes()              { make_sure_extensions_are_defined();               return extension_on_nodes;  }
-  inline Vec get_jump_in_flux(const bool& everywhere = true)                    { make_sure_jumps_in_flux_are_defined(everywhere);  return jump_flux;           }
-  inline Vec get_solution()                                                     { make_sure_solution_is_set();                      return solution;            }
-  inline int get_number_of_xGFM_corrections()                             const { return solver_monitor.get_number_of_xGFM_corrections();                       }
-  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()            const { return solver_monitor.get_n_ksp_iterations();                                 }
-  inline std::vector<double> get_max_corrections()                        const { return solver_monitor.get_max_corrections();                                  }
-  inline std::vector<double> get_relative_residuals()                     const { return solver_monitor.get_relative_residuals();                               }
-  inline bool is_using_xGFM()                                             const { return activate_xGFM;                                                         }
-  inline bool get_matrix_has_nullspace()                                  const { return A_null_space != NULL;                                                  }
-  inline const p4est_t* get_computational_p4est()                         const { return p4est;                                                                 }
-  inline const p4est_ghost_t* get_computational_ghost()                   const { return ghost;                                                                 }
-  inline const p4est_nodes_t* get_computational_nodes()                   const { return nodes;                                                                 }
-  inline const my_p4est_hierarchy_t* get_computational_hierarchy()        const { return cell_ngbd->get_hierarchy();                                            }
+  inline Vec get_extended_interface_values()                                        { make_sure_extensions_are_defined();               return extension_on_cells;  }
+  inline Vec get_extended_interface_values_interpolated_on_nodes()                  { make_sure_extensions_are_defined();               return extension_on_nodes;  }
+  inline Vec get_jump_in_flux(const bool& everywhere = true)                        { make_sure_jumps_in_flux_are_defined(everywhere);  return jump_flux;           }
+  inline Vec get_solution()                                                         { make_sure_solution_is_set();                      return solution;            }
+  inline int get_number_of_xGFM_corrections()                                 const { return solver_monitor.get_number_of_xGFM_corrections();                       }
+  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()                const { return solver_monitor.get_n_ksp_iterations();                                 }
+  inline std::vector<double> get_max_corrections()                            const { return solver_monitor.get_max_corrections();                                  }
+  inline std::vector<double> get_relative_residuals()                         const { return solver_monitor.get_relative_residuals();                               }
+  inline bool is_using_xGFM()                                                 const { return activate_xGFM;                                                         }
+  inline bool get_matrix_has_nullspace()                                      const { return A_null_space != NULL;                                                  }
+  inline const p4est_t* get_computational_p4est()                             const { return p4est;                                                                 }
+  inline const p4est_ghost_t* get_computational_ghost()                       const { return ghost;                                                                 }
+  inline const p4est_nodes_t* get_computational_nodes()                       const { return nodes;                                                                 }
+  inline const my_p4est_hierarchy_t* get_computational_hierarchy()            const { return cell_ngbd->get_hierarchy();                                            }
+  inline const my_p4est_node_neighbors_t* get_computational_node_neighbors()  const { return node_ngbd;                                                             }
 #ifdef SUBREFINED
-  inline Vec get_subrefined_phi()                                         const { return phi;                                                                   }
-  inline Vec get_subrefined_normals()                                     const { return normals;                                                               }
-  inline Vec get_subrefined_jump()                                        const { return jump_u;                                                                }
-  inline Vec get_subrefined_jump_in_normal_flux()                         const { return jump_normal_flux_u;                                                    }
-  inline const my_p4est_node_neighbors_t* get_subrefined_node_neighbors() const { return fine_node_ngbd;                                                        }
-  inline const p4est_t* get_subrefined_p4est()                            const { return fine_p4est;                                                            }
-  inline const p4est_ghost_t* get_subrefined_ghost()                      const { return fine_ghost;                                                            }
-  inline const p4est_nodes_t* get_subrefined_nodes()                      const { return fine_nodes;                                                            }
-  inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()           const { return fine_node_ngbd->get_hierarchy();                                       }
-#else
+  inline Vec get_subrefined_phi()                                             const { return phi;                                                                   }
+  inline Vec get_subrefined_normals()                                         const { return normals;                                                               }
+  inline Vec get_subrefined_jump()                                            const { return jump_u;                                                                }
+  inline Vec get_subrefined_jump_in_normal_flux()                             const { return jump_normal_flux_u;                                                    }
+  inline const my_p4est_node_neighbors_t* get_subrefined_node_neighbors()     const { return fine_node_ngbd;                                                        }
+  inline const p4est_t* get_subrefined_p4est()                                const { return fine_p4est;                                                            }
+  inline const p4est_ghost_t* get_subrefined_ghost()                          const { return fine_ghost;                                                            }
+  inline const p4est_nodes_t* get_subrefined_nodes()                          const { return fine_nodes;                                                            }
+  inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()               const { return fine_node_ngbd->get_hierarchy();                                       }
 #endif
+
+  inline double get_sharp_integral_solution() const
+  {
+    PetscErrorCode ierr;
+    P4EST_ASSERT(solution != NULL);
+    double *sol_p;
+    ierr = VecGetArray(solution, &sol_p); CHKERRXX(ierr);
+  #ifdef SUBREFINED
+    my_p4est_interpolation_nodes_t interp_phi(fine_node_ngbd); interp_phi.set_input(phi, linear);
+    my_p4est_interpolation_nodes_t interp_jump(fine_node_ngbd); interp_jump.set_input(jump_u, linear);
+  #endif
+
+    double sharp_integral_solution = 0.0;
+    for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
+      const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        double negative_volume, positive_volume;
+        compute_subvolumes_in_computational_cell(quad_idx, tree_idx ONLY_IF_SUBREFINED(COMMA interp_phi), negative_volume, positive_volume);
+
+        double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
+        // crude estimate but whatever, it's mostly to get closer to what we expect...
+        sharp_integral_solution += sol_p[quad_idx]*(negative_volume + positive_volume);
+        sharp_integral_solution += (interp_phi(xyz_quad) <= 0.0 ? positive_volume : -negative_volume)*interp_jump(xyz_quad);
+      }
+    }
+    ierr = VecRestoreArray(solution, &sol_p); CHKERRXX(ierr);
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sharp_integral_solution, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    return sharp_integral_solution;
+  }
 
   void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
   inline void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)

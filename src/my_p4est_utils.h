@@ -707,6 +707,9 @@ bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_
                                          p4est_locidx_t& fine_vertex_idx);
 #endif
 
+// my rigorous interface-identification rule [Raphael]
+inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) { return (phi_0 > 0.0) != (phi_1 > 0.0); }
+
 /*!
  * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
  * interpolation). The method also returns the cartesian difference in terms of logical coordinates units (in order to efficiently and

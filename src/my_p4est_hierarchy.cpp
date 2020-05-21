@@ -34,16 +34,16 @@ extern PetscLogEvent log_my_p4est_hierarchy_t_find_smallest_quad;
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_hierarchy_t::split( int tree_idx, int ind )
+void my_p4est_hierarchy_t::split(int tree_idx, int ind)
 {
   trees[tree_idx][ind].child = trees[tree_idx].size();
 
   p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
 #ifdef P4_TO_P8
-  for (unsigned char k = 0; k < 2; ++k)
+  for (u_char k = 0; k < 2; ++k)
 #endif
-    for (unsigned char j = 0; j < 2; ++j)
-      for (unsigned char i = 0; i < 2; ++i) {
+    for (u_char j = 0; j < 2; ++j)
+      for (u_char i = 0; i < 2; ++i) {
         HierarchyCell child =
         {
           CELL_LEAF, NOT_A_P4EST_QUADRANT,    /* child, quad */
@@ -59,42 +59,39 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
       }
 }
 
-int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *quad )
+p4est_locidx_t my_p4est_hierarchy_t::update_tree(int tree_idx, const p4est_quadrant_t *quad)
 {
-  int ind = 0;
-  while( trees[tree_idx][ind].level != quad->level )
+  p4est_locidx_t ind = 0;
+  while (trees[tree_idx][ind].level != quad->level)
   {
     if(trees[tree_idx][ind].child == CELL_LEAF)
       split(tree_idx, ind);
 
     /* now the intermediate cell is split, select the correct child */
-    p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    const unsigned char i = ( quad->x >= trees[tree_idx][ind].imin + size);
-    const unsigned char j = ( quad->y >= trees[tree_idx][ind].jmin + size);
-#ifdef P4_TO_P8
-    const unsigned char k = ( quad->z >= trees[tree_idx][ind].kmin + size);
-#endif
-    ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
+    ind = trees[tree_idx][ind].get_index_of_child_containing(*quad);
   }
   return ind;
 }
 
-p4est_locidx_t my_p4est_hierarchy_t::quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const
+p4est_locidx_t my_p4est_hierarchy_t::get_index_of_hierarchy_cell_matching_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx ONLY_WITH_P4EST_DEBUG(COMMA const bool& must_be_leaf)) const
 {
-  int ind = 0;
-  while( trees[tree_idx][ind].level != quad->level )
-  {
-    p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    const unsigned char i = (quad->x >= trees[tree_idx][ind].imin + size);
-    const unsigned char j = (quad->y >= trees[tree_idx][ind].jmin + size);
-#ifdef P4_TO_P8
-    const unsigned char k = (quad->z >= trees[tree_idx][ind].kmin + size);
-#endif
-    ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
-  }
-  P4EST_ASSERT(trees[tree_idx][ind].child == CELL_LEAF);
-  P4EST_ASSERT(ANDD((quad->x==trees[tree_idx][ind].imin), (quad->y==trees[tree_idx][ind].jmin), (quad->z==trees[tree_idx][ind].kmin)));
-  return trees[tree_idx][ind].quad;
+  p4est_locidx_t ind = 0;
+  while (trees[tree_idx][ind].level != quad->level)
+    ind = trees[tree_idx][ind].get_index_of_child_containing(*quad);
+
+  P4EST_ASSERT(ANDD(quad->x == trees[tree_idx][ind].imin, quad->y == trees[tree_idx][ind].jmin, quad->z == trees[tree_idx][ind].kmin));
+  P4EST_ASSERT(!must_be_leaf || trees[tree_idx][ind].child == CELL_LEAF);
+  return ind;
+}
+
+void my_p4est_hierarchy_t::get_all_quadrants_in(const p4est_quadrant_t* const &quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const
+{
+  list_of_local_quad_idx.clear();
+
+  const HierarchyCell matching_cell = trees[tree_idx][get_index_of_hierarchy_cell_matching_quad(quad, tree_idx ONLY_WITH_P4EST_DEBUG(COMMA false))];
+
+  matching_cell.add_all_inner_leaves_to(list_of_local_quad_idx, trees[tree_idx]);
+  return;
 }
 
 void my_p4est_hierarchy_t::construct_tree() {
@@ -168,7 +165,7 @@ void my_p4est_hierarchy_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_)
 {
   p4est = p4est_;
   ghost = ghost_;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     if(periodic[dir] != is_periodic(p4est_, dir))
       throw std::invalid_argument("my_p4est_hierarchy_t::update : cannot update with a change of periodicity!");
 
@@ -232,10 +229,10 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
       if (cell.child == CELL_LEAF){
         double h = (double) P4EST_QUADRANT_LEN(cell.level) / (double)P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-        for (unsigned char xk = 0; xk < 2; xk++)
+        for (u_char xk = 0; xk < 2; xk++)
 #endif
-          for (unsigned char xj = 0; xj < 2; xj++)
-            for (unsigned char xi = 0; xi < 2; xi++){
+          for (u_char xj = 0; xj < 2; xj++)
+            for (u_char xi = 0; xi < 2; xi++){
               double x = (tree_xmax - tree_xmin)*((double) cell.imin / (double)P4EST_ROOT_LEN + xi*h) + tree_xmin;
               double y = (tree_ymax - tree_ymin)*((double) cell.jmin / (double)P4EST_ROOT_LEN + xj*h) + tree_ymin;
 #ifdef P4_TO_P8
@@ -253,7 +250,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   for (size_t i = 0; i < num_quads; ++i)
   {
     fprintf(vtk, "%d ", P4EST_CHILDREN);
-    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
+    for (u_char j = 0; j < P4EST_CHILDREN; ++j)
       fprintf(vtk, "%ld ", P4EST_CHILDREN*i+j);
     fprintf(vtk,"\n");
   }
@@ -284,7 +281,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   // Calculate xyz - xyz_min, first
   double xyz_[P4EST_DIM] = {DIM(xyz[0] - xyz_min[0], xyz[1] - xyz_min[1], xyz[2] - xyz_min[2])};
 
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     // Wrap within the domain using periodicity if needed
     if (periodic[dim])
@@ -335,7 +332,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
    * Assuming that we can safely set log2(max(number of trees along a cartesian direction)) = 10,
    * this gives thresh > 0.001*qeps so I suggest to define thresh as
    */
-  const static double  threshold  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // ==thresh*P4EST_ROOT_LEN
+  const static double  threshold  = 0.01*(double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL); // == thresh*P4EST_ROOT_LEN
 
   /* In case of nonperiodic domain, we need to make sure that any point lying on the boundary of the domain is clearly
    * and unambiguously clipped inside, without changing the quadrant of interest, before we proceed further.
@@ -343,7 +340,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
    * Clearly and unambiguously clip the point inside the domain if not periodic
    */
   int tr_xyz_orig[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir){
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir){
     if (!periodic[dir])
       xyz_[dir] = MAX(qeps, MIN(xyz_[dir], myb->nxyztrees[dir] - qeps));
     tr_xyz_orig[dir] = (int)floor(xyz_[dir]);
@@ -354,7 +351,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
 
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     if(periodic[dir])
       tr_xyz_orig[dir] = tr_xyz_orig[dir]%myb->nxyztrees[dir];
 
@@ -396,7 +393,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   int tr_xyz[P4EST_DIM] = {DIM(tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2])};
 
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     if (s.xyz(dir) < 0 || s.xyz(dir)  > (double) P4EST_ROOT_LEN){
       const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
       P4EST_ASSERT((s.xyz(dir) < 0 && ntree_to_slide < 0) || (s.xyz(dir) > (double) P4EST_ROOT_LEN && ntree_to_slide > 0));
@@ -413,15 +410,8 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   const std::vector<HierarchyCell>& h_tr = trees[tt];
   const HierarchyCell *it, *begin; begin = it = &h_tr[0];
-  while(CELL_LEAF != it->child){
-    p4est_qcoord_t half_h = P4EST_QUADRANT_LEN(it->level) / 2;
-    const unsigned char cj = (double)(it->jmin + half_h) <= s.y;
-    const unsigned char ci = (double)(it->imin + half_h) <= s.x;
-#ifdef P4_TO_P8
-    const unsigned char ck = (double)(it->kmin + half_h) <= s.z;
-#endif
-    it = begin + it->child + SUMD(ci, 2*cj, 4*ck);
-  }
+  while (CELL_LEAF != it->child)
+    it = begin + it->get_index_of_child_containing(s);
 
   if (it->owner_rank != REMOTE_OWNER) { // local or ghots quadrant
     p4est_quadrant_t *tmp;
