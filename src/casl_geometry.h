@@ -65,6 +65,98 @@ namespace geom
 		}
 	};
 
+	/**
+ 	 * Star-shaped interface centered at the origin.
+ 	 */
+	class Star: public CF_2
+	{
+	private:
+		double _a;			// Perturbation (petal extension).
+		double _b;			// Base circle radius.
+		int _p;				// Number of arms.
+
+	public:
+		/**
+		 * Constructor
+		 * @param [in] a: Perturbation amplitude.
+		 * @param [in] b: Base circle radius.
+		 * @param [in] p: Number of arms.
+		 */
+		explicit Star( double a = -1.0, double b = 3.0, int p = 8 )
+			: _a( a ), _b( b ), _p( p ){}
+
+		/**
+		 * Level set evaluation at a given point.
+		 * @param [in] x: Point x-coordinate.
+		 * @param [in] y: Point y-coordinate.
+		 * @return phi(x,y).
+		 */
+		double operator()( double x, double y ) const override
+		{
+			return -_a * cos( _p * atan2( y, x ) ) + sqrt( x * x + y * y ) - _b;
+		}
+
+		/**
+		 * Compute point on interface given an angular parameter.
+		 * @param [in] theta: Angular parameter.
+		 * @return r(theta).
+		 */
+		[[nodiscard]] double r( double theta ) const
+		{
+			return _a * cos( _p * theta ) + _b;
+		}
+
+		/**
+		 * Retrieve the side-length of a square containing the star.
+		 * @return Inscribing square side-length.
+		 */
+		[[nodiscard]] double getInscribingSquareSideLength() const
+		{
+			double limitVal = MAX( ABS( _a + _b ), ABS( _a - _b ) );
+			return limitVal * 2;
+		}
+
+		/**
+		 * Compute curvature.
+		 * @param [in] theta: Angle parameter.
+		 * @return kappa.
+		 */
+		[[nodiscard]] double curvature( double theta ) const
+		{
+			double r = this->r( theta );								// r(theta).
+			double rPrime = -_a * _p * sin( _p * theta );				// r'(theta).
+			double rPrimePrime = -_a * _p * _p * cos( _p * theta );		// r''(theta).
+			return ( r * r + 2 * rPrime * rPrime - r * rPrimePrime ) / pow( r * r + rPrime * rPrime, 1.5 );
+		}
+
+		/**
+		 * Get the 'a' perturbation star's parameter.
+		 * @return star.a.
+		 */
+		[[nodiscard]] double getA() const
+		{
+			return _a;
+		}
+
+		/**
+		 * Get the 'b' base radius star's parameter.
+		 * @return star.b.
+		 */
+		[[nodiscard]] double getB() const
+		{
+			return _b;
+		}
+
+		/**
+		 * Get the number of arms 'p' in the star.
+		 * @return star.p.
+		 */
+		[[nodiscard]] int getP() const
+		{
+			return _p;
+		}
+	};
+
 	/////////////////////////////////////////////// Geometric functions ////////////////////////////////////////////////
 
 	/**

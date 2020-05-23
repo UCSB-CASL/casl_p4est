@@ -87,8 +87,6 @@ int main ( int argc, char* argv[] )
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-
-	const int NUM_DIFF_CIRCLES_SAME_RAD = 5;								// How many different circles of same radius we generate.
 	const int NUM_CIRCLES = (int)pow( 2, MAX_REFINEMENT_LEVEL ) - 5;		// Number of circles is proportional to finest resolution.
 																			// and ensures at least 2 circles per finest quad/oct.
 	const double MIN_RADIUS = 1.5 * H;			// Ensures at least 4 nodes inside smallest circle.
@@ -174,10 +172,12 @@ int main ( int argc, char* argv[] )
 			const double H_KAPPA = H / R;							// Expected dimensionless curvature: h\kappa = h/r.
 			std::vector<std::vector<double>> samples;
 
-			// Generate a given number of randomly centered circles with the same radius.
-			int randomnessCount = 0;
+			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
+			// reach a given maximum.  This helps smaller circles to have more samples, but not as many as the largest one.
 			double maxRE = 0;										// Maximum relative error.
-			while( randomnessCount < NUM_DIFF_CIRCLES_SAME_RAD )
+			int nSamplesForSameRadius = 0;
+			int maxSamplesForSameRadius = floor( 1750 + ( 7000 - 1750 ) * linspace[nc] );
+			while( nSamplesForSameRadius < maxSamplesForSameRadius )
 			{
 				const double C[] = {
 					DIM( HALF_D + uniformDistribution( gen ),		// Center coords are randomly chosen
@@ -288,6 +288,11 @@ int main ( int argc, char* argv[] )
 							// Accumulating samples.
 							samples.push_back( dataPve );
 							samples.push_back( dataNve );
+
+							// Counting samples.
+							nSamplesForSameRadius += 2;		// Positive and negative for a given interface node.
+							if( nSamplesForSameRadius >= maxSamplesForSameRadius )
+								break;
 						}
 					}
 					catch( std::exception &e )
@@ -295,8 +300,6 @@ int main ( int argc, char* argv[] )
 						std::cerr << e.what() << std::endl;
 					}
 				}
-
-				randomnessCount++;
 
 				ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 				CHKERRXX( ierr );
@@ -322,10 +325,12 @@ int main ( int argc, char* argv[] )
 			nc++;
 			nSamples += samples.size();
 
-			std::cout << "     (" << nc << ") Done with radius = " << R << ".  Maximum relative error = " << maxRE << std::endl;
+			std::cout << "     (" << nc << ") Done with radius = " << R
+					  << ".  Maximum relative error = " << maxRE
+					  << ".  Samples = " << samples.size() << ";" << std::endl;
 
 			if( nc % 10 == 0 )
-				printf( "   [%i circle groups evaluated after %f secs.]\n", nc, watch.get_duration_current() );
+				printf( "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
 		}
 
 		printf( "<< Finished generating %i circles and %i samples in %f secs.\n", nc, nSamples, watch.get_duration_current() );
