@@ -98,6 +98,11 @@ public:
 
 	/**
 	 * Retrieve indices of locally-owned nodes that are on or adjacent to the interface.
+	 * Warning! This function returns indices of nodes that belong to at least one quad/oct at the maximum level of
+	 * refinement AND at least one of their irradiating edges is crossed by \Gamma.  The function can still return the
+	 * index of a node that meets the previous condition, yet it is a neighbor to a node that is not at the same
+	 * distance than the other neighbors.  The function `getFullStencilOfNode(.)` will discard these nodes because their
+	 * neighborhood is not uniform.
 	 * @param [in] phi A PETSc parallel vector with nodal level-set function values.
 	 * @param [out] indices Dynamic vector of nodal indices on or adjacent to \Gamma.
 	 */

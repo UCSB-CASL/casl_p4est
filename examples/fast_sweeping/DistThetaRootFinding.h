@@ -70,6 +70,7 @@ public:
 
 /**
  * Obtain the theta value that minimizes the distance between (x, y) and the star-shaped interface using Newton-Rapson.
+ * @param [in]
  * @param [in] x: X-coordinate of query point.
  * @param [in] y: Y-coordinate of query point.
  * @param [in] star: Reference to star object.
@@ -79,7 +80,7 @@ public:
  * @param [in] maximum: Maximum value for search interval.
  * @return Angle value.
  */
-double distThetaDerivative( double x, double y, const geom::Star& star, double& valOfDerivative,
+double distThetaDerivative( p4est_locidx_t n, double x, double y, const geom::Star& star, double& valOfDerivative,
 							double initialGuess = 0, double minimum= -1, double maximum = +1 )
 {
 	using namespace boost::math::tools;						// For bracket_and_solve_root.
@@ -93,7 +94,7 @@ double distThetaDerivative( double x, double y, const geom::Star& star, double& 
 	double result = newton_raphson_iterate( distThetaFunctorDerivative, initialGuess, minimum, maximum, get_digits, it );
 
 	if( it >= maxit )
-		std::cerr << "Unable to locate solution in " << maxit << " iterations!" << std::endl;
+		std::cerr << "Node " << n << ":  Unable to locate solution in " << maxit << " iterations!" << std::endl;
 
 	valOfDerivative = distThetaFunctorDerivative.valueOfDerivative( result );
 	return result;

@@ -95,7 +95,7 @@ bool NodesAlongInterface::_verifyNodesOnPrimaryDirection( int outIdx, int matchO
 		if( outNodeIdx != inNodeIdx )						// For a uniform stencil these indices should match.
 		{
 #ifdef CASL_THROWS
-			throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::getFullStencilOfNode: Non-uniform stencil!" );
+			throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: Non-uniform stencil!" );
 #endif
 			return false;
 		}
@@ -135,7 +135,7 @@ NodesAlongInterface::NodesAlongInterface( const p4est_t *p4est, const p4est_node
 	if( ABS( dx - dy ) <= _zEPS ONLY3D( && ABS( dx - dz ) <= _zEPS ) )
 		_h = dx;
 	else
-		throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::FullUniformStencil: smallest quad is not uniform!" );
+		throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::FullUniformStencil: smallest quad is not uniform!" );
 }
 
 void NodesAlongInterface::getIndices( const Vec *phi, std::vector<p4est_locidx_t>& indices )
@@ -184,8 +184,8 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 	if( nodeIdx < 0 || nodeIdx >= _nodes->num_owned_indeps )
 	{
 #ifdef CASL_THROWS
-		throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::getFullStencilOfNode: Node "
-								  + std::to_string( nodeIdx ) + " is not locally owned!" );
+		throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
+								  "Node " + std::to_string( nodeIdx ) + " is not locally owned!" );
 #endif
 		return false;
 	}
@@ -198,8 +198,9 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 		if( qnnn.neighbor( dir ) == -1 )
 		{
 #ifdef CASL_THROWS
-			throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::getFullStencilOfNode: Node "
-									  + std::to_string( nodeIdx ) + " is a wall node!" );
+			throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
+									  "Node " + std::to_string( nodeIdx ) + " is missing a uniform neighbor in some "
+									  "Cartesian direction!" );
 #endif
 			return false;
 		}
@@ -207,8 +208,9 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 		if( qnnn.distance( dir ) < LOWER_B || qnnn.distance( dir ) > UPPER_B )
 		{
 #ifdef CASL_THROWS
-			throw std::runtime_error( "[CASL_ERROR]: FullUniformStencil::getFullStencilOfNode: Node "
-									  + std::to_string( nodeIdx ) + " is not at the maximum level of refinement!" );
+			throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
+									  "Node " + std::to_string( nodeIdx ) + " is part of a quad/oct that is not at "
+									  "the maximum level of refinement!" );
 #endif
 			return false;
 		}

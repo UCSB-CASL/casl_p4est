@@ -19,7 +19,7 @@
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_fast_sweeping.h>
 #include <src/my_p8est_nodes_along_interface.h>
-//#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
@@ -29,7 +29,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_fast_sweeping.h>
 #include <src/my_p4est_nodes_along_interface.h>
-//#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 #include "DistThetaRootFinding.h"
@@ -39,6 +39,8 @@
 #include <random>
 #include <iterator>
 #include <fstream>
+#include <unordered_map>
+#include <sys/stat.h>
 
 /**
  * Generate the column headers following the truth-table order with x changing slowly, then y changing faster than x,
@@ -85,12 +87,12 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] nodes Pointer to nodes data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] star The level-set function with a star-shaped interface.
- * @param [in/out] pointsFile File object where to write coordinates of nodes adjacent to \Gamma.
- * @param [in/out] anglesFile File object where to write angles of normal projected points on \Gamma.
+ * @param [in/out] pointsFile Pointer to file object where to write coordinates of nodes adjacent to \Gamma.
+ * @param [in/out] anglesFile Poiner to file object where to write angles of normal projected points on \Gamma.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
-	const double* phiReadPtr, const geom::Star& star, std::ofstream& pointsFile, std::ofstream& anglesFile )
+	const double *phiReadPtr, const geom::Star& star, std::ofstream *pointsFile, std::ofstream *anglesFile )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 
@@ -126,7 +128,8 @@ void generateColumnHeaders( std::string header[] )
 	double thetaOnInterface = atan2( pOnInterfaceY, pOnInterfaceX );	// Initial guess for root finding method.
 	thetaOnInterface = ( thetaOnInterface < 0 )? thetaOnInterface + 2 * M_PI : thetaOnInterface;
 	double valOfDerivative;
-	double newThetaOnInterface = distThetaDerivative( xyz[0], xyz[1], star, valOfDerivative, thetaOnInterface, thetaOnInterface - H / 2, thetaOnInterface + H / 2 );
+	double newThetaOnInterface = distThetaDerivative( nodeIdx, xyz[0], xyz[1], star, valOfDerivative, thetaOnInterface,
+													  thetaOnInterface - H, thetaOnInterface + H );
 	double r = star.r( newThetaOnInterface );							// Recalculating closest point on interface.
 	pOnInterfaceX = r * cos( newThetaOnInterface );
 	pOnInterfaceY = r * sin( newThetaOnInterface );
@@ -136,20 +139,42 @@ void generateColumnHeaders( std::string header[] )
 	if( dx * dx + dy * dy <= H * H && ABS( valOfDerivative ) <= 1e-8 )
 		thetaOnInterface = newThetaOnInterface;				// Theta is OK.
 	else
-		std::cerr << "Minimization placed point on interface too far.  Reverting back to point on interface calculated with phi values" << std::endl;
-//	std::cout << nodeIdx << "; " << valOfDerivative
-//			  << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'mo', ["
-//			  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
+	{
+		std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
+				  << "on interface calculated with phi values.  \n     "
+				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'mo', ["
+				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
+	}
 
 	sample[s] = H * star.curvature( thetaOnInterface );		// Last column holds h\kappa.
 
 	// Write center sample point coordinates.
-	pointsFile << xyz[0] << "," << xyz[1] << std::endl;
+	if( pointsFile )
+		*pointsFile << xyz[0] << "," << xyz[1] << std::endl;
 
 	// Write angle parameter for projected point on interface.
-	anglesFile << ( thetaOnInterface < 0 ? 2 * M_PI + thetaOnInterface : thetaOnInterface ) << std::endl;
+	if( anglesFile )
+		*anglesFile << ( thetaOnInterface < 0 ? 2 * M_PI + thetaOnInterface : thetaOnInterface ) << std::endl;
 
 	return sample;
+}
+
+/**
+ * Verify if a directory exists.  If not, create it.
+ * @param [in] path Directory valid path.
+ * @throws Runtime error if directory can't be created or if the path exists and is not a directory.
+ */
+void checkOrCreateDirectory( const std::string& path )
+{
+	struct stat info{};
+	char aux[10];
+	if( stat( path.c_str(), &info ) != 0 )							// Directory doesn't exist?
+	{
+		if( mkdir( path.c_str(), 0777 ) == -1 )						// Try to create it.
+			throw std::runtime_error( "Cannot create " + path + " directory: " + strerror(errno) + "!" );
+	}
+	else if( !( info.st_mode & (unsigned)S_IFDIR ) )
+		throw std::runtime_error( path + " is not a directory!" );
 }
 
 int main ( int argc, char* argv[] )
@@ -162,7 +187,7 @@ int main ( int argc, char* argv[] )
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -179,29 +204,50 @@ int main ( int argc, char* argv[] )
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
-		// Setting up the star-shaped interface.
+		//////////////////////////////////// Star-shaped interface parameter setup /////////////////////////////////////
+
+		// Change these values to modify the shape of star interface.
 		// Using a=0.075 and b=0.35 for smooth star, and a=0.12 and b=0.305 for sharp star.
-		geom::Star star( 0.075, 0.35, 5 );
+		const double A = 0.075;
+		const double B = 0.35;
+		const int P = 5;
+		geom::Star star( A, B, P );
 		const double STAR_SIDE_LENGTH = star.getInscribingSquareSideLength();
 		if( STAR_SIDE_LENGTH > MAX_D - MIN_D - 4 * H )						// Consider also 2H padding on each side.
-			throw std::runtime_error( "Star exceed allowed space in domain!" );
+			throw std::runtime_error( "Star exceeds allowed space in domain!" );
 
 		//////////////////////////////////////////// Prepare output files //////////////////////////////////////////////
 
-		// Prepare file where to write sample level-set function values.
-		std::ofstream outputFile;
-		std::string fileName = DATA_PATH + "phi.csv";
-		outputFile.open( fileName, std::ofstream::trunc );
-		if( !outputFile.is_open() )
-			throw std::runtime_error( "Phi values output file " + fileName + " couldn't be opened!" );
+		// Check for output directory, e.g. "data/star_7/a_0.075/b_0.350/".  If it doesn't exist, create it.
+		char auxA[10], auxB[10];
+		sprintf( auxA, "%.3f", A );
+		DATA_PATH += "a_" + std::string( auxA ) + "/";
+		checkOrCreateDirectory( DATA_PATH );								// First part of path: a.
+		sprintf( auxB, "%.3f", B );
+		DATA_PATH += "b_" + std::string( auxB ) + "/";
+		checkOrCreateDirectory( DATA_PATH );								// Second part of path: b.
 
-		std::ostringstream headerStream;									// Write output file header.
-		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
-			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
-		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-		outputFile << headerStream.str() << std::endl;
+		// Prepare files where to write sample level-set function values reinitialized with fast sweeping and with pde-
+		// based equation using 5, 10, and 20 iterations.
+		std::string phiKeys[4] = { "fsm", "iter5", "iter10", "iter20" };	// The 4 types of reinitialized phi values.
+		std::unordered_map<std::string, std::ofstream> phiFilesMap;
+		phiFilesMap.reserve( 4 );
+		for( const auto& key : phiKeys )
+		{
+			phiFilesMap[key] = std::ofstream();
+			std::string fileName = DATA_PATH + key + "_phi.csv";
+			phiFilesMap[key].open( fileName, std::ofstream::trunc );
+			if( !phiFilesMap[key].is_open() )
+				throw std::runtime_error( "Phi values output file " + fileName + " couldn't be opened!" );
 
-		outputFile.precision( 15 );											// Precision for floating point numbers.
+			std::ostringstream headerStream;								// Write output file header.
+			for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+				headerStream << "\"" << COLUMN_NAMES[i] << "\",";
+			headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
+			phiFilesMap[key] << headerStream.str() << std::endl;
+
+			phiFilesMap[key].precision( 15 );								// Precision for floating point numbers.
+		}
 
 		// Prepare file where to write sampled nodes' cartesian coordinates.
 		std::ofstream pointsFile;
@@ -258,7 +304,7 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Definining the non-signed distance level-set function to be reinitialized.
-		splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &star, 2.0 );
+		splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &star, 2 );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -283,28 +329,14 @@ int main ( int argc, char* argv[] )
 		ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 		CHKERRXX( ierr );
 
-		// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
+		// Calculate the level-set function values for independent nodes (i.e. locally owned and ghost nodes).
 		sample_cf_on_nodes( p4est, nodes, star, phi );
 
-		// Reinitialize level-set function (using the fast sweeping method).
-		FastSweeping fsm;
-		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &phi, 8 );
-//		my_p4est_level_set_t ls( &nodeNeighbors );
-//		ls.reinitialize_2nd_order( phi, 5 );
-
-		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are the
-		// points we'll use to create our sample files.
+		// Prepare scaffold to collect nodal indices along the interface.  Also, collect indicators for those nodes that
+		// are adjacent to the interface and have a full 9-point uniform neighborhood.  We'll collect these for fast
+		// sweeping renitialization.
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
-		std::vector<p4est_locidx_t> indices;
-		nodesAlongInterface.getIndices( &phi, indices );
 
-		// Getting the full uniform stencils of interface points.
-		const double *phiReadPtr;
-		ierr = VecGetArrayRead( phi, &phiReadPtr );
-		CHKERRXX( ierr );
-
-		// Also, collect indicators for those nodes that are adjacent to the interface.
 		Vec interfaceFlag;
 		ierr = VecDuplicate( phi, &interfaceFlag );
 		CHKERRXX( ierr );
@@ -313,56 +345,108 @@ int main ( int argc, char* argv[] )
 		ierr = VecGetArray( interfaceFlag, &interfaceFlagPtr );
 		CHKERRXX( ierr );
 		for( p4est_locidx_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
-			interfaceFlagPtr[i] = 0;				// Init to zero and set flag of nodes along interface equal to 1.
+			interfaceFlagPtr[i] = 0;		// Init to zero and set flag of (valid) nodes along interface to 1.
 
-		// Now, collect samples with level-set function values and target h\kappa.
-		int nSamples = 0;
-		std::vector<std::vector<double>> samples;
-		for( auto n : indices )
+		// Reinitialize level-set function (using the fast sweeping method and the pde-based equation with 5, 10, and 20
+		// iterations).  We go through the hash map of output files to write the corresponding samples.
+		std::unordered_map<std::string, Vec> reinitPhis;
+		std::unordered_map<std::string, const double*> reinitPhiReadPtrs;
+		reinitPhis.reserve( 4 );
+		reinitPhiReadPtrs.reserve( 4 );
+		for( const auto& key : phiKeys )
 		{
-			std::vector<p4est_locidx_t> stencil;	// Contains 9 nodal indices in 2D.
-			try
+			std::cout << "   :: Collecting samples for [" << key << "]" << std::endl;
+			reinitPhis[key] = Vec{};		// Save reinitialized level-set function values for each scheme separately.
+			ierr = VecDuplicate( phi, &reinitPhis[key] );
+			CHKERRXX( ierr );
+			ierr = VecCopy( phi, reinitPhis[key] );
+			CHKERRXX( ierr );
+
+			// Reinitialization.
+			if( key == "fsm" )				// Fast sweeping?
 			{
-				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
+				FastSweeping fsm;
+				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+				fsm.reinitializeLevelSetFunction( &reinitPhis[key], 8 );
+			}
+			else							// PDE-based?
+			{
+				my_p4est_level_set_t ls( &nodeNeighbors );
+				ls.reinitialize_2nd_order( reinitPhis[key], std::stoi( key.substr( 4 ) ) );		// 5, 10, 15 iterations.
+			}
+
+			// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are the
+			// points we'll use to create our sample files.  We repeatedly do this for each reinitialization scheme
+			// because the interface could move for the pde-based method.
+			std::vector<p4est_locidx_t> indices;
+			nodesAlongInterface.getIndices( &reinitPhis[key], indices );
+
+			// Getting the full uniform stencils of interface points.
+			reinitPhiReadPtrs[key] = nullptr;
+			ierr = VecGetArrayRead( reinitPhis[key], &reinitPhiReadPtrs[key] );
+			CHKERRXX( ierr );
+
+			// Now, collect samples with reinitialized level-set function values and target h\kappa.
+			int nSamples = 0;
+			std::vector<std::vector<double>> samples;
+			for( auto n : indices )
+			{
+				std::vector<p4est_locidx_t> stencil;	// Contains 9 nodal indices in 2D.
+				try
 				{
-					std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-						nodes, phiReadPtr, star, pointsFile, anglesFile );
-					samples.push_back( sample );
-					interfaceFlagPtr[n] = 1;		// Set the node-along-interface indicator.
-					nSamples++;
+					if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
+					{
+						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
+							nodes, reinitPhiReadPtrs[key], star,
+							( key == "fsm" )? &pointsFile : nullptr, 		// To avoid writing points multiple times
+							( key == "fsm" )? &anglesFile : nullptr );		// we send a non-null signal once with fsm.
+						samples.push_back( sample );
+						nSamples++;
+
+						if( key == "fsm" )				// Set valid node-along-interface indicator (just once, in fsm).
+							interfaceFlagPtr[n] = 1;
+					}
+				}
+				catch( std::exception &e )
+				{
+					double xyz[P4EST_DIM];				// Position of node at the center of the stencil.
+					node_xyz_fr_n( n, p4est, nodes, xyz );
+					std::cerr << "Node " << n << " (" << xyz[0] << ", " << xyz[1] << "): " << e.what() << std::endl;
 				}
 			}
-			catch( std::exception &e )
+
+			// Write all samples collected.
+			for( const auto& row : samples )
 			{
-				std::cerr << e.what() << std::endl;
+				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( phiFilesMap[key], "," ) );		// Inner elements.
+				phiFilesMap[key] << row.back() << std::endl;
 			}
+
+			std::cout << "   Generated " << nSamples << " samples." << std::endl;
 		}
 
-		// Write all samples collected for all circles with the same radius but randomized center content to file.
-		for( const auto& row : samples )
-		{
-			std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( outputFile, "," ) );		// Inner elements.
-			outputFile << row.back() << std::endl;
-		}
-
-		nSamples += samples.size();
-
-		printf( "<< Finished generating %i samples in %f secs.\n", nSamples, watch.get_duration_current() );
+		std::cout << "<< Done!" << std::endl;
 		watch.stop();
 
-		// Write paraview file to visualize the star interface and nodes following along.
+		// Write paraview file to visualize the star interface and nodes following it along.
 		std::ostringstream oss;
 		oss << "star_" << mpi.size() << "_" << P4EST_DIM;
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								2, 0, oss.str().c_str(),
-								VTK_POINT_DATA, "phi", phiReadPtr,
+								5, 0, oss.str().c_str(),
+								VTK_POINT_DATA, "fsm_phi", reinitPhiReadPtrs["fsm"],
+								VTK_POINT_DATA, "iter5_phi", reinitPhiReadPtrs["iter5"],
+								VTK_POINT_DATA, "iter10_phi", reinitPhiReadPtrs["iter10"],
+								VTK_POINT_DATA, "iter20_phi", reinitPhiReadPtrs["iter20"],
 								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
 		// Cleaning up.
-		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
-		CHKERRXX( ierr );
+		for( const auto& key : phiKeys )
+		{
+			ierr = VecRestoreArrayRead( reinitPhis[key], &reinitPhiReadPtrs[key] );
+			CHKERRXX( ierr );
+		}
 
 		ierr = VecRestoreArray( interfaceFlag, &interfaceFlagPtr );
 		CHKERRXX( ierr );
@@ -374,6 +458,12 @@ int main ( int argc, char* argv[] )
 		ierr = VecDestroy( interfaceFlag );
 		CHKERRXX( ierr );
 
+		for( const auto& key : phiKeys )
+		{
+			ierr = VecDestroy( reinitPhis[key] );
+			CHKERRXX( ierr );
+		}
+
 		// Destroy the p4est and its connectivity structure.
 		p4est_nodes_destroy( nodes );
 		p4est_ghost_destroy( ghost );
@@ -381,7 +471,8 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_destroy( connectivity );
 
 		// Closing file objects.
-		outputFile.close();
+		for( auto& it : phiFilesMap )
+			it.second.close();
 		pointsFile.close();
 		anglesFile.close();
 		paramsFile.close();
