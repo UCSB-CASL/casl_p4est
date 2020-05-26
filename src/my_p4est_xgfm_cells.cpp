@@ -46,6 +46,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
     periodicity(ngbd_c->get_hierarchy()->get_periodicity()),
     #ifdef WITH_SUBREFINEMENT
     fine_p4est(fine_ngbd_n->get_p4est()), fine_nodes(fine_ngbd_n->get_nodes()), fine_ghost(fine_ngbd_n->get_ghost()), fine_node_ngbd(fine_ngbd_n),
+    interp_subrefined_phi(fine_ngbd_n), interp_subrefined_normals(fine_ngbd_n), interp_subrefined_jump_u(fine_ngbd_n),
     #endif
     activate_xGFM(activate_xGFM_)
 {
@@ -108,6 +109,8 @@ my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
   if (residual            != NULL)  { ierr = VecDestroy(residual);                CHKERRXX(ierr); }
   if (solution            != NULL)  { ierr = VecDestroy(solution);                CHKERRXX(ierr); }
   if (jump_flux           != NULL)  { ierr = VecDestroy(jump_flux);               CHKERRXX(ierr); }
+
+  return;
 }
 
 void my_p4est_xgfm_cells_t::set_phi(Vec node_sampled_phi, Vec node_sampled_phi_xxyyzz)
@@ -119,14 +122,20 @@ void my_p4est_xgfm_cells_t::set_phi(Vec node_sampled_phi, Vec node_sampled_phi_x
     phi_xxyyzz = node_sampled_phi_xxyyzz;
   }
   phi = node_sampled_phi;
+  interp_subrefined_phi.set_input(node_sampled_phi, linear); // in case of subrefinement, we have more node-sampled data everywhere it is required so juste use it like that
+
   matrix_is_set = rhs_is_set = false;
+  return;
 }
 
 void my_p4est_xgfm_cells_t::set_normals(Vec node_sampled_normals)
 {
   P4EST_ASSERT(node_sampled_normals != NULL && VecIsSetForNodes(node_sampled_normals, fine_nodes, fine_p4est->mpicomm, P4EST_DIM));
   normals = node_sampled_normals;
+  interp_subrefined_normals.set_input(normals, linear, P4EST_DIM);
+
   rhs_is_set = false;
+  return;
 }
 
 void my_p4est_xgfm_cells_t::set_jumps(Vec node_sampled_jump_u, Vec node_sampled_jump_normal_flux)
@@ -137,25 +146,27 @@ void my_p4est_xgfm_cells_t::set_jumps(Vec node_sampled_jump_u, Vec node_sampled_
   P4EST_ASSERT(VecIsSetForNodes(node_sampled_jump_normal_flux,  fine_nodes, fine_p4est->mpicomm, 1));
   jump_u              = node_sampled_jump_u;
   jump_normal_flux_u  = node_sampled_jump_normal_flux;
+
+  interp_subrefined_jump_u.set_input(jump_u, linear);
+
   rhs_is_set = false;
+  return;
 }
 
-void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_WITH_SUBREFINEMENT(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
-                                                                     double& negative_volume, double& positive_volume) const
+void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const
 {
   if(quad_idx >= p4est->local_num_quadrants)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
   const p4est_tree* tree = p4est_tree_array_index(p4est->trees, tree_idx);
   const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
-  const double logical_size_quad = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+  const double logical_size_quad = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
   const double cell_dxyz[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_size_quad, tree_dimensions[1]*logical_size_quad, tree_dimensions[2]*logical_size_quad)};
   const double quad_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
 
 #ifdef WITH_SUBREFINEMENT
-  p4est_locidx_t fine_node_idx_for_quad;
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  if(quad_center_is_fine_node(*quad, tree_idx, fine_node_idx_for_quad)) // the quadrant is subrefined, find all subrefining quads and sum up their volumes
+  if(quadrant_if_subrefined(fine_p4est, fine_nodes, *quad, tree_idx)) // the quadrant is subrefined, find all subrefining quads and do the calculations therein
   {
     std::vector<p4est_locidx_t> indices_of_subrefining_quads;
     fine_node_ngbd->get_hierarchy()->get_all_quadrants_in(quad, tree_idx, indices_of_subrefining_quads);
@@ -171,14 +182,14 @@ void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est
   }
   else
   {
-    const double phi_q = interp_phi(xyz_quad);
+    const double phi_q = interp_subrefined_phi(xyz_quad);
 #ifdef P4EST_DEBUG
     for (char kx = -1; kx < 2; kx += 2)
       for (char ky = -1; ky < 2; ky += 2)
         for (char kz = -1; kz < 2; kz += 2)
         {
           double xyz_vertex[P4EST_DIM] = {DIM(xyz_quad[0] + kx*0.5*cell_dxyz[0], xyz_quad[1] + ky*0.5*cell_dxyz[1], xyz_quad[2] + kz*0.5*cell_dxyz[2])};
-          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, interp_phi(xyz_vertex)));
+          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, interp_subrefined_phi(xyz_vertex)));
         }
 #endif
     negative_volume = (phi_q <= 0.0 ? quad_volume : 0.0);
@@ -188,6 +199,7 @@ void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est
 #endif
   P4EST_ASSERT(0.0 <= negative_volume && negative_volume <= quad_volume);
   positive_volume = MAX(0.0, MIN(quad_volume, quad_volume - negative_volume));
+
   return;
 }
 
@@ -223,6 +235,8 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_all_nodes()
   ierr = VecRestoreArrayRead(normals, &normals_p); CHKERRXX(ierr);
   if(extension_on_nodes != NULL){
     ierr = VecRestoreArrayRead(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr); }
+
+  return;
 }
 
 void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_relevant_nodes_only()

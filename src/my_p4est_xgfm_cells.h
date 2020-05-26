@@ -128,7 +128,7 @@ class my_p4est_xgfm_cells_t
   const my_p4est_cell_neighbors_t *cell_ngbd;
   const my_p4est_node_neighbors_t *node_ngbd;
 #ifdef DEBUG
-  p4est_t             *p4est; // I loose the const qualifier on this one in DEBUG because of some of p4est's debug check functions that can't take const p4est objects in
+  p4est_t             *p4est; // I loose the const qualifier on this one in DEBUG because some of p4est's debug check functions can't take const p4est objects in...
 #else
   const p4est_t       *p4est;
 #endif
@@ -165,6 +165,7 @@ class my_p4est_xgfm_cells_t
   inline bool levelset_has_been_set() const { return phi != NULL; }
   inline bool normals_have_been_set() const { return normals != NULL; }
   inline bool jumps_have_been_set() const   { return jump_u != NULL && jump_normal_flux_u != NULL; }
+  my_p4est_interpolation_nodes_t interp_subrefined_phi, interp_subrefined_normals, interp_subrefined_jump_u;
 #else
   const my_p4est_interpolation_nodes_t *interp_phi, *interp_normals;
   const my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux_u;
@@ -426,8 +427,7 @@ class my_p4est_xgfm_cells_t
     P4EST_ASSERT(jump_flux != NULL);
   }
 
-  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_WITH_SUBREFINEMENT(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
-                                                double& negative_volume, double& positive_volume) const;
+  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
 
 public:
 
@@ -539,6 +539,9 @@ public:
   inline const p4est_ghost_t* get_subrefined_ghost()                          const { return fine_ghost;                                                            }
   inline const p4est_nodes_t* get_subrefined_nodes()                          const { return fine_nodes;                                                            }
   inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()               const { return fine_node_ngbd->get_hierarchy();                                       }
+  inline const my_p4est_interpolation_nodes_t& get_interp_phi()               const { return interp_subrefined_phi;                                                 }
+#else
+  inline const my_p4est_interpolation_nodes_t& get_interp_phi()               const { return *interp_phi;                                                           }
 #endif
 
   inline double get_sharp_integral_solution() const
@@ -558,7 +561,7 @@ public:
       for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
         const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
         double negative_volume, positive_volume;
-        compute_subvolumes_in_computational_cell(quad_idx, tree_idx ONLY_WITH_SUBREFINEMENT(COMMA interp_phi), negative_volume, positive_volume);
+        compute_subvolumes_in_computational_cell(quad_idx, tree_idx, negative_volume, positive_volume);
 
         double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
         // crude estimate but whatever, it's mostly to get closer to what we expect...

@@ -351,11 +351,7 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
   const p4est_t* p4est                  = solver.get_computational_p4est();
   const p4est_ghost_t* ghost            = solver.get_computational_ghost();
   const my_p4est_hierarchy_t* hierarchy = solver.get_computational_hierarchy();
-#ifdef WITH_SUBREFINEMENT
-  my_p4est_interpolation_nodes_t interp_phi(solver.get_subrefined_node_neighbors());
-  interp_phi.set_input(solver.get_subrefined_phi(), linear);
-#else
-#endif
+  const my_p4est_interpolation_nodes_t& interp_phi = solver.get_interp_phi();
   Vec flux[P4EST_DIM];
   for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecCreateGhostFaces(p4est, faces, &flux[dim], dim); CHKERRXX(ierr); }
@@ -869,7 +865,7 @@ void print_convergence_summary_in_file(const string& out_folder, const string& t
 Vec create_phi_on_computational_nodes(const my_p4est_xgfm_cells_t& solver)
 {
   PetscErrorCode ierr;
-  my_p4est_interpolation_nodes_t interp_phi(solver.get_subrefined_node_neighbors()); interp_phi.set_input(solver.get_subrefined_phi(), linear);
+  const my_p4est_interpolation_nodes_t& interp_phi = solver.get_interp_phi();
   Vec phi_comp; double *phi_comp_p;
   ierr = VecCreateGhostNodes(solver.get_computational_p4est(), solver.get_computational_nodes(), &phi_comp); CHKERRXX(ierr);
   ierr = VecGetArray(phi_comp, &phi_comp_p); CHKERRXX(ierr);
