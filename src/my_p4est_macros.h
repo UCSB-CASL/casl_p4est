@@ -88,10 +88,10 @@ class Point2;
 #define ONLY_WITH_P4EST_DEBUG(a)
 #endif
 
-#ifdef SUBREFINED
-#define ONLY_IF_SUBREFINED(a) a
+#ifdef WITH_SUBREFINEMENT
+#define ONLY_WITH_SUBREFINEMENT(a) a
 #else
-#define ONLY_IF_SUBREFINED(a)
+#define ONLY_WITH_SUBREFINEMENT(a)
 #endif
 
 

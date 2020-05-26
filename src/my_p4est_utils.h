@@ -701,10 +701,35 @@ inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_
  */
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
                                          p4est_locidx_t& fine_vertex_idx);
+
+inline bool quadrant_if_subrefined(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+                                   const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx)
+{
+  p4est_locidx_t tmp;
+  return logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(0, 0, 0), tmp);
+}
+
+inline p4est_locidx_t get_fine_node_idx_of_quad_center(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes, const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx)
+{
+  p4est_locidx_t fine_node_idx = -1;
+  const bool is_found = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(0, 0, 0), fine_node_idx);
+  P4EST_ASSERT(!is_found || fine_node_idx >= 0); (void) is_found;
+  return fine_node_idx;
+}
+
+inline p4est_locidx_t get_fine_node_idx_of_face_in_quad(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes, const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx,
+                                                        const u_char& oriented_face_dir)
+{
+  p4est_locidx_t fine_node_idx = -1;
+  char logical_vertex_in_quad[P4EST_DIM] = {DIM(0, 0, 0)}; logical_vertex_in_quad[oriented_face_dir/2] = (oriented_face_dir%2 == 1 ? 1 : -1);
+  const bool is_found = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(logical_vertex_in_quad[0], logical_vertex_in_quad[1], logical_vertex_in_quad[2]), fine_node_idx);
+  P4EST_ASSERT(!is_found || fine_node_idx >= 0);  (void) is_found;
+  return fine_node_idx;
+}
 #endif
 
 // my rigorous interface-identification rule [Raphael]
