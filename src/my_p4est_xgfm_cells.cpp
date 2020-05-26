@@ -316,6 +316,68 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_for_node(const p4es
   return;
 }
 
+linear_combination_of_dof_t my_p4est_xgfm_cells_t::stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& dir,
+                                                                                                 set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side, double* ) const
+{
+  P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants);
+  const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+  P4EST_ASSERT(!is_quad_Wall(p4est, tree_idx, quad, dir)); // we do not allow for wall faces in here
+  double xyz_[P4EST_DIM];
+
+  direct_neighbors.clear();
+  cell_ngbd->find_neighbor_cells_of_cell(direct_neighbors, quad_idx, tree_idx, dir);
+  P4EST_ASSERT(direct_neighbors.size() > 0);
+
+  const bool quad_is_major            = (direct_neighbors.size() > 1 || (direct_neighbors.size() == 1 && direct_neighbors.begin()->level == quad->level));
+  const bool major_quad_is_leading    = (dir%2 == (quad_is_major ?  0 : 1));
+  const p4est_quadrant_t& major_quad  = (quad_is_major ? *quad : *direct_neighbors.begin());
+  quad_xyz_fr_q((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), (quad_is_major ? tree_idx : major_quad.p.piggy3.which_tree), p4est, ghost, xyz_);
+  const double phi_major_quad = interp_subrefined_phi(xyz_);
+  all_cell_centers_on_same_side = true;
+
+  set_of_neighboring_quadrants *minor_quads = NULL;
+  if(quad_is_major)
+    minor_quads = &direct_neighbors;
+  else
+  {
+    minor_quads = new set_of_neighboring_quadrants;
+    cell_ngbd->find_neighbor_cells_of_cell(*minor_quads, major_quad.p.piggy3.local_num, major_quad.p.piggy3.which_tree, dir + (dir%2 == 0 ? 1 : -1)); // find all other quads sharing the face
+  }
+
+  const double shared_surface = pow((double) P4EST_QUADRANT_LEN(major_quad.level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1); // (logical) shared surface
+  double discretization_distance = 0.0;
+#ifdef DEBUG
+  double split_face_check = 0.0; bool quad_is_among_sharers = quad_is_major;
+#endif
+  for (set_of_neighboring_quadrants::const_iterator it = minor_quads->begin(); it != minor_quads->end(); ++it)
+  {
+    const double surface_ratio = pow((double) P4EST_QUADRANT_LEN(it->level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1)/shared_surface;
+    discretization_distance += surface_ratio * 0.5 * (double)(P4EST_QUADRANT_LEN(major_quad.level) + P4EST_QUADRANT_LEN(it->level))/(double) P4EST_ROOT_LEN;
+#ifdef DEBUG
+    split_face_check += surface_ratio; quad_is_among_sharers = quad_is_among_sharers || it->p.piggy3.local_num == quad_idx;
+#endif
+    quad_xyz_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost, xyz_);
+    all_cell_centers_on_same_side = all_cell_centers_on_same_side && !signs_of_phi_are_different(phi_major_quad, interp_subrefined_phi(xyz_));
+  }
+  P4EST_ASSERT(quad_is_among_sharers && fabs(split_face_check - 1.0) < EPS);
+  discretization_distance *= tree_dimensions[dir/2];
+
+  double major_quad_coefficient = 0.0;
+  linear_combination_of_dof_t local_derivative_operator;
+  for (set_of_neighboring_quadrants::const_iterator it = minor_quads->begin(); it != minor_quads->end(); ++it)
+  {
+    const double surface_ratio = pow((double) P4EST_QUADRANT_LEN(it->level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1)/shared_surface;
+    major_quad_coefficient += (major_quad_is_leading ? +1.0 : -1.0)*surface_ratio/discretization_distance;
+    local_derivative_operator.add_term(it->p.piggy3.local_num, (major_quad_is_leading ? -1.0 : +1.0)*surface_ratio/discretization_distance);
+  }
+  local_derivative_operator.add_term((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), major_quad_coefficient);
+  if(minor_quads != &direct_neighbors)
+    delete minor_quads;
+
+  return local_derivative_operator;
+}
+
 void my_p4est_xgfm_cells_t::preallocate_matrix()
 {
   PetscErrorCode ierr;
