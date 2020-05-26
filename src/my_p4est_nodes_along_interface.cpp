@@ -264,10 +264,14 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 				!_verifyNodesOnPrimaryDirection( outIdx, 5, inIdx, 7, qnnn.neighbor_0p0(), neighborsOfNode[inIdx] ) )	// Top?
 				return false;
 #endif
-
-			// Checking the diagonal neighbors.  Sometimes the previous test passes, even though a diagonal neighbor is
-			// not part of a uniform neighborhood. TODO: 3D.
+			// Checking the diagonal neighbors on the same horizontal or vertical plane as the center node.
+			// Sometimes the previous test passes, even though a diagonal neighbor is not part of a uniform neighborhood.
+#ifdef P4_TO_P8
+			if( outIdx == 1 || outIdx == 19 || outIdx == 7 || outIdx == 25 ||
+				outIdx == 11 || outIdx == 9 || outIdx == 17 || outIdx == 15 )
+#else
 			if( outIdx == 0 || outIdx == 2 || outIdx == 6 || outIdx == 8 )
+#endif
 			{
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( neighborsOfNode[inIdx], _p4est, _nodes, xyz );
@@ -277,12 +281,34 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 				{
 #ifdef CASL_THROWS
 					throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
-											  "Node " + std::to_string( nodeIdx ) + " has an unexpectedly far neighbor!" );
+											  "Node " + std::to_string( nodeIdx ) + " has an unexpectedly far "
+										      "flat-diagonal neighbor!" );
 #endif
 					return false;
 				}
 			}
 
+#ifdef P4_TO_P8
+			// Checking the diagonal neighbors in a different horizontal or vertical plane than the center node.
+			// Cube-diagonal elements only happen in 3D.
+			if( outIdx == 2 || outIdx == 20 || outIdx == 8 || outIdx == 26 ||
+				outIdx == 0 || outIdx == 18 || outIdx == 6 || outIdx == 24 )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( neighborsOfNode[inIdx], _p4est, _nodes, xyz );
+				double DIM( dx = xyz[0] - xyzCenter[0], dy = xyz[1] - xyzCenter[1], dz = xyz[2] - xyzCenter[2] );
+				double distance = sqrt( SUMD( SQR( dx ), SQR( dy ), SQR( dz ) ) );
+				if( distance < CUBE_DIAG_LOWER_B || distance > CUBE_DIAG_UPPER_B )
+				{
+#ifdef CASL_THROWS
+					throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
+											  "Node " + std::to_string( nodeIdx ) + " has an unexpectedly far "
+										      "cube-diagonal neighbor!" );
+#endif
+					return false;
+				}
+			}
+#endif
 			stencil[outIdx] = neighborsOfNode[inIdx];
 		}
 
