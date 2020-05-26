@@ -26,102 +26,6 @@
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 static const double value_not_needed = NAN;
 
-/*!
- * \brief The interface_neighbor struct contains all relevant data regarding interface-neighbor,
- * i.e., intersection between the interface and the segment joining the current cell of interest
- * and its neighbor cell, on the computational grid.
- * phi_q    : value of the level-set at the center of the cell of interest;
- * phi_nb   : value of the level-set at the center of the neighbor cell (i.e. across the interface);
- * theta    : fraction of the grid spacing covered by the domain in which the cell of interest is;
- * mu_this_side : value of the diffusion coefficient as seen from the the cell of interest;
- * mu_other_side: value of the diffusion coefficient across the interface (as seen from the neighbor cell);
- * quad_nb_idx  : local index of the neighbor cell in the computational grid (across the interface);
- * mid_point_fine_node_idx: local index of the grid node in between those two cells on the
- *                          interface-capturing grid (if using subrefinement);
- * quad_fine_node_idx     : local index of the grid node that coincides with the center of the cell
- *                          of interest, on the interface-capturing grid (if using subrefinement);
- * tmp_fine_node_idx      : local index of the grid node that coincides with the center of the neighbor
- *                          cell across the interface, on the interface-capturing grid (if using subrefinement).
- */
-struct interface_neighbor
-{
-  double  phi_q;
-  double  phi_nb;
-  double  theta;
-  p4est_locidx_t quad_nb_idx;
-#ifdef WITH_SUBREFINEMENT
-  p4est_locidx_t mid_point_fine_node_idx;
-  p4est_locidx_t quad_fine_node_idx;
-  p4est_locidx_t nb_fine_node_idx;
-#endif
-  double interface_value(const double &mu_m, const double &mu_p, const p4est_locidx_t& quad_idx, const u_char dir, const double *dxyz_min,
-                         const double *solution_p, const double* jump_u_p, const double* jump_flux_p) const
-  {
-    P4EST_ASSERT(signs_of_phi_are_different(phi_q, phi_nb));
-    P4EST_ASSERT(mid_point_fine_node_idx >= 0);
-
-    const double theta_fine = (theta >= 0.5 ? 2.0*theta - 1.0 : 2.0*theta);
-    const p4est_locidx_t &fine_idx_this_side  = (theta >= 0.5 ? mid_point_fine_node_idx : quad_fine_node_idx);
-    const p4est_locidx_t &fine_idx_across     = (theta >= 0.5 ? nb_fine_node_idx        : mid_point_fine_node_idx);
-
-    const double jump_solution       = (1.0 - theta_fine)*jump_u_p[fine_idx_this_side]                      + theta_fine*jump_u_p[fine_idx_across];
-    const double jump_flux_component = (1.0 - theta_fine)*jump_flux_p[P4EST_DIM*fine_idx_this_side + dir/2] + theta_fine*jump_flux_p[P4EST_DIM*fine_idx_across + dir/2];
-
-    const double &mu_this_side  = (phi_q   > 0.0 ? mu_p : mu_m);
-    const double &mu_across     = (phi_nb  > 0.0 ? mu_p : mu_m);
-    const double mu_tilde       = (1.0 - theta)*mu_this_side + theta*mu_across;
-    const bool on_slow_side     = (mu_m >= mu_p) == (phi_q <= 0.0);
-
-    return ((1.0 - theta)*mu_this_side*(solution_p[quad_idx] + (!on_slow_side ? (phi_q  <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
-            + theta*mu_across*(solution_p[quad_nb_idx] + (on_slow_side ? (phi_nb <= 0.0 ? +1.0 : -1.0)*jump_solution : 0.0))
-            + ((dir%2 == 1) == (phi_q > 0.0) ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz_min[dir/2]*jump_flux_component)/mu_tilde;
-  }
-#ifdef DEBUG
-  bool is_consistent_with_neighbor_across(const interface_neighbor nb_across) const
-  {
-    return ((phi_q > 0.0) != (nb_across.phi_q > 0.0))
-        && fabs(phi_q - nb_across.phi_nb) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
-        && fabs(phi_nb - nb_across.phi_q) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
-        && fabs(theta + nb_across.theta - 1.0) < EPS;
-  }
-#endif
-};
-
-#ifdef DEBUG
-struct which_interface_nb
-{
-  p4est_locidx_t loc_idx;
-  u_char dir;
-};
-#endif
-
-struct extension_matrix_entry
-{
-  p4est_locidx_t loc_idx;
-  double coeff;
-};
-struct extension_interface_value_entry
-{
-  u_char dir;
-  double coeff;
-};
-
-struct extension_affine_map
-{
-  bool too_close;
-  int forced_interface_value_dir;
-  double diag_entry, dtau, phi_q;
-  std::vector<extension_interface_value_entry> interface_entries;
-  std::vector<extension_matrix_entry> quad_entries;
-  extension_affine_map() {
-    interface_entries.resize(0);
-    quad_entries.resize(0);
-    too_close = false;
-    diag_entry = 0.0;
-    forced_interface_value_dir = -1;
-  }
-};
-
 class my_p4est_xgfm_cells_t
 {
   // data related to the computational grid
@@ -256,18 +160,281 @@ class my_p4est_xgfm_cells_t
   bool matrix_is_set, rhs_is_set;
   const bool activate_xGFM;
 
-  // map_of_interface_neighbors:
-  // key    = local index of the considered quadrant
-  // value  = another map such that
-  //      - key   = (oriented) Cartesian direction in which the jump info is sought;
-  //      - value = structure encapsulating the jump info.
-  std::map<p4est_locidx_t, std::map<u_char, interface_neighbor> > map_of_interface_neighbors;
+  /*!
+   * \brief The interface_neighbor struct contains all relevant data regarding interface-neighbor,
+   * i.e., intersection between the interface and the segment joining the current cell of interest
+   * and its neighbor cell, on the computational grid.
+   * phi_q    : value of the level-set at the center of the cell of interest;
+   * phi_nb   : value of the level-set at the center of the neighbor cell (i.e. across the interface);
+   * theta    : fraction of the grid spacing covered by the domain in which the cell of interest is;
+   * neighbor_quad_idx      : local index of the neighbor cell in the computational grid (across the interface);
+   * mid_point_fine_node_idx: local index of the grid node in between those two cells on the
+   *                          interface-capturing grid (if using subrefinement);
+   * quad_fine_node_idx     : local index of the grid node that coincides with the center of the cell
+   *                          of interest, on the interface-capturing grid (if using subrefinement);
+   * tmp_fine_node_idx      : local index of the grid node that coincides with the center of the neighbor
+   *                          cell across the interface, on the interface-capturing grid (if using subrefinement).
+   */
+  struct interface_neighbor
+  {
+    double  phi_q;
+    double  phi_nb;
+    double  theta;
+    p4est_locidx_t neighbor_quad_idx;
+#ifdef WITH_SUBREFINEMENT
+    p4est_locidx_t mid_point_fine_node_idx;
+    p4est_locidx_t quad_fine_node_idx;
+    p4est_locidx_t nb_fine_node_idx;
+#endif
+#ifdef DEBUG
+    inline bool is_consistent_with_neighbor_across(const interface_neighbor& nb_across) const
+    {
+      return ((phi_q > 0.0) != (nb_across.phi_q > 0.0))
+          && fabs(phi_q - nb_across.phi_nb) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
+          && fabs(phi_nb - nb_across.phi_q) < EPS*MAX(fabs(phi_q), fabs(phi_nb))
+          && fabs(theta + nb_across.theta - 1.0) < EPS;
+    }
+#endif
 
-  // memorized local extension operators
-  std::vector<extension_affine_map> extension_entries;
-  bool extension_entries_are_set;
+    inline void get_GFM_jump_data(double& jump_field, double& jump_flux_component, const double* jump_p, const double* jump_flux_p, const u_char& dir) const
+    {
+      P4EST_ASSERT(mid_point_fine_node_idx >= 0);
+      const bool past_mid_point = theta >= 0.5;
+      const double theta_between_fine_nodes     = 2.0*theta - (past_mid_point ? 1.0 : 0.0);
+      const p4est_locidx_t &fine_node_this_side = (past_mid_point ? mid_point_fine_node_idx  : quad_fine_node_idx);
+      const p4est_locidx_t &fine_node_across    = (past_mid_point ? nb_fine_node_idx         : mid_point_fine_node_idx);
+      jump_field          = theta_between_fine_nodes*jump_p[fine_node_across]                         + (1.0 - theta_between_fine_nodes)*jump_p[fine_node_this_side];
+      jump_flux_component = theta_between_fine_nodes*jump_flux_p[P4EST_DIM*fine_node_across + dir/2]  + (1.0 - theta_between_fine_nodes)*jump_flux_p[P4EST_DIM*fine_node_this_side + dir/2];
+      return;
+    }
+
+    inline double GFM_mu_tilde(const double& mu_this_side, const double& mu_across) const
+    {
+      return (1.0 - theta)*mu_this_side + theta*mu_across;
+    }
+
+    inline double GFM_mu_jump(const double& mu_this_side, const double& mu_across) const
+    {
+      return mu_this_side*mu_across/GFM_mu_tilde(mu_this_side, mu_across);
+    }
+
+    inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& dir, const bool &this_side_is_in_positive_domain,
+                                                    const double* jump_p, const double* jump_flux_p,
+                                                    const double* dxyz, const bool& evaluate_flux_on_this_side) const
+    {
+      double jump_field, jump_flux_component;
+      get_GFM_jump_data(jump_field, jump_flux_component, jump_p, jump_flux_p, dir);
+
+      return GFM_mu_jump(mu_this_side, mu_across)*(this_side_is_in_positive_domain ? +1.0 : -1.0)*
+          (jump_flux_component*(evaluate_flux_on_this_side ? (1 - theta)/mu_across : -theta/mu_this_side) + (dir%2 == 1 ? +1.0 : -1.0)*jump_field/dxyz[dir/2]);
+    }
+
+    inline double GFM_flux_component(const double& mu_this_side, const double& mu_across, const u_char& dir, const bool &this_side_is_in_positive_domain,
+                                     const double& solution_this_side, const double& solution_across,
+                                     const double* jump_p, const double* jump_flux_p,
+                                     const double* dxyz, const bool& evaluate_flux_on_this_side) const
+    {
+      return (dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/dxyz[dir/2]
+          + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, dir, this_side_is_in_positive_domain, jump_p, jump_flux_p, dxyz, evaluate_flux_on_this_side);
+    }
+
+    inline double GFM_interface_defined_value(const double& mu_this_side, const double& mu_across, const u_char& dir, const bool &this_side_is_in_positive_domain, const bool &extending_positive_interface_values,
+                                              const double& solution_this_side, const double& solution_across,
+                                              const double* jump_p, const double* jump_flux_p,
+                                              const double* dxyz) const
+    {
+      double jump_field, jump_flux_component;
+      get_GFM_jump_data(jump_field, jump_flux_component, jump_p, jump_flux_p, dir);
+
+      return ((1.0 - theta)*mu_this_side*(solution_this_side  + (this_side_is_in_positive_domain != extending_positive_interface_values ? (this_side_is_in_positive_domain ? -1.0 : +1.0)*jump_field : 0.0))
+              +      theta *mu_across   *(solution_across     + (this_side_is_in_positive_domain == extending_positive_interface_values ? (this_side_is_in_positive_domain ? +1.0 : -1.0)*jump_field : 0.0))
+              + (this_side_is_in_positive_domain ? +1.0 : -1.0)*(dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[dir/2]*jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
+    }
+  };
+
+  class interface_manager_t {
+    my_p4est_xgfm_cells_t& solver;
+
+    struct which_interface_neighbor_t
+    {
+      p4est_locidx_t loc_idx;
+      u_char dir;
+
+      inline bool operator==(const which_interface_neighbor_t& other) const { return (this->loc_idx == other.loc_idx && this->dir == other.dir); } // equality comparator
+#if __cplusplus < 201103L
+      inline bool operator<(const which_interface_neighbor_t& other) const { return (this->loc_idx < other.loc_idx || (this->loc_idx == other.loc_idx && this->dir < other.dir)); } // comparison operator for storing in ordered map
+#endif
+    };
+
+#if __cplusplus >= 201103L
+    struct hash_functor{
+      size_t operator()(const which_interface_neighbor_t& key) const { return P4EST_DIM*key.loc_idx + key.dir; } // hash value for unordered map keys
+    };
+    typedef std::unordered_map<which_interface_neighbor_t, interface_neighbor, hash_functor> map_of_interface_neighbors_t;
+#else
+    typedef std::map<which_interface_neighbor_t, interface_neighbor> map_of_interface_neighbors_t;
+#endif
+    map_of_interface_neighbors_t interface_data;
+    map_of_interface_neighbors_t::const_iterator current_interface_data;
+
+    inline map_of_interface_neighbors_t::const_iterator find_interface_neighbor_in_map(const p4est_locidx_t& quad_idx, const u_char& dir) const
+    {
+      P4EST_ASSERT(0 <= quad_idx && quad_idx < solver.p4est->local_num_quadrants && dir < P4EST_FACES);
+      const which_interface_neighbor_t which_one = {quad_idx, dir};
+      return interface_data.find(which_one);
+    }
+
+    void clear() {
+      interface_data.clear();
+      current_interface_data = interface_data.end();
+    }
+
+    inline bool current_interface_point_is_set_for(const p4est_locidx_t& quad_idx, const u_char& dir) const
+    {
+      const which_interface_neighbor_t which_one = {quad_idx, dir};
+      return (current_interface_data != interface_data.end() && current_interface_data->first == which_one);
+    }
+
+    void set_current_interface_point_for(const p4est_locidx_t& quad_idx, const u_char& dir);
+
+  public:
+    interface_manager_t(my_p4est_xgfm_cells_t& parent_solver) : solver(parent_solver) { clear(); }
+
+    void update_jumps_in_flux_at_all_relevant_nodes() const;
+    void update_rhs_in_relevant_cells_only() const;
+
+    const interface_neighbor get_interface_neighbor(const p4est_locidx_t& quad_idx, const u_char& dir);
+
+    inline double GFM_mu_jump(const p4est_locidx_t& quad_idx, const u_char& dir, const double& mu_this_side, const double& mu_across)
+    {
+      if(!current_interface_point_is_set_for(quad_idx, dir))
+        set_current_interface_point_for(quad_idx, dir);
+      return current_interface_data->second.GFM_mu_jump(mu_this_side, mu_across);
+    }
+
+    inline double GFM_jump_terms_for_flux_component(const p4est_locidx_t& quad_idx, const u_char& dir,
+                                                    const double& mu_this_side, const double& mu_across, const bool& in_positive_domain,
+                                                    const double* jump_field_p, const double* jump_flux_p)
+    {
+      if(!current_interface_point_is_set_for(quad_idx, dir))
+        set_current_interface_point_for(quad_idx, dir);
+      return current_interface_data->second.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, dir, in_positive_domain, jump_field_p, jump_flux_p, solver.dxyz_min, true);
+    }
+
+    inline double interface_value(const p4est_locidx_t& quad_idx, const u_char& dir, const double* solution_p, const double* jump_field_p, const double* jump_flux_p)
+    {
+      if(!current_interface_point_is_set_for(quad_idx, dir))
+        set_current_interface_point_for(quad_idx, dir);
+
+
+      const double &mu_this_side  = (current_interface_data->second.phi_q   > 0.0 ? solver.mu_p : solver.mu_m);
+      const double &mu_across     = (current_interface_data->second.phi_nb  > 0.0 ? solver.mu_p : solver.mu_m);
+
+      const bool in_positive_domain = current_interface_data->second.phi_q > 0.0;
+      const bool extending_positive_values = !solver.mu_m_is_larger();
+      return current_interface_data->second.GFM_interface_defined_value(mu_this_side, mu_across, dir, in_positive_domain, extending_positive_values, solution_p[quad_idx], solution_p[current_interface_data->second.neighbor_quad_idx], jump_field_p, jump_flux_p, solver.dxyz_min);
+    }
+
+    inline double GFM_flux_at_center_face(const p4est_locidx_t& quad_idx, const u_char& dir, const double& mu_this_side, const double mu_across,
+                                          const bool& in_positive_domain, const bool face_is_on_this_side, const double& solution_quadrant, const double& solution_neighbor_quad,
+                                          const double* jump_field_p, const double* jump_flux_p)
+    {
+      if(!current_interface_point_is_set_for(quad_idx, dir))
+        set_current_interface_point_for(quad_idx, dir);
+      return current_interface_data->second.GFM_flux_component(mu_this_side, mu_across, dir, in_positive_domain, solution_quadrant, solution_neighbor_quad, jump_field_p, jump_flux_p, solver.dxyz_min, face_is_on_this_side);
+    }
+
+
+#ifdef DEBUG
+  int is_map_consistent();
+#endif
+  } interface_manager;
+
+  class cell_TVD_extension_operator_t
+  {
+    class local_cell_TVD_extension_operator
+    {
+      friend class cell_TVD_extension_operator_t;
+      struct off_diag_entry{
+        double coeff;
+        virtual double neighbor_value(const double* extension_on_cells_p, interface_manager_t& interface_manager,
+                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const = 0;
+        inline double contribution_to_negative_normal_derivative(const double* extension_on_cells_p, interface_manager_t& interface_manager,
+                                                                 const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
+        {
+          return coeff*neighbor_value(extension_on_cells_p, interface_manager, quad_idx, solution_p, jump_u_p, jump_flux_p);
+        }
+        virtual ~off_diag_entry(){};
+      };
+      struct regular_quad_entry : off_diag_entry
+      {
+        p4est_locidx_t loc_idx;
+        inline double neighbor_value(const double* extension_on_cells_p, interface_manager_t&,
+                                     const p4est_locidx_t&, const double*, const double*, const double*) const
+        {
+          return extension_on_cells_p[loc_idx];
+        }
+        inline ~regular_quad_entry(){}
+      };
+      struct interface_entry : off_diag_entry
+      {
+        u_char dir;
+        inline double neighbor_value(const double*, interface_manager_t& interface_manager,
+                                     const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
+        {
+          return interface_manager.interface_value(quad_idx, dir, solution_p, jump_u_p, jump_flux_p);
+        }
+        inline ~interface_entry(){}
+      };
+
+      void clear_extension_entries() {
+        for (size_t k = 0; k < extension_entries.size(); ++k)
+          delete extension_entries[k];
+        extension_entries.clear();
+      }
+
+      bool too_close;
+      u_char forced_interface_value_dir;
+      double diag_entry, dtau, phi_q;
+      std::vector<off_diag_entry*> extension_entries;
+
+    public:
+      local_cell_TVD_extension_operator() {
+        extension_entries.resize(0);
+        too_close = false;
+        diag_entry = 0.0;
+        dtau = DBL_MAX;
+        forced_interface_value_dir = UCHAR_MAX;
+      }
+      ~local_cell_TVD_extension_operator(){ clear_extension_entries(); }
+
+      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const interface_neighbor& neighbor, const u_char& direction);
+
+//      void add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_normal, const u_char& dir,
+//                                    const linear_combination_of_dof_t& one_sided_derivative_operator, const double& discretization_distance);
+
+      void add_major_quad_and_direct_neighbors(const p4est_locidx_t& quad_idx, const double* signed_normal, const double* tree_dimensions, const u_char& dir,
+                                               const p4est_quadrant_t* major_quad, const p4est_locidx_t& major_quad_idx,
+                                               const set_of_neighboring_quadrants& neighbors_across_face, const bool& major_quad_is_leading);
+    };
+
+    my_p4est_xgfm_cells_t& solver;
+    std::vector<local_cell_TVD_extension_operator> my_local_operators;
+
+  public:
+    bool is_set;
+    cell_TVD_extension_operator_t(my_p4est_xgfm_cells_t& parent_solver) : solver(parent_solver), is_set(false) {
+      my_local_operators.resize(solver.p4est->local_num_quadrants);
+    }
+
+    inline double advance_one_pseudo_time_step(const p4est_locidx_t& quad_idx, const double* extension_on_cells_p, const double* solution_p, const double* jump_u_p, const double* jump_flux_p,
+                                               double& max_correction_in_band, const double& band_to_diag_ratio) const;
+
+    void build_local_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx);
+  } cell_TVD_extension_operator;
+
   // memorized local interpolation operators
-  std::vector<linear_combination_of_dof_t> local_interpolator;
+  std::vector<linear_combination_of_dof_t> local_interpolators;
   bool local_interpolators_are_set;
 
   // disallow copy ctr and copy assignment
@@ -332,65 +499,18 @@ class my_p4est_xgfm_cells_t
   double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_extension_on_nodes,
                                                          Vec former_rhs, Vec former_residual);
 
-#ifdef DEBUG
-  int is_map_consistent() const;
-#endif
-
   void compute_jumps_in_flux_components_at_all_nodes();
-  void compute_jumps_in_flux_components_at_relevant_nodes_only();
-  void compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
-                                                 const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p);
-
-  bool interface_neighbor_is_found(const p4est_locidx_t& quad_idx, const u_char& dir, interface_neighbor& int_nb) const ;
-  interface_neighbor get_interface_neighbor(const p4est_locidx_t& quad_idx, const u_char& dir, const p4est_locidx_t& nb_quad_idx,
-                                            const p4est_locidx_t& quad_fine_node_idx, const p4est_locidx_t& nb_fine_node_idx,
-                                            const double *phi_p, const double *phi_xxyyzz_p);
+  void compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p, const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p) const;
 
   void initialize_extension_on_cells();
   void initialize_extension_on_cells_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                                      const my_p4est_interpolation_nodes_t &interp_phi_and_jump_u, const double* const &phi_p, const double* const &jump_u_p,
-                                                      const double* const &solution_p, double* const &extension_on_cells_p) const;
+                                           const double* const &solution_p, double* const &extension_on_cells_p) const;
 
-  void cell_TVD_extension_of_interface_values(Vec new_cell_extension, const double& threshold, const uint& niter_max);
-
-  inline bool quad_center_is_fine_node(const p4est_quadrant_t &quad, const p4est_locidx_t &tree_idx, p4est_locidx_t& fine_node_idx_of_quad_center) const
-  {
-#ifdef DEBUG
-    fine_node_idx_of_quad_center = -1;
-#endif
-    bool to_return = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(0, 0, 0), fine_node_idx_of_quad_center);
-    P4EST_ASSERT(!to_return || fine_node_idx_of_quad_center >= 0);
-    return to_return;
-  }
-
-  inline bool face_in_quad_is_fine_node(const p4est_quadrant_t &quad, const p4est_locidx_t &tree_idx, const u_char& face_dir, p4est_locidx_t& fine_node_idx_for_face) const
-  {
-    char logical_vertex_in_quad[P4EST_DIM] = {DIM(0, 0, 0)}; logical_vertex_in_quad[face_dir/2] = (face_dir%2 == 1 ? 1 : -1);
-#ifdef DEBUG
-    fine_node_idx_for_face = -1;
-#endif
-    bool to_return = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(logical_vertex_in_quad[0], logical_vertex_in_quad[1], logical_vertex_in_quad[2]), fine_node_idx_for_face);
-    P4EST_ASSERT(!to_return || fine_node_idx_for_face >= 0);
-    return to_return;
-  }
+  void cell_TVD_extension_of_interface_values(const double& threshold, const uint& niter_max);
 
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                     const double *phi_p, const double* phi_xxyyzz_p, const my_p4est_interpolation_nodes_t& interp_phi,
                                      const double *user_rhs_p, const double *jump_u_p, const double *jump_flux_p,
-                                     double* rhs_p, int &nullspace_contains_constant_vector);
-  inline void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                            const double *phi_p, const double* phi_xxyyzz_p, const my_p4est_interpolation_nodes_t& interp_phi,
-                                            const double *user_rhs_p, const double *jump_u_p, const double *jump_flux_p,
-                                            double* rhs_p)
-  {
-    int not_needed;
-    build_discretization_for_quad(quad_idx, tree_idx,
-                                  phi_p, phi_xxyyzz_p, interp_phi,
-                                  user_rhs_p, jump_u_p, jump_flux_p,
-                                  rhs_p, not_needed);
-    (void) not_needed;
-    return;
-  }
+                                     double* rhs_p, int *nullspace_contains_constant_vector = NULL);
 
   inline void make_sure_solution_is_set()
   {
@@ -423,7 +543,7 @@ class my_p4est_xgfm_cells_t
     if(at_all_nodes)
       compute_jumps_in_flux_components_at_all_nodes();
     else
-      compute_jumps_in_flux_components_at_relevant_nodes_only();
+      interface_manager.update_jumps_in_flux_at_all_relevant_nodes();
     P4EST_ASSERT(jump_flux != NULL);
   }
 
