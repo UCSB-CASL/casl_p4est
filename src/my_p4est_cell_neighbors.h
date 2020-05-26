@@ -201,50 +201,6 @@ public:
                                                const bool *no_search = NULL) const;
 };
 
-class cell_field_interpolator_t
-{
-  struct cell_interpolation_factor
-  {
-    p4est_locidx_t quad_idx;
-    double weight;
-    cell_interpolation_factor(const p4est_locidx_t &quad_idx_, const double &weight_) : quad_idx(quad_idx_), weight(weight_) {}
-    bool operator ==(const cell_interpolation_factor &other) const { return (this->quad_idx == other.quad_idx); }
-  };
-  std::vector<cell_interpolation_factor> interpolator;
-public:
-  cell_field_interpolator_t(){}
-
-  void add_interpolation_factor(const p4est_locidx_t &quad_idx_, const double &interpolation_weight)
-  {
-    cell_interpolation_factor factor(quad_idx_, interpolation_weight);
-    interpolator.push_back(factor);
-  }
-
-  void scale_interpolation_weights_by(const double &scaling) {
-    for (size_t k = 0; k < interpolator.size(); ++k)
-      interpolator[k].weight *= scaling;
-  }
-
-  void scale_interpolation_weights_by(const std::vector<double>& scaling, const double &normalization_factor = 1.0) {
-    P4EST_ASSERT(scaling.size() == interpolator.size());
-    for (size_t k = 0; k < interpolator.size(); ++k)
-      interpolator[k].weight *= scaling[k]/normalization_factor;
-  }
-
-  void clear() { interpolator.clear(); }
-
-  double interpolate(const double *cell_sampled_field_p) const
-  {
-    double interpolated_value = 0.0;
-    for (size_t k = 0; k < interpolator.size(); ++k)
-      interpolated_value += interpolator[k].weight*cell_sampled_field_p[interpolator[k].quad_idx];
-    return  interpolated_value ;
-  }
-
-  size_t size() const { return interpolator.size(); }
-};
-
-
 /*!
  * \brief interpolate_cell_field_at_node interpolates a cell-sampled-field at a grid node using least-square interpolation
  * \param [in] node_idx   : local index of the node where the least-square interpolated value is desired;
@@ -266,11 +222,11 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
 double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
                                       const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
                                       const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
-                                      const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, cell_field_interpolator_t* interpolator = NULL);
+                                      const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL);
 
 inline double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
                                              const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
-                                             const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, cell_field_interpolator_t* interpolator = NULL)
+                                             const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
 {
   return get_lsqr_interpolation_at_node(node, xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
 }

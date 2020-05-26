@@ -674,6 +674,61 @@ public:
   }
 };
 
+struct dof_weighted_term
+{
+  p4est_locidx_t  dof_idx;
+  double          weight;
+};
+
+class linear_combination_of_dof_t
+{
+  std::vector<dof_weighted_term> linear_combination;
+public:
+  linear_combination_of_dof_t(){ clear(); }
+
+  inline void add_term(const p4est_locidx_t &idx_, const double &weight_)
+  {
+    linear_combination.push_back({idx_, weight_});
+  }
+
+  inline linear_combination_of_dof_t& operator /=(const double& scaling) {
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight /= scaling;
+    return *this;
+  }
+
+  inline void clear() { linear_combination.clear(); }
+
+  inline double operator()(const double *dof_sampled_field_p) const
+  {
+    double value_to_return = 0.0;
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+    {
+      const dof_weighted_term& term = linear_combination[k];
+      value_to_return += term.weight*dof_sampled_field_p[term.dof_idx];
+    }
+    return value_to_return;
+  }
+
+  inline linear_combination_of_dof_t& operator*=(const std::vector<double> scaling_factor)
+  {
+    P4EST_ASSERT(scaling_factor.size() ==  size());
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight *= scaling_factor[k];
+    return *this;
+  }
+
+  inline size_t size() const {
+    return linear_combination.size();
+  }
+
+  inline const dof_weighted_term& operator[](size_t k) const
+  {
+    P4EST_ASSERT(k < linear_combination.size());
+    return linear_combination[k];
+  }
+};
+
 struct bc_sample
 {
   BoundaryConditionType type;

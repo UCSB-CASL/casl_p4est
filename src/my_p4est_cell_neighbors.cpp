@@ -239,10 +239,8 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
 double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
                                       const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
                                       const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
-                                      const unsigned char &degree, const double &thresh_condition_number, cell_field_interpolator_t* interpolator)
+                                      const unsigned char &degree, const double &thresh_condition_number, linear_combination_of_dof_t* interpolator)
 {
-
-
   matrix_t A;
   A.resize(1, 1 + (degree > 0 ? P4EST_DIM : 0) + (degree  > 1 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
   std::vector<double> lsqr_rhs; lsqr_rhs.resize(0);
@@ -288,7 +286,7 @@ double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xy
       lsqr_rhs.push_back(cell_sampled_field_p[quad_idx]*weight);
 
       if(interpolator != NULL)
-        interpolator->add_interpolation_factor(quad_idx, weight);
+        interpolator->add_term(quad_idx, weight);
     }
 
   P4EST_ASSERT((bc == NULL ? 0 < A.num_rows() && (size_t) A.num_rows() == ngbd_of_cells.size() : (size_t)A.num_rows() <= ngbd_of_cells.size()));
@@ -301,13 +299,14 @@ double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xy
   }
 
   const double abs_max = A.scale_by_maxabs(lsqr_rhs);
+  if(interpolator != NULL)
+    *interpolator /= abs_max;
   P4EST_ASSERT(interpolator == NULL || interpolator->size() > 0);
   std::vector<double>* interp_weights = (interpolator == NULL ? NULL : new std::vector<double>(interpolator->size()));
 
   const double value_to_return = solve_lsqr_system(A, lsqr_rhs, DIM(rel_qcoord[0].size(), rel_qcoord[1].size(), rel_qcoord[2].size()), degree, 0, interp_weights, thresh_condition_number);
-  P4EST_ASSERT(interp_weights == NULL || interp_weights->size() == interpolator->size());
   if(interpolator != NULL)
-    interpolator->scale_interpolation_weights_by(*interp_weights, abs_max);
+    (*interpolator) *= *interp_weights;
 
   return value_to_return;
 }
