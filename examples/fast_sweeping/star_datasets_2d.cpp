@@ -148,9 +148,9 @@ void generateColumnHeaders( std::string header[] )
 
 	sample[s] = H * star.curvature( thetaOnInterface );		// Last column holds h\kappa.
 
-	// Write center sample point coordinates.
+	// Write center sample node index and coordinates.
 	if( pointsFile )
-		*pointsFile << xyz[0] << "," << xyz[1] << std::endl;
+		*pointsFile << nodeIdx << "," << xyz[0] << "," << xyz[1] << std::endl;
 
 	// Write angle parameter for projected point on interface.
 	if( anglesFile )
@@ -257,7 +257,7 @@ int main ( int argc, char* argv[] )
 			throw std::runtime_error( "Point cartesian coordinates file " + pointsFileName + " couldn't be opened!" );
 
 		pointsFile.precision( 15 );
-		pointsFile << R"("x","y")" << std::endl;
+		pointsFile << R"("i","x","y")" << std::endl;
 
 		// Prepare file where to write the params.
 		std::ofstream paramsFile;

@@ -223,6 +223,14 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 	_neighbors->get_all_neighbors( nodeIdx, neighborsOfNode, neighborExists );
 
 	// Check uniformity of neighbors.
+	double xyzCenter[P4EST_DIM];								// Retrieve location of center node.
+	node_xyz_fr_n( nodeIdx, _p4est, _nodes, xyzCenter );
+	const double FLAT_DIAG_LOWER_B = _h * M_SQRT2 - _zEPS;		// Diagonal neighbors on the same facet/plane: lower and
+	const double FLAT_DIAG_UPPER_B = _h * M_SQRT2 + _zEPS;		// upper bounds.
+#ifdef P4_TO_P8
+	const double CUBE_DIAG_LOWER_B = _h * sqrt( 3 ) - _zEPS;	// Diagonal neighbors on different plane: lower and
+	const double CUBE_DIAG_UPPER_B = _h * sqrt( 3 ) + _zEPS;	// upper bounds.
+#endif
 	for( int xStep = 0; xStep < STEPS; xStep++ )
 		for( int yStep = 0; yStep < STEPS; yStep++ )
 #ifdef P4_TO_P8
@@ -256,6 +264,25 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 				!_verifyNodesOnPrimaryDirection( outIdx, 5, inIdx, 7, qnnn.neighbor_0p0(), neighborsOfNode[inIdx] ) )	// Top?
 				return false;
 #endif
+
+			// Checking the diagonal neighbors.  Sometimes the previous test passes, even though a diagonal neighbor is
+			// not part of a uniform neighborhood. TODO: 3D.
+			if( outIdx == 0 || outIdx == 2 || outIdx == 6 || outIdx == 8 )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( neighborsOfNode[inIdx], _p4est, _nodes, xyz );
+				double DIM( dx = xyz[0] - xyzCenter[0], dy = xyz[1] - xyzCenter[1], dz = xyz[2] - xyzCenter[2] );
+				double distance = sqrt( SUMD( SQR( dx ), SQR( dy ), SQR( dz ) ) );
+				if( distance < FLAT_DIAG_LOWER_B || distance > FLAT_DIAG_UPPER_B )
+				{
+#ifdef CASL_THROWS
+					throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::getFullStencilOfNode: "
+											  "Node " + std::to_string( nodeIdx ) + " has an unexpectedly far neighbor!" );
+#endif
+					return false;
+				}
+			}
+
 			stencil[outIdx] = neighborsOfNode[inIdx];
 		}
 
