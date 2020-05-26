@@ -49,7 +49,7 @@ struct interface_neighbor
   double  phi_nb;
   double  theta;
   p4est_locidx_t quad_nb_idx;
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   p4est_locidx_t mid_point_fine_node_idx;
   p4est_locidx_t quad_fine_node_idx;
   p4est_locidx_t nb_fine_node_idx;
@@ -146,7 +146,7 @@ class my_p4est_xgfm_cells_t
   // equation parameters
   double mu_m, mu_p, add_diag_m, add_diag_p;
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   // data related to the (subrefined) interface-capturing grid, if present
   const p4est_t                   *fine_p4est;
   const p4est_nodes_t             *fine_nodes;
@@ -159,7 +159,7 @@ class my_p4est_xgfm_cells_t
   // Petsc vectors vectors of cell-centered values
   /* ---- NOT OWNED BY THE SOLVER ---- (hence not destroyed at solver's destruction) */
   Vec user_rhs;                   // cell-sampled rhs of the continuum-level problem
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   Vec phi, normals, phi_xxyyzz;   // node-sampled on fine nodes, if using subrefinement
   Vec jump_u, jump_normal_flux_u; // node-sampled on fine nodes, if using subrefinement
   inline bool levelset_has_been_set() const { return phi != NULL; }
@@ -266,7 +266,7 @@ class my_p4est_xgfm_cells_t
   std::vector<extension_affine_map> extension_entries;
   bool extension_entries_are_set;
   // memorized local interpolation operators
-  std::vector<cell_field_interpolator_t> local_interpolator;
+  std::vector<linear_combination_of_dof_t> local_interpolator;
   bool local_interpolators_are_set;
 
   // disallow copy ctr and copy assignment
@@ -426,7 +426,7 @@ class my_p4est_xgfm_cells_t
     P4EST_ASSERT(jump_flux != NULL);
   }
 
-  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_IF_SUBREFINED(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
+  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_WITH_SUBREFINEMENT(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
                                                 double& negative_volume, double& positive_volume) const;
 
 public:
@@ -434,7 +434,7 @@ public:
   my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ngbd_n, const bool &activate_xGFM_ = true);
   ~my_p4est_xgfm_cells_t();
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   /*!
    * \brief set_phi sets the levelset function. Those vectors *MUST* be sampled at the nodes of the interface-capturing grid.
    * Providing the second derivatives of phi is optional. If they're provided, the intersection between the interface and
@@ -529,7 +529,7 @@ public:
   inline const p4est_nodes_t* get_computational_nodes()                       const { return nodes;                                                                 }
   inline const my_p4est_hierarchy_t* get_computational_hierarchy()            const { return cell_ngbd->get_hierarchy();                                            }
   inline const my_p4est_node_neighbors_t* get_computational_node_neighbors()  const { return node_ngbd;                                                             }
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   inline Vec get_subrefined_phi()                                             const { return phi;                                                                   }
   inline Vec get_subrefined_normals()                                         const { return normals;                                                               }
   inline Vec get_subrefined_jump()                                            const { return jump_u;                                                                }
@@ -547,10 +547,10 @@ public:
     P4EST_ASSERT(solution != NULL);
     double *sol_p;
     ierr = VecGetArray(solution, &sol_p); CHKERRXX(ierr);
-  #ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
     my_p4est_interpolation_nodes_t interp_phi(fine_node_ngbd); interp_phi.set_input(phi, linear);
     my_p4est_interpolation_nodes_t interp_jump(fine_node_ngbd); interp_jump.set_input(jump_u, linear);
-  #endif
+#endif
 
     double sharp_integral_solution = 0.0;
     for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
@@ -558,7 +558,7 @@ public:
       for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
         const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
         double negative_volume, positive_volume;
-        compute_subvolumes_in_computational_cell(quad_idx, tree_idx ONLY_IF_SUBREFINED(COMMA interp_phi), negative_volume, positive_volume);
+        compute_subvolumes_in_computational_cell(quad_idx, tree_idx ONLY_WITH_SUBREFINEMENT(COMMA interp_phi), negative_volume, positive_volume);
 
         double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
         // crude estimate but whatever, it's mostly to get closer to what we expect...

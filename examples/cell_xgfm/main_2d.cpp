@@ -351,7 +351,7 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
   const p4est_t* p4est                  = solver.get_computational_p4est();
   const p4est_ghost_t* ghost            = solver.get_computational_ghost();
   const my_p4est_hierarchy_t* hierarchy = solver.get_computational_hierarchy();
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   my_p4est_interpolation_nodes_t interp_phi(solver.get_subrefined_node_neighbors());
   interp_phi.set_input(solver.get_subrefined_phi(), linear);
 #else

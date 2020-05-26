@@ -44,7 +44,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
     xyz_max(ngbd_c->p4est->connectivity->vertices + 3*ngbd_c->p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(ngbd_c->p4est->trees->elem_count - 1) + P4EST_CHILDREN - 1]),
     tree_dimensions(ngbd_c->get_tree_dimensions()),
     periodicity(ngbd_c->get_hierarchy()->get_periodicity()),
-    #ifdef SUBREFINED
+    #ifdef WITH_SUBREFINEMENT
     fine_p4est(fine_ngbd_n->get_p4est()), fine_nodes(fine_ngbd_n->get_nodes()), fine_ghost(fine_ngbd_n->get_ghost()), fine_node_ngbd(fine_ngbd_n),
     #endif
     activate_xGFM(activate_xGFM_)
@@ -56,7 +56,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   mu_m = mu_p = -1.0;
   add_diag_m = add_diag_p = 0.0;
   user_rhs = rhs = residual = solution = extension_on_cells = extension_on_nodes = jump_flux = NULL;
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   phi = normals = phi_xxyyzz = NULL;
   jump_u = jump_normal_flux_u = NULL;
 #else
@@ -70,7 +70,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   matrix_is_set = rhs_is_set = false;
 
   splitting_criteria_t *data      = (splitting_criteria_t*) p4est->user_pointer;
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   splitting_criteria_t *data_fine = (splitting_criteria_t*) fine_p4est->user_pointer;
 #endif
 
@@ -78,7 +78,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   for (u_char dir = 0; dir < P4EST_DIM; ++dir)
   {
     dxyz_min[dir]       = tree_dimensions[dir] / (double) (1 << data->max_lvl);
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
     dxyz_min_fine[dir]  = tree_dimensions[dir] / (double) (1 << data_fine->max_lvl);
 #endif
   }
@@ -87,7 +87,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   extension_entries.clear();
   local_interpolator.clear();
   extension_entries.resize(p4est->local_num_quadrants);
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   local_interpolator.resize(fine_nodes->num_owned_indeps);
 #else
   local_interpolator.resize(nodes->num_owned_indeps);
@@ -140,7 +140,7 @@ void my_p4est_xgfm_cells_t::set_jumps(Vec node_sampled_jump_u, Vec node_sampled_
   rhs_is_set = false;
 }
 
-void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_IF_SUBREFINED(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
+void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx ONLY_WITH_SUBREFINEMENT(COMMA const my_p4est_interpolation_nodes_t& interp_phi),
                                                                      double& negative_volume, double& positive_volume) const
 {
   if(quad_idx >= p4est->local_num_quadrants)
@@ -152,7 +152,7 @@ void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est
   const double cell_dxyz[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_size_quad, tree_dimensions[1]*logical_size_quad, tree_dimensions[2]*logical_size_quad)};
   const double quad_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   p4est_locidx_t fine_node_idx_for_quad;
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
   if(quad_center_is_fine_node(*quad, tree_idx, fine_node_idx_for_quad)) // the quadrant is subrefined, find all subrefining quads and sum up their volumes
@@ -239,7 +239,7 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_relevant_nodes_o
   if(jump_flux == NULL){
     ierr = VecCreateGhostNodesBlock(fine_p4est, fine_nodes, P4EST_DIM, &jump_flux); CHKERRXX(ierr); }
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   const my_p4est_node_neighbors_t* ngbd_n = fine_node_ngbd;
 #else
   const my_p4est_node_neighbors_t* ngbd_n = node_ngbd;
@@ -1012,7 +1012,7 @@ interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_loc
 
   P4EST_ASSERT(quad_fine_node_idx >= 0);
   P4EST_ASSERT(nb_fine_node_idx >= 0);
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   P4EST_ASSERT(quad_fine_node_idx < (p4est_locidx_t)(fine_nodes->indep_nodes.elem_count));
   P4EST_ASSERT(nb_fine_node_idx < (p4est_locidx_t)(fine_nodes->indep_nodes.elem_count));
 #endif
@@ -1334,7 +1334,7 @@ void my_p4est_xgfm_cells_t::interpolate_cell_extension_to_nodes()
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_interpolate_cell_extension_to_nodes, 0, 0, 0, 0); CHKERRXX(ierr);
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   const my_p4est_node_neighbors_t *ngbd_n = fine_node_ngbd;
 #else
   const my_p4est_node_neighbors_t *ngbd_n = node_ngbd;
@@ -1368,12 +1368,12 @@ void my_p4est_xgfm_cells_t::interpolate_cell_extension_to_nodes()
 
 double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_locidx_t &node_idx, const double *cell_field_p)
 {
-  cell_field_interpolator_t &cell_interpolator = local_interpolator[node_idx];
+  linear_combination_of_dof_t &cell_interpolator = local_interpolator[node_idx];
 
   if(local_interpolators_are_set) // no need for the hardwork if we have already done and memorized it
-    return cell_interpolator.interpolate(cell_field_p);
+    return cell_interpolator(cell_field_p);
 
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   if(((splitting_criteria_t*) fine_p4est->user_pointer)->max_lvl > ((splitting_criteria_t*) p4est->user_pointer)->max_lvl + 1)
     throw std::runtime_error("my_p4est_xgfm_cells_t::interpolate_cell_field_at_fine_node() is not implemented yet for a level difference larger than 1");
 #endif
@@ -1381,7 +1381,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
   cell_interpolator.clear();
   double to_return;
   double xyz_node[P4EST_DIM];
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   node_xyz_fr_n(node_idx, fine_p4est, fine_nodes, xyz_node);
   const p4est_indep_t* ni = (p4est_indep_t*) sc_const_array_index(&fine_nodes->indep_nodes, node_idx);
   p4est_locidx_t coarse_node_idx = -1;
@@ -1399,7 +1399,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
     to_return = get_lsqr_interpolation_at_node(ni, xyz_node, cell_ngbd, nearby_cell_neighbors, scaling, cell_field_p, 2, xgfm_threshold_cond_number_lsqr, &cell_interpolator);
     // note : if locally uniform the result of the above is the expected arithmetic average of neighbor cells
   }
-#ifdef SUBREFINED
+#ifdef WITH_SUBREFINEMENT
   else
   {
     // find smallest (coarse) quad containing point
@@ -1419,7 +1419,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
     if(ANDD(local_orientation_in_coarse_cell[0] == 0, local_orientation_in_coarse_cell[1] == 0, local_orientation_in_coarse_cell[1] == 0))
     {
       to_return = cell_field_p[coarse_quad.p.piggy3.local_num];
-      cell_interpolator.add_interpolation_factor(coarse_quad.p.piggy3.local_num, 1.0);
+      cell_interpolator.add_term(coarse_quad.p.piggy3.local_num, 1.0);
       P4EST_ASSERT(cell_interpolator.size() == 1);
     }
     else
@@ -1459,7 +1459,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
         for (set_of_neighboring_quadrants::const_iterator it = quads_sharing_fine_node.begin(); it != quads_sharing_fine_node.end(); ++it)
         {
           to_return += cell_field_p[it->p.piggy3.local_num]/(double) quads_sharing_fine_node.size();
-          cell_interpolator.add_interpolation_factor(it->p.piggy3.local_num, 1.0/(double) quads_sharing_fine_node.size());
+          cell_interpolator.add_term(it->p.piggy3.local_num, 1.0/(double) quads_sharing_fine_node.size());
         }
         P4EST_ASSERT(cell_interpolator.size() == quads_sharing_fine_node.size());
       }
@@ -1482,10 +1482,10 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
 #endif
 
 #ifdef DEBUG
-  const double value_check = cell_interpolator.interpolate(cell_field_p);
+  const double value_check = cell_interpolator(cell_field_p);
   if(ISNAN(value_check))
     std::cout << "my_p4est_xgfm_cells_t::interpolate_cell_field_at_fine_node(): tracking a NAN : the local_interpolator returns a NAN for node_idx = " << node_idx
-             #ifdef SUBREFINED
+             #ifdef WITH_SUBREFINEMENT
               << " (on the interface-capturing grid)"
              #endif
               << " on proc " << p4est->mpirank << std::endl;
