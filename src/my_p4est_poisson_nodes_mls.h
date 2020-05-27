@@ -222,7 +222,10 @@ protected:
   int    jump_scheme_;
   int    jump_sub_scheme_;
   int    fv_scheme_;
-  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - linear gf, 2 - quadratic gf, 3 - linear stabilized gf, - 4 quadratic stabilized gf
+  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid
+  int    gf_order_;
+  int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
+
 
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
@@ -233,6 +236,7 @@ protected:
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
+  double gf_thresh_;
 
   interpolation_method interp_method_;
 
@@ -337,10 +341,11 @@ protected:
   void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
 
   inline int gf_stencil_size() {
-    return 4;
+    return gf_stabilized_ == 0 ? gf_order_ + 1 : gf_order_ + 2;
   }
 
-  bool is_dirichlet_ghost_node(const quad_neighbor_nodes_of_node_t &qnnn, double del_xyz[]);
+  bool gf_is_ghost(const quad_neighbor_nodes_of_node_t &qnnn);
+  void gf_direction(const quad_neighbor_nodes_of_node_t &qnnn, const p4est_locidx_t neighbors[], int &dir, double del_xyz[]);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);

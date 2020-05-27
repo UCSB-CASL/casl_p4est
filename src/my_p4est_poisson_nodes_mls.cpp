@@ -190,7 +190,6 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   cube_refinement_            = 0;
   jump_scheme_                = 0;
   fv_scheme_                  = 1;
-  dirichlet_scheme_           = 0;
   use_taylor_correction_      = 1;
   kink_special_treatment_     = 1;
   neumann_wall_first_order_   = 0;
@@ -198,6 +197,12 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   use_centroid_always_        = 0;
   phi_perturbation_           = 1.e-12;
   interp_method_              = quadratic_non_oscillatory_continuous_v2;
+
+  dirichlet_scheme_ = 1;
+  gf_order_         = 2;
+  gf_stabilized_    = 1;
+//  gf_thresh_        = 1.e-6;
+  gf_thresh_        = -0.35;
 
   domain_rel_thresh_    = 1.e-11;
   interface_rel_thresh_ = 1.e-11;
@@ -601,6 +606,16 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
     VecSetGhost(solution, 0);
   }
 
+  if (there_is_dirichlet_ && dirichlet_scheme_ == 1)
+  {
+    Vec tmp;
+    ierr = VecDuplicate(solution, &tmp); CHKERRXX(ierr);
+    ierr = VecCopy(solution, tmp); CHKERRXX(ierr);
+    ierr = MatMultAdd(submat_gf_ghost_, tmp, solution, solution); CHKERRXX(ierr);
+    ierr = VecAXPY(solution, -1.0, rhs_gf_); CHKERRXX(ierr);
+    ierr = VecDestroy(tmp); CHKERRXX(ierr);
+  }
+
   // update ghosts
   if (update_ghost)
   {
@@ -624,7 +639,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   bool assembling_jump       = new_submat_main_  && there_is_jump_;
   bool assembling_jump_ghost = new_submat_main_  && there_is_jump_  && there_is_jump_mu_;
   bool assembling_robin_sc   = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
-  bool assembling_gf         = new_submat_main_  && there_is_dirichlet_ && dirichlet_scheme_ > 0;
+  bool assembling_gf         = new_submat_main_  && there_is_dirichlet_ && dirichlet_scheme_ == 1;
 
   // arrays to store matrices
   int nm = assembling_main       ? nodes_->num_owned_indeps : 0;
@@ -648,10 +663,10 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector<PetscInt> o_nnz_jump_ghost(na, 0);
   std::vector<PetscInt> d_nnz_robin_sc  (nr, 1);
   std::vector<PetscInt> o_nnz_robin_sc  (nr, 0);
-  std::vector<PetscInt> d_nnz_gf        (nj, 1);
-  std::vector<PetscInt> o_nnz_gf        (nj, 0);
-  std::vector<PetscInt> d_nnz_gf_ghost  (na, 1);
-  std::vector<PetscInt> o_nnz_gf_ghost  (na, 0);
+  std::vector<PetscInt> d_nnz_gf        (nd, 1);
+  std::vector<PetscInt> o_nnz_gf        (nd, 0);
+  std::vector<PetscInt> d_nnz_gf_ghost  (nd, 1);
+  std::vector<PetscInt> o_nnz_gf_ghost  (nd, 0);
 
   if (assembling_main)
   {
@@ -778,7 +793,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
   }
 
-  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ == 1)
   {
     if (rhs_gf_ != NULL) { ierr = VecDestroy(rhs_gf_); CHKERRXX(ierr); }
     ierr = VecDuplicate(rhs_, &rhs_gf_); CHKERRXX(ierr);
@@ -844,11 +859,17 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             bool is_one_positive = false;
             bool is_one_negative = false;
 
+            double limit = 0;
+
+            if (bc_[phi_idx].type == DIRICHLET && dirichlet_scheme_ == 1) {
+              limit = -gf_thresh_*diag_min_;
+            }
+
             for (short i = 0; i < num_neighbors_cube; ++i)
               if (neighbors_exist[i])
               {
-                is_one_positive = is_one_positive || bdry_.phi_ptr[phi_idx][neighbors[i]] >= 0;
-                is_one_negative = is_one_negative || bdry_.phi_ptr[phi_idx][neighbors[i]] <  0;
+                is_one_positive = is_one_positive || bdry_.phi_ptr[phi_idx][neighbors[i]] >  limit;
+                is_one_negative = is_one_negative || bdry_.phi_ptr[phi_idx][neighbors[i]] <= limit;
               }
 
             if (is_one_negative && is_one_positive)
@@ -1042,25 +1063,40 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector<int>    gf_map;
   std::vector<double> gf_nodes;
   std::vector<double> gf_phi;
-  if (assembling_main && there_is_dirichlet_ && dirichlet_scheme_ > 0) {
+
+  if (assembling_main && there_is_dirichlet_ && dirichlet_scheme_ == 1) {
+
     gf_map.assign(nodes_->num_owned_indeps, -1);
+
     my_p4est_interpolation_nodes_t interp(ngbd_);
+
     int ghost_nodes_count = 0;
+
     foreach_local_node (n, nodes_) {
       if (node_scheme_[n] == BOUNDARY_DIRICHLET) {
-        if (bdry_.phi_eff_value(n) > 0) {
+        if (bdry_.phi_eff_value(n) > -gf_thresh_*diag_min_) {
+
           const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd_)[n];
-          double delta_xyz[P4EST_DIM];
-          if (is_dirichlet_ghost_node(qnnn, delta_xyz)) { // check if a node is a ghost node
-            // add points to interpolator
+
+          if (gf_is_ghost(qnnn)) { // check if a node is a ghost node
+
+            // determine good direction for extrapolation
+            p4est_locidx_t neighbors[num_neighbors_cube];
+            ngbd_->get_all_neighbors(n, neighbors);
+
+            double delta_xyz[P4EST_DIM];
+            int    dir;
+            gf_direction(qnnn, neighbors, dir, delta_xyz);
+
+            // add points that are potentially nonlocal
             double xyz_c[P4EST_DIM];
             node_xyz_fr_n(n, p4est_, nodes_, xyz_c);
 
-            for (int i = -1; i < gf_stencil_size(); ++i) {
+            for (int i = 2; i < gf_stencil_size(); ++i) {
               double xyz[P4EST_DIM] = { DIM( xyz_c[0] + double(i)*delta_xyz[0],
                                              xyz_c[1] + double(i)*delta_xyz[1],
                                              xyz_c[2] + double(i)*delta_xyz[2]) };
-              interp.add_point(ghost_nodes_count*gf_stencil_size() + i, xyz);
+              interp.add_point(ghost_nodes_count*(gf_stencil_size()-2) + i-2, xyz);
             }
 
             gf_map[n] = ghost_nodes_count;
@@ -1070,8 +1106,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       }
     }
 
-    gf_nodes.resize(ghost_nodes_count*gf_stencil_size());
-    gf_phi.resize(ghost_nodes_count*gf_stencil_size());
+    gf_nodes.resize(ghost_nodes_count*(gf_stencil_size()-2));
+    gf_phi.resize(ghost_nodes_count*(gf_stencil_size()-2));
 
     // get values of level-set function
     interp.set_input(bdry_.phi_eff, linear);
@@ -1127,11 +1163,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     row_gf_ghost   = assembling_gf         ? &entries_gf_ghost  [n] : NULL;
 
     // Main node characteristics
-//    p4est_indep_t                       *ni   = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+    p4est_indep_t                       *ni   = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
     const quad_neighbor_nodes_of_node_t  qnnn = ngbd_->get_neighbors(n);
 
     bool is_wall[P4EST_FACES];
-//    bool is_wall_any = is_node_Wall(p4est_, ni, is_wall);
+    is_node_Wall(p4est_, ni, is_wall);
 
     double xyz_C[P4EST_DIM];
     node_xyz_fr_n(n, p4est_, nodes_, xyz_C);
@@ -1221,17 +1257,22 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       case BOUNDARY_DIRICHLET:
       {
-        if (dirichlet_scheme_ == 0) {
-          discretize_dirichlet_sw(setup_rhs, n, qnnn,
-                                  infc_phi_eff_000, is_wall,
-                                  row_main, d_nnz_main[n], o_nnz_main[n]);
-        } else {
-          discretize_dirichlet_gf(setup_rhs, n, qnnn,
-                                  infc_phi_eff_000, is_wall,
-                                  gf_map, gf_nodes, gf_phi,
-                                  row_main, d_nnz_main[n], o_nnz_main[n],
-                                  row_gf, d_nnz_gf[n], o_nnz_gf[n],
-                                  row_gf_ghost, d_nnz_gf_ghost[n], o_nnz_gf_ghost[n]);
+        switch (dirichlet_scheme_) {
+          case 0:
+            discretize_dirichlet_sw(setup_rhs, n, qnnn,
+                                    infc_phi_eff_000, is_wall,
+                                    row_main, d_nnz_main[n], o_nnz_main[n]);
+          break;
+          case 1:
+            discretize_dirichlet_gf(setup_rhs, n, qnnn,
+                                    infc_phi_eff_000, is_wall,
+                                    gf_map, gf_nodes, gf_phi,
+                                    row_main, d_nnz_main[n], o_nnz_main[n],
+                                    row_gf, d_nnz_gf[n], o_nnz_gf[n],
+                                    row_gf_ghost, d_nnz_gf_ghost[n], o_nnz_gf_ghost[n]);
+          break;
+          default:
+            throw std::invalid_argument("Unknown dirichlet scheme");
         }
         break;
       }
@@ -1351,19 +1392,19 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
   }
 
-  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ == 1)
   {
     ierr = VecRestoreArray(rhs_gf_, &rhs_gf_ptr); CHKERRXX(ierr);
   }
 
   if (assembling_main)
   {
-    if (there_is_dirichlet_ && dirichlet_scheme_ > 0)
+    if (there_is_dirichlet_ && dirichlet_scheme_ == 1)
     {
 //      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
 
       // assemble sub matrices
-      assemble_matrix(entries_gf, d_nnz_jump, o_nnz_jump, &submat_gf_);
+      assemble_matrix(entries_gf, d_nnz_gf, o_nnz_gf, &submat_gf_);
       assemble_matrix(entries_gf_ghost, d_nnz_gf_ghost, o_nnz_gf_ghost, &submat_gf_ghost_);
 
 //      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1803,7 +1844,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
-  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ > 0)
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ == 1)
   {
 //    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -3456,23 +3497,62 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
   }
 }
 
-bool my_p4est_poisson_nodes_mls_t::is_dirichlet_ghost_node(const quad_neighbor_nodes_of_node_t &qnnn, double del_xyz[])
+bool my_p4est_poisson_nodes_mls_t::gf_is_ghost(const quad_neighbor_nodes_of_node_t &qnnn)
 {
   if (bdry_.num_phi > 0) {
-    if (bdry_.phi_eff_ptr[qnnn.node_000] > 0) {
+    if (bdry_.phi_eff_ptr[qnnn.node_000] > -gf_thresh_*diag_min_) {
       foreach_direction (nei) {
-        if (bdry_.phi_eff_ptr[qnnn.neighbor(nei)] < 0) {
-          compute_normals(qnnn, bdry_.phi_eff_ptr, del_xyz);
-          foreach_dimension(dim) {
-            del_xyz[dim] = qnnn.distance(2*dim)*round(del_xyz[dim]);
-            // TODO: need to be fixed for non-1:1 aspect ratios;
-          }
+        if (bdry_.phi_eff_ptr[qnnn.neighbor(nei)] <= -gf_thresh_*diag_min_) {
           return true;
         }
       }
     }
   }
   return false;
+}
+
+void my_p4est_poisson_nodes_mls_t::gf_direction(const quad_neighbor_nodes_of_node_t &qnnn, const p4est_locidx_t neighbors[], int &dir, double del_xyz[])
+{
+  double normal [P4EST_DIM];
+  compute_normals(qnnn, bdry_.phi_eff_ptr, normal); // using phi_eff we assume there are no intersecting level set functions
+
+  // we will select the direction with the maximum negative normal projection
+  // among all neighboring nodes in negative domain
+  double max_projection = 1;
+  for (int nei = 0; nei < num_neighbors_cube; ++nei) {
+    if (neighbors[nei] != -1) {
+      if (bdry_.phi_eff_ptr[neighbors[nei]] <= -gf_thresh_*diag_min_) {
+
+        int nei_dir[P4EST_DIM];
+        cube_nei_dir(nei, nei_dir);
+
+//        if (SUMD(fabs(nei_dir[0]), fabs(nei_dir[1]), fabs(nei_dir[2])) > 1.5) {
+//          continue;
+//        }
+
+        double dxyz_nei[] = { DIM(double(nei_dir[0])*dxyz_m_[0],
+                                  double(nei_dir[1])*dxyz_m_[1],
+                                  double(nei_dir[2])*dxyz_m_[2]) };
+
+        double projection = SUMD(normal[0]*dxyz_nei[0],
+                                 normal[1]*dxyz_nei[1],
+                                 normal[2]*dxyz_nei[2])
+            / ABSD(dxyz_nei[0], dxyz_nei[1], dxyz_nei[2]);
+
+        if (projection < max_projection) { // because want max negative projection
+          max_projection = projection;
+          EXECD( del_xyz[0] = dxyz_nei[0],
+                 del_xyz[1] = dxyz_nei[1],
+                 del_xyz[2] = dxyz_nei[2] );
+          dir = nei;
+        }
+      }
+    }
+  }
+
+  if (max_projection > 0) {
+    std::cout << "[Warning] Ghost-Fluid Dirichlet: selected direction points away from the interface\n";
+  }
 }
 
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
@@ -3554,76 +3634,211 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
 //    }
 
 //  }
-  if (bdry_phi_eff_000 > 0.) {
-    double delta_xyz[P4EST_DIM];
+  if ( bdry_phi_eff_000 > -gf_thresh_*diag_min_) {
+
     double xyz_bc[P4EST_DIM];
     double weight_bc;
-    if (is_dirichlet_ghost_node(qnnn, delta_xyz)) {
+
+    if (new_submat_main_) {
+      row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
+      mask_ptr[n] = 1.;
+    }
+
+    if (setup_rhs) {
+      rhs_ptr[n] = 0;
+    }
+
+    if (gf_is_ghost(qnnn)) {
+
+      // determine which level-set function intersects
+      // (note this is not a bullet-proof algorithm,
+      // but should work fine for non-intersecting boundaries)
+      int phi_idx = 0;
+      double phi_min = fabs(bdry_.phi_ptr[0][n]);
+
+      for (int i = 1; i < bdry_.num_phi; ++i) {
+        if (fabs(bdry_.phi_ptr[i][n]) < phi_min) {
+          phi_idx = i;
+          phi_min = fabs(bdry_.phi_ptr[i][n]) ;
+        }
+      }
+
       if (new_submat_main_) {
+
+        // determine good direction for extrapolation
+        p4est_locidx_t neighbors[num_neighbors_cube];
+        ngbd_->get_all_neighbors(n, neighbors);
+
+        double delta_xyz[P4EST_DIM];
+        int    nei;
+        gf_direction(qnnn, neighbors, nei, delta_xyz);
         double del = ABSD(delta_xyz[0], delta_xyz[1], delta_xyz[2]);
-        // find interface location
-        double phi0 = gf_phi[gf_stencil_size()*gf_map[n]+0];
-        double phi1 = gf_phi[gf_stencil_size()*gf_map[n]+1];
-        double phi2 = gf_phi[gf_stencil_size()*gf_map[n]+2];
-        double phi3 = gf_phi[gf_stencil_size()*gf_map[n]+3];
 
-        if (phi2 > 0) throw;
+        // get level-set values an global node indices
+        vector<double>   phi_values(gf_stencil_size(), -1);
+        vector<PetscInt> global_idx(gf_stencil_size(), -1);
 
-        double phi1_dd = (phi2-2.*phi1+phi0)/del/del;
-        double phi2_dd = (phi3-2.*phi2+phi1)/del/del;
+        phi_values[0] = bdry_.phi_eff_ptr[n];
+        phi_values[1] = bdry_.phi_eff_ptr[neighbors[nei]];
 
-        double dist = interface_Location_With_Second_Order_Derivative(0, del, phi1, phi2, phi1_dd, phi2_dd);
+        global_idx[0] = petsc_gloidx_[n];
+        global_idx[1] = petsc_gloidx_[neighbors[nei]];
 
-        double theta = (del-dist)/del;
+        int num_good_neis = 1;
 
-        double w2 = 2.*(1.-theta)/theta;
-        double w3 = -(1.-theta)/(1.+theta);
-        double weight_bc = -2./theta/(1.+theta);
+        for (int i = 2; i < gf_stencil_size(); ++i) {
+          phi_values[i] = gf_phi  [(gf_stencil_size()-2)*gf_map[n] + i-2];
+          global_idx[i] = gf_nodes[(gf_stencil_size()-2)*gf_map[n] + i-2];
 
-        PetscInt gloidx1 = gf_nodes[gf_stencil_size()*gf_map[n]+1];
-        PetscInt gloidx2 = gf_nodes[gf_stencil_size()*gf_map[n]+2];
-        PetscInt gloidx3 = gf_nodes[gf_stencil_size()*gf_map[n]+3];
-
-        row_gf_ghost->push_back(mat_entry_t(gloidx1, 1));
-        row_gf_ghost->push_back(mat_entry_t(gloidx2, w2));
-        row_gf_ghost->push_back(mat_entry_t(gloidx3, w3));
-
-        // compute weights
-        d_nnz_gf_ghost += 2;
-        o_nnz_gf_ghost += 2;
-        mask_ptr[n] = -1.;
-
-        foreach_dimension(dim) {
-          xyz_bc[dim] = xyz_C[dim] + (1.-theta)*delta_xyz[dim];
+          if (phi_values[i] <= -gf_thresh_*diag_min_ && fabs(global_idx[i]-round(global_idx[i])) < 1.e-5) {
+            num_good_neis++;
+          }
         }
 
-        bc_[0].add_fd_pt(n, 0, dist, xyz_bc, weight_bc);
-      } else {
-        int idx = bc_[0].idx_value_pt(n,0);
-        interface_point_cartesian_t *pt = &bc_[0].dirichlet_pts[idx];
+        if (num_good_neis < gf_stencil_size()-1) {
+          std::cout << "[Warning] Reduced stencil (" << num_good_neis << "/" << gf_stencil_size()-1 << ")\n";
+        }
 
-        weight_bc = bc_[0].dirichlet_weights[idx];
+//        // sanity check
+//        if (phi_values[1] > 0) {
+//          throw std::domain_error("Something went terribly wrong during constructing ghost fluid value");
+//        }
+
+        // find interface location
+        double phi0_dd = 0;
+        double phi1_dd = 0;
+
+        if (neighbors[cube_nei_op(nei)] != -1) {
+          phi0_dd = (phi_values[1] - 2.*phi_values[0] + bdry_.phi_eff_ptr[neighbors[cube_nei_op(nei)]])/del/del;
+        }
+
+        if (num_good_neis >= 2) {
+          phi1_dd = (phi_values[2]-2.*phi_values[1]+phi_values[0])/del/del;
+        }
+
+        double dist = 0;
+        if (phi_values[0] > 0 && phi_values[1] < 0) {
+          dist = interface_Location_With_Second_Order_Derivative(0, del, phi_values[0], phi_values[1], phi0_dd, phi1_dd);
+        } else if (phi_values[1] > 0 && phi_values[1] > 0) {
+          dist = interface_Location_With_Second_Order_Derivative(del, 2.*del, phi_values[1], phi_values[2], 0, 0);
+        } else if (phi_values[0] < 0) {
+          // sanity check
+          if (bdry_.phi_eff_ptr[neighbors[cube_nei_op(nei)]] < 0) {
+            throw std::domain_error("Something went terribly wrong during constructing ghost fluid value");
+          }
+          dist = interface_Location_With_Second_Order_Derivative(-del, 0, bdry_.phi_eff_ptr[neighbors[cube_nei_op(nei)]], phi_values[0], phi0_dd, phi0_dd);
+        }
+
+        // compute extrapolation weights
+        double theta = (del-dist)/del;
+        vector<double> w(gf_stencil_size(), 0);
+
+        w[0] = 1;
+
+        if (gf_order_ == 3 && num_good_neis >= 4 && gf_stabilized_ != 0) { // cubic continuous
+
+          // double interpolation
+          w[1] = 1./36.*(   0. - 108.*theta +  88.*pow(theta, 2) +  39.*pow(theta, 3) - 17.*pow(theta, 4) -  3.*pow(theta, 5) +    pow(theta, 6)),
+          w[2] = 1./36.*(-216. + 432.*theta - 108.*pow(theta, 2) - 156.*pow(theta, 3) + 39.*pow(theta, 4) + 12.*pow(theta, 5) - 3.*pow(theta, 6)),
+          w[3] = 1./36.*( 144. - 216.*theta -  54.*pow(theta, 2) + 159.*pow(theta, 3) - 21.*pow(theta, 4) - 15.*pow(theta, 5) + 3.*pow(theta, 6)),
+          w[4] = 1./36.*(- 36. +  48.*theta +  20.*pow(theta, 2) -  36.*pow(theta, 3) -     pow(theta, 4) +  6.*pow(theta, 5) -    pow(theta, 6)),
+          weight_bc = -1./36.*(144. - 156.*theta + 54.*pow(theta, 2) - 6.*pow(theta, 3));
+
+//          // least-squares based
+//          double den = 18 + 66*theta+ 301*pow(theta, 2) + 456*pow(theta, 3) + 301*pow(theta, 4) + 90*pow(theta, 5) + 10*pow(theta, 6);
+//          w[1] = 3*theta*(-292 - 272*theta+ 153*pow(theta, 2) + 281*pow(theta, 3) + 115*pow(theta, 4) + 15*pow(theta, 5))/2./den;
+//          w[2] =    -3*(72 + 120*theta- 56*pow(theta, 2) - 140*pow(theta, 3) - 21*pow(theta, 4) + 20*pow(theta, 5) + 5*pow(theta, 6))/2./den;
+//          w[3] =   (144 + 312*theta+ 410*pow(theta, 2) - 189*pow(theta, 3) - 457*pow(theta, 4) - 195*pow(theta, 5) - 25*pow(theta, 6))/2./den;
+//          w[4] =   3*(-12 - 28*theta- 50*pow(theta, 2) + 4*pow(theta, 3) + 51*pow(theta, 4) + 30*pow(theta, 5) + 5*pow(theta, 6))/2./den;
+//          weight_bc =   -(72 + 570*theta+ 495*pow(theta, 2) + 105*pow(theta, 3))/den;
+
+        } else if (gf_order_ == 3 && num_good_neis >= 3 && gf_stabilized_ != 1) { // cubic native
+
+          w[1] = 3.*(-2. -    theta + 2.*pow(theta,2) +    pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
+          w[2] =    ( 0. + 6.*theta - 3.*pow(theta,2) - 3.*pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
+          w[3] =    ( 0. -    theta + 0.              +    pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
+          weight_bc = -6./(theta*(2. + 3.*theta + pow(theta,2)));
+
+        } else if (gf_order_ >= 2 && num_good_neis >= 3 && gf_stabilized_ != 0) { // quadratic continuous
+
+          // double interpolation
+          w[1] =  0. - 2.0*theta + 1.75*pow(theta,2) + 0.5*pow(theta,3) - 0.25*pow(theta,4);
+          w[2] = -3. + 6.0*theta - 2.00*pow(theta,2) - 1.5*pow(theta,3) + 0.50*pow(theta,4);
+          w[3] =  1. - 1.5*theta - 0.25*pow(theta,2) + 1.0*pow(theta,3) - 0.25*pow(theta,4);
+          weight_bc =  -(3. - 2.5*theta + 0.5*pow(theta,2));
+
+//          // least-squares based
+//          double den = 2 + 6 *theta+ 15 *pow(theta, 2) + 12 *pow(theta,3) + 3 *pow(theta,4);
+//          w[1] = theta*(-13 - theta+ 10 *pow(theta, 2) + 4 *pow(theta,3))/den;
+//          w[2] = (-6 - 6 *theta+ 5 *pow(theta, 2) + 6 *pow(theta,3) + pow(theta,4))/den;
+//          w[3] = (2 +  3 *theta+ pow(theta, 2) - 4 *pow(theta,3) - 2 *pow(theta,4))/den;
+//          weight_bc = -(6 + 22 *theta+ 10 *pow(theta, 2))/den;
+
+        } else if (gf_order_ >= 2 && num_good_neis >= 2 && gf_stabilized_ != 1) { // quadratic native
+
+          w[1] = -2.*(1.-theta)/theta;
+          w[2] = (1.-theta)/(1.+theta);
+          weight_bc = -2./theta/(1.+theta);
+
+        } else if (gf_order_ >= 1 && num_good_neis >= 2 && gf_stabilized_ != 0) { // linear continuous
+
+          // double interpolation
+          w[1] = -(1.-theta)*theta;
+          w[2] = -pow(1.-theta, 2.);
+          weight_bc = -(2.-theta);
+
+//          // least-squares based
+//          double den = 1 + 2*theta + 2*theta*theta;
+//          w[1] = ((-1 + theta)*theta)/den;
+//          w[2] = (-1 + theta*theta)/den;
+//          weight_bc = -(2 + 3*theta)/den;
+
+        } else { // linear native
+
+          w[1] = -(1.-theta)/theta;
+          weight_bc = -1./theta;
+
+//          w[1] = 0;
+//          weight_bc = -1;
+
+        }
+
+        for (int i = 0; i < num_good_neis+1; ++i) {
+          if (w[i] != 0) {
+            row_gf_ghost->push_back(mat_entry_t(global_idx[i], w[i]));
+          }
+        }
+
+        mask_ptr[n] = -1.;
+        d_nnz_gf_ghost += gf_stencil_size()-1;
+        o_nnz_gf_ghost += gf_stencil_size()-1;
+
+        // save information for quick rhs setup
+        foreach_dimension(dim) {
+          xyz_bc[dim] = xyz_C[dim] + (1.-theta)*delta_xyz[dim];
+//          xyz_bc[dim] = xyz_C[dim] ;
+        }
+
+        bc_[phi_idx].add_fd_pt(n, nei, dist, xyz_bc, weight_bc);
+
+      } else {
+
+        int idx = bc_[phi_idx].idx_value_pt(n,0);
+        interface_point_cartesian_t *pt = &bc_[phi_idx].dirichlet_pts[idx];
+
+        weight_bc = bc_[phi_idx].dirichlet_weights[idx];
         pt->get_xyz(xyz_bc);
       }
 
       if (setup_rhs) {
         double bc_value;
-        if (bc_[0].pointwise) {
-          int idx = bc_[0].idx_value_pt(n, 0);
-          bc_value = (bc_[0].value_pw)->at(idx);
+        if (bc_[phi_idx].pointwise) {
+          int idx = bc_[phi_idx].idx_value_pt(n, 0);
+          bc_value = (bc_[phi_idx].value_pw)->at(idx);
         } else {
-          bc_value = (bc_[0].value_cf)->value(xyz_bc);
+          bc_value = (bc_[phi_idx].value_cf)->value(xyz_bc);
         }
         rhs_gf_ptr[n] = bc_value*weight_bc;
-      }
-    } else {
-      if (new_submat_main_) {
-        row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
-        mask_ptr[n] = 1.;
-      }
-
-      if (setup_rhs) {
-        rhs_gf_ptr[n] = 0;
       }
     }
   } else {
@@ -3689,7 +3904,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
           ent.n   = petsc_gloidx_[node[nei]];
           ent.val = w[nei];
 
-          if (bdry_.phi_eff_ptr[node[nei]] < 0) {
+          if (bdry_.phi_eff_ptr[node[nei]] <= -gf_thresh_*diag_min_) {
             row_main->push_back(ent);
             node[nei] < nodes_->num_owned_indeps ? d_nnz_main++ : o_nnz_main++;
           } else {

@@ -124,7 +124,7 @@ param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 
-param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 10, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 

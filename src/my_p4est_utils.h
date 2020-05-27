@@ -77,6 +77,7 @@ class quad_neighbor_nodes_of_node_t;
 #define P8EST(a) a
 #define ONLY3D(a) a
 #define DIM(a,b,c) a COMMA b COMMA c
+#define DIMPM(am,ap,bm,bp,cm,cp) am COMMA ap COMMA bm COMMA bp COMMA cm COMMA cp
 
 #define     SUMD(a,b,c) ( (a) +  (b) +  (c) )
 #define    MULTD(a,b,c) ( (a) *  (b) *  (c) )
@@ -116,6 +117,7 @@ class quad_neighbor_nodes_of_node_t;
 #define P8EST(a)
 #define ONLY3D(a)
 #define DIM(a,b,c) a COMMA b
+#define DIMPM(am,ap,bm,bp,cm,cp) am COMMA ap COMMA bm COMMA bp
 
 #define     SUMD(a,b,c) ( (a) +  (b) )
 #define    MULTD(a,b,c) ( (a) *  (b) )
@@ -174,6 +176,22 @@ enum {
   ,z
 #endif
 };
+}
+
+inline int  cube_nei(DIM(int i, int j, int k)) { return SUMD((i+1), 3*(j+1), 9*(k+1)); }
+inline int  cube_nei(int ijk[]) { return cube_nei(DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, DIM(int &i, int &j, int &k))
+{
+  ONLY3D( k = n / 9 - 1; n = n % 9; );
+  j = n / 3 - 1;
+  i = n % 3 - 1;
+}
+inline void cube_nei_dir(int n, int ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline int  cube_nei_op(int n)
+{
+  int ijk[P4EST_DIM];
+  cube_nei_dir(n, ijk);
+  return cube_nei(DIM(-ijk[0], -ijk[1], -ijk[2]));
 }
 
 enum node_neighbor_cube_t
@@ -325,39 +343,39 @@ const static std::string stderr_str  = "stderr";
 //                                                             { nn_m00, nn_000, nn_mp0, nn_0p0 },
 //                                                             { nn_000, nn_p00, nn_0p0, nn_pp0 } };
 //#endif
-const unsigned short q2c_num_pts = P4EST_CHILDREN;
-const unsigned short t2c_num_pts = P4EST_DIM+1;
+//const unsigned short q2c_num_pts = P4EST_CHILDREN;
+//const unsigned short t2c_num_pts = P4EST_DIM+1;
 
-#ifdef P4_TO_P8
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
-                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
+//#ifdef P4_TO_P8
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
 
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
 
-#else
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
+//#else
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
 
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
-                                                          { nn_000, nn_p00, nn_0m0 },
-                                                          { nn_000, nn_m00, nn_0p0 },
-                                                          { nn_000, nn_p00, nn_0p0 } };
-#endif
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
+//                                                          { nn_000, nn_p00, nn_0m0 },
+//                                                          { nn_000, nn_m00, nn_0p0 },
+//                                                          { nn_000, nn_p00, nn_0p0 } };
+//#endif
 
 
 enum interpolation_method{
@@ -3187,6 +3205,7 @@ struct interface_conditions_t
 double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
+
 #endif // UTILS_H
 
 

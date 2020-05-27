@@ -227,6 +227,16 @@ private:
         / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7);
   }
 
+  // input[] = { cl_{0}, ..., cl_{num_comps-1}, c0x, c0y, c0z, nx, ny, nz };
+  static double velo2(double input[])
+  {
+    return -v_factor/(1.-v_part_coeff(0, input))*
+        SUMD(input[v_num_comps + 0]*input[v_num_comps + P4EST_DIM + 0],
+             input[v_num_comps + 1]*input[v_num_comps + P4EST_DIM + 1],
+             input[v_num_comps + 2]*input[v_num_comps + P4EST_DIM + 2])
+        / MAX(input[0], 1e-7);
+  }
+
 
 public:
   my_p4est_multialloy_t(int num_comps, int time_order);

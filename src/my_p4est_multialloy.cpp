@@ -430,7 +430,8 @@ void my_p4est_multialloy_t::compute_velocity()
   c0_dd        .get_array();
 
   set_velo_interpolation(ngbd_, cl_[0].ptr.data(), cl0_grad_.ptr, c0_dd.ptr, front_normal_.ptr, solute_diff_[0]);
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 50, NULL, 0, 0, &velo);
+  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 50,
+      NULL, 0, 0, &velo);
 
   cl_[0]       .restore_array();
   cl0_grad_    .restore_array();

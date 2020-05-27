@@ -678,6 +678,7 @@ public:
 
   // Daniil would have to commment on this one
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const;
 
   /*!
    * \brief memory_estimate estimates the memory required to store this my-p4est_node_neighbors_t object in number of bytes

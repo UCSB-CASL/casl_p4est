@@ -109,8 +109,8 @@ param_t<int>    num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shi
 param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
 param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
-param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int>    lmax (pl, 8, "lmax", "Max level of the tree");
+param_t<int>    lmin (pl, 6, "lmin", "Min level of the tree");
+param_t<int>    lmax (pl, 6, "lmax", "Max level of the tree");
 
 param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 5, "num_splits_per_split", "Number of additional resolutions");
@@ -121,7 +121,7 @@ param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shi
 #endif
 
 param_t<double> lip  (pl, 1.2, "lip",  "Transition width from coarse grid to fine grid (a.k.a. Lipschitz constant)");
-param_t<double> band (pl, 2.0, "band", "Width of the uniform band around boundaries and interfaces (in lengths of smallest quadrants)");
+param_t<double> band (pl, 4.0, "band", "Width of the uniform band around boundaries and interfaces (in lengths of smallest quadrants)");
 
 param_t<bool>   refine_strict  (pl, 0, "refine_strict",  "Refines every cell starting from the coarsest case if yes");
 param_t<bool>   refine_rand    (pl, 0, "refine_rand",    "Add randomness into adaptive grid");
@@ -1714,7 +1714,7 @@ public:
       case 5: // highly start-shaped domain
       {
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, 1, 0.3);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, 1, 0.6);
         switch (what) {
           _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
           XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -3265,8 +3265,8 @@ int main (int argc, char* argv[])
                   ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
                   break;
                 case 2:
-                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, NULL, use_nonzero_guess()); CHKERRXX(ierr);
                   break;
               }
 
