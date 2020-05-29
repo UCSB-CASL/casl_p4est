@@ -222,44 +222,50 @@ double coupled_test_sign;
 bool vel_has_switched;
 void coupled_test_switch_sign(){coupled_test_sign*=-1.;}
 
+double x0_lsf;
+double y0_lsf;
+
+
 void set_geometry(){
   switch(example_){
-    case FRANK_SPHERE: // Frank sphere
-      // Grid size
-      xmin = -5.0; xmax = 5.0; //5.0;
-      ymin = -5.0; ymax = 5.0;
+  case FRANK_SPHERE: {
+    // Frank sphere
+    // Grid size
+    xmin = -5.0; xmax = 5.0; //5.0;
+    ymin = -5.0; ymax = 5.0;
 
-      // Number of trees
-      nx = 2;
-      ny = 2;
+    // Number of trees
+    nx = 2;
+    ny = 2;
 
-      // Periodicity
-      px = 0; py = 0;
+    // Periodicity
+    px = 0; py = 0;
 
-      // Uniform band
-      uniform_band=4.;
+    // Uniform band
+    uniform_band=4.;
 
-      // Problem geometry:
-      s0 = 0.628649269043202;
-      r0 = s0; // for consistency, and for setting up NS problem (if wanted)
+    // Problem geometry:
+    s0 = 0.628649269043202;
+    r0 = s0; // for consistency, and for setting up NS problem (if wanted)
 
-      // Necessary boundary condition info:
-      Twall = -0.2;
-      Tinterface = 0.0;
+    // Necessary boundary condition info:
+    Twall = -0.2;
+    Tinterface = 0.0;
 
-      break;
+    break;
+    }
 
     case FLOW_PAST_CYLINDER: // intentionally waterfalls into same settings as ice around cylinder
 
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
 
       // Domain size:
-      xmin = 0.0; xmax = 32.0;
-      ymin = 0.0; ymax = 16.0;
+      xmin = 0.0; xmax = 20.0;/*32.0;*/
+      ymin = 0.0; ymax = 10.0;/*16.0;*/
 
       // Number of trees:
-      nx = 8;
-      ny = 4;
+      nx =10;/*8;*/
+      ny =5;/*4;*/
 
       // Periodicity:
       px = 0;
@@ -267,7 +273,8 @@ void set_geometry(){
 
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder
-      r0 = r_cyl*1.17; // Computational radius of initial ice height
+      /*r0 = r_cyl*1.17;*/ // Computational radius of initial ice height // should set r0 = r_cyl*1.0572 to get height_init = 1mm, matching the experiments (or at least matching the Okada model)
+      r0 = r_cyl*1.0572;
 
       d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
 
@@ -304,15 +311,19 @@ void set_geometry(){
 
     case COUPLED_PROBLEM_EXAMPLE:{
       // Domain size:
-      xmin = 0.0; xmax = PI;
-      ymin = 0.0; ymax = PI;
+      xmin = -PI/2.; xmax = 3.*PI/2.;
+      ymin = -PI; ymax = PI;
+
+      x0_lsf = PI/2; y0_lsf = PI/4.;
 
       // Number of trees:
-      nx = 1; ny = 1;
+      nx = 2; ny = 2;
       px = 0; py = 0;
 
       // Radius of the level set function:
-      r0 = PI/12.;
+      r0 = PI/3.;
+
+      uniform_band=4.;
 
       break;}
     }
@@ -513,7 +524,7 @@ void simulation_time_info(){
       break;
 
     case COUPLED_PROBLEM_EXAMPLE:
-      tfinal = PI/3.;
+      tfinal = PI/2.;
       dt_max_allowed = 1.0e-1;
       tstart = 0.0;
       dt = 1.e-3;
@@ -705,6 +716,12 @@ struct temperature_field: CF_DIM
 {
   const unsigned char dom; //dom signifies which domain--> domain liq = 0, domain solid =1
   const double k_NS=1.0;
+
+  const double n = 1.0;
+  const double m = 2.0;
+  const double x0 = PI/4;
+  const double y0 = 0.;
+
   temperature_field(const unsigned char& dom_) : dom(dom_){
     P4EST_ASSERT(dom>=0 && dom<=1);
   }
@@ -715,6 +732,7 @@ struct temperature_field: CF_DIM
       return sin(x)*sin(y)*(x + cos(t)*cos(x)*cos(y));
     case SOLID_DOMAIN:
       return cos(x)*cos(y)*(cos(t)*sin(x)*sin(y) - 1.);
+
     default:
       throw std::runtime_error("analytical solution temperature: unknown domain \n");
     }
@@ -727,19 +745,20 @@ struct temperature_field: CF_DIM
     case LIQUID_DOMAIN:
       switch(dir){
       case dir::x:
-        return cos(x)*sin(y)*(x + cos(t)*cos(x)*cos(y)) - sin(x)*sin(y)*(cos(t)*cos(y)*sin(x) - 1);
+        return cos(x)*sin(y)*(x + cos(t)*cos(x)*cos(y)) - sin(x)*sin(y)*(cos(t)*cos(y)*sin(x) - 1.);
       case dir::y:
-        return cos(y)*sin(x)*(x + cos(t)*cos(x)*cos(y)) - cos(t)*cos(x)*sin(x)*SQR(sin(y)) ;
+        return cos(y)*sin(x)*(x + cos(t)*cos(x)*cos(y)) - cos(t)*cos(x)*sin(x)*SQR(sin(y));
+
       default:
         throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
       }
     case SOLID_DOMAIN:
       switch(dir){
       case dir::x:
-        return cos(t)*SQR(cos(x))*cos(y)*sin(y) - cos(y)*sin(x)*(cos(t)*sin(x)*sin(y) - 1.0);
+        return cos(t)*SQR(cos(x))*cos(y)*sin(y) - cos(y)*sin(x)*(cos(t)*sin(x)*sin(y) - 1.);
       case dir::y:
-        return cos(t)*cos(x)*SQR(cos(y))*sin(x) - cos(x)*sin(y)*(cos(t)*sin(x)*sin(y) - 1.0)
-;
+        return cos(t)*cos(x)*SQR(cos(y))*sin(x) - cos(x)*sin(y)*(cos(t)*sin(x)*sin(y) - 1.);
+
       default:
         throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
       }
@@ -755,6 +774,7 @@ struct temperature_field: CF_DIM
       return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
     case SOLID_DOMAIN:
       return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
+
     default:
       throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
     }
@@ -764,7 +784,21 @@ struct temperature_field: CF_DIM
     switch(dom){
     case LIQUID_DOMAIN:
       return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
+
+//      return -2.*SQR(n)*cos(n*x)*sin(n*y)*(m*cos(m*y)*sin(m*x)*cos(t) - 1.) -
+//          2.*pow(n,3.)*sin(n*x)*sin(n*y)*(x + cos(m*x)*cos(m*y)*cos(t)) -
+//          2.*m*SQR(n)*cos(m*x)*cos(n*y)*sin(m*y)*sin(n*x)*cos(t) -
+//          2.*SQR(m)*n*cos(m*x)*cos(m*y)*sin(n*x)*sin(n*y)*cos(t);
+
+
+//      return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
     case SOLID_DOMAIN:
+
+//      return -1.0*2.*SQR(m)*n*cos(m*x)*cos(m*y)*(sin(n*x)*sin(n*y)*cos(t) - 1.) -
+//          2.*pow(n,3.)*cos(m*x)*cos(m*y)*sin(n*x)*sin(n*y)*cos(t) -
+//          2.*m*SQR(n)*cos(m*x)*cos(n*y)*sin(m*y)*sin(n*x)*cos(t) -
+//          2.*m*SQR(n)*cos(m*y)*cos(n*x)*sin(m*x)*sin(n*y)*cos(t);
+
       return -2.*cos(x)*cos(y)*(4.*cos(t)*sin(x)*sin(y) - 1.);
     default:
       throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
@@ -811,7 +845,7 @@ struct external_heat_source: CF_DIM{
       throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
     }
 
-    return temperature_[dom]->dT_dt(DIM(x,y,z)) + advective_term- temperature_[dom]->laplace(DIM(x,y,z));
+    return temperature_[dom]->dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom]->laplace(DIM(x,y,z));
   }
 };
 
@@ -834,7 +868,7 @@ public:
       case NS_GIBOU_EXAMPLE:
         return r0 - sin(x)*sin(y);
       case COUPLED_PROBLEM_EXAMPLE:
-        return r0 - sqrt(SQR(x - (xmax/2.)) + SQR(y - (ymax/2.)));
+        return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
       default: throw std::invalid_argument("You must choose an example type\n");
       }
   }
@@ -2445,22 +2479,29 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
 
 void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],p4est_nodes_t *nodes, p4est_t *p4est){
 
-  // Check the values of v_interface locally:
-  v_interface.get_array();
-  phi.get_array();
   double max_v_norm = 0.0;
-  foreach_local_node(n,nodes){
-    if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
+  double global_max_vnorm = 0.0;
+
+  if(example_ == COUPLED_PROBLEM_EXAMPLE){
+    global_max_vnorm = PI; // known analytically
+
+  }
+  else {
+    // Check the values of v_interface locally:
+    v_interface.get_array();
+    phi.get_array();
+    foreach_local_node(n,nodes){
+      if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
         max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
       }
-  }
-  v_interface.restore_array();
-  phi.restore_array();
+    }
+    v_interface.restore_array();
+    phi.restore_array();
 
-  // Get the maximum v norm across all the processors:
-  double global_max_vnorm = 0.0;
-  int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-  SC_CHECK_MPI(mpi_ret);
+    // Get the maximum v norm across all the processors:
+    int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+    SC_CHECK_MPI(mpi_ret);
+  }
 
   // Compute new timestep:
   double dt_computed;
@@ -2797,18 +2838,13 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   press.get_array(); vorticity.get_array();
 
 
-//  vec_and_ptr_dim_t Tl_dd;
-//  Tl_dd.create(p4est,nodes);
-//  ngbd->second_derivatives_central(Tl.vec,Tl_dd.vec);
-//  Tl_dd.get_array();
-
   // Save data:
   std::vector<std::string> point_names;
   std::vector<double*> point_data;
 
   if (example_ == ICE_AROUND_CYLINDER) {
-      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure",/*"d2T_dx2","d2T_dy2"*/};
-      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,/*Tl_dd.ptr[0],Tl_dd.ptr[1]*/};
+      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
+      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
   }
 
   else{
@@ -3145,16 +3181,19 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
       L_inf_Ts = max(L_inf_Ts,Ts_error.ptr[n]);
     }
 
-    if(fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){ // check interfacial velocity error in the uniform band around interface
+    // Check error in v_int and phi only in a uniform band around the interface
+    if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
       v_int_error.ptr[n] = fabs(sqrt(SUMD(SQR(v_interface.ptr[0][n]),SQR(v_interface.ptr[1][n]),SQR(v_interface.ptr[2][n]))) -
           sqrt(SUMD(SQR(v_interface_analytical.ptr[0][n]),SQR(v_interface_analytical.ptr[1][n]),SQR(v_interface_analytical.ptr[2][n]))));
       L_inf_vint = max(L_inf_vint,v_int_error.ptr[n]);
+
+      if((tn+dt)>=tfinal){ // Check phi error only at the final time
+        phi_error.ptr[n] = fabs(phi.ptr[n] - phi_analytical.ptr[n]);
+        L_inf_phi = max(L_inf_phi,phi_error.ptr[n]);
+      }
     }
 
-    if((tn+dt)>=tfinal){
-      phi_error.ptr[n] = fabs(phi.ptr[n] - phi_analytical.ptr[n]);
-      L_inf_phi = max(L_inf_phi,phi_error.ptr[n]);
-    }
+
   }
 
   // Get the global errors:
@@ -3190,7 +3229,15 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   // Print errors to file:
   PetscErrorCode ierr;
   ierr = PetscFOpen(p4est->mpicomm,filename_err_output,"a",&fich);CHKERRXX(ierr);
-  ierr = PetscFPrintf(p4est->mpicomm,fich,"%g %g %d %g %g %g %g %g %g %g %g %d %g \n",tn,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],global_Linf_errors[6],hodge_global_error,num_nodes,dxyz_close_to_interface);CHKERRXX(ierr);
+  ierr = PetscFPrintf(p4est->mpicomm,fich,"%g %g %d "
+                                          "%g %g %g "
+                                          "%g %g %g "
+                                          "%g "
+                                          "%d %g \n",tn,dt,tstep,
+                                                     global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
+                                                     global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
+                                                     global_Linf_errors[6],
+                                                     num_nodes,dxyz_close_to_interface);CHKERRXX(ierr);
   ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
 
 
@@ -4028,7 +4075,10 @@ int main(int argc, char** argv) {
                   out_dir_err_coupled,lmin+grid_res_iter,lmax + grid_res_iter,method_,advection_sl_order);
 
           ierr = PetscFOpen(mpi.comm(),name_coupled_errors,"w",&fich_coupled_errors); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_coupled_errors,"time " "timestep " "iteration " "u_error " "v_error " "P_error " "Tl_error ""number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(),fich_coupled_errors,"time " "timestep " "iteration "
+                                                             "u_error " "v_error " "P_error "
+                                                             "Tl_error " "Ts_error " "vint_error" "phi_error "
+                                                             "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(),fich_coupled_errors); CHKERRXX(ierr);
           break;
         }
@@ -4084,10 +4134,10 @@ int main(int argc, char** argv) {
         if((tstep ==0) && example_ == ICE_AROUND_CYLINDER && solve_coupled){
             double delta_r = r0 - r_cyl;
             PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
-            if(delta_r<4.*dxyz_close_to_interface ){
-                PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,4.*dxyz_close_to_interface);
-                SC_ABORT("Your initial delta_r is too small \n");
-              }
+//            if(delta_r<4.*dxyz_close_to_interface ){
+//                PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,4.*dxyz_close_to_interface);
+//                SC_ABORT("Your initial delta_r is too small \n");
+//              }
           }
 
         // If first iteration, perturb the LSF(s):
@@ -4315,11 +4365,12 @@ int main(int argc, char** argv) {
             dt_nm1 = dt;
           }
 
-        // Adjust the timestep if we are near the end of our simulation, to get the proper end time:
+        // Clip the timestep if we are near the end of our simulation, to get the proper end time:
         if(tn + dt > tfinal){
             dt = tfinal - tn;
           }
-        // Adjust time and switch vel direction for coupled problem example:
+
+        // Clip time and switch vel direction for coupled problem example:
         if(example_ == COUPLED_PROBLEM_EXAMPLE){
           if((tn+dt>=tfinal/2.0) && !vel_has_switched){
             dt = (tfinal/2.0) - tn;
