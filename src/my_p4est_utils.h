@@ -756,6 +756,8 @@ inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_
  */
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
+p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
 #ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
@@ -1950,13 +1952,13 @@ inline bool is_periodic(const p4est_t *p4est, const unsigned char &dir)
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    if(xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir])
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+    if(xyz[dim] < xyz_min[dim] || xyz[dim] > xyz_max[dim])
     {
-      if(periodic[dir])
-        xyz[dir] = xyz[dir] - floor((xyz[dir] - xyz_min[dir])/(xyz_max[dir] - xyz_min[dir]))*(xyz_max[dir] - xyz_min[dir]);
+      if(periodic[dim])
+        xyz[dim] = xyz[dim] - floor((xyz[dim] - xyz_min[dim])/(xyz_max[dim] - xyz_min[dim]))*(xyz_max[dim] - xyz_min[dim]);
       else
-        xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
+        xyz[dim] = MAX(xyz_min[dim], MIN(xyz_max[dim], xyz[dim]));
     }
 }
 

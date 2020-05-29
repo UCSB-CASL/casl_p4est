@@ -80,6 +80,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.h \
   $$PARCASL/src/my_p4est_hierarchy.h \
   $$PARCASL/src/my_p4est_integration_mls.h \
+  $$PARCASL/src/my_p4est_interface_manager.h \
   $$PARCASL/src/my_p4est_interpolation.h \
   $$PARCASL/src/my_p4est_interpolation_cells.h \
   $$PARCASL/src/my_p4est_interpolation_faces.h \
@@ -125,6 +126,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
   $$PARCASL/src/my_p4est_integration_mls.cpp \
+  $$PARCASL/src/my_p4est_interface_manager.cpp \
   $$PARCASL/src/my_p4est_interpolation.cpp \
   $$PARCASL/src/my_p4est_interpolation_cells.cpp \
   $$PARCASL/src/my_p4est_interpolation_faces.cpp \
@@ -176,6 +178,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_general_poisson_nodes_mls_solver.h \
   $$PARCASL/src/my_p8est_hierarchy.h \
   $$PARCASL/src/my_p8est_integration_mls.h \
+  $$PARCASL/src/my_p8est_interface_manager.h \
   $$PARCASL/src/my_p8est_interpolation.h \
   $$PARCASL/src/my_p8est_interpolation_cells.h \
   $$PARCASL/src/my_p8est_interpolation_faces.h \
@@ -221,6 +224,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_general_poisson_nodes_mls_solver.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \
   $$PARCASL/src/my_p8est_integration_mls.cpp \
+  $$PARCASL/src/my_p8est_interface_manager.cpp \
   $$PARCASL/src/my_p8est_interpolation.cpp \
   $$PARCASL/src/my_p8est_interpolation_cells.cpp \
   $$PARCASL/src/my_p8est_interpolation_faces.cpp \

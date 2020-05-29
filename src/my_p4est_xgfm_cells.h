@@ -5,26 +5,19 @@
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_cell_neighbors.h>
+#include <src/my_p8est_faces.h>
+#include <src/my_p8est_interface_manager.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_utils.h>
-#include <src/my_p8est_faces.h>
-#include <p8est_nodes.h>
-#include <src/my_p8est_solve_lsqr.h>
 #else
 #include <src/my_p4est_cell_neighbors.h>
+#include <src/my_p4est_faces.h>
+#include <src/my_p4est_interface_manager.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_utils.h>
-#include <src/my_p4est_faces.h>
-#include <p4est_nodes.h>
-#include <src/my_p4est_solve_lsqr.h>
 #endif
 
-#include <src/matrix.h>
-#include <algorithm>
-#include <map>
-
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
-static const double value_not_needed = NAN;
 
 class my_p4est_xgfm_cells_t
 {
@@ -52,12 +45,10 @@ class my_p4est_xgfm_cells_t
 
 #ifdef WITH_SUBREFINEMENT
   // data related to the (subrefined) interface-capturing grid, if present
-  const p4est_t                   *fine_p4est;
-  const p4est_nodes_t             *fine_nodes;
-  const p4est_ghost_t             *fine_ghost;
-  const my_p4est_node_neighbors_t *fine_node_ngbd;
-  // elementary interface-capturing grid parameters
-  double dxyz_min_fine[P4EST_DIM];
+  const p4est_t                   *subrefined_p4est;
+  const p4est_nodes_t             *subrefined_nodes;
+  const p4est_ghost_t             *subrefined_ghost;
+  const my_p4est_node_neighbors_t *subrefined_node_ngbd;
 #endif
 
   // Petsc vectors vectors of cell-centered values
@@ -94,10 +85,9 @@ class my_p4est_xgfm_cells_t
   bool matrix_is_set, rhs_is_set;
   const bool activate_xGFM;
 
-  inline bool mu_minus_is_larger()                    const { return mu_minus >= mu_plus; }
+  inline bool extend_negative_interface_values()      const { return mu_minus >= mu_plus; }
   inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
-  inline double get_smaller_mu()                      const { return (mu_minus_is_larger() ? mu_plus : mu_minus); }
   inline double get_jump_in_mu()                      const { return (mu_plus - mu_minus); }
 
   class solver_monitor_t {
@@ -160,183 +150,8 @@ class my_p4est_xgfm_cells_t
     }
   } solver_monitor;
 
-  /*!
-   * \brief The interface_neighbor struct contains all relevant data regarding interface-neighbor,
-   * i.e., intersection between the interface and the segment joining the current cell of interest
-   * and its neighbor cell, on the computational grid.
-   * theta    : fraction of the grid spacing covered by the domain in which the cell of interest is;
-   * neighbor_quad_idx      : local index of the neighbor cell in the computational grid (across the interface);
-   * mid_point_fine_node_idx: local index of the grid node in between those two cells on the
-   *                          interface-capturing grid (if using subrefinement);
-   * quad_fine_node_idx     : local index of the grid node that coincides with the center of the cell
-   *                          of interest, on the interface-capturing grid (if using subrefinement);
-   * neighbor_fine_node_idx : local index of the grid node that coincides with the center of the neighbor
-   *                          cell across the interface, on the interface-capturing grid (if using subrefinement).
-   */
-  struct interface_neighbor
-  {
-    double  theta;
-    p4est_locidx_t neighbor_quad_idx;
-#ifdef WITH_SUBREFINEMENT
-    p4est_locidx_t mid_point_fine_node_idx;
-    p4est_locidx_t quad_fine_node_idx;
-    p4est_locidx_t neighbor_fine_node_idx;
-#endif
-#ifdef DEBUG
-    inline bool is_consistent_with(const interface_neighbor& neighbor_across) const
-    {
-      return fabs(theta + neighbor_across.theta - 1.0) < EPS;
-    }
-#endif
 
-    inline void get_GFM_jump_data(double& jump_field, double& jump_flux_component, const double* jump_p, const double* jump_flux_p, const u_char& face_dir) const
-    {
-      P4EST_ASSERT(mid_point_fine_node_idx >= 0);
-      const bool past_mid_point = theta >= 0.5;
-      const double theta_between_fine_nodes     = 2.0*theta - (past_mid_point ? 1.0 : 0.0);
-      const p4est_locidx_t &fine_node_this_side = (past_mid_point ? mid_point_fine_node_idx  : quad_fine_node_idx);
-      const p4est_locidx_t &fine_node_across    = (past_mid_point ? neighbor_fine_node_idx         : mid_point_fine_node_idx);
-      jump_field          = theta_between_fine_nodes*jump_p[fine_node_across]                             + (1.0 - theta_between_fine_nodes)*jump_p[fine_node_this_side];
-      jump_flux_component = theta_between_fine_nodes*jump_flux_p[P4EST_DIM*fine_node_across + face_dir/2] + (1.0 - theta_between_fine_nodes)*jump_flux_p[P4EST_DIM*fine_node_this_side + face_dir/2];
-      return;
-    }
-
-    inline double GFM_mu_tilde(const double& mu_this_side, const double& mu_across) const
-    {
-      return (1.0 - theta)*mu_this_side + theta*mu_across;
-    }
-
-    inline double GFM_mu_jump(const double& mu_this_side, const double& mu_across) const
-    {
-      return mu_this_side*mu_across/GFM_mu_tilde(mu_this_side, mu_across);
-    }
-
-    inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& face_dir, const bool &this_side_is_in_positive_domain,
-                                                    const double* jump_p, const double* jump_flux_p,
-                                                    const double* dxyz, const bool& evaluate_flux_on_this_side) const
-    {
-      double jump_field, jump_flux_component;
-      get_GFM_jump_data(jump_field, jump_flux_component, jump_p, jump_flux_p, face_dir);
-
-      return GFM_mu_jump(mu_this_side, mu_across)*(this_side_is_in_positive_domain ? +1.0 : -1.0)*
-          (jump_flux_component*(evaluate_flux_on_this_side ? (1 - theta)/mu_across : -theta/mu_this_side) + (face_dir%2 == 1 ? +1.0 : -1.0)*jump_field/dxyz[face_dir/2]);
-    }
-
-    inline double GFM_flux_component(const double& mu_this_side, const double& mu_across, const u_char& face_dir, const bool &this_side_is_in_positive_domain,
-                                     const double& solution_this_side, const double& solution_across,
-                                     const double* jump_p, const double* jump_flux_p,
-                                     const double* dxyz, const bool& evaluate_flux_on_this_side) const
-    {
-      return (face_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/dxyz[face_dir/2]
-          + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, face_dir, this_side_is_in_positive_domain, jump_p, jump_flux_p, dxyz, evaluate_flux_on_this_side);
-    }
-
-    inline double GFM_interface_defined_value(const double& mu_this_side, const double& mu_across, const u_char& face_dir, const bool &this_side_is_in_positive_domain, const bool& get_positive_interface_value,
-                                              const double& solution_this_side, const double& solution_across,
-                                              const double* jump_p, const double* jump_flux_p,
-                                              const double* dxyz) const
-    {
-      double jump_field, jump_flux_component;
-      get_GFM_jump_data(jump_field, jump_flux_component, jump_p, jump_flux_p, face_dir);
-
-      return ((1.0 - theta)*mu_this_side*(solution_this_side  + (this_side_is_in_positive_domain != get_positive_interface_value ? (this_side_is_in_positive_domain ? -1.0 : +1.0)*jump_field : 0.0))
-              +      theta *mu_across   *(solution_across     + (this_side_is_in_positive_domain == get_positive_interface_value ? (this_side_is_in_positive_domain ? +1.0 : -1.0)*jump_field : 0.0))
-              + (this_side_is_in_positive_domain ? +1.0 : -1.0)*(face_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[face_dir/2]*jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
-    }
-  };
-
-  class interface_manager_t {
-    my_p4est_xgfm_cells_t& solver;
-
-    struct which_interface_neighbor_t
-    {
-      p4est_locidx_t loc_idx;
-      u_char face_dir;
-
-      inline bool operator==(const which_interface_neighbor_t& other) const { return (this->loc_idx == other.loc_idx && this->face_dir == other.face_dir); } // equality comparator
-#if __cplusplus < 201103L
-      inline bool operator<(const which_interface_neighbor_t& other) const { return (this->loc_idx < other.loc_idx || (this->loc_idx == other.loc_idx && this->face_dir < other.face_dir)); } // comparison operator for storing in ordered map
-#endif
-    };
-
-#if __cplusplus >= 201103L
-    struct hash_functor{
-      size_t operator()(const which_interface_neighbor_t& key) const { return P4EST_DIM*key.loc_idx + key.face_dir; } // hash value for unordered map keys
-    };
-    typedef std::unordered_map<which_interface_neighbor_t, interface_neighbor, hash_functor> map_of_interface_neighbors_t;
-#else
-    typedef std::map<which_interface_neighbor_t, interface_neighbor> map_of_interface_neighbors_t;
-#endif
-    map_of_interface_neighbors_t interface_data;
-    map_of_interface_neighbors_t::const_iterator current_interface_data;
-
-    inline map_of_interface_neighbors_t::const_iterator find_interface_neighbor_in_map(const p4est_locidx_t& quad_idx, const u_char& face_dir) const
-    {
-      P4EST_ASSERT(0 <= quad_idx && quad_idx < solver.p4est->local_num_quadrants && face_dir < P4EST_FACES);
-      const which_interface_neighbor_t which_one = {quad_idx, face_dir};
-      return interface_data.find(which_one);
-    }
-
-    void clear() {
-      interface_data.clear();
-      current_interface_data = interface_data.end();
-    }
-
-    inline bool current_interface_point_is_set_for(const p4est_locidx_t& quad_idx, const u_char& face_dir) const
-    {
-      const which_interface_neighbor_t which_one = {quad_idx, face_dir};
-      return (current_interface_data != interface_data.end() && current_interface_data->first == which_one);
-    }
-
-    void set_current_interface_point_for(const p4est_locidx_t& quad_idx, const u_char& face_dir);
-
-  public:
-    interface_manager_t(my_p4est_xgfm_cells_t& parent_solver) : solver(parent_solver) { clear(); }
-
-    void update_jumps_in_flux_at_all_relevant_nodes() const;
-    void update_rhs_in_relevant_cells_only() const;
-
-    const interface_neighbor get_interface_neighbor(const p4est_locidx_t& quad_idx, const u_char& face_dir);
-
-    inline double GFM_mu_jump(const p4est_locidx_t& quad_idx, const u_char& face_dir, const double& mu_this_side, const double& mu_across)
-    {
-      if(!current_interface_point_is_set_for(quad_idx, face_dir))
-        set_current_interface_point_for(quad_idx, face_dir);
-      return current_interface_data->second.GFM_mu_jump(mu_this_side, mu_across);
-    }
-
-    inline double GFM_jump_terms_for_flux_component(const p4est_locidx_t& quad_idx, const u_char& face_dir,
-                                                    const double& mu_this_side, const double& mu_across, const bool& in_positive_domain,
-                                                    const double* jump_field_p, const double* jump_flux_p)
-    {
-      if(!current_interface_point_is_set_for(quad_idx, face_dir))
-        set_current_interface_point_for(quad_idx, face_dir);
-      return current_interface_data->second.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, face_dir, in_positive_domain, jump_field_p, jump_flux_p, solver.dxyz_min, true);
-    }
-
-    inline double interface_value(const p4est_locidx_t& quad_idx, const u_char& face_dir, const double& mu_this_side, const double mu_across,
-                                  const bool& in_positive_domain, const bool& get_positive_interface_value,
-                                  const double* solution_p, const double* jump_field_p, const double* jump_flux_p)
-    {
-      if(!current_interface_point_is_set_for(quad_idx, face_dir))
-        set_current_interface_point_for(quad_idx, face_dir);
-      return current_interface_data->second.GFM_interface_defined_value(mu_this_side, mu_across, face_dir, in_positive_domain, get_positive_interface_value, solution_p[quad_idx], solution_p[current_interface_data->second.neighbor_quad_idx], jump_field_p, jump_flux_p, solver.dxyz_min);
-    }
-
-    inline double GFM_flux_at_center_face(const p4est_locidx_t& quad_idx, const u_char& face_dir, const double& mu_this_side, const double mu_across,
-                                          const bool& in_positive_domain, const bool face_is_on_this_side, const double& solution_quadrant, const double& solution_neighbor_quad,
-                                          const double* jump_field_p, const double* jump_flux_p)
-    {
-      if(!current_interface_point_is_set_for(quad_idx, face_dir))
-        set_current_interface_point_for(quad_idx, face_dir);
-      return current_interface_data->second.GFM_flux_component(mu_this_side, mu_across, face_dir, in_positive_domain, solution_quadrant, solution_neighbor_quad, jump_field_p, jump_flux_p, solver.dxyz_min, face_is_on_this_side);
-    }
-
-
-#ifdef DEBUG
-  int is_map_consistent();
-#endif
-  } interface_manager;
+  my_p4est_interface_manager_t interface_manager;
 
   class cell_TVD_extension_operator_t
   {
@@ -345,10 +160,10 @@ class my_p4est_xgfm_cells_t
       friend class cell_TVD_extension_operator_t;
       struct off_diag_entry{
         double coeff;
-        virtual double neighbor_value(const double* extension_on_cells_p, interface_manager_t& interface_manager,
+        virtual double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t& interface_manager,
                                       const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                       const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const = 0;
-        inline double contribution_to_negative_normal_derivative(const double* extension_on_cells_p, interface_manager_t& interface_manager,
+        inline double contribution_to_negative_normal_derivative(const double* extension_on_cells_p, my_p4est_interface_manager_t& interface_manager,
                                                                  const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                                                  const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
         {
@@ -359,7 +174,7 @@ class my_p4est_xgfm_cells_t
       struct regular_quad_entry : off_diag_entry
       {
         p4est_locidx_t loc_idx;
-        inline double neighbor_value(const double* extension_on_cells_p, interface_manager_t&,
+        inline double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t&,
                                      const double&, const double&, const bool&, const bool&,
                                      const p4est_locidx_t&, const double*, const double*, const double*) const
         {
@@ -370,7 +185,7 @@ class my_p4est_xgfm_cells_t
       struct interface_entry : off_diag_entry
       {
         u_char face_dir;
-        inline double neighbor_value(const double*, interface_manager_t& interface_manager,
+        inline double neighbor_value(const double*, my_p4est_interface_manager_t& interface_manager,
                                      const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
         {
@@ -401,7 +216,7 @@ class my_p4est_xgfm_cells_t
       }
       ~local_cell_TVD_extension_operator(){ clear_extension_entries(); }
 
-      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const interface_neighbor& neighbor, const u_char& face_dir_);
+      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const u_char& face_dir_);
 
       void add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_normal, const u_char& face_dir,
                                     const linear_combination_of_dof_t& one_sided_derivative_operator);
@@ -484,11 +299,14 @@ class my_p4est_xgfm_cells_t
   // interface-defined values in the normal directions, using ASLAM's PDE-based extrapolation on the cells
   void extend_interface_values(Vec &former_extension_on_cells, Vec &former_extension_on_nodes, const double& threshold = 1.0e-10, const uint& niter_max = 20);
   // updates the right-hand side terms for cells involving jump terms (after extension_on_nodes has been updated)
+  void update_rhs_in_relevant_cells_only();
   void update_rhs_and_residual(Vec& former_rhs, Vec& former_residual);
   double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_extension_on_nodes,
                                                          Vec former_rhs, Vec former_residual);
 
-  void compute_jumps_in_flux_components_at_all_nodes();
+  void compute_jumps_in_flux_components_at_all_nodes() const;
+  void compute_jumps_in_flux_at_relevant_nodes_only() const;
+
   void compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p, const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p) const;
 
   void initialize_extension_on_cells();
@@ -532,7 +350,7 @@ class my_p4est_xgfm_cells_t
     if(at_all_nodes)
       compute_jumps_in_flux_components_at_all_nodes();
     else
-      interface_manager.update_jumps_in_flux_at_all_relevant_nodes();
+      compute_jumps_in_flux_at_relevant_nodes_only();
     P4EST_ASSERT(jump_flux != NULL);
   }
 
@@ -547,7 +365,7 @@ class my_p4est_xgfm_cells_t
 
 public:
 
-  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ngbd_n, const bool &activate_xGFM_ = true);
+  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *subrefined_ngbd_n, const bool &activate_xGFM_ = true);
   ~my_p4est_xgfm_cells_t();
 
 #ifdef WITH_SUBREFINEMENT
@@ -619,7 +437,7 @@ public:
   }
 
   inline void set_rhs(Vec user_sharp_rhs) { set_rhs(user_sharp_rhs, user_sharp_rhs); }
-  inline void set_rhs(Vec user_rhs_minus_,Vec user_rhs_plus_)
+  inline void set_rhs(Vec user_rhs_minus_, Vec user_rhs_plus_)
   {
     P4EST_ASSERT(VecIsSetForCells(user_rhs_minus_, p4est, ghost, 1, false) && VecIsSetForCells(user_rhs_plus_, p4est, ghost, 1, false));
     user_rhs_minus  = user_rhs_minus_;
@@ -646,18 +464,20 @@ public:
   inline const p4est_t* get_computational_p4est()                             const { return p4est;                                                                 }
   inline const p4est_ghost_t* get_computational_ghost()                       const { return ghost;                                                                 }
   inline const p4est_nodes_t* get_computational_nodes()                       const { return nodes;                                                                 }
+  inline const my_p4est_cell_neighbors_t* get_computational_cell_ngbd()       const { return cell_ngbd;                                                             }
   inline const my_p4est_hierarchy_t* get_computational_hierarchy()            const { return cell_ngbd->get_hierarchy();                                            }
   inline const my_p4est_node_neighbors_t* get_computational_node_neighbors()  const { return node_ngbd;                                                             }
+  inline const double* get_smallest_dxyz()                                    const { return dxyz_min;                                                              }
 #ifdef WITH_SUBREFINEMENT
   inline Vec get_subrefined_phi()                                             const { return phi;                                                                   }
   inline Vec get_subrefined_normals()                                         const { return normals;                                                               }
   inline Vec get_subrefined_jump()                                            const { return jump_u;                                                                }
   inline Vec get_subrefined_jump_in_normal_flux()                             const { return jump_normal_flux_u;                                                    }
-  inline const my_p4est_node_neighbors_t* get_subrefined_node_neighbors()     const { return fine_node_ngbd;                                                        }
-  inline const p4est_t* get_subrefined_p4est()                                const { return fine_p4est;                                                            }
-  inline const p4est_ghost_t* get_subrefined_ghost()                          const { return fine_ghost;                                                            }
-  inline const p4est_nodes_t* get_subrefined_nodes()                          const { return fine_nodes;                                                            }
-  inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()               const { return fine_node_ngbd->get_hierarchy();                                       }
+  inline const my_p4est_node_neighbors_t* get_subrefined_node_neighbors()     const { return subrefined_node_ngbd;                                                        }
+  inline const p4est_t* get_subrefined_p4est()                                const { return subrefined_p4est;                                                            }
+  inline const p4est_ghost_t* get_subrefined_ghost()                          const { return subrefined_ghost;                                                            }
+  inline const p4est_nodes_t* get_subrefined_nodes()                          const { return subrefined_nodes;                                                            }
+  inline const my_p4est_hierarchy_t* get_subrefined_hierarchy()               const { return subrefined_node_ngbd->get_hierarchy();                                       }
   inline const my_p4est_interpolation_nodes_t& get_interp_phi()               const { return interp_subrefined_phi;                                                 }
 #else
   inline const my_p4est_interpolation_nodes_t& get_interp_phi()               const { return *interp_phi;                                                           }
@@ -670,8 +490,8 @@ public:
     double *sol_p;
     ierr = VecGetArray(solution, &sol_p); CHKERRXX(ierr);
 #ifdef WITH_SUBREFINEMENT
-    my_p4est_interpolation_nodes_t interp_phi(fine_node_ngbd); interp_phi.set_input(phi, linear);
-    my_p4est_interpolation_nodes_t interp_jump(fine_node_ngbd); interp_jump.set_input(jump_u, linear);
+    my_p4est_interpolation_nodes_t interp_phi(subrefined_node_ngbd); interp_phi.set_input(phi, linear);
+    my_p4est_interpolation_nodes_t interp_jump(subrefined_node_ngbd); interp_jump.set_input(jump_u, linear);
 #endif
 
     double sharp_integral_solution = 0.0;

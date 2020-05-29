@@ -176,6 +176,31 @@ lookup_in_ghost_nodes:
   return false;
 }
 
+
+p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
+{
+  P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants + (ghost != NULL ? (p4est_locidx_t) ghost->ghosts.elem_count : 0));
+  if(quad_idx > p4est->local_num_quadrants)
+  {
+    if(ghost == NULL)
+      throw std::runtime_error("my_p4est_utils::tree_index_of_quad called for a ghost quadrant but ghosts are not provided...");
+    const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
+    return quad->p.piggy3.which_tree;
+  }
+  p4est_topidx_t tree_l = p4est->first_local_tree;
+  p4est_topidx_t tree_u = p4est->last_local_tree + 1;
+  while (tree_u - tree_l > 1) {
+    p4est_topidx_t tree_m = (tree_l + tree_u)/2;
+    p4est_locidx_t quad_offset_tree_m = p4est_tree_array_index(p4est->trees, tree_m)->quadrants_offset;
+    if(quad_idx >= quad_offset_tree_m)
+      tree_l = tree_m;
+    else
+      tree_u = tree_m;
+  }
+  return tree_l;
+}
+
+
 #ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
