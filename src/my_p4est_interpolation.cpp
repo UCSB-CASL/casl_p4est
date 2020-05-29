@@ -22,7 +22,7 @@ extern PetscLogEvent log_my_p4est_interpolation_process_local;
 
 #include <vector>
 
-const unsigned int my_p4est_interpolation_t::ALL_COMPONENTS; // definition of the static const unsigned int is required here
+const u_int my_p4est_interpolation_t::ALL_COMPONENTS; // definition of the static const u_int is required here
 
 my_p4est_interpolation_t::my_p4est_interpolation_t(const my_p4est_node_neighbors_t* ngbd_n)
   : senders(ngbd_n->get_p4est()->mpisize, 0), ngbd_n(ngbd_n), p4est(ngbd_n->get_p4est()),
@@ -47,7 +47,7 @@ void my_p4est_interpolation_t::clear()
   return;
 }
 
-void my_p4est_interpolation_t::set_input_fields(const Vec *F, const size_t &n_vecs_, const unsigned int &block_size_f)
+void my_p4est_interpolation_t::set_input_fields(const Vec *F, const size_t &n_vecs_, const u_int &block_size_f)
 {
   // before setting a new input, we need to make sure that any previous interpolation has fully completed,
   // otherwise the programe may crash
@@ -59,7 +59,7 @@ void my_p4est_interpolation_t::set_input_fields(const Vec *F, const size_t &n_ve
   P4EST_ASSERT(n_vecs_ > 0);
   P4EST_ASSERT(block_size_f > 0);
   Fi.resize(n_vecs_);
-  for(unsigned int k = 0; k < n_vecs_; ++k)
+  for(u_int k = 0; k < n_vecs_; ++k)
     Fi[k] = F[k];
   bs_f = block_size_f;
   return;
@@ -109,9 +109,9 @@ void my_p4est_interpolation_t::add_point_general(const p4est_locidx_t &node_idx_
 }
 
 #ifdef CASL_LOG_EVENTS
-void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, const unsigned int &comp, InterpolatingFunctionLogEntry& entry)
+void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, const u_int &comp, InterpolatingFunctionLogEntry& entry)
 #else
-void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, const unsigned int &comp)
+void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, const u_int &comp)
 #endif
 {
   PetscErrorCode ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_queries, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -131,8 +131,8 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
 
   for(size_t i = 0; i < xyz.size(); i += P4EST_DIM) {
     // clip to bounding box
-    for(unsigned char dir = 0; dir < P4EST_DIM; dir++)
-      xyz_clip[dir] = xyz[i + dir];
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      xyz_clip[dim] = xyz[i + dim];
     clip_in_domain(xyz_clip, get_xyz_min(), get_xyz_max(), get_periodicity()); // do we actually want that? Especially in case of non-periodicity??
 
     p4est_quadrant_t best_match;
@@ -154,7 +154,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
       buff.push_back(int(i/P4EST_DIM));
       if(comp == ALL_COMPONENTS && bs_f > 1)
         for(size_t k = 0; k < nfunctions; ++k)
-          for(unsigned int cc = 0; cc < bs_f; ++cc)
+          for(u_int cc = 0; cc < bs_f; ++cc)
             buff.push_back(results[bs_f*k + cc]);
       else
         for(size_t k = 0; k < nfunctions; ++k)
@@ -195,8 +195,8 @@ void my_p4est_interpolation_t::process_incoming_query_interface_bc(const Boundar
 
   for(size_t i = 0; i < xyz.size(); i += P4EST_DIM) {
     // clip to bounding box
-    for(unsigned char dir = 0; dir < P4EST_DIM; dir++)
-      xyz_clip[dir] = xyz[i + dir];
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      xyz_clip[dim] = xyz[i + dim];
     clip_in_domain(xyz_clip, get_xyz_min(), get_xyz_max(), get_periodicity()); // do we actually want that? Especially in case of non-periodicity??
 
     p4est_quadrant_t best_match;
@@ -237,7 +237,7 @@ void my_p4est_interpolation_t::process_incoming_query_interface_bc(const Boundar
 }
 
 
-void my_p4est_interpolation_t::process_incoming_reply(const MPI_Status& status, double * const *Fo_p, const unsigned int &comp) const
+void my_p4est_interpolation_t::process_incoming_reply(const MPI_Status& status, double * const *Fo_p, const u_int &comp) const
 {
   PetscErrorCode ierr = PetscLogEventBegin(log_my_p4est_interpolation_process_replies, 0, 0, 0, 0); CHKERRXX(ierr);
   const size_t nfunctions = n_vecs();
@@ -252,7 +252,7 @@ void my_p4est_interpolation_t::process_incoming_reply(const MPI_Status& status, 
     size_t offset_in_reply = (nelements_per_point + 1)*i + 1;
     if(comp == ALL_COMPONENTS && bs_f > 1)
       for(size_t k = 0; k < nfunctions; ++k)
-        for(unsigned int cc = 0; cc < bs_f; ++cc)
+        for(u_int cc = 0; cc < bs_f; ++cc)
           Fo_p[k][bs_f*node_idx + cc] = reply_buffer[offset_in_reply + k*bs_f + cc].value;
     else
       for(size_t k = 0; k < nfunctions; ++k)
@@ -310,7 +310,7 @@ void my_p4est_interpolation_t::determine_and_initiate_global_communications(int 
   return;
 }
 
-void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned int &comp, const bool &local_only)
+void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const u_int &comp, const bool &local_only)
 {
   PetscErrorCode ierr = PetscLogEventBegin(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -357,7 +357,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned 
       //de-serialize
       if(comp == ALL_COMPONENTS && bs_f > 1)
         for(size_t k = 0; k < n_outputs; ++k)
-          for(unsigned int cc = 0; cc < bs_f; ++cc)
+          for(u_int cc = 0; cc < bs_f; ++cc)
             Fo_p[k][bs_f*node_idx + cc] = results[bs_f*k + cc];
       else
         for(size_t k = 0; k < n_outputs; ++k)

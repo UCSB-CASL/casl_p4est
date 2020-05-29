@@ -41,7 +41,7 @@ using std::vector;
  *    my_p4est_level_set* classes)
  *
  * See the description of
- * void interpolate(double * const *Fo_p, const unsigned int &comp = ALL_COMPONENTS, const bool &local_only = false);
+ * void interpolate(double * const *Fo_p, const u_int &comp = ALL_COMPONENTS, const bool &local_only = false);
  * here below for mode details about the usage as in 2) here above.
  * - Code revision and comments by Raphael Egan (raphaelegan@ucsb.edu), October 18, 2019.
  * - Changing communication-related routines to make them template in order to allow communications
@@ -73,8 +73,8 @@ private:
      * \param [in] xyz:                   Cartesian coordinates of the point of interest (array of P4EST_DIM doubles)
      */
     inline void push_back(const p4est_locidx_t &node_idx_on_output, const double *xyz) {
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        p_xyz.push_back(xyz[dir]);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        p_xyz.push_back(xyz[dim]);
 
       node_idx.push_back(node_idx_on_output);
     }
@@ -145,9 +145,9 @@ private:
    * \param [in]  status                : MPI_Status of the message we receive
    */
 #ifdef CASL_LOG_EVENTS
-  template<typename T> void receive_queried_coordinates_and_allocate_send_buffer_in_map(std::vector<double> &xyz, std::map<int, vector<data_to_communicate<T> > > &map_of_send_buffers, const size_t &nelements_per_point, const MPI_Status &status, InterpolatingFunctionLogEntry& entry)
+  template<typename T> inline void receive_queried_coordinates_and_allocate_send_buffer_in_map(std::vector<double> &xyz, std::map<int, vector<data_to_communicate<T> > > &map_of_send_buffers, const size_t &nelements_per_point, const MPI_Status &status, InterpolatingFunctionLogEntry& entry)
 #else
-  template<typename T> void receive_queried_coordinates_and_allocate_send_buffer_in_map(std::vector<double> &xyz, std::map<int, vector<data_to_communicate<T> > > &map_of_send_buffers, const size_t &nelements_per_point, const MPI_Status &status)
+  template<typename T> inline void receive_queried_coordinates_and_allocate_send_buffer_in_map(std::vector<double> &xyz, std::map<int, vector<data_to_communicate<T> > > &map_of_send_buffers, const size_t &nelements_per_point, const MPI_Status &status)
 #endif
   {
     // receive incoming queries about points and send back the interpolated result
@@ -179,7 +179,7 @@ private:
    * \param [in] buff   : serialized data_to_communicate that we need to send back as a response
    * \param [in] status : MPI_Status of the message we send
    */
-  template<typename T> void send_response_back_to_query(const std::vector<data_to_communicate<T> > &buff, const MPI_Status &status)
+  template<typename T> inline void send_response_back_to_query(const std::vector<data_to_communicate<T> > &buff, const MPI_Status &status)
   {
     MPI_Request req;
     int mpiret = MPI_Isend(buff.data(), buff.size()*sizeof (data_to_communicate<T>), MPI_BYTE, status.MPI_SOURCE, reply_tag, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
@@ -195,7 +195,7 @@ private:
    * \param [in] nelements_per_point  : number of queried data values per point that we need to receive back
    * \param [in] status               : MPI_Status of the message we receive
    */
-  template<typename T> void receive_incoming_reply(std::vector<data_to_communicate<T> > &reply_buffer, const size_t &nelements_per_point, const MPI_Status &status) const
+  template<typename T> inline void receive_incoming_reply(std::vector<data_to_communicate<T> > &reply_buffer, const size_t &nelements_per_point, const MPI_Status &status) const
   {
     // receive incoming reply we asked before
     int byte_count;
@@ -218,10 +218,10 @@ private:
    * \param [inout] entry:  elementary logging entry (relevant only if CASL_LOG_EVENTS is defined)
    */
 #ifdef CASL_LOG_EVENTS
-  void process_incoming_query(const MPI_Status &status, const unsigned int &comp, InterpolatingFunctionLogEntry& entry);
+  void process_incoming_query(const MPI_Status &status, const u_int &comp, InterpolatingFunctionLogEntry& entry);
   void process_incoming_query_interface_bc(const BoundaryConditionsDIM& bc_to_sample, std::map<int, std::vector<data_to_communicate<bc_sample> > > &map_of_send_buffers_for_bc_samples, const MPI_Status &status, InterpolatingFunctionLogEntry& entry);
 #else
-  void process_incoming_query(const MPI_Status &status, const unsigned int &comp);
+  void process_incoming_query(const MPI_Status &status, const u_int &comp);
   void process_incoming_query_interface_bc(const BoundaryConditionsDIM& bc_to_sample, std::map<int, std::vector<data_to_communicate<bc_sample> > > &map_of_send_buffers_for_bc_samples, const MPI_Status &status);
 #endif
 
@@ -236,7 +236,7 @@ private:
    * \note if the block size of the input fields bs_f > 1 and if comp != ALL_COMPONENTS, we assume that the output
    *        vector(s) is (are) NOT block-structured (i.e., the ouputs have a block size of 1)
    */
-  void process_incoming_reply(const MPI_Status& status, double * const *Fo_p, const unsigned int &comp) const;
+  void process_incoming_reply(const MPI_Status& status, double * const *Fo_p, const u_int &comp) const;
   void process_incoming_reply_interface_bc(const MPI_Status& status, bc_sample* interface_bc) const;
 
   /*!
@@ -271,7 +271,7 @@ protected:
   const my_p4est_brick_t *myb;              /**< the macromash information for the "input" grid (myb == ngbd_n->myb) */
   vector<Vec> Fi;                           /**< list of input field data
                                               (parallel, possibly block-structured, PetSc vectors) */
-  unsigned int bs_f;                        /**< block size of (all) the input data fields in Fi */
+  u_int bs_f;                               /**< block size of (all) the input data fields in Fi */
 
   /*!
    * \brief get_xyz_min accesses the coordinates of the "lower, left, front" corner of the "input" grid
@@ -313,7 +313,7 @@ protected:
    * \param [in] block_size_f:  block size of (all) the PetSc vectors in the array (irrelevant if playing with Boundary
    *                            condition objects)
    */
-  void set_input_fields(const Vec *F, const size_t &n_vecs_, const unsigned int &block_size_f);
+  void set_input_fields(const Vec *F, const size_t &n_vecs_, const u_int &block_size_f);
 
   /*!
    * \brief add_point_general adds a point where the interpolated result(s) are required. This method first determines
@@ -333,7 +333,10 @@ protected:
    * --> to be used by local operator().
    * \param [in] xyz              : array of const P4EST_DIM doubles representing the coordinates of the point where
    *                                interpolation is queried.
-   * \param [out] results         : array of (all) results (must be of size n_vecs()*bs_f)
+   * \param [in] comp             : component of the (possibly block-structured) Petsc parallel vector(s) to be interpolated
+   *                                (all components are considered if set to ALL_COMPONENTS)
+   * \param [out] results         : array of (all) results
+   *                                (must be of size n_vecs()*bs_f if comp == ALL_COMPONENTS, n_vecs() otherwise)
    * \param [out] rank_found      : rank of the process found to be the owner of the quadrant in which the point was found
    * \param [out] remote_matches  : vector of remote_matches as constructed by hierarchy's find_smallest_quadrant_containing_point
    *                                (in case of no locally found quadrant)
@@ -346,8 +349,8 @@ protected:
    * [Note 2:] This method throws an invalid_argument exception if xyz is found outside of the local partition (and out of its ghost layer, too
    * if proceed_even_if_in_ghost_layer was set to true).
    */
-  void clip_point_and_interpolate_all_on_the_fly(const double* xyz, double* results, int &rank_found, std::vector<p4est_quadrant_t>& remote_matches,
-                                                 const bool &proceed_even_if_in_ghost_layer) const
+  inline void clip_point_and_interpolate_all_on_the_fly(const double* xyz, const u_int& comp, double* results, int &rank_found, std::vector<p4est_quadrant_t>& remote_matches,
+                                                        const bool &proceed_even_if_in_ghost_layer) const
   {
     /* first clip the coordinates */
     double xyz_clip[P4EST_DIM] = {DIM(xyz[0], xyz[1], xyz[2])};
@@ -358,7 +361,7 @@ protected:
 
     if (rank_found == p4est->mpirank || (proceed_even_if_in_ghost_layer && rank_found != -1))
     {
-      interpolate(best_match, xyz, results, ALL_COMPONENTS);
+      interpolate(best_match, xyz, results, comp);
       return;
     }
     throw std::invalid_argument(std::string("my_p4est_interpolation_t::clip_point_and_interpolate(): the point does not belong to the local partition of the forest") + std::string(proceed_even_if_in_ghost_layer ? " nor to its ghosts." : "."));
@@ -393,7 +396,7 @@ public:
    * blocksize must be much smaller than that. (If not, you're probably wrong and you probably need to revise
    * your project)
    */
-  const static unsigned int ALL_COMPONENTS = UINT_MAX;
+  const static u_int ALL_COMPONENTS = UINT_MAX;
 
   /*!
    * \brief clear waits for pending communications to complete, then clears all the buffers, the list of
@@ -440,8 +443,8 @@ public:
    *    --> the only desired component of the kth input field for the node buffered with associated index "node_idx_on_output"
    *        (when using 'add_point()') is inserted in Fo[k][node_idx_on_output]
    */
-  void interpolate(double * const *Fo_p, const unsigned int &comp = ALL_COMPONENTS, const bool &local_only = false);
-  inline void interpolate(double *Fo, const unsigned int &comp = ALL_COMPONENTS, const bool &local_only = false) { P4EST_ASSERT(n_vecs() == 1); interpolate(&Fo, comp, local_only); }
+  void interpolate(double * const *Fo_p, const u_int &comp = ALL_COMPONENTS, const bool &local_only = false);
+  inline void interpolate(double *Fo, const u_int &comp = ALL_COMPONENTS, const bool &local_only = false) { P4EST_ASSERT(n_vecs() == 1); interpolate(&Fo, comp, local_only); }
 
   /*!
    * \brief interpolate does the same task as the above method, except that it is specifically for Petsc parallel vector(s)
@@ -462,13 +465,13 @@ public:
    */
   inline void interpolate(Vec *Fos)
   {
-    const unsigned int n_outputs = Fi.size();
+    const u_int n_outputs = Fi.size();
     double *Fo_p[n_outputs];
-    for (unsigned int k = 0; k < n_outputs; ++k) {
+    for (u_int k = 0; k < n_outputs; ++k) {
       PetscErrorCode ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
 
     interpolate(Fo_p, ALL_COMPONENTS);
-    for (unsigned int k = 0; k < n_outputs; ++k) {
+    for (u_int k = 0; k < n_outputs; ++k) {
       PetscErrorCode ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
   }
   inline void interpolate(Vec Fo){ P4EST_ASSERT(Fi.size() == 1); interpolate(&Fo); }
@@ -477,34 +480,43 @@ public:
   /*!
    * \brief operator () standard direct operator to interpolate value at any point that is locally owned.
    * This method is purely virtual and needs to be specified by any child class
-   * \param [in] xyx: pointer to a constant array of P4EST_DIM Cartesian coordinates along x y and z
+   * \param [in] xyz: pointer to a constant array of P4EST_DIM Cartesian coordinates along x y and z
+   * \param [in] comp: component of the (possibly block-structured) Petsc parallel vector(s) to be interpolated
+   *                   (all components are considered if set to ALL_COMPONENTS)
    * \param [in] results: pointer to an array of results to be set internally by the procedure so that
    *                  the values are accessible to the user afterwards
-   *                  the size of the pointed array must be bs_f*n_vecs() in general
+   *                  the size of the pointed array must be
+   *                  - bs_f*n_vecs() if comp == ALL_COMPONENT;
+   *                  - n_vecs() otherwise;
    * \note interpolates all components, so on output,
-   * results[bs_f*k+comp]  = interpolated value of the comp_th component of the kth field
+   * results[bs_f*k + comp] = interpolated value of the comp_th component of the kth field
    * --> bs_f > 1 not implemented yet for cell- or face-sampled fields
    */
-  virtual void operator()(const double *xyz, double *results) const = 0;
-  inline double operator()(const double *xyz) const
+  virtual void operator()(const double *xyz, double *results, const u_int& comp) const = 0;
+  inline double operator()(const double *xyz, const u_int& comp = ALL_COMPONENTS) const
   {
-    // we first check that there is indeed only 1 value to return in DEBUG
+    // we first check that there is indeed only 1 value to return in DEBUG (otherwise the user doesn't know what he is doing with this usage)
     P4EST_ASSERT(Fi.size() == 1);
-    P4EST_ASSERT(bs_f == 1);
+    P4EST_ASSERT(comp < bs_f || (comp == ALL_COMPONENTS && bs_f == 1));
     double to_return;
-    this->operator()(xyz, &to_return);
+    this->operator()(xyz, &to_return, comp);
     return to_return;
   }
-  inline void operator() (DIM(double x, double y, double z), double *results) const
+  inline void operator() (DIM(double x, double y, double z), double *results, const u_int& comp = ALL_COMPONENTS) const
   {
     const double xyz[P4EST_DIM] = {DIM(x, y, z)};
-    this->operator()(xyz, results);
+    this->operator()(xyz, results, comp);
     return;
   }
-  inline double operator()(DIM(double x, double y, double z)) const
+  inline double operator()(DIM(double x, double y, double z), const u_int& comp) const
   {
     const double xyz[P4EST_DIM] = {DIM(x, y, z)};
-    return this->operator()(xyz);
+    return this->operator()(xyz, comp);
+  }
+  inline double operator()(DIM(double x, double y, double z)) const // needs to be defined explicitly because we inherit CF_DIM (can't use the standard default argument in the above...)
+  {
+    const double xyz[P4EST_DIM] = {DIM(x, y, z)};
+    return this->operator()(xyz, ALL_COMPONENTS);
   }
 
   /*!
@@ -524,7 +536,7 @@ public:
    * if(comp == ALL_COMPONENTS) results[bs_f*k + comp]  = interpolated value of the comp_th component of the kth field
    * else                       results[k]              = interpolated value of the comp_th component of the kth field
    */
-  virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const unsigned int &comp) const = 0;
+  virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const u_int &comp) const = 0;
   inline double interpolate(const p4est_quadrant_t &quad, const double *xyz)
   {
     P4EST_ASSERT(n_vecs() == 1);
@@ -545,6 +557,9 @@ public:
     P4EST_ASSERT(bs_f == 1);
     interpolate(&Fo_p, 0, true);
   }
+
+  inline const std::vector<Vec>& get_input_fields() const { return Fi; }
+  inline const u_int& get_blocksize_of_inupt_fields() const { return bs_f; }
 };
 
 

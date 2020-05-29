@@ -36,9 +36,9 @@ public:
 
   // definition of abstract interpolation methods
   using my_p4est_interpolation_t::operator();
-  void operator()(const double *xyz, double *results) const;
+  void operator()(const double *xyz, double *results, const u_int &) const; // last argument is dummy in this case
 
-  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const unsigned int &comp) const;
+  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const u_int &) const; // last argument is dummy in this cse
 };
 
 #endif /* MY_P4EST_INTERPOLATION_CELLS_H */
