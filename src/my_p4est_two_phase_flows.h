@@ -21,6 +21,8 @@
 #include <src/voronoi2D.h>
 #endif
 
+static const double value_not_needed = NAN;
+
 #if __cplusplus >= 201103L
 #include <unordered_map> // if c++11 is fully supported, use unordered maps (i.e. hash tables) as they are apparently much faster
 #else

@@ -132,7 +132,7 @@ bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_
 lookup_in_ghost_nodes:
   P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
 
-  idx_l   = nodes->num_owned_indeps;            SC_ASSERT(idx_l < nodes->indep_nodes.elem_count);
+  idx_l   = nodes->num_owned_indeps;            SC_ASSERT(idx_l <= nodes->indep_nodes.elem_count); // '<=' because it could be '==' if there is no ghost node (or running on a single core for instance)
   idx_u   = nodes->indep_nodes.elem_count - 1;  SC_ASSERT(idx_u < nodes->indep_nodes.elem_count);
   if(idx_l <= idx_u) // do this only if there are ghost nodes!
   {

@@ -761,7 +761,7 @@ bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
                                          p4est_locidx_t& fine_vertex_idx);
 
-inline bool quadrant_if_subrefined(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+inline bool quadrant_is_subrefined(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                    const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx)
 {
   p4est_locidx_t tmp;

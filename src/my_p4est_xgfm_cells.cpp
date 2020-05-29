@@ -163,7 +163,7 @@ void my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(const p4est
 
 #ifdef WITH_SUBREFINEMENT
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  if(quadrant_if_subrefined(fine_p4est, fine_nodes, *quad, tree_idx)) // the quadrant is subrefined, find all subrefining quads and do the calculations therein
+  if(quadrant_is_subrefined(subrefined_p4est, subrefined_nodes, *quad, tree_idx)) // the quadrant is subrefined, find all subrefining quads and do the calculations therein
   {
     std::vector<p4est_locidx_t> indices_of_subrefining_quads;
     fine_node_ngbd->get_hierarchy()->get_all_quadrants_in(quad, tree_idx, indices_of_subrefining_quads);

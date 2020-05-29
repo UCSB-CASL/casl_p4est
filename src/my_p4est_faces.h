@@ -521,6 +521,7 @@ public:
   inline const p4est_t* get_p4est() const { return  p4est; }
 #endif
   inline my_p4est_cell_neighbors_t* get_ngbd_c() const { return ngbd_c;}
+  inline const p4est_ghost_t* get_ghost() const { return ghost; }
   inline const double* get_smallest_dxyz() const { return  smallest_dxyz; }
   inline const double* get_xyz_max() const { return  xyz_max; }
   inline const double* get_xyz_min() const { return  xyz_min; }

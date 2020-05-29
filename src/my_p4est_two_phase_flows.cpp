@@ -3,11 +3,13 @@
 #include "my_p8est_trajectory_of_point.h"
 #include "my_p8est_vtk.h"
 #include "my_p8est_two_phase_flows.h"
+#include <src/my_p8est_solve_lsqr.h>
 #else
 #include "my_p4est_level_set.h"
 #include "my_p4est_trajectory_of_point.h"
 #include "my_p4est_vtk.h"
 #include "my_p4est_two_phase_flows.h"
+#include <src/my_p4est_solve_lsqr.h>
 #endif
 
 #ifndef CASL_LOG_EVENTS

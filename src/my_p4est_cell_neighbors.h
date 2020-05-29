@@ -172,6 +172,7 @@ public:
   }
 
   const p4est_t* get_p4est() const { return p4est; }
+  const p4est_ghost_t* get_ghost() const { return ghost; }
   const my_p4est_brick_t* get_brick() const { return myb; }
   const double* get_tree_dimensions() const { return tree_dimensions; }
   const my_p4est_hierarchy_t* get_hierarchy() const { return hierarchy; }
