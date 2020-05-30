@@ -159,6 +159,7 @@ class my_p4est_xgfm_cells_t
     {
       friend class cell_TVD_extension_operator_t;
       struct off_diag_entry{
+        p4est_locidx_t neighbor_quad_idx;
         double coeff;
         virtual double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t& interface_manager,
                                       const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
@@ -173,12 +174,11 @@ class my_p4est_xgfm_cells_t
       };
       struct regular_quad_entry : off_diag_entry
       {
-        p4est_locidx_t loc_idx;
         inline double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t&,
                                      const double&, const double&, const bool&, const bool&,
                                      const p4est_locidx_t&, const double*, const double*, const double*) const
         {
-          return extension_on_cells_p[loc_idx];
+          return extension_on_cells_p[neighbor_quad_idx];
         }
         inline ~regular_quad_entry(){}
       };
@@ -189,7 +189,7 @@ class my_p4est_xgfm_cells_t
                                      const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
         {
-          return interface_manager.interface_value(quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
+          return interface_manager.interface_value(quad_idx, face_dir, neighbor_quad_idx, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
                                                    jump_u_p, jump_flux_p);
         }
         inline ~interface_entry(){}
@@ -203,6 +203,7 @@ class my_p4est_xgfm_cells_t
 
       bool too_close;
       u_char forced_interface_value_face_dir;
+      p4est_locidx_t forced_interface_value_neighbor_quad_idx;
       double diag_entry, dtau, phi_q;
       std::vector<off_diag_entry*> extension_entries;
 
@@ -216,7 +217,7 @@ class my_p4est_xgfm_cells_t
       }
       ~local_cell_TVD_extension_operator(){ clear_extension_entries(); }
 
-      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const u_char& face_dir_);
+      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir_);
 
       void add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_normal, const u_char& face_dir,
                                     const linear_combination_of_dof_t& one_sided_derivative_operator);

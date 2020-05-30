@@ -79,13 +79,6 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_interface_data_f
 {
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants && face_dir < P4EST_FACES); // must be a local quadrant
 
-  if(cell_FD_interface_data != NULL) // check if stored, first
-  {
-    map_of_interface_neighbors_t::const_iterator it = cell_FD_interface_data->find({quad_idx, face_dir});
-    if(it != cell_FD_interface_data->end())
-      return it->second;
-  }
-
   const p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
   set_of_neighboring_quadrants direct_neighbor;
   c_ngbd->find_neighbor_cells_of_cell(direct_neighbor, quad_idx, tree_idx, face_dir);
@@ -93,6 +86,14 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_interface_data_f
   const p4est_tree_t*     tree = p4est_tree_array_index(p4est->trees, tree_idx);
   const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   const p4est_quadrant_t& neighbor_quad = *direct_neighbor.begin();
+
+  if(cell_FD_interface_data != NULL) // check if stored, first
+  {
+    map_of_interface_neighbors_t::const_iterator it = cell_FD_interface_data->find({quad_idx, neighbor_quad.p.piggy3.local_num, face_dir});
+    if(it != cell_FD_interface_data->end())
+      return it->second;
+  }
+
 
   const p4est_t* subrefined_p4est = interpolation_node_ngbd->get_p4est();
   const p4est_nodes_t* subrefined_nodes = interpolation_node_ngbd->get_nodes();
@@ -111,7 +112,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_interface_data_f
   const double phi_quad     = (*interp_phi)(xyz_quad);
   const double phi_neighbor = (*interp_phi)(xyz_neighbor);
   P4EST_ASSERT(signs_of_phi_are_different(phi_quad, phi_neighbor));
-  tmp_FD_interface_data->neighbor_quad_idx      = neighbor_quad.p.piggy3.local_num;
+//  tmp_FD_interface_data->neighbor_quad_idx      = neighbor_quad.p.piggy3.local_num;
 //  tmp_FD_interface_data->quad_fine_node_idx     = fine_node_idx_for_quad;
 //  tmp_FD_interface_data->neighbor_fine_node_idx = fine_node_idx_for_neighbor_quad;
   const quad_neighbor_nodes_of_node_t* qnnn; interpolation_node_ngbd->get_neighbors(fine_node_idx_for_quad, qnnn);
@@ -148,7 +149,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_interface_data_f
 
   if(cell_FD_interface_data != NULL)
   {
-    which_interface_neighbor_t which_one = {quad_idx, face_dir};
+    which_interface_neighbor_t which_one = {quad_idx, neighbor_quad.p.piggy3.local_num, face_dir};
     std::pair<map_of_interface_neighbors_t::iterator, bool> ret = cell_FD_interface_data->insert({which_one, *tmp_FD_interface_data}); // add it to the map so that future access is read from memory;
     P4EST_ASSERT(ret.second);
     return ret.first->second;
@@ -182,26 +183,27 @@ int my_p4est_interface_manager_t::is_map_consistent()
     const which_interface_neighbor_t& this_one        = it->first;
     const FD_interface_data& this_interface_neighbor = it->second;
     // the neighbor is a local quad
-    if(this_interface_neighbor.neighbor_quad_idx < p4est->local_num_quadrants)
+    if(this_one.neighbor_dof_idx < p4est->local_num_quadrants)
     {
-      which_interface_neighbor_t other_one              = {this_interface_neighbor.neighbor_quad_idx, (u_char)(this_one.face_dir + (this_one.face_dir%2 == 0 ? +1 : -1))};
+      which_interface_neighbor_t other_one              = {this_one.neighbor_dof_idx, this_one.local_dof_idx, (u_char)(this_one.face_dir + (this_one.face_dir%2 == 0 ? +1 : -1))};
       const FD_interface_data& other_interface_neighbor = cell_FD_interface_data->at(other_one);
       it_is_alright = it_is_alright && this_interface_neighbor.is_consistent_with(other_interface_neighbor);
 
       if(!this_interface_neighbor.is_consistent_with(other_interface_neighbor))
-        std::cerr << "Inconsistency found for quad " << this_one.loc_idx << " on proc " << p4est->mpirank << " which has quad " << other_one.loc_idx << " as a neighbor across the interface, on proc " << p4est->mpirank << std::endl;
+        std::cerr << "Inconsistency found for quad " << this_one.local_dof_idx << " on proc " << p4est->mpirank << " which has quad " << other_one.local_dof_idx << " as a neighbor across the interface, on proc " << p4est->mpirank << std::endl;
     }
     else
     {
-      const p4est_quadrant_t* ghost_nb_quad = p4est_const_quadrant_array_index(&ghost->ghosts, this_interface_neighbor.neighbor_quad_idx - p4est->local_num_quadrants);
+      const p4est_quadrant_t* ghost_nb_quad = p4est_const_quadrant_array_index(&ghost->ghosts, this_one.neighbor_dof_idx - p4est->local_num_quadrants);
       int rank_owner = first_rank_ghost_owner;
-      while (this_interface_neighbor.neighbor_quad_idx >= p4est->local_num_quadrants + ghost->proc_offsets[rank_owner + 1]) { rank_owner++; }
+      while (this_one.neighbor_dof_idx >= p4est->local_num_quadrants + ghost->proc_offsets[rank_owner + 1]) { rank_owner++; }
       P4EST_ASSERT(rank_owner != p4est->mpirank);
       num_expected_replies += (senders[rank_owner] == 1 ? 0 : 1);
       senders[rank_owner] = 1;
       which_interface_neighbor_t other_one;
 
-      other_one.loc_idx = ghost_nb_quad->p.piggy3.local_num;
+      other_one.local_dof_idx = ghost_nb_quad->p.piggy3.local_num;
+      other_one.neighbor_dof_idx = -1;
       other_one.face_dir = this_one.face_dir + (this_one.face_dir%2 == 0 ? 1 : -1);
       map_of_query_interface_neighbors[rank_owner].push_back(other_one);
       map_of_mirrors[rank_owner].push_back(this_one);
@@ -281,7 +283,7 @@ int my_p4est_interface_manager_t::is_map_consistent()
           it_is_alright = it_is_alright && cell_FD_interface_data->at(mirror).is_consistent_with(tmp);
 
           if(!cell_FD_interface_data->at(mirror).is_consistent_with(tmp))
-            std::cerr << "Inconsistency found for quad " << mirror.loc_idx << " on proc " << p4est->mpirank << " which has quad " << queried.loc_idx << " as a neighbor across the interface, on proc " << status.MPI_SOURCE << std::endl;
+            std::cerr << "Inconsistency found for quad " << mirror.local_dof_idx << " on proc " << p4est->mpirank << " which has quad " << queried.local_dof_idx << " as a neighbor across the interface, on proc " << status.MPI_SOURCE << std::endl;
         }
 
         num_expected_replies--;

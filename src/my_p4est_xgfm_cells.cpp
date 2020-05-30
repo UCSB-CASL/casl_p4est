@@ -822,7 +822,7 @@ void my_p4est_xgfm_cells_t::update_rhs_in_relevant_cells_only()
     for (map_of_interface_neighbors_t::const_iterator it = interface_manager.begin_of_cell_FD_interface_data();
          it != interface_manager.end_of_cell_FD_interface_data(); ++it)
     {
-      const p4est_locidx_t quad_idx  = it->first.loc_idx;
+      const p4est_locidx_t quad_idx  = it->first.local_dof_idx;
       if(quad_idx != previous_quad_idx)
       {
         // find tree_idx
@@ -1027,7 +1027,7 @@ void my_p4est_xgfm_cells_t::initialize_extension_on_cells_local(const p4est_loci
   return;
 }
 
-void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::local_cell_TVD_extension_operator::add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const u_char& face_dir_)
+void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::local_cell_TVD_extension_operator::add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir_)
 {
   if(too_close) // already found an interface neighbor that was too close --> you're done with this one
     return;
@@ -1036,12 +1036,14 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::local_cell_TVD_extens
     too_close = true;
     diag_entry = 0.0;
     forced_interface_value_face_dir = face_dir_;
+    forced_interface_value_neighbor_quad_idx = neighbor_quad_idx;
     clear_extension_entries();
   }
   if(!too_close)
   {
     interface_entry* entry = new interface_entry;
     const double coeff = +signed_normal[face_dir_/2]*(face_dir_%2 == 0 ? +1.0 : -1.0)/(neighbor.theta*dxyz_min[face_dir_/2]);
+    entry->neighbor_quad_idx = neighbor_quad_idx;
     entry->face_dir = face_dir_; entry->coeff = coeff;
     extension_entries.push_back(entry);
     diag_entry -= coeff;
@@ -1063,8 +1065,8 @@ add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_no
     else
     {
       regular_quad_entry *off_diag = new regular_quad_entry;
-      off_diag->loc_idx = derivative_term.dof_idx;
-      off_diag->coeff   = -signed_normal[face_dir/2]*derivative_term.weight;
+      off_diag->neighbor_quad_idx = derivative_term.dof_idx;
+      off_diag->coeff             = -signed_normal[face_dir/2]*derivative_term.weight;
       extension_entries.push_back(off_diag);
     }
     discretization_distance = MAX(discretization_distance, fabs(1.0/one_side_derivative[k].weight));
@@ -1087,7 +1089,7 @@ advance_one_pseudo_time_step(const p4est_locidx_t& quad_idx, const double* exten
   if(local_operator.too_close)
   {
     P4EST_ASSERT(fabs(local_operator.diag_entry) < EPS && local_operator.forced_interface_value_face_dir < P4EST_FACES);
-    increment = solver.interface_manager.interface_value(quad_idx, local_operator.forced_interface_value_face_dir, mu_this_side, mu_across, in_positive_domain, extending_positive_values,
+    increment = solver.interface_manager.interface_value(quad_idx, local_operator.forced_interface_value_face_dir, local_operator.forced_interface_value_neighbor_quad_idx, mu_this_side, mu_across, in_positive_domain, extending_positive_values,
                                                          solution_p, jump_u_p, jump_flux_p) - extension_on_cells_p[quad_idx];
   }
   else
@@ -1126,7 +1128,7 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::build_local_operator_
   {
     const unsigned char dir = 2*dim + (signed_normal[dim] > 0.0 ? 0 : 1);
     if(is_quad_Wall(solver.p4est, tree_idx, quad, dir))
-      continue; // homogeneous Neumann boundary condition
+      continue; // homogeneous Neumann boundary condition on walls (for now, at least, if you have a better idea, go ahead!)
 
     set_of_neighboring_quadrants neighbor_cells;
     bool derivative_is_one_side;
@@ -1135,7 +1137,7 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::build_local_operator_
     if(derivative_is_one_side)
       local_operator.add_one_sided_derivative(quad_idx, signed_normal, dir, stable_projection_derivative_operator);
     else
-      local_operator.add_interface_neighbor(signed_normal, solver.dxyz_min, solver.interface_manager.get_interface_neighbor(quad_idx, dir), dir);
+      local_operator.add_interface_neighbor(signed_normal, solver.dxyz_min, solver.interface_manager.get_interface_neighbor(quad_idx, dir), neighbor_cells.begin()->p.piggy3.local_num, dir);
   }
 }
 
