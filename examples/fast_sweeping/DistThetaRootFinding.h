@@ -70,7 +70,6 @@ public:
 
 /**
  * Obtain the theta value that minimizes the distance between (x, y) and the star-shaped interface using Newton-Rapson.
- * @param [in]
  * @param [in] x: X-coordinate of query point.
  * @param [in] y: Y-coordinate of query point.
  * @param [in] star: Reference to star object.

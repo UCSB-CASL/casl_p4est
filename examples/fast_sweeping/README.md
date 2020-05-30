@@ -22,3 +22,7 @@
 [5]  C. Min and F. Gibou.
      *Geometric Integration over Irregular Domains with Application to Level-Set Methods*.
      2007.
+     
+[6]  R. Parent.
+     *Computer Animation: Algorithms and Techniques*.  Second Edition.  Morgan Kaufmann
+     Publishers.  2008.
