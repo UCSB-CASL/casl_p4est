@@ -699,13 +699,13 @@ public:
 
   inline void clear() { linear_combination.clear(); }
 
-  inline double operator()(const double *dof_sampled_field_p) const
+  inline double operator()(const double *dof_sampled_field_p, const u_int& comp = 0, const u_int& bs = 1) const
   {
     double value_to_return = 0.0;
     for (size_t k = 0; k < linear_combination.size(); ++k)
     {
       const dof_weighted_term& term = linear_combination[k];
-      value_to_return += term.weight*dof_sampled_field_p[term.dof_idx];
+      value_to_return += term.weight*dof_sampled_field_p[bs*term.dof_idx + comp];
     }
     return value_to_return;
   }

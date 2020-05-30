@@ -47,11 +47,8 @@ struct FD_interface_data
 {
   double  theta;
   p4est_locidx_t neighbor_quad_idx;
-#ifdef WITH_SUBREFINEMENT
-  p4est_locidx_t mid_point_fine_node_idx;
-  p4est_locidx_t quad_fine_node_idx;
-  p4est_locidx_t neighbor_fine_node_idx;
-#endif
+
+  linear_combination_of_dof_t node_interpolant;
 #ifdef DEBUG
   inline bool is_consistent_with(const FD_interface_data& neighbor_across) const
   {
@@ -71,13 +68,7 @@ struct FD_interface_data
 
   inline GFM_jump_info get_GFM_jump_data(const double* jump_p, const double* jump_flux_p, const u_char& flux_component) const
   {
-    P4EST_ASSERT(mid_point_fine_node_idx >= 0);
-    const bool past_mid_point = theta >= 0.5;
-    const double theta_between_fine_nodes     = 2.0*theta - (past_mid_point ? 1.0 : 0.0);
-    const p4est_locidx_t &fine_node_this_side = (past_mid_point ? mid_point_fine_node_idx : quad_fine_node_idx);
-    const p4est_locidx_t &fine_node_across    = (past_mid_point ? neighbor_fine_node_idx  : mid_point_fine_node_idx);
-    return {theta_between_fine_nodes*jump_p[fine_node_across]                               + (1.0 - theta_between_fine_nodes)*jump_p[fine_node_this_side],
-          theta_between_fine_nodes*jump_flux_p[P4EST_DIM*fine_node_across + flux_component] + (1.0 - theta_between_fine_nodes)*jump_flux_p[P4EST_DIM*fine_node_this_side + flux_component]};
+    return {node_interpolant(jump_p), node_interpolant(jump_flux_p, flux_component, P4EST_DIM)};
   }
 
   inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& face_dir, const bool &this_side_is_in_positive_domain,

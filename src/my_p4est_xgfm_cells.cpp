@@ -237,20 +237,13 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_at_relevant_nodes_only() const
 
   const my_p4est_node_neighbors_t* ngbd_n = subrefined_node_ngbd;
 
-  p4est_locidx_t former_quad_idx = -1;
   for (map_of_interface_neighbors_t::const_iterator it = interface_manager.begin_of_cell_FD_interface_data();
        it != interface_manager.end_of_cell_FD_interface_data(); ++it) {
-    const p4est_locidx_t& quad_idx = it->first.loc_idx;
-    const bool center_subrefined_node_alread_done = (quad_idx == former_quad_idx);
 
-    const FD_interface_data& int_nb = it->second;
-    if(int_nb.quad_fine_node_idx < ngbd_n->get_nodes()->num_owned_indeps && !center_subrefined_node_alread_done)
-      compute_jumps_in_flux_components_for_node(int_nb.quad_fine_node_idx, jump_flux_p, jump_normal_flux_u_p, normals_p, jump_u_p, extension_on_nodes_p);
-    if(int_nb.mid_point_fine_node_idx < ngbd_n->get_nodes()->num_owned_indeps)
-      compute_jumps_in_flux_components_for_node(int_nb.mid_point_fine_node_idx, jump_flux_p, jump_normal_flux_u_p, normals_p, jump_u_p, extension_on_nodes_p);
-    if(int_nb.neighbor_fine_node_idx < ngbd_n->get_nodes()->num_owned_indeps)
-      compute_jumps_in_flux_components_for_node(int_nb.neighbor_fine_node_idx, jump_flux_p, jump_normal_flux_u_p, normals_p, jump_u_p, extension_on_nodes_p);
-    former_quad_idx = quad_idx;
+    const linear_combination_of_dof_t& node_interpolant = it->second.node_interpolant;
+    for (size_t k = 0; k < node_interpolant.size(); ++k)
+      if(node_interpolant[k].dof_idx < ngbd_n->get_nodes()->num_owned_indeps)
+        compute_jumps_in_flux_components_for_node(node_interpolant[k].dof_idx, jump_flux_p, jump_normal_flux_u_p, normals_p, jump_u_p, extension_on_nodes_p);
   }
 
   ierr = VecGhostUpdateBegin(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -738,7 +731,6 @@ void my_p4est_xgfm_cells_t::solve(KSPType ksp_type, PCType pc_type, double absol
     extend_interface_values(former_extension_on_cells, former_extension_on_nodes);
     update_rhs_and_residual(former_rhs, former_residual);
     solver_monitor.log_iteration(0.0, this);
-
 
     while (!solver_monitor.reached_converged_within_desired_bounds(absolute_accuracy_threshold, tolerance_on_rel_residual)
            && !solve_for_fixpoint_solution(former_solution))
