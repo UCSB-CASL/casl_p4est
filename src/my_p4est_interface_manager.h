@@ -23,11 +23,15 @@ struct which_interface_neighbor_t
 {
   p4est_locidx_t local_dof_idx;
   p4est_locidx_t neighbor_dof_idx;
-  u_char face_dir;
+//  u_char face_dir;
 
-  inline bool operator==(const which_interface_neighbor_t& other) const { return (this->local_dof_idx == other.local_dof_idx && this->face_dir == other.face_dir); } // equality comparator
+//  inline bool operator==(const which_interface_neighbor_t& other) const { return (this->local_dof_idx == other.local_dof_idx && this->face_dir == other.face_dir); } // equality comparator
+//#if __cplusplus < 201103L
+//  inline bool operator<(const which_interface_neighbor_t& other) const { return (this->local_dof_idx < other.local_dof_idx || (this->local_dof_idx == other.local_dof_idx && this->face_dir < other.face_dir)); } // comparison operator for storing in ordered map
+//#endif
+  inline bool operator==(const which_interface_neighbor_t& other) const { return (this->local_dof_idx == other.local_dof_idx && this->neighbor_dof_idx == other.neighbor_dof_idx); } // equality comparator
 #if __cplusplus < 201103L
-  inline bool operator<(const which_interface_neighbor_t& other) const { return (this->local_dof_idx < other.local_dof_idx || (this->local_dof_idx == other.local_dof_idx && this->face_dir < other.face_dir)); } // comparison operator for storing in ordered map
+  inline bool operator<(const which_interface_neighbor_t& other) const { return (this->local_dof_idx < other.local_dof_idx || (this->local_dof_idx == other.local_dof_idx && this->neighbor_dof_idx < other.neighbor_dof_idx)); } // comparison operator for storing in ordered map
 #endif
 };
 
@@ -102,7 +106,8 @@ struct FD_interface_data
 
 #if __cplusplus >= 201103L
 struct hash_functor{
-  inline size_t operator()(const which_interface_neighbor_t& key) const { return P4EST_DIM*key.local_dof_idx + key.face_dir; } // hash value for unordered map keys
+//  inline size_t operator()(const which_interface_neighbor_t& key) const { return P4EST_DIM*key.local_dof_idx + key.face_dir; } // hash value for unordered map keys
+  inline size_t operator()(const which_interface_neighbor_t& key) const { return ((size_t) key.local_dof_idx << 8*sizeof (p4est_locidx_t)) + key.neighbor_dof_idx; } // hash value for unordered map keys
 };
 typedef std::unordered_map<which_interface_neighbor_t, FD_interface_data, hash_functor> map_of_interface_neighbors_t;
 #else
@@ -141,7 +146,8 @@ class my_p4est_interface_manager_t
       clear_face_FD_interface_data(dim);
   }
 
-  const FD_interface_data& get_cell_interface_data_for(const p4est_locidx_t& quad_idx, const u_char& face_dir) const;
+//  const FD_interface_data& get_cell_interface_data_for(const p4est_locidx_t& quad_idx, const u_char& face_dir) const;
+  const FD_interface_data& get_cell_interface_data_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir) const;
 
 public:
   my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_cell_neighbors_t* cell_ngbd, const double* dxyz_min_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_);
@@ -178,35 +184,35 @@ public:
   void set_levelset(Vec phi, const interpolation_method& method_interp_phi ONLY_WITH_SUBREFINEMENT(= linear), Vec phi_xxyyzz = NULL);
   void set_grad_phi();
 
-  FD_interface_data get_interface_neighbor(const p4est_locidx_t& quad_idx, const u_char& face_dir) const;
+  FD_interface_data get_interface_neighbor(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir) const;
 
-  inline double GFM_mu_jump(const p4est_locidx_t& quad_idx, const u_char& face_dir, const double& mu_this_side, const double& mu_across) const
+  inline double GFM_mu_jump(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir, const double& mu_this_side, const double& mu_across) const
   {
-    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, face_dir);
+    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, neighbor_quad_idx, face_dir);
     return interface_point.GFM_mu_jump(mu_this_side, mu_across);
   }
 
-  inline double GFM_jump_terms_for_flux_component(const p4est_locidx_t& quad_idx, const u_char& face_dir,
+  inline double GFM_jump_terms_for_flux_component(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir,
                                                   const double& mu_this_side, const double& mu_across, const bool& in_positive_domain,
                                                   const double* jump_field_p, const double* jump_flux_p) const
   {
-    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, face_dir);
+    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, neighbor_quad_idx, face_dir);
     return interface_point.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, face_dir, in_positive_domain, jump_field_p, jump_flux_p, dxyz_min, true);
   }
 
-  inline double interface_value(const p4est_locidx_t& quad_idx, const u_char& face_dir, const p4est_locidx_t& neighbor_quad_idx, const double& mu_this_side, const double mu_across,
+  inline double interface_value(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir, const double& mu_this_side, const double mu_across,
                                 const bool& in_positive_domain, const bool& get_positive_interface_value,
                                 const double* solution_p, const double* jump_field_p, const double* jump_flux_p) const
   {
-    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, face_dir);
+    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, neighbor_quad_idx, face_dir);
     return interface_point.GFM_interface_defined_value(mu_this_side, mu_across, face_dir, in_positive_domain, get_positive_interface_value, solution_p[quad_idx], solution_p[neighbor_quad_idx], jump_field_p, jump_flux_p, dxyz_min);
   }
 
-  inline double GFM_flux_at_center_face(const p4est_locidx_t& quad_idx, const u_char& face_dir, const double& mu_this_side, const double mu_across,
+  inline double GFM_flux_at_center_face(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir, const double& mu_this_side, const double mu_across,
                                         const bool& in_positive_domain, const bool face_is_on_this_side, const double& solution_quadrant, const double& solution_neighbor_quad,
                                         const double* jump_field_p, const double* jump_flux_p) const
   {
-    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, face_dir);
+    const FD_interface_data& interface_point = get_cell_interface_data_for(quad_idx, neighbor_quad_idx, face_dir);
     return interface_point.GFM_flux_component(mu_this_side, mu_across, face_dir, in_positive_domain, solution_quadrant, solution_neighbor_quad, jump_field_p, jump_flux_p, dxyz_min, face_is_on_this_side);
   }
 

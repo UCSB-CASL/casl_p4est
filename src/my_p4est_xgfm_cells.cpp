@@ -507,15 +507,16 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
         throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad(): did not find one single direct neighbor for a cell center across the interface. \n Is your grid uniform across the interface?");
       if(quad->level != ((splitting_criteria_t*) p4est->user_pointer)->max_lvl || quad->level != direct_neighbors.begin()->level)
         throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
+      const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
       const double& mu_across = (phi_quad > 0.0 ? mu_minus : mu_plus);
       if(!matrix_is_set)
       {
-        const double mu_jump = interface_manager.GFM_mu_jump(quad_idx, face_dir, mu_here, mu_across);
+        const double mu_jump = interface_manager.GFM_mu_jump(quad_idx, neighbor_quad.p.piggy3.local_num, face_dir, mu_here, mu_across);
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx,                                                         mu_jump * face_area/dxyz_min[face_dir/2], ADD_VALUES); CHKERRXX(ierr);
-        ierr = MatSetValue(A, quad_gloidx, compute_global_index(direct_neighbors.begin()->p.piggy3.local_num), -mu_jump * face_area/dxyz_min[face_dir/2], ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, quad_gloidx, compute_global_index(neighbor_quad.p.piggy3.local_num), -mu_jump * face_area/dxyz_min[face_dir/2], ADD_VALUES); CHKERRXX(ierr);
       }
       if(!rhs_is_set)
-        rhs_p[quad_idx] += face_area*(face_dir%2 == 1 ? +1.0 : -1.0)*interface_manager.GFM_jump_terms_for_flux_component(quad_idx, face_dir, mu_here, mu_across, (phi_quad > 0.0), jump_u_p, jump_flux_p);
+        rhs_p[quad_idx] += face_area*(face_dir%2 == 1 ? +1.0 : -1.0)*interface_manager.GFM_jump_terms_for_flux_component(quad_idx, neighbor_quad.p.piggy3.local_num, face_dir, mu_here, mu_across, (phi_quad > 0.0), jump_u_p, jump_flux_p);
     }
   }
 
@@ -1089,7 +1090,7 @@ advance_one_pseudo_time_step(const p4est_locidx_t& quad_idx, const double* exten
   if(local_operator.too_close)
   {
     P4EST_ASSERT(fabs(local_operator.diag_entry) < EPS && local_operator.forced_interface_value_face_dir < P4EST_FACES);
-    increment = solver.interface_manager.interface_value(quad_idx, local_operator.forced_interface_value_face_dir, local_operator.forced_interface_value_neighbor_quad_idx, mu_this_side, mu_across, in_positive_domain, extending_positive_values,
+    increment = solver.interface_manager.interface_value(quad_idx, local_operator.forced_interface_value_neighbor_quad_idx, local_operator.forced_interface_value_face_dir, mu_this_side, mu_across, in_positive_domain, extending_positive_values,
                                                          solution_p, jump_u_p, jump_flux_p) - extension_on_cells_p[quad_idx];
   }
   else
@@ -1137,7 +1138,7 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_operator_t::build_local_operator_
     if(derivative_is_one_side)
       local_operator.add_one_sided_derivative(quad_idx, signed_normal, dir, stable_projection_derivative_operator);
     else
-      local_operator.add_interface_neighbor(signed_normal, solver.dxyz_min, solver.interface_manager.get_interface_neighbor(quad_idx, dir), neighbor_cells.begin()->p.piggy3.local_num, dir);
+      local_operator.add_interface_neighbor(signed_normal, solver.dxyz_min, solver.interface_manager.get_interface_neighbor(quad_idx, neighbor_cells.begin()->p.piggy3.local_num, dir), neighbor_cells.begin()->p.piggy3.local_num, dir);
   }
 }
 
@@ -1426,7 +1427,8 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
       const double &mu_this_side    = (phi_q <= 0.0 ? mu_minus : mu_plus);
       const double &mu_across       = (phi_q <= 0.0 ? mu_plus : mu_minus);
       const bool in_positive_domain = (phi_q > 0.0);
-      flux_dir_p[f_idx] = interface_manager.GFM_flux_at_center_face(quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p[quad_idx], solution_p[direct_neighbors.begin()->p.piggy3.local_num], jump_u_p, jump_flux_p);
+      const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
+      flux_dir_p[f_idx] = interface_manager.GFM_flux_at_center_face(quad_idx, neighbor_quad.p.piggy3.local_num, face_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p[quad_idx], solution_p[direct_neighbors.begin()->p.piggy3.local_num], jump_u_p, jump_flux_p);
     }
   }
   // subtract from the star velocities if they were provided

@@ -189,7 +189,7 @@ class my_p4est_xgfm_cells_t
                                      const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
         {
-          return interface_manager.interface_value(quad_idx, face_dir, neighbor_quad_idx, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
+          return interface_manager.interface_value(quad_idx, neighbor_quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
                                                    jump_u_p, jump_flux_p);
         }
         inline ~interface_entry(){}
