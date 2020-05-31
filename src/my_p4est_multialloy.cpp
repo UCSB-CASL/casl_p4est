@@ -1136,11 +1136,11 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
-  my_p4est_vtk_write_all_vector_form(p4est_, nodes_, ghost_,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     name,
-                                     point_data, point_data_names,
-                                     cell_data, cell_data_names);
+  my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
+                               P4EST_TRUE, P4EST_TRUE,
+                               name,
+                               point_data, point_data_names,
+                               cell_data, cell_data_names);
 
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
@@ -1252,11 +1252,11 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   VecScaleGhost(history_front_velo_norm_.vec, 1./scaling_);
 
-  my_p4est_vtk_write_all_vector_form(history_p4est_, history_nodes_, history_ghost_,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     name,
-                                     point_data, point_data_names,
-                                     cell_data, cell_data_names);
+  my_p4est_vtk_write_all_lists(history_p4est_, history_nodes_, history_ghost_,
+                               P4EST_TRUE, P4EST_TRUE,
+                               name,
+                               point_data, point_data_names,
+                               cell_data, cell_data_names);
 
   VecScaleGhost(history_front_velo_norm_.vec, scaling_);
 

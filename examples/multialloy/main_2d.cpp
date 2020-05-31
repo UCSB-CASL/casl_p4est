@@ -2123,11 +2123,11 @@ int main (int argc, char* argv[])
           point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
         }
 
-        my_p4est_vtk_write_all_vector_form(p4est, nodes, mas.get_ghost(),
-                                           P4EST_TRUE, P4EST_TRUE,
-                                           name,
-                                           point_data, point_data_names,
-                                           cell_data, cell_data_names);
+        my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     name,
+                                     point_data, point_data_names,
+                                     cell_data, cell_data_names);
 
 
         PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
