@@ -3789,7 +3789,6 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_residu
   jump_solver_v2->set_use_centroid_always(true);
   jump_solver_v2->set_store_finite_volumes(true);
   jump_solver_v2->set_jump_scheme(0);
-  jump_solver_v2->set_jump_sub_scheme(0);
   jump_solver_v2->set_use_sc_scheme(false);
   jump_solver_v2->set_integration_order(1);
   jump_solver_v2->set_lip(biomolecules->parameters.lip());
@@ -4234,7 +4233,6 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear_first_approach(double upper_
     jump_solver_v2->set_use_centroid_always(true);
     jump_solver_v2->set_store_finite_volumes(true);
     jump_solver_v2->set_jump_scheme(0);
-    jump_solver_v2->set_jump_sub_scheme(0);
     jump_solver_v2->set_use_sc_scheme(false);
     jump_solver_v2->set_integration_order(1);
     jump_solver_v2->set_lip(biomolecules->parameters.lip());

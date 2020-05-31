@@ -3322,7 +3322,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
       p4est_locidx_t node_m00 = qnnn.neighbor_m00(); p4est_locidx_t node_p00 = qnnn.neighbor_p00();
       p4est_locidx_t node_0m0 = qnnn.neighbor_0m0(); p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
 #ifdef P4_TO_P8
-      p4est_locidx_t node_0m0 = qnnn.neighbor_0m0(); p4est_locidx_t node_0p0 = qnnn.neighbor_0p0();
+      p4est_locidx_t node_00m = qnnn.neighbor_00m(); p4est_locidx_t node_00p = qnnn.neighbor_00p();
 #endif
 
       double d_m00 = qnnn.d_m00; double d_p00 = qnnn.d_p00;
