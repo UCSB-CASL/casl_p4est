@@ -186,7 +186,15 @@ inline void cube_nei_dir(int n, DIM(int &i, int &j, int &k))
   j = n / 3 - 1;
   i = n % 3 - 1;
 }
-inline void cube_nei_dir(int n, int ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, int    ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, double ijk[]) {
+  int ijk_int[P4EST_DIM];
+  cube_nei_dir(n, ijk_int);
+  EXECD(ijk[0] = double(ijk_int[0]),
+        ijk[1] = double(ijk_int[1]),
+        ijk[2] = double(ijk_int[2]));
+}
+
 inline int  cube_nei_op(int n)
 {
   int ijk[P4EST_DIM];

@@ -63,14 +63,14 @@ param_list_t pl;
 // computational domain parameters
 //-------------------------------------
 param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 1, "ny", "Number of trees in the y-direction");
+param_t<int>    ny   (pl, 2, "ny", "Number of trees in the y-direction");
 param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
 param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
-param_t<double> xmax (pl, 1, "xmax", "Box xmax");
+param_t<double> xmax (pl, 0.5, "xmax", "Box xmax");
 param_t<double> ymax (pl, 1, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
@@ -85,7 +85,7 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
+param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
 
@@ -103,8 +103,8 @@ param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "")
 
 param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
 param_t<int>    order_in_time   (pl, 1,      "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 15,     "max_iterations",  "");
-param_t<double> bc_tolerance    (pl, 1.e-9, "bc_tolerance",    "");
+param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
+param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.45,    "cfl_number",      "");
 param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
 
@@ -124,7 +124,7 @@ param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 
-param_t<int>    save_every_dn (pl, 10, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -216,7 +216,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
 param_t<double> cooling_velocity (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 1000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient    (pl, 10000, "temp_gradient",    "Temperature gradient (pl, K/cm");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -227,7 +227,7 @@ param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRIC
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, DBL_MAX, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-30,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 1.e-8,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.05,     "front_location",         "");
@@ -240,6 +240,7 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 
 param_t<double> box_size (pl, 2.e-2, "box_size", "Physical width (in x) of the box in cm");
+//param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
 double scaling() { return 1./box_size.val; }
 
@@ -1832,7 +1833,7 @@ int main (int argc, char* argv[])
 
   // set time steps
   double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-  double dt_curv = 0.0025*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
+  double dt_curv = 0.0005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
   mas.set_dt_limits(0, MIN(dt_curv, 10*dt));
 //  mas.set_dt_limits(dt, dt);
 

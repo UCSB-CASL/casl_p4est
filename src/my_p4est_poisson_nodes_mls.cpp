@@ -198,11 +198,11 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   phi_perturbation_           = 1.e-12;
   interp_method_              = quadratic_non_oscillatory_continuous_v2;
 
-  dirichlet_scheme_ = 1;
+  dirichlet_scheme_ = 0;
   gf_order_         = 2;
   gf_stabilized_    = 1;
 //  gf_thresh_        = 1.e-6;
-  gf_thresh_        = -0.35;
+  gf_thresh_        = -0.1;
 
   domain_rel_thresh_    = 1.e-11;
   interface_rel_thresh_ = 1.e-11;
@@ -571,15 +571,12 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
   double *sol_ptr;    ierr = VecGetArray(solution, &sol_ptr); CHKERRXX(ierr);
   double *rhs_ptr;    ierr = VecGetArray(rhs_, &rhs_ptr); CHKERRXX(ierr);
 
-  if (use_nonzero_guess)
-  {
-    foreach_node(n, nodes_)
-    {
+  if (use_nonzero_guess) {
+    foreach_node(n, nodes_) {
       if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) rhs_ptr[n] = sol_ptr[n];
     }
   } else {
-    foreach_node(n, nodes_)
-    {
+    foreach_node(n, nodes_) {
       if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) sol_ptr[n] = rhs_ptr[n];
     }
   }
@@ -3809,7 +3806,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
           }
         }
 
-        mask_ptr[n] = -1.;
+        mask_ptr[n] = -.25;
+//        mask_ptr[n] =  1.;
         d_nnz_gf_ghost += gf_stencil_size()-1;
         o_nnz_gf_ghost += gf_stencil_size()-1;
 
@@ -3919,6 +3917,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
         fixed_value_idx_l_ = n;
         fixed_value_idx_g_ = petsc_gloidx_[n];
       }
+
+      mask_ptr[n] = -1.;
     }
 
     //---------------------------------------------------------------------
@@ -4565,9 +4565,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               bc_coeffs[i] = bc_[id].pointwise ? bc_[id].get_robin_pw_coeff(n) : bc_[id].get_coeff_cf(xyz_pr);
               bc_values[i] = bc_[id].pointwise ? bc_[id].get_robin_pw_value(n) : bc_[id].get_value_cf(xyz_pr);
 
-              N_mat[i*P4EST_DIM + 0] = normal[0];
-              N_mat[i*P4EST_DIM + 1] = normal[1];
-              N_mat[i*P4EST_DIM + 2] = normal[2];
+              EXECD( N_mat[i*P4EST_DIM + 0] = normal[0],
+                     N_mat[i*P4EST_DIM + 1] = normal[1],
+                     N_mat[i*P4EST_DIM + 2] = normal[2] );
             }
 
             // wall pieces
@@ -4581,9 +4581,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               bc_coeffs[wall_offset + i] = 0;
               bc_values[wall_offset + i] = wc_value_->value(xyz_pr);
 
-              N_mat[(wall_offset+i)*P4EST_DIM + 0] = normal[0];
-              N_mat[(wall_offset+i)*P4EST_DIM + 1] = normal[1];
-              N_mat[(wall_offset+i)*P4EST_DIM + 2] = normal[2];
+              EXECD( N_mat[(wall_offset+i)*P4EST_DIM + 0] = normal[0],
+                     N_mat[(wall_offset+i)*P4EST_DIM + 1] = normal[1],
+                     N_mat[(wall_offset+i)*P4EST_DIM + 2] = normal[2] );
             }
 
 #ifdef P4_TO_P8
@@ -5134,32 +5134,61 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     // count numbers of neighbors in negative and positive domains
     unsigned short num_neg = 0;
     unsigned short num_pos = 0;
-    for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-      if (neighbors_exist[nei] && nei != nn_000)
-      {
-        if (infc_.phi_eff_ptr[neighbors[nei]] < 0) num_neg++;
-        else                                       num_pos++;
+    for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei) {
+      if (neighbors_exist[nei] && nei != nn_000) {
+        infc_.phi_eff_ptr[neighbors[nei]] < 0 ? num_neg++ : num_pos++;
       }
+    }
 
     // determine which side to use based on values of diffusion coefficients and neighbors' availability
     double sign_to_use;
 
-    switch (jump_scheme_)
-    {
-      case 0:
-        sign_to_use = (mu_m_proj < mu_p_proj) ? ((num_neg >= P4EST_DIM+1) ? -1 :  1)
-                                              : ((num_pos >= P4EST_DIM+1) ?  1 : -1);
-        break;
-      case 1:
-        sign_to_use = (mu_m_proj > mu_p_proj) ? ((num_neg >= P4EST_DIM+1) ? -1 :  1)
-                                              : ((num_pos >= P4EST_DIM+1) ?  1 : -1);
-        break;
-      case 2:
-        sign_to_use = (num_neg > num_pos) ? -1 : 1;
-        break;
-      default:
-        throw;
+    switch (jump_scheme_) {
+      case 0: sign_to_use = (mu_m_proj < mu_p_proj) ? -1 : 1; break;
+      case 1: sign_to_use = (mu_m_proj > mu_p_proj) ? -1 : 1; break;
+      case 2: sign_to_use = (num_neg > num_pos)     ? -1 : 1; break;
+      default: throw;
     }
+
+    // check if there are enough nodes in the selected region for a least-squares fit
+    // (we will do that by checking whether points form a full basis)
+    double basis[P4EST_DIM][P4EST_DIM];
+    int    num_basis_vectors_found = 0;
+
+    for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei) {
+      if (neighbors_exist[nei] && nei != nn_000) {
+        if (infc_.phi_eff_ptr[neighbors[nei]]*sign_to_use > 0) {
+          // get vector for a given node
+          double current[P4EST_DIM];
+          cube_nei_dir(nei, current);
+
+          // try to decompose into already found basis vector
+          for (int i = 0; i < num_basis_vectors_found; ++i) {
+            double projection = SUMD(basis[i][0]*current[0],
+                                     basis[i][1]*current[1],
+                                     basis[i][2]*current[2]);
+
+            EXECD(current[0] -= projection*basis[i][0],
+                  current[1] -= projection*basis[i][1],
+                  current[2] -= projection*basis[i][2]);
+          }
+
+          double norm = ABSD(current[0], current[1], current[2]);
+
+          if (norm > 1.e-5) {
+            EXECD(basis[num_basis_vectors_found][0] = current[0]/norm,
+                  basis[num_basis_vectors_found][1] = current[1]/norm,
+                  basis[num_basis_vectors_found][2] = current[2]/norm);
+
+            num_basis_vectors_found++;
+
+            if (num_basis_vectors_found == P4EST_DIM) break;
+          }
+        }
+      }
+    }
+
+    if (num_basis_vectors_found < P4EST_DIM) sign_to_use *= -1;
 
     if (there_is_jump_mu_ && new_submat_main_)
     {
@@ -5182,7 +5211,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
           {
             char idx = i + 3*j CODE3D( + 9*k );
 
-            //              _CODE( col_c[idx] = 1. );
             XCODE( col_x[idx] = ((double) (i-1)) * dxyz_m_[0] );
             YCODE( col_y[idx] = ((double) (j-1)) * dxyz_m_[1] );
             ZCODE( col_z[idx] = ((double) (k-1)) * dxyz_m_[2] );
@@ -5226,9 +5254,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       A[2*A_size + 1] = A[1*A_size + 2];
 #endif
 
-      CODE2D( if (!inv_mat2(A, A_inv)) )
-          CODE3D( if (!inv_mat3(A, A_inv)) )
+      if ( !CODEDIM(inv_mat2(A, A_inv), inv_mat3(A, A_inv)) ) {
           throw std::domain_error("Error: singular LSQR matrix\n");
+      }
 
       // compute Taylor expansion coefficients
       XCODE( std::vector<double> coeff_x_term(num_constraints, 0) );
