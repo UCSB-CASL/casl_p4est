@@ -99,11 +99,11 @@ param_t<double> zmax (pl,  1, "zmax", "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
+param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int>    lmax (pl, 5, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 4, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 3, "num_splits_per_split", "Number of additional resolutions");
+param_t<int>    num_splits (pl, 5, "num_splits", "Number of recursive splits");
+param_t<int>    add_splits (pl, 1, "add_splits", "Number of additional resolutions");
 
 param_t<int>    num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
 param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
@@ -112,8 +112,8 @@ param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shi
 param_t<int>    lmin (pl, 6, "lmin", "Min level of the tree");
 param_t<int>    lmax (pl, 6, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 5, "num_splits_per_split", "Number of additional resolutions");
+param_t<int>    num_splits (pl, 5, "num_splits", "Number of recursive splits");
+param_t<int>    add_splits (pl, 1, "add_splits", "Number of additional resolutions");
 
 param_t<int>    num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
 param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
@@ -255,18 +255,18 @@ param_t<int>    example (pl, 4, "example", "Predefined example:\n"
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-param_t<int>  jc_scheme         (pl, 0, "jc_scheme", "Discretization scheme for interface conditions (0 - FVM (pl, 1 - FDM)");
-param_t<int>  jc_sub_scheme     (pl, 0, "jc_sub_scheme", "Interpolation subscheme for interface conditions (0 - from slow region (pl, 1 - from fast region (pl, 2 - based on nodes availability)");
-param_t<int>  integration_order (pl, 2, "integration_order", "Select integration order (1 - linear (pl, 2 - quadratic)");
-param_t<bool> sc_scheme         (pl, 1, "sc_scheme", "Use super-convergent scheme");
+param_t<int>    jump_scheme       (pl, 0, "jump_scheme",       "Interpolation scheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
+param_t<int>    integration_order (pl, 2, "integration_order", "Integration order for finite volume discretization (1 - linear, 2 - quadratic)");
+param_t<bool>   fv_scheme         (pl, 0, "fv_scheme",         "Scheme for finite volume discretization on boundaries: 0 - symmetric, 1 - superconvergent");
 
 param_t<bool>   store_finite_volumes   (pl, 0, "store_finite_volumes", "");
 param_t<bool>   apply_bc_pointwise     (pl, 0, "apply_bc_pointwise", "");
 param_t<bool>   use_centroid_always    (pl, 0, "use_centroid_always", "");
 param_t<bool>   sample_bc_node_by_node (pl, 0, "sample_bc_node_by_node", "");
 
-// for superconvergent scheme:
-param_t<bool> try_remove_hanging_cells (pl, 1, "try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
+// for symmetric finite volume scheme:
+param_t<bool>   taylor_correction      (pl, 1, "taylor_correction",      "Use Taylor correction to approximate Robin term (symmetric scheme)");
+param_t<bool>   kink_special_treatment (pl, 1, "kink_special_treatment", "Use the special treatment for kinks (symmetric scheme)");
 
 
 // for solving nonlinear equations
@@ -307,40 +307,14 @@ param_t<int>    extension_iterations   (pl, 100, "extension_iterations", "");
 //-------------------------------------
 // output
 //-------------------------------------
-param_t<bool> save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
-param_t<bool> save_params        (pl, 1, "save_params", "Save list of entered parameters");
-param_t<bool> save_domain        (pl, 1, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
-param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
-param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
-param_t<bool> save_convergence   (pl, 1, "save_convergence", "Save convergence results");
+param_t<bool>   save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
+param_t<bool>   save_params        (pl, 0, "save_params", "Save list of entered parameters");
+param_t<bool>   save_domain        (pl, 0, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
+param_t<bool>   save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
+param_t<bool>   save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
+param_t<bool>   save_convergence   (pl, 0, "save_convergence", "Save convergence results");
 
-param_t<int> n_example (pl, 25, "n_example", "Predefined example:\n"
-                                             "0 - no interfaces, no boudaries\n"
-                                             "1 - sphere interior\n"
-                                             "2 - sphere exterior\n"
-                                             "3 - moderately flower-shaped domain\n"
-                                             "4 - highly flower-shaped domain\n"
-                                             "5 - triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "6 - union of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "7 - difference of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "8 - three stars example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "9 - shperical interface\n"
-                                             "10 - moderately flower-shaped interface\n"
-                                             "11 - highly flower-shaped interface\n"
-                                             "12 - curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "13 - example form Maxime's multiphase paper\n"
-                                             "14 - shperical interface - case 4 from voronoi jump solver3D\n"
-                                             "15 - shperical interface - case 1 from voronoi jump solver3D\n"
-                                             "16 - shperical interface - case 5 from voronoi jump solver3D\n"
-                                             "17 - shperical interface - case 3 from voronoi jump solver2D\n"
-                                             "18 - shperical interface - case 0 from voronoi jump solver3D\n"
-                                             "19 - not defined\n"
-                                             "20 - clusters of particles\n"
-                                             "21 - same as no. 0 + nonlinear sinh term\n"
-                                             "22 - same as no. 3 + nonlinear sinh term\n"
-                                             "23 - same as no. 5 + nonlinear sinh term\n"
-                                             "24 - same as no. 9 + nonlinear sinh term\n"
-                                             "25 - same as no. 12 + nonlinear sinh term\n");
+// define the poisson problem to solve
 
 
 // specify exact solution of the problem in the in the positive and negative domain defined  in class sol_cf_t -> sol_p and sol_m
@@ -814,8 +788,8 @@ void set_example(int example)
       sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
       sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
       infc_00_present.val = 0;
       infc_01_present.val = 0;
@@ -873,23 +847,23 @@ void set_example(int example)
       num_infc.val = 1;
       num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 1; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
       bdry_00_present.val = 0;
       bdry_01_present.val = 0;
       bdry_02_present.val = 0;
       bdry_03_present.val = 0;
 
-      nonlinear_term_m.val = 0;
+      nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 0;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 0.1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
@@ -911,13 +885,13 @@ void set_example(int example)
       bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
       bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
-      nonlinear_term_m.val = 0;
+      nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 0;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 0.1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
@@ -2354,10 +2328,10 @@ int main (int argc, char* argv[])
     if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
   }
 #else
-//  if (compute_cond_num)
-//  {
-//    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
-//  }
+  if (compute_cond_num())
+  {
+    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
+  }
 #endif
 
 
