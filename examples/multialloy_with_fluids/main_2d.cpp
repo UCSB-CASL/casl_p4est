@@ -4039,8 +4039,8 @@ int main(int argc, char** argv) {
     FILE *fich_coupled_errors;
     char name_coupled_errors[1000];
 
-    FILE *fich_ice_radius_info;
-    char name_ice_radius_info[1000];
+//    FILE *fich_ice_radius_info;
+//    char name_ice_radius_info[1000];
 
     switch(example_){
       case FRANK_SPHERE:{
@@ -4089,18 +4089,19 @@ int main(int argc, char** argv) {
           break;
         }
       case ICE_AROUND_CYLINDER:{
-          // Output file for the ice profile information:
-          const char* out_dir_ice_cyl = getenv("OUT_DIR_ICE");
-          sprintf(name_ice_radius_info,"%s/ice_cyl_info_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
-                  out_dir_ice_cyl,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
-          ierr = PetscFOpen(mpi.comm(),name_ice_radius_info,"w",&fich_ice_radius_info); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_ice_radius_info,"time "
-                                                              "max_v_norm "
-                                                              "number_elements "
-                                                              "theta_N "
-                                                              "delta_r_N ");CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_ice_radius_info); CHKERRXX(ierr);
+//          // Output file for the ice profile information:
+//          const char* out_dir_ice_cyl = getenv("OUT_DIR_ICE");
+//          sprintf(name_ice_radius_info,"%s/ice_cyl_info_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
+//                  out_dir_ice_cyl,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
+//          ierr = PetscFOpen(mpi.comm(),name_ice_radius_info,"w",&fich_ice_radius_info); CHKERRXX(ierr);
+//          ierr = PetscFPrintf(mpi.comm(),fich_ice_radius_info,"time "
+//                                                              "max_v_norm "
+//                                                              "number_elements "
+//                                                              "theta_N "
+//                                                              "delta_r_N ");CHKERRXX(ierr);
+//          ierr = PetscFClose(mpi.comm(),fich_ice_radius_info); CHKERRXX(ierr);
           break;
+
         }
       default:{
         break;
