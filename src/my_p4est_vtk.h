@@ -32,6 +32,7 @@
 #include <p4est_bits.h>
 #endif
 
+#include <vector>
 
 /********************************************************************
  *                          IMPORTANT NOTE                          *
@@ -178,6 +179,12 @@ int                 my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t
                                                    const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
                                                    const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
+inline int          my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t* ghost, const char *filename,
+                                                     const int num, const char *list_name, const char **scalar_names, const double **values)
+{
+  return my_p4est_vtk_write_node_data(p4est, nodes, ghost, filename, num, 0, 0, list_name, NULL, NULL, scalar_names, NULL, NULL, values, NULL, NULL);
+}
+
 /*!
  * \brief my_p4est_vtk_write_cell_data writes cell data to the relevant exportation files
  * \param p4est                             the p4est to be exported
@@ -218,6 +225,14 @@ int                 my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t
                                                   const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
                                                   const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
+inline int        my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
+                                                  int write_rank, int write_tree,
+                                                  const char *filename,
+                                                  const int num, const char* list_name, const char **scalar_names, const double **values)
+{
+  return my_p4est_vtk_write_cell_data(p4est, ghost, write_rank, write_tree, filename, num, 0, 0, list_name, NULL, NULL, scalar_names, NULL, NULL, values, NULL, NULL);
+}
+
 /*!
  * \brief my_p4est_vtk_write_footer writes the footers of the "filename.pvtu" and of the "filename.vtu/%04d.vtu" files.
  * (this completes and ends the open sections of the xml-format files open for exportation)
@@ -229,6 +244,11 @@ int                 my_p4est_vtk_write_footer (p4est_t * p4est,
                                                const char *filename);
 
 void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
+
+void my_p4est_vtk_write_all_lists(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                  int write_rank, int write_tree, const char *filename,
+                                  std::vector<double *> point_data, std::vector<std::string> point_data_names,
+                                  std::vector<double *> cell_data,  std::vector<std::string> cell_data_names);
 
 SC_EXTERN_C_END;
 

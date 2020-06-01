@@ -20,8 +20,6 @@
 #include <src/mls_integration/cube3_mls.h>
 #include <src/mls_integration/cube2_mls.h>
 
-#define DO_NOT_PREALLOCATE
-
 using std::vector;
 
 class my_p4est_poisson_nodes_mls_t
@@ -58,18 +56,25 @@ protected:
   Vec     rhs_jump_;
   double *rhs_jump_ptr;
 
+  Vec     rhs_gf_;
+  double *rhs_gf_ptr;
+
   // subcomponents of linear system
   Mat     submat_main_;
   Vec     submat_diag_;
   double *submat_diag_ptr;
   Vec     submat_diag_ghost_;
   double *submat_diag_ghost_ptr;
-  Mat     submat_jump_;
-  Mat     submat_jump_ghost_;
+  Mat     submat_jump_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_jump_ghost_; // expresses ghost values through real values
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
   std::vector< std::vector<mat_entry_t> > entries_robin_sc;
+
+  // for imposing dirichlet using ghost fluid method
+  Mat     submat_gf_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_gf_ghost_; // expresses ghost values through real values
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -215,8 +220,11 @@ protected:
   int    integration_order_;
   int    cube_refinement_;
   int    jump_scheme_;
-  int    jump_sub_scheme_;
   int    fv_scheme_;
+  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid
+  int    gf_order_;
+  int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
+
 
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
@@ -227,6 +235,7 @@ protected:
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
+  double gf_thresh_;
 
   interpolation_method interp_method_;
 
@@ -257,11 +266,12 @@ protected:
   enum discretization_scheme_t
   {
     UNDEFINED,
-    NO_DISCRETIZATION,
+    DOMAIN_OUTSIDE,
+    DOMAIN_INSIDE,
     WALL_DIRICHLET,
     WALL_NEUMANN,
-    FINITE_DIFFERENCE,
-    FINITE_VOLUME,
+    BOUNDARY_DIRICHLET,
+    BOUNDARY_NEUMANN,
     IMMERSED_INTERFACE,
   };
 
@@ -284,20 +294,33 @@ protected:
   // discretization
   void setup_linear_system (bool setup_rhs);
 
-  void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
+  void discretize_inside      (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
 
-  void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+  void discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
 
-  void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
-                            std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
+  void discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               vector<int> &gf_map, vector<double> &gf_nodes, vector<double> &gf_phi,
+                               std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                               std::vector<mat_entry_t> *row_gf, int &d_nnz_gf, int &o_nnz_gf,
+                               std::vector<mat_entry_t> *row_gf_ghost, int &d_nnz_gf_ghost, int &o_nnz_gf_ghost);
+
+
+
+  void discretize_robin       (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                               std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+
+  void discretize_jump        (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                               std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
+                               std::vector<mat_entry_t> *row_jump_ghost, int &d_nnz_jump_ghost, int &o_nnz_jump_ghost);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
@@ -315,6 +338,13 @@ protected:
   void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
   void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
   void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
+
+  inline int gf_stencil_size() {
+    return gf_stabilized_ == 0 ? gf_order_ + 1 : gf_order_ + 2;
+  }
+
+  bool gf_is_ghost(const quad_neighbor_nodes_of_node_t &qnnn);
+  void gf_direction(const quad_neighbor_nodes_of_node_t &qnnn, const p4est_locidx_t neighbors[], int &dir, double del_xyz[]);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -557,7 +587,6 @@ public:
   inline void set_integration_order(int value) { integration_order_ = value; }
   inline void set_cube_refinement  (int value) { cube_refinement_   = value; }
   inline void set_jump_scheme      (int value) { jump_scheme_       = value; }
-  inline void set_jump_sub_scheme      (int value) { jump_sub_scheme_       = value; }
   inline void set_fv_scheme        (int value) { fv_scheme_         = value; }
 
   inline void set_use_taylor_correction   (bool value) { use_taylor_correction_    = value; }

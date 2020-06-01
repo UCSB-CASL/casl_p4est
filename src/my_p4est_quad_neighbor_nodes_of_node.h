@@ -2072,6 +2072,17 @@ public:
     return;
   }
 
+
+  inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double f_nei[]) const
+  {
+#ifdef P4_TO_P8
+    ngbd_with_quadratic_interpolation(&f, &f_000, &f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0], &f_nei[dir::f_00m], &f_nei[dir::f_00p], 1);
+#else
+    ngbd_with_quadratic_interpolation(&f, &f_000, &f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0],                                         1);
+#endif
+    return;
+  }
+
   inline void x_ngbd_with_quadratic_interpolation(const double *f, double &f_m00, double &f_000, double &f_p00) const
   {
     x_ngbd_with_quadratic_interpolation(&f, &f_m00, &f_000, &f_p00, 1);
@@ -2734,30 +2745,47 @@ public:
   {
     switch (dir)
     {
-    case dir::f_m00: return neighbor_m00();
-    case dir::f_p00: return neighbor_p00();
-    case dir::f_0m0: return neighbor_0m0();
-    case dir::f_0p0: return neighbor_0p0();
+      case dir::f_m00: return neighbor_m00();
+      case dir::f_p00: return neighbor_p00();
+      case dir::f_0m0: return neighbor_0m0();
+      case dir::f_0p0: return neighbor_0p0();
 #ifdef P4_TO_P8
-    case dir::f_00m: return neighbor_00m();
-    case dir::f_00p: return neighbor_00p();
+      case dir::f_00m: return neighbor_00m();
+      case dir::f_00p: return neighbor_00p();
 #endif
-    default: throw std::invalid_argument("Invalid direction\n");
+      default: throw std::invalid_argument("Invalid direction\n");
     }
   }
+
   inline double distance(int dir) const
   {
     switch (dir)
     {
-    case dir::f_m00: return d_m00;
-    case dir::f_p00: return d_p00;
-    case dir::f_0m0: return d_0m0;
-    case dir::f_0p0: return d_0p0;
+      case dir::f_m00: return d_m00;
+      case dir::f_p00: return d_p00;
+      case dir::f_0m0: return d_0m0;
+      case dir::f_0p0: return d_0p0;
 #ifdef P4_TO_P8
-    case dir::f_00m: return d_00m;
-    case dir::f_00p: return d_00p;
+      case dir::f_00m: return d_00m;
+      case dir::f_00p: return d_00p;
 #endif
-    default: throw std::invalid_argument("Invalid direction\n");
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline double f_linear(const int dir, const double *f) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return f_m00_linear(f);
+      case dir::f_p00: return f_p00_linear(f);
+      case dir::f_0m0: return f_0m0_linear(f);
+      case dir::f_0p0: return f_0p0_linear(f);
+#ifdef P4_TO_P8
+      case dir::f_00m: return f_00m_linear(f);
+      case dir::f_00p: return f_00p_linear(f);
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
     }
   }
 
@@ -2804,7 +2832,7 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
+    double         h        = distance(dir);
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
   }
@@ -2812,7 +2840,7 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
+    double         h        = distance(dir);
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
   }
@@ -2820,8 +2848,8 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr[]) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
-    int            dim = dir / 2;
+    double         h        = distance(dir);
+    int            dim      = dir / 2;
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
   }

@@ -821,6 +821,26 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+    } else {
+
+      my_p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      advect_from_n_to_np1(dt_nm1, dt_n,
+                           vnm1, vxx_nm1,
+                           vn, vxx_n,
+                           phi, phi_xx,
+                           phi_np1_p);
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);

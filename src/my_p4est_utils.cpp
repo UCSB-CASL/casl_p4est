@@ -3421,23 +3421,19 @@ double pascalTriangle(int a, int b) {
   return result;
 }
 
-double clamp(double x, double lowerlimit, double upperlimit)
-{
-  if (x < lowerlimit) x = lowerlimit;
-  if (x > upperlimit) x = upperlimit;
-  return x;
-}
-
 double smoothstep(int N, double x) {
-  x = clamp(x, 0, 1); // x must be equal to or between 0 and 1
-  double result = 0;
-  for (int n = 0; n <= N; ++n)
-  {
-    result += pascalTriangle(-N - 1, n) *
-              pascalTriangle(2 * N + 1, N - n) *
-              pow(x, N + n + 1);
+  if      (x <= 0) return 0;
+  else if (x >= 1) return 1;
+  else {
+    double result = 0;
+    for (int n = 0; n <= N; ++n)
+    {
+      result += pascalTriangle(-N - 1, n) *
+                pascalTriangle(2 * N + 1, N - n) *
+                pow(x, N + n + 1);
+    }
+    return result;
   }
-  return result;
 }
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs)

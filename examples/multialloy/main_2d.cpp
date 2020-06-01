@@ -63,14 +63,14 @@ param_list_t pl;
 // computational domain parameters
 //-------------------------------------
 param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 1, "ny", "Number of trees in the y-direction");
+param_t<int>    ny   (pl, 2, "ny", "Number of trees in the y-direction");
 param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
 param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
-param_t<double> xmax (pl, 1, "xmax", "Box xmax");
+param_t<double> xmax (pl, 0.5, "xmax", "Box xmax");
 param_t<double> ymax (pl, 1, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
@@ -85,9 +85,12 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
+
+param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
+param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
 param_t<double> lip  (pl, 1.0, "lip",  "Fine-to-coarse grid transition width");
 param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
@@ -95,13 +98,13 @@ param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-param_t<bool> use_points_on_interface   (pl, 1, "use_points_on_interface", "");
+param_t<bool> use_points_on_interface   (pl, 0, "use_points_on_interface", "");
 param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
-param_t<int>    order_in_time   (pl, 2,      "order_in_time",   "");
+param_t<int>    order_in_time   (pl, 1,      "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
-param_t<double> bc_tolerance    (pl, 1.e-12, "bc_tolerance",    "");
+param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.45,    "cfl_number",      "");
 param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
 
@@ -113,14 +116,15 @@ param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps",
 // output parameters
 //-------------------------------------
 param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
-param_t<bool>   save_analytical      (pl, 1, "save_analytical", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
+param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
 param_t<bool>   save_timings         (pl, 0, "save_timings", "");
-param_t<bool>   save_history         (pl, 0, "save_history", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
-param_t<bool>   save_vtk             (pl, 0, "save_vtk", "");
+param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
+param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
+param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 
-param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -142,31 +146,11 @@ param_t<double> thermal_cond_l (pl, 6.07e-1, "thermal_cond_l", "Thermal conducti
 param_t<double> thermal_cond_s (pl, 6.07e-1, "thermal_cond_s", "Thermal conductivity of sol. alloy (pl, W.cm-1.K-1 ");
 
 param_t<double> latent_heat  (pl, 2350, "latent_heat",  "Latent heat of fusion (pl, J.cm-3");
-param_t<double> melting_temp (pl, 1728, "melting_temp", "Pure-substance melting point for linearized slope (pl, K");
 
-param_t<bool>   linearized_liquidus (pl, 1, "linearized_liquidus", "Use linearized liquidus surface or true one");
+param_t<bool>   linearized_liquidus (pl, 0, "linearized_liquidus", "Use linearized liquidus surface or true one");
+param_t<bool>   const_part_coeff    (pl, 0, "const_part_coeff",    "Use averaged partition coefficients or true ones");
 
 param_t<int> num_comps (pl, 1, "num_comps", "Number of solutes");
-
-param_t<double> liquidus_slope_0 (pl, -357, "liquidus_slope_0", "Slope of linearized liqiudus w.r.t component no. 0 (pl, K^-1");
-param_t<double> liquidus_slope_1 (pl, -357, "liquidus_slope_1", "Slope of linearized liqiudus w.r.t component no. 1 (pl, K^-1");
-param_t<double> liquidus_slope_2 (pl, -357, "liquidus_slope_2", "Slope of linearized liqiudus w.r.t component no. 2 (pl, K^-1");
-param_t<double> liquidus_slope_3 (pl, -357, "liquidus_slope_3", "Slope of linearized liqiudus w.r.t component no. 3 (pl, K^-1");
-
-double* liquidus_slope_all[] = { &liquidus_slope_0.val,
-                                 &liquidus_slope_1.val,
-                                 &liquidus_slope_2.val,
-                                 &liquidus_slope_3.val };
-
-param_t<double> part_coeff_0 (pl, 0.86, "part_coeff_0", "Partition coefficient for component no. 0");
-param_t<double> part_coeff_1 (pl, 0.86, "part_coeff_1", "Partition coefficient for component no. 1");
-param_t<double> part_coeff_2 (pl, 0.86, "part_coeff_2", "Partition coefficient for component no. 2");
-param_t<double> part_coeff_3 (pl, 0.86, "part_coeff_3", "Partition coefficient for component no. 3");
-
-double* part_coeff_all[] = { &part_coeff_0.val,
-                             &part_coeff_1.val,
-                             &part_coeff_2.val,
-                             &part_coeff_3.val };
 
 param_t<double> initial_conc_0 (pl, 0.4, "initial_conc_0", "Initial concentration of component no. 0");
 param_t<double> initial_conc_1 (pl, 0.4, "initial_conc_1", "Initial concentration of component no. 1");
@@ -193,6 +177,30 @@ param_t<double> eps_v    (pl, 0, "eps_v",    "Kinetic undercooling coefficient -
 param_t<double> eps_a    (pl, 0, "eps_a",    "Anisotropy coefficient");
 param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
 
+
+// auxiliary variable for linearized phase diagram
+param_t<double> melting_temp (pl, 1728, "melting_temp", "Pure-substance melting point for linearized slope (pl, K");
+
+param_t<double> liquidus_slope_0 (pl, -357, "liquidus_slope_0", "Slope of linearized liqiudus w.r.t component no. 0 (pl, K^-1");
+param_t<double> liquidus_slope_1 (pl, -357, "liquidus_slope_1", "Slope of linearized liqiudus w.r.t component no. 1 (pl, K^-1");
+param_t<double> liquidus_slope_2 (pl, -357, "liquidus_slope_2", "Slope of linearized liqiudus w.r.t component no. 2 (pl, K^-1");
+param_t<double> liquidus_slope_3 (pl, -357, "liquidus_slope_3", "Slope of linearized liqiudus w.r.t component no. 3 (pl, K^-1");
+
+double* liquidus_slope_all[] = { &liquidus_slope_0.val,
+                                 &liquidus_slope_1.val,
+                                 &liquidus_slope_2.val,
+                                 &liquidus_slope_3.val };
+
+param_t<double> part_coeff_0 (pl, 0.86, "part_coeff_0", "Partition coefficient for component no. 0");
+param_t<double> part_coeff_1 (pl, 0.86, "part_coeff_1", "Partition coefficient for component no. 1");
+param_t<double> part_coeff_2 (pl, 0.86, "part_coeff_2", "Partition coefficient for component no. 2");
+param_t<double> part_coeff_3 (pl, 0.86, "part_coeff_3", "Partition coefficient for component no. 3");
+
+double* part_coeff_all[] = { &part_coeff_0.val,
+                             &part_coeff_1.val,
+                             &part_coeff_2.val,
+                             &part_coeff_3.val };
+
 param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
@@ -208,7 +216,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
 param_t<double> cooling_velocity (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 15000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient    (pl, 10000, "temp_gradient",    "Temperature gradient (pl, K/cm");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -219,7 +227,7 @@ param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRIC
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, DBL_MAX, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-30,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 1.e-8,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.05,     "front_location",         "");
@@ -231,11 +239,12 @@ param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              
 param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               "");
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 
-param_t<double> box_size (pl, 2.e-2, "", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 2.e-2, "box_size", "Physical width (in x) of the box in cm");
+//param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
 double scaling() { return 1./box_size.val; }
 
-param_t<int> geometry (pl, -2, "geometry", "-3 - analytical spherical solidification,"
+param_t<int> geometry (pl,  0, "geometry", "-3 - analytical spherical solidification,"
                                            "-2 - analytical cylindrical solidification,"
                                            "-1 - analytical planar solidification,"
                                            " 0 - directional solidification,"
@@ -263,20 +272,23 @@ void set_alloy_parameters()
       heat_capacity_s.val = 0.46e3;  // J.kg-1.K-1
       thermal_cond_l.val  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s.val  = 6.07e-1; // W.cm-1.K-1
-      melting_temp.val    = 1728;    // K
       latent_heat.val     = 2350;    // J.cm-3
 
       num_comps.val = 1;
 
       solute_diff_0.val    = 1.e-3;  // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
       initial_conc_0.val   = 0.4;    // at frac.
-      part_coeff_0.val     = 0.86;   // partition coefficient
 
       eps_c.val = 0;
       eps_v.val = 0;
       eps_a.val = 0.05;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1728;   // K
+      liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.86;   // partition coefficient
+
       break;
 
     case 1: // Ni - 0.2at%Cu - 0.2at%Cu
@@ -286,24 +298,26 @@ void set_alloy_parameters()
       heat_capacity_s.val = 0.46e3;  // J.kg-1.K-1
       thermal_cond_l.val  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s.val  = 6.07e-1; // W.cm-1.K-1
-      melting_temp.val    = 1728;    // K
       latent_heat.val     = 2350;    // J.cm-3
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 1.e-5;  // cm2.s-1 - concentration diffusion coefficient
       solute_diff_1.val    = 5.e-5;  // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
-      liquidus_slope_1.val = -357;   // K / at frac. - liquidous slope
       initial_conc_0.val   = 0.2;    // at frac.
       initial_conc_1.val   = 0.2;    // at frac.
-      part_coeff_0.val     = 0.86;   // partition coefficient
-      part_coeff_1.val     = 0.86;   // partition coefficient
 
-      eps_c.val = 4.e-5/melting_temp.val;
+      eps_c.val = 4.e-5;
       eps_v.val = 0.0;
       eps_a.val = 0.00;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1728;   // K
+      liquidus_slope_0.val = -357;   // K / at frac. - liquidous slope
+      liquidus_slope_1.val = -357;   // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.86;   // partition coefficient
+      part_coeff_1.val     = 0.86;   // partition coefficient
       break;
 
     case 2: // Co - 10.7at%W - 9.4at%Al (more realistic since D_W < D_Al)
@@ -313,24 +327,33 @@ void set_alloy_parameters()
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      melting_temp.val    = 1996;      // K
       latent_heat.val     = 2588.7;    // J.cm-3
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
       solute_diff_1.val    = 2e-5;     // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val =-874;      // K / at frac. - liquidous slope
-      liquidus_slope_1.val =-1378;     // K / at frac. - liquidous slope
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
-      part_coeff_0.val     = 0.848;    // partition coefficient
-      part_coeff_1.val     = 0.848;    // partition coefficient
 
-      eps_c.val = 0*5e-5/melting_temp.val;
+      eps_c.val = 0.2e-5;
       eps_v.val = 0*5e-2;
-      eps_a.val = 0.05;
+      eps_a.val = 0*0.05;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1910;      // K
+      liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
+      liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.83;    // partition coefficient
+      part_coeff_1.val     = 0.83;    // partition coefficient
+
+      melting_temp.val    = 1910;      // K
+      liquidus_slope_0.val =-543;      // K / at frac. - liquidous slope
+      liquidus_slope_1.val =-1036;     // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.94;    // partition coefficient
+      part_coeff_1.val     = 0.83;    // partition coefficient
+
       break;
 
     case 3: // Co - 9.4at%Al - 10.7at%W
@@ -340,24 +363,26 @@ void set_alloy_parameters()
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      melting_temp.val    = 1996;      // K
       latent_heat.val     = 2588.7;    // J.cm-3
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
       solute_diff_1.val    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val =-1378;     // K / at frac. - liquidous slope
-      liquidus_slope_1.val =-874;      // K / at frac. - liquidous slope
       initial_conc_0.val   = 0.094;    // at frac.
       initial_conc_1.val   = 0.107;    // at frac.
-      part_coeff_0.val     = 0.848;    // partition coefficient
-      part_coeff_1.val     = 0.848;    // partition coefficient
 
       eps_c.val = 0*2.7207e-5;
       eps_v.val = 0*2.27e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1910;      // K
+      liquidus_slope_0.val =-1036;     // K / at frac. - liquidous slope
+      liquidus_slope_1.val =-543;      // K / at frac. - liquidous slope
+      part_coeff_0.val     = 0.83;    // partition coefficient
+      part_coeff_1.val     = 0.94;    // partition coefficient
       break;
 
     case 4: // Ni - 15.2wt%Al - 5.8wt%Ta
@@ -367,24 +392,26 @@ void set_alloy_parameters()
       heat_capacity_s.val = 660;      // J.kg-1.K-1
       thermal_cond_l.val  = 0.8;      // W.cm-1.K-1
       thermal_cond_s.val  = 0.8;      // W.cm-1.K-1
-      melting_temp.val    = 1754;     // K
       latent_heat.val     = 2136;     // J.cm-3
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
       solute_diff_1.val    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val =-255;     // K / wt frac. - liquidous slope
-      liquidus_slope_1.val =-517;     // K / wt frac. - liquidous slope
       initial_conc_0.val   = 0.152;   // wt frac.
       initial_conc_1.val   = 0.058;   // wt frac.
-      part_coeff_0.val     = 0.48;    // partition coefficient
-      part_coeff_1.val     = 0.54;    // partition coefficient
 
       eps_c.val = 0*2.7207e-5;
       eps_v.val = 0*2.27e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1754;     // K
+      liquidus_slope_0.val =-255;     // K / wt frac. - liquidous slope
+      liquidus_slope_1.val =-517;     // K / wt frac. - liquidous slope
+      part_coeff_0.val     = 0.48;    // partition coefficient
+      part_coeff_1.val     = 0.54;    // partition coefficient
       break;
 
     case 5: // Ni - 5.8wt%Ta - 15.2wt%Al
@@ -394,24 +421,26 @@ void set_alloy_parameters()
       heat_capacity_s.val = 660;      // J.kg-1.K-1
       thermal_cond_l.val  = 0.8;      // W.cm-1.K-1
       thermal_cond_s.val  = 0.8;      // W.cm-1.K-1
-      melting_temp.val    = 1754;     // K
       latent_heat.val     = 2136;     // J.cm-3
 
       num_comps.val = 2;
 
       solute_diff_0.val    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
       solute_diff_1.val    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
-      liquidus_slope_0.val =-517;     // K / wt frac. - liquidous slope
-      liquidus_slope_1.val =-255;     // K / wt frac. - liquidous slope
       initial_conc_0.val   = 0.058;   // wt frac.
       initial_conc_1.val   = 0.152;   // wt frac.
-      part_coeff_0.val     = 0.54;    // partition coefficient
-      part_coeff_1.val     = 0.48;    // partition coefficient
 
       eps_c.val = 0*2.7207e-5;
       eps_v.val = 0*2.27e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1754;     // K
+      liquidus_slope_0.val =-517;     // K / wt frac. - liquidous slope
+      liquidus_slope_1.val =-255;     // K / wt frac. - liquidous slope
+      part_coeff_0.val     = 0.54;    // partition coefficient
+      part_coeff_1.val     = 0.48;    // partition coefficient
       break;
 
     case 6: // A made-up tetra-alloy based on Ni - 0.4at%Cu
@@ -419,7 +448,6 @@ void set_alloy_parameters()
       density_s.val       = 8.88e-3; // kg.cm-3
       heat_capacity_l.val = 0.46e3;  // J.kg-1.K-1
       heat_capacity_s.val = 0.46e3;  // J.kg-1.K-1
-      melting_temp.val    = 1728;    // K
       latent_heat.val     = 2350;    // J.cm-3
       thermal_cond_l.val  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s.val  = 6.07e-1; // W.cm-1.K-1
@@ -428,20 +456,23 @@ void set_alloy_parameters()
       solute_diff_0.val    = 1.e-5;
       solute_diff_1.val    = 2.e-5;
       solute_diff_2.val    = 4.e-5;
-      liquidus_slope_0.val = -300;
-      liquidus_slope_1.val = -500;
-      liquidus_slope_2.val = -400;
       initial_conc_0.val   = 0.1;
       initial_conc_1.val   = 0.1;
       initial_conc_2.val   = 0.1;
-      part_coeff_0.val     = 0.85;
-      part_coeff_1.val     = 0.75;
-      part_coeff_2.val     = 0.90;
 
-      eps_c.val = 0.e-6/melting_temp.val;
+      eps_c.val = 0.e-6;
       eps_v.val = 0;
       eps_a.val = 0.0;
       symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val     = 1728;    // K
+      liquidus_slope_0.val = -300;
+      liquidus_slope_1.val = -500;
+      liquidus_slope_2.val = -400;
+      part_coeff_0.val     = 0.85;
+      part_coeff_1.val     = 0.75;
+      part_coeff_2.val     = 0.90;
       break;
 
     case 7: // A made-up penta-alloy based on Ni - 0.4at%Cu
@@ -449,7 +480,6 @@ void set_alloy_parameters()
       density_s.val       = 8.88e-3; // kg.cm-3
       heat_capacity_l.val = 0.46e3;  // J.kg-1.K-1
       heat_capacity_s.val = 0.46e3;  // J.kg-1.K-1
-      melting_temp.val    = 1728;    // K
       latent_heat.val     = 2350;    // J.cm-3
       thermal_cond_l.val  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s.val  = 6.07e-1; // W.cm-1.K-1
@@ -459,23 +489,29 @@ void set_alloy_parameters()
       solute_diff_1.val    = 2.e-5;
       solute_diff_2.val    = 4.e-5;
       solute_diff_3.val    = 8.e-5;
-      liquidus_slope_0.val = -300;
-      liquidus_slope_1.val = -500;
-      liquidus_slope_2.val = -400;
-      liquidus_slope_3.val = -600;
       initial_conc_0.val   = 0.1;
       initial_conc_1.val   = 0.1;
       initial_conc_2.val   = 0.1;
       initial_conc_3.val   = 0.1;
+
+      eps_c.val = 0.e-6;
+      eps_v.val = 0;
+      eps_a.val = 0.0;
+      symmetry.val = 4;
+
+      // linearized phase diagram
+      melting_temp.val    = 1728;    // K
+
+      liquidus_slope_0.val = -300;
+      liquidus_slope_1.val = -500;
+      liquidus_slope_2.val = -400;
+      liquidus_slope_3.val = -600;
+
       part_coeff_0.val     = 0.85;
       part_coeff_1.val     = 0.75;
       part_coeff_2.val     = 0.90;
       part_coeff_3.val     = 0.80;
 
-      eps_c.val = 0.e-6/melting_temp.val;
-      eps_v.val = 0;
-      eps_a.val = 0.0;
-      symmetry.val = 4;
       break;
     default:
       throw std::invalid_argument("Undefined alloy\n");
@@ -487,9 +523,9 @@ double liquidus_value(double *c)
   static double conc_term;
   if (linearized_liquidus.val)
   {
-    conc_term = (*liquidus_slope_all[0])*c[0];
+    conc_term = melting_temp.val;
 
-    for (int i = 1; i < num_comps.val; ++i) conc_term += (*liquidus_slope_all[i])*c[i];
+    for (int i = 0; i < num_comps.val; ++i) conc_term += (*liquidus_slope_all[i])*c[i];
 
     return conc_term;
   }
@@ -500,27 +536,55 @@ double liquidus_value(double *c)
       case 0: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 1: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 2: // Co-W-Al
-        return 1495
-            +1.344000 * pow(c[1],1) * pow(c[0],0)
-            +2.303000 * pow(c[1],0) * pow(c[0],1)
-            -0.213300 * pow(c[1],2) * pow(c[0],0)
-            +0.070170 * pow(c[1],1) * pow(c[0],1)
-            -0.224600 * pow(c[1],0) * pow(c[0],2)
-            -0.003831 * pow(c[1],3) * pow(c[0],0)
-            -0.011570 * pow(c[1],2) * pow(c[0],1)
-            -0.008250 * pow(c[1],1) * pow(c[0],2)
-            +0.001531 * pow(c[1],0) * pow(c[0],3);
+      {
+        double c0 = 100.*c[0];
+        double c1 = 100.*c[1];
+        static double p00 =  1.767e+03;
+        static double p10 =  2.369e+00;
+        static double p01 =  1.771e+00;
+        static double p20 = -2.238e-01;
+        static double p11 =  1.041e-01;
+        static double p02 = -3.046e-01;
+        static double p30 =  1.358e-03;
+        static double p21 = -1.568e-02;
+        static double p12 = -1.457e-02;
+        static double p03 =  3.317e-03;
+        static double p40 = -3.283e-06;
+        static double p31 =  3.559e-04;
+        static double p22 =  1.228e-04;
+        static double p13 =  1.531e-04;
+        static double p04 = -1.866e-04;
+        return p00
+            + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+            + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+            + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+            + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+      }
       case 3: // Co-Al-W
-        return 1495
-            +1.344000 * pow(c[0],1) * pow(c[1],0)
-            +2.303000 * pow(c[0],0) * pow(c[1],1)
-            -0.213300 * pow(c[0],2) * pow(c[1],0)
-            +0.070170 * pow(c[0],1) * pow(c[1],1)
-            -0.224600 * pow(c[0],0) * pow(c[1],2)
-            -0.003831 * pow(c[0],3) * pow(c[1],0)
-            -0.011570 * pow(c[0],2) * pow(c[1],1)
-            -0.008250 * pow(c[0],1) * pow(c[1],2)
-            +0.001531 * pow(c[0],0) * pow(c[1],3);
+      {
+        double c0 = 100.*c[0];
+        double c1 = 100.*c[1];
+        static double p00 =  1.767e+03;
+        static double p01 =  2.369e+00;
+        static double p10 =  1.771e+00;
+        static double p02 = -2.238e-01;
+        static double p11 =  1.041e-01;
+        static double p20 = -3.046e-01;
+        static double p03 =  1.358e-03;
+        static double p12 = -1.568e-02;
+        static double p21 = -1.457e-02;
+        static double p30 =  3.317e-03;
+        static double p04 = -3.283e-06;
+        static double p13 =  3.559e-04;
+        static double p22 =  1.228e-04;
+        static double p31 =  1.531e-04;
+        static double p40 = -1.866e-04;
+        return p00
+            + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+            + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+            + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+            + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+      }
       case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
@@ -550,57 +614,210 @@ double liquidus_slope(int which_comp, double *c)
       case 0: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 1: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
       case 2: // Co-W-Al
+      {
+        double c0 = 100.*c[0];
+        double c1 = 100.*c[1];
+        static double p10 =  2.369e+00;
+        static double p01 =  1.771e+00;
+        static double p20 = -2.238e-01;
+        static double p11 =  1.041e-01;
+        static double p02 = -3.046e-01;
+        static double p30 =  1.358e-03;
+        static double p21 = -1.568e-02;
+        static double p12 = -1.457e-02;
+        static double p03 =  3.317e-03;
+        static double p40 = -3.283e-06;
+        static double p31 =  3.559e-04;
+        static double p22 =  1.228e-04;
+        static double p13 =  1.531e-04;
+        static double p04 = -1.866e-04;
         switch (which_comp)
         {
           case 0:
-            return 0.
-                +1.344000 * 1. *pow(c[1],0) * pow(c[0],0)
-                +2.303000 * 0. *pow(c[1],0) * pow(c[0],1)
-                -0.213300 * 2. *pow(c[1],1) * pow(c[0],0)
-                +0.070170 * 1. *pow(c[1],0) * pow(c[0],1)
-                -0.224600 * 0. *pow(c[1],0) * pow(c[0],2)
-                -0.003831 * 3. *pow(c[1],2) * pow(c[0],0)
-                -0.011570 * 2. *pow(c[1],1) * pow(c[0],1)
-                -0.008250 * 1. *pow(c[1],0) * pow(c[0],2)
-                +0.001531 * 0. *pow(c[1],0) * pow(c[0],3);
+          return 100.*(0.
+                       + p10*1.*pow(c0,0)*pow(c1,0) + p01*0.*pow(c0,0)*pow(c1,1)
+                       + p20*2.*pow(c0,1)*pow(c1,0) + p11*1.*pow(c0,0)*pow(c1,1) + p02*0.*pow(c0,0)*pow(c1,2)
+                       + p30*3.*pow(c0,2)*pow(c1,0) + p21*2.*pow(c0,1)*pow(c1,1) + p12*1.*pow(c0,0)*pow(c1,2) + p03*0.*pow(c0,0)*pow(c1,3)
+                       + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,1)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4));
           case 1:
-            return 0.
-                +1.344000 * pow(c[1],1) * 0. * pow(c[0],0)
-                +2.303000 * pow(c[1],0) * 1. * pow(c[0],0)
-                -0.213300 * pow(c[1],2) * 0. * pow(c[0],0)
-                +0.070170 * pow(c[1],1) * 1. * pow(c[0],0)
-                -0.224600 * pow(c[1],0) * 2. * pow(c[0],1)
-                -0.003831 * pow(c[1],3) * 0. * pow(c[0],0)
-                -0.011570 * pow(c[1],2) * 1. * pow(c[0],0)
-                -0.008250 * pow(c[1],1) * 2. * pow(c[0],1)
-                +0.001531 * pow(c[1],0) * 3. * pow(c[0],2);
+          return 100.*(0.
+                       + p10*0.*pow(c0,1)*pow(c1,0) + p01*1.*pow(c0,0)*pow(c1,0)
+                       + p20*0.*pow(c0,2)*pow(c1,0) + p11*1.*pow(c0,1)*pow(c1,0) + p02*2.*pow(c0,0)*pow(c1,1)
+                       + p30*0.*pow(c0,3)*pow(c1,0) + p21*1.*pow(c0,2)*pow(c1,0) + p12*2.*pow(c0,1)*pow(c1,1) + p03*3.*pow(c0,0)*pow(c1,2)
+                       + p40*0.*pow(c0,4)*pow(c1,0) + p31*1.*pow(c0,3)*pow(c1,0) + p22*2.*pow(c0,2)*pow(c1,1) + p13*3.*pow(c0,1)*pow(c1,2) + p04*4.*pow(c0,0)*pow(c1,3));
+          default: throw std::invalid_argument("\n");
+        }
+      }
+      case 3: // Co-Al-W
+      {
+        double c0 = 100.*c[0];
+        double c1 = 100.*c[1];
+        static double p01 =  2.369e+00;
+        static double p10 =  1.771e+00;
+        static double p02 = -2.238e-01;
+        static double p11 =  1.041e-01;
+        static double p20 = -3.046e-01;
+        static double p03 =  1.358e-03;
+        static double p12 = -1.568e-02;
+        static double p21 = -1.457e-02;
+        static double p30 =  3.317e-03;
+        static double p04 = -3.283e-06;
+        static double p13 =  3.559e-04;
+        static double p22 =  1.228e-04;
+        static double p31 =  1.531e-04;
+        static double p40 = -1.866e-04;
+        switch (which_comp)
+        {
+          case 0:
+          return 0.
+              + p10*1.*pow(c0,0)*pow(c1,0) + p01*0.*pow(c0,0)*pow(c1,1)
+              + p20*2.*pow(c0,1)*pow(c1,0) + p11*1.*pow(c0,0)*pow(c1,1) + p02*0.*pow(c0,0)*pow(c1,2)
+              + p30*3.*pow(c0,2)*pow(c1,0) + p21*2.*pow(c0,1)*pow(c1,1) + p12*1.*pow(c0,0)*pow(c1,2) + p03*0.*pow(c0,0)*pow(c1,3)
+              + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,1)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4);
+          case 1:
+          return 0
+              + p10*0.*pow(c1,1)*pow(c0,0) + p01*1.*pow(c1,0)*pow(c0,0)
+              + p20*0.*pow(c1,2)*pow(c0,0) + p11*1.*pow(c1,1)*pow(c0,0) + p02*2.*pow(c1,0)*pow(c0,1)
+              + p30*0.*pow(c1,3)*pow(c0,0) + p21*1.*pow(c1,2)*pow(c0,0) + p12*2.*pow(c1,1)*pow(c0,1) + p03*3.*pow(c1,0)*pow(c0,2)
+              + p40*0.*pow(c1,4)*pow(c0,0) + p31*1.*pow(c1,3)*pow(c0,0) + p22*2.*pow(c1,2)*pow(c0,1) + p13*3.*pow(c1,1)*pow(c0,2) + p04*4.*pow(c1,0)*pow(c0,3);
+          default: throw std::invalid_argument("\n");
+        }
+      }
+      case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      default: throw std::invalid_argument("Invalid liquidus surface\n");
+    }
+  }
+}
+
+double part_coeff(int which_comp, double *c)
+{
+  if (const_part_coeff.val)
+  {
+    switch (which_comp)
+    {
+      case 0: return part_coeff_0.val;
+      case 1: return part_coeff_1.val;
+      case 2: return part_coeff_2.val;
+      case 3: return part_coeff_3.val;
+    }
+  }
+  else
+  {
+    switch (alloy.val)
+    {
+      case 0: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
+      case 1: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
+      case 2: // Co-W-Al
+        switch (which_comp)
+        {
+          case 0:
+          {
+            double c0 = 100.*c[0];
+            double c1 = 100.*c[1];
+            static double p00 =  1.135e+00;
+            static double p10 = -3.118e-02;
+            static double p01 =  2.239e-03;
+            static double p20 =  1.463e-03;
+            static double p11 = -1.917e-03;
+            static double p02 =  1.135e-03;
+            static double p30 = -4.768e-05;
+            static double p21 =  9.953e-05;
+            static double p12 =  4.394e-05;
+            static double p03 = -6.706e-05;
+            static double p40 =  8.710e-07;
+            static double p31 = -2.235e-06;
+            static double p22 = -5.952e-07;
+            static double p13 = -3.904e-07;
+            static double p04 =  1.545e-06;
+            return p00
+                + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+                + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+                + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+                + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+          }
+          case 1:
+          {
+            double c0 = 100.*c[0];
+            double c1 = 100.*c[1];
+            static double p00 =  1.114e+00;
+            static double p10 = -9.187e-03;
+            static double p01 = -4.804e-02;
+            static double p20 =  1.733e-03;
+            static double p11 = -1.406e-04;
+            static double p02 =  4.313e-03;
+            static double p30 = -5.248e-05;
+            static double p21 = -8.236e-05;
+            static double p12 =  2.716e-05;
+            static double p03 = -2.159e-04;
+            static double p40 =  5.841e-07;
+            static double p31 =  9.961e-07;
+            static double p22 =  1.741e-06;
+            static double p13 = -9.305e-07;
+            static double p04 =  4.122e-06;
+            return p00
+                + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+                + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+                + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+                + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+          }
           default: throw std::invalid_argument("\n");
         }
       case 3: // Co-Al-W
         switch (which_comp)
         {
           case 0:
-            return 0.
-                +1.344000 * 1. *pow(c[0],0) * pow(c[1],0)
-                +2.303000 * 0. *pow(c[0],0) * pow(c[1],1)
-                -0.213300 * 2. *pow(c[0],1) * pow(c[1],0)
-                +0.070170 * 1. *pow(c[0],0) * pow(c[1],1)
-                -0.224600 * 0. *pow(c[0],0) * pow(c[1],2)
-                -0.003831 * 3. *pow(c[0],2) * pow(c[1],0)
-                -0.011570 * 2. *pow(c[0],1) * pow(c[1],1)
-                -0.008250 * 1. *pow(c[0],0) * pow(c[1],2)
-                +0.001531 * 0. *pow(c[0],0) * pow(c[1],3);
+          {
+            double c0 = 100.*c[0];
+            double c1 = 100.*c[1];
+            static double p00 =  1.135e+00;
+            static double p01 = -3.118e-02;
+            static double p10 =  2.239e-03;
+            static double p02 =  1.463e-03;
+            static double p11 = -1.917e-03;
+            static double p20 =  1.135e-03;
+            static double p03 = -4.768e-05;
+            static double p12 =  9.953e-05;
+            static double p21 =  4.394e-05;
+            static double p30 = -6.706e-05;
+            static double p04 =  8.710e-07;
+            static double p13 = -2.235e-06;
+            static double p22 = -5.952e-07;
+            static double p31 = -3.904e-07;
+            static double p40 =  1.545e-06;
+            return p00
+                + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+                + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+                + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+                + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+          }
           case 1:
-            return 0.
-                +1.344000 * pow(c[0],1) * 0. * pow(c[1],0)
-                +2.303000 * pow(c[0],0) * 1. * pow(c[1],0)
-                -0.213300 * pow(c[0],2) * 0. * pow(c[1],0)
-                +0.070170 * pow(c[0],1) * 1. * pow(c[1],0)
-                -0.224600 * pow(c[0],0) * 2. * pow(c[1],1)
-                -0.003831 * pow(c[0],3) * 0. * pow(c[1],0)
-                -0.011570 * pow(c[0],2) * 1. * pow(c[1],0)
-                -0.008250 * pow(c[0],1) * 2. * pow(c[1],1)
-                +0.001531 * pow(c[0],0) * 3. * pow(c[1],2);
+          {
+            double c0 = 100.*c[0];
+            double c1 = 100.*c[1];
+            static double p00 =  1.114e+00;
+            static double p01 = -9.187e-03;
+            static double p10 = -4.804e-02;
+            static double p02 =  1.733e-03;
+            static double p11 = -1.406e-04;
+            static double p20 =  4.313e-03;
+            static double p03 = -5.248e-05;
+            static double p12 = -8.236e-05;
+            static double p21 =  2.716e-05;
+            static double p30 = -2.159e-04;
+            static double p04 =  5.841e-07;
+            static double p13 =  9.961e-07;
+            static double p22 =  1.741e-06;
+            static double p31 = -9.305e-07;
+            static double p40 =  4.122e-06;
+            return p00
+                + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
+                + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
+                + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
+                + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
+          }
           default: throw std::invalid_argument("\n");
         }
       case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
@@ -663,18 +880,20 @@ void set_analytical_solution(double M, double v, double R)
   as = thermal_cond_s.val/density_s.val/heat_capacity_s.val;
   al = thermal_cond_l.val/density_l.val/heat_capacity_l.val;
 
-  Tstar = melting_temp.val;
+//  Tstar = melting_temp.val;
   Bl = 0;
 
   for (int j = 0; j < num_comps.val; ++j)
   {
     Cstar[j] = (*initial_conc_all[j])/(1. + 2.*(1.-(*part_coeff_all[j]))*xF_Fp(sqrt(lam/(*solute_diff_all[j]))));
-    Tstar = Tstar + (*liquidus_slope_all[j])*Cstar[j];
+//    Tstar = Tstar + (*liquidus_slope_all[j])*Cstar[j];
     Ai[j] = (*initial_conc_all[j]);
     Bi[j] = (Cstar[j]-(*initial_conc_all[j]))/F(sqrt(lam/(*solute_diff_all[j])));
 
     Bl = Bl + (*liquidus_slope_all[j])*Bi[j]*xFp(sqrt(lam/(*solute_diff_all[j])));
   }
+
+  Tstar = liquidus_value(Cstar);
 
   Bl = Bl/xFp(sqrt(lam/al))/M;
   Bs = Bl * thermal_cond_l.val/thermal_cond_s.val * sqrt(as/al) * Fp(sqrt(lam/al))/Fp(sqrt(lam/as)) + latent_heat.val/(density_s.val*heat_capacity_s.val) * 2*sqrt(lam/as)/Fp(sqrt(lam/as));
@@ -1042,13 +1261,13 @@ public:
 #endif
       case -2: return analytic::tl_exact(t, ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::tl_exact(t, ABS1(y-ymin.val));
-      case  0: return melting_temp() + liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
-      case  1: return melting_temp() + liquidus_value(c.data());
-      case  2: return melting_temp() + liquidus_value(c.data());
-      case  3: return melting_temp() + liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
-      case  4: return melting_temp() + liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())));
-      case  5: return melting_temp() + liquidus_value(c.data());
-      case  6: return melting_temp() + liquidus_value(c.data()) + (y-front_location())*temp_gradient();
+      case  0: return liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
+      case  1: return liquidus_value(c.data());
+      case  2: return liquidus_value(c.data());
+      case  3: return liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
+      case  4: return liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())));
+      case  5: return liquidus_value(c.data());
+      case  6: return liquidus_value(c.data()) + (y-front_location())*temp_gradient();
       default: throw;
     }
   }
@@ -1074,13 +1293,13 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return melting_temp() + liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
-      case  1: return melting_temp() + liquidus_value(c.data());
-      case  2: return melting_temp() + liquidus_value(c.data());
-      case  3: return melting_temp() + liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
-      case  4: return melting_temp() + liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())))*thermal_cond_l()/thermal_cond_s();
-      case  5: return melting_temp() + liquidus_value(c.data());
-      case  6: return melting_temp() + liquidus_value(c.data()) + (y-front_location())*temp_gradient();
+      case  0: return liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
+      case  1: return liquidus_value(c.data());
+      case  2: return liquidus_value(c.data());
+      case  3: return liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
+      case  4: return liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())))*thermal_cond_l()/thermal_cond_s();
+      case  5: return liquidus_value(c.data());
+      case  6: return liquidus_value(c.data()) + (y-front_location())*temp_gradient();
       default: throw;
     }
   }
@@ -1105,13 +1324,13 @@ public:
 #endif
       case -2: return analytic::Tstar;
       case -1: return analytic::Tstar;
-      case  0: return melting_temp() + liquidus_value(c.data());
-      case  1: return melting_temp() + liquidus_value(c.data());
-      case  2: return melting_temp() + liquidus_value(c.data());
-      case  3: return melting_temp() + liquidus_value(c.data());
-      case  4: return melting_temp() + liquidus_value(c.data());
-      case  5: return melting_temp() + liquidus_value(c.data());
-      case  6: return melting_temp() + liquidus_value(c.data());
+      case  0: return liquidus_value(c.data());
+      case  1: return liquidus_value(c.data());
+      case  2: return liquidus_value(c.data());
+      case  3: return liquidus_value(c.data());
+      case  4: return liquidus_value(c.data());
+      case  5: return liquidus_value(c.data());
+      case  6: return liquidus_value(c.data());
       default: throw;
     }
   }
@@ -1215,7 +1434,7 @@ public:
           case  3:
           case  4:
           case  5:
-          case  6: throw;
+          case  6: return 0;
           default: throw;
         }
       case NEUMANN:
@@ -1407,12 +1626,13 @@ int main (int argc, char* argv[])
                                           "time_elapsed iteration "
                                           "local_nodes "
                                           "ghost_nodes "
-                                          "sub_iterations\n"); CHKERRXX(ierr);
+                                          "sub_iterations "
+                                          "bc_error_max\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
 
-  if (save_analytical.val)
+  if (save_accuracy.val)
   {
     ierr = PetscFOpen(mpi.comm(), name_analytic, "w", &fich); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fich, "step "
@@ -1427,8 +1647,6 @@ int main (int argc, char* argv[])
 
     for (int i = 0; i < num_comps.val; ++i) {
       ierr = PetscFPrintf(mpi.comm(), fich, "cl%d ", i); CHKERRXX(ierr);
-    }
-    for (int i = 0; i < num_comps.val; ++i) {
       ierr = PetscFPrintf(mpi.comm(), fich, "cs%d ", i); CHKERRXX(ierr);
     }
     ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
@@ -1442,7 +1660,7 @@ int main (int argc, char* argv[])
     pl.save_all(file.str().c_str());
   }
 
-  if (save_vtk.val)
+  if (save_vtk.val || save_vtk_history.val || save_vtk_analytical.val)
   {
     std::ostringstream command;
     command << "mkdir -p " << out_dir << "/vtu";
@@ -1501,19 +1719,38 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi.comm(), "cooling_velocity: %g\n", cooling_velocity.val); CHKERRXX(ierr);
   }
 
-
   parStopWatch w1;
   w1.start("total time");
 
-  int    n_xyz   [] = { DIM(nx.val, ny.val, nz.val) };
-  int    periodic[] = { DIM(px(), py(), pz()) };
-  double xyz_min [] = { DIM(xmin.val, ymin.val, zmin.val) };
-  double xyz_max [] = { DIM(xmax.val, ymax.val, zmax.val) };
+  int initial_division = pow(2, sub_split_lvl.val) + sub_split_num.val;
+  int lvl_decrease = floor(log(double(initial_division))/log(2.));
+
+  while (true) {
+    if (initial_division % 2 == 0) {
+      initial_division = initial_division / 2;
+      --lvl_decrease;
+    } else {
+      break;
+    }
+  }
+
+  // domain size information
+  int n_xyz[]      = { DIM(nx.val*initial_division, ny.val*initial_division, nz.val*initial_division) };
+  double xyz_min[] = { DIM(xmin.val, ymin.val, zmin.val) };
+  double xyz_max[] = { DIM(xmax.val, ymax.val, zmax.val)};
+  int periodic[]   = { DIM(px(),  py(),  pz())};
+
+  int lmin_new = lmin.val-lvl_decrease;
+  int lmax_new = lmax.val-lvl_decrease;
+
+  double dx_eff = (xmax.val-xmin.val)/double(n_xyz[0])/pow(2., lmax_new);
+  double lmax_eff = lmax_new + log(initial_division)/log(2.);
+  double lmin_eff = lmin_new + log(initial_division)/log(2.);
 
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
 
-  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin.val, lmax.val, lip.val, band.val);
+  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin_new, lmax_new, lip.val, band.val);
 
   p4est_t                   *p4est = mas.get_p4est();
   p4est_nodes_t             *nodes = mas.get_nodes();
@@ -1523,24 +1760,10 @@ int main (int argc, char* argv[])
   vec_and_ptr_t front_phi(p4est, nodes);
   vec_and_ptr_t contr_phi(front_phi.vec);
   vec_and_ptr_t seed_map (front_phi.vec);
-//  vec_and_ptr_t tl(front_phi.vec);
-//  vec_and_ptr_t ts(front_phi.vec);
-//  vec_and_ptr_t vn(front_phi.vec);
-//  vec_and_ptr_array_t cl(num_comps, front_phi.vec);
-//  vec_and_ptr_array_t cs(num_comps, front_phi.vec);
 
   sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_phi.vec);
   sample_cf_on_nodes(p4est, nodes, contr_phi_cf, contr_phi.vec);
   sample_cf_on_nodes(p4est, nodes, seed_number_cf, seed_map.vec);
-//  sample_cf_on_nodes(p4est, nodes, tl_cf, tl.vec);
-//  sample_cf_on_nodes(p4est, nodes, ts_cf, ts.vec);
-//  sample_cf_on_nodes(p4est, nodes, vn_cf, vn.vec);
-
-//  for (int i = 0; i < num_comps; ++i)
-//  {
-//    sample_cf_on_nodes(p4est, nodes, (*cl_cf_all[i]), cl.vec[i]);
-//    sample_cf_on_nodes(p4est, nodes, (*cs_cf_all[i]), cs.vec[i]);
-//  }
 
   /* set initial time step */
   double dxyz[P4EST_DIM];
@@ -1549,6 +1772,8 @@ int main (int argc, char* argv[])
   double DIM(dx = dxyz[0],
              dy = dxyz[1],
              dz = dxyz[2]);
+
+  PetscPrintf(mpi.comm(), "Conc dt: %1.3e, Temp dt: %1.3e, Velo dt: %1.3e\n", .5*dx*dx/solute_diff_0.val, .5*dx*dx*density_l.val*heat_capacity_l.val/thermal_cond_l.val, cfl_number.val*dx/cooling_velocity.val);
 
   // perturb level set
   if (enforce_planar_front.val) init_perturb.val = 0;
@@ -1568,15 +1793,15 @@ int main (int argc, char* argv[])
   ierr = VecGhostUpdateEnd  (front_phi.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.reinitialize_1st_order_time_2nd_order_space(front_phi.vec);
-  ls.perturb_level_set_function(front_phi.vec, EPS);
+//  ls.reinitialize_2nd_order(front_phi.vec);
+//  ls.perturb_level_set_function(front_phi.vec, EPS);
 
   // set alloy parameters
   double solute_diff_all[] = { solute_diff_0.val, solute_diff_1.val, solute_diff_2.val, solute_diff_3.val };
   double part_coeff_all [] = { part_coeff_0.val, part_coeff_1.val, part_coeff_2.val, part_coeff_3.val };
 
-  mas.set_liquidus(melting_temp.val, liquidus_value, liquidus_slope);
-  mas.set_composition_parameters(solute_diff_all, part_coeff_all);
+  mas.set_liquidus(liquidus_value, liquidus_slope, part_coeff);
+  mas.set_composition_parameters(solute_diff_all);
   mas.set_thermal_parameters(latent_heat.val,
                              density_l.val, heat_capacity_l.val, thermal_cond_l.val,
                              density_s.val, heat_capacity_s.val, thermal_cond_s.val);
@@ -1608,22 +1833,11 @@ int main (int argc, char* argv[])
 
   // set time steps
   double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-
-//  dt = 1.0e-3;
-
-  double dt_curv = 0.000005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
-
-//  mas.set_dt(MIN(dt, dt_curv));
-  mas.set_dt_limits(0, MIN(dt_curv, 100.*dt));
-//  mas.set_dt(dt);
-//  mas.set_dt_limits(0.0*dt, 10.*dt);
-//  mas.set_dt_limits(0.*dt, dt);
+  double dt_curv = 0.0005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
+  mas.set_dt_limits(0, MIN(dt_curv, 10*dt));
+//  mas.set_dt_limits(dt, dt);
 
   // set initial conditions
-//  mas.set_temperature(tl.vec, ts.vec);
-//  mas.set_concentration(cl.vec.data(), cs.vec.data());
-//  mas.set_normal_velocity(vn.vec);
-
   mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
   mas.set_temperature(tl_cf, ts_cf, tf_cf);
   mas.set_concentration(cl_cf_all, cs_cf_all);
@@ -1645,7 +1859,6 @@ int main (int argc, char* argv[])
   mas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction.val);
   mas.set_dendrite_min_length      (dendrite_min_length.val);
 
-  mas.save_VTK(0);
 
   vec_and_ptr_t ones(front_phi.vec);
   VecSetGhost(ones.vec, 1.);
@@ -1653,11 +1866,6 @@ int main (int argc, char* argv[])
   ones.destroy();
 
   // clear up memory
-//  tl.destroy();
-//  ts.destroy();
-//  vn.destroy();
-//  cl.destroy();
-//  cs.destroy();
   contr_phi.destroy();
   front_phi.destroy();
   seed_map.destroy();
@@ -1667,6 +1875,7 @@ int main (int argc, char* argv[])
   double tn             = 0;
   double total_growth   = 0;
   double base           = 0.1;
+  double bc_error_max   = 0;
   int    iteration      = 0;
   int    sub_iterations = 0;
   int    vtk_idx        = 0;
@@ -1675,6 +1884,8 @@ int main (int argc, char* argv[])
   std::vector<bool>   logevent;
   std::vector<double> old_time;
   std::vector<int>    old_count;
+
+  std::vector<double> errors_max_over_time(2*num_comps.val+7, 0);
 
   while (1)
   {
@@ -1685,7 +1896,8 @@ int main (int argc, char* argv[])
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
     // save velocity, lenght of interface and area of solid phase in time
-    if (save_characteristics.val && save_now)
+//    if (save_characteristics.val && save_now)
+    if (save_characteristics.val)
     {
       vec_and_ptr_t vn;
 
@@ -1719,7 +1931,18 @@ int main (int argc, char* argv[])
 
       // write into file
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, velocity_avg/scaling(), mas.get_front_velocity_max()/scaling(), front_area, solid_volume, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d %e\n",
+                   tn,
+                   velocity_avg/scaling(),
+                   mas.get_front_velocity_max()/scaling(),
+                   front_area,
+                   solid_volume,
+                   time_elapsed,
+                   iteration,
+                   num_local_nodes,
+                   num_ghost_nodes,
+                   sub_iterations,
+                   bc_error_max);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
 
@@ -1729,15 +1952,20 @@ int main (int argc, char* argv[])
     }
 
     // save field data
-    if (save_vtk.val && save_now)
-    {
+    if (save_dendrites.val && save_now) {
       mas.count_dendrites(vtk_idx);
+    }
+    if (save_vtk.val && save_now) {
+//      mas.count_dendrites(vtk_idx);
       mas.save_VTK(vtk_idx);
+//      mas.save_VTK_solid(vtk_idx);
+    }
+    if (save_vtk_history.val && save_now) {
       mas.save_VTK_solid(vtk_idx);
     }
 
     // compute error
-    if (save_analytical.val && save_now)
+    if ((save_vtk_analytical.val || save_accuracy.val) && save_now)
     {
       front_phi_cf.t = tn;
       ts_cf.t = tn;
@@ -1811,7 +2039,7 @@ int main (int argc, char* argv[])
       cl.get_array(); cl_exact.get_array(); cl_error.get_array();
       cs.get_array(); cs_exact.get_array(); cs_error.get_array();
 
-      double band = 2.*dxyz[0];
+      double band = 1.5*dxyz[0];
       foreach_node(n, nodes) {
         if (contr.ptr[n] < 0.) {
           if (front.ptr[n] > 0.) {
@@ -1846,109 +2074,163 @@ int main (int argc, char* argv[])
         }
       }
 
-      const char* out_dir = getenv("OUT_DIR");
-      char name[1000];
-      sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
+      if (save_vtk_analytical.val) {
+        char name[1000];
+        sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
 
-      // cell data
-      std::vector<double *>    cell_data;
-      std::vector<std::string> cell_data_names;
+        // cell data
+        std::vector<double *>    cell_data;
+        std::vector<std::string> cell_data_names;
 
-      // point data
-      std::vector<double *>    point_data;
-      std::vector<std::string> point_data_names;
+        // point data
+        std::vector<double *>    point_data;
+        std::vector<std::string> point_data_names;
 
-      point_data.push_back(contr.ptr); point_data_names.push_back("contr");
-      point_data.push_back(front.ptr); point_data_names.push_back("phi");
-      point_data.push_back(tl.ptr); point_data_names.push_back("tl");
-      point_data.push_back(ts.ptr); point_data_names.push_back("ts");
-      point_data.push_back(vn.ptr); point_data_names.push_back("vn");
-      point_data.push_back(ft.ptr); point_data_names.push_back("ft");
-      point_data.push_back(tf.ptr); point_data_names.push_back("tf");
-      point_data.push_back(vf.ptr); point_data_names.push_back("vf");
+        point_data.push_back(contr.ptr); point_data_names.push_back("contr");
+        point_data.push_back(front.ptr); point_data_names.push_back("phi");
+        point_data.push_back(tl.ptr); point_data_names.push_back("tl");
+        point_data.push_back(ts.ptr); point_data_names.push_back("ts");
+        point_data.push_back(vn.ptr); point_data_names.push_back("vn");
+        point_data.push_back(ft.ptr); point_data_names.push_back("ft");
+        point_data.push_back(tf.ptr); point_data_names.push_back("tf");
+        point_data.push_back(vf.ptr); point_data_names.push_back("vf");
 
-      point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
-      point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
-      point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
-      point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
-      point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
-      point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
-      point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
+        point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
+        point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
+        point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
+        point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
+        point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
+        point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
+        point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
 
-      point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
-      point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
-      point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
-      point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
-      point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
-      point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
-      point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
+        point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
+        point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
+        point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
+        point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
+        point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
+        point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
+        point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
 
-      for (int i = 0; i < num_comps.val; ++i) {
-        char numstr[21]; sprintf(numstr, "%d", i);
+        for (int i = 0; i < num_comps.val; ++i) {
+          char numstr[21]; sprintf(numstr, "%d", i);
 
-        point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
-        point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
-        point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
+          point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
+          point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
+          point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
 
-        point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
-        point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
-        point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
+          point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
+          point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
+          point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
+        }
+
+        my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     name,
+                                     point_data, point_data_names,
+                                     cell_data, cell_data_names);
+
+
+        PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
+
+        contr.restore_array();
+        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
+        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
+        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
+        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
+        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
       }
-
-      my_p4est_vtk_write_all_vector_form(p4est, nodes, mas.get_ghost(),
-                                         P4EST_TRUE, P4EST_TRUE,
-                                         name,
-                                         point_data, point_data_names,
-                                         cell_data, cell_data_names);
-
-
-      PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
-
-      contr.restore_array();
-      front.restore_array(); front_exact.restore_array(); front_error.restore_array();
-      ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
-      tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
-      vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
-      ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
-      tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
-      vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
-      cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
-      cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
-
-      std::vector<double> errors_max(2*num_comps.val+7, 0);
-
-      ierr = VecMax(front_error.vec, NULL, &errors_max[0]); CHKERRXX(ierr);
-      ierr = VecMax(ts_error.vec, NULL, &errors_max[1]); CHKERRXX(ierr);
-      ierr = VecMax(tl_error.vec, NULL, &errors_max[2]); CHKERRXX(ierr);
-      ierr = VecMax(vn_error.vec, NULL, &errors_max[3]); CHKERRXX(ierr);
-      ierr = VecMax(ft_error.vec, NULL, &errors_max[4]); CHKERRXX(ierr);
-      ierr = VecMax(tf_error.vec, NULL, &errors_max[5]); CHKERRXX(ierr);
-      ierr = VecMax(vf_error.vec, NULL, &errors_max[6]); CHKERRXX(ierr);
-      for (int i = 0; i < num_comps.val; ++i) {
-        ierr = VecMax(cl_error.vec[i], NULL, &errors_max[7+i]); CHKERRXX(ierr);
-        ierr = VecMax(cs_error.vec[i], NULL, &errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
-      }
-
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, errors_max.data(), errors_max.size(), MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
       // write into file
-      ierr = PetscFOpen(mpi.comm(), name_analytic, "a", &fich); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
-      for (int i = 0; i < num_comps.val; ++i) {
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+      if (save_accuracy.val) {
+        std::vector<double> errors_max(2*num_comps.val+7, 0);
+
+        ierr = VecMax(front_error.vec, NULL, &errors_max[0]); CHKERRXX(ierr);
+        ierr = VecMax(ts_error.vec, NULL, &errors_max[1]); CHKERRXX(ierr);
+        ierr = VecMax(tl_error.vec, NULL, &errors_max[2]); CHKERRXX(ierr);
+        ierr = VecMax(vn_error.vec, NULL, &errors_max[3]); CHKERRXX(ierr);
+        ierr = VecMax(ft_error.vec, NULL, &errors_max[4]); CHKERRXX(ierr);
+        ierr = VecMax(tf_error.vec, NULL, &errors_max[5]); CHKERRXX(ierr);
+        ierr = VecMax(vf_error.vec, NULL, &errors_max[6]); CHKERRXX(ierr);
+        for (int i = 0; i < num_comps.val; ++i) {
+          ierr = VecMax(cl_error.vec[i], NULL, &errors_max[7+i]); CHKERRXX(ierr);
+          ierr = VecMax(cs_error.vec[i], NULL, &errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+        }
+
+        mpiret = MPI_Allreduce(MPI_IN_PLACE, errors_max.data(), errors_max.size(), MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+        for (int i = 0; i < errors_max.size(); ++i) {
+          errors_max_over_time[i] = MAX(errors_max_over_time[i], errors_max[i]);
+        }
+
+        ierr = PetscFOpen(mpi.comm(), name_analytic, "a", &fich); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
+        for (int i = 0; i < num_comps.val; ++i) {
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+        }
+        ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+        ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+        ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", name_analytic); CHKERRXX(ierr);
+
+        // save last and max over time
+        if (!keep_going) {
+
+          char name_max[10000];
+          char name_last[10000];
+          sprintf(name_max, "%s/analytic_max.dat", out_dir);
+          sprintf(name_last, "%s/analytic_last.dat", out_dir);
+
+          ierr = PetscFOpen(mpi.comm(), name_last, "w", &fich); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
+          for (int i = 0; i < num_comps.val; ++i) {
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+          }
+          ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+          ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+          ierr = PetscPrintf(mpi.comm(), "saved last errors in %s\n", name_last); CHKERRXX(ierr);
+
+          ierr = PetscFOpen(mpi.comm(), name_max, "w", &fich); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[0]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[1]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[2]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[3]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[4]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[5]); CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[6]); CHKERRXX(ierr);
+          for (int i = 0; i < num_comps.val; ++i) {
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+i]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+num_comps.val+i]); CHKERRXX(ierr);
+          }
+          ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+          ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+          ierr = PetscPrintf(mpi.comm(), "saved max errors in %s\n", name_max); CHKERRXX(ierr);
+        }
       }
-      ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
-      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", name); CHKERRXX(ierr);
 
       front_exact.destroy(); front_error.destroy();
       ts_exact.destroy(); ts_error.destroy();
@@ -1984,8 +2266,17 @@ int main (int argc, char* argv[])
     // advance front to t_{n+1}
     mas.update_grid();
 
+    if (0) {
+      front_phi_cf.t = tn+mas.get_dt();
+      sample_cf_on_nodes(mas.get_p4est(),  mas.get_nodes(), front_phi_cf, mas.get_front_phi());
+      mas.compute_geometric_properties_front();
+    }
+
+    mas.update_grid_history();
+
+    bc_error_max = 0;
     // solve nonlinear system for temperature, concentration and velocity at t_n
-    sub_iterations += mas.one_step();
+    sub_iterations += mas.one_step(bc_error_max, 2);
     tn             += mas.get_dt();
 
     // compute total growth

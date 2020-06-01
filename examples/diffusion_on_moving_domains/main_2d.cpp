@@ -584,7 +584,6 @@ int main(int argc, char** argv)
       }
     }
 
-
     // domain size information
     const int n_xyz[]      = { DIM(num_trees_x.val*initial_division, num_trees_y.val*initial_division, num_trees_z.val*initial_division) };
     const double xyz_min[] = { DIM(xmin.val, ymin.val, zmin.val) };

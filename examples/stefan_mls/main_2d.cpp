@@ -1224,7 +1224,7 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
-    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
 
 
     // Restore arrays:
