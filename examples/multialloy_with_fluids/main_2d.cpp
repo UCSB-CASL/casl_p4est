@@ -164,7 +164,7 @@ DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error c
 
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
-DEFINE_PARAMETER(pl,double,vorticity_threshold,0.1,"Threshold to refine vorticity by, default is 0.1 \n");
+DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
 int stop_flag = -1;
@@ -3696,6 +3696,11 @@ int main(int argc, char** argv) {
   vec_and_ptr_t phi_solid; // LSF for solid domain: -- This will be assigned within the loop as the negative of phi
   vec_and_ptr_t phi_cylinder;   // LSF for the inner cylinder, if applicable (example ICE_OVER_CYLINDER)
 
+  vec_and_ptr_dim_t phi_d;
+  vec_and_ptr_dim_t phi_solid_d;
+  vec_and_ptr_dim_t phi_cylinder_d;
+
+
   vec_and_ptr_dim_t phi_dd;
   vec_and_ptr_dim_t phi_solid_dd;
   vec_and_ptr_dim_t phi_cylinder_dd;
@@ -3726,6 +3731,7 @@ int main(int argc, char** argv) {
   vec_and_ptr_dim_t T_l_d;
   vec_and_ptr_dim_t T_s_d;
 
+  vec_and_ptr_dim_t T_l_dd;
   vec_and_ptr_t gradT_refine;
 
   // Stefan problem:------------------------------------
@@ -4153,47 +4159,61 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // Define LSF for the solid domain (as just the negative of the liquid one):
         if(solve_stefan){
-            if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning field extension \n");
-            phi_solid.create(p4est,nodes);
-            VecCopyGhost(phi.vec,phi_solid.vec);
-            VecScaleGhost(phi_solid.vec,-1.0);
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning field extension \n");
+          phi_solid.create(p4est,nodes);
+          VecCopyGhost(phi.vec,phi_solid.vec);
+          VecScaleGhost(phi_solid.vec,-1.0);
 
-            // Compute normals for each domain:
-            liquid_normals.create(p4est,nodes);
-            compute_normals(*ngbd,phi.vec,liquid_normals.vec);
-            solid_normals.create(p4est,nodes);
-            compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
+          // Compute normals for each domain:
+          liquid_normals.create(p4est,nodes);
+          compute_normals(*ngbd,phi.vec,liquid_normals.vec);
+          solid_normals.create(p4est,nodes);
+          compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
-            // Extend Temperature Fields across the interface:
-            ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
-            ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+          if(print_checkpoints){
+            int sizes[5] = {0,0,0,0,0};
+            VecGetSize(phi.vec,&sizes[0]);
+            VecGetSize(liquid_normals.vec[0],&sizes[1]);
+          }
 
-            if(example_ == ICE_AROUND_CYLINDER){
-                cyl_normals.create(p4est,nodes);
-                phi_cylinder.create(p4est,nodes);
-                sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-                compute_normals(*ngbd,phi_cylinder.vec,cyl_normals.vec);
+          // Extend Temperature Fields across the interface:
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi \n");
+          ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_,
+                                            extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL,NULL);
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi \n");
 
-                ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec, T_s_n.vec, 50, 2, 1.e-15, 0.5*extension_band_use_, 0.5*extension_band_extend_, 0.5*extension_band_check_, cyl_normals.vec, NULL, NULL, false, NULL, NULL);
-                cyl_normals.destroy();
-                phi_cylinder.destroy();
+          ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_,
+                                            extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
-                // Delete data for normals since it is no longer needed:
-                liquid_normals.destroy();
-                solid_normals.destroy();
+          if(example_ == ICE_AROUND_CYLINDER){
+            phi_cylinder.create(p4est,nodes);
+            sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
 
-              } // end of solve stefan
+            cyl_normals.create(p4est,nodes);
+            compute_normals(*ngbd,phi_cylinder.vec,cyl_normals.vec);
 
-            if (solve_stefan && check_temperature_values){
-              // Check Temperature values:
-              PetscPrintf(mpi.comm(),"\n Checking temperature values after field extension: \n [ ");
-              PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
-              check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder,true,false,false);
-              PetscPrintf(mpi.comm(),"\nIn solid domain: ");
-              check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder,true,false,false);
-              PetscPrintf(mpi.comm()," ] \n");
-              }
-          } // end of "if save stefan"
+            if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi_cylinder \n");
+            ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec, T_s_n.vec, 50, 2, 1.e-15, 0.5*extension_band_use_, 0.5*extension_band_extend_, 0.5*extension_band_check_, cyl_normals.vec, NULL, NULL, false, NULL, NULL);
+            if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed extension over phi_cylinder \n");
+
+            cyl_normals.destroy();
+            phi_cylinder.destroy();
+            }
+
+          // Delete data for normals since it is no longer needed:
+          liquid_normals.destroy();
+          solid_normals.destroy();
+
+          if (solve_stefan && check_temperature_values){
+            // Check Temperature values:
+            PetscPrintf(mpi.comm(),"\n Checking temperature values after field extension: \n [ ");
+            PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+            check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder,true,false,false);
+            PetscPrintf(mpi.comm(),"\nIn solid domain: ");
+            check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder,true,false,false);
+            PetscPrintf(mpi.comm()," ] \n");
+            }
+          } // end of "if solve stefan"
         // --------------------------------------------------------------------------------------------------------------
         // Save to vtk: Save data every specified amout of timesteps: -- Do this after values are extended across interface to make visualization nicer
         // --------------------------------------------------------------------------------------------------------------
@@ -4250,7 +4270,7 @@ int main(int argc, char** argv) {
                   ns->compute_pressure_at_nodes(&press_nodes.vec);
                 }
 
-                sprintf(output,"%s/output_new_grid_update_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes,out_idx);
+                sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
                 save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
 
                 phi_cylinder.destroy();
@@ -4271,7 +4291,6 @@ int main(int argc, char** argv) {
 
         if(example_ == NS_GIBOU_EXAMPLE){
             const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
-
             char output[1000];
             PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
@@ -4424,97 +4443,98 @@ int main(int argc, char** argv) {
 
         // Begin operations on refinement fields: We don't want to consider fields in positive subdomain so we filter these values out
         if(solve_navier_stokes && (num_fields!=0)){
-            // Only use values of vorticity and d2T in the positive subdomain for refinement:
-            vorticity_refine.create(p4est,nodes);
 
-            if(refine_by_d2T){
-                T_l_d.create(p4est,nodes);
-                ngbd->second_derivatives_central(T_l_n.vec,T_l_d.vec);
-              }
+          // Only use values of vorticity and d2T in the positive subdomain for refinement:
+          vorticity_refine.create(p4est,nodes);
 
-            // Get relevant arrays:
-            vorticity.get_array();
-            vorticity_refine.get_array();
-            if(refine_by_d2T) {T_l_d.get_array();}
-            phi.get_array();
-
-            // Compute proper refinement fields on layer nodes:
-            for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-                p4est_locidx_t n = ngbd->get_layer_node(i);
-                if(phi.ptr[n] < 0.){
-                    vorticity_refine.ptr[n] = vorticity.ptr[n];
-                  }
-                else{
-                    vorticity_refine.ptr[n] = 0.0;
-
-                    if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        foreach_dimension(d){
-                          T_l_d.ptr[d][n]=0.;
-                        }
-                      }
-                  }
-              } // end of loop over layer nodes
-
-            // Begin updating the ghost values:
-            ierr = VecGhostUpdateBegin(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-            if(refine_by_d2T){
-              foreach_dimension(d){
-                ierr = VecGhostUpdateBegin(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-              }
+          if(refine_by_d2T){
+              T_l_dd.create(p4est,nodes);
+              ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
             }
 
-            //Compute proper refinement fields on local nodes:
-            for(size_t i = 0; i<ngbd->get_local_size(); i++){
-                p4est_locidx_t n = ngbd->get_local_node(i);
-                if(phi.ptr[n] < 0.){
-                    vorticity_refine.ptr[n] = vorticity.ptr[n];
-                  }
-                else{
-                    vorticity_refine.ptr[n] = 0.0;
-                    if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        foreach_dimension(d){
-                          T_l_d.ptr[d][n]=0.;
-                        }
-                      }
-                  }
-              } // end of loop over local nodes
+          // Get relevant arrays:
+          vorticity.get_array();
+          vorticity_refine.get_array();
+          if(refine_by_d2T) {T_l_dd.get_array();}
+          phi.get_array();
 
-            // Finish updating the ghost values:
-            ierr = VecGhostUpdateEnd(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-            if(refine_by_d2T){
-              foreach_dimension(d){
-                ierr = VecGhostUpdateEnd(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-              }
+          // Compute proper refinement fields on layer nodes:
+          for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+              p4est_locidx_t n = ngbd->get_layer_node(i);
+              if(phi.ptr[n] < 0.){
+                  vorticity_refine.ptr[n] = vorticity.ptr[n];
+                }
+              else{
+                  vorticity_refine.ptr[n] = 0.0;
+
+                  if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+                      foreach_dimension(d){
+                        T_l_dd.ptr[d][n]=0.;
+                      }
+                    }
+                }
+            } // end of loop over layer nodes
+
+          // Begin updating the ghost values:
+          ierr = VecGhostUpdateBegin(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+          if(refine_by_d2T){
+            foreach_dimension(d){
+              ierr = VecGhostUpdateBegin(T_l_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+            }
+          }
+
+          //Compute proper refinement fields on local nodes:
+          for(size_t i = 0; i<ngbd->get_local_size(); i++){
+              p4est_locidx_t n = ngbd->get_local_node(i);
+              if(phi.ptr[n] < 0.){
+                  vorticity_refine.ptr[n] = vorticity.ptr[n];
+                }
+              else{
+                  vorticity_refine.ptr[n] = 0.0;
+                  if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_dd in there
+                      foreach_dimension(d){
+                        T_l_dd.ptr[d][n]=0.;
+                      }
+                    }
+                }
+            } // end of loop over local nodes
+
+          // Finish updating the ghost values:
+          ierr = VecGhostUpdateEnd(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+          if(refine_by_d2T){
+            foreach_dimension(d){
+              ierr = VecGhostUpdateEnd(T_l_dd.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+            }
+          }
+
+          // Restore appropriate arrays:
+          if(refine_by_d2T) {T_l_dd.restore_array();}
+          vorticity.restore_array();
+          vorticity_refine.restore_array();
+          phi.restore_array();
+
+
+          // Add our refinement fields to the array:
+          int fields_idx = 0;
+          fields_[fields_idx++] = vorticity_refine.vec;
+          if(refine_by_d2T){
+              fields_[fields_idx++] = T_l_dd.vec[0];
+              fields_[fields_idx++] = T_l_dd.vec[1];
             }
 
-            // Restore appropriate arrays:
-            if(refine_by_d2T) {T_l_d.restore_array();}
-            vorticity.restore_array();
-            vorticity_refine.restore_array();
-            phi.restore_array();
+          P4EST_ASSERT(fields_idx ==num_fields);
 
+          // Coarsening instructions: (for vorticity)
+          compare_opn.push_back(LESS_THAN);
+          diag_opn.push_back(DIVIDE_BY);
+          criteria.push_back(threshold*NS_norm/2.);
 
-            // Add our refinement fields to the array:
-            int fields_idx = 0;
-            fields_[fields_idx++] = vorticity_refine.vec;
-            if(refine_by_d2T){
-                fields_[fields_idx++] = T_l_d.vec[0];
-                fields_[fields_idx++] = T_l_d.vec[1];
-              }
+          // Refining instructions: (for vorticity)
+          compare_opn.push_back(GREATER_THAN);
+          diag_opn.push_back(DIVIDE_BY);
+          criteria.push_back(threshold*NS_norm);
 
-            P4EST_ASSERT(fields_idx ==num_fields);
-
-            // Coarsening instructions: (for vorticity)
-            compare_opn.push_back(LESS_THAN);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(threshold*NS_norm/2.);
-
-            // Refining instructions: (for vorticity)
-            compare_opn.push_back(GREATER_THAN);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(threshold*NS_norm);
-
-            if(refine_by_d2T){
+          if(refine_by_d2T){
                 double dTheta = (theta_wall - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
 
                 // Coarsening instructions: (for dT/dx)
@@ -4537,7 +4557,7 @@ int main(int argc, char** argv) {
                 diag_opn.push_back(DIVIDE_BY);
                 criteria.push_back(dTheta*gradT_threshold); // doesnt get used
               }
-          }
+          } // end of "if solve navier stokes and num_fields!=0"
 
         // Create second derivatives for phi in the case that we are using update_p4est:
         if(solve_stefan){
@@ -4547,17 +4567,19 @@ int main(int argc, char** argv) {
 
         // Advect the LSF and update the grid under the v_interface field:
         if(solve_coupled || solve_stefan){
-            if(example_ == ICE_AROUND_CYLINDER){
-                // Get the cylinder LSF if we need it
-                phi_cylinder.create(p4est_np1,nodes_np1); // create to refine around, then will destroy
-                sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
-              }
+          if(example_ == ICE_AROUND_CYLINDER){
+            if(print_checkpoints) PetscPrintf(mpi.comm(),"phi cylinder created \n");
+            // Get the cylinder LSF if we need it
+            phi_cylinder.create(p4est_np1,nodes_np1); // create to refine around, then will destroy
+            sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
+            }
 
-            // Call grid advection and update:
-            sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec:NULL,num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+          // Call grid advection and update:
+          sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec: NULL, num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Grid update completed \n");
 
-            // Destroy cylinder LSF if it was created, now that it is not needed:
-            if(example_==ICE_AROUND_CYLINDER) phi_cylinder.destroy();
+          // Destroy cylinder LSF if it was created, now that it is not needed:
+          if(example_==ICE_AROUND_CYLINDER) phi_cylinder.destroy();
           }
 
         else if (solve_navier_stokes && !solve_stefan){
@@ -4653,14 +4675,13 @@ int main(int argc, char** argv) {
             phi_new.destroy();
           } // end of if only navier stokes
 
-
         // Destroy old derivative values in the case that we used it for update_p4est:
         if(solve_stefan)phi_dd.destroy();
 
         // Destroy refinement vorticity:
         if(solve_navier_stokes){
             vorticity_refine.destroy();
-            if(refine_by_d2T){T_l_d.destroy();gradT_refine.destroy();}
+            if(refine_by_d2T){T_l_dd.destroy();gradT_refine.destroy();}
           }
 
         // Clear up the memory from the std vectors holding refinement info:
@@ -4702,6 +4723,7 @@ int main(int argc, char** argv) {
             VecScaleGhost(phi.vec,-1.0);
             VecCopyGhost(phi.vec,phi_solid.vec);
             VecScaleGhost(phi.vec,-1.0);
+            if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
 
           } // end of if solve stefan
 
