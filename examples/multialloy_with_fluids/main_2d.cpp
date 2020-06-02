@@ -2217,16 +2217,51 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   }
 }
 
-void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_t v, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd, p4est_t *p4est_nm1, p4est_nodes_t *nodes_nm1, my_p4est_node_neighbors_t *ngbd_nm1,  vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_dim_t v_nm1,interpolation_method interp_method, vec_and_ptr_t phi){
+void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,
+                  vec_and_ptr_t T_l_backtrace,vec_and_ptr_t T_l_backtrace_nm1,
+                  vec_and_ptr_dim_t v, vec_and_ptr_dim_t v_nm1,
+                  p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd,
+                  p4est_t* p4est_nm1, p4est_nodes_t* nodes_nm1, my_p4est_node_neighbors_t* ngbd_nm1){
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Beginning to do backtrace \n");
+
+
+  if (print_checkpoints){
+    int num_nodes = nodes->num_owned_indeps;
+    MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+    PetscPrintf(p4est->mpicomm,"p4est has %d nodes \n",num_nodes);
+
+    int num_nodes_nm1 = nodes_nm1->num_owned_indeps;
+    MPI_Allreduce(MPI_IN_PLACE,&num_nodes_nm1,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+    PetscPrintf(p4est->mpicomm,"p4est_nm1 has %d nodes \n",num_nodes_nm1);
+
+    if(num_nodes!=num_nodes_nm1){
+      PetscPrintf(p4est->mpicomm,"WE'VE GOT A SIZE DIFF HERE \n");
+    }
+  }
 
   // Get second derivatives of temp fields for interpolation purposes:
   vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
+
   T_l_dd.create(p4est,nodes);
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates T_l_dd \n");
+  int size_T_l_dd;
+  VecGetSize(T_l_dd.vec[0],&size_T_l_dd);
+  PetscPrintf(p4est->mpicomm,"Size T_l_dd = %d \n",size_T_l_dd);
   ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec);
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets T_l_dd \n");
+
+
   if(advection_sl_order==2) {
       T_l_dd_nm1.create(p4est_nm1,nodes_nm1);
+      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates T_l_dd_nm1 \n");
+
+      int size_T_l_dd_nm1;
+
+      VecGetSize(T_l_dd_nm1.vec[0],&size_T_l_dd_nm1);
+      PetscPrintf(p4est->mpicomm,"Size T_l_dd_nm1 = %d \n",size_T_l_dd_nm1);
+
       ngbd_nm1->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
+      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets T_l_dd_nm1 \n");
     }
 
   Vec v_dd[P4EST_DIM][P4EST_DIM];
@@ -2236,8 +2271,20 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
   foreach_dimension(d){
     foreach_dimension(dd){
       ierr = VecCreateGhostNodes(p4est, nodes, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
+      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates v_dd[%d][%d] \n",d,dd);
+
+      int size_v_dd;
+
+      VecGetSize(v_dd[d][dd],&size_v_dd);
+      PetscPrintf(p4est->mpicomm,"Size v_dd_ = %d \n",size_v_dd);
+
       if(advection_sl_order==2){
           ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
+          if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates v_dd_nm1[%d][%d] \n",d,dd);
+          int size_v_dd_nm1;
+
+          VecGetSize(v_dd_nm1[d][dd],&size_v_dd_nm1);
+          PetscPrintf(p4est->mpicomm,"Size v_dd_nm1 = %d \n",size_v_dd_nm1);
         }
     }
   }
@@ -2246,19 +2293,22 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
 
   ngbd->second_derivatives_central(v.vec,v_dd[0],v_dd[1],P4EST_DIM);
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets v_dd \n");
+
 
   if(advection_sl_order ==2){
       ngbd_nm1->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
+      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets v_dd_nm1 \n");
     }
 
   // Create vector to hold back-trace points:
   vector <double> xyz_d[P4EST_DIM];
   vector <double> xyz_d_nm1[P4EST_DIM];
-  vector <double> xyz_d_1st_order[P4EST_DIM];
 
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
       trajectory_from_np1_to_nm1(p4est,nodes,ngbd_nm1,ngbd,v_nm1.vec,v_dd_nm1,v.vec,v_dd,dt_nm1,dt,xyz_d_nm1,xyz_d);
+      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Completes backtrace trajectory \n");
     }
   else{
       trajectory_from_np1_to_n(p4est,nodes,ngbd,dt,v.vec,v_dd,xyz_d);
@@ -2270,7 +2320,6 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
 
   // Add backtrace points to the interpolator(s):
   foreach_local_node(n,nodes){
-
     double xyz_temp[P4EST_DIM];
     double xyz_temp_nm1[P4EST_DIM];
 
@@ -2281,7 +2330,6 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
           xyz_temp_nm1[d] = xyz_d_nm1[d][n];
         }
     } // end of "for each dimension"
-
 
     SL_backtrace_interp.add_point(n,xyz_temp);
     if(advection_sl_order ==2 ) SL_backtrace_interp_nm1.add_point(n,xyz_temp_nm1);
@@ -4780,7 +4828,11 @@ int main(int argc, char** argv) {
               if(advection_sl_order ==2){
                   T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
                 }
-              do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,interp_bw_grids,phi);
+              do_backtrace(T_l_n,T_l_nm1,
+                           T_l_backtrace,T_l_backtrace_nm1,
+                           v_n,v_nm1,
+                           p4est_np1,nodes_np1,ngbd_np1,
+                           p4est,nodes,ngbd);
 
               if( false && advection_sl_order ==2 ){
                   PetscPrintf(mpi.comm(),"\n for nm1: ");
