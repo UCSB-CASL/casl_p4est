@@ -2705,7 +2705,7 @@ for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     {
       P4EST_ASSERT((*got_it>=0) && (*got_it < (faces_n->num_local[dir] + faces_n->num_ghost[dir])));
       row_idx += (fabs(face_field_to_interpolate[*got_it]) < threshold_dbl_max ? 1 : 0);
-      P4EST_ASSERT(!isnan(face_field_to_interpolate[*got_it]));
+      P4EST_ASSERT(!ISNAN(face_field_to_interpolate[*got_it]));
     }
     if(row_idx == 0)
     {
@@ -3171,7 +3171,7 @@ if(!too_close_flag)
     field_p[local_face_idx]      = rhs_field/lhs_field;
   else
     field_p[local_face_idx]      = avg_neighbors;
-  P4EST_ASSERT(!isnan(field_p[local_face_idx]) && (fabs(field_p[local_face_idx]) < threshold_dbl_max));
+  P4EST_ASSERT(!ISNAN(field_p[local_face_idx]) && (fabs(field_p[local_face_idx]) < threshold_dbl_max));
 }
 }
 
@@ -3257,7 +3257,7 @@ if(!too_close_flag)
 {
   dt_field /= ((double) P4EST_DIM);
   field_p[local_face_idx] += dt_field*(normal_derivative_of_field_p[local_face_idx] + increment_field);
-  P4EST_ASSERT(!isnan(field_p[local_face_idx]) && (fabs(field_p[local_face_idx]) < threshold_dbl_max));
+  P4EST_ASSERT(!ISNAN(field_p[local_face_idx]) && (fabs(field_p[local_face_idx]) < threshold_dbl_max));
 }
 }
 
