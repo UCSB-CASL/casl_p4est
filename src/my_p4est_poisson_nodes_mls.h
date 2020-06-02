@@ -668,6 +668,11 @@ public:
     nonlinear_change_tol_       = change_tol;
     nonlinear_pde_residual_tol_ = pde_residual_tol;
   }
+
+  inline void set_dirichlet_scheme (int val) { dirichlet_scheme_ = val; }
+  inline void set_gf_order         (int val) { gf_order_         = val; }
+  inline void set_gf_stabilized    (int val) { gf_stabilized_    = val; }
+  inline void set_gf_thresh        (int val) { gf_thresh_        = val; }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

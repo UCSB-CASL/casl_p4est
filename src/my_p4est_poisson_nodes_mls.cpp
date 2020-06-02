@@ -201,8 +201,8 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   dirichlet_scheme_ = 0;
   gf_order_         = 2;
   gf_stabilized_    = 1;
-//  gf_thresh_        = 1.e-6;
-  gf_thresh_        = -0.1;
+  gf_thresh_        = 1.e-6;
+//  gf_thresh_        = -0.1;
 
   domain_rel_thresh_    = 1.e-11;
   interface_rel_thresh_ = 1.e-11;
