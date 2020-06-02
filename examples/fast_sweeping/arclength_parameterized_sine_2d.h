@@ -60,7 +60,7 @@ private:
 	double _omega;			// Frequency.
 	Point2 _trans;			// Translation (disturbance) from the origin.
 	double _theta;			// Rotation angle around the z-axis with respect to horizontal x-axis.
-	double _h;				// Grid minimum spacing.
+	double _delta;			// Local step size that depends on grid minimum spacing.
 	double _uBegin;			// Lower and upper bound for parameter u.
 	double _uEnd;
 	std::vector<std::pair<double, double>> _arcLengthTable;
@@ -70,13 +70,13 @@ private:
 	 */
 	void _buildArcLengthTable()
 	{
-		const auto N = (size_t)ceil( ( _uEnd - _uBegin ) / _h ) + 1;	// Number of points.
+		const auto N = (size_t)ceil( ( _uEnd - _uBegin ) / _delta ) + 1;	// Number of points.
 		_arcLengthTable.clear();
 		_arcLengthTable.reserve( N );
 		Point2 p;											// Keep track of last point visited.
 		for( size_t i = 0; i < N; i++ )
 		{
-			double u = MIN( _uBegin + i * _h, _uEnd );		// We clamp the last parameter u value to expected end.
+			double u = MIN( _uBegin + i * _delta, _uEnd );	// We clamp the last parameter u value to expected end.
 			double d = 0;									// Distance from previous point.
 			Point2 q( u, _a * sin( _omega * u ) );			// Calculations in canonical coordinate system.
 			if( i > 0 )
@@ -97,13 +97,14 @@ public:
 	 * @param [in] theta Angle of rotation around the z-axis, with respect to positive x-direction.
 	 * @param [in] h Minimum space interval in domain.
 	 * @param [in] halfAxisLen Half of horizontal axis length.  Parameter u will go from -halfAxisLen to +halfAxisLen.
+	 * @throws Runtime exception if beginning and end values for parameter u are not a minimum grading spacing apart.
 	 */
 	explicit ArcLengthParameterizedSine( double a, double omega, double tx, double ty, double theta, double h,
 										 double halfAxisLen )
-		: _a( a ), _omega( omega ), _theta( theta ), _h( h ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen )
+		: _a( a ), _omega( omega ), _theta( theta ), _delta( h / 25 ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen )
 	{
 #ifdef CASL_THROWS
-		if( _uBegin + _h >= _uEnd )
+		if( _uBegin + h >= _uEnd )
 			throw std::runtime_error( "[CASL_ERROR] ArcLengthParameterizedSine::ArcLengthParameterizedSine: "
 							 		  "Not room enough for parameter u!" );
 #endif
@@ -131,20 +132,26 @@ public:
 		// steps of size h, using interpolation to approximate the parameter u between nodes.
 		const size_t LAST_IDX = _arcLengthTable.size() - 1;
 		double minDistance = PETSC_MAX_INT;
+		double minU = 0;
+		Point2 minP;
 		double d = 0;									// Start at the extreme _uBegin.
 		size_t idx = 0;									// Index of closest parametric value in the _arcLength table.
 		while( d < _arcLengthTable[LAST_IDX].second )
 		{
 			double segmentLength = _arcLengthTable[idx + 1].second - _arcLengthTable[idx].second;
 			double fraction = ( d - _arcLengthTable[idx].second ) / segmentLength;
-			double u = _arcLengthTable[idx].first + fraction * _h;		// The difference between successive u's is _h.
+			double u = _arcLengthTable[idx].first + fraction * _delta;	// The difference between successive u's is _delta.
 
 			Point2 p( u, _a * sin( _omega * u ) );		// Point at interpolated parameter u.
 			double distance = ( p - q ).norm_L2();
 			if( distance < minDistance )
+			{
 				minDistance = distance;
+				minU = u;
+				minP = p;
+			}
 
-			d += _h;									// Move on curve a step _h.
+			d += _delta;								// Move on curve one spacing step.
 			if( d >= _arcLengthTable[idx + 1].second )
 				idx++;
 		}
@@ -153,7 +160,34 @@ public:
 		Point2 p( _arcLengthTable[LAST_IDX].first, _a * sin( _omega * _arcLengthTable[LAST_IDX].first ) );
 		double distance = ( p - q ).norm_L2();
 		if( distance < minDistance )
+		{
 			minDistance = distance;
+			minU = _arcLengthTable[LAST_IDX].first;
+			minP = p;
+		}
+
+		// Now that we know the parametric value u that yields the minimum distance, improve by looking at neighbors and
+		// find the minimum distance to the left and right line segments.
+		double u;
+		Point2 closestP;
+		if( minU > _arcLengthTable[0].first )			// Can we look at the left?
+		{
+			u = minU - _delta;
+			Point2 pLeft( u, _a * sin( _omega * u) );
+			closestP = geom::findClosestPointOnLineSegmentToPoint( q, pLeft, minP );
+			distance = ( q - closestP ).norm_L2();
+			if( distance < minDistance )
+				minDistance = distance;
+		}
+		if( minU < _arcLengthTable[LAST_IDX].first )	// Can we look at the right?
+		{
+			u = minU + _delta;
+			Point2 pRight( u, _a * sin( _omega * u ) );
+			closestP = geom::findClosestPointOnLineSegmentToPoint( q, minP, pRight );
+			distance = ( q - closestP ).norm_L2();
+			if( distance < minDistance )
+				minDistance = distance;
+		}
 
 		// Fix sign: points above sine wave are negative, points below are positive.
 		double comparativeY = _a * sin( _omega * x );

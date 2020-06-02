@@ -1,0 +1,318 @@
+//
+// Created by Im YoungMin on 6/2/20.
+//
+
+/**
+ * Testing the sine wave level-set function that uses arc-length parameterization.
+ *
+ * Developer: Luis Ángel.
+ * Date: June 2, 2020.
+ */
+
+// System.
+#include <stdexcept>
+#include <iostream>
+
+#include <src/my_p4est_utils.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_hierarchy.h>
+#include <src/my_p4est_fast_sweeping.h>
+#include <src/my_p4est_nodes_along_interface.h>
+//#include <src/my_p4est_level_set.h>
+
+#include <src/petsc_compatibility.h>
+#include <random>
+#include "arclength_parameterized_sine_2d.h"
+
+
+/**
+ * Generate the sample row of level-set function values and target h\kappa for a node that has been found next to the
+ * sine wave interface.  We assume that this query node is effectively adjacent to \Gamma.
+ * @param [in] nodeIdx Query node adjancent or on the interface.
+ * @param [in] NUM_COLUMNS Number of columns in output file.
+ * @param [in] H Spacing (smallest quad/oct side-length).
+ * @param [in] stencil The full uniform stencil of indices centered at the query node.
+ * @param [in] p4est Pointer to p4est data structure.
+ * @param [in] nodes Pointer to nodes data structure.
+ * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
+ * @param [in] sine The level-set function with a sinusoidal interface.
+ * @param [out] distance Found normal distance from node to sine wave using Newton-Raphson's root-finding.
+ * @return Vector with sampled phi values and target dimensionless curvature.
+ */
+[[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
+	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
+	const double *phiReadPtr, const ArcLengthParameterizedSine& sine, double& distance )
+{
+	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+
+	int s;												// Index to fill in the sample vector.
+	double leftPhi, rightPhi, topPhi, bottomPhi;		// To compute grad(\phi_{i,j}).
+	double centerPhi;									// \phi{i,j}.
+	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
+	{
+		sample[s] = phiReadPtr[stencil[s]];
+
+		switch( s )
+		{
+			case 5: topPhi = sample[s]; break;			// \phi_{i,j+1}.
+			case 1: leftPhi = sample[s]; break;			// \phi_{i-1,j}.
+			case 4: centerPhi = sample[s]; break;		// Point's phi value.
+			case 7: rightPhi = sample[s]; break;		// \phi_{i+1,j}.
+			case 3: bottomPhi = sample[s]; break;		// \phi_{i,j-1}.
+			default: ;
+		}
+	}
+
+	// Computing the target curvature.
+	double xyz[P4EST_DIM];								// Position of node at the center of the stencil in world coords.
+	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
+	double grad[] = {									// Gradient at center point.
+		( rightPhi - leftPhi ) / ( 2 * H ),				// Using central differences.
+		( topPhi - bottomPhi ) / ( 2 * H )
+	};
+	double gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );
+	double pOnInterfaceX = xyz[0] - grad[0] / gradNorm * centerPhi,		// Coordinates of projection of grid point on
+	pOnInterfaceY = xyz[1] - grad[1] / gradNorm * centerPhi;		// interface in world coords.
+
+	// Transform node position and approximated point on the interface to sine wave canonical coordinate system to
+	// simplify computations with minimization process.
+	sine.toCanonicalCoordinates( xyz[0], xyz[1] );
+	sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
+
+	double u = pOnInterfaceX;							// Initial parameter guess for root finding method.
+	double valOfDerivative;
+	double newU = distThetaDerivative( nodeIdx, xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
+
+	pOnInterfaceX = newU;								// Recalculating point on interface (still in canonical coords).
+	pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
+
+	double dx = xyz[0] - pOnInterfaceX,					// Verify that point on interface is not far from grid point.
+		   dy = xyz[1] - pOnInterfaceY;
+	distance = sqrt( dx * dx + dy * dy );
+	if( distance <= H && ABS( valOfDerivative ) <= 1e-8 )
+		u = newU;										// Parameter is OK.
+	else
+	{
+		sine.toWorldCoordinates( xyz[0], xyz[1] );
+		sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
+		std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
+				  << "on interface calculated with phi values.  \n     "
+				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
+				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
+	}
+
+	sample[s] = H * sine.curvature( u );				// Last column holds h\kappa.
+//	std::cout << u << ", " << sample[s] << ";" << std::endl;
+
+	if( centerPhi < 0 )									// Fix sign of found "exact" distance.
+		distance *= -1;
+	return sample;
+}
+
+
+int main ( int argc, char* argv[] )
+{
+	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
+
+	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
+	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
+	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
+	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
+	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
+	const double MIN_A = 1.5 * H;				// An almost flat wave.
+	const double MAX_A = 0.25;					// Tallest wave.
+	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h\kappa (used for discriminating
+	const double MAX_HKAPPA_UB = 2.0 / 3.0;		// which samples to keep -- see below for details).
+
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;	// Number of columns in resulting dataset.
+
+	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
+	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
+	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
+
+	try
+	{
+		// Initializing parallel environment (although in reality we're working on a single process).
+		mpi_environment_t mpi{};
+		mpi.init( argc, argv );
+		PetscErrorCode ierr;
+
+		// To test we don't admit more than a single process.
+		if( mpi.rank() > 1 )
+			throw std::runtime_error( "Only a single process is allowed!" );
+
+		std::cout << "Testing sine wave level-set function..." << std::endl;
+
+		// Domain information, applicable to all sinusoidal interfaces.
+		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
+		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
+		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
+		int periodic[] = {0, 0, 0};							// Non-periodic domain.
+
+		double maxRE = 0;									// Maximum relative error.
+
+		const double T[] = {
+			( MIN_D + MAX_D ) / 2 + uniformDistribution( gen ),		// Translate center coords by a randomly chosen
+			( MIN_D + MAX_D ) / 2 + uniformDistribution( gen )		// perturbation from the grid's midpoint.
+		};
+
+		// p4est variables and data structures: these change with every sine wave because we must refine the
+		// trees according to the new waves's origin and amplitude.
+		p4est_t *p4est;
+		p4est_nodes_t *nodes;
+		my_p4est_brick_t brick;
+		p4est_ghost_t *ghost;
+		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
+
+		// Definining the level-set function to be reinitialized.
+		const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;		// Adding some padding of 2H.
+		const double A = MAX_A;
+		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );
+		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );
+		ArcLengthParameterizedSine sine( A, MIN_OMEGA, T[0], T[1], 0, H, HALF_AXIS_LEN );
+		splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
+
+		// Create the forest using a level-set as refinement criterion.
+		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
+		p4est->user_pointer = ( void * ) ( &levelSetSC );
+
+		// Refine and recursively partition forest.
+		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+		my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+
+		// Create the ghost (cell) and node structures.
+		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+		nodes = my_p4est_nodes_new( p4est, ghost );
+
+		// Initialize the neighbor nodes structure.
+		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
+		my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
+		nodeNeighbors.init_neighbors(); 	// This is not mandatory, but it can only help performance given
+											// how much we'll neeed the node neighbors.
+
+		// A ghosted parallel PETSc vector to store level-set function values.
+		Vec phi;
+		ierr = VecCreateGhostNodes( p4est, nodes, &phi );
+		CHKERRXX( ierr );
+
+		// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
+		sample_cf_on_nodes( p4est, nodes, sine, phi );
+
+		// Reinitialize level-set function using the fast sweeping method.
+		FastSweeping fsm;
+		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+		fsm.reinitializeLevelSetFunction( &phi, 8 );
+//		my_p4est_level_set_t ls( &nodeNeighbors );
+//		ls.reinitialize_2nd_order( phi, 5 );
+
+		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are
+		// the points we'll use to create our sample files.
+		NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
+
+		// An interface flag vector to distinguish nodes along the interface with full uniform neighborhoods.
+		Vec interfaceFlag;
+		ierr = VecDuplicate( phi, &interfaceFlag );
+		CHKERRXX( ierr );
+
+		double *interfaceFlagPtr;
+		ierr = VecGetArray( interfaceFlag, &interfaceFlagPtr );
+		CHKERRXX( ierr );
+		for( p4est_locidx_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
+			interfaceFlagPtr[i] = 0;		// Init to zero and set flag of (valid) nodes along interface to 1.
+
+		// A vector to store the dimensionless curvature at nodes along the interface.
+		Vec hCurvature;
+		ierr = VecDuplicate( interfaceFlag, &hCurvature );
+		CHKERRXX( ierr );
+
+		ierr = VecCopy( interfaceFlag, hCurvature );
+		CHKERRXX( ierr );
+
+		double *hCurvaturePtr;
+		ierr = VecGetArray( hCurvature, &hCurvaturePtr );
+		CHKERRXX( ierr );
+
+		// Getting the full uniform stencils of interface points.
+		std::vector<p4est_locidx_t> indices;
+		nodesAlongInterface.getIndices( &phi, indices );
+
+		const double *phiReadPtr;
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+
+		// Now, collect samples with reinitialized level-set function values and target h\kappa.
+		for( auto n : indices )
+		{
+			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
+			try
+			{
+				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
+				{
+					double distance;
+					std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
+																				nodes, phiReadPtr, sine, distance );
+					hCurvaturePtr[n] = sample[NUM_COLUMNS-1];
+					interfaceFlagPtr[n] = 1;
+
+					// Error metric for validation.
+					double error = ABS( distance - phiReadPtr[n] ) / H;
+					maxRE = MAX( maxRE, error );
+				}
+			}
+			catch( std::exception &e )
+			{
+					double xyz[P4EST_DIM];				// Position of node at the center of the stencil.
+					node_xyz_fr_n( n, p4est, nodes, xyz );
+					std::cerr << "Node " << n << " (" << xyz[0] << ", " << xyz[1] << "): " << e.what() << std::endl;
+			}
+		}
+
+		// The error.
+		std::cout << "Maximum relative error: " << maxRE << std::endl;
+
+		std::ostringstream oss;
+		oss << "sine_wave_" << mpi.size() << "_" << P4EST_DIM;
+		my_p4est_vtk_write_all( p4est, nodes, ghost,
+								P4EST_TRUE, P4EST_TRUE,
+								3, 0, oss.str().c_str(),
+								VTK_POINT_DATA, "phi", phiReadPtr,
+								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
+								VTK_POINT_DATA, "hKappa", hCurvaturePtr );
+		my_p4est_vtk_write_ghost_layer( p4est, ghost );
+
+		ierr = VecRestoreArray( hCurvature, &hCurvaturePtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( interfaceFlag, &interfaceFlagPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+
+		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
+		ierr = VecDestroy( hCurvature );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( interfaceFlag );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( phi );
+		CHKERRXX( ierr );
+
+		// Destroy the p4est and its connectivity structure.
+		p4est_nodes_destroy( nodes );
+		p4est_ghost_destroy( ghost );
+		p4est_destroy( p4est );
+		p4est_connectivity_destroy( connectivity );
+	}
+	catch( const std::exception &e )
+	{
+		std::cerr << e.what() << std::endl;
+	}
+
+	return 0;
+}
