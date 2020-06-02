@@ -50,7 +50,7 @@
 
 // forward declaration
 class my_p4est_node_neighbors_t;
-struct quad_neighbor_nodes_of_node_t;
+class quad_neighbor_nodes_of_node_t;
 
 enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
@@ -319,6 +319,7 @@ public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -328,6 +329,7 @@ public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
   virtual double operator()(double x, double y,double z) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -814,6 +816,10 @@ inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
 
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
+
 /*!
  * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
  * \param src [in]  the source vector
@@ -830,7 +836,7 @@ PetscErrorCode VecGhostCopy(Vec src, Vec dst);
  * \param block_size
  * \return
  */
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
@@ -838,11 +844,13 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
  * \param nodes      [in]  the nodes object
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
-
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
 
 /*!
  * \brief VecGhostSet Sets a ghost vector to a value
@@ -858,9 +866,13 @@ PetscErrorCode VecGhostSet(Vec x, double v);
  * \param ghost      [in]  the ghost cells
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghost_t *ghost, Vec* v)
+{
+  return VecCreateGhostCellsBlock(p4est, ghost, 1, v);
+}
 
 /*!
  * \brief VecCreateNoGhostCellsBlock Creates a non-ghosted block PETSc parallel vector on the cells
@@ -1628,6 +1640,15 @@ void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, dou
 void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
 
 /*!
+ * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
+ * \param [in]  neighbors the neighborhood information
+ * \param [in]  phi       PETSc vector of the levelset function
+ * \param [out] normals   P4EST_DIM-blocked PETSc vectors to store the normal in the entire doamin
+ */
+void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals);
+
+
+/*!
  * \brief interface_length_in_one_quadrant
  */
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1702,7 +1723,6 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -1738,7 +1758,6 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1747,7 +1766,6 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1756,7 +1774,6 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1765,7 +1782,6 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1774,7 +1790,6 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1784,7 +1799,6 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param qi    [in] pointer to the quadrant
  * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
  * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
 
@@ -1793,7 +1807,6 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 

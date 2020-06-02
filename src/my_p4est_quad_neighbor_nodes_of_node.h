@@ -9,6 +9,7 @@
 #include <src/my_p4est_nodes.h>
 #endif
 #include <petscvec.h>
+#include <iostream>
 
 //---------------------------------------------------------------------
 //
@@ -25,8 +26,31 @@
 //        node_m0_m                         node_p0_m
 //
 //---------------------------------------------------------------------
+#ifndef CASL_LOG_TINY_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+#warning "Use of 'CASL_LOG_TINY_EVENTS' macro is discouraged but supported. Logging tiny sections of the code may produce unreliable results due to overhead."
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_laplace;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_gradient;
+#endif
+#ifndef CASL_LOG_FLOPS
+#undef  PetscLogFlops
+#define PetscLogFlops(n) 0
+#endif
 
-// forward declaration
+typedef struct node_interpolation_weight{
+  node_interpolation_weight(const p4est_locidx_t & idx, const double& ww_): weight(ww_), node_idx(idx) {}
+  double weight;
+  p4est_locidx_t node_idx;
+  inline bool operator <(const node_interpolation_weight& other) const { return (node_idx < other.node_idx); }
+  inline node_interpolation_weight operator-() const { node_interpolation_weight copy(*this); copy.weight *=-1.0; return copy; }
+  // inline node_interpolation_weight operator*(const double &alpha) const { node_interpolation_weight copy(*this); copy.weight *=alpha; return copy; }
+} node_interpolation_weight;
+
 class my_p4est_node_neighbors_t;
 typedef struct node_linear_combination
 {
@@ -1981,6 +2005,25 @@ public:
     return (der == dir::x ? dx_central(f) : ONLY3D(OPEN_PARENTHESIS der == dir::y ?) dy_central(f) ONLY3D(: dz_central(f)CLOSE_PARENTHESIS));
   }
 
+
+  // biased-first-derivative-related procedures
+  // based on linear-interpolation neighbors
+  inline double dx_forward_linear (const double *f) const
+  {
+    return forward_derivative(f_p00_linear(f), f[node_000], d_p00);
+  }
+  inline double dx_backward_linear (const double *f) const
+  {
+    return backward_derivative(f[node_000], f_m00_linear(f), d_m00);
+  }
+  inline double dy_forward_linear (const double *f) const
+  {
+    return forward_derivative(f_0p0_linear(f), f[node_000], d_0p0);
+  }
+  inline double dy_backward_linear (const double *f) const
+  {
+    return backward_derivative(f[node_000], f_0m0_linear(f), d_0m0);
+  }
 #ifdef P4_TO_P8
   inline double dz_forward_linear (const double *f) const
   {
@@ -2017,13 +2060,56 @@ public:
     return (der == dir::x ? dx_forward_quadratic(f, neighbors) : ONLY3D(OPEN_PARENTHESIS der == dir::y ?) dy_forward_quadratic(f, neighbors) ONLY3D(: dz_forward_quadratic(f, neighbors) CLOSE_PARENTHESIS));
   }
 
-  double dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  // VERY IMPORTANT NOTE: in the following, we assume fxx, fyy and fzz to have the same block structure as f!
+  double dx_backward_quadratic(const double *f, const double *fxx) const
+  {
+    double f_000, f_m00, f_p00;
+    x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+    const double f_xx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+    const double f_xx_m00 = f_m00_linear(fxx);
+    return d_backward_quadratic(f_000, f_m00, d_m00, f_xx_000, f_xx_m00);
+  }
+  double dx_forward_quadratic (const double *f, const double *fxx) const
+  {
+    double f_000, f_m00, f_p00;
+    x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
+    const double f_xx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+    const double f_xx_p00 = f_p00_linear(fxx);
+    return d_forward_quadratic(f_p00, f_000, d_p00, f_xx_000, f_xx_p00);
+  }
+  double dy_backward_quadratic(const double *f, const double *fyy) const
+  {
+    double f_000, f_0m0, f_0p0;
+    y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+    const double f_yy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+    const double f_yy_0m0 = f_0m0_linear(fyy);
+    return d_backward_quadratic(f_000, f_0m0, d_0m0, f_yy_000, f_yy_0m0);
+  }
+  double dy_forward_quadratic (const double *f, const double *fyy) const
+  {
+    double f_000, f_0m0, f_0p0;
+    y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
+    const double f_yy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+    const double f_yy_0p0 = f_0p0_linear(fyy);
+    return d_forward_quadratic(f_0p0, f_000, d_0p0, f_yy_000, f_yy_0p0);
+  }
 #ifdef P4_TO_P8
-  double dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-  double dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dz_backward_quadratic(const double *f, const double *fzz) const
+  {
+    double f_000, f_00m, f_00p;
+    z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p);
+    const double f_zz_000 = central_second_derivative(f_00p, f_000, f_00m, d_00p, d_00m);
+    const double f_zz_00m = f_00m_linear(fzz);
+    return d_backward_quadratic(f_000, f_00m, d_00m, f_zz_000, f_zz_00m);
+  }
+  double dz_forward_quadratic (const double *f, const double *fzz) const
+  {
+    double f_000, f_00m, f_00p;
+    z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p);
+    const double f_zz_000 = central_second_derivative(f_00p, f_000, f_00m, d_00p, d_00m);
+    const double f_zz_00p = f_00p_linear(fzz);
+    return d_forward_quadratic(f_00p, f_000, d_00p, f_zz_000, f_zz_00p);
+  }
 #endif
   inline double d_backward_quadratic(const unsigned short &der, const double *f, const double *fderder) const
   {

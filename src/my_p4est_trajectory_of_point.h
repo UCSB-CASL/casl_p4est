@@ -18,6 +18,16 @@
 
 #include <vector>
 
+inline void transpose_second_derivatives(Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM])
+{
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    for (unsigned char der = dir+1; der < P4EST_DIM; ++der) {
+      std::swap(second_derivatives_vnm1[dir][der], second_derivatives_vnm1[der][dir]);
+      std::swap(second_derivatives_vn[dir][der], second_derivatives_vn[der][dir]);
+    }
+  }
+}
+
 /*!
  * \brief trajectory_from_np1_to_n backtraces the nodes of p4est to find the one departure points along the characteristics
  * of the velocity field, at time n.
