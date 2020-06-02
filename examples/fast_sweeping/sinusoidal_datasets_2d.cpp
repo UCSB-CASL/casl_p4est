@@ -4,6 +4,9 @@
  * The level-set function is implemented as an arc-length parameterized sine wave function that is transformed with an
  * affine transformation to allow for pattern variations.  See arclength_parameterized_sin_2d.h for more details.
  *
+ * To avoid a disproportionate ratio of h\kappa ~ 0 samples, we collect samples that are close to zero using a
+ * probabilistic approach.  Seek the [SAMPLING] subsection in this file.
+ *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
  */
@@ -157,7 +160,6 @@ void generateColumnHeaders( std::string header[] )
 				  << distance << "; " << H * sine.curvature( u ) << "; "
 				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
 				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
-
 	}
 
 	sample[s] = H * sine.curvature( u );				// Last column holds h\kappa.
@@ -182,6 +184,9 @@ int main ( int argc, char* argv[] )
 
 	const double MIN_A = 1.5 * H;				// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
+	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h\kappa (used for discriminating
+	const double MAX_HKAPPA_UB = 2.0 / 3.0;		// which samples to keep -- see below for details).
+	const double MAX_HKAPPA_MIDPOINT = ( MAX_HKAPPA_LB + MAX_HKAPPA_UB ) / 2;
 
 	const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
 
@@ -197,7 +202,8 @@ int main ( int argc, char* argv[] )
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
 	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
-	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
+	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
+	std::uniform_real_distribution<double> uniformDistribution;				// Used for collecting low h\kappa values.
 
 	try
 	{
@@ -255,17 +261,20 @@ int main ( int argc, char* argv[] )
 		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
 		int periodic[] = {0, 0, 0};							// Non-periodic domain.
 
+		// Printing header for log.
+		std::cout << "Amplitude Idx, Omega Idx, Amplitude Val, Omega Val, Max Rel Error, Num Samples, Time" << std::endl;
+
 		int nSamples = 0;
 		int na = 0;
 		for( ; na < NUM_AMPLITUDES; na++ )					// Go through all wave amplitudes evaluated.
 		{
 			const double A = MIN_A + linspaceA[na] * A_DIST;			// Amplitude to be evaluated.
 
-			const double MIN_OMEGA = sqrt( 3 / ( 20 * H * A ) );		// Range of frequencies to ensure that the max
-			const double MAX_OMEGA = sqrt( 2 / ( 3 * H * A ) );			// h\kappa \in [0.15, 0.66667].
+			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );	// Range of frequencies to ensure that the max
+			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h\kappa is in the range of [1/6, 2/3].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * ( 1 / MIN_OMEGA - 1 / MAX_OMEGA );	// Distance between u-values with highest peaks.
-			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / ( 2 * H ) ) + 1;	// Num. of omegas for amplitude.
+			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H ) + 1;				// Num. of omegas per amplitude.
 			double linspaceOmega[NUM_OMEGAS];
 			for( int i = 0; i < NUM_OMEGAS; i++ )			// Uniform linear space from 0 to 1, with NUM_OMEGA steps.
 				linspaceOmega[i] = (double)( i ) / ( NUM_OMEGAS - 1.0 );
@@ -273,15 +282,15 @@ int main ( int argc, char* argv[] )
 			for( int no = 0; no < NUM_OMEGAS; no++ )		// Evaluate all frequencies for the same amplitude.
 			{
 				std::vector<std::vector<double>> samples;
-				double maxRE = 0;											// Maximum relative error for validation.
+				double maxRE = 0;							// Maximum relative error for verification.
 
 				const double OMEGA = MIN_OMEGA + linspaceOmega[no] * OMEGA_DIST;
 				for( int nt = 0; nt < NUM_THETAS; nt++ )	// Various rotation angles for same amplitude and frequency.
 				{
 					const double THETA = MIN_THETA + linspaceTheta[nt] * THETA_DIST;	// Rotation of main sine axis.
 					const double T[] = {
-						( MIN_D + MAX_D ) / 2 + uniformDistribution( gen ),		// Translate origin coords by a random
-						( MIN_D + MAX_D ) / 2 + uniformDistribution( gen )		// perturbation from grid's midpoint.
+						( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen ),	// Translate origin coords by a random
+						( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen )	// perturbation from grid's midpoint.
 					};
 
 					// p4est variables and data structures: these change with every sine wave because we must refine the
@@ -340,7 +349,7 @@ int main ( int argc, char* argv[] )
 					ierr = VecGetArrayRead( phi, &phiReadPtr );
 					CHKERRXX( ierr );
 
-					// Now, collect samples with reinitialized level-set function values and target h\kappa.
+					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h\kappa.
 					for( auto n : indices )
 					{
 						std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
@@ -353,12 +362,19 @@ int main ( int argc, char* argv[] )
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
 									nodes, phiReadPtr, sine, distance );
 
-								// Accumulating samples.
-								samples.push_back( data );
+								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
+								// h\kappa <= midpoint, we take them with an easing-off-dropping probability from 1 to
+								// 0.015, where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.015.
+								if( ABS( data[NUM_COLUMNS - 1] ) > MAX_HKAPPA_MIDPOINT ||
+									uniformDistribution( gen ) <= 0.015 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
+									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.985 / 2  )
+								{
+									samples.push_back( data );
 
-								// Error metric for validation.
-								double error = ABS( distance - phiReadPtr[n] ) / H;
-								maxRE = MAX( maxRE, error );
+									// Error metric for validation.
+									double error = ABS( distance - phiReadPtr[n] ) / H;
+									maxRE = MAX( maxRE, error );
+								}
 							}
 						}
 						catch( std::exception &e )
@@ -393,14 +409,10 @@ int main ( int argc, char* argv[] )
 
 				nSamples += samples.size();
 
-				std::cout << "     (" << na + 1 << ", " << no + 1 << ") Done with amplitude = " << A
-						  << " and frequency = " << OMEGA
-						  << ".  Maximum relative error = " << maxRE
-						  << ".  Samples = " << samples.size() << ";" << std::endl;
+				// Output for log.
+				std::cout << na + 1 << ", " << no + 1 << ", " << A << ", " << OMEGA << ", " << maxRE << ", "
+						  << samples.size() << ", " << watch.get_duration_current() << ";" << std::endl;
 			}
-
-			if( na + 1 % 10 == 0 )
-				printf( "   [%i amplitudes evaluated after %f secs.]\n", na + 1, watch.get_duration_current() );
 		}
 
 		printf( "<< Finished generating %i distinct amplitudes and %i samples in %f secs.\n",
