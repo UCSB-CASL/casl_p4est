@@ -67,6 +67,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_t;
   friend class my_p4est_scft_t;
   friend class my_p4est_semi_lagrangian_t;
+  friend class my_p4est_surfactant_t;
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
 
@@ -401,8 +402,7 @@ public:
     }
     else {
 #ifdef CASL_THROWS
-      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      bool err = construct_neighbors(n, qnnn);
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
@@ -490,25 +490,15 @@ public:
    * \param [in]  n_vecs  number of vectors in the arrays f and fdd
    * \param [in]  der     cartesian direction along which the second derivatives must be calculated (dir::x, dir::y or dir::z)
    */
-  void dd_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned char& der) const;
-  inline void dd_central(const Vec f, Vec fdd, const unsigned char& der) const
-  {
-    dd_central(&f, &fdd, 1, der);
-  }
-  inline void dxx_central(const Vec f, Vec fxx) const
-  {
-    dd_central(f, fxx, dir::x);
-  }
-  inline void dyy_central(const Vec f, Vec fyy) const
-  {
-    dd_central(f, fyy, dir::y);
-  }
+  void dyy_central(const Vec f, Vec fyy) const;
 
 #ifdef P4_TO_P8
-  inline void dzz_central(const Vec f, Vec fzz) const
-  {
-    dd_central(f, fzz, dir::z);
-  }
+  /*!
+   * \brief dzz_central compute dzz_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size
+   */
+  void dzz_central(const Vec f, Vec fzz) const;
 #endif
 
   /*!
@@ -633,7 +623,6 @@ public:
     memory += layer_nodes.size()*sizeof (p4est_locidx_t);
     memory += local_nodes.size()*sizeof (p4est_locidx_t);
     memory += sizeof (is_initialized);
-    memory += P4EST_DIM*sizeof (bool); // periodic
     return memory;
   }
 

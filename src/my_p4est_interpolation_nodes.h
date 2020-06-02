@@ -16,8 +16,10 @@ class my_p4est_interpolation_nodes_t : public my_p4est_interpolation_t
 private:
   p4est_nodes_t *nodes;
 
-  vector<Vec> Fxxyyzz[P4EST_DIM];
-  vector<Vec> Fxxyyzz_block;
+  vector<Vec> Fxx, Fyy;
+#ifdef P4_TO_P8
+  vector<Vec> Fzz;
+#endif
 
   interpolation_method method;
 
@@ -71,7 +73,8 @@ public:
   {
     set_input(F, Fxxyyzz_blocks_, DIM(NULL, NULL, NULL), method, n_vecs_, block_size_f);
   }
-  // -----------------------------------------------------------------------------
+  void set_input(Vec *F, Vec *Fxx_, Vec *Fyy_, interpolation_method method, unsigned int n_vecs_);
+#endif
 
   // definition of abstract interpolation methods
   using my_p4est_interpolation_t::operator();

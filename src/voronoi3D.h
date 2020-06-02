@@ -1,5 +1,6 @@
 #ifndef CASL_VORONOI3D_H
 #define CASL_VORONOI3D_H
+
 #include <float.h>
 #include <fstream>
 #include <vector>
@@ -132,7 +133,6 @@ public:
   void set_center_point( int idx_center_seed_, Point3 &center_seed_);
   // overloading
   void set_center_point( int idx_center_seed_, double x, double y, double z) { Point3 tmp(x, y, z); set_center_point(idx_center_seed_, tmp); }
-  void set_center_point( int idx_center_seed_, const double* xyz) { set_center_point(idx_center_seed_, xyz[0], xyz[1], xyz[2]); }
 
   /*!
      * \brief get the center seed of the partition
@@ -143,12 +143,9 @@ public:
   inline void get_center_point(double *xyz) const { xyz[0] = center_seed.x; xyz[1] = center_seed.y; xyz[2] = center_seed.z; }
 
   /*!
-   * \brief add a potential neighbor seed candidate, after making sure there is no repetition
+   * \brief add a potential neighbor seed candidate, making sure there is no repetition
    * \param n the index of the point to add
    * \param pt coordinates of the candidate neighbor seed to add
-   * \param periodicity the periodicity flag for the computational domain
-   * \param xyz_min the coordinates of the lower left corner of the computational domain
-   * \param xyz_min the coordinates of the upper right corner of the computational domain
    */
   void push( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
   // overloading

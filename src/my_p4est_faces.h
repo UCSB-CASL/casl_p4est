@@ -23,19 +23,9 @@
 #include <src/voronoi2D.h>
 #endif
 
-#if __cplusplus >= 201103L
-#include <unordered_map> // if c++11 is fully supported, use unordered maps (i.e. hash tables) as they are apparently much faster
-#else
-#include <map>
-#endif
+#include <vector>
 
 using std::vector;
-#if __cplusplus >= 201103L
-using std::unordered_map;
-#else
-using std::map;
-#endif
-
 
 #define NO_VELOCITY -1
 
@@ -71,6 +61,8 @@ class my_p4est_faces_t
 {
   friend class my_p4est_poisson_faces_t;
   friend class my_p4est_interpolation_faces_t;
+  friend class my_p4est_navier_stokes_t;
+  friend class my_p4est_xgfm_cells_t;
 private:
 
   typedef struct face_quad_ngbd
@@ -115,7 +107,7 @@ private:
   const my_p4est_brick_t *myb;
   my_p4est_cell_neighbors_t *ngbd_c;
 
-  void init_faces(bool initialize_neighborhoods_of_fine_faces);
+  void init_faces();
 
   map_to_uniform_face_ngbd_t uniform_face_neighbors[P4EST_DIM];
 

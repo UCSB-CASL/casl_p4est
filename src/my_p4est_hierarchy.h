@@ -462,9 +462,9 @@ public:
    */
   void write_vtk(const char* filename) const;
 
-  size_t memory_estimate() const
+  unsigned long int memory_estimate() const
   {
-    size_t memory = 0;
+    unsigned long int memory = 0;
     for (size_t tree_idx = 0; tree_idx < trees.size(); ++tree_idx)
       memory += (trees[tree_idx].size())*sizeof (HierarchyCell);
     memory += (local_inner_quadrant.size())*sizeof (local_and_tree_indices);

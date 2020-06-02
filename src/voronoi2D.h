@@ -68,17 +68,6 @@ private:
   double phi_c;
   double volume;
 
-  /*!
-     * \brief add a point to the list of collocation points, WITHOUT making sure there is no repetition
-     * \param n the index of the point to add
-     * \param x the first coordinate of the point to add
-     * \param y the second coordinate of the point to add
-     * \param periodicity the periodicity flag for the computational domain
-     * \param xyz_min the coordinates of the lower left corner of the computational domain
-     * \param xyz_min the coordinates of the upper right corner of the computational domain
-     */
-  void add_point( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
-
 public:
   /*!
      * \brief default constructor for the Voronoi2D class
@@ -149,7 +138,6 @@ public:
      * \param y the second coordinate of the point
      */
   void set_center_point( double x, double y );
-  inline void set_center_point(const double* xyz) {set_center_point(xyz[0], xyz[1]);}
 
   /*!
      * \brief get the point at the center of the partition
@@ -166,9 +154,6 @@ public:
      * \param n the index of the point to add
      * \param x the first coordinate of the point to add
      * \param y the second coordinate of the point to add
-     * \param periodicity the periodicity flag for the computational domain
-     * \param xyz_min the coordinates of the lower left corner of the computational domain
-     * \param xyz_min the coordinates of the upper right corner of the computational domain
      */
   void push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 

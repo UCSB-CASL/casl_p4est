@@ -55,7 +55,6 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
 
   const size_t n_functions = n_vecs();
   P4EST_ASSERT(n_functions > 0);
-  P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
   const double *Fi_p[n_functions];
   for (unsigned int k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);

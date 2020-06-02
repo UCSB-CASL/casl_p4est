@@ -81,10 +81,11 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   diag_min                = sqrt(SUMD(SQR(dxyz_min[0]), SQR(dxyz_min[1]), SQR(dxyz_min[2])));
   cell_volume_min         = MULTD(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 
-  normals                 = NULL;
-  phi_xxyyzz              = NULL;
-  jump_mu_grad_u          = NULL;
-
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    normals[dim]          = NULL;
+    phi_second_der[dim]   = NULL;
+    jump_mu_grad_u[dim]   = NULL;
+  }
   map_of_interface_neighbors.clear();
   map_of_neighbors_is_initialized = false;
   extension_entries.clear(); extension_entries.resize(p4est->local_num_quadrants);
@@ -109,9 +110,17 @@ my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
   if (jump_mu_grad_u  != NULL)          { ierr = VecDestroy(jump_mu_grad_u);          CHKERRXX(ierr); }
 }
 
-void my_p4est_xgfm_cells_t::set_phi(Vec phi_on_fine_mesh, Vec phi_xxyyzz_on_fine_mesh)
+#ifdef P4_TO_P8
+void my_p4est_xgfm_cells_t::set_phi(Vec phi_on_fine_mesh, Vec phi_xx_on_fine_mesh, Vec phi_yy_on_fine_mesh, Vec phi_zz_on_fine_mesh)
+#else
+void my_p4est_xgfm_cells_t::set_phi(Vec phi_on_fine_mesh, Vec phi_xx_on_fine_mesh, Vec phi_yy_on_fine_mesh)
+#endif
 {
-  second_derivatives_of_phi_are_set = (phi_xxyyzz_on_fine_mesh != NULL);
+#ifdef P4_TO_P8
+  second_derivatives_of_phi_are_set = ((phi_xx_on_fine_mesh != NULL) && (phi_yy_on_fine_mesh != NULL) && (phi_zz_on_fine_mesh != NULL));
+#else
+  second_derivatives_of_phi_are_set = ((phi_xx_on_fine_mesh != NULL) && (phi_yy_on_fine_mesh != NULL));
+#endif
 #ifdef CASL_THROWS
   // compare local size
   PetscInt local_size;
@@ -137,72 +146,135 @@ void my_p4est_xgfm_cells_t::set_phi(Vec phi_on_fine_mesh, Vec phi_xxyyzz_on_fine
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(my_error)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, ...) : the phi vector must be of the same size as the number of nodes in the fine mesh");
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec) : the phi vector must be of the same size as the number of nodes in the fine mesh");
+
+  // check the second derivatives if needed
+#ifdef P4_TO_P8
+  my_error = !(((phi_xx_on_fine_mesh == NULL) && (phi_yy_on_fine_mesh == NULL) && (phi_zz_on_fine_mesh == NULL)) ||
+               ((phi_xx_on_fine_mesh != NULL) && (phi_yy_on_fine_mesh != NULL) && (phi_zz_on_fine_mesh != NULL)));
+#else
+  my_error = !(((phi_xx_on_fine_mesh == NULL) && (phi_yy_on_fine_mesh == NULL)) ||
+               ((phi_xx_on_fine_mesh != NULL) && (phi_yy_on_fine_mesh != NULL)));
+#endif
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  if(my_error)
+#ifdef P4_TO_P8
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, Vec, Vec, Vec) : the second derivatives of phi should either be all set or all disregarded");
+#else
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, Vec, Vec) : the second derivatives of phi should either be all set or all disregarded");
+#endif
 
   if (second_derivatives_of_phi_are_set)
   {
     // check second derivatives of phi
     // compare local, global and ghost layer sizes
 
-    ierr = VecGetLocalSize(phi_xxyyzz_on_fine_mesh, &local_size); CHKERRXX(ierr);
-    my_error = ( ((PetscInt) P4EST_DIM*fine_nodes->num_owned_indeps) != local_size);
-    ierr = VecGetSize(phi_xxyyzz_on_fine_mesh, &global_size); CHKERRXX(ierr);
-    my_error = my_error || (global_size != P4EST_DIM*global_nb_fine_nodes);
-    Vec phi_xxyyzz_on_fine_mesh_loc;
-    ierr = VecGhostGetLocalForm(phi_xxyyzz_on_fine_mesh, &phi_xxyyzz_on_fine_mesh_loc); CHKERRXX(ierr);
-    ierr = VecGetSize(phi_xxyyzz_on_fine_mesh_loc, &ghost_layer_size); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(phi_xxyyzz_on_fine_mesh, &phi_xxyyzz_on_fine_mesh_loc); CHKERRXX(ierr);
+    // xx
+    ierr = VecGetLocalSize(phi_xx_on_fine_mesh, &local_size); CHKERRXX(ierr);
+    my_error = ( ((PetscInt) fine_nodes->num_owned_indeps) != local_size);
+    ierr = VecGetSize(phi_xx_on_fine_mesh, &global_size); CHKERRXX(ierr);
+    my_error = my_error || (global_size != global_nb_fine_nodes);
+    Vec phi_xx_on_fine_mesh_loc;
+    ierr = VecGhostGetLocalForm(phi_xx_on_fine_mesh, &phi_xx_on_fine_mesh_loc); CHKERRXX(ierr);
+    ierr = VecGetSize(phi_xx_on_fine_mesh_loc, &ghost_layer_size); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_xx_on_fine_mesh, &phi_xx_on_fine_mesh_loc); CHKERRXX(ierr);
     ghost_layer_size -= local_size;
-    my_error = my_error || (ghost_layer_size != ((PetscInt) (P4EST_DIM*(fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps))));
+    my_error = my_error || (ghost_layer_size != ((PetscInt) (fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps)));
+    // yy
+    ierr = VecGetLocalSize(phi_yy_on_fine_mesh, &local_size); CHKERRXX(ierr);
+    my_error = ( ((PetscInt) fine_nodes->num_owned_indeps) != local_size);
+    ierr = VecGetSize(phi_yy_on_fine_mesh, &global_size); CHKERRXX(ierr);
+    my_error = my_error || (global_size != global_nb_fine_nodes);
+    Vec phi_yy_on_fine_mesh_loc;
+    ierr = VecGhostGetLocalForm(phi_yy_on_fine_mesh, &phi_yy_on_fine_mesh_loc); CHKERRXX(ierr);
+    ierr = VecGetSize(phi_yy_on_fine_mesh_loc, &ghost_layer_size); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_yy_on_fine_mesh, &phi_yy_on_fine_mesh_loc); CHKERRXX(ierr);
+    ghost_layer_size -= local_size;
+    my_error = my_error || (ghost_layer_size != ((PetscInt) (fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps)));
+#ifdef P4_TO_P8
+    // zz
+    ierr = VecGetLocalSize(phi_zz_on_fine_mesh, &local_size); CHKERRXX(ierr);
+    my_error = ( ((PetscInt) fine_nodes->num_owned_indeps) != local_size);
+    ierr = VecGetSize(phi_zz_on_fine_mesh, &global_size); CHKERRXX(ierr);
+    my_error = my_error || (global_size != global_nb_fine_nodes);
+    Vec phi_zz_on_fine_mesh_loc;
+    ierr = VecGhostGetLocalForm(phi_zz_on_fine_mesh, &phi_zz_on_fine_mesh_loc); CHKERRXX(ierr);
+    ierr = VecGetSize(phi_zz_on_fine_mesh_loc, &ghost_layer_size); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(phi_zz_on_fine_mesh, &phi_zz_on_fine_mesh_loc); CHKERRXX(ierr);
+    ghost_layer_size -= local_size;
+    my_error = my_error || (ghost_layer_size != ((PetscInt) (fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps)));
+#endif
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     if(my_error)
-      throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, Vec) : the second derivatives of phi must be of the same size as the number of nodes in the fine mesh but P4EST_DIM-block-structured");
+#ifdef P4_TO_P8
+      throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, Vec, Vec, Vec) : the second derivatives of phi must be of the same size as the number of nodes in the fine mesh");
+#else
+      throw std::invalid_argument("my_p4est_xgfm_cells_t::set_phi(Vec, Vec, Vec) : the second derivatives of phi must be of the same size as the number of nodes in the fine mesh");
+#endif
+
+
   }
 #endif
   if(second_derivatives_of_phi_are_set)
-    phi_xxyyzz = phi_xxyyzz_on_fine_mesh;
+  {
+    phi_second_der[0] = phi_xx_on_fine_mesh;
+    phi_second_der[1] = phi_yy_on_fine_mesh;
+#ifdef P4_TO_P8
+    phi_second_der[2] = phi_zz_on_fine_mesh;
+#endif
+  }
 
   phi = phi_on_fine_mesh;
 
   phi_has_been_set = true;
 }
 
-void my_p4est_xgfm_cells_t::set_normals(Vec normals_block_)
+void my_p4est_xgfm_cells_t::set_normals(Vec normals_[])
 {
-  P4EST_ASSERT(normals_block_ != NULL);
 #ifdef CASL_THROWS
   // compare local size
-  PetscInt local_size, block_size;
-  ierr = VecGetBlockSize(normals_block_, &block_size); CHKERRXX(ierr);
-  int my_error = (block_size != P4EST_DIM);
+  PetscInt local_size[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetLocalSize(normals_[dim], &local_size[dim]); CHKERRXX(ierr);}
 
-  ierr = VecGetLocalSize(normals_block_, &local_size); CHKERRXX(ierr);
-  my_error = my_error || (((PetscInt) (P4EST_DIM*fine_nodes->num_owned_indeps)) != local_size);
+  int my_error = ( ((PetscInt) fine_nodes->num_owned_indeps) != local_size[0]);
+  for (short dim = 1; dim < P4EST_DIM; ++dim)
+    my_error = my_error || (local_size[dim] != local_size[dim-1]);
 
   // compare global size
-  PetscInt global_size;
-  ierr = VecGetSize(normals_block_, &global_size); CHKERRXX(ierr);
+  PetscInt global_size[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetSize(normals_[dim], &global_size[dim]); CHKERRXX(ierr);}
 
   PetscInt global_nb_fine_nodes = 0;
   for (int r = 0; r<p4est->mpisize; ++r)
     global_nb_fine_nodes += (PetscInt)fine_nodes->global_owned_indeps[r];
-  my_error = my_error || (global_size != (P4EST_DIM*global_nb_fine_nodes));
+  my_error = my_error || (global_size[0] != global_nb_fine_nodes);
+  for (short dim = 1; dim < P4EST_DIM; ++dim)
+    my_error = my_error || (global_size[dim] != global_size[dim-1]);
 
   // compare ghost layers
-  PetscInt ghost_layer_size;
-  Vec normals_block_loc;
-  ierr = VecGhostGetLocalForm(normals_block_, &normals_block_loc); CHKERRXX(ierr);
-  ierr = VecGetSize(normals_block_loc, &ghost_layer_size); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(normals_block_, &normals_block_loc); CHKERRXX(ierr);
-  ghost_layer_size -= local_size;
-  my_error = my_error || (ghost_layer_size != ((PetscInt) (P4EST_DIM*(fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps))));
+  PetscInt ghost_layer_size[P4EST_DIM];
+  Vec normals_loc[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGhostGetLocalForm(normals_[dim], &normals_loc[dim]); CHKERRXX(ierr);
+    ierr = VecGetSize(normals_loc[dim], &ghost_layer_size[dim]); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(normals_[dim], &normals_loc[dim]); CHKERRXX(ierr);
+    ghost_layer_size[dim] -= local_size[dim];
+  }
+
+  my_error = my_error || (ghost_layer_size[0] != ((PetscInt) (fine_nodes->indep_nodes.elem_count - fine_nodes->num_owned_indeps)));
+  for (short dim = 1; dim < P4EST_DIM; ++dim)
+    my_error = my_error || (ghost_layer_size[dim] != ghost_layer_size[dim-1]);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(my_error)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_normals(Vec) : the block-structured normal vector must be of the same size as the number of nodes in the fine mesh times P4EST_DIM and must be constructed as a P4EST_DIM-blocked vector");
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::set_normals(Vec[]) : the normal vectors must be of the same size as the number of nodes in the fine mesh");
 #endif
-  normals = normals_block_;
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+    normals[dim] = normals_[dim];
 
   normals_have_been_set = true;
 }
@@ -250,30 +322,36 @@ void my_p4est_xgfm_cells_t::set_jumps(Vec jump_sol, Vec jump_normal_flux)
 #endif
   jump_u            = jump_sol;
 
-  const double *jump_u_read_p, *jump_normal_flux_read_p, *normals_read_p;
-  double *jump_mu_grad_u_p;
+  const double *jump_u_read_p, *jump_normal_flux_read_p, *normals_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(jump_normal_flux, &jump_normal_flux_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
-  if(jump_mu_grad_u != NULL){
-    ierr = VecDestroy(jump_mu_grad_u); CHKERRXX(ierr); }
-  ierr = VecCreateGhostNodesBlock(fine_p4est, fine_nodes, P4EST_DIM, &jump_mu_grad_u); CHKERRXX(ierr);
-  ierr = VecGetArray(jump_mu_grad_u, &jump_mu_grad_u_p); CHKERRXX(ierr);
-
+  double *jump_mu_grad_u_p[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    if(jump_mu_grad_u[dim] != NULL){
+      ierr = VecDestroy(jump_mu_grad_u[dim]); CHKERRXX(ierr);}
+    ierr = VecCreateGhostNodes(fine_p4est, fine_nodes, &jump_mu_grad_u[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(jump_mu_grad_u[dim], &jump_mu_grad_u_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+  }
   set_jump_mu_grad_u_for_nodes(fine_node_ngbd->layer_nodes, jump_mu_grad_u_p, jump_normal_flux_read_p, normals_read_p, jump_u_read_p);
-  ierr = VecGhostUpdateBegin(jump_mu_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGhostUpdateBegin(jump_mu_grad_u[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
   set_jump_mu_grad_u_for_nodes(fine_node_ngbd->local_nodes, jump_mu_grad_u_p, jump_normal_flux_read_p, normals_read_p, jump_u_read_p);
-  ierr = VecGhostUpdateEnd(jump_mu_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGhostUpdateEnd(jump_mu_grad_u[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
-  ierr = VecRestoreArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_mu_grad_u, &jump_mu_grad_u_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(jump_mu_grad_u[dim], &jump_mu_grad_u_p[dim]); CHKERRXX(ierr);
+  }
   ierr = VecRestoreArrayRead(jump_normal_flux, &jump_normal_flux_read_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
   jumps_have_been_set = true;
 }
 
-void my_p4est_xgfm_cells_t::set_jump_mu_grad_u_for_nodes(const std::vector<p4est_locidx_t> &list_of_node_indices, double *jump_mu_grad_u_p, const double *jump_normal_flux_read_p,
-                                                         const double *normals_read_p, const double *jump_u_read_p)
+void my_p4est_xgfm_cells_t::set_jump_mu_grad_u_for_nodes(const std::vector<p4est_locidx_t> &list_of_node_indices, double *jump_mu_grad_u_p[], const double *jump_normal_flux_read_p, const double *normals_read_p[], const double *jump_u_read_p)
 {
   p4est_locidx_t node_idx;
   double grad_jump_u_cdot_normal = 0.0, norm_n;
@@ -291,7 +369,7 @@ void my_p4est_xgfm_cells_t::set_jump_mu_grad_u_for_nodes(const std::vector<p4est
       qnnn->gradient(jump_u_read_p, grad_jump_u);
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
     {
-      n_comp[dim] = normals_read_p[P4EST_DIM*node_idx+dim];
+      n_comp[dim] = normals_read_p[dim][node_idx];
       if(activate_x)
         grad_jump_u_cdot_normal += n_comp[dim]*grad_jump_u[dim];
       norm_n += SQR(n_comp[dim]);
@@ -818,7 +896,7 @@ bool my_p4est_xgfm_cells_t::interface_neighbor_is_found(const p4est_locidx_t &qu
 
 interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_locidx_t &quad_idx, const int &dir,
                                                                  const p4est_locidx_t &tmp_quad_idx, const p4est_locidx_t &quad_fine_node_idx, const p4est_locidx_t &tmp_fine_node_idx,
-                                                                 const double *phi_read_p, const double *phi_xxyyzz_read_p)
+                                                                 const double *phi_read_p, const double *phi_dd_read_p[])
 {
   P4EST_ASSERT(quad_idx >= 0 && quad_idx < p4est->local_num_quadrants && dir >= 0 && dir < P4EST_FACES);
 #ifdef DEBUG
@@ -866,9 +944,9 @@ interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_loc
   dd_phi_q = dd_phi_mid_point = dd_phi_tmp = 0.0;
   if(second_derivatives_of_phi_are_set)
   {
-    dd_phi_q          = phi_xxyyzz_read_p[P4EST_DIM*quad_fine_node_idx+(dir/2)];
-    dd_phi_tmp        = phi_xxyyzz_read_p[P4EST_DIM*tmp_fine_node_idx+(dir/2)];
-    dd_phi_mid_point  = phi_xxyyzz_read_p[P4EST_DIM*interface_nb.mid_point_fine_node_idx+(dir/2)];
+    dd_phi_q          = phi_dd_read_p[dir/2][quad_fine_node_idx];
+    dd_phi_tmp        = phi_dd_read_p[dir/2][tmp_fine_node_idx];
+    dd_phi_mid_point  = phi_dd_read_p[dir/2][interface_nb.mid_point_fine_node_idx];
   }
 
   double theta;
@@ -908,6 +986,7 @@ interface_neighbor my_p4est_xgfm_cells_t::get_interface_neighbor(const p4est_loc
   return interface_nb;
 }
 
+
 void my_p4est_xgfm_cells_t::setup_negative_laplace_matrix_with_jumps()
 {
   preallocate_matrix();
@@ -918,10 +997,11 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_matrix_with_jumps()
     ierr = VecDuplicate(rhs, &null_space); CHKERRXX(ierr);
     ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
   }
-  const double *phi_read_p, *phi_xxyyzz_read_p;
+  const double *phi_read_p, *phi_dd_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr = VecGetArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
+  if(second_derivatives_of_phi_are_set)
+    for (short dim = 0; dim < P4EST_DIM; ++dim){
+      ierr = VecGetArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
   bool is_quad_a_fine_node, is_tmp_a_fine_node;
 
   fixed_value_idx_g = p4est->global_num_quadrants;
@@ -1056,7 +1136,7 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_matrix_with_jumps()
           if((phi_q <= 0.0) != (phi_tmp <= 0.0))
           {
             P4EST_ASSERT(is_quad_a_fine_node && is_tmp_a_fine_node);
-            interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_xxyyzz_read_p);
+            interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_dd_read_p);
             double mu_across = int_nb.mu_this_side*int_nb.mu_other_side/((1.0-int_nb.theta)*int_nb.mu_this_side + int_nb.theta*int_nb.mu_other_side);
 
             ierr = MatSetValue(A, quad_gloidx, quad_gloidx,                         mu_across * face_area/dxyz_min[dir/2], ADD_VALUES); CHKERRXX(ierr);
@@ -1139,8 +1219,10 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_matrix_with_jumps()
     }
   }
 
-  if(!nullspace_use_fixed_point){
-    ierr = VecRestoreArray(null_space, &null_space_p); CHKERRXX(ierr); }
+  if(!nullspace_use_fixed_point)
+  {
+    ierr = VecRestoreArray(null_space, &null_space_p); CHKERRXX(ierr);
+  }
 
 
   // Assemble the matrix
@@ -1188,8 +1270,11 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_matrix_with_jumps()
   is_matrix_built = true;
 
   ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr = VecRestoreArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
+  if(second_derivatives_of_phi_are_set)
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecRestoreArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);
+    }
 
   ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1200,14 +1285,15 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_rhsvec_with_jumps()
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_rhsvec_setup, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double *rhs_p;
-  const double *phi_read_p, *phi_xxyyzz_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p;
+  const double *phi_read_p, *phi_dd_read_p[P4EST_DIM], *jump_u_read_p, *jump_mu_grad_u_read_p[P4EST_DIM];
   ierr    = VecGetArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
   ierr    = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
   ierr    = VecGetArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
-  ierr    = VecGetArrayRead(jump_mu_grad_u, &jump_mu_grad_u_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr  = VecGetArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
-
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr  = VecGetArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
+    if(second_derivatives_of_phi_are_set){
+      ierr  = VecGetArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
+  }
   bool is_quad_a_fine_node, is_tmp_a_fine_node;
 
   set_of_neighboring_quadrants ngbd;
@@ -1326,7 +1412,7 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_rhsvec_with_jumps()
           if((phi_q <= 0.0) != (phi_tmp <= 0.0))
           {
             P4EST_ASSERT(is_quad_a_fine_node && is_tmp_a_fine_node);
-            interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_xxyyzz_read_p);
+            interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_dd_read_p);
 
             double mu_across = int_nb.mu_this_side*int_nb.mu_other_side/((1.0-int_nb.theta)*int_nb.mu_this_side + int_nb.theta*int_nb.mu_other_side);
             double jump_sol_across, jump_flux_comp_across;
@@ -1334,15 +1420,15 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_rhsvec_with_jumps()
             {
               // mid_point on same side
               P4EST_ASSERT(int_nb.theta <= 1.0);
-              jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                              + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
-              jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)]  + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.tmp_fine_node_idx + (dir/2)];
+              jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
+              jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[dir/2][int_nb.tmp_fine_node_idx];
             }
             else
             {
               // mid_point on the other side
               P4EST_ASSERT(int_nb.theta >= 0.0);
-              jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                              + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
-              jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)]  + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.quad_fine_node_idx + (dir/2)];
+              jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
+              jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.quad_fine_node_idx];
             }
             double sign_jump = (phi_q > 0.0 ? +1.0 : -1.0);
             double sign_jump_in_flux_factor = (dir%2 == 0 ? -1.0 : +1.0);
@@ -1363,9 +1449,13 @@ void my_p4est_xgfm_cells_t::setup_negative_laplace_rhsvec_with_jumps()
   }
 
   // restore the pointers
-  ierr  = VecRestoreArrayRead(jump_mu_grad_u, &jump_mu_grad_u_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr  = VecRestoreArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr  = VecRestoreArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
+    if(second_derivatives_of_phi_are_set)
+    {
+      ierr  = VecRestoreArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);
+    }
+  }
   ierr    = VecRestoreArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
   ierr    = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
   ierr    = VecRestoreArray(rhs,    &rhs_p   ); CHKERRXX(ierr);
@@ -1412,12 +1502,15 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
   P4EST_ASSERT(normals_have_been_set);
   P4EST_ASSERT(!interface_values_are_set ? !fine_extension_is_defined : fine_extension_is_defined);
 
-  const double *phi_read_p, *normals_read_p, *phi_xxyyzz_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p;
+  const double *phi_read_p, *normals_read_p[P4EST_DIM], *phi_dd_read_p[P4EST_DIM], *jump_u_read_p, *jump_mu_grad_u_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(jump_mu_grad_u, &jump_mu_grad_u_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr = VecGetArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGetArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
+    if(second_derivatives_of_phi_are_set){
+      ierr = VecGetArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
+  }
   ierr = VecGetArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
 
   if(interface_values_are_set)
@@ -1442,8 +1535,8 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
         {
           P4EST_ASSERT(int_nb.theta <= 1.0);
           // mid_point and point across are fine nodes!
-          jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                            + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
-          jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+(dir/2)]  + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.tmp_fine_node_idx+(dir/2)];
+          jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
+          jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[dir/2][int_nb.tmp_fine_node_idx];
           jump_mu_other_fine_node = mu_p(int_nb.quad_tmp_idx) - mu_m(int_nb.quad_tmp_idx);
           other_fine_node_idx     = int_nb.tmp_fine_node_idx;
         }
@@ -1451,8 +1544,8 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
         {
           P4EST_ASSERT(int_nb.theta>=0.0);
           // quad and mid-point are fine nodes!
-          jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                            + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
-          jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+(dir/2)]  + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.quad_fine_node_idx + (dir/2)];
+          jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
+          jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.quad_fine_node_idx];
           jump_mu_other_fine_node = mu_p(quad_idx) - mu_m(quad_idx);
           other_fine_node_idx     = int_nb.quad_fine_node_idx;
         }
@@ -1473,8 +1566,8 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
         norm_normal_vector_mid_point          = norm_normal_vector_other_fine_node = inner_product_mid_point = inner_product_other_fine_node = 0.0;
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
         {
-          normal_vector_mid_point[dim]        = normals_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx+dim];
-          normal_vector_other_fine_node[dim]  = normals_read_p[P4EST_DIM*other_fine_node_idx+dim];
+          normal_vector_mid_point[dim]        = normals_read_p[dim][int_nb.mid_point_fine_node_idx];
+          normal_vector_other_fine_node[dim]  = normals_read_p[dim][other_fine_node_idx];
           norm_normal_vector_mid_point       += SQR(normal_vector_mid_point[dim]);
           norm_normal_vector_other_fine_node += SQR(normal_vector_other_fine_node[dim]);
           inner_product_mid_point            += jump_correction_mid_point[dim]*normal_vector_mid_point[dim];
@@ -1586,7 +1679,7 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
               if(((phi_q > 0.0) && (phi_tmp <= 0.0)) || ((phi_q <= 0.0) && (phi_tmp > 0.0)))
               {
                 P4EST_ASSERT(is_quad_a_fine_node && is_tmp_a_fine_node);
-                interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_xxyyzz_read_p);
+                interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_dd_read_p);
                 P4EST_ASSERT(interface_neighbor_is_found(quad_idx, dir, int_nb));
 
                 double jump_sol_across, jump_flux_comp_across;
@@ -1595,16 +1688,16 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
                   // mid_point on same side
                   P4EST_ASSERT(int_nb.theta <= 1.0);
                   // mid_point and point across are fine nodes!
-                  jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                              + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
-                  jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)]  + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.tmp_fine_node_idx+(dir/2)];
+                  jump_sol_across         = (2.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (2.0*int_nb.theta - 1.0)*jump_u_read_p[int_nb.tmp_fine_node_idx];
+                  jump_flux_comp_across   = (2.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (2.0*int_nb.theta - 1.0)*jump_mu_grad_u_read_p[dir/2][int_nb.tmp_fine_node_idx];
                 }
                 else
                 {
                   // mid_point on the other side
                   P4EST_ASSERT(int_nb.theta >=0.0);
                   // quad and mid-point are fine nodes!
-                  jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                              + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
-                  jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.mid_point_fine_node_idx + (dir/2)]  + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[P4EST_DIM*int_nb.quad_fine_node_idx + (dir/2)];
+                  jump_sol_across         = 2.0*int_nb.theta*jump_u_read_p[int_nb.mid_point_fine_node_idx]                + (1.0 - 2.0*int_nb.theta)*jump_u_read_p[int_nb.quad_fine_node_idx];
+                  jump_flux_comp_across   = 2.0*int_nb.theta*jump_mu_grad_u_read_p[dir/2][int_nb.mid_point_fine_node_idx] + (1.0 - 2.0*int_nb.theta)*jump_mu_grad_u_read_p[dir/2][int_nb.quad_fine_node_idx];
                 }
 
                 map_of_interface_neighbors[quad_idx][dir].int_value =
@@ -1628,13 +1721,13 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
     ierr = VecGhostUpdateEnd(new_cell_extension, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(new_cell_extension, &new_cell_extension_p); CHKERRXX(ierr);
   }
-
-  ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(jump_u, &jump_u_read_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(jump_mu_grad_u, &jump_mu_grad_u_read_p); CHKERRXX(ierr);
-  if(second_derivatives_of_phi_are_set){
-    ierr = VecRestoreArrayRead(phi_xxyyzz, &phi_xxyyzz_read_p); CHKERRXX(ierr); }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecRestoreArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
+    if(second_derivatives_of_phi_are_set){
+      ierr = VecRestoreArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
+  }
   interface_values_are_set = true;
 }
 
@@ -1675,9 +1768,10 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(Vec new_cell_
     throw std::invalid_argument("my_p4est_xgfm_cells_t::extend_interface_values(const double *, Vec , const double* , bool, double, uint) : the max number of iterations must be strictly positive...");
 #endif
 
-  const double *phi_read_p, *normals_read_p;
+  const double *phi_read_p, *normals_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim){
+    ierr = VecGetArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);}
   double *new_cell_extension_p;
   ierr = VecGetArray(new_cell_extension, &new_cell_extension_p); CHKERRXX(ierr);
 
@@ -1905,7 +1999,10 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(Vec new_cell_
   }
 
   ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecRestoreArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+  }
   ierr = VecRestoreArray(new_cell_extension, &new_cell_extension_p); CHKERRXX(ierr);
 }
 
@@ -2138,6 +2235,7 @@ void my_p4est_xgfm_cells_t::interpolate_cell_field_at_fine_node(const p4est_loci
                                                                 const bool& super_fine_node, const p4est_quadrant_t* coarse_quad, const p4est_locidx_t& coarse_quad_idx,
                                                                 const p4est_topidx_t& tree_idx_for_coarse_quad, const set_of_neighboring_quadrants& ngbd_of_coarse_cells)
 {
+
   P4EST_ASSERT(!local_interpolator_is_set);
   set_of_neighboring_quadrants lsqr_neighbors;
 
@@ -2278,6 +2376,7 @@ void my_p4est_xgfm_cells_t::interpolate_cell_field_at_fine_node(const p4est_loci
 
 #ifdef DEBUG
   double value_check = 0.0;
+  double accuracy_threshold = 0.0;
   for (size_t i = 0; i < local_interpolator[fine_node_idx].size(); ++i)
   {
     value_check += cell_field_read_p[local_interpolator[fine_node_idx][i].quad_idx]*local_interpolator[fine_node_idx][i].weight;
@@ -2311,17 +2410,17 @@ void my_p4est_xgfm_cells_t::get_corrected_rhs(Vec corrected_rhs, const double *f
   if(my_error)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::get_corrected_rhs(Vec, const double*): the corrected_rhs cannot be calculated before the first pass in the extension (the map of neighbor interface values must be set first)...");
 #endif
-  P4EST_ASSERT(normals_have_been_set);
+
   // reset corrected_rhs!
   ierr = VecCopy(rhs, corrected_rhs); CHKERRXX(ierr);
 
   // correct it!
   double *corrected_rhs_p;
   ierr = VecGetArray(corrected_rhs, &corrected_rhs_p); CHKERRXX(ierr);
-  const double *phi_read_p, *normals_read_p;
+  const double *phi_read_p, *normals_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
-
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);}
 #ifdef DEBUG
   splitting_criteria_t* data = (splitting_criteria_t*) p4est->user_pointer;
 #endif
@@ -2434,7 +2533,8 @@ void my_p4est_xgfm_cells_t::get_corrected_rhs(Vec corrected_rhs, const double *f
     }
   }
 
-  ierr = VecRestoreArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);}
   ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(corrected_rhs, &corrected_rhs_p); CHKERRXX(ierr);
 
@@ -2443,11 +2543,12 @@ void my_p4est_xgfm_cells_t::get_corrected_rhs(Vec corrected_rhs, const double *f
 
 void my_p4est_xgfm_cells_t::correct_jump_mu_grad_u()
 {
-  P4EST_ASSERT(normals_have_been_set);
-  double *jump_mu_grad_u_p;
-  const double *extension_on_fine_nodes_read_p, *normals_read_p;
-  ierr = VecGetArray(jump_mu_grad_u, &jump_mu_grad_u_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
+  double *jump_mu_grad_u_p[P4EST_DIM];
+  const double *extension_on_fine_nodes_read_p, *normals_read_p[P4EST_DIM];
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArray(jump_mu_grad_u[dim], &jump_mu_grad_u_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+  }
   ierr = VecGetArrayRead(extension_on_fine_nodes, &extension_on_fine_nodes_read_p); CHKERRXX(ierr);
 
   double normal[P4EST_DIM], jump_correction[P4EST_DIM], norm_normal, inner_product;
@@ -2462,39 +2563,7 @@ void my_p4est_xgfm_cells_t::correct_jump_mu_grad_u()
     norm_normal = inner_product = 0.0;
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
     {
-      normal[dim]   = normals_read_p[P4EST_DIM*node_idx + dim];
-      inner_product += jump_correction[dim]*normal[dim];
-      norm_normal   += SQR(normal[dim]);
-    }
-    norm_normal = sqrt(norm_normal);
-    if(norm_normal > EPS)
-      inner_product /= norm_normal;
-    else
-      inner_product = 0.0;
-
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      if(norm_normal > EPS)
-        normal[dim] /= norm_normal;
-      else
-        normal[dim]  = 0.0;
-      jump_correction[dim]                      -= normal[dim]*inner_product;
-      jump_mu_grad_u_p[P4EST_DIM*node_idx+dim]  +=  jump_correction[dim];
-    }
-  }
-
-  ierr = VecGhostUpdateBegin(jump_mu_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for (size_t nn = 0; nn < fine_node_ngbd->local_nodes.size(); ++nn) {
-    p4est_locidx_t node_idx = fine_node_ngbd->local_nodes[nn];
-    qnnn = &fine_node_ngbd->neighbors[node_idx];
-    qnnn->gradient(extension_on_fine_nodes_read_p, jump_correction);
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      jump_correction[dir] *= (mu_p.get_value() - mu_m.get_value());
-    norm_normal = inner_product = 0.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      normal[dim]   = normals_read_p[P4EST_DIM*node_idx + dim];
+      normal[dim]   = normals_read_p[dim][node_idx];
       inner_product += jump_correction[dim]*normal[dim];
       norm_normal   += SQR(normal[dim]);
     }
@@ -2511,22 +2580,56 @@ void my_p4est_xgfm_cells_t::correct_jump_mu_grad_u()
       else
         normal[dim]         = 0.0;
       jump_correction[dim] -= normal[dim]*inner_product;
-      jump_mu_grad_u_p[P4EST_DIM*node_idx+dim] +=  jump_correction[dim];
+      jump_mu_grad_u_p[dim][node_idx] +=  jump_correction[dim];
     }
   }
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGhostUpdateBegin(jump_mu_grad_u[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
 
-  ierr = VecGhostUpdateEnd(jump_mu_grad_u, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t nn = 0; nn < fine_node_ngbd->local_nodes.size(); ++nn) {
+    p4est_locidx_t node_idx = fine_node_ngbd->local_nodes[nn];
+    qnnn = &fine_node_ngbd->neighbors[node_idx];
+    qnnn->gradient(extension_on_fine_nodes_read_p, jump_correction);
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      jump_correction[dir] *= (mu_p.get_value() - mu_m.get_value());
+    norm_normal = inner_product = 0.0;
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      normal[dim]   = normals_read_p[dim][node_idx];
+      inner_product += jump_correction[dim]*normal[dim];
+      norm_normal   += SQR(normal[dim]);
+    }
+    norm_normal = sqrt(norm_normal);
+    if(norm_normal > EPS)
+      inner_product /= norm_normal;
+    else
+      inner_product = 0.0;
+
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      if(norm_normal > EPS)
+        normal[dim] /= norm_normal;
+      else
+        normal[dim]         = 0.0;
+      jump_correction[dim] -= normal[dim]*inner_product;
+      jump_mu_grad_u_p[dim][node_idx] +=  jump_correction[dim];
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGhostUpdateEnd(jump_mu_grad_u[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
 
   ierr = VecRestoreArrayRead(extension_on_fine_nodes, &extension_on_fine_nodes_read_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_mu_grad_u, &jump_mu_grad_u_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(normals, &normals_read_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArray(jump_mu_grad_u[dim], &jump_mu_grad_u_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(normals[dim], &normals_read_p[dim]); CHKERRXX(ierr);
+  }
 }
 
-void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec flux[], my_p4est_faces_t *faces, Vec vstar[], Vec vnp1_minus[], Vec vnp1_plus[])
+void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec flux[], my_p4est_faces_t *faces, Vec vstar[], Vec vnp1[])
 {
 #ifdef CASL_THROWS
   // make sure the faces are properly defined (from the computational grid)
-  int my_error = !p4est_is_equal(p4est, faces->get_p4est(), P4EST_FALSE);
+  int my_error = !p4est_is_equal(p4est, faces->p4est, P4EST_FALSE);
   if(my_error)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec []): the faces must be built from the computational (i.e. coarse) p4est.");
 
@@ -2549,9 +2652,10 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   if(my_error)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the flux vectors must have the same layout as if constructed with VecCreateGhostFaces(...) on the computational (coarse) grid.");
 
-  my_error = my_error || (jump_mu_grad_u == NULL);
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+    my_error = my_error || (jump_mu_grad_u[dim] == NULL);
   if(my_error)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the flux vectors cannot be calculated if the jumps in mu*grad_u have been returned to the user beforehand.");
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the flux vectors cannot be calculated if the jumps in mu*grad_u have been returned to the used beforehand.");
 
   my_error = my_error || (solution_is_set && solution == NULL);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -2561,9 +2665,9 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   my_error = my_error || ((vstar != NULL || vnp1_minus != NULL || vnp1_plus != NULL) && (vstar == NULL || vnp1_minus == NULL || vnp1_plus == NULL));
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(my_error)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the velocities vstart and vnp1 vectors vectors must either be all defined or be all NULL.");
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the velocities vstart and vnp1 vectors vectors must either be both defined or be both NULL.");
 
-  if(vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL)
+  if(vstar != NULL && vnp1 != NULL)
   {
     Vec* vel;
     for (unsigned char flag = 0; flag < 3; ++flag) {
@@ -2589,8 +2693,9 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   P4EST_ASSERT((vstar == NULL && vnp1_minus == NULL && vnp1_plus == NULL) || (vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL));
   bool velocities_are_defined = (vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL);
 
-  const double *vstar_read_p[P4EST_DIM], *phi_read_p, *solution_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p, *phi_xxyyzz_read_p;
-  double *vnp1_plus_p[P4EST_DIM], *vnp1_minus_p[P4EST_DIM], *flux_p[P4EST_DIM];
+
+  const double *vstar_read_p[P4EST_DIM], *phi_read_p, *solution_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p[P4EST_DIM], *phi_dd_read_p[P4EST_DIM];
+  double *vnp1_p[P4EST_DIM], *flux_p[P4EST_DIM];
   std::vector<bool> visited_faces[P4EST_DIM];
   p4est_locidx_t num_visited_faces[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
@@ -2603,12 +2708,15 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     visited_faces[dim].resize(faces->num_local[dim], false);
     num_visited_faces[dim] = 0;
     ierr = VecGetArray(flux[dim], &flux_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
     if(velocities_are_defined){
       ierr = VecGetArrayRead(vstar[dim], &vstar_read_p[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(vnp1_plus[dim], &vnp1_plus_p[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(vnp1_minus[dim], &vnp1_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp1[dim], &vnp1_p[dim]); CHKERRXX(ierr);
     }
+    if(second_derivatives_of_phi_are_set){
+      ierr = VecGetArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
   }
+
 
   p4est_locidx_t local_fine_indices_for_quad_interp[P4EST_CHILDREN], local_fine_indices_for_tmp_interp[P4EST_CHILDREN], local_fine_indices_for_face_interp[P4EST_CHILDREN];
   double quad_interp_weights[P4EST_CHILDREN], tmp_interp_weights[P4EST_CHILDREN], face_interp_weights[P4EST_CHILDREN];
@@ -2672,18 +2780,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(): unknown boundary condition on a wall.");
           }
           if(velocities_are_defined)
-          {
-            if(phi_face > 0.0)
-            {
-              vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-              vnp1_minus_p[dir/2][face_idx]  = DBL_MAX;
-            }
-            else
-            {
-              vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
-              vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-            }
-          }
+            vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
           visited_faces[dir/2][face_idx] = true;
           num_visited_faces[dir/2]++;
           continue;
@@ -2722,7 +2819,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
 
             if(!((phi_q <= 0.0) == (phi_tmp <= 0.0) && (phi_q <= 0.0) != (phi_face <= 0.0)))// not under-resolved
             {
-              const interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_xxyyzz_read_p);
+              const interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_dd_read_p);
               P4EST_ASSERT(int_nb.mid_point_fine_node_idx == local_fine_indices_for_face_interp[0]);
 
               if(int_nb.theta >= 0.5)
@@ -2761,18 +2858,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             }
 
             if(velocities_are_defined)
-            {
-              if(phi_face > 0.0)
-              {
-                vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-                vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
-              }
-              else
-              {
-                vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
-                vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-              }
-            }
+              vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
           }
           /* no interface - regular discretization */
           else
@@ -2795,7 +2881,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               local_flux += mu_face*(solution_read_p[quad_tmp_idx] - solution_read_p[it->p.piggy3.local_num])*s_nb/s_tmp;
 #ifdef DEBUG
               check_sum += s_nb/s_tmp;
-#endif
+  #endif
             }
             P4EST_ASSERT(fabs(check_sum - 1.0) < EPS);
             weighted_distance *= tree_dimensions[dir/2];
@@ -2810,18 +2896,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
                 visited_faces[dir/2][face_idx]  = true;
                 num_visited_faces[dir/2]++;
                 if(velocities_are_defined)
-                {
-                  if(phi_face > 0.0)
-                  {
-                    vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-                    vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
-                  }
-                  else
-                  {
-                    vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
-                    vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-                  }
-                }
+                  vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
               }
             }
           }
@@ -2865,18 +2940,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               visited_faces[dir/2][face_idx]  = true;
               num_visited_faces[dir/2]++;
               if(velocities_are_defined)
-              {
-                if(phi_face > 0.0)
-                {
-                  vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-                  vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
-                }
-                else
-                {
-                  vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
-                  vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
-                }
-              }
+                vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
             }
           }
         }
@@ -2893,18 +2957,19 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     P4EST_ASSERT(num_visited_faces[dim] == faces->num_local[dim]);
     ierr = VecRestoreArray(flux[dim], &flux_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     if(velocities_are_defined){
       ierr = VecRestoreArrayRead(vstar[dim], &vstar_read_p[dim]); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(vnp1_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(vnp1_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (vnp1_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (vnp1_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vnp1_plus[dim], &vnp1_plus_p[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vnp1_minus[dim], &vnp1_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vnp1[dim], &vnp1_p[dim]); CHKERRXX(ierr);
     }
+    if(second_derivatives_of_phi_are_set){
+      ierr = VecRestoreArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
     ierr = VecGhostUpdateEnd  (flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+
 }
 
 #ifdef DEBUG

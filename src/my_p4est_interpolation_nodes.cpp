@@ -8,11 +8,13 @@
 
 my_p4est_interpolation_nodes_t::my_p4est_interpolation_nodes_t(const my_p4est_node_neighbors_t* ngbd_n)
   : my_p4est_interpolation_t(ngbd_n), nodes(ngbd_n->nodes),
+    Fxx(vector<Vec>(0)), Fyy(vector<Vec>(0)),
+    #ifdef P4_TO_P8
+    Fzz(vector<Vec>(0)),
+    #endif
     method(linear)
 {
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    Fxxyyzz[dir].resize(0);
-  Fxxyyzz_block.resize(0);
+
 }
 
 void my_p4est_interpolation_nodes_t::update_neighbors(const my_p4est_node_neighbors_t* ngbd_n_)
@@ -49,8 +51,6 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, DIM(
 #ifdef P4_TO_P8
       P4EST_ASSERT(Fzz_[k] != NULL); Fxxyyzz[2][k] = Fzz_[k];
 #endif
-    }
-    Fxxyyzz_block.resize(0);
   }
   else
   {
@@ -215,15 +215,13 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
             ierr = VecRestoreArrayRead(Fxxyyzz[dir][k], &Fxxyyzz_p[dir][k]); CHKERRXX(ierr);
           }
         }
-        if(use_precomputed_block_derivatives){
-          ierr = VecRestoreArrayRead(Fxxyyzz_block[k], &Fxxyyzz_block_p[k]); CHKERRXX(ierr);
-        }
+
+        ierr = VecRestoreArrayRead(Fxx[k], &Fxx_p); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(Fyy[k], &Fyy_p); CHKERRXX(ierr);
+  #ifdef P4_TO_P8
+        ierr = VecRestoreArrayRead(Fzz[k], &Fzz_p); CHKERRXX(ierr);
+  #endif
       }
-      if(use_precomputed_derivatives_by_components)
-        for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-          P4EST_FREE(Fxxyyzz_p[dir]);
-      if(use_precomputed_block_derivatives)
-        P4EST_FREE(Fxxyyzz_block_p);
     }
     else {
       const bool local_quad = quad_idx < p4est->local_num_quadrants;

@@ -3210,9 +3210,9 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
   }
 }
 
-size_t my_p4est_navier_stokes_t::memory_estimate() const
+unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
 {
-  size_t memory_used = 0;
+  unsigned long int memory_used = 0;
   memory_used += my_p4est_brick_memory_estimate(brick);
   memory_used += p4est_connectivity_memory_used(conn);
   if(p4est_nm1 != p4est_n)
@@ -3256,7 +3256,7 @@ size_t my_p4est_navier_stokes_t::memory_estimate() const
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
     memory_used += 4*(faces_n->num_local[dim] + faces_n->num_ghost[dim])*sizeof (PetscScalar);
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &memory_used, 1, my_MPI_SIZE_T, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &memory_used, 1, MPI_UNSIGNED_LONG, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 
   return memory_used;
 }

@@ -527,8 +527,7 @@ public:
   virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const unsigned int &comp) const = 0;
   inline double interpolate(const p4est_quadrant_t &quad, const double *xyz)
   {
-    P4EST_ASSERT(n_vecs() == 1);
-    P4EST_ASSERT(bs_f == 1);
+    P4EST_ASSERT(Fi.size() == 1);
     double to_return;
     interpolate(quad, xyz, &to_return, 0);
     return to_return;
