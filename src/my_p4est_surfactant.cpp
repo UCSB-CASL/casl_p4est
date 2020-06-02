@@ -1230,7 +1230,7 @@ void my_p4est_surfactant_t::compute_one_step_Gamma(TimeIntegrator integ, bool us
       v_nm1_s_interp.add_point(n, xyz);
     }
     Gamma_nm1_interp.interpolate(Gamma_nm1_on_ngbd_n);
-    v_nm1_s_interp.interpolate(v_nm1_s_on_ngbd_n,P4EST_DIM);
+    v_nm1_s_interp.interpolate(v_nm1_s_on_ngbd_n);
     Gamma_nm1_interp.clear();
     v_nm1_s_interp.clear();
 
