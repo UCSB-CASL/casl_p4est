@@ -91,6 +91,8 @@ DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number 
 
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
 DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
+DEFINE_PARAMETER(pl,int,check_mem_every_iter,1000,"Checks memory usage every n number of iterations (default is 1000)");
+
 DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
 
 
@@ -2244,21 +2246,26 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,
 
   T_l_dd.create(p4est,nodes);
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates T_l_dd \n");
-  int size_T_l_dd;
-  VecGetSize(T_l_dd.vec[0],&size_T_l_dd);
-  PetscPrintf(p4est->mpicomm,"Size T_l_dd = %d \n",size_T_l_dd);
+  if(print_checkpoints){
+    int size_T_l_dd;
+    VecGetSize(T_l_dd.vec[0],&size_T_l_dd);
+    PetscPrintf(p4est->mpicomm,"Size T_l_dd = %d \n",size_T_l_dd);
+  }
+
   ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec);
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets T_l_dd \n");
 
 
   if(advection_sl_order==2) {
       T_l_dd_nm1.create(p4est_nm1,nodes_nm1);
-      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates T_l_dd_nm1 \n");
+      if(print_checkpoints) {
+        PetscPrintf(p4est->mpicomm,"Creates T_l_dd_nm1 \n");
 
-      int size_T_l_dd_nm1;
+        int size_T_l_dd_nm1;
 
-      VecGetSize(T_l_dd_nm1.vec[0],&size_T_l_dd_nm1);
-      PetscPrintf(p4est->mpicomm,"Size T_l_dd_nm1 = %d \n",size_T_l_dd_nm1);
+        VecGetSize(T_l_dd_nm1.vec[0],&size_T_l_dd_nm1);
+        PetscPrintf(p4est->mpicomm,"Size T_l_dd_nm1 = %d \n",size_T_l_dd_nm1);
+      }
 
       ngbd_nm1->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
       if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Gets T_l_dd_nm1 \n");
@@ -2271,20 +2278,23 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,
   foreach_dimension(d){
     foreach_dimension(dd){
       ierr = VecCreateGhostNodes(p4est, nodes, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
-      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates v_dd[%d][%d] \n",d,dd);
+      if(print_checkpoints){
+        PetscPrintf(p4est->mpicomm,"Creates v_dd[%d][%d] \n",d,dd);
 
-      int size_v_dd;
-
-      VecGetSize(v_dd[d][dd],&size_v_dd);
-      PetscPrintf(p4est->mpicomm,"Size v_dd_ = %d \n",size_v_dd);
+        int size_v_dd;
+        VecGetSize(v_dd[d][dd],&size_v_dd);
+        PetscPrintf(p4est->mpicomm,"Size v_dd_ = %d \n",size_v_dd);
+      }
 
       if(advection_sl_order==2){
           ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
-          if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Creates v_dd_nm1[%d][%d] \n",d,dd);
-          int size_v_dd_nm1;
+          if(print_checkpoints){
+            PetscPrintf(p4est->mpicomm,"Creates v_dd_nm1[%d][%d] \n",d,dd);
+            int size_v_dd_nm1;
 
-          VecGetSize(v_dd_nm1[d][dd],&size_v_dd_nm1);
-          PetscPrintf(p4est->mpicomm,"Size v_dd_nm1 = %d \n",size_v_dd_nm1);
+            VecGetSize(v_dd_nm1[d][dd],&size_v_dd_nm1);
+            PetscPrintf(p4est->mpicomm,"Size v_dd_nm1 = %d \n",size_v_dd_nm1);
+          }
         }
     }
   }
@@ -5296,7 +5306,7 @@ int main(int argc, char** argv) {
         // Get current memory usage and print out all memory usage checkpoints:
         PetscLogDouble mem_safety_check;
 
-        if(/*true*/(tstep%save_state_every_iter)==0){ // Do a memory check every time we save a state
+        if(/*true*/(tstep%check_mem_every_iter)==0){ // Do a memory check every time we save a state
           MPI_Barrier(mpi.comm());
           PetscMemoryGetCurrentUsage(&mem_safety_check);
           int no = nodes->num_owned_indeps;
