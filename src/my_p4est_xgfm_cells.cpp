@@ -31,9 +31,9 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
                                              const my_p4est_node_neighbors_t *subrefined_ngbd_n,
                                              const bool &activate_xGFM_)
   : cell_ngbd(ngbd_c), node_ngbd(ngbd_n),
-    p4est(ngbd_c->p4est), nodes(ngbd_n->get_nodes()), ghost(ngbd_c->ghost),
-    xyz_min(ngbd_c->p4est->connectivity->vertices + 3*ngbd_c->p4est->connectivity->tree_to_vertex[0]),
-    xyz_max(ngbd_c->p4est->connectivity->vertices + 3*ngbd_c->p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(ngbd_c->p4est->trees->elem_count - 1) + P4EST_CHILDREN - 1]),
+    p4est(ngbd_c->get_p4est()), nodes(ngbd_n->get_nodes()), ghost(ngbd_c->get_ghost()),
+    xyz_min(ngbd_c->get_p4est()->connectivity->vertices + 3*ngbd_c->get_p4est()->connectivity->tree_to_vertex[0]),
+    xyz_max(ngbd_c->get_p4est()->connectivity->vertices + 3*ngbd_c->get_p4est()->connectivity->tree_to_vertex[P4EST_CHILDREN*(ngbd_c->get_p4est()->trees->elem_count - 1) + P4EST_CHILDREN - 1]),
     tree_dimensions(ngbd_c->get_tree_dimensions()),
     periodicity(ngbd_c->get_hierarchy()->get_periodicity()),
     #ifdef WITH_SUBREFINEMENT
@@ -1167,7 +1167,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
   {
     P4EST_ASSERT(coarse_node_idx >= 0);
     set_of_neighboring_quadrants nearby_cell_neighbors;
-    const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = node_ngbd->gather_neighbor_cells_of_node(nearby_cell_neighbors, cell_ngbd, coarse_node_idx);
+    const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = cell_ngbd->gather_neighbor_cells_of_node(coarse_node_idx, nodes, nearby_cell_neighbors);
     const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
     to_return = get_lsqr_interpolation_at_node(ni, xyz_node, cell_ngbd, nearby_cell_neighbors, scaling, cell_field_p, 2, xgfm_threshold_cond_number_lsqr, &cell_interpolator);
     // note : if locally uniform the result of the above is the expected arithmetic average of neighbor cells
@@ -1177,7 +1177,7 @@ double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(const p4est_l
   {
     // find smallest (coarse) quad containing point
     p4est_quadrant_t coarse_quad; std::vector<p4est_quadrant_t> remote_matches; remote_matches.resize(0);
-    int rank = cell_ngbd->hierarchy->find_smallest_quadrant_containing_point(xyz_node, coarse_quad, remote_matches, false, true); P4EST_ASSERT(rank != -1); (void) rank;
+    int rank = cell_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_node, coarse_quad, remote_matches, false, true); P4EST_ASSERT(rank != -1); (void) rank;
     double quad_xyz[P4EST_DIM]; quad_xyz_fr_q(coarse_quad.p.piggy3.local_num, coarse_quad.p.piggy3.which_tree, p4est, ghost, quad_xyz);
     if(ORD(periodicity[0], periodicity[1], periodicity[2]))
       for (u_char dim = 0; dim < P4EST_DIM; ++dim)

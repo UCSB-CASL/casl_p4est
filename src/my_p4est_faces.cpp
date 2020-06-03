@@ -884,7 +884,7 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
 
   set_of_neighboring_quadrants cell_neighbors; cell_neighbors.clear();
   /* gather the neighborhood and get the (logical) size of the smallest nearby quadrant */
-  const p4est_qcoord_t logical_size_smallest_nearby_cell = ngbd_n->gather_neighbor_cells_of_node(cell_neighbors, faces->get_ngbd_c(), node_idx, true);
+  const p4est_qcoord_t logical_size_smallest_nearby_cell = faces->get_ngbd_c()->gather_neighbor_cells_of_node(node_idx, nodes, cell_neighbors, true);
   const double* tree_dim = faces->get_tree_dimensions();
   const double scaling = 0.5*MIN(DIM(tree_dim[0], tree_dim[1], tree_dim[2]))*(double)logical_size_smallest_nearby_cell/(double) P4EST_ROOT_LEN;
 

@@ -73,14 +73,13 @@ p4est_locidx_t my_p4est_hierarchy_t::update_tree(int tree_idx, const p4est_quadr
   return ind;
 }
 
-p4est_locidx_t my_p4est_hierarchy_t::get_index_of_hierarchy_cell_matching_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx ONLY_WITH_P4EST_DEBUG(COMMA const bool& must_be_leaf)) const
+p4est_locidx_t my_p4est_hierarchy_t::get_index_of_hierarchy_cell_matching_or_containing_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const
 {
   p4est_locidx_t ind = 0;
-  while (trees[tree_idx][ind].level != quad->level)
+  while (trees[tree_idx][ind].level != quad->level && trees[tree_idx][ind].child != CELL_LEAF)
     ind = trees[tree_idx][ind].get_index_of_child_containing(*quad);
 
-  P4EST_ASSERT(ANDD(quad->x == trees[tree_idx][ind].imin, quad->y == trees[tree_idx][ind].jmin, quad->z == trees[tree_idx][ind].kmin));
-  P4EST_ASSERT(!must_be_leaf || trees[tree_idx][ind].child == CELL_LEAF);
+  P4EST_ASSERT(trees[tree_idx][ind].child == CELL_LEAF || ANDD(quad->x == trees[tree_idx][ind].imin, quad->y == trees[tree_idx][ind].jmin, quad->z == trees[tree_idx][ind].kmin));
   return ind;
 }
 
@@ -88,7 +87,7 @@ void my_p4est_hierarchy_t::get_all_quadrants_in(const p4est_quadrant_t* const &q
 {
   list_of_local_quad_idx.clear();
 
-  const HierarchyCell matching_cell = trees[tree_idx][get_index_of_hierarchy_cell_matching_quad(quad, tree_idx ONLY_WITH_P4EST_DEBUG(COMMA false))];
+  const HierarchyCell matching_cell = trees[tree_idx][get_index_of_hierarchy_cell_matching_or_containing_quad(quad, tree_idx)];
 
   matching_cell.add_all_inner_leaves_to(list_of_local_quad_idx, trees[tree_idx]);
   return;
@@ -459,4 +458,38 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
     remote_matches.push_back(sq);
   }
+}
+
+void my_p4est_hierarchy_t::find_neighbor_cell_of_node(const p4est_locidx_t& node_idx, const p4est_nodes_t* nodes, DIM(const char& i, const char& j, const char& k),
+                                                      p4est_locidx_t& quad_idx, p4est_topidx_t& owning_tree_idx) const
+{
+  // make a local copy of the current node structure
+  p4est_indep_t node = *(p4est_indep_t *)sc_const_array_index(&nodes->indep_nodes, node_idx);
+  // unclamp it
+  p4est_node_unclamp((p4est_quadrant_t*) &node);
+
+  P4EST_ASSERT(ANDD(abs(i) == 1, abs(j) == 1, abs(k) == 1));
+  // perturb the copied unclamped node in the queried direction (by one logical coordinate unit)
+  node.x += i; P4EST_ASSERT(node.x != 0 && node.x != P4EST_ROOT_LEN);
+  node.y += j; P4EST_ASSERT(node.y != 0 && node.y != P4EST_ROOT_LEN);
+#ifdef P4_TO_P8
+  node.z += k; P4EST_ASSERT(node.z != 0 && node.z != P4EST_ROOT_LEN);
+#endif
+  // make sure it can be found
+  if(!is_node_in_domain(node, myb, p4est->connectivity))
+  {
+    quad_idx = NOT_A_VALID_QUADRANT;
+    return;
+  }
+
+  // Since it can be fonud, invoke the hierarchy with the appropriate logical coordinates of the
+  // perturbed node and its correct owning tree index to find the (cumulative) index of the queried
+  // quadrant
+  owning_tree_idx = node.p.which_tree;
+  int ind = 0;
+  while (trees[owning_tree_idx][ind].child != CELL_LEAF)
+    ind = trees[owning_tree_idx][ind].get_index_of_child_containing(node);
+
+  quad_idx = trees[owning_tree_idx][ind].quad;
+  return;
 }

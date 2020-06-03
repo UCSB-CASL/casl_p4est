@@ -765,6 +765,26 @@ bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_
 
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
 
+/*!
+ * \brief is_node_in_domain checks if a (possibly perturbed) node is in the computational domain captured by
+ * a brick and a connectivity or not. If it lies in the computational domain, the routine check the consistency of
+ * the logical coordinates x, y, z of the node and correct its p.which_tree if needed, i.e., if the node coordinates
+ * do not lie in a logical P4EST_ROOT_LEN x P4EST_ROOT_LEN x P4EST_ROOT_LEN box. In that case, the appropriate tree
+ * owning the perturbed point is found and the logical coordinates of the node are corrected accordingly.
+ * \param [inout] node      on input, its logical coordinates x, y, z MUST be in [-P4EST_ROOT_LEN; 2*P4EST_ROOT_LEN - 1]
+ *                                    (i.e. the node can be perturbed off its owning tree but not by more than one
+ *                                     root in any cartesian direction)
+ *                          on output,
+ *                            - undefined if the point doesn't lie in the domain (i.e. if returned value is false)
+ *                            - valid node structure with consistent logical representation otherwise, i.e.
+ *                              its logical coordinates x, y, z are all in [0; P4EST_ROOT_LEN] and the index of its
+ *                              owning tree is stored in p.which_tree
+ * \param [in] brick        pointer to a constant brick structure representing the computational domain
+ * \param [in] connectivity pointer to the p4est_connectivity (required connecting info related to the trees in the macromesh)
+ * \return true if the node lies in the computational domain; false if the point lies out of the copmutational domain.
+ */
+bool is_node_in_domain(p4est_indep_t& node, const my_p4est_brick_t* brick, const p4est_connectivity_t* connectivity);
+
 #ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),

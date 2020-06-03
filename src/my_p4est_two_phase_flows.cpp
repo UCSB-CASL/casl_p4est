@@ -2624,7 +2624,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
 
   /* gather the neighborhood */
   set_of_neighboring_quadrants ngbd_tmp;
-  double scaling = ngbd_n->gather_neighbor_cells_of_node(ngbd_tmp, ngbd_c, node_idx, true);
+  double scaling = ngbd_c->gather_neighbor_cells_of_node(node_idx, nodes_n, ngbd_tmp, true);
   scaling *= 0.5*MIN(DIM(convert_to_xyz[0], convert_to_xyz[1], convert_to_xyz[2]));
   set<p4est_locidx_t> set_of_faces[P4EST_DIM];
   add_all_faces_to_sets_and_clear_set_of_quad(faces_n, set_of_faces, ngbd_tmp);

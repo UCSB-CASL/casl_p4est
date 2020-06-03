@@ -37,7 +37,6 @@ typedef std::set<p4est_quadrant_t, comparator_of_neighbor_cell> set_of_neighbori
 class my_p4est_cell_neighbors_t {
 private:
   friend class my_p4est_poisson_cells_t;
-  friend class my_p4est_xgfm_cells_t;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -164,7 +163,7 @@ public:
    * create a series of ambiguous calls because '0' represents either a 0 integer value or the NULL pointer
    * in c++)
    */
-  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& q, const p4est_topidx_t& tr, const unsigned char& face_dir) const
+  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& q, const p4est_topidx_t& tr, const u_char& face_dir) const
   {
     char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[face_dir/2] = (face_dir%2 == 1 ? 1 : -1);
     find_neighbor_cells_of_cell(ngbd, q, tr, search);
@@ -200,6 +199,22 @@ public:
    */
   p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false,
                                                const bool *no_search = NULL) const;
+
+  /*!
+   * \brief gather_neighbor_cells_of_node finds all neighbor cells of a node in all cartesian directions (and any of their
+   * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
+   * but it can be extended to second degree neighbors, if desired.
+   * \param [in] node_idx: local index of the node whose neighbor cells are sought
+   * \param [in] nodes:    a pointer to a node structure in which the above node is stored
+   * \param [inout] cell_neighbors: the set of neighbor cells (not cleared on input but augmented with all candidates if not
+   *                           present in the list yet);
+   * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
+   *                           (default value is false)
+   * \return the logical size of the smallest quadrant found in the first-degree cell neighborhood (first-degree only!!!)
+   *                           --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+   */
+  p4est_qcoord_t gather_neighbor_cells_of_node(const p4est_locidx_t& node_idx, const p4est_nodes_t* nodes, set_of_neighboring_quadrants& cell_neighbors, const bool& add_second_degree_neighbors = false) const;
+
 };
 
 /*!
@@ -223,11 +238,11 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
 double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
                                       const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
                                       const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
-                                      const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL);
+                                      const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL);
 
 inline double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
                                              const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
-                                             const unsigned char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
+                                             const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
 {
   return get_lsqr_interpolation_at_node(node, xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
 }

@@ -200,6 +200,87 @@ p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t*
   return tree_l;
 }
 
+bool is_node_in_domain(p4est_indep_t& node, const my_p4est_brick_t* brick, const p4est_connectivity_t* connectivity)
+{
+  P4EST_ASSERT(p4est_quadrant_is_inside_3x3((const p4est_quadrant_t*) &node));
+  /* list the coordinates that are past the tree borders
+   * --> need to search across a corner if all true;
+   * --> across an edge if 2 are true (in 3D only);
+   * --> across a face if 1 only is true
+   * --> the perturbed node is all good as it is if none is true
+   */
+  const int past_tree_border[P4EST_DIM] = {DIM(node.x < 0 || node.x > P4EST_ROOT_LEN, node.y < 0 || node.y > P4EST_ROOT_LEN, node.z < 0 || node.z > P4EST_ROOT_LEN)};
+
+  if(ANDD(!past_tree_border[0], !past_tree_border[1], !past_tree_border[2]))
+    return true; // we are still within the same tree, nothing else to do...
+
+  // If some "past tree border" was found, we need to find the correct tree that owns that
+  // perturbed point, if it exists (otherwise, we are searching past the domain's boundaries
+  // and we gotta return 'false'). If a correct owning tree is found, we also correct the logical
+  // coordinates of that perturbed node to match the appropriate description in that tree...
+
+  // we copy the perturbed logical coordinates into an array first for ease of implementation, and we'll copy them back into the node structure thereafter
+  p4est_topidx_t owning_tree_idx = node.p.which_tree;
+  p4est_qcoord_t perturbed_qxyz[P4EST_DIM] = {DIM(node.x, node.y, node.z)};
+
+  if(SUMD(past_tree_border[0], past_tree_border[1], past_tree_border[2]) == P4EST_DIM) // we have to look across a tree corner
+  {
+    if(ORD(!is_periodic(connectivity, dir::x) && brick->nxyztrees[dir::x] == 1,
+           !is_periodic(connectivity, dir::y) && brick->nxyztrees[dir::y] == 1,
+           !is_periodic(connectivity, dir::z) && brick->nxyztrees[dir::z] == 1))
+      return false; // the perturbed node is past the domain's boundary
+
+    const u_char local_corner_idx = SUMD((perturbed_qxyz[0] > P4EST_ROOT_LEN ? 1 : 0), (perturbed_qxyz[1] > P4EST_ROOT_LEN ? 2 : 0), (perturbed_qxyz[2] > P4EST_ROOT_LEN ? 4 : 0));
+    P4EST_ASSERT(local_corner_idx < P4EST_CHILDREN);
+    const p4est_topidx_t corner = connectivity->tree_to_corner[P4EST_CHILDREN*node.p.piggy3.which_tree + local_corner_idx];
+    if(corner == -1)
+      return false; // the corner exists indeed, but it does not connect with any other tree -> the perturbed node is past the domain's boundary
+
+    const p4est_topidx_t offset = connectivity->ctt_offset[corner];
+    owning_tree_idx = connectivity->corner_to_tree[offset + local_corner_idx];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      perturbed_qxyz[dim] += (perturbed_qxyz[dim] > P4EST_ROOT_LEN ? -1 : +1)*P4EST_ROOT_LEN;
+  }
+#ifdef P4_TO_P8
+  else if(SUMD(past_tree_border[0], past_tree_border[1], past_tree_border[2]) == 2) // across tree edge
+  {
+    // we go through two different trees in this case
+    const u_char first_dim = (past_tree_border[dir::x] ? dir::x : dir::y); P4EST_ASSERT(past_tree_border[first_dim]);
+    const u_char first_face_dir = 2*first_dim + (perturbed_qxyz[first_dim] > P4EST_ROOT_LEN ? 1 : 0);
+    const p4est_topidx_t first_tree_idx = connectivity->tree_to_tree[P4EST_FACES*node.p.which_tree + first_face_dir];
+    if(!is_periodic(connectivity, first_dim) && first_tree_idx == node.p.which_tree)
+      return false; // no other tree there, so nothing to find
+    perturbed_qxyz[first_dim] += (perturbed_qxyz[first_dim] > P4EST_ROOT_LEN ? -1 : +1)*P4EST_ROOT_LEN;
+
+    // find the second direction
+    const u_char second_dim = (past_tree_border[dir::z] ? dir::z : dir::y); P4EST_ASSERT(past_tree_border[second_dim]);
+    const u_char second_face_dir = 2*second_dim + (perturbed_qxyz[second_dim] > P4EST_ROOT_LEN ? 1 : 0);
+    owning_tree_idx = connectivity->tree_to_tree[P4EST_FACES*first_tree_idx + second_face_dir];
+    if(!is_periodic(connectivity, second_dim) && owning_tree_idx == first_tree_idx)
+      return false; // no other tree there, so nothing to find
+
+    perturbed_qxyz[second_dim] += (perturbed_qxyz[second_dim] > P4EST_ROOT_LEN ? -1 : +1)*P4EST_ROOT_LEN;
+  }
+#endif
+  else
+  {
+    P4EST_ASSERT(SUMD(past_tree_border[0], past_tree_border[1], past_tree_border[2]) == 1);
+    const u_char dim = (past_tree_border[0] ? dir::x : ONLY3D( OPEN_PARENTHESIS past_tree_border[1] ?) dir::y ONLY3D( : dir::z CLOSE_PARENTHESIS)); P4EST_ASSERT(past_tree_border[dim]);
+    const u_char face_dir = 2*dim + (perturbed_qxyz[dim] > P4EST_ROOT_LEN ? 1 : 0);
+    owning_tree_idx = connectivity->tree_to_tree[P4EST_FACES*node.p.which_tree + face_dir];
+    if(!is_periodic(connectivity, dim) && owning_tree_idx == node.p.which_tree)
+      return false; // no other tree there, so nothing to find
+    perturbed_qxyz[dim] += (perturbed_qxyz[dim] > P4EST_ROOT_LEN ? -1 : +1)*P4EST_ROOT_LEN;
+  }
+
+  node.x = perturbed_qxyz[0];
+  node.y = perturbed_qxyz[1];
+#ifdef P4_TO_P8
+  node.z = perturbed_qxyz[2];
+#endif
+  node.p.which_tree = owning_tree_idx;
+  return true;
+}
 
 #ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,

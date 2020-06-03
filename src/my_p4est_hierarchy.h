@@ -362,14 +362,14 @@ class my_p4est_hierarchy_t {
 
 
   /*!
-   * \brief get_index_of_hierarchy_cell_matching_quad finds the index idx such that trees[tree_idx][idx] is the HierarchyCell
-   * matching a given quadrant (which may be a leaf or not)
+   * \brief get_index_of_hierarchy_cell_matching_or_containing_quad finds the index idx such that trees[tree_idx][idx] is the HierarchyCell
+   * either matching a given quadrant (which may be a leaf or not) or the leaf cell containing the given quadrant
    * \param [in] quad       pointer to the quadrant whose hierarchy index idx is sought
    * \param [in] tree_idx   index of the tree in which the quadrant lives
    * \param [in] (optional, in debug only) must_be_leaf flag activating a check for the found HierarchyCell to be a leaf cell if set to true (default)
    * \return idx as defined here above
    */
-  p4est_locidx_t get_index_of_hierarchy_cell_matching_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx ONLY_WITH_P4EST_DEBUG(COMMA const bool& must_be_leaf = true)) const;
+  p4est_locidx_t get_index_of_hierarchy_cell_matching_or_containing_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const;
 
 public:
   /*!
@@ -498,6 +498,25 @@ public:
 #endif
     return local_inner_quadrant[i].tree_idx;
   }
+
+  /*!
+   * \brief find_neighbor_cell_of_node finds the neighboring quadrant of a node in the given (i, j, k) direction. The direction
+   * must be "diagonal" for the function to work (if the "nodes" are the nodes of corresponding p4est, i.e. standard usage)!
+   * (e.g. (-1,1,1) ... no cartesian direction!).
+   * \param [in] node_idx         local index of the node whose neighboring cell is looked for
+   * \param [in] nodes            the p4est_node structure in which the latter node is stored
+   * \param [in] i                the x search direction, -1 or 1
+   * \param [in] j                the y search direction, -1 or 1
+   * \param [in] k                the z search direction, -1 or 1, only in 3D
+   * \param [out] quad_idx        the index of the found quadrant, in cumulative numbering over the trees. To fetch this quadrant
+   *                              from its corresponding tree you need to substract the tree quadrant offset.
+   *                              If no quadrant was found, this is set to NOT_A_P4EST_QUADRANT (not known from the local, possibly
+   *                              ghosted domain partition) or NOT_A_VALID_QUADRANT (past the edge of a nonperiodic domain)
+   * \param [out] owning_tree_idx the index of the tree in which the quadrant was found (valid and sensible if the quadrant was
+   *                              actually found, of course)
+   */
+  void find_neighbor_cell_of_node(const p4est_locidx_t& node_idx, const p4est_nodes_t* nodes, DIM(const char& i, const char& j, const char& k),
+                                  p4est_locidx_t& quad_idx, p4est_topidx_t& owning_tree_idx) const;
 
   /*!
    * \brief write_vtk exports the local hierarchy in a vtk format
