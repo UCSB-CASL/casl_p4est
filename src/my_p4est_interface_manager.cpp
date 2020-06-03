@@ -2,11 +2,15 @@
 
 my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_cell_neighbors_t* cell_ngbd, const double* dxyz_min_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
   : c_ngbd(cell_ngbd), faces(faces_), p4est(cell_ngbd->get_p4est()), ghost(cell_ngbd->get_ghost()), dxyz_min(dxyz_min_),
-    interpolation_node_ngbd(interpolation_node_ngbd_), interp_phi(interpolation_node_ngbd_)
+    interpolation_node_ngbd(interpolation_node_ngbd_), interp_phi(interpolation_node_ngbd_),
+    max_level_p4est(((splitting_criteria_t*) p4est->user_pointer)->max_lvl),
+    max_level_interpolation_p4est(((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)
 {
+  if(max_level_interpolation_p4est < max_level_p4est)
+    throw std::invalid_argument("my_p4est_interface_manager_t(): you're using UNDER-resolved interpolation tools for capturing the interface. Are you mentally sane? Go see a doctor or check your code...");
 #ifdef WITH_SUBREFINEMENT
-  if(((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl)
-    throw std::invalid_argument("my_p4est_interface_manager_t(): this object needs a finer interpolation grid to handle interface subresolved points properly...");
+  if(max_level_interpolation_p4est <= max_level_p4est)
+    std::cerr << "my_p4est_interface_manager_t(): --- WARNING --- : you are not actually sub-refining for better capturing your interface" << std::endl;
 #endif
   interp_grad_phi   = NULL;
   interp_phi_xxyyzz = NULL;
@@ -18,6 +22,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
     clear_face_FD_interface_data(dim);
   }
   grad_phi_local = NULL;
+  use_second_derivative_when_computing_FD_theta = true;
 }
 
 my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
@@ -90,24 +95,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants && // must be a local quadrant
                0 <= neighbor_quad_idx && neighbor_quad_idx < p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count); // must be a known quadrant
 
-  const p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
-  const p4est_tree_t*     tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
-  const p4est_quadrant_t* neighbor_quad;
-  p4est_topidx_t tree_idx_neighbor;
-  if(neighbor_quad_idx >= p4est->local_num_quadrants)
-  {
-    neighbor_quad = p4est_const_quadrant_array_index(&ghost->ghosts, neighbor_quad_idx - p4est->local_num_quadrants);
-    tree_idx_neighbor = neighbor_quad->p.piggy3.which_tree;
-  }
-  else
-  {
-    tree_idx_neighbor = tree_index_of_quad(neighbor_quad_idx, p4est, ghost);
-    const p4est_tree_t* tree_neighbor = p4est_tree_array_index(p4est->trees, tree_idx_neighbor);
-    neighbor_quad = p4est_const_quadrant_array_index(&tree_neighbor->quadrants, neighbor_quad_idx - tree_neighbor->quadrants_offset);
-  }
-
-  if(cell_FD_interface_data != NULL) // check if stored, first
+  if(cell_FD_interface_data != NULL) // check in map if storing them, first
   {
     map_of_interface_neighbors_t::iterator it = cell_FD_interface_data->find({quad_idx, neighbor_quad_idx});
     if(it != cell_FD_interface_data->end())
@@ -121,48 +109,92 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
     }
   }
 
-  const p4est_t* subrefined_p4est = interpolation_node_ngbd->get_p4est();
-  const p4est_nodes_t* subrefined_nodes = interpolation_node_ngbd->get_nodes();
-  const p4est_locidx_t fine_node_idx_for_quad           = get_fine_node_idx_of_quad_center(subrefined_p4est, subrefined_nodes, *quad, tree_idx);
-  const p4est_locidx_t fine_node_idx_for_neighbor_quad  = get_fine_node_idx_of_quad_center(subrefined_p4est, subrefined_nodes, *neighbor_quad, tree_idx_neighbor);
-  if(fine_node_idx_for_quad < 0 || fine_node_idx_for_neighbor_quad < 0)
-    std::cout << "fine_node_idx_for_quad = " << fine_node_idx_for_quad  << ", fine_node_idx_for_neighbor_quad" << fine_node_idx_for_neighbor_quad << std::endl;
-  P4EST_ASSERT(0 <= fine_node_idx_for_quad          && fine_node_idx_for_quad < (p4est_locidx_t)(subrefined_nodes->indep_nodes.elem_count));
-  P4EST_ASSERT(0 <= fine_node_idx_for_neighbor_quad && fine_node_idx_for_neighbor_quad < (p4est_locidx_t)(subrefined_nodes->indep_nodes.elem_count));
-  P4EST_ASSERT(quad->level == neighbor_quad->level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
-
-
-  double xyz_quad[P4EST_DIM];     quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  double xyz_neighbor[P4EST_DIM]; quad_xyz_fr_q(neighbor_quad_idx, tree_idx_neighbor, p4est, ghost, xyz_neighbor);
-
-  const double phi_quad     = interp_phi(xyz_quad);
-  const double phi_neighbor = interp_phi(xyz_neighbor);
-  P4EST_ASSERT(signs_of_phi_are_different(phi_quad, phi_neighbor));
-  const quad_neighbor_nodes_of_node_t* qnnn; interpolation_node_ngbd->get_neighbors(fine_node_idx_for_quad, qnnn);
-  p4est_locidx_t mid_point_fine_node_idx = qnnn->neighbor(oriented_dir);
-  P4EST_ASSERT(0 <= mid_point_fine_node_idx && mid_point_fine_node_idx == interpolation_node_ngbd->get_neighbors(fine_node_idx_for_neighbor_quad).neighbor(oriented_dir + (oriented_dir%2 == 0 ? +1 : -1)));
-
-  double xyz_midpoint[P4EST_DIM]; node_xyz_fr_n(mid_point_fine_node_idx, subrefined_p4est, subrefined_nodes, xyz_midpoint);
-  const double mid_point_phi      = interp_phi(xyz_midpoint);
-  const bool no_past_mid_point    = signs_of_phi_are_different(phi_quad, mid_point_phi);
-  const double &phi_this_side     = (no_past_mid_point ? phi_quad       : mid_point_phi);
-  const double &phi_across        = (no_past_mid_point ? mid_point_phi  : phi_neighbor);
-
-  if(interp_phi_xxyyzz != NULL)
+  const p4est_topidx_t    tree_idx          = tree_index_of_quad(quad_idx, p4est, ghost);
+  const p4est_topidx_t    neighbor_tree_idx = tree_index_of_quad(neighbor_quad_idx, p4est, ghost);
+#ifdef P4EST_DEBUG
+  // check that they're both as fine as it gets :
+  const p4est_tree_t*     tree  = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t* quad  = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+  const p4est_quadrant_t* neighbor_quad;
+  if(neighbor_quad_idx >= p4est->local_num_quadrants)
+    neighbor_quad = p4est_const_quadrant_array_index(&ghost->ghosts, neighbor_quad_idx - p4est->local_num_quadrants);
+  else
   {
-    const double phi_dd_this_side = (no_past_mid_point ? (*interp_phi_xxyyzz).operator()(xyz_quad, oriented_dir/2)  : (*interp_phi_xxyyzz)(xyz_midpoint, oriented_dir/2));
-    const double phi_dd_across    = (no_past_mid_point ? (*interp_phi_xxyyzz)(xyz_midpoint, oriented_dir/2)         : (*interp_phi_xxyyzz)(xyz_neighbor, oriented_dir/2));
-    tmp_FD_interface_data->theta  = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_this_side, phi_across, phi_dd_this_side, phi_dd_across, 0.5*dxyz_min[oriented_dir/2]);
+    const p4est_tree_t* tree_neighbor = p4est_tree_array_index(p4est->trees, neighbor_tree_idx);
+    neighbor_quad = p4est_const_quadrant_array_index(&tree_neighbor->quadrants, neighbor_quad_idx - tree_neighbor->quadrants_offset);
+  }
+  P4EST_ASSERT(quad->level == neighbor_quad->level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
+#endif
+
+  // compute the finite-difference infamous theta
+  double xyz_Q[P4EST_DIM];  quad_xyz_fr_q(quad_idx,           tree_idx,           p4est, ghost, xyz_Q);
+  double xyz_N[P4EST_DIM];  quad_xyz_fr_q(neighbor_quad_idx,  neighbor_tree_idx,  p4est, ghost, xyz_N);
+  double phi_Q = interp_phi(xyz_Q);
+  double phi_N = interp_phi(xyz_N);
+  P4EST_ASSERT(signs_of_phi_are_different(phi_Q, phi_N));
+  tmp_FD_interface_data->theta  = 0.0;
+  double rel_scale = 1.0;
+  double xyz_M[P4EST_DIM] = {DIM(xyz_Q[0], xyz_Q[1], xyz_Q[2])};
+  for (int k = 0; k < max_level_interpolation_p4est - max_level_p4est; ++k)
+  {
+    // if using subcell resolution, check intermediate points to have the accurate description
+    // The following is equivalent to a dichotomy search, it is reliable so long as we do not several sign changes
+    // along the grid line joining the dofs, that is
+    //                        this dof                                       neighbor dof
+    //    |                                               |                                               |         --> regular (computational grid)
+    //    |                                               |           |           |           |           |         --> interface-capturing grid
+    // ----------------------------------------------------------++++++++++++++++++++++++++++++++++++++++++         --> this is handled correctly
+    // -----------------------------------------------+++++++++++++++----------+++++++++++-----------------         --> this is less safe (but your computational grid might be under-resolved as well in such a case)
+    rel_scale /= 2.0;
+    xyz_M[oriented_dir/2] = xyz_Q[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*rel_scale*dxyz_min[oriented_dir/2]; // no need to worry about periodicity, the interpolation object will
+    const double phi_M = interp_phi(xyz_M);
+    if(!signs_of_phi_are_different(phi_Q, phi_M))
+    {
+      tmp_FD_interface_data->theta += rel_scale;
+      phi_Q = phi_M;
+      xyz_Q[oriented_dir/2] = xyz_M[oriented_dir/2];
+    }
+    else
+    {
+      phi_N = phi_M;
+      xyz_N[oriented_dir/2] = xyz_M[oriented_dir/2];
+    }
+  }
+  double subscale_theta_negative;
+  if(interp_phi_xxyyzz != NULL && use_second_derivative_when_computing_FD_theta)
+  {
+    const double phi_dd_Q = (*interp_phi_xxyyzz).operator()(xyz_Q, oriented_dir/2);
+    const double phi_dd_N = (*interp_phi_xxyyzz)(xyz_N, oriented_dir/2);
+    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_Q, phi_N, phi_dd_Q, phi_dd_N, rel_scale*dxyz_min[oriented_dir/2]);
   }
   else
-    tmp_FD_interface_data->theta  = fraction_Interval_Covered_By_Irregular_Domain(phi_this_side, phi_across, 0.5*dxyz_min[oriented_dir/2], 0.5*dxyz_min[oriented_dir/2]);
-  tmp_FD_interface_data->theta = (phi_this_side > 0.0 ? 1.0 - tmp_FD_interface_data->theta : tmp_FD_interface_data->theta);
-  tmp_FD_interface_data->theta = MAX(0.0, MIN(tmp_FD_interface_data->theta, 1.0));
-  tmp_FD_interface_data->node_interpolant.clear();
-  tmp_FD_interface_data->node_interpolant.add_term((no_past_mid_point ? fine_node_idx_for_quad  : mid_point_fine_node_idx),         1.0 - tmp_FD_interface_data->theta);
-  tmp_FD_interface_data->node_interpolant.add_term((no_past_mid_point ? mid_point_fine_node_idx : fine_node_idx_for_neighbor_quad), tmp_FD_interface_data->theta);
+    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain(phi_Q, phi_N, rel_scale*dxyz_min[oriented_dir/2], rel_scale*dxyz_min[oriented_dir/2]);
+  const double to_add = rel_scale*(phi_Q > 0.0 ? 1.0 - subscale_theta_negative : subscale_theta_negative);
+  tmp_FD_interface_data->theta += to_add;
+  tmp_FD_interface_data->theta = MAX(0.0, MIN(1.0, tmp_FD_interface_data->theta));
 
-  tmp_FD_interface_data->theta = 0.5*(tmp_FD_interface_data->theta + (no_past_mid_point ? 0.0 : 1.0));
+  // finally, let's build the linear interpolant for the interface point and save it
+  tmp_FD_interface_data->node_interpolant.clear();
+
+  xyz_M[oriented_dir/2] = xyz_Q[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*to_add*dxyz_min[oriented_dir/2];
+  if(interpolation_node_ngbd->get_hierarchy()->get_periodicity()[oriented_dir/2]) // do the periodic wrapping if necessary
+  {
+    const my_p4est_brick_t* brick = c_ngbd->get_brick();
+    const double x_min = brick->xyz_min[oriented_dir/2];
+    const double x_max = brick->xyz_max[oriented_dir/2];
+    xyz_M[oriented_dir/2] -= floor((xyz_M[oriented_dir/2] - x_min)/(x_max - x_min))*(x_max - x_min);
+  }
+  p4est_quadrant_t best_match; std::vector<p4est_quadrant> remotes;
+  int rank_owner = interpolation_node_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_M, best_match, remotes, false, true);
+  P4EST_ASSERT(rank_owner != -1 && best_match.level == max_level_interpolation_p4est);
+
+  double linear_interpolation_weights[P4EST_CHILDREN];
+  get_local_interpolation_weights(interpolation_node_ngbd->get_p4est(), best_match.p.piggy3.which_tree, best_match, xyz_M, linear_interpolation_weights);
+  const p4est_locidx_t* local_interpolation_nodes = interpolation_node_ngbd->get_nodes()->local_nodes;
+  for (u_char k = 0; k < P4EST_CHILDREN; ++k)
+    if (fabs(linear_interpolation_weights[k]) > EPS)
+      tmp_FD_interface_data->node_interpolant.add_term(local_interpolation_nodes[P4EST_CHILDREN*best_match.p.piggy3.local_num + k], linear_interpolation_weights[k]);
+
   P4EST_ASSERT(0.0 <= tmp_FD_interface_data->theta && tmp_FD_interface_data->theta <= 1.0);
   tmp_FD_interface_data->swapped = false;
 

@@ -127,6 +127,9 @@ class my_p4est_interface_manager_t
   my_p4est_interpolation_nodes_t  *interp_grad_phi;
   my_p4est_interpolation_nodes_t  *interp_phi_xxyyzz;
   Vec                             grad_phi_local;
+  const int                       max_level_p4est;
+  const int                       max_level_interpolation_p4est;
+  bool                            use_second_derivative_when_computing_FD_theta;
 
   FD_interface_data *tmp_FD_interface_data; // unique element to be used at first construction/pass through map or if maps are not used at all (pointer so that I can keep most methods const hereunder);
   map_of_interface_neighbors_t *cell_FD_interface_data;
@@ -139,12 +142,6 @@ class my_p4est_interface_manager_t
   inline void clear_face_FD_interface_data(const u_char& dim) {
     if(face_FD_interface_data[dim] != NULL)
       face_FD_interface_data[dim]->clear();
-  }
-
-  inline void clear() {
-    clear_cell_FD_interface_data();
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      clear_face_FD_interface_data(dim);
   }
 
   const FD_interface_data& get_cell_FD_interface_data_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
@@ -170,12 +167,19 @@ public:
 
   inline void do_not_store_face_FD_interface_data()
   {
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       if(face_FD_interface_data[dim] != NULL){
         delete face_FD_interface_data[dim];
         face_FD_interface_data[dim] = NULL;
       }
-    }
+
+    return;
+  }
+
+  inline void clear_all_FD_interface_data() {
+    clear_cell_FD_interface_data();
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      clear_face_FD_interface_data(dim);
     return;
   }
 
@@ -186,6 +190,12 @@ public:
   void set_levelset(Vec phi, const interpolation_method& method_interp_phi ONLY_WITH_SUBREFINEMENT(= linear), Vec phi_xxyyzz = NULL, const bool& build_and_set_grad_phi_locally = false);
   void set_grad_phi(Vec grad_phi_in = NULL);
 
+  /*!
+   * \brief evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available self-explanatory
+   * \param [in] flag : the user's choice
+   * NOTE: (default flag value is set to true internally if this function is never called)
+   */
+  inline void evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available(const bool& flag) { use_second_derivative_when_computing_FD_theta = flag; }
 
   inline double get_FD_theta_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
   {
