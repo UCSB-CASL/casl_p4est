@@ -1061,6 +1061,8 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+int8_t find_max_level(const p4est_t* p4est);
+
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);

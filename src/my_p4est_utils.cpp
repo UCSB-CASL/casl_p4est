@@ -680,6 +680,18 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   }
 }
 
+
+int8_t find_max_level(const p4est_t* p4est)
+{
+  int8_t max_lvl = 0;
+  for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    max_lvl = MAX(max_lvl, tree->maxlevel);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_lvl, 1, MPI_INT8_T, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return max_lvl;
+}
+
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2)
 {
   if(nodes_1 == nodes_2)

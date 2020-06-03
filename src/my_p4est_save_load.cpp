@@ -425,8 +425,9 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     p4est_topidx_t v_p  = conn->tree_to_vertex[P4EST_CHILDREN - 1]; // index of the back upper right corner of the first tree in the macro-mesh
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       tree_dimensions[dir] = conn->vertices[3*v_p + dir] - conn->vertices[3*v_m + dir];
-    if(third_degree_ghost_are_required(tree_dimensions))
-      my_p4est_ghost_expand(forest, ghost);
+    // (daniil: a dirty fix before a proper merge, must be uncommented afterwards)
+//    if(third_degree_ghost_are_required(tree_dimensions))
+//      my_p4est_ghost_expand(forest, ghost);
   }
 
   // create the nodes

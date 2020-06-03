@@ -3,6 +3,7 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
+#include <src/my_p8est_save_load.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_utils.h>
@@ -11,6 +12,7 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_save_load.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_utils.h>
@@ -1058,6 +1060,120 @@ int my_p4est_multialloy_t::one_step(double &bc_error_max, int it_scheme)
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
   return one_step_iterations;
+}
+
+void my_p4est_multialloy_t::save_p4est(int iter)
+{
+//  ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+  {
+    ierr = PetscPrintf(p4est_->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
+
+//  char name[1000];
+//  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
+
+  my_p4est_save_forest_and_data(out_dir, p4est_, nodes_, "grid", 1,
+                                "phi", 1, &front_phi_.vec);
+
+
+//  splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
+
+
+//  // cell data
+//  std::vector<double *>    cell_data;
+//  std::vector<std::string> cell_data_names;
+
+//  /* save the size of the leaves */
+//  Vec leaf_level;
+//  ierr = VecCreateGhostCells(p4est_, ghost_, &leaf_level); CHKERRXX(ierr);
+//  double *l_p;
+//  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+//  for(p4est_topidx_t tree_idx = p4est_->first_local_tree; tree_idx <= p4est_->last_local_tree; ++tree_idx)
+//  {
+//    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, tree_idx);
+//    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+//    {
+//      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+//      l_p[tree->quadrants_offset+q] = quad->level;
+//    }
+//  }
+
+//  for(size_t q=0; q<ghost_->ghosts.elem_count; ++q)
+//  {
+//    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, q);
+//    l_p[p4est_->local_num_quadrants+q] = quad->level;
+//  }
+
+//  cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+
+//  // point data
+//  std::vector<double *>    point_data;
+//  std::vector<std::string> point_data_names;
+
+//  front_phi_.get_array(); point_data.push_back(front_phi_.ptr); point_data_names.push_back("phi");
+
+//  if (contr_phi_.vec != NULL)
+//  {
+//    contr_phi_.get_array(); point_data.push_back(contr_phi_.ptr); point_data_names.push_back("contr");
+//  }
+
+//  tl_[0].get_array(); point_data.push_back(tl_[0].ptr); point_data_names.push_back("tl");
+//  ts_[0].get_array(); point_data.push_back(ts_[0].ptr); point_data_names.push_back("ts");
+//  cl_[0].get_array();
+//  for (int i = 0; i < num_comps_; ++i)
+//  {
+//    char numstr[21];
+//    sprintf(numstr, "%d", i);
+//    std::string name("cl");
+//    point_data.push_back(cl_[0].ptr[i]); point_data_names.push_back(name + numstr);
+//  }
+
+//  front_velo_norm_[0]      .get_array(); point_data.push_back(front_velo_norm_[0].ptr);       point_data_names.push_back("vn");
+//  front_curvature_         .get_array(); point_data.push_back(front_curvature_.ptr);          point_data_names.push_back("kappa");
+//  bc_error_                .get_array(); point_data.push_back(bc_error_.ptr);                 point_data_names.push_back("bc_error");
+//  dendrite_number_         .get_array(); point_data.push_back(dendrite_number_.ptr);          point_data_names.push_back("dendrite_number");
+//  dendrite_tip_            .get_array(); point_data.push_back(dendrite_tip_.ptr);             point_data_names.push_back("dendrite_tip");
+//  front_curvature_filtered_.get_array(); point_data.push_back(front_curvature_filtered_.ptr); point_data_names.push_back("kappa_filt");
+//  seed_map_                .get_array(); point_data.push_back(seed_map_.ptr);                 point_data_names.push_back("seed_num");
+
+//  VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
+
+//  my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
+//                               P4EST_TRUE, P4EST_TRUE,
+//                               name,
+//                               point_data, point_data_names,
+//                               cell_data, cell_data_names);
+
+//  VecScaleGhost(front_velo_norm_[0].vec, scaling_);
+
+//  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+//  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+//  front_phi_.restore_array();
+
+//  if (contr_phi_.vec != NULL)
+//  {
+//    contr_phi_.restore_array();
+//  }
+
+//  tl_[0].restore_array();
+//  ts_[0].restore_array();
+//  cl_[0].restore_array();
+
+//  front_velo_norm_[0]      .restore_array();
+//  front_curvature_         .restore_array();
+//  bc_error_                .restore_array();
+//  dendrite_number_         .restore_array();
+//  dendrite_tip_            .restore_array();
+//  front_curvature_filtered_.restore_array();
+//  seed_map_                .restore_array();
+
+//  PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+//  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::save_VTK(int iter)

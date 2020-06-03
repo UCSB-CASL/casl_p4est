@@ -517,6 +517,8 @@ public:
   int  one_step(double &bc_error_max, int it_scheme=2);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
+  void save_p4est(int iter);
+  void save_p4est_solid(int iter);
 
   void count_dendrites(int iter);
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);

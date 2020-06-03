@@ -1687,8 +1687,8 @@ public:
       } break;
       case 5: // highly start-shaped domain
       {
-        static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, 1, 0.6);
+        static double r0 = 0.6037, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, 1, 0.5);
         switch (what) {
           _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
           XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -2603,6 +2603,11 @@ int main (int argc, char* argv[])
 
               solver.set_use_taylor_correction(taylor_correction());
               solver.set_kink_treatment(kink_special_treatment());
+              solver.set_dirichlet_scheme(1);
+              solver.set_gf_order(3);
+              solver.set_gf_thresh(-0.1);
+              solver.set_gf_stabilized(0);
+
 
               vector< vector<double> > pw_bc_values(num_bdry());
               vector< vector<double> > pw_bc_values_robin(num_bdry());

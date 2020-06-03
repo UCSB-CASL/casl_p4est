@@ -1958,6 +1958,7 @@ int main (int argc, char* argv[])
     if (save_vtk.val && save_now) {
 //      mas.count_dendrites(vtk_idx);
       mas.save_VTK(vtk_idx);
+      mas.save_p4est(vtk_idx);
 //      mas.save_VTK_solid(vtk_idx);
     }
     if (save_vtk_history.val && save_now) {
