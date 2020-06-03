@@ -710,11 +710,18 @@ public:
     return value_to_return;
   }
 
-  inline linear_combination_of_dof_t& operator*=(const std::vector<double> scaling_factor)
+  inline linear_combination_of_dof_t& operator*=(const std::vector<double> scaling_factors)
   {
-    P4EST_ASSERT(scaling_factor.size() ==  size());
+    P4EST_ASSERT(scaling_factors.size() ==  size());
     for (size_t k = 0; k < linear_combination.size(); ++k)
-      linear_combination[k].weight *= scaling_factor[k];
+      linear_combination[k].weight *= scaling_factors[k];
+    return *this;
+  }
+
+  inline linear_combination_of_dof_t& operator*=(const double& scaling_factor)
+  {
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight *= scaling_factor;
     return *this;
   }
 

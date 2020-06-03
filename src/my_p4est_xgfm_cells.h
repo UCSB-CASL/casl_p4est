@@ -24,11 +24,7 @@ class my_p4est_xgfm_cells_t
   // data related to the computational grid
   const my_p4est_cell_neighbors_t *cell_ngbd;
   const my_p4est_node_neighbors_t *node_ngbd;
-#ifdef DEBUG
-  p4est_t             *p4est; // I loose the const qualifier on this one in DEBUG because some of p4est's debug check functions can't take const p4est objects in...
-#else
   const p4est_t       *p4est;
-#endif
   const p4est_nodes_t *nodes;
   const p4est_ghost_t *ghost;
   // computational domain parameters
@@ -150,98 +146,54 @@ class my_p4est_xgfm_cells_t
     }
   } solver_monitor;
 
-
   my_p4est_interface_manager_t interface_manager;
 
-  class cell_TVD_extension_operator_t
+  // (memorized) extension operator for interface-defined values
+  struct interface_extension_neighbor
   {
-    class local_cell_TVD_extension_operator
+    double weight;
+    p4est_locidx_t neighbor_quad_idx_across;
+    u_char oriented_dir;
+  };
+  struct extension_increment_operator
+  {
+    p4est_locidx_t quad_idx;
+    linear_combination_of_dof_t               regular_terms;
+    std::vector<interface_extension_neighbor> interface_terms;
+    bool in_band, in_positive_domain;
+    inline void clear()
     {
-      friend class cell_TVD_extension_operator_t;
-      struct off_diag_entry{
-        p4est_locidx_t neighbor_quad_idx;
-        double coeff;
-        virtual double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t& interface_manager,
-                                      const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
-                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const = 0;
-        inline double contribution_to_negative_normal_derivative(const double* extension_on_cells_p, my_p4est_interface_manager_t& interface_manager,
-                                                                 const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
-                                                                 const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
-        {
-          return coeff*neighbor_value(extension_on_cells_p, interface_manager, mu_this_side, mu_across, in_positive_domain, extend_positive_values, quad_idx, solution_p, jump_u_p, jump_flux_p);
-        }
-        virtual ~off_diag_entry(){};
-      };
-      struct regular_quad_entry : off_diag_entry
-      {
-        inline double neighbor_value(const double* extension_on_cells_p, my_p4est_interface_manager_t&,
-                                     const double&, const double&, const bool&, const bool&,
-                                     const p4est_locidx_t&, const double*, const double*, const double*) const
-        {
-          return extension_on_cells_p[neighbor_quad_idx];
-        }
-        inline ~regular_quad_entry(){}
-      };
-      struct interface_entry : off_diag_entry
-      {
-        u_char face_dir;
-        inline double neighbor_value(const double*, my_p4est_interface_manager_t& interface_manager,
-                                     const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
-                                     const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
-        {
-          return interface_manager.GFM_interface_value_between_cells(quad_idx, neighbor_quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
-                                                                     jump_u_p, jump_flux_p);
-        }
-        inline ~interface_entry(){}
-      };
-
-      void clear_extension_entries() {
-        for (size_t k = 0; k < extension_entries.size(); ++k)
-          delete extension_entries[k];
-        extension_entries.clear();
-      }
-
-      bool too_close;
-      u_char forced_interface_value_face_dir;
-      p4est_locidx_t forced_interface_value_neighbor_quad_idx;
-      double diag_entry, dtau, phi_q;
-
-      std::vector<off_diag_entry*> extension_entries;
-
-    public:
-      local_cell_TVD_extension_operator() {
-        extension_entries.resize(0);
-        too_close = false;
-        diag_entry = 0.0;
-        dtau = DBL_MAX;
-        forced_interface_value_face_dir = UCHAR_MAX;
-      }
-      ~local_cell_TVD_extension_operator(){ clear_extension_entries(); }
-
-      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const double& theta, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir_);
-
-      void add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_normal, const u_char& face_dir,
-                                    const linear_combination_of_dof_t& one_sided_derivative_operator);
-    };
-
-    my_p4est_xgfm_cells_t& solver;
-    std::vector<local_cell_TVD_extension_operator> my_local_operators;
-
-  public:
-    bool is_set;
-    cell_TVD_extension_operator_t(my_p4est_xgfm_cells_t& parent_solver) : solver(parent_solver), is_set(false) {
-      my_local_operators.resize(solver.p4est->local_num_quadrants);
+      regular_terms.clear();
+      interface_terms.clear();
     }
 
-    inline double advance_one_pseudo_time_step(const p4est_locidx_t& quad_idx, const double* extension_on_cells_p, const double* solution_p, const double* jump_u_p, const double* jump_flux_p,
-                                               double& max_correction_in_band, const double& band_to_diag_ratio) const;
+    inline double operator()(const double* extension_on_cells_p, // input for regular neighbor terms (same side of the interface)
+                             const double* solution_p, const double* jump_u_p, const double* jump_flux_p, const my_p4est_xgfm_cells_t& solver, // input for evaluating interface-defined values
+                             double& max_correction_in_band) const // inout control parameter
+    {
+      double increment = regular_terms(extension_on_cells_p);
+      if(interface_terms.size() > 0)
+      {
+        const double& mu_this_side    = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
+        const double& mu_across       = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
+        const bool extending_positive_values = !solver.extend_negative_interface_values();
+        for (size_t k = 0; k < interface_terms.size(); ++k)
+          increment += interface_terms[k].weight*solver.interface_manager.GFM_interface_value_between_cells(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir,
+                                                                                                            mu_this_side, mu_across, in_positive_domain, extending_positive_values, solution_p, jump_u_p, jump_flux_p);
+      }
+      if(in_band)
+        max_correction_in_band = MAX(fabs(increment), max_correction_in_band);
 
-    void build_local_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx);
-  } cell_TVD_extension_operator;
+      return increment;
+    }
+  };
+  std::vector<extension_increment_operator> pseudo_time_step_increment_operator;
+  const extension_increment_operator& get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band);
+  bool extension_operators_are_stored_and_set;
 
   // memorized local interpolation operators
   std::vector<linear_combination_of_dof_t> local_interpolators;
-  bool local_interpolators_are_set;
+  bool local_interpolators_are_stored_and_set;
 
   // disallow copy ctr and copy assignment
   my_p4est_xgfm_cells_t(const my_p4est_xgfm_cells_t& other);
@@ -307,8 +259,7 @@ class my_p4est_xgfm_cells_t
                                                          Vec former_rhs, Vec former_residual);
 
   void compute_jumps_in_flux_components_at_all_nodes() const;
-  void compute_jumps_in_flux_at_relevant_nodes_only() const;
-
+  void compute_jumps_in_flux_components_at_relevant_nodes_only() const;
   void compute_jumps_in_flux_components_for_node(const p4est_locidx_t& node_idx, double *jump_flux_p, const double *jump_normal_flux_p, const double *normals_p, const double *jump_u_p, const double *extension_on_nodes_p) const;
 
   void initialize_extension_on_cells();
@@ -352,13 +303,11 @@ class my_p4est_xgfm_cells_t
     if(at_all_nodes)
       compute_jumps_in_flux_components_at_all_nodes();
     else
-      compute_jumps_in_flux_at_relevant_nodes_only();
+      compute_jumps_in_flux_components_at_relevant_nodes_only();
     P4EST_ASSERT(jump_flux != NULL);
   }
 
-  void compute_subvolumes_in_computational_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
-
-  linear_combination_of_dof_t stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& face_direction,
+  linear_combination_of_dof_t stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
                                                                             set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const;
 
   void get_flux_components_and_subtract_them_from_velocities_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, const double* solution_p,

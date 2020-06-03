@@ -38,7 +38,7 @@ my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
     PetscErrorCode ierr = VecDestroy(grad_phi_local); CHKERRXX(ierr); }
 }
 
-void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz)
+void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz, const bool& build_and_set_grad_phi_locally)
 {
   P4EST_ASSERT(phi != NULL);
   P4EST_ASSERT(VecIsSetForNodes(phi, interpolation_node_ngbd->get_nodes(), interpolation_node_ngbd->get_p4est()->mpicomm, 1));
@@ -52,19 +52,34 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
   }
   else
     interp_phi.set_input(phi, method_interp_phi);
+
+  if(build_and_set_grad_phi_locally)
+    set_grad_phi();
   return;
 }
 
-void my_p4est_interface_manager_t::set_grad_phi()
+void my_p4est_interface_manager_t::build_grad_phi_locally()
 {
   if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_inupt_fields() != 1)
-    throw std::runtime_error("my_p4est_interface_manager_t::set_grad_phi(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
+    throw std::runtime_error("my_p4est_interface_manager_t::build_grad_phi_locally(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
 
   if(grad_phi_local == NULL){
-    PetscErrorCode ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &grad_phi_local); CHKERRXX(ierr); }
-
+    PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), P4EST_DIM, &grad_phi_local); CHKERRXX(ierr); }
   interpolation_node_ngbd->first_derivatives_central(interp_phi.get_input_fields()[0], grad_phi_local);
-  if(interp_grad_phi== NULL)
+
+  return;
+}
+
+void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
+{
+  Vec grad_phi = grad_phi_in;
+  if(grad_phi == NULL)
+  {
+    build_grad_phi_locally();
+    grad_phi = grad_phi_local;
+  }
+  P4EST_ASSERT(grad_phi != NULL && VecIsSetForNodes(grad_phi, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, P4EST_DIM, 1));
+  if(interp_grad_phi == NULL)
     interp_grad_phi = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
   interp_grad_phi->set_input(grad_phi_local, linear, P4EST_DIM);
   return;

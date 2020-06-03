@@ -149,6 +149,8 @@ class my_p4est_interface_manager_t
 
   const FD_interface_data& get_cell_FD_interface_data_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
 
+  void build_grad_phi_locally();
+
 public:
   my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_cell_neighbors_t* cell_ngbd, const double* dxyz_min_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_);
 
@@ -181,8 +183,9 @@ public:
   inline bool is_storing_face_FD_interface_data() const { return ANDD(face_FD_interface_data[0] != NULL, face_FD_interface_data[1] != NULL, face_FD_interface_data[2] != NULL); }
 
   // the interpolation method for phi is (or at least should be) irrelevant in presence of subrefinement, since all relevant points are sampled
-  void set_levelset(Vec phi, const interpolation_method& method_interp_phi ONLY_WITH_SUBREFINEMENT(= linear), Vec phi_xxyyzz = NULL);
-  void set_grad_phi();
+  void set_levelset(Vec phi, const interpolation_method& method_interp_phi ONLY_WITH_SUBREFINEMENT(= linear), Vec phi_xxyyzz = NULL, const bool& build_and_set_grad_phi_locally = false);
+  void set_grad_phi(Vec grad_phi_in = NULL);
+
 
   inline double get_FD_theta_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
   {
