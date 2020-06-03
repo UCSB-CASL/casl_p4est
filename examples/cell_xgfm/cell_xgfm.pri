@@ -10,4 +10,5 @@ CONFIG(3d, 2d|3d): {
 HEADERS += \
     $$PARCASL/examples/scalar_jump_tests/scalar_tests.h
 
-include(../../qmake/libparcasl.pri)
+#include(../../qmake/libparcasl.pri)
+include(../../qmake/libparcasl_xgfm.pri)

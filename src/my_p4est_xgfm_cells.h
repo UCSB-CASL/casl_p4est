@@ -189,8 +189,8 @@ class my_p4est_xgfm_cells_t
                                      const double& mu_this_side, const double& mu_across, const bool& in_positive_domain, const bool& extend_positive_values,
                                      const p4est_locidx_t& quad_idx, const double* solution_p, const double* jump_u_p, const double* jump_flux_p) const
         {
-          return interface_manager.interface_value(quad_idx, neighbor_quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
-                                                   jump_u_p, jump_flux_p);
+          return interface_manager.GFM_interface_value_between_cells(quad_idx, neighbor_quad_idx, face_dir, mu_this_side, mu_across, in_positive_domain, extend_positive_values, solution_p,
+                                                                     jump_u_p, jump_flux_p);
         }
         inline ~interface_entry(){}
       };
@@ -205,6 +205,7 @@ class my_p4est_xgfm_cells_t
       u_char forced_interface_value_face_dir;
       p4est_locidx_t forced_interface_value_neighbor_quad_idx;
       double diag_entry, dtau, phi_q;
+
       std::vector<off_diag_entry*> extension_entries;
 
     public:
@@ -217,7 +218,7 @@ class my_p4est_xgfm_cells_t
       }
       ~local_cell_TVD_extension_operator(){ clear_extension_entries(); }
 
-      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const FD_interface_data& neighbor, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir_);
+      void add_interface_neighbor(const double* signed_normal, const double* dxyz_min, const double& theta, const p4est_locidx_t& neighbor_quad_idx, const u_char& face_dir_);
 
       void add_one_sided_derivative(const p4est_locidx_t& quad_idx, const double* signed_normal, const u_char& face_dir,
                                     const linear_combination_of_dof_t& one_sided_derivative_operator);
@@ -501,7 +502,7 @@ public:
       for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
         const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
         double negative_volume, positive_volume;
-        compute_subvolumes_in_computational_cell(quad_idx, tree_idx, negative_volume, positive_volume);
+        interface_manager.compute_subvolumes_in_cell(quad_idx, tree_idx, negative_volume, positive_volume);
 
         double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
         // crude estimate but whatever, it's mostly to get closer to what we expect...
