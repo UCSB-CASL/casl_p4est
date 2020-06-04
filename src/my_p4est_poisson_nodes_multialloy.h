@@ -49,6 +49,7 @@ private:
   my_p4est_brick_t  *myb_;
 
   my_p4est_interpolation_nodes_t interp_;
+  my_p4est_interpolation_nodes_t interp_bc_points;
 
   //--------------------------------------------------
   // Geometry
@@ -81,7 +82,7 @@ private:
   //--------------------------------------------------
 
   // composition parameters
-  int num_comps_;
+  size_t num_comps_;
   vector<double> conc_diag_;
   vector<double> conc_diff_;
 
