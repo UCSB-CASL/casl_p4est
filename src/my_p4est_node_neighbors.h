@@ -54,7 +54,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_level_set_cells_t;
-  friend class my_p4est_level_set_t;
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_poisson_cells_t;
@@ -539,12 +538,12 @@ public:
    * \param [in]  n_vecs  number of vectors to handle
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) const
   {
     second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
     return;
   }
-  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1) const
   {
     second_derivatives_central(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1, bs);
     return;
@@ -616,6 +615,9 @@ public:
     memory += P4EST_DIM*sizeof (bool); // periodic
     return memory;
   }
+
+  const std::vector<p4est_locidx_t> & get_layer_nodes() const { return layer_nodes; }
+  const std::vector<p4est_locidx_t> & get_local_nodes() const { return local_nodes; }
 
 private:
   /*!

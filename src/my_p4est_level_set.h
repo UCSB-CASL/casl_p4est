@@ -202,11 +202,11 @@ inline void add_dof_to_extrapolation_map(std::map<p4est_locidx_t, data_for_geome
 
 class my_p4est_level_set_t {
 
-  my_p4est_brick_t *myb;
-  p4est_t *p4est;
-  p4est_nodes_t *nodes;
-  p4est_ghost_t *ghost;
-  my_p4est_node_neighbors_t *ngbd;
+  const my_p4est_brick_t *myb;
+  const p4est_t *p4est;
+  const p4est_nodes_t *nodes;
+  const p4est_ghost_t *ghost;
+  const my_p4est_node_neighbors_t *ngbd;
   const double tree_dimensions[P4EST_DIM], zero_distance_threshold;
 
   void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM]) const;
@@ -368,21 +368,49 @@ class my_p4est_level_set_t {
   bool                 use_two_step_extrapolation;
 
 public:
-  my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_)
-    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      tree_dimensions{DIM((ngbd_->myb->xyz_max[0] - ngbd_->myb->xyz_min[0])/ngbd_->myb->nxyztrees[0], (ngbd_->myb->xyz_max[1] - ngbd_->myb->xyz_min[1])/ngbd_->myb->nxyztrees[1], (ngbd_->myb->xyz_max[2] - ngbd_->myb->xyz_min[2])/ngbd_->myb->nxyztrees[2])},
-      zero_distance_threshold(EPS*MIN(DIM((ngbd_->myb->xyz_max[0] - ngbd_->myb->xyz_min[0])/ngbd_->myb->nxyztrees[0], (ngbd_->myb->xyz_max[1] - ngbd_->myb->xyz_min[1])/ngbd_->myb->nxyztrees[1], (ngbd_->myb->xyz_max[2] - ngbd_->myb->xyz_min[2])/ngbd_->myb->nxyztrees[2]))),
+  /*!
+   * \brief my_p4est_level_set_t constructor using a nonconstant node-neighborhood object. If the node neighbors are not, initialized,
+   * this constructor will initialize them (reinitializations, extensions, extrapolations, etc. are *much* faster if the node neighbors
+   * are initialized!)
+   * \param ngbd_ pointer to a my_p4est_node_neighbors object, this constructor will initialize the node neighborhood information
+   */
+  my_p4est_level_set_t(my_p4est_node_neighbors_t* ngbd_)
+    : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()),
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2]))),
       interpolation_on_interface(quadratic_non_oscillatory),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
       show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
-  {}
+  {
+    ngbd_->init_neighbors();
+    ngbd = ngbd_;
+  }
+
+  /*!
+   * \brief my_p4est_level_set_t constructor based on a pointer to a CONSTANT node-neighborhood object. Too bad for you if the node neighbors
+   * are not initialized upon calling this constructor because you'll pay the price...
+   * \param ngbd_ pointer to a (constant) my_p4est_node_neighbors object, this constructor will __NOT__ initialize the node neighborhood information
+   */
+  my_p4est_level_set_t(const my_p4est_node_neighbors_t* ngbd_)
+    : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()), ngbd(ngbd_),
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2]))),
+      interpolation_on_interface(quadratic_non_oscillatory),
+      use_neumann_for_contact_angle(true), contact_angle_extension(0),
+      show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
+  { }
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
+    ngbd_->init_neighbors();
+    update((const my_p4est_node_neighbors_t*) ngbd_);
+  }
+
+  inline void update(const my_p4est_node_neighbors_t *ngbd_) {
     ngbd  = ngbd_;
-    myb   = ngbd->myb;
-    p4est = ngbd->p4est;
-    nodes = ngbd->nodes;
-    ghost = ngbd->ghost;
+    myb   = ngbd->get_brick();
+    p4est = ngbd->get_p4est();
+    nodes = ngbd->get_nodes();
+    ghost = ngbd->get_ghost();
   }
 
   /*!
@@ -468,7 +496,6 @@ public:
     reinitialize_within_range_of_phi_0(phi, 1, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0, number_of_iterations);
     return;
   }
-
   /*!
    * \brief reinitialize_2nd_order_time_1st_order_space_above_threshold reinitializes the given node-sampled levelset function with linear interface
    * localization in space and with 2nd order TVD Runge-Kutta explicit steps in pseudo-time (with adaptive time-stepping)

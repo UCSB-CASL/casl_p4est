@@ -214,7 +214,7 @@ void my_p4est_level_set_t::reinitialize_one_iteration(double *phi_np1_p, const s
       //---------------------------------------------------------------------
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
+      p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, node_idx);
 
       if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
       if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
@@ -363,14 +363,14 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
 #endif
 
     /* 1) Process layer nodes */
-    reinitialize_one_iteration(phi_np1_p, ngbd->layer_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+    reinitialize_one_iteration(phi_np1_p, ngbd->get_layer_nodes(), phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
                                phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
 
     /* 2) Begin update process for phi_np1 */
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* 3) Process local nodes */
-    reinitialize_one_iteration(phi_np1_p, ngbd->local_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+    reinitialize_one_iteration(phi_np1_p, ngbd->get_local_nodes(), phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
                                phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
 
     /* 4) End update process for phi_np1 */
@@ -412,14 +412,14 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
         IPMLogRegionBegin("reinit_2nd_2nd");
 #endif
       /* 1) Process layer nodes */
-      reinitialize_one_iteration(phi_np2_p, ngbd->layer_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+      reinitialize_one_iteration(phi_np2_p, ngbd->get_layer_nodes(), phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
                                  phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
 
       /* 2) Begin update process for phi_np2 */
       ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       /* 3) Process local nodes */
-      reinitialize_one_iteration(phi_np2_p, ngbd->local_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+      reinitialize_one_iteration(phi_np2_p, ngbd->get_local_nodes(), phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
                                  phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
 
       /* 4) End update process for phi_np2 */
@@ -563,7 +563,7 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(const std::v
     //---------------------------------------------------------------------
     // Neumann boundary condition on the walls
     //---------------------------------------------------------------------
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, node_idx);
 
     if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
     if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
@@ -645,22 +645,22 @@ void my_p4est_level_set_t::advect_in_normal_direction(Vec phi, const double &dt,
 
   memcpy(phi_n_p, current_phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* now phi(Lnp1, Bnp1, Gnp1) */
   compute_derivatives(phi, current_phi_xxyyzz);
 
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateEnd  (phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -971,12 +971,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   double tol_d  = tol/diag;
   double tol_dd = tol_d/diag;
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   double DIM(*nx, *ny, *nz);
 
@@ -1026,8 +1020,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if(order >= 1)
   {
@@ -2176,12 +2170,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   double tol_d  = tol/diag;
   double tol_dd = tol_d/diag;
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   double DIM(*nx, *ny, *nz);
 
@@ -2229,8 +2217,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   /* initialize pure derivatives */
   if(order >=1 )
@@ -3778,7 +3766,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
     //---------------------------------------------------------------------
     // Neumann boundary condition on the walls
     //---------------------------------------------------------------------
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, n);
 
     /* wall in the x direction */
     if     (is_node_xmWall(p4est, node)) { s_m00_ = s_p00_; q_m00 = q_p00; qxx_000 = qxx_m00 = qxx_p00 = 0.0; }
@@ -3840,12 +3828,6 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 
   if (mask != NULL && cf != NULL) throw std::invalid_argument("No mask and cf simultaneously at the moment");
-
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
@@ -3932,8 +3914,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   }
 
   /* initialization of q */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if (cf == NULL)
   {
@@ -4315,10 +4297,8 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
 
   dxyz_min(p4est, dxyz);
 
-  /* init the neighborhood information if needed */
-  ngbd->init_neighbors();
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   /* compute the normals */
   double *normal_p[P4EST_DIM];
@@ -4716,12 +4696,6 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
 
   dxyz_min(p4est, dxyz);
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   double *normal_p[P4EST_DIM];
 
@@ -4780,8 +4754,8 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if(order >= 1)
   {
@@ -5604,13 +5578,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
 
   dxyz_min(p4est, dxyz);
 
-
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   std::vector<double> nx(nodes->num_owned_indeps);
   std::vector<double> ny(nodes->num_owned_indeps);
@@ -5646,8 +5613,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if(order >= 1)
   {
