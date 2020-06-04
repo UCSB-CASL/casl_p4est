@@ -37,78 +37,80 @@
  * @param [in] stencil The full uniform stencil of indices centered at the query node.
  * @param [in] p4est Pointer to p4est data structure.
  * @param [in] nodes Pointer to nodes data structure.
+ * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
- * @param [out] distance Found normal distance from node to sine wave using Newton-Raphson's root-finding.
+ * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
-	const double *phiReadPtr, const ArcLengthParameterizedSine& sine, double& distance )
+	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
+	std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	distances.clear();
+	distances.reserve( NUM_COLUMNS - 1 );				// Only distances, not h\kappa included.
 
 	int s;												// Index to fill in the sample vector.
-	double leftPhi, rightPhi, topPhi, bottomPhi;		// To compute grad(\phi_{i,j}).
-	double centerPhi;									// \phi{i,j}.
+	double grad[P4EST_DIM];
+	double gradNorm;
+	double xyz[P4EST_DIM];
+	double pOnInterfaceX, pOnInterfaceY;
+	const quad_neighbor_nodes_of_node_t *qnnnPtr;
+	double u, newU, valOfDerivative, centerU;
+	double dx, dy;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
-		sample[s] = phiReadPtr[stencil[s]];
+		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
 
-		switch( s )
+		// To find the true distance we need the neighborhood of each stencil node.
+		neighbors->get_neighbors( stencil[s], qnnnPtr );
+		qnnnPtr->gradient( phiReadPtr, grad );
+		gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );	// Get the unit gradient.
+
+		// Approximate position of point projected on interface.
+		node_xyz_fr_n( stencil[s], p4est, nodes, xyz );
+		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
+		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
+
+		// Transform point on interface to sine-wave canonical coordinates.
+		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
+		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
+
+		// Find parameter u that yields the minimum distance between point and sine-wave using Newton-Raphson's method.
+		u = pOnInterfaceX;								// Initial parameter guess for root finding method.
+		newU = distThetaDerivative( nodeIdx, xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
+		pOnInterfaceX = newU;							// Recalculating point on interface (still in canonical coords).
+		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
+
+		// Verify that point on interface is not far from grid point.
+		dx = xyz[0] - pOnInterfaceX;
+		dy = xyz[1] - pOnInterfaceY;
+		distances.push_back( sqrt( dx * dx + dy * dy ) );
+		if( distances[s] <= H * ( 1 + M_SQRT2 ) && ABS( valOfDerivative ) <= 1e-8 )
+			u = newU;									// Parameter is OK.
+		else											// Something doesn't look right.
 		{
-			case 5: topPhi = sample[s]; break;			// \phi_{i,j+1}.
-			case 1: leftPhi = sample[s]; break;			// \phi_{i-1,j}.
-			case 4: centerPhi = sample[s]; break;		// Point's phi value.
-			case 7: rightPhi = sample[s]; break;		// \phi_{i+1,j}.
-			case 3: bottomPhi = sample[s]; break;		// \phi_{i,j-1}.
-			default: ;
+			sine.toWorldCoordinates( xyz[0], xyz[1] );
+			sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
+			std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
+					  << "on interface calculated with phi values.  \n     "
+					  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
+					  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
 		}
+
+		if( sample[s] < 0 )	// Fix sign.
+			distances[s] *= -1;
+
+		if( s == 4 )		// For center node we need the parameter u to yield curvature.
+			centerU = u;
 	}
 
 	// Computing the target curvature.
-	double xyz[P4EST_DIM];								// Position of node at the center of the stencil in world coords.
-	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-	double grad[] = {									// Gradient at center point.
-		( rightPhi - leftPhi ) / ( 2 * H ),				// Using central differences.
-		( topPhi - bottomPhi ) / ( 2 * H )
-	};
-	double gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );
-	double pOnInterfaceX = xyz[0] - grad[0] / gradNorm * centerPhi,		// Coordinates of projection of grid point on
-	pOnInterfaceY = xyz[1] - grad[1] / gradNorm * centerPhi;		// interface in world coords.
-
-	// Transform node position and approximated point on the interface to sine wave canonical coordinate system to
-	// simplify computations with minimization process.
-	sine.toCanonicalCoordinates( xyz[0], xyz[1] );
-	sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
-
-	double u = pOnInterfaceX;							// Initial parameter guess for root finding method.
-	double valOfDerivative;
-	double newU = distThetaDerivative( nodeIdx, xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
-
-	pOnInterfaceX = newU;								// Recalculating point on interface (still in canonical coords).
-	pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
-
-	double dx = xyz[0] - pOnInterfaceX,					// Verify that point on interface is not far from grid point.
-		   dy = xyz[1] - pOnInterfaceY;
-	distance = sqrt( dx * dx + dy * dy );
-	if( distance <= H && ABS( valOfDerivative ) <= 1e-8 )
-		u = newU;										// Parameter is OK.
-	else
-	{
-		sine.toWorldCoordinates( xyz[0], xyz[1] );
-		sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
-		std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
-				  << "on interface calculated with phi values.  \n     "
-				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
-				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
-	}
-
-	sample[s] = H * sine.curvature( u );				// Last column holds h\kappa.
+	sample[s] = H * sine.curvature( centerU );				// Last column holds h\kappa.
 //	std::cout << u << ", " << sample[s] << ";" << std::endl;
 
-	if( centerPhi < 0 )									// Fix sign of found "exact" distance.
-		distance *= -1;
 	return sample;
 }
 
@@ -170,10 +172,10 @@ int main ( int argc, char* argv[] )
 
 		// Definining the level-set function to be reinitialized.
 		const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;		// Adding some padding of 2H.
-		const double A = MAX_A;
+		const double A = MIN_A;
 		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );
 		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );
-		ArcLengthParameterizedSine sine( A, MIN_OMEGA, T[0], T[1], 0, H, HALF_AXIS_LEN );
+		ArcLengthParameterizedSine sine( A, MIN_OMEGA, 0, 0, 0, H, HALF_AXIS_LEN );
 		splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
 
 		// Create the forest using a level-set as refinement criterion.
@@ -236,6 +238,18 @@ int main ( int argc, char* argv[] )
 		ierr = VecGetArray( hCurvature, &hCurvaturePtr );
 		CHKERRXX( ierr );
 
+		// A vector to store the error of full neighborhoods along the interface.
+		Vec vError;
+		ierr = VecDuplicate( interfaceFlag, &vError );
+		CHKERRXX( ierr );
+
+		ierr = VecCopy( interfaceFlag, vError );
+		CHKERRXX( ierr );
+
+		double *vErrorPtr;
+		ierr = VecGetArray( vError, &vErrorPtr );
+		CHKERRXX( ierr );
+
 		// Getting the full uniform stencils of interface points.
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
@@ -245,28 +259,39 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		// Now, collect samples with reinitialized level-set function values and target h\kappa.
+		// Avoid nodes that are close to physical domain boundary as they are less accurate.
 		for( auto n : indices )
 		{
+			double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			if( ABS( xyz[0] - MIN_D ) <= 4 * H || ABS( xyz[0] - MAX_D ) <= 4 * H ||
+				ABS( xyz[1] - MIN_D ) <= 4 * H || ABS( xyz[1] - MAX_D ) <= 4 * H )
+				continue;
+
 			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
 			try
 			{
 				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 				{
-					double distance;
+					std::vector<double> distances;
 					std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-																				nodes, phiReadPtr, sine, distance );
+																				nodes, &nodeNeighbors, phiReadPtr, sine,
+																				distances );
 					hCurvaturePtr[n] = sample[NUM_COLUMNS-1];
 					interfaceFlagPtr[n] = 1;
 
 					// Error metric for validation.
-					double error = ABS( distance - phiReadPtr[n] ) / H;
-					maxRE = MAX( maxRE, error );
+					for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+					{
+						vErrorPtr[stencil[i]] = ( distances[i] - sample[i] ) / H;
+						maxRE = MAX( maxRE, ABS( vErrorPtr[stencil[i]] ) );
+					}
+
+//					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ";" << std::endl;
 				}
 			}
 			catch( std::exception &e )
 			{
-					double xyz[P4EST_DIM];				// Position of node at the center of the stencil.
-					node_xyz_fr_n( n, p4est, nodes, xyz );
 					std::cerr << "Node " << n << " (" << xyz[0] << ", " << xyz[1] << "): " << e.what() << std::endl;
 			}
 		}
@@ -278,11 +303,15 @@ int main ( int argc, char* argv[] )
 		oss << "sine_wave_" << mpi.size() << "_" << P4EST_DIM;
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								3, 0, oss.str().c_str(),
+								4, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
 								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
-								VTK_POINT_DATA, "hKappa", hCurvaturePtr );
+								VTK_POINT_DATA, "hKappa", hCurvaturePtr,
+								VTK_POINT_DATA, "error", vErrorPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
+
+		ierr = VecRestoreArray( vError, &vErrorPtr );
+		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( hCurvature, &hCurvaturePtr );
 		CHKERRXX( ierr );
@@ -294,6 +323,9 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
+		ierr = VecDestroy( vError );
+		CHKERRXX( ierr );
+
 		ierr = VecDestroy( hCurvature );
 		CHKERRXX( ierr );
 
