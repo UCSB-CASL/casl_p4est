@@ -37,30 +37,36 @@ public:
   }
 
   virtual double solution_minus(DIM(const double &x, const double &y, const double &z)) const = 0;
-  virtual double first_derivative_solution_minus(const unsigned char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
-  virtual double second_derivative_solution_minus(const unsigned char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
+  virtual double first_derivative_solution_minus(const u_char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
+  virtual double second_derivative_solution_minus(const u_char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
 
   virtual double solution_plus(DIM(const double &x, const double &y, const double &z)) const = 0;
-  virtual double first_derivative_solution_plus(const unsigned char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
-  virtual double second_derivative_solution_plus(const unsigned char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
+  virtual double first_derivative_solution_plus(const u_char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
+  virtual double second_derivative_solution_plus(const u_char &der, DIM(const double &x, const double &y, const double &z)) const = 0;
 
   inline double jump_in_solution(DIM(const double &x, const double &y, const double &z)) const
   {
     return solution_plus(DIM(x, y, z)) - solution_minus(DIM(x, y, z));
   }
 
-  inline double jump_in_normal_flux(const double local_normal[P4EST_DIM], DIM(const double &x, const double &y, const double &z)) const
+  inline double jump_in_normal_flux(const double local_grad_phi[P4EST_DIM], DIM(const double &x, const double &y, const double &z)) const
   {
     double jump_in_flux = 0.0;
-    for (unsigned char der = 0; der < P4EST_DIM; ++der)
-      jump_in_flux += local_normal[der]*(mu_p*first_derivative_solution_plus(der, DIM(x, y, z)) - mu_m*first_derivative_solution_minus(der, DIM(x, y, z)));
-    return jump_in_flux;
+    const double mag_grad_phi = sqrt(SUMD(SQR(local_grad_phi[0]), SQR(local_grad_phi[1]), SQR(local_grad_phi[2])));
+
+    if(mag_grad_phi < EPS)
+      return 0.0; // normal is ill-defined, you would not compute anything better here below
+
+    for (u_char der = 0; der < P4EST_DIM; ++der)
+      jump_in_flux += local_grad_phi[der]*(mu_p*first_derivative_solution_plus(der, DIM(x, y, z)) - mu_m*first_derivative_solution_minus(der, DIM(x, y, z)));
+
+    return jump_in_flux/mag_grad_phi;
   }
 
   inline double laplacian_u_minus(DIM(const double &x, const double &y, const double &z)) const
   {
     double laplacian = 0.0;
-    for (unsigned char der = 0; der < P4EST_DIM; ++der)
+    for (u_char der = 0; der < P4EST_DIM; ++der)
       laplacian += second_derivative_solution_minus(der, DIM(x, y, z));
     return laplacian;
   }
@@ -68,7 +74,7 @@ public:
   inline double laplacian_u_plus(DIM(const double &x, const double &y, const double &z)) const
   {
     double laplacian = 0.0;
-    for (unsigned char der = 0; der < P4EST_DIM; ++der)
+    for (u_char der = 0; der < P4EST_DIM; ++der)
       laplacian += second_derivative_solution_plus(der, DIM(x, y, z));
     return laplacian;
   }
@@ -119,7 +125,7 @@ public:
             if(ANDD(wrapping[0] == 0, wrapping[1] == 0, wrapping[2] == 0))
               continue;
             double ls_center_wrapped[P4EST_DIM];
-            for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+            for (u_char dim = 0; dim < P4EST_DIM; ++dim)
               ls_center_wrapped[dim] = ls_center[dim] + wrapping[dim]*(domain.xyz_max[dim] - domain.xyz_min[dim]);
             if(neg_inside)
               ls = MIN(ls, elementary_function(ls_center_wrapped, xyz));
@@ -212,14 +218,14 @@ class level_set_bone_shaped : public level_set_t
     else
     {
       double cosroot[3];
-      for (unsigned char kk = 0; kk < 3; ++kk)
+      for (u_char kk = 0; kk < 3; ++kk)
         cosroot[kk] = 2.0*sqrt(5.0/12.0)*cos((1.0/3.0)*acos(-(x_tmp - xc_tmp)*sqrt(12.0/5.0)) - 2.0*M_PI*((double) kk)/3.0);
       double cosroot_tmp;
       double root;
       double y_lim[2] = {yc_tmp, yc_tmp};
       int pp = 1;
-      for (unsigned char kk = 0; kk < 3; ++kk) {
-        for (unsigned char jj = kk+1; jj < 3; ++jj) {
+      for (u_char kk = 0; kk < 3; ++kk) {
+        for (u_char jj = kk+1; jj < 3; ++jj) {
           if(cosroot[jj] < cosroot[kk])
           {
             cosroot_tmp = cosroot[kk];
@@ -247,10 +253,10 @@ public:
 
 class level_set_flower : public level_set_t {
   const double radius, amplitude;
-  const unsigned int nphi;
+  const u_int nphi;
 #ifdef P4_TO_P8
   const double phi_modulation;
-  const unsigned int ntheta;
+  const u_int ntheta;
 #endif
   double elementary_function(const double xyz_c[P4EST_DIM], const double xyz[P4EST_DIM]) const
   {
@@ -268,8 +274,8 @@ class level_set_flower : public level_set_t {
 #endif
   }
 public:
-  level_set_flower(const domain_t &domain_, const double *xyz_c, const double &radius_, const double &amplitude_, const bool &negative_inside = true, const unsigned int npetals_phi = 3 + P4EST_DIM
-      ONLY3D(COMMA const double &phi_mod_ = 0.2 COMMA const unsigned int npetals_theta = 3))
+  level_set_flower(const domain_t &domain_, const double *xyz_c, const double &radius_, const double &amplitude_, const bool &negative_inside = true, const u_int npetals_phi = 3 + P4EST_DIM
+      ONLY3D(COMMA const double &phi_mod_ = 0.2 COMMA const u_int npetals_theta = 3))
     : level_set_t(domain_, xyz_c, negative_inside), radius(radius_), amplitude(amplitude_), nphi(npetals_phi) ONLY3D(COMMA phi_modulation(phi_mod_) COMMA ntheta(2*npetals_theta))
   {}
 };
@@ -322,7 +328,7 @@ public:
     n_bubbles(nbubbles), min_bubble_radius(min_rad_), max_bubble_radius(max_rad_)
   {
     srand(time(0));
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       center_bubbles[dim].resize(n_bubbles);
     radius_bubbles.resize(n_bubbles);
     theta_bubbles.resize(n_bubbles);
@@ -341,7 +347,7 @@ public:
   {
     mu_m = 2.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = 0.0;
       domain.xyz_max[dim] = 1.0;
       domain.periodicity[dim] = 0;
@@ -368,7 +374,7 @@ public:
     return exp(- x*x - y*y);
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     double to_return;
     switch (der) {
@@ -385,7 +391,7 @@ public:
     return to_return*solution_minus(x, y);
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     double to_return;
     switch (der) {
@@ -407,12 +413,12 @@ public:
     return 0.0;
   }
 
-  double first_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double first_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
 
-  double second_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double second_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
@@ -426,7 +432,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -1.0;
       domain.xyz_max[dim] = +1.0;
       domain.periodicity[dim] = 0;
@@ -456,12 +462,12 @@ public:
     return 1.0;
   }
 
-  double first_derivative_solution_minus(const unsigned char &, const double &, const double &) const
+  double first_derivative_solution_minus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
 
-  double second_derivative_solution_minus(const unsigned char &, const double &, const double &) const
+  double second_derivative_solution_minus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
@@ -471,7 +477,7 @@ public:
     return 1.0 + log(2.0*sqrt(EPS + SQR(x) + SQR(y)));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     double to_return;
     switch (der) {
@@ -489,7 +495,7 @@ public:
     return to_return/(EPS + SQR(x) + SQR(y));
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     double to_return;
     switch (der) {
@@ -514,7 +520,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -1.0;
       domain.xyz_max[dim] = +1.0;
       domain.periodicity[dim] = 0;
@@ -540,7 +546,7 @@ public:
     return exp(x)*cos(y);
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -555,7 +561,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -575,12 +581,12 @@ public:
     return 0.0;
   }
 
-  double first_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double first_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
 
-  double second_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double second_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
@@ -593,7 +599,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -1.0;
       domain.xyz_max[dim] = +1.0;
       domain.periodicity[dim] = 0;
@@ -619,7 +625,7 @@ public:
     return x*x - y*y;
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -634,7 +640,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &, const double &) const
+  double second_derivative_solution_minus(const u_char &der, const double &, const double &) const
   {
     switch (der) {
     case dir::x:
@@ -654,12 +660,12 @@ public:
     return 0.0;
   }
 
-  double first_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double first_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
 
-  double second_derivative_solution_plus(const unsigned char &, const double &, const double &) const
+  double second_derivative_solution_plus(const u_char &, const double &, const double &) const
   {
     return 0.0;
   }
@@ -672,7 +678,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 10.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -1.0;
       domain.xyz_max[dim] = +1.0;
       domain.periodicity[dim] = 0;
@@ -701,7 +707,7 @@ public:
     return x*x + y*y;
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -716,7 +722,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &, const double &) const
+  double second_derivative_solution_minus(const u_char &der, const double &, const double &) const
   {
     switch (der) {
     case dir::x:
@@ -736,7 +742,7 @@ public:
     return 0.1*SQR(x*x + y*y) - 0.01*log(2.0*sqrt(EPS + x*x + y*y));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -751,7 +757,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -800,7 +806,7 @@ public:
     return exp(x)*(x*x*sin(y) + y*y);
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -815,7 +821,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -835,7 +841,7 @@ public:
     return -x*x - y*y;
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -850,7 +856,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &, const double &) const
+  double second_derivative_solution_plus(const u_char &der, const double &, const double &) const
   {
     switch (der) {
     case dir::x:
@@ -873,7 +879,7 @@ public:
   {
     mu_m = 10000.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim]     = -1.0;
       domain.xyz_max[dim]     = +1.0;
       domain.periodicity[dim] = 0;
@@ -902,7 +908,7 @@ public:
     return exp(x)*(x*x*sin(y) + y*y)/mu_m;
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -917,7 +923,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -937,7 +943,7 @@ public:
     return 0.5 + cos(x)*(pow(y, 4.0) + sin(y*y - x*x));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -952,7 +958,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -975,7 +981,7 @@ public:
   {
     mu_m = 1000.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim]     = -1.0;
       domain.xyz_max[dim]     = +1.0;
       domain.periodicity[dim] = 0;
@@ -1004,7 +1010,7 @@ public:
     return (cos(2.0*M_PI*(x + 3.0*y)/0.04) - sin(2.0*M_PI*(y - 2.0*x)/0.04))/mu_m;
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1019,7 +1025,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1039,7 +1045,7 @@ public:
     return cos(x + y)*exp(-SQR(x*cos(y)));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1054,7 +1060,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1077,7 +1083,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 10.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim]     = -1.5;
       domain.xyz_max[dim]     = +1.5;
     }
@@ -1106,7 +1112,7 @@ public:
     return cos((2.0*M_PI/3.0)*(x - tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x - 0.251*y))));
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1121,7 +1127,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1145,7 +1151,7 @@ public:
     return tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y);
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1160,7 +1166,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1184,7 +1190,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 100.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim]     = -1.5;
       domain.xyz_max[dim]     = +1.5;
       domain.periodicity[dim] = 1;
@@ -1214,7 +1220,7 @@ public:
     return atan(sin((2.0*M_PI/3.0)*(2.0*x - y)));
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1229,7 +1235,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1249,7 +1255,7 @@ public:
     return log(1.5 + cos((2.0*M_PI/3.0)*(-x + 3.0*y)));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1264,7 +1270,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
   {
     switch (der) {
     case dir::x:
@@ -1289,7 +1295,7 @@ public:
   {
     mu_m = 2.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = 0.0;
       domain.xyz_max[dim] = 1.0;
       domain.periodicity[dim] = 0;
@@ -1316,7 +1322,7 @@ public:
     return exp(- x*x - y*y - z*z);
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     double to_return;
     switch (der) {
@@ -1336,7 +1342,7 @@ public:
     return to_return*solution_minus(x, y, z);
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     double to_return;
     switch (der) {
@@ -1361,12 +1367,12 @@ public:
     return 0.0;
   }
 
-  double first_derivative_solution_plus(const unsigned char &, const double &, const double &, const double &) const
+  double first_derivative_solution_plus(const u_char &, const double &, const double &, const double &) const
   {
     return 0.0;
   }
 
-  double second_derivative_solution_plus(const unsigned char &, const double &, const double &, const double &) const
+  double second_derivative_solution_plus(const u_char &, const double &, const double &, const double &) const
   {
     return 0.0;
   }
@@ -1379,7 +1385,7 @@ public:
   {
     mu_m = 2000.0;
     mu_p = 1.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -2.0;
       domain.xyz_max[dim] = +2.0;
       domain.periodicity[dim] = 0;
@@ -1408,7 +1414,7 @@ public:
     return 3.0 + exp(.5*(x - z))*(x*sin(y) - cos(x + y)*atan(z))*4.0/mu_m;
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1426,7 +1432,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1449,7 +1455,7 @@ public:
     return exp(-x*sin(y) - y*cos(z) - z*cos(2.0*x));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1467,7 +1473,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1524,7 +1530,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 1250.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -2.0;
       domain.xyz_max[dim] = +2.0;
       domain.periodicity[dim] = 0;
@@ -1553,7 +1559,7 @@ public:
     return exp(.5*(x - z))*(x*sin(y) - cos(x + y)*atan(z));
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1571,7 +1577,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1594,7 +1600,7 @@ public:
     return -1.0 + atan(ff(x, y, z))*2.5/mu_p;
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1612,7 +1618,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1736,7 +1742,7 @@ public:
   {
     mu_m = 1.0;
     mu_p = 80.0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       domain.xyz_min[dim] = -1.5;
       domain.xyz_max[dim] = +1.5;
       domain.periodicity[dim] = 1;
@@ -1767,7 +1773,7 @@ public:
     return  atan(pp(x, y, z))*log(qq(x, y, z));
   }
 
-  double first_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1785,7 +1791,7 @@ public:
     }
   }
 
-  double second_derivative_solution_minus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1808,7 +1814,7 @@ public:
     return tanh(rr(x, y, z))*acos(ss(x, y, z));
   }
 
-  double first_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
@@ -1826,7 +1832,7 @@ public:
     }
   }
 
-  double second_derivative_solution_plus(const unsigned char &der, const double &x, const double &y, const double &z) const
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y, const double &z) const
   {
     switch (der) {
     case dir::x:
