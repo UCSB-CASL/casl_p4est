@@ -1,16 +1,19 @@
 #include "my_p4est_interface_manager.h"
 
-my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_cell_neighbors_t* cell_ngbd, const double* dxyz_min_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
-  : c_ngbd(cell_ngbd), faces(faces_), p4est(cell_ngbd->get_p4est()), ghost(cell_ngbd->get_ghost()), dxyz_min(dxyz_min_),
+my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
+  : faces(faces_), c_ngbd(faces_->get_ngbd_c()), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()),
+    nodes(nodes_), dxyz_min(faces_->get_smallest_dxyz()),
     interpolation_node_ngbd(interpolation_node_ngbd_), interp_phi(interpolation_node_ngbd_),
     max_level_p4est(((splitting_criteria_t*) p4est->user_pointer)->max_lvl),
     max_level_interpolation_p4est(((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)
 {
+#ifdef CASL_THROWS
   if(max_level_interpolation_p4est < max_level_p4est)
     throw std::invalid_argument("my_p4est_interface_manager_t(): you're using UNDER-resolved interpolation tools for capturing the interface. Are you mentally sane? Go see a doctor or check your code...");
 #ifdef WITH_SUBREFINEMENT
   if(max_level_interpolation_p4est <= max_level_p4est)
     std::cerr << "my_p4est_interface_manager_t(): --- WARNING --- : you are not actually sub-refining for better capturing your interface" << std::endl;
+#endif
 #endif
   interp_grad_phi   = NULL;
   interp_phi_xxyyzz = NULL;
@@ -21,7 +24,8 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
     face_FD_interface_data[dim] = new map_of_interface_neighbors_t;
     clear_face_FD_interface_data(dim);
   }
-  grad_phi_local = NULL;
+  grad_phi_local              = NULL;
+  phi_on_computational_nodes  = NULL;
   use_second_derivative_when_computing_FD_theta = true;
 }
 
@@ -58,15 +62,33 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
   else
     interp_phi.set_input(phi, method_interp_phi);
 
+  if(nodes == interpolation_node_ngbd->get_nodes())
+    phi_on_computational_nodes = phi;
+
   if(build_and_set_grad_phi_locally)
     set_grad_phi();
   return;
 }
 
+void my_p4est_interface_manager_t::set_under_resolved_levelset(Vec phi_on_computational_nodes_)
+{
+  P4EST_ASSERT(phi_on_computational_nodes_ != NULL);
+  P4EST_ASSERT(VecIsSetForNodes(phi_on_computational_nodes_, nodes, p4est->mpicomm, 1));
+
+  phi_on_computational_nodes = phi_on_computational_nodes_;
+  if(subcell_resolution() == 0 && interp_phi.get_input_fields().size() < 1 &&
+     interpolation_node_ngbd->get_p4est() == p4est && interpolation_node_ngbd->get_nodes() == nodes)
+    set_levelset(phi_on_computational_nodes_, linear);
+
+  return;
+}
+
 void my_p4est_interface_manager_t::build_grad_phi_locally()
 {
+#ifdef CASL_THROWS
   if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_inupt_fields() != 1)
     throw std::runtime_error("my_p4est_interface_manager_t::build_grad_phi_locally(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
+#endif
 
   if(grad_phi_local == NULL){
     PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), P4EST_DIM, &grad_phi_local); CHKERRXX(ierr); }
@@ -211,8 +233,10 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
 
 void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const
 {
+#ifdef CASL_THROWS
   if(quad_idx >= p4est->local_num_quadrants)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
+#endif
   const p4est_tree* tree = p4est_tree_array_index(p4est->trees, tree_idx);
   const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 

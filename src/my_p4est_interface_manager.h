@@ -117,11 +117,15 @@ typedef std::map<which_interface_neighbor_t, interface_neighbor> map_of_interfac
 
 class my_p4est_interface_manager_t
 {
-  const my_p4est_cell_neighbors_t *c_ngbd;
+  // computational grid data
   const my_p4est_faces_t          *faces;
+  const my_p4est_cell_neighbors_t *c_ngbd;
   const p4est_t                   *p4est;
   const p4est_ghost_t             *ghost;
+  const p4est_nodes_t             *nodes;
   const double                    *dxyz_min;
+  Vec                             phi_on_computational_nodes;
+  // object related to possibly subresolved interface-capturing feature
   const my_p4est_node_neighbors_t *interpolation_node_ngbd;
   my_p4est_interpolation_nodes_t  interp_phi;
   my_p4est_interpolation_nodes_t  *interp_grad_phi;
@@ -149,11 +153,7 @@ class my_p4est_interface_manager_t
   void build_grad_phi_locally();
 
 public:
-  my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_cell_neighbors_t* cell_ngbd, const double* dxyz_min_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_);
-
-  inline my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
-    : my_p4est_interface_manager_t(faces_, faces_->get_ngbd_c(), faces_->get_smallest_dxyz(), interpolation_node_ngbd_) { }
-
+  my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_);
   ~my_p4est_interface_manager_t();
 
   inline void do_not_store_cell_FD_interface_data()
@@ -185,10 +185,12 @@ public:
 
   inline bool is_storing_cell_FD_interface_data() const { return cell_FD_interface_data != NULL; }
   inline bool is_storing_face_FD_interface_data() const { return ANDD(face_FD_interface_data[0] != NULL, face_FD_interface_data[1] != NULL, face_FD_interface_data[2] != NULL); }
+  inline bool grad_phi_is_available()             const { return interp_grad_phi != NULL; }
 
   // the interpolation method for phi is (or at least should be) irrelevant in presence of subrefinement, since all relevant points are sampled
   void set_levelset(Vec phi, const interpolation_method& method_interp_phi ONLY_WITH_SUBREFINEMENT(= linear), Vec phi_xxyyzz = NULL, const bool& build_and_set_grad_phi_locally = false);
   void set_grad_phi(Vec grad_phi_in = NULL);
+  void set_under_resolved_levelset(Vec phi_on_computational_nodes_);
 
   /*!
    * \brief evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available self-explanatory
@@ -236,6 +238,43 @@ public:
   inline const map_of_interface_neighbors_t& get_cell_FD_interface_data() const { P4EST_ASSERT(cell_FD_interface_data != NULL); return *cell_FD_interface_data; }
 
   void compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
+
+  inline double phi(const double *xyz) const { return interp_phi(xyz); }
+
+  inline void grad_phi(const double *xyz, double* grad_phi) const { P4EST_ASSERT(grad_phi_is_available()); (*interp_grad_phi)(xyz, grad_phi); return; }
+
+  inline const my_p4est_node_neighbors_t& get_interface_capturing_ngbd_n() const { return *interpolation_node_ngbd; }
+  inline Vec get_grad_phi() const
+  {
+#ifdef CASL_THROWS
+    if(!grad_phi_is_available())
+      throw std::runtime_error("my_p4est_interface_manager_t::get_grad_phi() called but grad phi is not available...");
+#endif
+    return interp_grad_phi->get_input_fields()[0];
+  }
+
+  inline Vec get_phi() const
+  {
+#ifdef CASL_THROWS
+    if(interp_phi.get_input_fields().size() < 1)
+      throw std::runtime_error("my_p4est_interface_manager_t::get_phi() called but phi is not available...");
+#endif
+    return interp_phi.get_input_fields()[0];
+  }
+
+  inline Vec get_phi_on_computational_nodes() const
+  {
+    if(phi_on_computational_nodes != NULL)
+      return phi_on_computational_nodes;
+#ifdef CASL_THROWS
+    throw std::runtime_error("my_p4est_interface_manager_t::get_phi_on_computational_nodes() called but phi is not available on the computational nodes...");
+#endif
+
+    return NULL;
+  }
+
+
+  inline int subcell_resolution() const { return max_level_interpolation_p4est - max_level_p4est; }
 
 #ifdef DEBUG
   int cell_FD_map_is_consistent_across_procs();
