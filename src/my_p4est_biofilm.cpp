@@ -1171,7 +1171,7 @@ void my_p4est_biofilm_t::update_grid()
       }
     }
 
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
     if (is_changed)
     {
@@ -1209,7 +1209,7 @@ void my_p4est_biofilm_t::update_grid()
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_free_, &phi_ptr); CHKERRXX(ierr);
 
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
     if (is_changed)
     {

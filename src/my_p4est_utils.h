@@ -1065,8 +1065,7 @@ int8_t find_max_level(const p4est_t* p4est);
 
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min);
+void get_dxyz_min(const p4est_t *p4est, double dxyz[], double *dxyz_min=NULL, double *diag_min=NULL);
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz);
 

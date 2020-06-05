@@ -71,6 +71,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_cell_neighbors.h \
 #  $$PARCASL/src/my_p4est_epitaxy.h \
   $$PARCASL/src/my_p4est_faces.h \
+  $$PARCASL/src/my_p4est_grid_aligned_extension.h \
   $$PARCASL/src/my_p4est_hierarchy.h \
   $$PARCASL/src/my_p4est_integration_mls.h \
   $$PARCASL/src/my_p4est_interpolation.h \
@@ -114,6 +115,7 @@ SOURCES += \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.cpp \
+  $$PARCASL/src/my_p4est_grid_aligned_extension.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
   $$PARCASL/src/my_p4est_integration_mls.cpp \
   $$PARCASL/src/my_p4est_interpolation.cpp \

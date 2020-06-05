@@ -283,7 +283,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   history_ngbd_->init_neighbors();
 
   /* determine the smallest cell size */
-  get_dxyz_min(p4est_, dxyz_, dxyz_min_, diag_);
+  get_dxyz_min(p4est_, dxyz_, &dxyz_min_, &diag_);
   dxyz_max_ = dxyz_min_;
 
   dxyz_close_interface_ = 1.2*dxyz_max_;
@@ -1752,7 +1752,7 @@ void my_p4est_multialloy_t::regularize_front()
     }
   }
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   if (is_changed)
   {
@@ -1801,8 +1801,8 @@ void my_p4est_multialloy_t::regularize_front()
   front_phi_tmp.restore_array();
   front_phi_cur.restore_array();
 
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   if (is_ghost_changed)
   {

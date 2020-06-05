@@ -16,6 +16,7 @@
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_shapes.h>
+#include <src/my_p4est_grid_aligned_extension.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -27,6 +28,7 @@
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_shapes.h>
+#include <src/my_p8est_grid_aligned_extension.h>
 #endif
 
 #include <src/Parser.h>
@@ -53,16 +55,16 @@ param_list_t pl;
 
 // grid parameters
 param_t<int>    lmin                 (pl, -1,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<int>    lmax                 (pl, 5,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmax                 (pl, 15,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
 param_t<double> lip                  (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
 param_t<double> uniform_band         (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
-param_t<int>    num_splits           (pl, 5,   "num_splits",           "Number of successive refinements (default: 5)");
+param_t<int>    num_splits           (pl, 1,   "num_splits",           "Number of successive refinements (default: 5)");
 param_t<int>    num_splits_per_split (pl, 1,   "num_splits_per_split", "Number of additional refinements (default: 1)");
 param_t<bool>   aggressive_coarsening(pl, 1,   "aggressive_corsening", "Enfornce lip = 0 (i.e. no smooth transition from uniform band to coarse grid");
 
 
 // problem set-up (points of iterpolation and function to interpolate)
-param_t<int> test_domain(pl, 0, "test_domain", "Test domain (default: 0):\n"
+param_t<int> test_domain(pl, 3, "test_domain", "Test domain (default: 0):\n"
                                                "    0 - sphere \n"
                                                "    1 - flower shaped"
                                                "    2 - union of two spheres"
@@ -73,8 +75,8 @@ param_t<int> test_function(pl, 0, "test_function", "Test function (default: 0):\
                                                    "    1 - ... (more to be added)");
 
 // method set-up
-param_t<bool>   reinit_level_set(pl, 0,  "reinit_level_set", "Reinitialize level-set function before extension (helps to regularize normals in the presence of kinks) (default: 0)");
-param_t<bool>   rerefine        (pl, 0,  "rerefine"        , "Refine according to signed distance (default: 0)");
+param_t<bool>   reinit_level_set(pl, 1,  "reinit_level_set", "Reinitialize level-set function before extension (helps to regularize normals in the presence of kinks) (default: 0)");
+param_t<bool>   rerefine        (pl, 1,  "rerefine"        , "Refine according to signed distance (default: 0)");
 param_t<bool>   show_convergence(pl, 0,  "show_convergence", "Show convergence as iterations performed (default: 0)");
 param_t<bool>   use_full        (pl, 0,  "use_full"        , "Extend only normal derivatives (0) or all derivatives in Cartesian directions (1) (default: 0)");
 param_t<int>    num_iterations  (pl, 50, "num_iterations"  , "Number of iterations (default: 50)\n");
@@ -144,7 +146,7 @@ struct: CF_2 {
   double operator()(double x, double y) const {
     switch (test_function.val)
     {
-      case 0: return sin(PI*x)*cos(PI*y);
+      case 0: return sin(2.*PI*x)*cos(2.*PI*y);
       default:
         throw std::invalid_argument("Invalid test function");
     }
@@ -331,7 +333,7 @@ int main(int argc, char** argv)
       double dxyz[P4EST_DIM]; // dimensions of the smallest quadrants
       double dxyz_min;        // minimum side length of the smallest quadrants
       double diag_min;        // diagonal length of the smallest quadrants
-      get_dxyz_min(p4est, dxyz, dxyz_min, diag_min);
+      get_dxyz_min(p4est, dxyz, &dxyz_min, &diag_min);
 
       Vec phi;
       Vec phi_reinit;
@@ -425,15 +427,22 @@ int main(int argc, char** argv)
       double time_quadratic;
       if (use_full())
       {
-        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration(); // constant extrapolation
-        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration(); // linear extrapolation
-        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration(); // quadratic extrapolationn
+        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration_current(); // constant extrapolation
+        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration_current(); // linear extrapolation
+        w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration_current(); // quadratic extrapolationn
       }
       else
       {
-        w.start(); ls.extend_Over_Interface_TVD     (phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration(); // constant extrapolation
-        w.start(); ls.extend_Over_Interface_TVD     (phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration(); // linear extrapolation
-        w.start(); ls.extend_Over_Interface_TVD     (phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration(); // quadratic extrapolationn
+//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration_current(); // constant extrapolation
+//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration_current(); // linear extrapolation
+//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration_current(); // quadratic extrapolationn
+
+        my_p4est_grid_aligned_extension_t ext_c(&ngbd);
+        my_p4est_grid_aligned_extension_t ext_l(&ngbd);
+        my_p4est_grid_aligned_extension_t ext_q(&ngbd);
+        w.start(); ext_c.initialize(phi, 0, num_iterations(), band()+2, band(), NULL, NULL); ext_c.extend(1, &f_const);     time_const     = w.get_duration_current();
+        w.start(); ext_l.initialize(phi, 1, num_iterations(), band()+2, band(), NULL, NULL); ext_l.extend(1, &f_linear);    time_linear    = w.get_duration_current();
+        w.start(); ext_q.initialize(phi, 2, num_iterations(), band()+2, band(), NULL, NULL); ext_q.extend(1, &f_quadratic); time_quadratic = w.get_duration_current();
       }
 
       ls.extend_from_interface_to_whole_domain_TVD(phi, f_exact, f_flat, num_iterations()); // constant extrapolation in both directions (flattening)

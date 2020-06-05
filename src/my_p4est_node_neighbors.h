@@ -77,7 +77,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_extended_t;
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
-  friend class my_p4est_poisson_nodes_mls_sc_t;
   friend class my_p4est_poisson_nodes_mls_t;
   friend class my_p4est_poisson_nodes_multialloy_t;
   friend class my_p4est_poisson_nodes_t;
@@ -85,6 +84,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
+  friend class my_p4est_grid_aligned_extension_t;
 
   /* Self-explanatory member variables */
   my_p4est_hierarchy_t *hierarchy;
