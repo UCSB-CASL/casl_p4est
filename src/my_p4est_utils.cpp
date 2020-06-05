@@ -2206,21 +2206,81 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
   std::string str;
   is >> str;
 
-  if (str == "DIRICHLET" || str == "Dirichlet" || str == "dirichlet")
+  if (case_insenstive_str_compare(str, "dirichlet"))
     type = DIRICHLET;
-  else if (str == "NEUMANN" || str == "Neumann" || str == "neumann")
+  else if (case_insenstive_str_compare(str, "neumann"))
     type = NEUMANN;
-  else if (str == "ROBIN" || str == "Robin" || str == "robin")
+  else if (case_insenstive_str_compare(str, "robin"))
     type = ROBIN;
-  else if (str == "NOINTERFACE" || str == "Nointerface" || str == "No-Interface" || str == "nointerface" || str == "no-interface")
+  else if (case_insenstive_str_compare(str, "nointerface") || case_insenstive_str_compare(str, "no-interface"))
     type = NOINTERFACE;
-  else if (str == "MIXED" || str == "Mixed" || str == "mixed")
+  else if (case_insenstive_str_compare(str, "mixed"))
     type = MIXED;
   else
     throw std::invalid_argument("[ERROR]: Unknown BoundaryConditionType entered");
 
   return is;
 }
+
+std::ostream& operator << (std::ostream& os, interpolation_method method)
+{
+  switch(method){
+  case linear:
+    os << "linear interpolation";
+    break;
+
+  case quadratic:
+    os << "quadratic interpolation";
+    break;
+
+  case quadratic_non_oscillatory:
+    os << "quadratic non-oscillatory";
+    break;
+
+  case quadratic_non_oscillatory_continuous_v1:
+    os << "quadratic non-oscillatory (version 1, by D. Bochkov)";
+    break;
+
+  case quadratic_non_oscillatory_continuous_v2:
+      os << "quadratic non-oscillatory (version 2, by D. Bochkov)";
+    break;
+
+  default:
+    os << "unknown interpolation technique";
+    break;
+  }
+
+  return os;
+}
+
+std::istream& operator >> (std::istream& is, interpolation_method& method)
+{
+  std::string str;
+  is >> str;
+
+  if (case_insenstive_str_compare(str, "linear") || case_insenstive_str_compare(str, "lin") || case_insenstive_str_compare(str, "lin."))
+    method = linear;
+  else if (case_insenstive_str_compare(str, "quadratic") || case_insenstive_str_compare(str, "quad") || case_insenstive_str_compare(str, "quad."))
+    method = quadratic;
+  else if (case_insenstive_str_compare(str, "quadratic_non_oscillatory") || case_insenstive_str_compare(str, "quad_non_oscillatory")
+           || case_insenstive_str_compare(str, "quadratic_minmod") || case_insenstive_str_compare(str, "quad_minmod") || case_insenstive_str_compare(str, "quad_min_mod"))
+    method = quadratic_non_oscillatory;
+  else if (case_insenstive_str_compare(str, "quadratic_non_oscillatory_continuous_v1") || case_insenstive_str_compare(str, "quad_non_oscillatory_continuous_v1")
+           || case_insenstive_str_compare(str, "quadratic_minmod_continuous_v1") || case_insenstive_str_compare(str, "quad_minmod_continuous_v1") || case_insenstive_str_compare(str, "quad_min_mod_continuous_v1")
+           || case_insenstive_str_compare(str, "quadratic_non_oscillatory_v1") || case_insenstive_str_compare(str, "quad_non_oscillatory_v1")
+           || case_insenstive_str_compare(str, "quadratic_minmod_v1") || case_insenstive_str_compare(str, "quad_minmod_v1") || case_insenstive_str_compare(str, "quad_min_mod_v1"))
+    method = quadratic_non_oscillatory_continuous_v1;
+  else if (case_insenstive_str_compare(str, "quadratic_non_oscillatory_continuous_v2") || case_insenstive_str_compare(str, "quad_non_oscillatory_continuous_v2")
+           || case_insenstive_str_compare(str, "quadratic_minmod_continuous_v2") || case_insenstive_str_compare(str, "quad_minmod_continuous_v2") || case_insenstive_str_compare(str, "quad_min_mod_continuous_v2")
+           || case_insenstive_str_compare(str, "quadratic_non_oscillatory_v2") || case_insenstive_str_compare(str, "quad_non_oscillatory_v2")
+           || case_insenstive_str_compare(str, "quadratic_minmod_v2") || case_insenstive_str_compare(str, "quad_minmod_v2") || case_insenstive_str_compare(str, "quad_min_mod_v2"))
+    method = quadratic_non_oscillatory_continuous_v2;
+  else
+    throw std::invalid_argument("[ERROR]: unknown interpolation technique entered");
+
+  return is;
+}
+
 
 std::string convert_to_string(const hodge_control& type)
 {

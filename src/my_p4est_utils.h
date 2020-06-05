@@ -377,8 +377,20 @@ public:
   virtual ~mixed_interface() {}
 };
 
+inline bool case_insenstive_char_compare(unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); }
+
+inline bool case_insenstive_str_compare(std::string const& a, std::string const& b) {
+  if (a.length() == b.length())
+    return std::equal(b.begin(), b.end(), a.begin(), case_insenstive_char_compare);
+  else
+    return false;
+}
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
+
+std::ostream& operator << (std::ostream& os, interpolation_method method);
+std::istream& operator >> (std::istream& is, interpolation_method& method);
 
 std::string convert_to_string(const hodge_control& type);
 std::ostream& operator << (std::ostream& os, hodge_control type);
