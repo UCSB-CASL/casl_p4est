@@ -98,6 +98,8 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] uniformDistribution A uniform random distribution generator with a range of [0, 1].
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
+ * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
+ * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
@@ -243,13 +245,13 @@ int main ( int argc, char* argv[] )
 		// Prepare samples files: sine_rls_X.csv for reinitialized level-set, sine_sdf_X.csv for signed-distance function values.
 		std::ofstream rlsFile;
 		std::string rlsFileName = DATA_PATH + "sine_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
-		rlsFile.open( rlsFileName, std::ofstream::app );
+		rlsFile.open( rlsFileName, std::ofstream::trunc );
 		if( !rlsFile.is_open() )
 			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
 
 		std::ofstream sdfFile;
 		std::string sdfFileName = DATA_PATH + "sine_sdf_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
-		sdfFile.open( sdfFileName, std::ofstream::app );
+		sdfFile.open( sdfFileName, std::ofstream::trunc );
 		if( !sdfFile.is_open() )
 			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
 
@@ -387,7 +389,7 @@ int main ( int argc, char* argv[] )
 						{
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
-								std::vector<double> distances;		// Holds the signed distances
+								std::vector<double> distances;		// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
 									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, uniformDistribution, distances );
 

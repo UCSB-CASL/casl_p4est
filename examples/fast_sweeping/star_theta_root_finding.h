@@ -2,8 +2,8 @@
 // Created by Im YoungMin on 11/17/19.
 //
 
-#ifndef FAST_SWEEPING_DISTTHETAROOTFINDING_H
-#define FAST_SWEEPING_DISTTHETAROOTFINDING_H
+#ifndef FAST_SWEEPING_STAR_THETA_ROOT_FINDING_H
+#define FAST_SWEEPING_STAR_THETA_ROOT_FINDING_H
 
 #include "boost/math/tools/roots.hpp"
 #include <limits>
@@ -99,4 +99,4 @@ double distThetaDerivative( p4est_locidx_t n, double x, double y, const geom::St
 	return result;
 }
 
-#endif //FAST_SWEEPING_DISTTHETAROOTFINDING_H
+#endif //FAST_SWEEPING_STAR_THETA_ROOT_FINDING_H

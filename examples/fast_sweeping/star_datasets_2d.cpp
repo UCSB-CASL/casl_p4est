@@ -32,7 +32,7 @@
 #include <src/my_p4est_level_set.h>
 #endif
 
-#include "DistThetaRootFinding.h"
+#include "star_theta_root_finding.h"
 #include <src/petsc_compatibility.h>
 #include <string>
 #include <algorithm>
@@ -85,68 +85,103 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] stencil The full uniform stencil of indices centered at the query node.
  * @param [in] p4est Pointer to p4est data structure.
  * @param [in] nodes Pointer to nodes data structure.
+ * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] star The level-set function with a star-shaped interface.
+ * @param [in] gen Random-number generator device.
+ * @param [in] uniformDistribution A uniform random-variable distribution.
  * @param [in/out] pointsFile Pointer to file object where to write coordinates of nodes adjacent to \Gamma.
  * @param [in/out] anglesFile Poiner to file object where to write angles of normal projected points on \Gamma.
+ * @param [out] distances A vector of "true" distances from all of 9 stencil points to the star-shaped level-set.
+ * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
+ * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
+ * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
-	const double *phiReadPtr, const geom::Star& star, std::ofstream *pointsFile, std::ofstream *anglesFile )
+	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
+	std::uniform_real_distribution<double>& uniformDistribution,
+	std::ofstream *pointsFile, std::ofstream *anglesFile, std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	distances.clear();
+	distances.reserve( NUM_COLUMNS - 1 );				// Only true distances.
 
 	int s;												// Index to fill in the sample vector.
-	double leftPhi, rightPhi, topPhi, bottomPhi;		// To compute grad(\phi_{i,j}).
-	double centerPhi;									// \phi{i,j}.
+	double grad[P4EST_DIM];
+	double gradNorm;
+	double xyz[P4EST_DIM];
+	double pOnInterfaceX, pOnInterfaceY, newPOnInterfaceX, newPOnInterfaceY;
+	const quad_neighbor_nodes_of_node_t *qnnnPtr;
+	double theta, r, newTheta, valOfDerivative, centerTheta;
+	double dx, dy, newDistance, distanceBtwnPOnInterface;
+	int iterations;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
-		sample[s] = phiReadPtr[stencil[s]];
+		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
 
-		switch( s )
+		// To find the true distance we need the neighborhood of each stencil node.
+		neighbors->get_neighbors( stencil[s], qnnnPtr );
+		qnnnPtr->gradient( phiReadPtr, grad );
+		gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );	// Get the unit gradient.
+
+		// Approximate position of point projected on interface.
+		node_xyz_fr_n( stencil[s], p4est, nodes, xyz );
+		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
+		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
+
+		// Get initial angle for polar approximation to point on star interface.
+		theta = atan2( pOnInterfaceY, pOnInterfaceX );
+		theta = ( theta < 0 )? theta + 2 * M_PI : theta;
+		r = star.r( theta );
+		pOnInterfaceX = r * cos( theta );
+		pOnInterfaceY = r * sin( theta );				// Better approximation of projection of stencil point onto star.
+
+		// Compute current distance to \Gamma using the improved point on interface.
+		dx = xyz[0] - pOnInterfaceX;
+		dy = xyz[1] - pOnInterfaceY;
+		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
+
+		// Find theta that yields "a" minimum distance between stencil point and star using Newton-Raphson's method.
+		valOfDerivative = 1;
+		iterations = 0;
+		while( ABS( valOfDerivative ) > 1e-8 && iterations < 20 )	// Avoiding local minima with random exploration.
 		{
-			case 5: topPhi = sample[s]; break;			// \phi_{i,j+1}.
-			case 1: leftPhi = sample[s]; break;			// \phi_{i-1,j}.
-			case 4: centerPhi = sample[s]; break;		// Point's phi value.
-			case 7: rightPhi = sample[s]; break;		// \phi_{i+1,j}.
-			case 3: bottomPhi = sample[s]; break;		// \phi_{i,j-1}.
-			default: ;
+			double h = ( ( iterations % 2 )? H : -H ) * uniformDistribution( gen );	// Flip sign to explore a wide range.
+			newTheta = theta + h;									// Initial parametric guess for root finding.
+			newTheta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, valOfDerivative, theta, newTheta - H,
+				newTheta + H );
+			iterations++;
 		}
+		r = star.r( newTheta );										// Recalculating closest point on interface.
+		newPOnInterfaceX = r * cos( newTheta );
+		newPOnInterfaceY = r * sin( newTheta );
+
+		// Compute new distance with "normal projection" of query point onto sine wave.
+		dx = xyz[0] - newPOnInterfaceX;
+		dy = xyz[1] - newPOnInterfaceY;
+		newDistance = sqrt( SQR( dx ) + SQR( dy ) );
+
+		// Compute distance between previous projection and new projection.
+		dx = newPOnInterfaceX - pOnInterfaceX;
+		dy = newPOnInterfaceY - pOnInterfaceY;
+		distanceBtwnPOnInterface = sqrt( SQR( dx ) + SQR( dy ) );
+		if( distanceBtwnPOnInterface > H && ABS( valOfDerivative ) > 1e-8 )
+			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) );
+
+		if( newDistance < distances[s] )
+			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+		else
+			newTheta = theta;
+
+		if( sample[s] < 0 )								// Fix sign.
+			distances[s] *= -1;
+
+		if( s == 4 )									// For center node we need theta to yield curvature.
+			centerTheta = newTheta;
 	}
 
-	// Computing the target curvature.
-	double xyz[P4EST_DIM];								// Position of node at the center of the stencil.
-	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-	double grad[] = {									// Gradient at center point.
-		( rightPhi - leftPhi ) / ( 2 * H ),				// Using central differences.
-		( topPhi - bottomPhi ) / ( 2 * H )
-	};
-	double gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );
-	double pOnInterfaceX = xyz[0] - grad[0] / gradNorm * centerPhi,		// Coordinates of projection of grid point on interface.
-		   pOnInterfaceY = xyz[1] - grad[1] / gradNorm * centerPhi;
-
-	double thetaOnInterface = atan2( pOnInterfaceY, pOnInterfaceX );	// Initial guess for root finding method.
-	thetaOnInterface = ( thetaOnInterface < 0 )? thetaOnInterface + 2 * M_PI : thetaOnInterface;
-	double valOfDerivative;
-	double newThetaOnInterface = distThetaDerivative( nodeIdx, xyz[0], xyz[1], star, valOfDerivative, thetaOnInterface,
-													  thetaOnInterface - H, thetaOnInterface + H );
-	double r = star.r( newThetaOnInterface );							// Recalculating closest point on interface.
-	pOnInterfaceX = r * cos( newThetaOnInterface );
-	pOnInterfaceY = r * sin( newThetaOnInterface );
-
-	double dx = xyz[0] - pOnInterfaceX,						// Verify that point on interface is not far from corresponding grid point.
-		   dy = xyz[1] - pOnInterfaceY;
-	if( dx * dx + dy * dy <= H * H && ABS( valOfDerivative ) <= 1e-8 )
-		thetaOnInterface = newThetaOnInterface;				// Theta is OK.
-	else
-	{
-		std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
-				  << "on interface calculated with phi values.  \n     "
-				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'mo', ["
-				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
-	}
-
-	sample[s] = H * star.curvature( thetaOnInterface );		// Last column holds h\kappa.
+	sample[s] = H * star.curvature( centerTheta );		// Last column holds h\kappa.
 
 	// Write center sample node index and coordinates.
 	if( pointsFile )
@@ -154,7 +189,7 @@ void generateColumnHeaders( std::string header[] )
 
 	// Write angle parameter for projected point on interface.
 	if( anglesFile )
-		*anglesFile << ( thetaOnInterface < 0 ? 2 * M_PI + thetaOnInterface : thetaOnInterface ) << std::endl;
+		*anglesFile << ( centerTheta < 0 ? 2 * M_PI + centerTheta : centerTheta ) << std::endl;
 
 	return sample;
 }
@@ -181,7 +216,7 @@ int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
-	const double MIN_D = -0.5, MAX_D = +0.5;								// The canonical space is [0,1]^{P4EST_DIM}.
+	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [0,1]^{P4EST_DIM}.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
@@ -191,6 +226,11 @@ int main ( int argc, char* argv[] )
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
+
+	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
+	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
+	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::uniform_real_distribution<double> uniformDistribution;
 
 	try
 	{
@@ -209,7 +249,7 @@ int main ( int argc, char* argv[] )
 		// Change these values to modify the shape of star interface.
 		// Using a=0.075 and b=0.35 for smooth star, and a=0.12 and b=0.305 for sharp star.
 		const double A = 0.075;
-		const double B = 0.35;
+		const double B = 0.350;
 		const int P = 5;
 		geom::Star star( A, B, P );
 		const double STAR_SIDE_LENGTH = star.getInscribingSquareSideLength();
@@ -231,6 +271,7 @@ int main ( int argc, char* argv[] )
 		// based equation using 5, 10, and 20 iterations.
 		std::string phiKeys[4] = { "fsm", "iter5", "iter10", "iter20" };	// The 4 types of reinitialized phi values.
 		std::unordered_map<std::string, std::ofstream> phiFilesMap;
+		std::unordered_map<std::string, double> maxREMap;					// Track the (relative) maximum absolute error.
 		phiFilesMap.reserve( 4 );
 		for( const auto& key : phiKeys )
 		{
@@ -247,6 +288,7 @@ int main ( int argc, char* argv[] )
 			phiFilesMap[key] << headerStream.str() << std::endl;
 
 			phiFilesMap[key].precision( 15 );								// Precision for floating point numbers.
+			maxREMap[key] = 0;
 		}
 
 		// Prepare file where to write sampled nodes' cartesian coordinates.
@@ -396,15 +438,24 @@ int main ( int argc, char* argv[] )
 				{
 					if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 					{
+						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-							nodes, reinitPhiReadPtrs[key], star,
+							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, uniformDistribution,
 							( key == "fsm" )? &pointsFile : nullptr, 		// To avoid writing points multiple times
-							( key == "fsm" )? &anglesFile : nullptr );		// we send a non-null signal once with fsm.
+							( key == "fsm" )? &anglesFile : nullptr, 		// we send a non-null signal once with fsm.
+							distances );
 						samples.push_back( sample );
 						nSamples++;
 
 						if( key == "fsm" )				// Set valid node-along-interface indicator (just once, in fsm).
 							interfaceFlagPtr[n] = 1;
+
+						// Also, check error for each reinitialization method using the "true" distances from above.
+						for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+						{
+							double error = ( distances[i] - sample[i] ) / H;
+							maxREMap[key] = MAX( maxREMap[key], ABS( error ) );
+						}
 					}
 				}
 				catch( std::exception &e )
@@ -422,9 +473,9 @@ int main ( int argc, char* argv[] )
 				phiFilesMap[key] << row.back() << std::endl;
 			}
 
-			std::cout << "   Generated " << nSamples << " samples." << std::endl;
+			std::cout << "   Generated " << nSamples << " samples for reinitialization " << key << std::endl;
+			std::cout << "   Max (relative) absolute error for " << key << " was " << maxREMap[key] << std::endl;
 		}
-
 		std::cout << "<< Done!" << std::endl;
 		watch.stop();
 
