@@ -282,7 +282,6 @@ bool is_node_in_domain(p4est_indep_t& node, const my_p4est_brick_t* brick, const
   return true;
 }
 
-#ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
                                          p4est_locidx_t& fine_vertex_idx)
@@ -304,7 +303,6 @@ bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_
 
   return index_of_node(tmp_ptr, fine_nodes, fine_vertex_idx);
 }
-#endif
 
 void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
                            double *xyz_rel, int64_t* logical_qcoord_diff)

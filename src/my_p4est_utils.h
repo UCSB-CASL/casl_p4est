@@ -797,7 +797,6 @@ p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t*
  */
 bool is_node_in_domain(p4est_indep_t& node, const my_p4est_brick_t* brick, const p4est_connectivity_t* connectivity);
 
-#ifdef WITH_SUBREFINEMENT
 bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
                                          const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
                                          p4est_locidx_t& fine_vertex_idx);
@@ -826,7 +825,6 @@ inline p4est_locidx_t get_fine_node_idx_of_face_in_quad(const p4est_t* fine_p4es
   P4EST_ASSERT(!is_found || fine_node_idx >= 0);  (void) is_found;
   return fine_node_idx;
 }
-#endif
 
 // my rigorous interface-identification rule [Raphael]
 inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) { return (phi_0 > 0.0) != (phi_1 > 0.0); }

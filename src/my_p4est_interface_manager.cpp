@@ -10,10 +10,6 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
 #ifdef CASL_THROWS
   if(max_level_interpolation_p4est < max_level_p4est)
     throw std::invalid_argument("my_p4est_interface_manager_t(): you're using UNDER-resolved interpolation tools for capturing the interface. Are you mentally sane? Go see a doctor or check your code...");
-#ifdef WITH_SUBREFINEMENT
-  if(max_level_interpolation_p4est <= max_level_p4est)
-    std::cerr << "my_p4est_interface_manager_t(): --- WARNING --- : you are not actually sub-refining for better capturing your interface" << std::endl;
-#endif
 #endif
   interp_grad_phi   = NULL;
   interp_phi_xxyyzz = NULL;
