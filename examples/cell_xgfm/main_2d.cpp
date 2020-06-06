@@ -93,8 +93,7 @@ public:
   }
 };
 
-p4est_bool_t
-refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+p4est_bool_t refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est->user_pointer;
 
@@ -218,7 +217,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
                                    4, 0, 4, 0, 0, 0, oss_interface_capturing.str().c_str(),
                                    VTK_NODE_SCALAR, "phi", phi_p,
                                    VTK_NODE_SCALAR, "jump", jump_u_p,
-                                   VTK_NODE_SCALAR, "subrefined_jump_normal_flux", jump_normal_flux_p,
+                                   VTK_NODE_SCALAR, "jump_normal_flux", jump_normal_flux_p,
                                    VTK_NODE_VECTOR_BLOCK, "grad_phi", grad_phi_p,
                                    VTK_NODE_VECTOR_BLOCK, "gfm_jump_flux", jump_flux_GFM_p,
                                    VTK_NODE_VECTOR_BLOCK, "xgfm_jump_flux", jump_flux_xGFM_p,
@@ -233,7 +232,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
                                    VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
                                    VTK_NODE_SCALAR, "phi", phi_on_computational_nodes_p,
                                    VTK_NODE_SCALAR, "jump", jump_u_p,
-                                   VTK_NODE_SCALAR, "subrefined_jump_normal_flux", jump_normal_flux_p,
+                                   VTK_NODE_SCALAR, "jump_normal_flux", jump_normal_flux_p,
                                    VTK_NODE_SCALAR, "extension_xgfm_nodes", xGFM_interface_capturing_node_extension_p,
                                    VTK_NODE_VECTOR_BLOCK, "grad_phi", grad_phi_p,
                                    VTK_NODE_VECTOR_BLOCK, "gfm_jump_flux", jump_flux_GFM_p,
@@ -881,7 +880,7 @@ int main (int argc, char* argv[])
   cmd.add_option("test",            "Test problem to choose. Available choices are (default test number is " + to_string(default_test_number) +"): \n" + list_of_test_problems_for_scalar_jump_problems.get_description_of_tests() + "\n");
   cmd.add_option("get_integral",    "Calculates the integral of the solution if present. Default is " + string(default_get_integral ? "true" : "false"));
   cmd.add_option("summary",         "Prints a summary of the convergence results in a file on disk if present. Default is " + string(default_print_summary ? "true" : "false"));
-  cmd.add_option("subrefinement",   "flag activating the usage of a subrefined interface-capturing grid if set to true or 1. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
+  cmd.add_option("subrefinement",   "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
   oss.str("");
   oss << default_interp_method_phi;
   cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function (relevant only if not using subrefinement). Default is " + oss.str());
@@ -1034,8 +1033,9 @@ int main (int argc, char* argv[])
     }
 
     // destroy data created for this iteration
-    ierr = VecDestroy(phi);             CHKERRXX(ierr); phi = NULL;
-    ierr = VecDestroy(subrefined_phi);  CHKERRXX(ierr); subrefined_phi = NULL;
+    ierr = VecDestroy(phi);               CHKERRXX(ierr); phi = NULL;
+    if(subrefined_phi != NULL){
+      ierr = VecDestroy(subrefined_phi);  CHKERRXX(ierr); subrefined_phi = NULL; }
     if(interface_capturing_phi_xxyyzz != NULL){
       ierr = VecDestroy(interface_capturing_phi_xxyyzz); CHKERRXX(ierr);  interface_capturing_phi_xxyyzz = NULL; }
 
@@ -1045,7 +1045,8 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(err_xGFM); CHKERRXX(ierr);
 
     delete data;
-    delete subrefined_data;
+    if(subrefined_data != NULL)
+      delete subrefined_data;
 
     delete GFM_solver;
     delete xGFM_solver;
@@ -1054,11 +1055,11 @@ int main (int argc, char* argv[])
 
   delete faces;
   delete ngbd_c;
-  delete ngbd_n;              delete subrefined_ngbd_n;
-  delete hierarchy;           delete subrefined_hierarchy;
-  p4est_nodes_destroy(nodes); p4est_nodes_destroy(subrefined_nodes);
-  p4est_ghost_destroy(ghost); p4est_ghost_destroy(subrefined_ghost);
-  p4est_destroy      (p4est); p4est_destroy(subrefined_p4est);
+  delete ngbd_n;              if(subrefined_ngbd_n != NULL)     delete subrefined_ngbd_n;
+  delete hierarchy;           if(subrefined_hierarchy != NULL)  delete subrefined_hierarchy;
+  p4est_nodes_destroy(nodes); if(subrefined_nodes != NULL)      p4est_nodes_destroy(subrefined_nodes);
+  p4est_ghost_destroy(ghost); if(subrefined_ghost != NULL)      p4est_ghost_destroy(subrefined_ghost);
+  p4est_destroy      (p4est); if(subrefined_p4est != NULL)      p4est_destroy(subrefined_p4est);
 
   if(mpi.rank() == 0 && print_summary)
     print_convergence_summary_in_file(out_folder, test_problem->get_name(), lmin, lmax, ntree, ngrids, use_second_order_theta, bc_wtype,

@@ -88,8 +88,9 @@ void my_p4est_hierarchy_t::get_all_quadrants_in(const p4est_quadrant_t* const &q
   list_of_local_quad_idx.clear();
 
   const HierarchyCell matching_cell = trees[tree_idx][get_index_of_hierarchy_cell_matching_or_containing_quad(quad, tree_idx)];
+  if(matching_cell.level == quad->level) // it is not a bigger hierarchy cell containing the quad of interest, but it's matching
+    matching_cell.add_all_inner_leaves_to(list_of_local_quad_idx, trees[tree_idx]);
 
-  matching_cell.add_all_inner_leaves_to(list_of_local_quad_idx, trees[tree_idx]);
   return;
 }
 

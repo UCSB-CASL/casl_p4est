@@ -306,32 +306,6 @@ public:
 
   void set_interface(my_p4est_interface_manager_t* interface_manager_);
 
-//#ifdef WITH_SUBREFINEMENT
-////  /*!
-////   * \brief set_phi sets the levelset function. Those vectors *MUST* be sampled at the nodes of the interface-capturing grid.
-////   * Providing the second derivatives of phi is optional. If they're provided, the intersection between the interface and
-////   * cartesian grid lines are defined as roots of quadratic local interpolant of phi between the appropriate grid nodes of
-////   * the interface-capturing grid, otherwise linear local interpolants are used.
-////   * \param [in] node_sampled_phi         : node-sampled levelset values of the levelset function, sampled on the
-////   *                                        interface-capturing grid.
-////   * \param [in] node_sampled_phi_xxyyzz  : (optional) node-sampled values of the second derivatives of the levelset
-////   *                                        function, on the interface-capturing grid. This vector must be block-structured,
-////   *                                        of blocksize P4EST_DIM
-////   */
-////  void set_phi(Vec node_sampled_phi, Vec node_sampled_phi_xxyyzz = NULL);
-
-////  /*!
-////   * \brief set_normals sets the local interface-normal vectors (gradient of the levelset function), sampled on the nodes
-////   * of the interface-capturing grid.
-////   * IMPORTANT NOTE : the normals are _not_ assumed to be normalized beforehand : this class always normalizes the normal
-////   * vector whenever used (after possible interpolation). If the norm of the vector is too small before normalization, the
-////   * vector is considered locally ill-defined and a zero vector is used instead.
-////   * \param [in] node_sampled_normals : node-sampled values of the components of the interface-normal vector, sampled on the
-////   *                                    nodes of the interface-capturing grid
-////   */
-////  void set_normals(Vec node_sampled_normals);
-//#endif
-
   /*!
    * \brief set_jumps sets the jump in solution and in its normal flux, sampled on the nodes of the interpolation_node_ngbd
    * of the interface manager (important if using subrefinement)

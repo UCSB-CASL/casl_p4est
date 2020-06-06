@@ -461,6 +461,14 @@ public:
   int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
                                               const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false) const;
 
+  /*!
+   * \brief get_all_quadrants_in establishes the list of local indices of the quadrants being found in another quadrant
+   * \param [in]  quad                    pointer to a constant quadrant whose subresolving quadrants are sought
+   * \param [in]  tree_idx                index of the tree owning the above quadrant
+   * \param [out] list_of_local_quad_idx  vector of local indices of the quadrants of this object's p4est that can be
+   *                                      found in the given quadrant. This vector is empty (size 0) on return if the given
+   *                                      quadrant is finer than the leaf HiearchyCell found to contain it.
+   */
   void get_all_quadrants_in(const p4est_quadrant_t* const &quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const;
 
   /*!

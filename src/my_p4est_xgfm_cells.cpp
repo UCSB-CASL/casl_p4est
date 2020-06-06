@@ -79,7 +79,7 @@ void my_p4est_xgfm_cells_t::set_interface(my_p4est_interface_manager_t* interfac
   P4EST_ASSERT(interface_manager_ != NULL);
   interface_manager = interface_manager_;
 
-  if(!interface_manager->grad_phi_is_available())
+  if(!interface_manager->is_grad_phi_set())
     interface_manager->set_grad_phi();
 
   local_interpolators.resize(interface_manager->get_interface_capturing_ngbd_n().get_nodes()->num_owned_indeps);
@@ -1288,11 +1288,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     if(one_sided)
     {
       if(signs_of_phi_are_different(phi_q, phi_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across
-      {
-//        const p4est_locidx_t fine_node_idx_for_face = get_fine_node_idx_of_face_in_quad(subrefined_p4est, subrefined_nodes, *quad, tree_idx, oriented_dir);
-//        flux_dir_p[f_idx] = (phi_face > 0.0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p) + (phi_face > 0.0 ? +1.0 : -1.0)*jump_flux_p[P4EST_DIM*fine_node_idx_for_face + oriented_dir/2];
         flux_dir_p[f_idx] = (phi_face > 0.0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p) + (phi_face > 0.0 ? +1.0 : -1.0)*interp_jump_flux(xyz_face, dim);
-      }
       else
         flux_dir_p[f_idx] = mu_face*stable_projection_derivative(solution_p);
     }
@@ -1302,7 +1298,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
       const double &mu_across       = (phi_q <= 0.0 ? mu_plus   : mu_minus);
       const bool in_positive_domain = (phi_q > 0.0);
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
-      flux_dir_p[f_idx] = interface_manager->GFM_flux_at_face_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p[quad_idx], solution_p[direct_neighbors.begin()->p.piggy3.local_num], jump_u_p, jump_flux_p);
+      flux_dir_p[f_idx] = interface_manager->GFM_flux_at_face_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p, jump_u_p, jump_flux_p);
     }
   }
   // subtract from the star velocities if they were provided

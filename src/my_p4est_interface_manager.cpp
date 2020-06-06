@@ -43,6 +43,34 @@ my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
     PetscErrorCode ierr = VecDestroy(grad_phi_local); CHKERRXX(ierr); }
 }
 
+void my_p4est_interface_manager_t::do_not_store_cell_FD_interface_data()
+{
+  if(cell_FD_interface_data != NULL){
+    delete cell_FD_interface_data;
+    cell_FD_interface_data = NULL;
+  }
+  return;
+}
+
+void my_p4est_interface_manager_t::do_not_store_face_FD_interface_data()
+{
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    if(face_FD_interface_data[dim] != NULL){
+      delete face_FD_interface_data[dim];
+      face_FD_interface_data[dim] = NULL;
+    }
+
+  return;
+}
+
+void my_p4est_interface_manager_t::clear_all_FD_interface_data()
+{
+  clear_cell_FD_interface_data();
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    clear_face_FD_interface_data(dim);
+  return;
+}
+
 void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz, const bool& build_and_set_grad_phi_locally)
 {
   P4EST_ASSERT(phi != NULL);
@@ -63,6 +91,7 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
 
   if(build_and_set_grad_phi_locally)
     set_grad_phi();
+
   return;
 }
 
@@ -233,52 +262,64 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
   if(quad_idx >= p4est->local_num_quadrants)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
 #endif
-  const p4est_tree* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+  const p4est_tree       *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t *quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
   const double logical_size_quad = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
   const double* tree_dimensions = c_ngbd->get_tree_dimensions();
   const double cell_dxyz[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_size_quad, tree_dimensions[1]*logical_size_quad, tree_dimensions[2]*logical_size_quad)};
   const double quad_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
 
-#ifdef WITH_SUBREFINEMENT
-  double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  const p4est_t* subrefined_p4est       = interpolation_node_ngbd->get_p4est();
-  const p4est_nodes_t* subrefined_nodes = interpolation_node_ngbd->get_nodes();
-  if(quadrant_is_subrefined(subrefined_p4est, subrefined_nodes, *quad, tree_idx)) // the quadrant is subrefined, find all subrefining quads and do the calculations therein
+  if(quad->level == (int8_t) max_level_p4est)
   {
     std::vector<p4est_locidx_t> indices_of_subrefining_quads;
     interpolation_node_ngbd->get_hierarchy()->get_all_quadrants_in(quad, tree_idx, indices_of_subrefining_quads);
-    P4EST_ASSERT(indices_of_subrefining_quads.size() > 0);
-    negative_volume = 0.0;
-    const p4est_tree* subrefined_tree = p4est_tree_array_index(subrefined_p4est->trees, tree_idx);
-    Vec subrefined_phi = interp_phi.get_input_fields()[0];
-    for (size_t k = 0; k < indices_of_subrefining_quads.size(); ++k)
+    if(indices_of_subrefining_quads.size() > 0) // if it is zero, it means that it was not even matched by the hierarchy --> it must be far away from the interface in that case...
     {
-      const p4est_locidx_t& subrefined_quad_idx = indices_of_subrefining_quads[k];
-      const p4est_quadrant_t* subrefined_quad = p4est_const_quadrant_array_index(&subrefined_tree->quadrants, subrefined_quad_idx - subrefined_tree->quadrants_offset);
-      negative_volume += area_in_negative_domain_in_one_quadrant(subrefined_p4est, subrefined_nodes, subrefined_quad, subrefined_quad_idx, subrefined_phi);
+      negative_volume = 0.0;
+      const p4est_tree* interface_capturing_tree = p4est_tree_array_index(interpolation_node_ngbd->get_p4est()->trees, tree_idx);
+      for (size_t k = 0; k < indices_of_subrefining_quads.size(); ++k)
+      {
+        const p4est_quadrant_t *subrefining_quad = p4est_const_quadrant_array_index(&interface_capturing_tree->quadrants, indices_of_subrefining_quads[k] - interface_capturing_tree->quadrants_offset);
+        negative_volume += area_in_negative_domain_in_one_quadrant(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), subrefining_quad, indices_of_subrefining_quads[k], interp_phi.get_input_fields()[0]);
+      }
+
+      P4EST_ASSERT(0.0 <= negative_volume && negative_volume <= quad_volume);
+      positive_volume = MAX(0.0, MIN(quad_volume, quad_volume - negative_volume));
+      return;
     }
   }
-  else
-  {
-    const double phi_q = interp_phi(xyz_quad);
+
+  // If it reaches this point, it's either a coarser quad or it is not matched by the interface-capturing grid
+  // --> must be far away from the interface : just sample the levelset at the quadrant's center
+
+  double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
+  const double phi_q = interp_phi(xyz_quad);
 #ifdef P4EST_DEBUG
-    for (char kx = -1; kx < 2; kx += 2)
-      for (char ky = -1; ky < 2; ky += 2)
-        for (char kz = -1; kz < 2; kz += 2)
+  // we check that the cell is indeed not crossed by the interface in DEBUG
+  const double* phi_on_computational_nodes_p = NULL;
+  if(phi_on_computational_nodes != NULL){
+    PetscErrorCode ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
+  for (char kx = 0; kx < 2; ++kx)
+    for (char ky = 0; ky < 2; ++ky)
+#ifdef P4_TO_P8
+      for (char kz = 0; kz < 2; ++kz)
+#endif
+      {
+        if(phi_on_computational_nodes_p == NULL)
+          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, phi_on_computational_nodes_p[P4EST_CHILDREN*quad_idx + SUMD(kx, 2*ky, 4*kz)])); // otherwise you are not using finest cells across your interface...
+        else
         {
-          double xyz_vertex[P4EST_DIM] = {DIM(xyz_quad[0] + kx*0.5*cell_dxyz[0], xyz_quad[1] + ky*0.5*cell_dxyz[1], xyz_quad[2] + kz*0.5*cell_dxyz[2])};
-          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, interp_phi(xyz_vertex)));
+          double xyz_vertex[P4EST_DIM] = {DIM(xyz_quad[0] + (kx - 0.5)*cell_dxyz[0], xyz_quad[1] + (ky - 0.5)*cell_dxyz[1], xyz_quad[2] + (kz - 0.5)*cell_dxyz[2])};
+          P4EST_ASSERT(!signs_of_phi_are_different(phi_q, interp_phi(xyz_vertex))); // otherwise you are not using finest cells across your interface...
         }
+      }
+  if(phi_on_computational_nodes_p != NULL){
+    PetscErrorCode ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
 #endif
-    negative_volume = (phi_q <= 0.0 ? quad_volume : 0.0);
-  }
-#else
-  throw std::runtime_error("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): not implemented, yet");
-#endif
-  P4EST_ASSERT(0.0 <= negative_volume && negative_volume <= quad_volume);
-  positive_volume = MAX(0.0, MIN(quad_volume, quad_volume - negative_volume));
+
+  negative_volume = (phi_q <= 0.0 ? quad_volume : 0.0);
+  positive_volume = (phi_q <= 0.0 ? 0.0         : quad_volume);
 
   return;
 }
