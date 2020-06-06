@@ -1,11 +1,13 @@
 /**
- * Generate datasets for training a feedforward neural network on sinusoidal interfaces using samples from a
- * reinitialized level-set function with the fast sweeping method.
+ * Generate datasets for training a feedforward neural network on sinusoidal interfaces using samples from a signed-
+ * distance and reinitialized level-set function with the fast sweeping method.
  * The level-set function is implemented as an arc-length parameterized sine wave function that is transformed with an
  * affine transformation to allow for pattern variations.  See arclength_parameterized_sin_2d.h for more details.
  *
  * To avoid a disproportionate ratio of h\kappa ~ 0 samples, we collect samples that are close to zero using a
  * probabilistic approach.  Seek the [SAMPLING] subsection in this file.
+ *
+ * This approach is currently implemented for 2D level-set functions.
  *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
@@ -89,83 +91,95 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] stencil The full uniform stencil of indices centered at the query node.
  * @param [in] p4est Pointer to p4est data structure.
  * @param [in] nodes Pointer to nodes data structure.
+ * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
- * @param [out] distance Found normal distance from node to sine wave using Newton-Raphson's root-finding.
+ * @param [in] gen Random number generator.
+ * @param [in] uniformDistribution A uniform random distribution generator with a range of [0, 1].
+ * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
-	const double *phiReadPtr, const ArcLengthParameterizedSine& sine, double& distance )
+	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
+	std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution,
+	std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	distances.clear();
+	distances.reserve( NUM_COLUMNS );					// Include h\kappa as well.
 
 	int s;												// Index to fill in the sample vector.
-	double leftPhi, rightPhi, topPhi, bottomPhi;		// To compute grad(\phi_{i,j}).
-	double centerPhi;									// \phi{i,j}.
+	double grad[P4EST_DIM];
+	double gradNorm;
+	double xyz[P4EST_DIM];
+	double pOnInterfaceX, pOnInterfaceY;
+	const quad_neighbor_nodes_of_node_t *qnnnPtr;
+	double u, v, valOfDerivative, centerU;
+	double dx, dy, newDistance, distanceBtwnPOnInterface;
+	int iterations;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
-		sample[s] = phiReadPtr[stencil[s]];
+		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
 
-		switch( s )
-		{
-			case 5: topPhi = sample[s]; break;			// \phi_{i,j+1}.
-			case 1: leftPhi = sample[s]; break;			// \phi_{i-1,j}.
-			case 4: centerPhi = sample[s]; break;		// Point's phi value.
-			case 7: rightPhi = sample[s]; break;		// \phi_{i+1,j}.
-			case 3: bottomPhi = sample[s]; break;		// \phi_{i,j-1}.
-			default: ;
-		}
-	}
+		// To find the true distance we need the neighborhood of each stencil node.
+		neighbors->get_neighbors( stencil[s], qnnnPtr );
+		qnnnPtr->gradient( phiReadPtr, grad );
+		gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );	// Get the unit gradient.
 
-	// Computing the target curvature.
-	double xyz[P4EST_DIM];								// Position of node at the center of the stencil in world coords.
-	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-	double grad[] = {									// Gradient at center point.
-		( rightPhi - leftPhi ) / ( 2 * H ),				// Using central differences.
-		( topPhi - bottomPhi ) / ( 2 * H )
-	};
-	double gradNorm = sqrt( grad[0] * grad[0] + grad[1] * grad[1] );
-	double pOnInterfaceX = xyz[0] - grad[0] / gradNorm * centerPhi,		// Coordinates of projection of grid point on
-		   pOnInterfaceY = xyz[1] - grad[1] / gradNorm * centerPhi;		// interface in world coords.
+		// Approximate position of point projected on interface.
+		node_xyz_fr_n( stencil[s], p4est, nodes, xyz );
+		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
+		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
 
-   // Transform node position and approximated point on the interface to sine wave canonical coordinate system to
-   // simplify computations with minimization process.
-   sine.toCanonicalCoordinates( xyz[0], xyz[1] );
-   sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
+		// Transform point on interface to sine-wave canonical coordinates.
+		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
+		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
+		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on \Gamma.
 
-	double u = pOnInterfaceX;							// Initial parameter guess for root finding method.
-	double valOfDerivative;
-	double newU = distThetaDerivative( nodeIdx, xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
-
-	pOnInterfaceX = newU;								// Recalculating point on interface (still in canonical coords).
-	pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
-
-	double dx = xyz[0] - pOnInterfaceX,					// Verify that point on interface is not far from grid point.
-		   dy = xyz[1] - pOnInterfaceY;
-	distance = sqrt( dx * dx + dy * dy );
-	if( distance <= H && ABS( valOfDerivative ) <= 1e-8 )
-		u = newU;										// Parameter is OK.
-	else
-	{
-		pOnInterfaceX = u;
-		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * u );		// More acurately recover point on interface
-		dx = xyz[0] - pOnInterfaceX;									// in canonical coordinates.
+		// Compute current distance to \Gamma using the improved y.
+		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
-		distance = sqrt( dx * dx + dy * dy );
-		sine.toWorldCoordinates( xyz[0], xyz[1] );
-		sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
-		std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
-				  << "on interface calculated with phi values.  \n     "
-				  << distance << "; " << H * sine.curvature( u ) << "; "
-				  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
-				  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
+		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
+
+		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
+		valOfDerivative = 1;
+		iterations = 0;
+		while( ABS( valOfDerivative ) > 1e-8 && iterations < 20 )		// Avoiding local minima with random exploration.
+		{
+			double h = ( ( iterations % 2 )? H : -H ) * uniformDistribution( gen );		// Flip sign to explore a wide range.
+			u = pOnInterfaceX + h;								// Initial parametric guess for root finding.
+			u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H, false );
+			iterations++;
+		}
+		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+
+		// Compute new distance with "normal projection" of query point onto sine wave.
+		dx = xyz[0] - u;
+		dy = xyz[1] - v;
+		newDistance = sqrt( SQR( dx ) + SQR( dy ) );
+
+		// Compute distance between previous projection and new projection.
+		dx = u - pOnInterfaceX;
+		dy = v - pOnInterfaceY;
+		distanceBtwnPOnInterface = sqrt( SQR( dx ) + SQR( dy ) );
+		if( distanceBtwnPOnInterface > H && ABS( valOfDerivative ) > 1e-8 )
+			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) );
+
+		if( newDistance < distances[s] )
+			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+		else
+			u = pOnInterfaceX;
+
+		if( sample[s] < 0 )								// Fix sign.
+			distances[s] *= -1;
+
+		if( s == 4 )									// For center node we need the parameter u to yield curvature.
+			centerU = u;
 	}
 
-	sample[s] = H * sine.curvature( u );				// Last column holds h\kappa.
-	if( centerPhi < 0 )									// Fix sign of found "exact" distance.
-		distance *= -1;
-//	std::cout << u << ", " << sample[s] << ";" << std::endl;
+	sample[s] = H * sine.curvature( centerU );			// Last column holds h\kappa.
+	distances.push_back( sample[s] );
 
 	return sample;
 }
@@ -226,21 +240,29 @@ int main ( int argc, char* argv[] )
 			NUM_AMPLITUDES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
-		// Prepare samples file: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
-		std::ofstream outputFile;
-		std::string fileName = DATA_PATH + "sine_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
-		outputFile.open( fileName, std::ofstream::trunc );
-		if( !outputFile.is_open() )
-			throw std::runtime_error( "Output file " + fileName + " couldn't be opened!" );
+		// Prepare samples files: sine_rls_X.csv for reinitialized level-set, sine_sdf_X.csv for signed-distance function values.
+		std::ofstream rlsFile;
+		std::string rlsFileName = DATA_PATH + "sine_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		rlsFile.open( rlsFileName, std::ofstream::app );
+		if( !rlsFile.is_open() )
+			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
+
+		std::ofstream sdfFile;
+		std::string sdfFileName = DATA_PATH + "sine_sdf_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		sdfFile.open( sdfFileName, std::ofstream::app );
+		if( !sdfFile.is_open() )
+			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
 
 		// Write column headers: enforcing strings by adding quotes around them.
 		std::ostringstream headerStream;
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-		outputFile << headerStream.str() << std::endl;
+		rlsFile << headerStream.str() << std::endl;
+		sdfFile << headerStream.str() << std::endl;
 
-		outputFile.precision( 15 );							// Precision for floating point numbers.
+		rlsFile.precision( 15 );							// Precision for floating point numbers.
+		sdfFile.precision( 15 );
 
 		// Variables to control the spread of sine waves' amplitudes, which must vary uniformly from MIN_A to MAX_A.
 		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5H, 0.5-2H], inclusive.
@@ -281,7 +303,8 @@ int main ( int argc, char* argv[] )
 
 			for( int no = 0; no < NUM_OMEGAS; no++ )		// Evaluate all frequencies for the same amplitude.
 			{
-				std::vector<std::vector<double>> samples;
+				std::vector<std::vector<double>> rlsSamples;	// Reinitialized level-set function samples.
+				std::vector<std::vector<double>> sdfSamples;	// Exact signed-distance function samples.
 				double maxRE = 0;							// Maximum relative error for verification.
 
 				const double OMEGA = MIN_OMEGA + linspaceOmega[no] * OMEGA_DIST;
@@ -352,15 +375,21 @@ int main ( int argc, char* argv[] )
 					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h\kappa.
 					for( auto n : indices )
 					{
-						std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
+						double xyz[P4EST_DIM];						// Position of node at the center of the stencil.
+						node_xyz_fr_n( n, p4est, nodes, xyz );
+						if( ABS( xyz[0] - MIN_D ) <= 4 * H || ABS( xyz[0] - MAX_D ) <= 4 * H ||
+							ABS( xyz[1] - MIN_D ) <= 4 * H || ABS( xyz[1] - MAX_D ) <= 4 * H )
+							continue;								// Skip conflicting samples.
+
+						std::vector<p4est_locidx_t> stencil;		// Contains 9 values in 2D.
 
 						try
 						{
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
-								double distance;
-								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-									nodes, phiReadPtr, sine, distance );
+								std::vector<double> distances;		// Holds the signed distances
+								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
+									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, uniformDistribution, distances );
 
 								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
 								// h\kappa <= midpoint, we take them with an easing-off-dropping probability from 1 to
@@ -369,19 +398,22 @@ int main ( int argc, char* argv[] )
 									uniformDistribution( gen ) <= 0.015 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
 									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.985 / 2  )
 								{
-									samples.push_back( data );
+									rlsSamples.push_back( data );
+									sdfSamples.push_back( distances );
 
 									// Error metric for validation.
-									double error = ABS( distance - phiReadPtr[n] ) / H;
-									maxRE = MAX( maxRE, error );
+									for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+									{
+										double error = ( distances[i] - data[i] ) / H;
+										maxRE = MAX( maxRE, ABS( error ) );
+									}
 								}
 							}
 						}
 						catch( std::exception &e )
 						{
-//							double xyz[P4EST_DIM];				// Position of node at the center of the stencil.
-//							node_xyz_fr_n( n, p4est, nodes, xyz );
-//							std::cerr << "Node " << n << " (" << xyz[0] << ", " << xyz[1] << "): " << e.what() << std::endl;
+							std::cerr << "Node " << n << ".  Omega #" << no << ".  Theta #" << nt << ": \n    "
+									  << e.what() << std::endl;
 						}
 					}
 
@@ -401,19 +433,30 @@ int main ( int argc, char* argv[] )
 
 				// Write to file samples collected for all sines with the same amplitude and same frequency but
 				// randomized origin and for all rotations of main axis.
-				for( const auto& row : samples )
+				for( const auto& row : rlsSamples )
 				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( outputFile, "," ) );		// Inner elements.
-					outputFile << row.back() << std::endl;
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
+					rlsFile << row.back() << std::endl;
 				}
 
-				nSamples += samples.size();
+				// Same for signed distance function.
+				for( const auto& row : sdfSamples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );		// Inner elements.
+					sdfFile << row.back() << std::endl;
+				}
 
-				// Output for log.
+				nSamples += rlsSamples.size();
+
+				// Log output.
 				std::cout << na + 1 << ", " << no + 1 << ", " << A << ", " << OMEGA << ", " << maxRE << ", "
-						  << samples.size() << ", " << watch.get_duration_current() << ";" << std::endl;
+						  << rlsSamples.size() << ", " << watch.get_duration_current() << ";" << std::endl;
 			}
 		}
+
+		// Close files.
+		rlsFile.close();
+		sdfFile.close();
 
 		printf( "<< Finished generating %i distinct amplitudes and %i samples in %f secs.\n",
 			na, nSamples, watch.get_duration_current() );

@@ -80,7 +80,7 @@
 
 		// Find parameter u that yields the minimum distance between point and sine-wave using Newton-Raphson's method.
 		u = pOnInterfaceX;								// Initial parameter guess for root finding method.
-		newU = distThetaDerivative( nodeIdx, xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
+		newU = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
 		pOnInterfaceX = newU;							// Recalculating point on interface (still in canonical coords).
 		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
 
@@ -94,8 +94,8 @@
 		{
 			sine.toWorldCoordinates( xyz[0], xyz[1] );
 			sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
-			std::cerr << "Node " << nodeIdx << ": Minimization placed node on interface too far.  Reverting back to point "
-					  << "on interface calculated with phi values.  \n     "
+			std::cerr << "Stencil of node " << nodeIdx << ": Node " << stencil[s] << " was placed on interface too far.  "
+					  << "Reverting back to point on interface calculated with phi values.  \n     "
 					  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
 					  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
 		}

@@ -272,7 +272,8 @@ public:
 ///////////////////// Root finding procedures to compute curvature at nodes adjacent to interface //////////////////////
 
 /**
- * Class to find the theta value for the projection of a node onto a 2D star using the Newton-Rapson root finder.
+ * Class to find the parametric value for the projection of a node onto a sine-wave level-set function using Boots's
+ * Newton-Rapson root finder.
  */
 class DistThetaFunctorDerivative
 {
@@ -282,7 +283,7 @@ private:
 
 public:
 	/**
-	 * Finding roots of derivative of norm of parameterized star and point (x, y).
+	 * Constructor.
 	 * @param [in] x: Reference point's x-coordinate.
 	 * @param [in] y: Reference point's y-coordinate.
 	 * @param [in] star: Star object.
@@ -323,7 +324,7 @@ public:
 };
 
 /**
- * Obtain the theta value that minimizes the distance between (x, y) and the sine wave interface using Newton-Rapson.
+ * Obtain the theta value that minimizes the distance between (x, y) and the sine wave interface using Newton-Raphson.
  * @param [in] x: X-coordinate of query point.
  * @param [in] y: Y-coordinate of query point.
  * @param [in] sine: Reference to arclength-parameterized sine wave object.
@@ -331,10 +332,11 @@ public:
  * @param [in] initialGuess: Initial angular guess.
  * @param [in] minimum: Minimum value for search interval.
  * @param [in] maximum: Maximum value for search interval.
+ * @param [in] verbose: Whether to show debugging message or not.
  * @return Angle value.
  */
 double distThetaDerivative( p4est_locidx_t n, double x, double y, const ArcLengthParameterizedSine& sine,
-	double& valOfDerivative, double initialGuess = 0, double minimum= -1, double maximum = +1 )
+	double& valOfDerivative, double initialGuess = 0, double minimum= -1, double maximum = +1, bool verbose = true )
 {
 	using namespace boost::math::tools;						// For bracket_and_solve_root.
 
@@ -346,7 +348,7 @@ double distThetaDerivative( p4est_locidx_t n, double x, double y, const ArcLengt
 	DistThetaFunctorDerivative distThetaFunctorDerivative( x, y, sine );
 	double result = newton_raphson_iterate( distThetaFunctorDerivative, initialGuess, minimum, maximum, get_digits, it );
 
-	if( it >= maxit )
+	if( verbose && it >= maxit )
 		std::cerr << "Node " << n << ":  Unable to locate solution in " << maxit << " iterations!" << std::endl;
 
 	valOfDerivative = distThetaFunctorDerivative.valueOfDerivative( result );
