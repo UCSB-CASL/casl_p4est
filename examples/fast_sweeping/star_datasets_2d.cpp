@@ -149,7 +149,7 @@ void generateColumnHeaders( std::string header[] )
 		{
 			double h = ( ( iterations % 2 )? H : -H ) * uniformDistribution( gen );	// Flip sign to explore a wide range.
 			newTheta = theta + h;									// Initial parametric guess for root finding.
-			newTheta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, valOfDerivative, theta, newTheta - H,
+			newTheta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, valOfDerivative, newTheta, newTheta - H,
 				newTheta + H );
 			iterations++;
 		}
@@ -185,7 +185,10 @@ void generateColumnHeaders( std::string header[] )
 
 	// Write center sample node index and coordinates.
 	if( pointsFile )
+	{
+		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
 		*pointsFile << nodeIdx << "," << xyz[0] << "," << xyz[1] << std::endl;
+	}
 
 	// Write angle parameter for projected point on interface.
 	if( anglesFile )
