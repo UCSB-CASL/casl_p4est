@@ -1,9 +1,25 @@
 /**
  * Generate star-shaped interface data sets for evaluating our feedforward neural network, which was trained on
- * spherical interfaces using samples from a reinitialized level-set function with the fast sweeping method.
+ * circular and sinusoidal interfaces using samples from a reinitialized level-set function with fast sweeping method.
+ * Also, collect samples from PDE reinitialization using 5, 10, and 20 iterations for accuracy comparison.
+ * For each reinitialization scheme, generate files with level-set function values, point coordinates, and projections
+ * angles of nodes detected along the interface.  We do this because some reinitialization schemes are not always
+ * successful at finding the exact distances from stencils to the star-shaped interface when using Newton-Raphson's root
+ * finding.
+ *
+ * Seek the [CHANGE] label to locate where to set the parameters for distinct star-shape level-set function
+ * configurations.
+ *
+ * The output files generated are placed in the data/star_L/a_X.XXX/b_Y.YYY, where L is the maximum level of refinement,
+ * X.XXX is the star arm amplitude, and Y.YYY is the star base radius.  At least the data/star_L directory must exist.
+ * The rest of subdirectories are created if they don't exist.  Files are overwritten ([R] = fsm|iter5|iter10|iter20):
+ * a) params.csv Star parameters.
+ * b) [R]_angles.csv Angles of normal-projected points of center nodes of stencils onto the interface.
+ * c) [R]_points.csv Cartesian coordinates of center nodes of stencils sampled along the interface.
+ * d) [R]_phi.csv Actual level-set function values of the 9-point stencils along the interface.
  *
  * Developer: Luis Ángel.
- * Date: May 20, 2020.
+ * Date: June 6, 2020.
  */
 
 // System.
@@ -90,8 +106,8 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] star The level-set function with a star-shaped interface.
  * @param [in] gen Random-number generator device.
  * @param [in] uniformDistribution A uniform random-variable distribution.
- * @param [in/out] pointsFile Pointer to file object where to write coordinates of nodes adjacent to \Gamma.
- * @param [in/out] anglesFile Poiner to file object where to write angles of normal projected points on \Gamma.
+ * @param [in/out] pointsFile Reference to file object where to write coordinates of nodes adjacent to \Gamma.
+ * @param [in/out] anglesFile Reference to file object where to write angles of normal projected points on \Gamma.
  * @param [out] distances A vector of "true" distances from all of 9 stencil points to the star-shaped level-set.
  * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
  * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
@@ -101,7 +117,7 @@ void generateColumnHeaders( std::string header[] )
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
 	std::uniform_real_distribution<double>& uniformDistribution,
-	std::ofstream *pointsFile, std::ofstream *anglesFile, std::vector<double>& distances )
+	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 	distances.clear();
@@ -184,15 +200,11 @@ void generateColumnHeaders( std::string header[] )
 	sample[s] = H * star.curvature( centerTheta );		// Last column holds h\kappa.
 
 	// Write center sample node index and coordinates.
-	if( pointsFile )
-	{
-		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-		*pointsFile << nodeIdx << "," << xyz[0] << "," << xyz[1] << std::endl;
-	}
+	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
+	pointsFile << nodeIdx << "," << xyz[0] << "," << xyz[1] << std::endl;
 
 	// Write angle parameter for projected point on interface.
-	if( anglesFile )
-		*anglesFile << ( centerTheta < 0 ? 2 * M_PI + centerTheta : centerTheta ) << std::endl;
+	anglesFile << ( centerTheta < 0 ? 2 * M_PI + centerTheta : centerTheta ) << std::endl;
 
 	return sample;
 }
@@ -242,14 +254,14 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 		PetscErrorCode ierr;
 
-		// Check again.  To generate datasets we don't admit more than a single process to avoid race conditions when
-		// writing datasets to files.
+		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
+		// sets to files.
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		//////////////////////////////////// Star-shaped interface parameter setup /////////////////////////////////////
 
-		// Change these values to modify the shape of star interface.
+		// [CHANGE] Change these values to modify the shape of star interface.
 		// Using a=0.075 and b=0.35 for smooth star, and a=0.12 and b=0.305 for sharp star.
 		const double A = 0.075;
 		const double B = 0.350;
@@ -276,6 +288,7 @@ int main ( int argc, char* argv[] )
 		std::unordered_map<std::string, std::ofstream> phiFilesMap;
 		std::unordered_map<std::string, double> maxREMap;					// Track the (relative) maximum absolute error.
 		phiFilesMap.reserve( 4 );
+		maxREMap.reserve( 4 );
 		for( const auto& key : phiKeys )
 		{
 			phiFilesMap[key] = std::ofstream();
@@ -284,25 +297,45 @@ int main ( int argc, char* argv[] )
 			if( !phiFilesMap[key].is_open() )
 				throw std::runtime_error( "Phi values output file " + fileName + " couldn't be opened!" );
 
-			std::ostringstream headerStream;								// Write output file header.
+			std::ostringstream headerStream;							// Write output file header.
 			for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 				headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 			headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
 			phiFilesMap[key] << headerStream.str() << std::endl;
 
-			phiFilesMap[key].precision( 15 );								// Precision for floating point numbers.
+			phiFilesMap[key].precision( 15 );							// Precision for floating point numbers.
 			maxREMap[key] = 0;
 		}
 
-		// Prepare file where to write sampled nodes' cartesian coordinates.
-		std::ofstream pointsFile;
-		std::string pointsFileName = DATA_PATH + "points.csv";
-		pointsFile.open( pointsFileName, std::ofstream::trunc );
-		if( !pointsFile.is_open() )
-			throw std::runtime_error( "Point cartesian coordinates file " + pointsFileName + " couldn't be opened!" );
+		// Prepare files where to write sampled nodes' cartesian coordinates for each reinitialization scheme.
+		std::unordered_map<std::string, std::ofstream> pointsFilesMap;
+		pointsFilesMap.reserve( 4 );
+		for( const auto& key : phiKeys )
+		{
+			pointsFilesMap[key] = std::ofstream();
+			std::string pointsFileName = DATA_PATH + key + "_points.csv";
+			pointsFilesMap[key].open( pointsFileName, std::ofstream::trunc );
+			if( !pointsFilesMap[key].is_open() )
+				throw std::runtime_error( "Point coordinates file " + pointsFileName + " couldn't be opened!" );
 
-		pointsFile.precision( 15 );
-		pointsFile << R"("i","x","y")" << std::endl;
+			pointsFilesMap[key].precision( 15 );
+			pointsFilesMap[key] << R"("i","x","y")" << std::endl;		// Write header: node index, x, and y coords.
+		}
+
+		// Prepare files where to write the angle parameters for corresponding points on interface.
+		std::unordered_map<std::string, std::ofstream>anglesFilesMap;
+		anglesFilesMap.reserve( 4 );
+		for( const auto& key : phiKeys )
+		{
+			anglesFilesMap[key] = std::ofstream();
+			std::string anglesFileName = DATA_PATH + key + "_angles.csv";
+			anglesFilesMap[key].open( anglesFileName, std::ofstream::trunc );
+			if( !anglesFilesMap[key].is_open() )
+				throw std::runtime_error( "Angles file " + anglesFileName + " couldn't be opened!" );
+
+			anglesFilesMap[key].precision( 15 );
+			anglesFilesMap[key] << R"("theta")" << std::endl;			// Write header: the theta polar coord.
+		}
 
 		// Prepare file where to write the params.
 		std::ofstream paramsFile;
@@ -317,16 +350,6 @@ int main ( int argc, char* argv[] )
 
 		paramsFile.precision( 15 );
 		paramsFile << MIN_D << "," << MAX_D << "," << STAR_SIDE_LENGTH << "," << star.getA() << "," << star.getB() << "," << star.getP() << std::endl;
-
-		// Prepare file where to write the angle parameter for corresponding points on interface.
-		std::ofstream anglesFile;
-		std::string anglesFileName = DATA_PATH + "angles.csv";
-		anglesFile.open( anglesFileName, std::ofstream::trunc );
-		if( !anglesFile.is_open() )
-			throw std::runtime_error( "Angles file " + anglesFileName + " couldn't be opened!" );
-
-		anglesFile.precision( 15 );
-		anglesFile << R"("theta")" << std::endl;							// Write header.
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
@@ -444,9 +467,7 @@ int main ( int argc, char* argv[] )
 						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
 							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, uniformDistribution,
-							( key == "fsm" )? &pointsFile : nullptr, 		// To avoid writing points multiple times
-							( key == "fsm" )? &anglesFile : nullptr, 		// we send a non-null signal once with fsm.
-							distances );
+							pointsFilesMap[key], anglesFilesMap[key], distances );
 						samples.push_back( sample );
 						nSamples++;
 
@@ -524,11 +545,13 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		p4est_connectivity_destroy( connectivity );
 
-		// Closing file objects.
-		for( auto& it : phiFilesMap )
-			it.second.close();
-		pointsFile.close();
-		anglesFile.close();
+		// Closing file objects that were open for phi values, points, and angles.
+		for( const auto& key : phiKeys )
+		{
+			phiFilesMap[key].close();
+			pointsFilesMap[key].close();
+			anglesFilesMap[key].close();
+		}
 		paramsFile.close();
 	}
 	catch( const std::exception &e )
