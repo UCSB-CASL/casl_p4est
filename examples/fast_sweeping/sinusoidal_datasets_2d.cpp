@@ -346,7 +346,7 @@ int main ( int argc, char* argv[] )
 					my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
 					my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
 					nodeNeighbors.init_neighbors(); 	// This is not mandatory, but it can only help performance given
-					// how much we'll neeed the node neighbors.
+														// how much we'll neeed the node neighbors.
 
 					// A ghosted parallel PETSc vector to store level-set function values.
 					Vec phi;

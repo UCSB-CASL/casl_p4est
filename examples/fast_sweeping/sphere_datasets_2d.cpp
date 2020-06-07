@@ -1,10 +1,14 @@
 /**
- * Generate datasets for training a feedforward neural network on spherical interfaces using samples
- * from a reinitialized level-set function with the fast sweeping method.
+ * Generate datasets for training a feedforward neural network on spherical interfaces using samples from a signed
+ * distance function and from a reinitialized level-set function using the fast sweeping method.
  * NOTE: This hasn't been tested on 3D, but the code is prepared for the 3D scenario.
  *
- * To collect samples for a signed distance function with spherical interface set the variable SIGN_DIST_FUNC to true.
- * To collect samples for a reinitialized level-set function with the fast sweeping method set SIGN_DIST_FUNC to false.
+ * The samples collected for signed and reinitialized level-set functions have one-to-one correlation.  That is, the nth
+ * sample (i.e. nth row in both files) correspond to the same standing point adjacent to the interface and its 9-stencil
+ * neighborhood.  This correspondance can be used, eventually, to train denoising-like autoencoders.
+ *
+ * The files generated are named sphere_[X]_Y.csv, where [X] is one of "sdf" or "rls", for signed distance function and
+ * reinitialized level-set, respectively, and Y is the highest level of tree resolution.
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
@@ -40,9 +44,9 @@
 #include <string>
 #include <algorithm>
 #include <random>
-#include <chrono>
 #include <iterator>
 #include <fstream>
+#include <unordered_map>
 
 /**
  * Generate the column headers following the truth-table order with x changing slowly, then y changing faster than x,
@@ -109,25 +113,13 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 		PetscErrorCode ierr;
 
-		// Check again.  To generate datasets we don't admit more than a single process to avoid race conditions when
-		// writing datasets to files.
+		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
+		// sets to files.
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
-		// Determining if we want samples from a signed distance function or from a reinitialized level-set.
-		int answer;
-		std::cout << ":: Do you want samples from a signed distance function [1]? Or from a reinitialized level-set function [0]? ";
-		do
-		{
-			answer = getchar();
-		}
-		while( answer == 10 || answer == 13 );
-
-		const bool SIGN_DIST_FUNC = answer == '1';
-		if( SIGN_DIST_FUNC )
-			std::cout << "Collecting samples from a signed distance function..." << std::endl;
-		else
-			std::cout << "Collecting samples from a reinitialized level-set function using fast sweeping method..." << std::endl;
+		// Collect samples from signed distance function and from reinitialized level-set using fast sweeping method.
+		std::cout << "Collecting samples from level-set function with spherical interface..." << std::endl;
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
@@ -136,21 +128,29 @@ int main ( int argc, char* argv[] )
 			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
-		// Prepare samples file: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
-		std::ofstream outputFile;
-		std::string fileName = DATA_PATH + ( SIGN_DIST_FUNC? "sdf_" : "rls_" ) + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
-		outputFile.open( fileName, std::ofstream::trunc );
-		if( !outputFile.is_open() )
-			throw std::runtime_error( "Output file " + fileName + " couldn't be opened!" );
+		// Prepare samples files: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
+		std::ofstream sdfFile;
+		std::string sdfFileName = DATA_PATH + "sphere_sdf_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		sdfFile.open( sdfFileName, std::ofstream::trunc );
+		if( !sdfFile.is_open() )
+			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+
+		std::ofstream rlsFile;
+		std::string rlsFileName = DATA_PATH + "sphere_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		rlsFile.open( rlsFileName, std::ofstream::trunc );
+		if( !rlsFile.is_open() )
+			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
 
 		// Write column headers: enforcing strings by adding quotes around them.
 		std::ostringstream headerStream;
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-		outputFile << headerStream.str() << std::endl;
+		sdfFile << headerStream.str() << std::endl;
+		rlsFile << headerStream.str() << std::endl;
 
-		outputFile.precision( 15 );							// Precision for floating point numbers.
+		sdfFile.precision( 15 );							// Precision for floating point numbers.
+		rlsFile.precision( 15 );
 
 		// Variables to control the spread of circles' radii, which must vary uniformly from MIN_RADIUS to MAX_RADIUS.
 		double distance = MAX_RADIUS - MIN_RADIUS;			// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
@@ -159,10 +159,10 @@ int main ( int argc, char* argv[] )
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
 
 		// Domain information, applicable to all spherical interfaces.
-		int n_xyz[] = {1, 1, 1};									// One tree per dimension.
-		double xyz_min[] = {MIN_D, MIN_D, MIN_D};					// Square domain.
+		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
+		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
 		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
-		int periodic[] = {0, 0, 0};									// Non-periodic domain.
+		int periodic[] = {0, 0, 0};							// Non-periodic domain.
 
 		int nSamples = 0;
 		int nc = 0;								// Keeps track of number of circles whose samples has been collected.
@@ -170,7 +170,8 @@ int main ( int argc, char* argv[] )
 		{
 			const double R = MIN_RADIUS + linspace[nc] * distance;	// Circle radius to be evaluated.
 			const double H_KAPPA = H / R;							// Expected dimensionless curvature: h\kappa = h/r.
-			std::vector<std::vector<double>> samples;
+			std::vector<std::vector<double>> rlsSamples;
+			std::vector<std::vector<double>> sdfSamples;
 
 			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
 			// reach a given maximum.  This helps smaller circles to have more samples, but not as many as the largest one.
@@ -193,11 +194,11 @@ int main ( int argc, char* argv[] )
 				p4est_ghost_t *ghost;
 				p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-				// Definining the non-signed distance level-set function to be reinitialized.  Remains unused if
-				// SIGN_DIST_FUNC is true.
+				// Definining the non-signed distance level-set function to be reinitialized and the exact signed
+				// distance function.  The non-signed distance function is used for partitioning and refinement.
 				geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
-				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );	// Signed-distance level-set function for error checking.
-				splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, SIGN_DIST_FUNC? &sphere : &sphereNsd );
+				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
+				splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sphereNsd );
 
 				// Create the forest using a level set as refinement criterion.
 				p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -217,77 +218,81 @@ int main ( int argc, char* argv[] )
 				nodeNeighbors.init_neighbors(); 	// This is not mandatory, but it can only help performance given
 													// how much we'll neeed the node neighbors.
 
-				// A ghosted parallel PETSc vector to store level-set function values.
-				Vec phi;
-				ierr = VecCreateGhostNodes( p4est, nodes, &phi );
+				// Ghosted parallel PETSc vectors to store level-set function values.
+				Vec sdfPhi, rlsPhi;
+				ierr = VecCreateGhostNodes( p4est, nodes, &sdfPhi );
 				CHKERRXX( ierr );
 
-				// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
-				double *phiPtr;
-				ierr = VecGetArray( phi, &phiPtr );
+				ierr = VecDuplicate( sdfPhi, &rlsPhi );
 				CHKERRXX( ierr );
-				for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
-				{
-					double xyz[P4EST_DIM];
-					node_xyz_fr_n( i, p4est, nodes, xyz );
-					if( SIGN_DIST_FUNC )
-						phiPtr[i] = sphere( DIM( xyz[0], xyz[1], xyz[2] ) );	// Using the signed distance function.
-					else
-						phiPtr[i] = sphereNsd( DIM( xyz[0], xyz[1], xyz[2] ) );	// Using the non-signed distance function.
-				}
-				ierr = VecRestoreArray( phi, &phiPtr );
-				CHKERRXX( ierr );
+
+				// Calculate the level-set function values for all independent nodes.
+				sample_cf_on_nodes( p4est, nodes, sphere, sdfPhi );
+				sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
 
 				// Reinitialize level-set function using the fast sweeping method.
-				if( !SIGN_DIST_FUNC )
-				{
-					FastSweeping fsm;
-					fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-					fsm.reinitializeLevelSetFunction( &phi, 8 );
-//					my_p4est_level_set_t ls( &nodeNeighbors );
-//					ls.reinitialize_2nd_order( phi, 5 );
-				}
+				FastSweeping fsm;
+				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+				fsm.reinitializeLevelSetFunction( &rlsPhi, 8 );
+//				my_p4est_level_set_t ls( &nodeNeighbors );
+//				ls.reinitialize_2nd_order( phi, 5 );
 
-				// Once the level-set function is reinitialized (if user chose to), collect nodes on or adjacent to the
-				// interface; these are the point we'll use to create our sample files.
+				// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these
+				// are the points we'll use to create our sample files and compare with the signed distance function.
 				NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
 				std::vector<p4est_locidx_t> indices;
-				nodesAlongInterface.getIndices( &phi, indices );
+				nodesAlongInterface.getIndices( &rlsPhi, indices );
 
 				// Getting the full uniform stencils of interface points.
-				const double *phiReadPtr;
-				ierr = VecGetArrayRead( phi, &phiReadPtr );
+				const double * sdfPhiReadPtr, *rlsPhiReadPtr;
+				ierr = VecGetArrayRead( sdfPhi, &sdfPhiReadPtr );
+				CHKERRXX( ierr );
+				ierr = VecGetArrayRead( rlsPhi, &rlsPhiReadPtr );
 				CHKERRXX( ierr );
 
 				for( auto n : indices )
 				{
 					std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
-					std::vector<double> dataPve;			// Phi and h*kappa results in positive and negative form.
-					std::vector<double> dataNve;
-					dataPve.reserve( NUM_COLUMNS );			// Efficientize containers.
-					dataNve.reserve( NUM_COLUMNS );
+					std::vector<double> sdfDataPve;			// Phi and h*kappa results in positive and negative form.
+					std::vector<double> sdfDataNve;
+					std::vector<double> rlsDataPve;
+					std::vector<double> rlsDataNve;
+					sdfDataPve.reserve( NUM_COLUMNS );		// Efficientize containers.
+					sdfDataNve.reserve( NUM_COLUMNS );
+					rlsDataPve.reserve( NUM_COLUMNS );
+					rlsDataNve.reserve( NUM_COLUMNS );
 					try
 					{
 						if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 						{
 							for( auto s : stencil )
 							{
-								dataPve.push_back( +phiReadPtr[s] );		// Positive curvature phi values.
-								dataNve.push_back( -phiReadPtr[s] );		// Negative curvature phi values.
+								// First the signed distance function.
+								sdfDataPve.push_back( +sdfPhiReadPtr[s] );		// Positive curvature phi values.
+								sdfDataNve.push_back( -sdfPhiReadPtr[s] );		// Negative curvature phi values.
 
-								double xyz[P4EST_DIM];						// Error checking.
-								node_xyz_fr_n( s, p4est, nodes, xyz );
-								double error = ABS( sphere( DIM( xyz[0], xyz[1], xyz[2] ) ) - phiReadPtr[s] ) / H;
+								// Then the reinitialized data.
+								rlsDataPve.push_back( +rlsPhiReadPtr[s] );
+								rlsDataNve.push_back( -rlsPhiReadPtr[s] );
+
+								// Error.
+								double error = ABS( sdfPhiReadPtr[s] - rlsPhiReadPtr[s] ) / H;
 								maxRE = MAX( maxRE, error );
 							}
 
 							// Appending the target h*\kappa.
-							dataPve.push_back( +H_KAPPA );
-							dataNve.push_back( -H_KAPPA );
+							sdfDataPve.push_back( +H_KAPPA );
+							sdfDataNve.push_back( -H_KAPPA );
+
+							rlsDataPve.push_back( +H_KAPPA );
+							rlsDataNve.push_back( -H_KAPPA );
 
 							// Accumulating samples.
-							samples.push_back( dataPve );
-							samples.push_back( dataNve );
+							sdfSamples.push_back( sdfDataPve );
+							sdfSamples.push_back( sdfDataNve );
+
+							rlsSamples.push_back( rlsDataPve );
+							rlsSamples.push_back( rlsDataNve );
 
 							// Counting samples.
 							nSamplesForSameRadius += 2;		// Positive and negative for a given interface node.
@@ -301,11 +306,18 @@ int main ( int argc, char* argv[] )
 					}
 				}
 
-				ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+				// Cleaning up.
+				ierr = VecRestoreArrayRead( sdfPhi, &sdfPhiReadPtr );
+				CHKERRXX( ierr );
+
+				ierr = VecRestoreArrayRead( rlsPhi, &rlsPhiReadPtr );
 				CHKERRXX( ierr );
 
 				// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
-				ierr = VecDestroy( phi );
+				ierr = VecDestroy( sdfPhi );
+				CHKERRXX( ierr );
+
+				ierr = VecDestroy( rlsPhi );
 				CHKERRXX( ierr );
 
 				// Destroy the p4est and its connectivity structure.
@@ -315,23 +327,32 @@ int main ( int argc, char* argv[] )
 				p4est_connectivity_destroy( connectivity );
 			}
 
-			// Write all samples collected for all circles with the same radius but randomized center content to file.
-			for( const auto& row : samples )
+			// Write all samples collected for all circles with the same radius but randomized center content to files.
+			for( const auto& row : sdfSamples )
 			{
-				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( outputFile, "," ) );		// Inner elements.
-				outputFile << row.back() << std::endl;
+				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
+				sdfFile << row.back() << std::endl;
+			}
+
+			for( const auto& row : rlsSamples )
+			{
+				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
+				rlsFile << row.back() << std::endl;
 			}
 
 			nc++;
-			nSamples += samples.size();
+			nSamples += sdfSamples.size();
 
 			std::cout << "     (" << nc << ") Done with radius = " << R
 					  << ".  Maximum relative error = " << maxRE
-					  << ".  Samples = " << samples.size() << ";" << std::endl;
+					  << ".  Samples = " << sdfSamples.size() << ";" << std::endl;
 
 			if( nc % 10 == 0 )
 				printf( "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
 		}
+
+		sdfFile.close();
+		rlsFile.close();
 
 		printf( "<< Finished generating %i circles and %i samples in %f secs.\n", nc, nSamples, watch.get_duration_current() );
 		watch.stop();
