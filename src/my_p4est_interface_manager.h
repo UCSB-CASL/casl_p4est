@@ -42,14 +42,9 @@ struct which_interface_neighbor_t
  * \brief The FD_interface_data struct contains the geometric-related data pertaining to finite-difference
  * interface neighbor points, i.e., intersection between the interface and the (cartesian) grid line joining
  * the degrees of freedom of interest, on the computational grid.
- * theta                  : fraction of the grid spacing covered by the domain in which the cell of interest is;
- * neighbor_quad_idx      : local index of the neighbor cell in the computational grid (across the interface);
- * mid_point_fine_node_idx: local index of the grid node in between those two cells on the
- *                          interface-capturing grid (if using subrefinement);
- * quad_fine_node_idx     : local index of the grid node that coincides with the center of the cell
- *                          of interest, on the interface-capturing grid (if using subrefinement);
- * neighbor_fine_node_idx : local index of the grid node that coincides with the center of the neighbor
- *                          cell across the interface, on the interface-capturing grid (if using subrefinement).
+ * theta            : fraction of the grid spacing covered by the domain in which the cell of interest is;
+ * node_interpolant : basic operator required to interpolate data (linear interpolation) from the nodes of the
+ *                    interpolation_node_ngbd to the relevant interface point.
  */
 struct FD_interface_data
 {
