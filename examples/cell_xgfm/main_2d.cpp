@@ -268,7 +268,8 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
   return;
 }
 
-void get_flattened_jumps(const my_p4est_interface_manager_t* interface_manager,  const test_case_for_scalar_jump_problem_t *test_problem, Vec& jump_u, Vec& jump_normal_flux) // output
+void get_flattened_jumps(const my_p4est_interface_manager_t* interface_manager,  const test_case_for_scalar_jump_problem_t *test_problem,
+                         Vec& jump_u, Vec& jump_normal_flux) // output
 {
   PetscErrorCode ierr;
   my_p4est_level_set_t ls(&interface_manager->get_interface_capturing_ngbd_n());

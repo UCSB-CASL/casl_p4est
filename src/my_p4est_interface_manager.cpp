@@ -233,7 +233,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
   }
   p4est_quadrant_t best_match; std::vector<p4est_quadrant> remotes;
   int rank_owner = interpolation_node_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_M, best_match, remotes, false, true);
-  P4EST_ASSERT(rank_owner != -1 && best_match.level == max_level_interpolation_p4est);
+  P4EST_ASSERT(rank_owner != -1 && best_match.level == max_level_interpolation_p4est); (void) rank_owner;
 
   double linear_interpolation_weights[P4EST_CHILDREN];
   get_local_interpolation_weights(interpolation_node_ngbd->get_p4est(), best_match.p.piggy3.which_tree, best_match, xyz_M, linear_interpolation_weights);

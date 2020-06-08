@@ -103,7 +103,7 @@ void my_p4est_xgfm_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
   jump_normal_flux_u  = jump_normal_flux_u_;
 
   if(interp_jump_u == NULL)
-    interp_jump_u = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
+    interp_jump_u = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
   interp_jump_u->set_input(jump_u, linear);
 
   rhs_is_set = false;
