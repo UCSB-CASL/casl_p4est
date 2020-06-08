@@ -3703,6 +3703,11 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
   for(size_t n_map = 0; n_map < map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
+    if(fabs(phi_p[n]) < zero_distance_threshold)
+    {
+      q_out_p[n] = q_p[n]; // you're literally on the interface so move on
+      continue;
+    }
     ngbd->get_neighbors(n, qnnn);
     //---------------------------------------------------------------------
     // Neighborhood information
