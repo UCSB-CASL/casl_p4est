@@ -780,6 +780,29 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_
   return ierr;
 }
 
+PetscErrorCode VecCreateNoGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
+  P4EST_ASSERT(block_size > 0);
+
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r < p4est->mpisize; ++r)
+    global_offset_sum[r + 1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  ierr = VecCreateMPI(p4est->mpicomm, num_local*block_size, num_global*block_size, v); CHKERRQ(ierr);
+  if(block_size > 1){
+    ierr = VecSetBlockSize(*v, block_size); CHKERRQ(ierr);
+  }
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
 PetscErrorCode VecGhostCopy(Vec src, Vec dst)
 {
   PetscErrorCode ierr;

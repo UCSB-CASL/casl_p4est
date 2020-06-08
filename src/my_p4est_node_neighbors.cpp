@@ -1645,43 +1645,23 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central_block, f, fd, 0, 0); CHKERRXX(ierr);
-#ifdef CASL_THROWS
+  std::vector<bool> fd_is_ghosted(n_vecs);
+  bool no_fd_is_ghosted = true;
+  for (unsigned int k = 0; k < n_vecs; ++k)
   {
-    Vec f_l, fd_l;
-    PetscInt f_size, fd_size, block_size;
-
-    for (unsigned int k = 0; k < n_vecs; ++k) {
-      // Get local form
-      ierr = VecGhostGetLocalForm(f[k],   &f_l  );  CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(fd[k],  &fd_l);  CHKERRXX(ierr);
-
-      // Get sizes
-      ierr = VecGetSize(f_l,        &f_size);            CHKERRXX(ierr);
-      ierr = VecGetSize(fd_l,       &fd_size);          CHKERRXX(ierr);
-      ierr = VecGetBlockSize(f[k],  &block_size);    CHKERRXX(ierr);
-
-      if (block_size != ((PetscInt) bs_f)){
-        std::ostringstream oss;
-        oss << "[ERROR]: the block size of a vector in f does not match the given block size bs_f"
-            << " block_size = " << block_size << " bs_f = " << bs_f << std::endl;
-
-        throw std::invalid_argument(oss.str());
-      }
-
-      if (f_size*P4EST_DIM != fd_size){
-        std::ostringstream oss;
-        oss << "[ERROR]: The vectors of derivatives must be P4EST_DIM times larger than the differentiated fields"
-            << " P4EST_DIM*f_size = " << P4EST_DIM*f_size << " fd_size = " << fd_size << std::endl;
-
-        throw std::invalid_argument(oss.str());
-      }
-
-      // Restore local form
-      ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(fd[k],  &fd_l); CHKERRXX(ierr);
-    }
-  }
+    Vec fdk_loc;
+    ierr = VecGhostGetLocalForm(fd[k], &fdk_loc); CHKERRXX(ierr);
+    fd_is_ghosted[k] = fdk_loc != NULL;
+    no_fd_is_ghosted = no_fd_is_ghosted && !fd_is_ghosted[k];
+    ierr = VecGhostRestoreLocalForm(fd[k], &fdk_loc); CHKERRXX(ierr);
+#ifdef P4EST_DEBUG
+    // So,
+    // vectors in f MUST be ghosted (otherwise, it's impossible to compute derivatives for layer nodes) :
+    P4EST_ASSERT(VecIsSetForNodes(f[k], nodes, p4est->mpicomm, bs_f));
+    // vectors in fd may or may not be ghosted but must be of blocksize P4EST_DIM*bs_f -- you may not have a local representation for that vector (if it's not ghosted) :
+    P4EST_ASSERT(VecIsSetForNodes(fd[k], nodes, p4est->mpicomm, bs_f*P4EST_DIM, fdk_loc != NULL));
 #endif
+  }
   P4EST_ASSERT(bs_f > 0);
 
   // get access to the iternal data
@@ -1704,9 +1684,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     }
 
     // start updating the ghost values
-    for (unsigned int k = 0; k < n_vecs; ++k) {
-      ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    }
+    if(!no_fd_is_ghosted)
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        if(fd_is_ghosted[k]){
+          ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
     // compute the derivaties for all internal nodes
     for (size_t i = 0; i < local_nodes.size(); i++){
@@ -1731,9 +1712,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     }
 
     // start updating the ghost values
-    for (unsigned int k = 0; k < n_vecs; ++k) {
-      ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    }
+    if(!no_fd_is_ghosted)
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        if(fd_is_ghosted[k]){
+          ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
 
     // compute the derivaties for all internal nodes
     for (size_t i = 0; i < local_nodes.size(); i++){
@@ -1750,7 +1732,8 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     // restore internal data
     ierr = VecRestoreArrayRead(f[k], &f_p[k]  ); CHKERRXX(ierr);
     // finish the ghost update process to ensure all values are updated
-    ierr = VecGhostUpdateEnd(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(fd_is_ghosted[k]){
+      ierr = VecGhostUpdateEnd(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
     // restore internal data
     ierr = VecRestoreArray(fd[k], &fd_p[k]); CHKERRXX(ierr);
   }

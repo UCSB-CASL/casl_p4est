@@ -1008,6 +1008,20 @@ inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_node
 }
 
 /*!
+ * \brief VecCreateNoGhostNodesBlock Creates a non-ghosted block PETSc parallel vector on the nodes
+ * \param p4est      [in]  p4est object
+ * \param nodes      [in]  the nodes object
+ * \param block_size [in]  block size of the vector
+ * \param v          [out] PETSc vector
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateNoGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateNoGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
+
+/*!
  * \brief VecGhostSet Sets a ghost vector to a value
  * \param x [in,out]  the vector
  * \param v [in]      the value to set

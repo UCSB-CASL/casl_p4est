@@ -679,23 +679,22 @@ public:
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
-  void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
-                                                                DIM(std::vector<double>& nx, std::vector<double>& ny, std::vector<double>& nz),
-                                                                double *q_out_p,
-                                                                double *q_p,
-                                                                DIM(double *qxx_p, double *qyy_p, double *qzz_p),
-                                                                std::vector<double>& qi_m00, std::vector<double>& qi_p00,
-                                                                std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
-                                                              #ifdef P4_TO_P8
-                                                                std::vector<double>& qi_00m, std::vector<double>& qi_00p,
-                                                              #endif
-                                                                std::vector<double>& s_m00, std::vector<double>& s_p00,
-                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0
-                                                              #ifdef P4_TO_P8
-                                                                , std::vector<double>& s_00m, std::vector<double>& s_00p
-                                                              #endif
-                                                                ) const;
-  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
+  void extend_from_interface_to_whole_domain_TVD_one_iteration(const std::vector<int>& map, const double *phi_p, const double* grad_phi_p,
+                                                               double *q_out_p,
+                                                               const double *q_p, const double *qxxyyzz_p[P4EST_DIM],
+                                                               std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                               std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                             #ifdef P4_TO_P8
+                                                               std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                             #endif
+                                                               std::vector<double>& s_m00, std::vector<double>& s_p00,
+                                                               std::vector<double>& s_0m0, std::vector<double>& s_0p0
+                                                             #ifdef P4_TO_P8
+                                                               , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                             #endif
+                                                               ) const;
+  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL,
+                                                 Vec grad_phi_in = NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;

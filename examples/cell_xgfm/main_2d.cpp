@@ -306,8 +306,8 @@ void get_flattened_jumps(const my_p4est_interface_manager_t* interface_manager, 
   Vec jump_u_flattened, jump_normal_flux_flattened;
   ierr = VecDuplicate(jump_u,           &jump_u_flattened);           CHKERRXX(ierr);
   ierr = VecDuplicate(jump_normal_flux, &jump_normal_flux_flattened); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_u,            jump_u_flattened);
-  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_normal_flux,  jump_normal_flux_flattened);
+  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_u,            jump_u_flattened,           20, NULL, 2, 10, NULL, interface_manager->get_grad_phi());
+  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_normal_flux,  jump_normal_flux_flattened, 20, NULL, 2, 10, NULL, interface_manager->get_grad_phi());
   ierr = VecDestroy(jump_u);            CHKERRXX(ierr); jump_u            = jump_u_flattened;           jump_u_flattened = NULL;
   ierr = VecDestroy(jump_normal_flux);  CHKERRXX(ierr); jump_normal_flux  = jump_normal_flux_flattened; jump_normal_flux_flattened = NULL;
 }
