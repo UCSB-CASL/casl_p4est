@@ -176,6 +176,14 @@ lookup_in_ghost_nodes:
   return false;
 }
 
+p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
+{
+  if(quad_local_idx < p4est->local_num_quadrants)
+    return p4est->global_first_quadrant[p4est->mpirank] + quad_local_idx;
+
+  const p4est_quadrant_t *quad = p4est_const_quadrant_array_index(&ghost->ghosts, quad_local_idx - p4est->local_num_quadrants);
+  return p4est->global_first_quadrant[quad_find_ghost_owner(ghost, quad_local_idx - p4est->local_num_quadrants)] + quad->p.piggy3.local_num;
+}
 
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
 {

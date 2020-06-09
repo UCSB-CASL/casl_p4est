@@ -775,6 +775,8 @@ inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_
  */
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
+p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
 
 /*!
