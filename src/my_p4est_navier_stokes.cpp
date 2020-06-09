@@ -2170,8 +2170,10 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
 
   /* update the variables */ // NOTE: Elyce: We are not destroying anything here because all this deletion will be handled externally of the NS class
-  if(p4est_nm1 != p4est_n && p4est_nm1 != NULL)
-      p4est_destroy(p4est_nm1);
+  if(p4est_nm1 != p4est_n && p4est_nm1 != NULL){
+    p4est_destroy(p4est_nm1);
+    printf("DESTROYS P4EST_NM1 \n");
+  }
   p4est_nm1 = p4est_n; p4est_n = p4est_np1;
 
   ghost_nm1 = ghost_n; ghost_n = ghost_np1;

@@ -3754,11 +3754,6 @@ int main(int argc, char** argv) {
   vec_and_ptr_t phi_solid; // LSF for solid domain: -- This will be assigned within the loop as the negative of phi
   vec_and_ptr_t phi_cylinder;   // LSF for the inner cylinder, if applicable (example ICE_OVER_CYLINDER)
 
-  vec_and_ptr_dim_t phi_d;
-  vec_and_ptr_dim_t phi_solid_d;
-  vec_and_ptr_dim_t phi_cylinder_d;
-
-
   vec_and_ptr_dim_t phi_dd;
   vec_and_ptr_dim_t phi_solid_dd;
   vec_and_ptr_dim_t phi_cylinder_dd;
@@ -3790,8 +3785,6 @@ int main(int argc, char** argv) {
   vec_and_ptr_dim_t T_s_d;
 
   vec_and_ptr_dim_t T_l_dd;
-  vec_and_ptr_t gradT_refine;
-
   // Stefan problem:------------------------------------
   vec_and_ptr_dim_t v_interface;;
   vec_and_ptr_dim_t jump;
@@ -3817,8 +3810,6 @@ int main(int argc, char** argv) {
 
   vec_and_ptr_t press_nodes;
 
-  vec_and_ptr_cells_t hodge_old;
-  vec_and_ptr_cells_t hodge_new;
   Vec dxyz_hodge_old[P4EST_DIM];
 
   my_p4est_cell_neighbors_t *ngbd_c;
@@ -4006,6 +3997,7 @@ int main(int argc, char** argv) {
 
           for(unsigned char d=0;d<2;++d){
             analytical_temp[d]= new temperature_field(d);
+            analytical_temp[d]->t = tstart;
           }
           for(unsigned char d=0;d<2;++d){
             T_init_cf[d]= new INITIAL_TEMP(d,analytical_temp);
@@ -4032,6 +4024,7 @@ int main(int argc, char** argv) {
         if(example_ == COUPLED_PROBLEM_EXAMPLE){
           for(unsigned char d=0;d<2;++d){
             delete analytical_temp[d];
+            delete T_init_cf[d];
           }
         }
       }
@@ -4048,7 +4041,7 @@ int main(int argc, char** argv) {
         {
           for(unsigned char d=0;d<P4EST_DIM;++d){
             analytical_soln[d] = new velocity_component(d);
-            analytical_soln[d]->t = 0.;
+            analytical_soln[d]->t = tstart;
           }
         }
 
@@ -4174,8 +4167,8 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
 
         ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                      "Iteration %d , Time: %0.2f [nondim] = %0.2f [sec] = %0.2f [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/(tfinal-tstart))*100.0);
+                                      "Iteration %d , Time: %0.2f [nondim] = Time: %0.3e [nondim] = %0.2f [sec] = %0.2f [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
+                                      " \n ------------------------------------------- \n",tstep,tn,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/(tfinal-tstart))*100.0);
 
         if(tstep%timing_every_n == 0) {PetscPrintf(mpi.comm(),"Current time info : \n"); w.read_duration_current();}
         if(solve_stefan){
@@ -4227,7 +4220,11 @@ int main(int argc, char** argv) {
           liquid_normals.create(p4est,nodes);
           compute_normals(*ngbd,phi.vec,liquid_normals.vec);
           solid_normals.create(p4est,nodes);
-          compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
+          foreach_dimension(d){
+            VecCopyGhost(liquid_normals.vec[d],solid_normals.vec[d]);
+            VecScaleGhost(solid_normals.vec[d],-1.0);
+          }
+//          compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
           if(print_checkpoints){
             int sizes[5] = {0,0,0,0,0};
@@ -4502,7 +4499,6 @@ int main(int argc, char** argv) {
 
         // Begin operations on refinement fields: We don't want to consider fields in positive subdomain so we filter these values out
         if(solve_navier_stokes && (num_fields!=0)){
-
           // Only use values of vorticity and d2T in the positive subdomain for refinement:
           vorticity_refine.create(p4est,nodes);
 
@@ -4740,7 +4736,7 @@ int main(int argc, char** argv) {
         // Destroy refinement vorticity:
         if(solve_navier_stokes){
             vorticity_refine.destroy();
-            if(refine_by_d2T){T_l_dd.destroy();gradT_refine.destroy();}
+            if(refine_by_d2T){T_l_dd.destroy();}
           }
 
         // Clear up the memory from the std vectors holding refinement info:
@@ -4748,8 +4744,8 @@ int main(int argc, char** argv) {
         compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
 
         // Get the new neighbors:
-        my_p4est_hierarchy_t *hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-        my_p4est_node_neighbors_t *ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+        /*my_p4est_hierarchy_t **/hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
+        /*my_p4est_node_neighbors_t **/ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
 
         // Initialize the neigbors:
         ngbd_np1->init_neighbors();
@@ -5039,6 +5035,9 @@ int main(int argc, char** argv) {
             for(unsigned char d=0;d<2;++d){
               delete analytical_T[d];
               delete external_heat_source_T[d];
+
+              delete bc_interface_val_temp[d];
+              delete bc_wall_value_temp[d];
             }
             for(unsigned char d=0;d<P4EST_DIM;++d){
               delete analytical_soln_v[d];
@@ -5256,7 +5255,15 @@ int main(int argc, char** argv) {
               for(unsigned char d=0;d<P4EST_DIM;d++){
                 delete analytical_soln[d];
                 delete external_force_components[d];
+
+                delete bc_wall_type_velocity[d];
+                delete bc_wall_value_velocity[d];
+                delete bc_interface_value_velocity[d];
+
               }
+              delete bc_interface_value_pressure;
+              delete bc_wall_type_pressure;
+              delete bc_wall_value_pressure;
             }
 
             // TO-DO: delete BC objects ?
@@ -5283,25 +5290,20 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // Delete the old grid and update with the new one:
 
-        if(fabs(tn+dt - tfinal)<EPS && solve_navier_stokes){
-            delete ns;
-          }
-        else{
-            p4est_destroy(p4est);
-            if(solve_navier_stokes)ns->nullify_p4est_nm1();
-            p4est_ghost_destroy(ghost);
-            p4est_nodes_destroy(nodes);
-            delete ngbd;
-            delete hierarchy;
+        p4est_destroy(p4est);
+        if(solve_navier_stokes)ns->nullify_p4est_nm1(); // the nm1 grid has just been destroyed, but pointer within NS has not been updated, so it needs to be nullified (p4est_nm1 in NS == p4est in main)
 
-            p4est = p4est_np1;
-            ghost = ghost_np1;
-            nodes = nodes_np1;
+        p4est_ghost_destroy(ghost);
+        p4est_nodes_destroy(nodes);
+        delete ngbd;
+        delete hierarchy;
 
-            hierarchy = hierarchy_np1;
-            ngbd = ngbd_np1;
-          }
+        p4est = p4est_np1;
+        ghost = ghost_np1;
+        nodes = nodes_np1;
 
+        hierarchy = hierarchy_np1;
+        ngbd = ngbd_np1;
 
         // Get current memory usage and print out all memory usage checkpoints:
         PetscLogDouble mem_safety_check;
@@ -5309,13 +5311,19 @@ int main(int argc, char** argv) {
         if(/*true*/(tstep%check_mem_every_iter)==0){ // Do a memory check every time we save a state
           MPI_Barrier(mpi.comm());
           PetscMemoryGetCurrentUsage(&mem_safety_check);
+          size_t p4est_mem = p4est_memory_used(p4est);
           int no = nodes->num_owned_indeps;
           MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
           PetscPrintf(mpi.comm(),"\n"
                                  "Memory safety check:\n"
-                                 " - Current memory usage is : %0.5e GB \n"
+                                 " - Current memory usage is : %0.9e GB \n"
+                                 " - p4est mem used: %d bytes \n"
                                  " - Number of grid nodes is: %d \n"
-                                 " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,no,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
+                                 " - Percent of safety limit: %0.2f % \n \n \n",
+                      mem_safety_check*mpi.size()*1.e-9,
+                      p4est_mem,
+                      no,
+                      (mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
         }
 
       } // <-- End of for loop through time
@@ -5324,10 +5332,14 @@ int main(int argc, char** argv) {
     if(solve_stefan){
         T_l_n.destroy();
         T_s_n.destroy();
+
         if(advection_sl_order==2) T_l_nm1.destroy();
       }
 
-    if(solve_navier_stokes){ v_n.destroy();v_nm1.destroy();vorticity.destroy();press_nodes.destroy();}
+    if(solve_navier_stokes){
+      delete ns;
+      v_n.destroy();v_nm1.destroy();vorticity.destroy();press_nodes.destroy();
+    }
     else{ // TO-DO : Don't think this is being done 100% correctly... for example, in above code, should still need to destroy phi(?) maybe not ... look into this
         phi.destroy();
 
