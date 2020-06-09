@@ -66,6 +66,7 @@ my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
   if (residual            != NULL)  { ierr = VecDestroy(residual);                CHKERRXX(ierr); }
   if (solution            != NULL)  { ierr = VecDestroy(solution);                CHKERRXX(ierr); }
   if (jump_flux           != NULL)  { ierr = VecDestroy(jump_flux);               CHKERRXX(ierr); }
+  if (interp_jump_u       != NULL)  { delete interp_jump_u;                                       }
 }
 
 void my_p4est_xgfm_cells_t::set_interface(my_p4est_interface_manager_t* interface_manager_)
