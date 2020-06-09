@@ -376,8 +376,8 @@ public:
    */
   my_p4est_level_set_t(my_p4est_node_neighbors_t* ngbd_)
     : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()),
-      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2])},
-      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2]))),
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
       interpolation_on_interface(quadratic_non_oscillatory),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
       show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
@@ -393,8 +393,8 @@ public:
    */
   my_p4est_level_set_t(const my_p4est_node_neighbors_t* ngbd_)
     : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()), ngbd(ngbd_),
-      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2])},
-      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_-.get_brick()->xyz_max[2] - ngbd_-.get_brick()->xyz_min[2])/ngbd_-.get_brick()->nxyztrees[2]))),
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
       interpolation_on_interface(quadratic_non_oscillatory),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
       show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)

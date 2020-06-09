@@ -1,14 +1,8 @@
 #ifdef P4_TO_P8
 #include "my_p8est_xgfm_cells.h"
-#include <src/my_p8est_solve_lsqr.h>
 #else
 #include "my_p4est_xgfm_cells.h"
-#include <src/my_p4est_solve_lsqr.h>
 #endif
-
-#include <src/petsc_compatibility.h>
-#include <src/casl_math.h>
-#include <algorithm>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS

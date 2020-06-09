@@ -38,7 +38,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_q
 
   /* find the constructed neighbor HierarchyCell of the same size */
   const p4est_topidx_t owning_tree_idx = node.p.which_tree;
-  p4est_quadrant neighbor_quad; neighbor_quad.level = quad->level;
+  p4est_quadrant_t neighbor_quad; neighbor_quad.level = quad->level;
   neighbor_quad.x = node.x - size/2;
   neighbor_quad.y = node.y - size/2;
 #ifdef P4_TO_P8

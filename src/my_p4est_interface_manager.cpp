@@ -231,7 +231,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
     const double x_max = brick->xyz_max[oriented_dir/2];
     xyz_M[oriented_dir/2] -= floor((xyz_M[oriented_dir/2] - x_min)/(x_max - x_min))*(x_max - x_min);
   }
-  p4est_quadrant_t best_match; std::vector<p4est_quadrant> remotes;
+  p4est_quadrant_t best_match; std::vector<p4est_quadrant_t> remotes;
   int rank_owner = interpolation_node_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_M, best_match, remotes, false, true);
   P4EST_ASSERT(rank_owner != -1 && best_match.level == max_level_interpolation_p4est); (void) rank_owner;
 
@@ -262,7 +262,7 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
   if(quad_idx >= p4est->local_num_quadrants)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
 #endif
-  const p4est_tree       *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_tree_t     *tree = p4est_tree_array_index(p4est->trees, tree_idx);
   const p4est_quadrant_t *quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
   const double logical_size_quad = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
@@ -277,7 +277,7 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
     if(indices_of_subrefining_quads.size() > 0) // if it is zero, it means that it was not even matched by the hierarchy --> it must be far away from the interface in that case...
     {
       negative_volume = 0.0;
-      const p4est_tree* interface_capturing_tree = p4est_tree_array_index(interpolation_node_ngbd->get_p4est()->trees, tree_idx);
+      const p4est_tree_t* interface_capturing_tree = p4est_tree_array_index(interpolation_node_ngbd->get_p4est()->trees, tree_idx);
       for (size_t k = 0; k < indices_of_subrefining_quads.size(); ++k)
       {
         const p4est_quadrant_t *subrefining_quad = p4est_const_quadrant_array_index(&interface_capturing_tree->quadrants, indices_of_subrefining_quads[k] - interface_capturing_tree->quadrants_offset);

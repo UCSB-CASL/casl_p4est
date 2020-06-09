@@ -1,20 +1,10 @@
 #ifndef MY_P4EST_XGFM_CELLS_H
 #define MY_P4EST_XGFM_CELLS_H
 
-#include <petsc.h>
-
 #ifdef P4_TO_P8
-#include <src/my_p8est_cell_neighbors.h>
-#include <src/my_p8est_faces.h>
 #include <src/my_p8est_interface_manager.h>
-#include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_utils.h>
 #else
-#include <src/my_p4est_cell_neighbors.h>
-#include <src/my_p4est_faces.h>
 #include <src/my_p4est_interface_manager.h>
-#include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_utils.h>
 #endif
 
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
