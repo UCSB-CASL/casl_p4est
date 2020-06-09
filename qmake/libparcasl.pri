@@ -95,6 +95,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_poisson_boltzmann_nodes.h \
   $$PARCASL/src/my_p4est_poisson_cells.h \
   $$PARCASL/src/my_p4est_poisson_faces.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.h \
   $$PARCASL/src/my_p4est_poisson_jump_nodes_extended.h \
   $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.h \
   $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.h \
@@ -141,6 +142,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_poisson_boltzmann_nodes.cpp \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_nodes_extended.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.cpp \
@@ -193,6 +195,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.h \
   $$PARCASL/src/my_p8est_poisson_cells.h \
   $$PARCASL/src/my_p8est_poisson_faces.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.h \
   $$PARCASL/src/my_p8est_poisson_jump_nodes_extended.h \
   $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.h \
   $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.h \
@@ -239,6 +242,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.cpp \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_nodes_extended.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.cpp \

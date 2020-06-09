@@ -81,6 +81,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_node_neighbors.h \
   $$PARCASL/src/my_p4est_poisson_cells.h \
   $$PARCASL/src/my_p4est_poisson_faces.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.h \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.h \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p4est_refine_coarsen.h \
@@ -108,6 +109,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.cpp \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p4est_refine_coarsen.cpp \
@@ -142,6 +144,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_node_neighbors.h \
   $$PARCASL/src/my_p8est_poisson_cells.h \
   $$PARCASL/src/my_p8est_poisson_faces.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.h \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.h \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p8est_refine_coarsen.h \
@@ -169,6 +172,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.cpp \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \

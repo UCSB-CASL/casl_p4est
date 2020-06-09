@@ -997,7 +997,7 @@ int main (int argc, char* argv[])
       jump_solver.set_rhs(sharp_rhs_minus, sharp_rhs_plus);
 
       watch.start("Total time:");
-      jump_solver.solve();
+      jump_solver.solve_for_sharp_solution();
       watch.stop(); watch.read_duration();
 
       print_iteration_info(mpi, jump_solver);

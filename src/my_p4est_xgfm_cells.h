@@ -2,64 +2,24 @@
 #define MY_P4EST_XGFM_CELLS_H
 
 #ifdef P4_TO_P8
-#include <src/my_p8est_interface_manager.h>
+#include <src/my_p8est_poisson_jump_cells.h>
 #else
-#include <src/my_p4est_interface_manager.h>
+#include <src/my_p4est_poisson_jump_cells.h>
 #endif
 
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 
-class my_p4est_xgfm_cells_t
+class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 {
-  // data related to the computational grid
-  const my_p4est_cell_neighbors_t *cell_ngbd;
-  const p4est_t                   *p4est;
-  const p4est_ghost_t             *ghost;
-  const p4est_nodes_t             *nodes;
-  // computational domain parameters (fetched from the above objects at construction)
-  const double *const xyz_min;
-  const double *const xyz_max;
-  const double *const tree_dimensions;
-  const bool *const periodicity;
-  // elementary computational grid parameters
-  double dxyz_min[P4EST_DIM];
-  inline double diag_min() const { return sqrt(SUMD(SQR(dxyz_min[0]), SQR(dxyz_min[1]), SQR(dxyz_min[2]))); }
-
-  // this solver needs an interface manager (and may help build it)
-  my_p4est_interface_manager_t* interface_manager;
-
-  // equation parameters
-  double mu_minus, mu_plus;
-  double add_diag_minus, add_diag_plus;
-
-  // Petsc vectors vectors of cell-centered values
-  /* ---- NOT OWNED BY THE SOLVER ---- (hence not destroyed at solver's destruction) */
-  Vec user_rhs_minus, user_rhs_plus;  // cell-sampled rhs of the continuum-level problem
-  Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
-  my_p4est_interpolation_nodes_t* interp_jump_u; // we may need to interpolate the jumps pretty much anywhere
-  inline bool interface_is_set()    const { return interface_manager != NULL; }
-  inline bool jumps_have_been_set() const { return jump_u != NULL && jump_normal_flux_u != NULL; }
-  /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction, except if returned before-hand) */
-  Vec rhs;                  // cell-sampled, discretized rhs
+  /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction, except if ownership returned beforehand) */
   Vec residual;             // cell-sampled, residual residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_on_nodes)
-  Vec solution;             // cell-sampled, sharp
   Vec extension_on_cells;   // cell-sampled, extension of interface-defined values
   Vec extension_on_nodes;   // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   Vec jump_flux;            // node-sampled, P4EST_DIM block-structure, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
-  /* ---- other PETSc objects ---- */
-  Mat A;
-  MatNullSpace A_null_space;
-  KSP ksp;
-  /* ---- Pointer to boundary condition (wall only) ---- */
-  const BoundaryConditionsDIM *bc;
-  /* ---- Control flags ---- */
-  bool matrix_is_set, rhs_is_set;
   bool activate_xGFM;
+  double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
-  inline bool extend_negative_interface_values()      const { return mu_minus >= mu_plus; }
-  inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
-  inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
-  inline double get_jump_in_mu()                      const { return (mu_plus - mu_minus); }
+  inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
 
   class solver_monitor_t {
     typedef struct
@@ -121,7 +81,7 @@ class my_p4est_xgfm_cells_t
     }
   } solver_monitor;
 
-  // (possibly memorized) extension operator for interface-defined values
+  // (possibly memorized) extension operators for interface-defined values
   struct interface_extension_neighbor
   {
     double weight;
@@ -175,17 +135,7 @@ class my_p4est_xgfm_cells_t
   // internal procedures
   void preallocate_matrix();
   void setup_linear_system();
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const;
-  KSPConvergedReason solve_linear_system();
   bool solve_for_fixpoint_solution(Vec& former_solution);
-  inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
-  inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
-  inline void reset_linear_system() { matrix_is_set = rhs_is_set = false; setup_linear_system(); }
-
-  inline p4est_gloidx_t compute_global_index(const p4est_locidx_t &quad_idx) const
-  {
-    return compute_global_index_of_quad(quad_idx, p4est, ghost);
-  }
 
   /*!
    * \brief interpolate_cell_field_at_local_interface_capturing_node computes the interpolation of a cell-sampled field
@@ -246,7 +196,7 @@ class my_p4est_xgfm_cells_t
   inline void make_sure_solution_is_set()
   {
     if(solution == NULL)
-      solve();
+      solve_for_sharp_solution();
     P4EST_ASSERT(solution != NULL);
   }
 
@@ -286,67 +236,11 @@ class my_p4est_xgfm_cells_t
                                                                    double* flux_dir_p, const double* vstar_dir_p, double* vnp1_plus_dir_p, double* vnp1_minus_dir_p);
 
 public:
-
   my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   ~my_p4est_xgfm_cells_t();
 
   void set_interface(my_p4est_interface_manager_t* interface_manager_);
-
-  /*!
-   * \brief set_jumps sets the jump in solution and in its normal flux, sampled on the nodes of the interpolation_node_ngbd
-   * of the interface manager (important if using subrefinement)
-   * \param [in] jump_u            : node-sampled values of [u] = u^+ - u^-;
-   * \param [in] jump_normal_flux  : node-sampled values of [mu*dot(n, grad u)] = mu^+*dot(n, grad u^+) - mu^-*dot(n, grad u^-).
-   */
-  void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_);
-
-  inline void set_bc(const BoundaryConditionsDIM& bc_)
-  {
-    bc = &bc_;
-    // we can't really check for unchanged behavior in this cass, --> play it safe
-    matrix_is_set = false;
-    rhs_is_set    = false;
-  }
-
-  inline void set_mus(const double& mu_minus_, const double& mu_plus_)
-  {
-    const bool mus_unchanged = (fabs(mu_minus_ - mu_minus) < EPS*MAX(mu_minus_, mu_minus) && fabs(mu_plus_ - mu_plus) < EPS*MAX(mu_plus_, mu_plus));
-    matrix_is_set = matrix_is_set && mus_unchanged;
-    rhs_is_set    = rhs_is_set    && mus_unchanged;
-    if(!mus_unchanged)
-    {
-      mu_minus = mu_minus_;
-      mu_plus = mu_plus_;
-    }
-    P4EST_ASSERT(diffusion_coefficients_have_been_set()); // must be both strictly positive
-  }
-
-  inline void set_diagonals(const double& add_diag_minus_, const double& add_diag_plus_)
-  {
-    const bool diags_unchanged = (fabs(add_diag_minus_ - add_diag_minus) < EPS*MAX(add_diag_minus_, add_diag_minus) && fabs(add_diag_plus_ - add_diag_plus) < EPS*MAX(add_diag_plus_, add_diag_plus));
-    matrix_is_set = matrix_is_set && diags_unchanged;
-    rhs_is_set    = rhs_is_set    && diags_unchanged;
-    if(!diags_unchanged)
-    {
-      add_diag_minus = add_diag_minus_;
-      add_diag_plus = add_diag_plus_;
-    }
-  }
-
-  inline void set_rhs(Vec user_sharp_rhs) { set_rhs(user_sharp_rhs, user_sharp_rhs); }
-  inline void set_rhs(Vec user_rhs_minus_, Vec user_rhs_plus_)
-  {
-    P4EST_ASSERT(VecIsSetForCells(user_rhs_minus_, p4est, ghost, 1, false) && VecIsSetForCells(user_rhs_plus_, p4est, ghost, 1, false));
-    user_rhs_minus  = user_rhs_minus_;
-    user_rhs_plus   = user_rhs_plus_;
-    rhs_is_set = false;
-  }
-
-  /* Benchmark tests revealed that PCHYPRE is MUCH faster than PCSOR as PCType!
-   * The linear systme is supposed to be symmetric positive (semi-) definite, so KSPCG is ok as KSPType
-   * Note: a low threshold for tolerance_on_rel_residual is critical to ensure accuracy in cases with large differences in diffusion coefficients!
-   * */
-  void solve(KSPType ksp_type = KSPCG, PCType pc_type = PCHYPRE, double absolute_accuracy_threshold = 1e-8, double tolerance_on_rel_residual = 1e-12);
+  inline void set_sharp_rhs(Vec user_sharp_rhs) { set_rhs(user_sharp_rhs, user_sharp_rhs); }
 
   inline Vec get_extended_interface_values()                                { make_sure_extensions_are_defined();               return extension_on_cells;  }
   inline Vec get_extended_interface_values_on_interface_capturing_nodes()   { make_sure_extensions_are_defined();               return extension_on_nodes;  }
@@ -357,16 +251,15 @@ public:
   inline std::vector<double> get_max_corrections()                    const { return solver_monitor.get_max_corrections();                                  }
   inline std::vector<double> get_relative_residuals()                 const { return solver_monitor.get_relative_residuals();                               }
   inline bool is_using_xGFM()                                         const { return activate_xGFM;                                                         }
-  inline bool get_matrix_has_nullspace()                              const { return A_null_space != NULL;                                                  }
-  inline const p4est_t* get_p4est()                                   const { return p4est;                                                                 }
-  inline const p4est_ghost_t* get_ghost()                             const { return ghost;                                                                 }
-  inline const p4est_nodes_t* get_nodes()                             const { return nodes;                                                                 }
-  inline const my_p4est_cell_neighbors_t* get_cell_ngbd()             const { return cell_ngbd;                                                             }
-  inline const my_p4est_hierarchy_t* get_hierarchy()                  const { return cell_ngbd->get_hierarchy();                                            }
-  inline const double* get_smallest_dxyz()                            const { return dxyz_min;                                                              }
-  inline Vec get_jump()                                               const { return jump_u;                                                                }
-  inline Vec get_jump_in_normal_flux()                                const { return jump_normal_flux_u;                                                    }
-  inline my_p4est_interface_manager_t* get_interface_manager()        const { return interface_manager;                                                     }
+
+  /* Benchmark tests revealed that PCHYPRE is MUCH faster than PCSOR as PCType!
+   * The linear system is supposed to be symmetric positive (semi-) definite, so KSPCG is ok as KSPType
+   * Note: a low threshold for tolerance_on_rel_residual is critical to ensure accuracy in cases with large differences in diffusion coefficients!
+   * */
+  void solve_for_sharp_solution(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE);
+
+  void set_xGFM_absolute_value_threshold(const double& abs_thresh)              { P4EST_ASSERT(abs_thresh > 0.0);           xGFM_absolute_accuracy_threshold  = abs_thresh; }
+  void set_xGFM_relative_residual_threshold(const double& rel_residual_thresh)  { P4EST_ASSERT(rel_residual_thresh > 0.0);  xGFM_tolerance_on_rel_residual    = rel_residual_thresh; }
 
   inline double get_sharp_integral_solution() const
   {
@@ -395,38 +288,6 @@ public:
   }
 
   void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
-  inline void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)
-  {
-    get_flux_components_and_subtract_them_from_velocities(flux, faces);
-  }
-
-  inline Vec return_ownership_of_solution()
-  {
-    make_sure_solution_is_set();
-    Vec to_return = solution;
-    solution = NULL; // will be handled by user from now on, hopefully!
-    return to_return;
-  }
-
-  /*!
-   * \brief set_initial_guess self-explanatory
-   * \param initial_guess self-explanatory
-   */
-  inline void set_initial_guess(Vec initial_guess)
-  {
-    P4EST_ASSERT(VecIsSetForCells(initial_guess, p4est, ghost, 1));
-    PetscErrorCode ierr;
-    if(solution != NULL && !VecIsSetForCells(solution, p4est, ghost, 1)){
-      ierr = VecDestroy(solution); CHKERRXX(ierr);
-      solution = NULL;
-    }
-    if(solution == NULL){
-      ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); }
-
-    ierr = VecCopyGhost(initial_guess, solution); CHKERRXX(ierr); // set the solution to the given guess
-    ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr); // activates initial guess
-    return;
-  }
 
   void inline activate_xGFM_corrections(const bool flag_) { activate_xGFM = flag_; }
 
