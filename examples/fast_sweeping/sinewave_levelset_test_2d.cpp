@@ -40,17 +40,21 @@
  * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
+ * @param [in] gen Random number generator.
+ * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
+ * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
+ * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
-	std::vector<double>& distances )
+	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 	distances.clear();
-	distances.reserve( NUM_COLUMNS - 1 );				// Only distances, not h\kappa included.
+	distances.reserve( NUM_COLUMNS );					// Include h\kappa as well.
 
 	int s;												// Index to fill in the sample vector.
 	double grad[P4EST_DIM];
@@ -58,8 +62,9 @@
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, newU, valOfDerivative, centerU;
-	double dx, dy;
+	double u, v, valOfDerivative, centerU;
+	double dx, dy, newDistance;
+	int iterations;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
 		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
@@ -77,39 +82,31 @@
 		// Transform point on interface to sine-wave canonical coordinates.
 		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
 		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
+		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on \Gamma.
 
-		// Find parameter u that yields the minimum distance between point and sine-wave using Newton-Raphson's method.
-		u = pOnInterfaceX;								// Initial parameter guess for root finding method.
-		newU = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H );
-		pOnInterfaceX = newU;							// Recalculating point on interface (still in canonical coords).
-		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * newU );
-
-		// Verify that point on interface is not far from grid point.
+		// Compute current distance to \Gamma using the improved y.
 		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
-		distances.push_back( sqrt( dx * dx + dy * dy ) );
-		if( distances[s] <= H * ( 1 + M_SQRT2 ) && ABS( valOfDerivative ) <= 1e-8 )
-			u = newU;									// Parameter is OK.
-		else											// Something doesn't look right.
-		{
-			sine.toWorldCoordinates( xyz[0], xyz[1] );
-			sine.toWorldCoordinates( pOnInterfaceX, pOnInterfaceY );
-			std::cerr << "Stencil of node " << nodeIdx << ": Node " << stencil[s] << " was placed on interface too far.  "
-					  << "Reverting back to point on interface calculated with phi values.  \n     "
-					  << valOfDerivative << "; plot([" << xyz[0] << "], [" << xyz[1] << "], 'b.', ["
-					  << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'ko');" << std::endl;
-		}
+		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
-		if( sample[s] < 0 )	// Fix sign.
+		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
+		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, pOnInterfaceX, gen, normalDistribution, valOfDerivative, newDistance );
+		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+
+		if( newDistance > distances[s] )
+			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) + ": " + std::to_string( valOfDerivative ) );
+
+		distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+
+		if( sample[s] < 0 )							// Fix sign.
 			distances[s] *= -1;
 
-		if( s == 4 )		// For center node we need the parameter u to yield curvature.
+		if( s == 4 )								// For center node we need the parameter u to yield curvature.
 			centerU = u;
 	}
 
-	// Computing the target curvature.
-	sample[s] = H * sine.curvature( centerU );				// Last column holds h\kappa.
-//	std::cout << u << ", " << sample[s] << ";" << std::endl;
+	sample[s] = H * sine.curvature( centerU );		// Last column holds h\kappa.
+	distances.push_back( sample[s] );
 
 	return sample;
 }
@@ -133,8 +130,9 @@ int main ( int argc, char* argv[] )
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
-	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
+	std::mt19937 gen; 					// Standard mersenne_twister_engine seeded with rd().
+	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
+	std::normal_distribution<double> normalDistribution;
 
 	try
 	{
@@ -158,8 +156,8 @@ int main ( int argc, char* argv[] )
 		double maxRE = 0;									// Maximum relative error.
 
 		const double T[] = {
-			( MIN_D + MAX_D ) / 2 + uniformDistribution( gen ),		// Translate center coords by a randomly chosen
-			( MIN_D + MAX_D ) / 2 + uniformDistribution( gen )		// perturbation from the grid's midpoint.
+			( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen ),		// Translate center coords by a randomly chosen
+			( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen )		// perturbation from the grid's midpoint.
 		};
 
 		// p4est variables and data structures: these change with every sine wave because we must refine the
@@ -172,10 +170,10 @@ int main ( int argc, char* argv[] )
 
 		// Definining the level-set function to be reinitialized.
 		const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;		// Adding some padding of 2H.
-		const double A = MIN_A;
+		const double A = MAX_A;
 		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );
 		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );
-		ArcLengthParameterizedSine sine( A, MIN_OMEGA, 0, 0, 0, H, HALF_AXIS_LEN );
+		ArcLengthParameterizedSine sine( A, MAX_OMEGA, T[0], T[1], 0, H, HALF_AXIS_LEN );
 		splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
 
 		// Create the forest using a level-set as refinement criterion.
@@ -275,8 +273,7 @@ int main ( int argc, char* argv[] )
 				{
 					std::vector<double> distances;
 					std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-																				nodes, &nodeNeighbors, phiReadPtr, sine,
-																				distances );
+						nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances );
 					hCurvaturePtr[n] = sample[NUM_COLUMNS-1];
 					interfaceFlagPtr[n] = 1;
 
@@ -287,7 +284,7 @@ int main ( int argc, char* argv[] )
 						maxRE = MAX( maxRE, ABS( vErrorPtr[stencil[i]] ) );
 					}
 
-//					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ";" << std::endl;
+//					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ", " << sample[NUM_COLUMNS-1] << ";" << std::endl;
 				}
 			}
 			catch( std::exception &e )
