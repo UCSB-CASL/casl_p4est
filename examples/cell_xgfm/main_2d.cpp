@@ -347,15 +347,15 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
   const p4est_ghost_t* ghost            = solver.get_ghost();
   const my_p4est_hierarchy_t* hierarchy = solver.get_hierarchy();
   const my_p4est_interface_manager_t* interface_manager = solver.get_interface_manager();
-  Vec flux[P4EST_DIM];
+  Vec sharp_flux[P4EST_DIM];
   for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecCreateGhostFaces(p4est, faces, &flux[dim], dim); CHKERRXX(ierr); }
-  solver.get_flux_components(flux, faces);
+    ierr = VecCreateGhostFaces(p4est, faces, &sharp_flux[dim], dim); CHKERRXX(ierr); }
+  solver.get_sharp_flux_components(sharp_flux, faces);
 
-  const double *sol_p, *flux_components_p[P4EST_DIM];
+  const double *sol_p, *sharp_flux_components_p[P4EST_DIM];
   ierr = VecGetArrayRead(solver.get_solution(), &sol_p); CHKERRXX(ierr);
   for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArrayRead(flux[dim], &flux_components_p[dim]); CHKERRXX(ierr);}
+    ierr = VecGetArrayRead(sharp_flux[dim], &sharp_flux_components_p[dim]); CHKERRXX(ierr);}
 
   double *err_p;
   ierr = VecGetArray(err_cells, &err_p); CHKERRXX(ierr);
@@ -396,22 +396,22 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
       if(phi_face > 0.0)
       {
         const double mu_ = test_problem->get_mu_plus();
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(sharp_flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
       }
       else
       {
         const double mu_ = test_problem->get_mu_minus();
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(sharp_flux_components_p[dim][face_idx]/mu_ - test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))));
       }
     }
   }
 
   ierr = VecRestoreArrayRead(solver.get_solution(), &sol_p); CHKERRXX(ierr);
   for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArrayRead(flux[dim], &flux_components_p[dim]); CHKERRXX(ierr);
-    ierr = VecDestroy(flux[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sharp_flux[dim], &sharp_flux_components_p[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(sharp_flux[dim]); CHKERRXX(ierr);
   }
 
   ierr = VecRestoreArray(err_cells, &err_p); CHKERRXX(ierr);

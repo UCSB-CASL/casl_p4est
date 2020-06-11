@@ -34,7 +34,7 @@ protected:
   // Petsc vectors vectors of cell-centered values
   /* ---- NOT OWNED BY THE SOLVER ---- (hence not destroyed at solver's destruction) */
   // one needs to provide the rhs of the problem either as
-  // - either sharp, cell-sampled value of the continuum rhs
+  // - sharp, cell-sampled value of the continuum rhs
   Vec user_rhs_minus, user_rhs_plus;        // cell-sampled rhs of the continuum-level problem --> sharp, cell-sampled value of the continuum value of f defining the rhs as diag*u - div(mu*grad(u)) = f
   // - or sharp, face-sampled values of the two-phase velocity field that needs to be made divergence-free
   Vec *user_vstar_minus, *user_vstar_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
@@ -63,8 +63,10 @@ protected:
   my_p4est_poisson_jump_cells_t& operator=(const my_p4est_poisson_jump_cells_t& other);
 
   // internal procedures
-  virtual void preallocate_matrix() = 0;
-  virtual void setup_linear_system() = 0;
+  virtual void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                                                  PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const = 0;
+  void preallocate_matrix();
+
   PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const;
   KSPConvergedReason solve_linear_system();
   bool solve_for_fixpoint_solution(Vec& former_solution);
@@ -77,16 +79,14 @@ protected:
     return compute_global_index_of_quad(quad_idx, p4est, ghost);
   }
 
-  void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double *user_rhs_minus_p, const double *user_rhs_plus_p,
-                                     const double *jump_u_p, const double *jump_normal_flux_p, const double *jump_flux_p,
-                                     double *rhs_p, int *nullspace_contains_constant_vector = NULL);
-
   linear_combination_of_dof_t stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
                                                                             set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const;
 
-  void get_flux_components_and_subtract_them_from_velocities_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, const double* solution_p,
-                                                                   const double* jump_u_p, const double* jump_flux_p, const my_p4est_interpolation_nodes_t& interp_jump_flux,
-                                                                   double* flux_dir_p, const double* vstar_dir_p, double* vnp1_plus_dir_p, double* vnp1_minus_dir_p);
+  virtual void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL) = 0;
+  void setup_linear_system();
+
+
+  virtual double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const = 0;
 
 public:
 
@@ -101,7 +101,7 @@ public:
    * \param [in] jump_u            : node-sampled values of [u] = u^+ - u^-;
    * \param [in] jump_normal_flux  : node-sampled values of [mu*dot(n, grad u)] = mu^+*dot(n, grad u^+) - mu^-*dot(n, grad u^-).
    */
-  void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_);
+  virtual void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_);
 
   inline void set_bc(const BoundaryConditionsDIM& bc_)
   {
@@ -174,10 +174,11 @@ public:
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
 
-  virtual void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL) = 0;
-  inline void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)
+  void get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[P4EST_DIM], my_p4est_faces_t *faces,
+                                                             Vec vstar_minus[P4EST_DIM], Vec vstar_plus[P4EST_DIM], Vec sharp_vnp1[P4EST_DIM]) const;
+  inline void get_sharp_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces) const
   {
-    get_flux_components_and_subtract_them_from_velocities(flux, faces);
+    get_sharp_flux_components_and_subtract_them_from_velocities(flux, faces, NULL, NULL, NULL);
   }
 };
 

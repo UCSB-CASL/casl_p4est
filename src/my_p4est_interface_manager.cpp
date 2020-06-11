@@ -190,8 +190,8 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
     //                        this dof                                       neighbor dof
     //    |                                               |                                               |         --> regular (computational grid)
     //    |                                               |           |           |           |           |         --> interface-capturing grid
-    // ----------------------------------------------------------++++++++++++++++++++++++++++++++++++++++++         --> this is handled correctly
-    // -----------------------------------------------+++++++++++++++----------+++++++++++-----------------         --> this is less safe (but your computational grid might be under-resolved as well in such a case)
+    // ----------------------------------------------------------++++++++++++++++++++++++++++++++++++++++++++++     --> this is handled correctly
+    // -----------------------------------------------+++++++++++++++----------+++++++++++---------------------     --> this is less safe (but your computational grid might be under-resolved as well in such a case)
     rel_scale /= 2.0;
     xyz_M[oriented_dir/2] = xyz_Q[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*rel_scale*dxyz_min[oriented_dir/2]; // no need to worry about periodicity, the interpolation object will
     const double phi_M = interp_phi(xyz_M);

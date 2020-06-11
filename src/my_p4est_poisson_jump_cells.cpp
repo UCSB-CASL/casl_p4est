@@ -13,7 +13,9 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
 
   mu_minus = mu_plus = -1.0;
   add_diag_minus = add_diag_plus = 0.0;
-  user_rhs_minus = user_rhs_plus =  jump_u = jump_normal_flux_u = NULL;
+  user_rhs_minus = user_rhs_plus = NULL;
+  user_vstar_minus = user_vstar_plus = NULL;
+  jump_u = jump_normal_flux_u = NULL;
   rhs = NULL;
   interp_jump_u           = NULL;
   interp_jump_normal_flux = NULL;
@@ -40,6 +42,45 @@ my_p4est_poisson_jump_cells_t::~my_p4est_poisson_jump_cells_t()
   if (rhs                     != NULL)  { ierr = VecDestroy(rhs);                     CHKERRXX(ierr); }
   if (interp_jump_u           != NULL)  { delete interp_jump_u;                                       }
   if (interp_jump_normal_flux != NULL)  { delete interp_jump_normal_flux;                             }
+}
+
+void my_p4est_poisson_jump_cells_t::preallocate_matrix()
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+
+  P4EST_ASSERT(!matrix_is_set);
+
+  if (A != NULL){
+    ierr = MatDestroy(A); CHKERRXX(ierr); }
+
+  const PetscInt num_owned_global = p4est->global_num_quadrants;
+  const PetscInt num_owned_local  = p4est->local_num_quadrants;
+
+  // set up the matrix
+  ierr = MatCreate(p4est->mpicomm, &A); CHKERRXX(ierr);
+  ierr = MatSetType(A, MATAIJ); CHKERRXX(ierr);
+  ierr = MatSetSizes(A, num_owned_local , num_owned_local,
+                     num_owned_global, num_owned_global); CHKERRXX(ierr);
+  ierr = MatSetFromOptions(A); CHKERRXX(ierr);
+
+  std::vector<PetscInt> nlocal_nonzeros(num_owned_local), nghost_nonzeros(num_owned_local);
+
+  for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
+    const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; q++)
+    {
+      const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      get_numbers_of_cells_involved_in_equation_for_quad(quad_idx, tree_idx, nlocal_nonzeros[quad_idx], nghost_nonzeros[quad_idx]);
+    }
+  }
+
+  ierr = MatSeqAIJSetPreallocation(A, 0, nlocal_nonzeros.data()); CHKERRXX(ierr);
+  ierr = MatMPIAIJSetPreallocation(A, 0, nlocal_nonzeros.data(), 0, nghost_nonzeros.data()); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
+
+  return;
 }
 
 void my_p4est_poisson_jump_cells_t::set_interface(my_p4est_interface_manager_t* interface_manager_)
@@ -80,6 +121,68 @@ void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_
   return;
 }
 
+linear_combination_of_dof_t
+my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
+                                                                             set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const
+{
+  P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants);
+  const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+  P4EST_ASSERT(!is_quad_Wall(p4est, tree_idx, quad, oriented_dir)); // we do not allow for wall faces in here
+  double xyz_[P4EST_DIM];
+
+  direct_neighbors.clear();
+  cell_ngbd->find_neighbor_cells_of_cell(direct_neighbors, quad_idx, tree_idx, oriented_dir);
+  P4EST_ASSERT(direct_neighbors.size() > 0);
+
+  const bool quad_is_major            = (direct_neighbors.size() > 1 || (direct_neighbors.size() == 1 && direct_neighbors.begin()->level == quad->level));
+  const bool major_quad_is_leading    = (oriented_dir%2 == (quad_is_major ? 0 : 1));
+  const p4est_quadrant_t& major_quad  = (quad_is_major ? *quad : *direct_neighbors.begin());
+  quad_xyz_fr_q((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), (quad_is_major ? tree_idx : major_quad.p.piggy3.which_tree), p4est, ghost, xyz_);
+  const double phi_major_quad = interface_manager->phi(xyz_);
+  all_cell_centers_on_same_side = true;
+
+  set_of_neighboring_quadrants *minor_quads = NULL;
+  if(quad_is_major)
+    minor_quads = &direct_neighbors;
+  else
+  {
+    minor_quads = new set_of_neighboring_quadrants;
+    cell_ngbd->find_neighbor_cells_of_cell(*minor_quads, major_quad.p.piggy3.local_num, major_quad.p.piggy3.which_tree, oriented_dir + (oriented_dir%2 == 0 ? 1 : -1)); // find all other quads sharing the face
+  }
+
+  const double shared_surface = pow((double) P4EST_QUADRANT_LEN(major_quad.level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1); // (logical) shared surface
+  double discretization_distance = 0.0;
+#ifdef DEBUG
+  double split_face_check = 0.0; bool quad_is_among_sharers = quad_is_major;
+#endif
+  for (set_of_neighboring_quadrants::const_iterator it = minor_quads->begin(); it != minor_quads->end(); ++it)
+  {
+    const double surface_ratio = pow((double) P4EST_QUADRANT_LEN(it->level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1)/shared_surface;
+    discretization_distance += surface_ratio * 0.5 * (double)(P4EST_QUADRANT_LEN(major_quad.level) + P4EST_QUADRANT_LEN(it->level))/(double) P4EST_ROOT_LEN;
+#ifdef DEBUG
+    split_face_check += surface_ratio; quad_is_among_sharers = quad_is_among_sharers || it->p.piggy3.local_num == quad_idx;
+#endif
+    quad_xyz_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost, xyz_);
+    all_cell_centers_on_same_side = all_cell_centers_on_same_side && !signs_of_phi_are_different(phi_major_quad, interface_manager->phi(xyz_));
+  }
+  P4EST_ASSERT(quad_is_among_sharers && fabs(split_face_check - 1.0) < EPS);
+  discretization_distance *= tree_dimensions[oriented_dir/2];
+
+  linear_combination_of_dof_t local_derivative_operator;
+  for (set_of_neighboring_quadrants::const_iterator it = minor_quads->begin(); it != minor_quads->end(); ++it)
+  {
+    const double surface_ratio = pow((double) P4EST_QUADRANT_LEN(it->level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1)/shared_surface;
+    local_derivative_operator.add_term(it->p.piggy3.local_num, (major_quad_is_leading ? -1.0 : +1.0)*surface_ratio/discretization_distance);
+  }
+  local_derivative_operator.add_term((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), (major_quad_is_leading ? +1.0 : -1.0)/discretization_distance);
+
+  if(minor_quads != &direct_neighbors)
+    delete minor_quads;
+
+  return local_derivative_operator;
+}
+
 KSPConvergedReason my_p4est_poisson_jump_cells_t::solve_linear_system()
 {
   PetscErrorCode ierr;
@@ -87,9 +190,9 @@ KSPConvergedReason my_p4est_poisson_jump_cells_t::solve_linear_system()
   if(solution == NULL) {
     ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); }
 
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
   // we need update ghost values of the solution for accurate calculation of the extended interface values
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -154,3 +257,139 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
   return ierr;
 }
 
+void my_p4est_poisson_jump_cells_t::setup_linear_system()
+{
+  if(matrix_is_set && rhs_is_set)
+    return;
+
+  if(!matrix_is_set)
+    preallocate_matrix();
+
+  PetscErrorCode ierr;
+  // register for logging purpose
+  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+
+  if(!rhs_is_set)
+  {
+    if(rhs == NULL){
+      ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr); }
+    P4EST_ASSERT(VecIsSetForCells(rhs, p4est, ghost, 1, false));
+  }
+  int nullspace_contains_constant_vector = !matrix_is_set; // converted to integer because of required MPI collective determination thereafter + we don't care about that if the matrix is already set
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
+    const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
+      build_discretization_for_quad(q + tree->quadrants_offset, tree_idx, &nullspace_contains_constant_vector);
+  }
+
+  if(!matrix_is_set)
+  {
+    // Assemble the matrix
+    ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+    ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+    // check for null space
+    if(A_null_space != NULL){
+      ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
+      A_null_space = NULL;
+    }
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &nullspace_contains_constant_vector, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
+    if (nullspace_contains_constant_vector)
+    {
+      ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null_space); CHKERRXX(ierr);
+      ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
+      ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+    }
+  }
+  /* [Raphael (05/17/2020) :
+   * removing the null space from the rhs seems redundant with PetSc operations done under the
+   * hood in KSPSolve (see the source code of KSPSolve_Private in /src/kscp/ksp/interface/itfunc.c
+   * for more details). --> So long as MatSetNullSpace() was called appropriately on the matrix
+   * operator, this operation will be executed in the pre-steps of KSPSolve on a COPY of the provided
+   * RHS vector]
+   * --> this is what we want : we need the _unmodified_ RHS thereafter, i.e. as we have built it, and
+   * we let PetSc do its magic under the hood every time we call KSPSolve, otherwise iteratively
+   * correcting and updating the RHS would becomes very complex and require extra info coming from those
+   * possibly non-empty nullspace contributions...
+   * */
+
+  matrix_is_set = rhs_is_set = true;
+
+  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+
+  return;
+}
+
+void my_p4est_poisson_jump_cells_t::get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[], my_p4est_faces_t *faces,
+                                                                                                Vec vstar_minus[], Vec vstar_plus[], Vec sharp_vnp1[]) const
+{
+  P4EST_ASSERT(faces->get_p4est() == p4est); // the faces must be built from the same computational grid
+  P4EST_ASSERT((vstar_minus == NULL && vstar_plus == NULL && sharp_vnp1 == NULL) ||
+               (VecsAreSetForFaces(vstar_minus, faces, 1) && VecsAreSetForFaces(vstar_plus, faces, 1) && VecsAreSetForFaces(sharp_vnp1, faces, 1))); // the face-sampled velocities vstart and vnp1 vectors vectors must either be all defined or be all NULL.
+  P4EST_ASSERT(VecsAreSetForFaces(sharp_flux, faces, 1));
+
+#ifdef CASL_THROWS
+  if(solution == NULL)
+    throw std::runtime_error("my_p4est_poisson_jump_cells_t::get_flux_components_and_subtract_them_from_velocities(): requires the solution, have you called called solve() before?");
+#endif
+
+  double phi_local_face;
+  double *sharp_flux_p[P4EST_DIM];
+  const bool velocities_provided          = (vstar_minus != NULL && vstar_plus != NULL && sharp_vnp1 != NULL);
+  const double *vstar_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  const double *vstar_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  double *sharp_vnp1_p[P4EST_DIM]         = {DIM(NULL, NULL, NULL)};
+  PetscErrorCode ierr;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArray(sharp_flux[dim], &sharp_flux_p[dim]); CHKERRXX(ierr);
+    if(velocities_provided)
+    {
+      P4EST_ASSERT(vstar_minus[dim] != NULL && vstar_plus_p[dim] != NULL && sharp_vnp1[dim] != NULL);
+      ierr = VecGetArrayRead(vstar_minus[dim], &vstar_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(vstar_plus[dim], &vstar_plus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(sharp_vnp1[dim], &sharp_vnp1_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  // layer faces, first
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
+    for (size_t k = 0; k < faces->get_layer_size(dim); ++k)
+    {
+      const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
+      sharp_flux_p[dim][f_idx] = get_sharp_flux_component_local(f_idx, dim, faces, phi_local_face);
+      if(velocities_provided)
+        sharp_vnp1_p[dim][f_idx] = (phi_local_face <= 0.0 ? vstar_minus_p[dim][f_idx] : vstar_plus_p[dim][f_idx]) - sharp_flux_p[dim][f_idx];
+    }
+    // start the ghost updates
+    ierr = VecGhostUpdateBegin(sharp_flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(velocities_provided){
+      ierr = VecGhostUpdateBegin(sharp_vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+  }
+  // inner faces, second
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
+    for (size_t k = 0; k < faces->get_local_size(dim); ++k)
+    {
+      const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
+      sharp_flux_p[dim][f_idx] = get_sharp_flux_component_local(f_idx, dim, faces, phi_local_face);
+      if(velocities_provided)
+        sharp_vnp1_p[dim][f_idx] = (phi_local_face <= 0.0 ? vstar_minus_p[dim][f_idx] : vstar_plus_p[dim][f_idx]) - sharp_flux_p[dim][f_idx];
+    }
+    // finish the ghost updates
+    ierr = VecGhostUpdateEnd(sharp_flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(velocities_provided){
+      ierr = VecGhostUpdateEnd(sharp_vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+  }
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArray(sharp_flux[dim], &sharp_flux_p[dim]); CHKERRXX(ierr);
+    if(velocities_provided)
+    {
+      ierr = VecRestoreArrayRead(vstar_minus[dim], &vstar_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(vstar_plus[dim], &vstar_plus_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(sharp_vnp1[dim], &sharp_vnp1_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  return;
+}

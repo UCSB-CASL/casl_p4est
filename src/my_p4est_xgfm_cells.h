@@ -11,15 +11,13 @@ const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 
 class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 {
-  /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction, except if ownership returned beforehand) */
+  /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec residual;             // cell-sampled, residual residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_on_nodes)
   Vec extension_on_cells;   // cell-sampled, extension of interface-defined values
   Vec extension_on_nodes;   // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   Vec jump_flux;            // node-sampled, P4EST_DIM block-structure, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   bool activate_xGFM;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
-
-  inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
 
   class solver_monitor_t {
     typedef struct
@@ -72,7 +70,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
       return relative_residuals;
     }
 
-    bool reached_converged_within_desired_bounds(const double& absolute_accuracy_threshold, const double& tolerance_on_rel_residual) const
+    bool reached_convergence_within_desired_bounds(const double& absolute_accuracy_threshold, const double& tolerance_on_rel_residual) const
     {
       const size_t last_step_idx = last_step();
       return logger[last_step_idx].max_correction < absolute_accuracy_threshold && // the latest max_correction must be below the desired absolute accuracy requirement AND
@@ -82,6 +80,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   } solver_monitor;
 
   // (possibly memorized) extension operators for interface-defined values
+  inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
   struct interface_extension_neighbor
   {
     double weight;
@@ -133,8 +132,8 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   my_p4est_xgfm_cells_t& operator=(const my_p4est_xgfm_cells_t& other);
 
   // internal procedures
-  void preallocate_matrix();
-  void setup_linear_system();
+  void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                                          PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const;
   bool solve_for_fixpoint_solution(Vec& former_solution);
 
   /*!
@@ -189,9 +188,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 
   void cell_TVD_extension_of_interface_values(const double& threshold, const uint& niter_max);
 
-  void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double *user_rhs_minus_p, const double *user_rhs_plus_p,
-                                     const double *jump_u_p, const double *jump_flux_p,
-                                     double* rhs_p, int *nullspace_contains_constant_vector = NULL);
+  void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
 
   inline void make_sure_solution_is_set()
   {
@@ -228,19 +225,23 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     P4EST_ASSERT(jump_flux != NULL);
   }
 
-  linear_combination_of_dof_t stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
-                                                                            set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const;
-
-  void get_flux_components_and_subtract_them_from_velocities_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, const double* solution_p,
-                                                                   const double* jump_u_p, const double* jump_flux_p, const my_p4est_interpolation_nodes_t& interp_jump_flux,
-                                                                   double* flux_dir_p, const double* vstar_dir_p, double* vnp1_plus_dir_p, double* vnp1_minus_dir_p);
+  double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const;
 
 public:
   my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   ~my_p4est_xgfm_cells_t();
 
   void set_interface(my_p4est_interface_manager_t* interface_manager_);
-  inline void set_sharp_rhs(Vec user_sharp_rhs) { set_rhs(user_sharp_rhs, user_sharp_rhs); }
+  inline void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
+  {
+    my_p4est_poisson_jump_cells_t::set_jumps(jump_u_, jump_normal_flux_u_);
+    if(jump_flux == NULL)
+    {
+      const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
+      PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &jump_flux); CHKERRXX(ierr);
+    }
+    compute_jumps_in_flux_components_at_all_interface_capturing_nodes(); // we need the jumps in flux components for this solver
+  }
 
   inline Vec get_extended_interface_values()                                { make_sure_extensions_are_defined();               return extension_on_cells;  }
   inline Vec get_extended_interface_values_on_interface_capturing_nodes()   { make_sure_extensions_are_defined();               return extension_on_nodes;  }
@@ -286,8 +287,6 @@ public:
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sharp_integral_solution, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     return sharp_integral_solution;
   }
-
-  void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
 
   void inline activate_xGFM_corrections(const bool flag_) { activate_xGFM = flag_; }
 
