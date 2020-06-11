@@ -90,7 +90,7 @@
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
-		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, pOnInterfaceX, gen, normalDistribution, valOfDerivative, newDistance );
+		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
 		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
 
 		if( newDistance > distances[s] )
@@ -284,7 +284,7 @@ int main ( int argc, char* argv[] )
 						maxRE = MAX( maxRE, ABS( vErrorPtr[stencil[i]] ) );
 					}
 
-//					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ", " << sample[NUM_COLUMNS-1] << ";" << std::endl;
+					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ", " << sample[NUM_COLUMNS-1] << ";" << std::endl;
 				}
 			}
 			catch( std::exception &e )

@@ -271,14 +271,6 @@ public:
 
 ///////////////////// Root finding procedures to compute curvature at nodes adjacent to interface //////////////////////
 
-/**
- * Class to find the parametric value for the projection of a node onto a sine-wave level-set function using Boost's
- * Newton-Rapson root finder.
- * The problem is simplified to finding the distance between (u,v) and f(x) = a * sin(x).  When calling using this
- * functor, make sure that the original sine frequency has been absorved into u, v, and a.  That is, the minimal
- * distance between (u,v) and f(x) = a*sin(w*t) is the same as 1/w times the minimal distance between (u*w, v*w) and
- * f(x') = w*a*sin(x').
- */
 class DistThetaFunctorDerivative
 {
 private:
@@ -299,26 +291,58 @@ public:
 	/**
 	 * Evaluate functor at angle parameter value.
 	 * @param [in] t: Angle parameter.
+	 * @return Function value.
+	 */
+	double operator()( const double& t ) const
+	{
+		return t - _u + _a * cos( t ) * ( _a * sin( t ) - _v );
+	}
+
+	/**
+	 * The second derivative of the distance function to minimize.
+	 * @param [in] t: Angle parameter.
+	 * @return Second derivative of distance function.
+	 */
+	double secondDerivative( const double& t ) const
+	{
+		return 1 - _a * sin( t ) * ( _a * sin( t ) - _v ) + SQR( _a * cos( t ) );
+	}
+};
+
+/**
+ * Class to find the parametric value for the projection of a node onto a sine-wave level-set function using Boost's
+ * Newton-Rapson root finder.
+ * The problem is simplified to finding the distance between (u,v) and f(x) = a * sin(x).  When calling using this
+ * functor, make sure that the original sine frequency has been absorved into u, v, and a.  That is, the minimal
+ * distance between (u,v) and f(x) = a*sin(w*t) is the same as 1/w times the minimal distance between (u*w, v*w) and
+ * f(x') = w*a*sin(x').
+ */
+class DistThetaFunctorDerivativeNR
+{
+private:
+	DistThetaFunctorDerivative _distThetaFunctorDerivative;
+public:
+	/**
+	 * Constructor.
+	 * @param distThetaFunctorDerivative The functor used for bisection.
+	 */
+	explicit DistThetaFunctorDerivativeNR( DistThetaFunctorDerivative distThetaFunctorDerivative )
+		: _distThetaFunctorDerivative( distThetaFunctorDerivative )
+	{}
+
+	/**
+	 * Evaluate functor at angle parameter value.
+	 * @param [in] t: Angle parameter.
 	 * @return A pair of a function evaluation and its derivative.
 	 */
 	std::pair<double, double> operator()( const double& t ) const
 	{
 		// Function which we need the roots of.
-		double g = valueOfDerivative( t );
+		double g = _distThetaFunctorDerivative( t );
 
 		// And its derivative.
-		double h = 1 - _a * sin( t ) * ( _a * sin( t ) - _v ) + SQR( _a * cos( t ) );
+		double h = _distThetaFunctorDerivative.secondDerivative( t );
 		return std::make_pair( g, h );
-	}
-
-	/**
-	 * Given an angle, compute the value of the derivative of half distance square.
-	 * @param [in] t: Angle parameter.
-	 * @return f(theta), the function value which we want to find the roots of.
-	 */
-	[[nodiscard]] double valueOfDerivative( const double& t ) const
-	{
-		return t - _u + _a * cos( t ) * ( _a * sin( t ) - _v );
 	}
 };
 
@@ -327,7 +351,6 @@ public:
  * @param [in] u: X-coordinate of query point.
  * @param [in] v: Y-coordinate of query point.
  * @param [in] sine: Reference to arclength-parameterized sine wave object.
- * @param [in] guess: Initial guess for the normal projection and minimal distance of query point onto sinusoid.
  * @param [in] gen Random number generator.
  * @param [in] normalDistribution A normal random distribution generator.
  * @param [out] valOfDerivative: Value of the derivative given the best theta angle (expected ~ 0).
@@ -335,22 +358,23 @@ public:
  * @param [in] verbose: Whether to show debugging message or not.
  * @return Angle value that minimizes the distance from sine-wave and query point (u,v).
  */
-double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine, double guess,
+double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
 	std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
 	double& valOfDerivative, double& minDistance, bool verbose = true )
 {
-	using namespace boost::math::tools;						// For bracket_and_solve_root.
+	using namespace boost::math::tools;						// For bisect and newton_raphson_iterate.
 
 	const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
 	int get_digits = static_cast<int>( digits * 0.75 );    	// Accuracy doubles with each step, so stop when we have
 															// just over half the digits correct.
-	const boost::uintmax_t maxit = 20;						// Maximum number of iterations.
-	boost::uintmax_t it = maxit;
+	const boost::uintmax_t MAX_IT = 20;						// Maximum number of iterations for bracketing and root finding.
+	boost::uintmax_t it = MAX_IT;
 	const double A = sine.getOmega() * sine.getA();			// Convert constants for simpler f(x) = A * sin(x).
 	const double U = u * sine.getOmega();
 	const double V = v * sine.getOmega();
-	const double G = guess * sine.getOmega();
-	DistThetaFunctorDerivative distThetaFunctorDerivative( U, V, A );
+	DistThetaFunctorDerivative distThetaFunctorDerivative( U, V, A );							// Used for bisection (narrowing intervals).
+	DistThetaFunctorDerivativeNR distThetaFunctorDerivativeNR( distThetaFunctorDerivative );	// Used for Newton-Raphson's method.
+	eps_tolerance<double> epsToleranceFunctor( 10 );											// Used in bisection process (x bits).
 
 	// Algorithm to find the parameter that minimizes the distance.
 	const double SQRT_A_V = sqrt( SQR( ABS( A ) + ABS( V ) ) - SQR( ABS( A ) - ABS( V ) ) );
@@ -390,8 +414,8 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 	std::vector<std::pair<int, int>> intervals;				// List of pairs of indices (i,j) referring to successive
 	for( int i = 0; i < checkpoints.size() - 1; i++ )		// parameters stored in checkpoints, where g(checkpoints[i])
 	{														// * g(checkpoints[j]) < 0, and g is the derivative of the
-		if( distThetaFunctorDerivative.valueOfDerivative( checkpoints[i] ) *		// distance function to minimize.
-			distThetaFunctorDerivative.valueOfDerivative( checkpoints[i+1] ) < 0 )
+		if( distThetaFunctorDerivative( checkpoints[i] ) *	// distance function to minimize.
+			distThetaFunctorDerivative( checkpoints[i+1] ) < 0 )
 			intervals.emplace_back( i, i + 1 );
 	}
 
@@ -402,24 +426,26 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 
 		for( const auto& interval : intervals )
 		{
-			double uStart = checkpoints[interval.first];	// Find the best parameter within the bracket using Newton-
-			double uEnd = checkpoints[interval.second];		// Raphson's method.
-			double uRange = uEnd - uStart;
-			double vOfD = 1;								// Min value of derivative for current interval.
+			double uStart = checkpoints[interval.first];	// Find the best parameter within the bracket first reducing
+			double uEnd = checkpoints[interval.second];		// the interval with bisection, and then using Newton-Raphson's
+															// to refine the root.
 			int iterations = 0;
-			bool guessInInterval = ( G >= uStart && G <= uEnd );	// If caller's guess lies in interval, seek highest accuracy.
-			do
-			{
-				double uResult = ( uStart + uEnd ) / 2;
-				if( guessInInterval )						// If initial guess is interval, use that as starting point.
-					uResult = G;							// For anyting else, randomize initial guess around midpoint.
-				uResult += normalDistribution( gen ) * ( uRange / 20 );
-				uResult = MAX( uStart, MIN( uResult, uEnd ) );
-				uResult = newton_raphson_iterate( distThetaFunctorDerivative, uResult, uStart, uEnd, get_digits, it );
-				vOfD = ABS( distThetaFunctorDerivative.valueOfDerivative( uResult ) );
+			it = MAX_IT;
+			std::pair<double, double> uPair = bisect( distThetaFunctorDerivative, uStart, uEnd, epsToleranceFunctor, it );
+			double uRange = uPair.second - uPair.first;
+			double vOfD = 1;
 
-				if( verbose && it >= maxit )
-					std::cerr << "Node " << n << ":  Unable to locate solution in " << maxit << " iterations!" << std::endl;
+			while( vOfD > 1e-8 )							// For standing interval, keep iterating until convergence.
+			{												// Now that we have a narrow bracket, use Newton-Raphson's.
+				double uResult = ( uPair.first + uPair.second ) / 2;		// Normally-randomize initial guess around
+				uResult += normalDistribution( gen ) * ( uRange / 6 );		// midpoint.
+				uResult = MAX( uPair.first, MIN( uResult, uPair.second ) );
+				it = MAX_IT;
+				uResult = newton_raphson_iterate( distThetaFunctorDerivativeNR, uResult, uPair.first, uPair.second, get_digits, it );
+				vOfD = ABS( distThetaFunctorDerivative( uResult ) );
+
+				if( verbose && it >= MAX_IT )
+					std::cerr << "Node " << n << ":  Unable to locate solution in " << MAX_IT << " iterations!" << std::endl;
 
 				double dx = U - uResult;
 				double dy = V - A * sin( uResult );
@@ -431,13 +457,12 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 				}
 				iterations++;
 			}
-			while( vOfD > 1e-8 && guessInInterval );		// For standing interval, keep iterating until convergence.
 
-			if( guessInInterval && iterations > 1e6 )
-				std::cout << iterations << std::endl;
+			if( verbose && iterations > 10 )
+				std::cerr << "Node " << n << ":  High number of convergence iterations " << iterations << std::endl;
 		}
 
-		valOfDerivative = distThetaFunctorDerivative.valueOfDerivative( minU );
+		valOfDerivative = distThetaFunctorDerivative( minU );
 		minDistance = sqrt( minD ) / sine.getOmega();
 		return minU / sine.getOmega();
 	}
