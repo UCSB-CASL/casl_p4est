@@ -44,8 +44,7 @@
  * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
- * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
- * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
+ * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
@@ -64,7 +63,6 @@
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
 	double u, v, valOfDerivative, centerU;
 	double dx, dy, newDistance;
-	int iterations;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
 		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
@@ -93,8 +91,14 @@
 		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
 		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
 
-		if( newDistance > distances[s] )
-			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) + ": " + std::to_string( valOfDerivative ) );
+		if( newDistance - distances[s] > EPS )
+		{
+			std::ostringstream stream;
+			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+				   << ".  Old dist: " << distances[s];
+			throw std::runtime_error( stream.str() );
+		}
 
 		distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
 

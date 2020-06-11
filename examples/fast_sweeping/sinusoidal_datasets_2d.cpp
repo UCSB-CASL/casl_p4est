@@ -95,17 +95,15 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
  * @param [in] gen Random number generator.
- * @param [in] uniformDistribution A uniform random distribution generator with a range of [0, 1].
+ * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @return Vector with sampled phi values and target dimensionless curvature.
- * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
- * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
+ * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
-	std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution,
-	std::vector<double>& distances )
+	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 	distances.clear();
@@ -118,8 +116,7 @@ void generateColumnHeaders( std::string header[] )
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
 	double u, v, valOfDerivative, centerU;
-	double dx, dy, newDistance, distanceBtwnPOnInterface;
-	int iterations;
+	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
 		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
@@ -146,32 +143,20 @@ void generateColumnHeaders( std::string header[] )
 
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
 		valOfDerivative = 1;
-		iterations = 0;
-		while( ABS( valOfDerivative ) > 1e-8 && iterations < 20 )		// Avoiding local minima with random exploration.
-		{
-			double h = ( ( iterations % 2 )? H : -H ) * uniformDistribution( gen );		// Flip sign to explore a wide range.
-			u = pOnInterfaceX + h;								// Initial parametric guess for root finding.
-			u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, valOfDerivative, u, u - H, u + H, false );
-			iterations++;
-		}
+		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
+		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
 		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
 
-		// Compute new distance with "normal projection" of query point onto sine wave.
-		dx = xyz[0] - u;
-		dy = xyz[1] - v;
-		newDistance = sqrt( SQR( dx ) + SQR( dy ) );
+		if( newDistance - distances[s] > EPS )
+		{
+			std::ostringstream stream;
+			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+				   << ".  Old dist: " << distances[s];
+			throw std::runtime_error( stream.str() );
+		}
 
-		// Compute distance between previous projection and new projection.
-		dx = u - pOnInterfaceX;
-		dy = v - pOnInterfaceY;
-		distanceBtwnPOnInterface = sqrt( SQR( dx ) + SQR( dy ) );
-		if( distanceBtwnPOnInterface > H && ABS( valOfDerivative ) > 1e-8 )
-			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) );
-
-		if( newDistance < distances[s] )
-			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
-		else
-			u = pOnInterfaceX;
+		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
 
 		if( sample[s] < 0 )								// Fix sign.
 			distances[s] *= -1;
@@ -220,6 +205,7 @@ int main ( int argc, char* argv[] )
 	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
 	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
 	std::uniform_real_distribution<double> uniformDistribution;				// Used for collecting low h\kappa values.
+	std::normal_distribution<double> normalDistribution;					// Used for bracketing and root finding.
 
 	try
 	{
@@ -391,14 +377,14 @@ int main ( int argc, char* argv[] )
 							{
 								std::vector<double> distances;		// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
-									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, uniformDistribution, distances );
+									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances );
 
 								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
-								// h\kappa <= midpoint, we take them with an easing-off-dropping probability from 1 to
-								// 0.015, where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.015.
+								// h\kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
+								// where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.05.
 								if( ABS( data[NUM_COLUMNS - 1] ) > MAX_HKAPPA_MIDPOINT ||
-									uniformDistribution( gen ) <= 0.015 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
-									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.985 / 2  )
+									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
+									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.95 / 2  )
 								{
 									rlsSamples.push_back( data );
 									sdfSamples.push_back( distances );

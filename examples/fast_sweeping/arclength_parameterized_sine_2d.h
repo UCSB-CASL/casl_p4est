@@ -280,9 +280,9 @@ private:
 public:
 	/**
 	 * Constructor.
-	 * @param [in] u: Reference point's x-coordinate.
-	 * @param [in] v: Reference point's y-coordinate.
-	 * @param [in] a: Sine-wave amplitude.
+	 * @param [in] u Reference point's x-coordinate.
+	 * @param [in] v Reference point's y-coordinate.
+	 * @param [in] a Sine-wave amplitude.
 	 */
 	DistThetaFunctorDerivative( const double& u, const double& v, const double& a )
 		: _u( u ), _v( v ), _a( a )
@@ -290,7 +290,7 @@ public:
 
 	/**
 	 * Evaluate functor at angle parameter value.
-	 * @param [in] t: Angle parameter.
+	 * @param [in] t Angle parameter.
 	 * @return Function value.
 	 */
 	double operator()( const double& t ) const
@@ -300,7 +300,7 @@ public:
 
 	/**
 	 * The second derivative of the distance function to minimize.
-	 * @param [in] t: Angle parameter.
+	 * @param [in] t Angle parameter.
 	 * @return Second derivative of distance function.
 	 */
 	double secondDerivative( const double& t ) const
@@ -332,7 +332,7 @@ public:
 
 	/**
 	 * Evaluate functor at angle parameter value.
-	 * @param [in] t: Angle parameter.
+	 * @param [in] t Angle parameter.
 	 * @return A pair of a function evaluation and its derivative.
 	 */
 	std::pair<double, double> operator()( const double& t ) const
@@ -348,14 +348,14 @@ public:
 
 /**
  * Obtain the parameter value that minimizes the distance between (u,v) and the sine wave interface using Newton-Raphson.
- * @param [in] u: X-coordinate of query point.
- * @param [in] v: Y-coordinate of query point.
- * @param [in] sine: Reference to arclength-parameterized sine wave object.
+ * @param [in] u X-coordinate of query point.
+ * @param [in] v Y-coordinate of query point.
+ * @param [in] sine Reference to arclength-parameterized sine wave object.
  * @param [in] gen Random number generator.
  * @param [in] normalDistribution A normal random distribution generator.
- * @param [out] valOfDerivative: Value of the derivative given the best theta angle (expected ~ 0).
- * @param [out] minDistance: Minimum distance found between query point and sinusoid.
- * @param [in] verbose: Whether to show debugging message or not.
+ * @param [out] valOfDerivative Value of the derivative given the best theta angle (expected ~ 0).
+ * @param [out] minDistance Minimum distance found between query point and sinusoid.
+ * @param [in] verbose Whether to show debugging message or not.
  * @return Angle value that minimizes the distance from sine-wave and query point (u,v).
  */
 double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
@@ -376,10 +376,11 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 	DistThetaFunctorDerivativeNR distThetaFunctorDerivativeNR( distThetaFunctorDerivative );	// Used for Newton-Raphson's method.
 	eps_tolerance<double> epsToleranceFunctor( 10 );											// Used in bisection process (x bits).
 
-	// Algorithm to find the parameter that minimizes the distance.
-	const double SQRT_A_V = sqrt( SQR( ABS( A ) + ABS( V ) ) - SQR( ABS( A ) - ABS( V ) ) );
-	const double U_LOWER_B = U - ( SQRT_A_V < EPS ? M_PI : SQRT_A_V );		// Lower and upper bound for U where
-	const double U_UPPER_B = U + ( SQRT_A_V < EPS ? M_PI : SQRT_A_V );		// solution is guaranteed.
+	// Algorithm to find the parameter that minimizes the distance.  Based on the post made on Math Stack Exchange:
+	// https://math.stackexchange.com/questions/2638377/distance-between-point-and-sine-again?noredirect=1&lq=1.
+	const double SQRT_A_V = MAX( sqrt( SQR( ABS( A ) + ABS( V ) ) - SQR( ABS( A ) - ABS( V ) ) ), M_PI_2 );
+	const double U_LOWER_B = U - SQRT_A_V;					// Lower and upper bound for U where
+	const double U_UPPER_B = U + SQRT_A_V;					// solution is guaranteed.
 
 	std::vector<double> arcSinValues;						// Solve for sinx: 1 - Asinx(Asinx - V) + (Acosx)^2.
 	const double SQRT_A_V_SINX = sqrt( SQR( V * A ) + 8 * SQR( A ) * ( SQR( A ) + 1 ) );
@@ -458,7 +459,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 				iterations++;
 			}
 
-			if( verbose && iterations > 10 )
+			if( verbose && iterations > 20 )
 				std::cerr << "Node " << n << ":  High number of convergence iterations " << iterations << std::endl;
 		}
 

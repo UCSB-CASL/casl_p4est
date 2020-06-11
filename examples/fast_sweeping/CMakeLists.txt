@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC sinewave_levelset_test_2d.cpp arclength_parameterized_sine_2d.h )
+	list( APPEND SRC sinusoidal_datasets_2d.cpp arclength_parameterized_sine_2d.h )
 endif()
 
 #if( DIMENSION MATCHES 3d )
