@@ -27,14 +27,45 @@
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_grid_aligned_extension_t::initialize(Vec phi, unsigned int order, unsigned int max_iters, double band_extend, double band_check, Vec normal[], Vec mask)
+void my_p4est_grid_aligned_extension_t::initialize(Vec phi, unsigned int order, bool weighted, unsigned int max_iters, double band_extend, double band_check, Vec normal[], Vec mask)
 {
+  initialized_ = true;
   phi_         = phi;
   order_       = order;
+  weighted_    = weighted;
   max_iters_   = max_iters;
   band_extend_ = band_extend;
   band_check_  = band_check;
   num_points_to_extend_ = 0;
+
+  // set extrapolation weights
+  extrapolation_weights_.resize(order_+1);
+
+  switch (order_) {
+    case 0:
+      extrapolation_weights_[0] =  1;
+    break;
+    case 1:
+      extrapolation_weights_[0] =  2;
+      extrapolation_weights_[1] = -1;
+    break;
+    case 2:
+      extrapolation_weights_[0] =  3;
+      extrapolation_weights_[1] = -3;
+      extrapolation_weights_[2] =  1;
+    break;
+    case 3:
+      extrapolation_weights_[0] =  4;
+      extrapolation_weights_[1] = -6;
+      extrapolation_weights_[2] =  4;
+      extrapolation_weights_[3] = -1;
+    break;
+    default:
+      throw;
+  }
+
+  // set number of directions used
+  num_dirs_ = weighted_ ? P4EST_DIM : 1;
 
   double dxyz[P4EST_DIM];
   double diag_min;
@@ -76,43 +107,86 @@ void my_p4est_grid_aligned_extension_t::initialize(Vec phi, unsigned int order, 
     } else {
       well_defined_ptr[n] = -1;
 
-      if (phi_ptr[n] < band_extend_*diag_min) {
+      if (phi_ptr[n] < band_extend_*diag_min)
+      {
         double xyz[P4EST_DIM];
-        node_xyz_fr_n(n, p4est_, nodes_, xyz);
 
-        // determine direction
-        double dir[P4EST_DIM];
-        double max_neg_projection = 1;
+        if (weighted_) {
+          double dir0[P4EST_DIM];
+          double dir1[P4EST_DIM];
+
+          dir0[0] = normal_ptr[0][n] > 0 ? -1 : 1;
+          dir0[1] = normal_ptr[1][n] > 0 ? -1 : 1;
+
+          if (fabs(normal_ptr[0][n]) > fabs(normal_ptr[1][n])) {
+            dir1[0] = normal_ptr[0][n] > 0 ? -1 : 1;
+            dir1[1] = 0;
+          } else {
+            dir1[0] = 0;
+            dir1[1] = normal_ptr[1][n] > 0 ? -1 : 1;
+          }
+
+          double det = dir0[0]*dir1[1] - dir0[1]*dir1[0];
+          double a = (normal_ptr[0][n]*dir1[1] - normal_ptr[1][n] *dir1[0])/det;
+          double b = (normal_ptr[1][n]*dir0[0] - normal_ptr[0][n] *dir0[1])/det;
+
+          EXECD(dir0[0] *= dxyz[0], dir0[1] *= dxyz[1], dir0[2] *= dxyz[2]);
+          EXECD(dir1[0] *= dxyz[0], dir1[1] *= dxyz[1], dir1[2] *= dxyz[2]);
+
+          node_xyz_fr_n(n, p4est_, nodes_, xyz);
+          for (unsigned int j = 0; j < order_+1; ++j) {
+            // TODO: check for walls
+            foreach_dimension(dim) { xyz[dim] += dir0[dim]; }
+            interp_.add_point((num_points_to_extend_*num_dirs_+0)*(order_+1) + j, xyz);
+          }
+
+          node_xyz_fr_n(n, p4est_, nodes_, xyz);
+          for (unsigned int j = 0; j < order_+1; ++j) {
+            // TODO: check for walls
+            foreach_dimension(dim) { xyz[dim] += dir1[dim]; }
+            interp_.add_point((num_points_to_extend_*num_dirs_+1)*(order_+1) + j, xyz);
+          }
+
+          num_points_to_extend_++;
+          points_to_extend_.push_back(n);
+          mixing_weights_.push_back(a/(a+b));
+          mixing_weights_.push_back(b/(a+b));
+        } else {
+          // determine direction
+          double dir[P4EST_DIM];
+          double max_neg_projection = 1;
 
 #ifdef P4_TO_P8
-        for (int k = -1; k <= 1; k++)
+          for (int k = -1; k <= 1; k++)
 #endif
-          for (int j = -1; j <= 1; j++)
-            for (int i = -1; i <= 1; i++) {
-              if (SUMD(fabs(i), fabs(j), fabs(k)) != 0) {
-                double proj = SUMD(normal_ptr[0][n]*double(i)*dxyz[0],
-                    normal_ptr[1][n]*double(j)*dxyz[1],
-                    normal_ptr[2][n]*double(k)*dxyz[2])
-                    / ABSD(double(i)*dxyz[0], double(j)*dxyz[1], double(k)*dxyz[2]);
+            for (int j = -1; j <= 1; j++)
+              for (int i = -1; i <= 1; i++) {
+                if (SUMD(fabs(i), fabs(j), fabs(k)) != 0) {
+                  double proj = SUMD(normal_ptr[0][n]*double(i)*dxyz[0],
+                      normal_ptr[1][n]*double(j)*dxyz[1],
+                      normal_ptr[2][n]*double(k)*dxyz[2])
+                      / ABSD(double(i)*dxyz[0], double(j)*dxyz[1], double(k)*dxyz[2]);
 
-                if (proj < max_neg_projection) {
-                  max_neg_projection = proj;
-                  EXECD(dir[0] = double(i), dir[1] = double(j), dir[2] = double(k));
+                  if (proj < max_neg_projection) {
+                    max_neg_projection = proj;
+                    EXECD(dir[0] = double(i), dir[1] = double(j), dir[2] = double(k));
+                  }
                 }
               }
-            }
 
-        EXECD(dir[0] *= dxyz[0], dir[1] *= dxyz[1], dir[2] *= dxyz[2]);
+          EXECD(dir[0] *= dxyz[0], dir[1] *= dxyz[1], dir[2] *= dxyz[2]);
 
-        for (unsigned int j = 0; j < order_+1; ++j) {
-          // TODO: check for walls
-          foreach_dimension(dim) { xyz[dim] += dir[dim]; }
-          interp_.add_point(num_points_to_extend_*(order_+1) + j, xyz);
+          node_xyz_fr_n(n, p4est_, nodes_, xyz);
+          for (unsigned int j = 0; j < order_+1; ++j) {
+            // TODO: check for walls
+            foreach_dimension(dim) { xyz[dim] += dir[dim]; }
+            interp_.add_point(num_points_to_extend_*(order_+1) + j, xyz);
+          }
+
+          num_points_to_extend_++;
+          points_to_extend_.push_back(n);
+          mixing_weights_.push_back(1);
         }
-
-        num_points_to_extend_++;
-        points_to_extend_.push_back(n);
-        dist_.push_back(ABSD(dir[0], dir[1], dir[2]));
       }
     }
   }
@@ -136,6 +210,10 @@ void my_p4est_grid_aligned_extension_t::initialize(Vec phi, unsigned int order, 
 
 void my_p4est_grid_aligned_extension_t::extend(unsigned int num_fields, Vec fields[])
 {
+  if (!initialized_) {
+    throw std::domain_error("Grid aligned extrapolator is not initialized");
+  }
+
   double diag_min;
   get_dxyz_min(p4est_, NULL, NULL, &diag_min);
 
@@ -145,8 +223,8 @@ void my_p4est_grid_aligned_extension_t::extend(unsigned int num_fields, Vec fiel
   ierr = VecCopyGhost(well_defined_,  well_defined_tmp); CHKERRXX(ierr);
 
   // allocate arrays to store interpolated points
-  vector<double> interpolated_well_defined(num_points_to_extend_*(order_+1));
-  vector<vector<double> > interpolated_fields(num_fields, vector<double> (num_points_to_extend_*(order_+1)));
+  vector<double> interpolated_well_defined(num_points_to_extend_*num_dirs_*(order_+1));
+  vector<vector<double> > interpolated_fields(num_fields, vector<double> (num_points_to_extend_*num_dirs_*(order_+1)));
   vector<double *> pointers_to_interpolated_fields(num_fields);
   for (unsigned int i = 0; i < num_fields; ++i) {
     pointers_to_interpolated_fields[i] = interpolated_fields[i].data();
@@ -186,42 +264,25 @@ void my_p4est_grid_aligned_extension_t::extend(unsigned int num_fields, Vec fiel
       if (well_defined_tmp_ptr[n] != 1) {
         // check whether interpolated values are all well-defined
         bool neighbors_well_defined = true;
-        for (unsigned int k = 0; k < order_+1; ++k) {
-          neighbors_well_defined = neighbors_well_defined &&
-                                   interpolated_well_defined[j*(order_+1) + k] == 1;
+        for (unsigned int dir = 0; dir < num_dirs_; ++dir) {
+          for (unsigned int k = 0; k < order_+1; ++k) {
+            neighbors_well_defined = neighbors_well_defined &&
+                                     (interpolated_well_defined[(j*num_dirs_+dir)*(order_+1) + k] == 1);
+          }
         }
 
         if (neighbors_well_defined) {
           well_defined_tmp_ptr[n] = 1;
-          switch (order_) {
-            case 0:
-              for (unsigned int k = 0; k < num_fields; ++k) {
-                fields_ptr[k][n] = interpolated_fields[k][j];
+          for (unsigned int k = 0; k < num_fields; ++k) {
+            double result = 0;
+            for (unsigned int dir = 0; dir < num_dirs_; ++dir) {
+              double result_in_dir = 0;
+              for (unsigned int pt = 0; pt < order_ + 1; ++pt) {
+                result_in_dir += extrapolation_weights_[pt]*interpolated_fields[k][(j*num_dirs_+dir)*(order_+1) + pt];
               }
-            break;
-            case 1:
-              for (unsigned int k = 0; k < num_fields; ++k) {
-                fields_ptr[k][n] = 2.*interpolated_fields[k][2*j] -
-                                      interpolated_fields[k][2*j+1];
-              }
-            break;
-            case 2:
-              for (unsigned int k = 0; k < num_fields; ++k) {
-                fields_ptr[k][n] = 3.*interpolated_fields[k][3*j] -
-                                   3.*interpolated_fields[k][3*j+1] +
-                                      interpolated_fields[k][3*j+2];
-              }
-            break;
-            case 3:
-              for (unsigned int k = 0; k < num_fields; ++k) {
-                fields_ptr[k][n] = 4.*interpolated_fields[k][4*j] -
-                                   6.*interpolated_fields[k][4*j+1] +
-                                   4.*interpolated_fields[k][4*j+2] -
-                                      interpolated_fields[k][4*j+3];
-              }
-            break;
-            default:
-              throw;
+              result += mixing_weights_[j*num_dirs_ + dir]*result_in_dir;
+            }
+            fields_ptr[k][n] = result;
           }
         } else if (phi_ptr[n] < band_check_*diag_min) {
           not_done = true;

@@ -55,7 +55,7 @@ param_list_t pl;
 
 // grid parameters
 param_t<int>    lmin                 (pl, -1,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<int>    lmax                 (pl, 15,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmax                 (pl, 14,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
 param_t<double> lip                  (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
 param_t<double> uniform_band         (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
 param_t<int>    num_splits           (pl, 1,   "num_splits",           "Number of successive refinements (default: 5)");
@@ -421,6 +421,24 @@ int main(int argc, char** argv)
         ls.set_show_convergence_band(band()*diag_min);
       }
 
+      Vec phi_smoothed;
+
+      ierr = VecDuplicate( phi, &phi_smoothed ); CHKERRXX( ierr );
+      ierr = VecCopyGhost( phi, phi_smoothed ); CHKERRXX( ierr );
+
+      ierr = VecShiftGhost( phi_smoothed, 2.0*diag_min ); CHKERRXX( ierr );
+
+      ls.reinitialize_1st_order( phi_smoothed );
+      ierr = VecShiftGhost( phi_smoothed, -2.0*diag_min ); CHKERRXX( ierr );
+
+      Vec normal_smoothed[P4EST_DIM];
+
+      foreach_dimension(dim) {
+        ierr = VecCreateGhostNodes(p4est, nodes, &normal_smoothed[dim]); CHKERRXX(ierr);
+      }
+
+      compute_normals(ngbd, phi_smoothed, normal_smoothed);
+
       parStopWatch timer;
       double time_const;
       double time_linear;
@@ -440,9 +458,9 @@ int main(int argc, char** argv)
         my_p4est_grid_aligned_extension_t ext_c(&ngbd);
         my_p4est_grid_aligned_extension_t ext_l(&ngbd);
         my_p4est_grid_aligned_extension_t ext_q(&ngbd);
-        w.start(); ext_c.initialize(phi, 0, num_iterations(), band()+2, band(), NULL, NULL); ext_c.extend(1, &f_const);     time_const     = w.get_duration_current();
-        w.start(); ext_l.initialize(phi, 1, num_iterations(), band()+2, band(), NULL, NULL); ext_l.extend(1, &f_linear);    time_linear    = w.get_duration_current();
-        w.start(); ext_q.initialize(phi, 2, num_iterations(), band()+2, band(), NULL, NULL); ext_q.extend(1, &f_quadratic); time_quadratic = w.get_duration_current();
+        w.start(); ext_c.initialize(phi, 0, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_c.extend(1, &f_const);     time_const     = w.get_duration_current();
+        w.start(); ext_l.initialize(phi, 1, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_l.extend(1, &f_linear);    time_linear    = w.get_duration_current();
+        w.start(); ext_q.initialize(phi, 3, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_q.extend(1, &f_quadratic); time_quadratic = w.get_duration_current();
       }
 
       ls.extend_from_interface_to_whole_domain_TVD(phi, f_exact, f_flat, num_iterations()); // constant extrapolation in both directions (flattening)
@@ -470,7 +488,7 @@ int main(int argc, char** argv)
       error_quadratic_max_cur = 0;
 
       // loop through local nodes
-      foreach_local_node(n, nodes)
+      foreach_node(n, nodes)
       {
         if (phi_ptr[n] > 0 &&
             phi_ptr[n] < band()*diag_min)
@@ -501,15 +519,6 @@ int main(int argc, char** argv)
       ierr = VecRestoreArray(error_const,     &error_const_ptr);
       ierr = VecRestoreArray(error_linear,    &error_linear_ptr);
       ierr = VecRestoreArray(error_quadratic, &error_quadratic_ptr);
-
-      // synchronize ghost data (for better visualization)
-      ierr = VecGhostUpdateBegin(error_const,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (error_const,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(error_linear,    INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (error_linear,    INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(error_quadratic, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (error_quadratic, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
 
       // save results
       lmin_all.push_back(sp.min_lvl-scale);
@@ -575,7 +584,8 @@ int main(int argc, char** argv)
           l_p[p4est->local_num_quadrants+q] = quad->level;
         }
 
-        ierr = VecGetArray(phi,             &phi_ptr);
+//        ierr = VecGetArray(phi,             &phi_ptr);
+        ierr = VecGetArray(phi_smoothed,    &phi_ptr);
         ierr = VecGetArray(phi_reinit,      &phi_reinit_ptr);
         ierr = VecGetArray(f_exact,         &f_exact_ptr);
         ierr = VecGetArray(f_const,         &f_const_ptr);
@@ -601,7 +611,8 @@ int main(int argc, char** argv)
                                VTK_POINT_DATA, "error_quadratic", error_quadratic_ptr,
                                VTK_CELL_DATA, "level", l_p);
 
-        ierr = VecRestoreArray(phi,             &phi_ptr);
+//        ierr = VecRestoreArray(phi,             &phi_ptr);
+        ierr = VecRestoreArray(phi_smoothed,    &phi_ptr);
         ierr = VecRestoreArray(phi_reinit,      &phi_reinit_ptr);
         ierr = VecRestoreArray(f_exact,         &f_exact_ptr);
         ierr = VecRestoreArray(f_const,         &f_const_ptr);
