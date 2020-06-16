@@ -87,7 +87,7 @@ void matrix_t::tranpose_matvec(const vector<double> x[], vector<double> b[], con
   }
 }
 
-void matrix_t::matrix_product(matrix_t& b, matrix_t& c)
+void matrix_t::matrix_product(const matrix_t& b, matrix_t& c)
 {
 #ifdef CASL_THROWS
   if(n != b.m) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product: the matrix sizes don't match");
@@ -95,12 +95,12 @@ void matrix_t::matrix_product(matrix_t& b, matrix_t& c)
   c.resize(m, b.n);
 //  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, m, b.n, n, 1.0, this->values.data(), n, b.values.data(), b.n, 0.0, c.values.data(), c.n);
   for(int i = 0; i < m; i++)
-    for(int k = 0; k<b.n; k++)
+    for(int k = 0; k < b.n; k++)
     {
-      double sum = 0;
+      double sum = 0.0;
       for(int j = 0; j < n; j++)
-        sum += values[i*n + j]*b.values[j*n+k];
-      c.values[i*n+k] = sum;
+        sum += values[i*n + j]*b.values[j*b.n + k];
+      c.values[i*n + k] = sum;
     }
 }
 
