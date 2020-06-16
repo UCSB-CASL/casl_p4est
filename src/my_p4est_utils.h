@@ -377,7 +377,7 @@ public:
   virtual ~mixed_interface() {}
 };
 
-inline bool case_insenstive_char_compare(unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); }
+inline bool case_insenstive_char_compare(char a, char b) { return std::tolower(a) == std::tolower(b); }
 
 inline bool case_insenstive_str_compare(std::string const& a, std::string const& b) {
   if (a.length() == b.length())
