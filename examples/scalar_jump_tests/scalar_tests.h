@@ -448,7 +448,7 @@ public:
     description =
         std::string("* domain = [-1.0, 1.0] X [-1.0, 1.0] \n")
         + std::string("* interface = circle of radius 1/2, centered in (0.0, 0.0), negative inside, positive outside \n")
-        + std::string("* mu_m = 2.0; \n")
+        + std::string("* mu_m = 1.0; \n")
         + std::string("* mu_p = 1.0; \n")
         + std::string("* u_m  = 1.0; \n")
         + std::string("* u_p  = 1.0 + log(2.0*sqrt(x*x + y*y)); \n")
