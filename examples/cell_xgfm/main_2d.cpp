@@ -151,7 +151,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
 
   ostringstream command;
   command << "mkdir -p " << out_dir.c_str();
-  int uu = system(command.str().c_str()); (void) uu;
+  int system_return = system(command.str().c_str()); (void) system_return;
 
   ostringstream oss_computational;
   oss_computational << out_dir << "/computational_grid_macromesh_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2])
@@ -164,7 +164,7 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
   Vec correction_jump_mu_grad;
   const double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_on_computational_nodes_p;
   const double *GFM_solution_p, *GFM_error_p;
-  const double *xGFM_solution_p, *xGFM_error_p, *xGFM_cell_extension_p, *xGFM_interface_capturing_node_extension_p;
+  const double *xGFM_solution_p, *xGFM_error_p, *xGFM_cell_extension_p;
   const double *jump_u_p, *jump_normal_flux_p;
   const double *grad_phi_p, *jump_flux_GFM_p, *jump_flux_xGFM_p, *correction_jump_mu_grad_p;
   // on computational grid nodes
@@ -178,8 +178,6 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
   ierr = VecGetArrayRead(xGFM_error,                                              &xGFM_error_p);                 CHKERRXX(ierr);
   ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values(),             &xGFM_cell_extension_p);        CHKERRXX(ierr);
   // on interface-capturing grid nodes
-  ierr = VecGetArrayRead(xGFM_solver.get_extended_interface_values_on_interface_capturing_nodes(),
-                         &xGFM_interface_capturing_node_extension_p);                                             CHKERRXX(ierr);
   ierr = VecDuplicate(xGFM_solver.get_jump_in_flux(),                             &correction_jump_mu_grad);      CHKERRXX(ierr);
   ierr = VecCopyGhost(xGFM_solver.get_jump_in_flux(), correction_jump_mu_grad);                                   CHKERRXX(ierr);
   ierr = VecAXPYGhost(correction_jump_mu_grad, -1.0, GFM_solver.get_jump_in_flux());                              CHKERRXX(ierr);
@@ -214,26 +212,24 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
     const double* phi_p;
     ierr = VecGetArrayRead(interface_manager->get_phi(),      &phi_p);  CHKERRXX(ierr);
     my_p4est_vtk_write_all_general(interface_capturing_p4est, interface_capturing_nodes, interface_capturing_ghost, P4EST_TRUE, P4EST_TRUE,
-                                   4, 0, 4, 0, 0, 0, oss_interface_capturing.str().c_str(),
+                                   3, 0, 4, 0, 0, 0, oss_interface_capturing.str().c_str(),
                                    VTK_NODE_SCALAR, "phi", phi_p,
                                    VTK_NODE_SCALAR, "jump", jump_u_p,
                                    VTK_NODE_SCALAR, "jump_normal_flux", jump_normal_flux_p,
                                    VTK_NODE_VECTOR_BLOCK, "grad_phi", grad_phi_p,
                                    VTK_NODE_VECTOR_BLOCK, "gfm_jump_flux", jump_flux_GFM_p,
                                    VTK_NODE_VECTOR_BLOCK, "xgfm_jump_flux", jump_flux_xGFM_p,
-                                   VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p,
-                                   VTK_NODE_SCALAR, "extension_xgfm_nodes", xGFM_interface_capturing_node_extension_p);
+                                   VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p);
     ierr = VecRestoreArrayRead(interface_manager->get_phi(),  &phi_p);  CHKERRXX(ierr);
   }
   else
     my_p4est_vtk_write_all_general(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE,
-                                   6, 0, 4, 5, 0, 0, oss_computational.str().c_str(),
+                                   5, 0, 4, 5, 0, 0, oss_computational.str().c_str(),
                                    VTK_NODE_SCALAR, "exact_sol_m", exact_msol_at_nodes_p,
                                    VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
                                    VTK_NODE_SCALAR, "phi", phi_on_computational_nodes_p,
                                    VTK_NODE_SCALAR, "jump", jump_u_p,
                                    VTK_NODE_SCALAR, "jump_normal_flux", jump_normal_flux_p,
-                                   VTK_NODE_SCALAR, "extension_xgfm_nodes", xGFM_interface_capturing_node_extension_p,
                                    VTK_NODE_VECTOR_BLOCK, "grad_phi", grad_phi_p,
                                    VTK_NODE_VECTOR_BLOCK, "gfm_jump_flux", jump_flux_GFM_p,
                                    VTK_NODE_VECTOR_BLOCK, "xgfm_jump_flux", jump_flux_xGFM_p,
@@ -250,8 +246,6 @@ void save_VTK(const string out_dir, const int &iter, my_p4est_xgfm_cells_t& GFM_
   ierr = VecRestoreArrayRead(xGFM_solver.get_jump_in_normal_flux(),               &jump_normal_flux_p);           CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(xGFM_solver.get_jump(),                              &jump_u_p);                     CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(correction_jump_mu_grad,                             &correction_jump_mu_grad_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values_on_interface_capturing_nodes(),
-                         &xGFM_interface_capturing_node_extension_p);                                             CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(xGFM_solver.get_extended_interface_values(),         &xGFM_cell_extension_p);        CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(xGFM_error,                                          &xGFM_error_p);                 CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(GFM_error,                                           &GFM_error_p);                  CHKERRXX(ierr);
@@ -914,7 +908,7 @@ int main (int argc, char* argv[])
   BCWALLVAL bc_wall_val(test_problem, &bc_wall_type); bc.setWallValues(bc_wall_val);
 
   const string out_folder = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR"))) + "/" + test_problem->get_name();
-  const string vtk_out = out_folder + "/vtu";
+  const string vtk_out = out_folder + "/vtu/" + (use_subrefinement ? "subresolved" : "standard");
 
   connectivity = my_p4est_brick_new(n_xyz, test_problem->get_xyz_min(), test_problem->get_xyz_max(), &brick, test_problem->get_periodicity());
   splitting_criteria_cf_t       *data       = NULL, *subrefined_data        = NULL;

@@ -23,28 +23,19 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   xGFM_absolute_accuracy_threshold  = 1e-8;   // default value
   xGFM_tolerance_on_rel_residual    = 1e-12;  // default value
 
-  residual = solution = extension_on_cells = extension_on_nodes = jump_flux = NULL;
-  local_interpolators_are_stored_and_set = false;
+  residual = solution = extension_on_cells = jump_flux = NULL;
   pseudo_time_step_increment_operator.resize(p4est->local_num_quadrants);
   extension_operators_are_stored_and_set = false;
+  xgfm_flux_correction_operator.clear();
 }
 
 my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
 {
   PetscErrorCode ierr;
   if (extension_on_cells  != NULL)  { ierr = VecDestroy(extension_on_cells);  CHKERRXX(ierr); }
-  if (extension_on_nodes  != NULL)  { ierr = VecDestroy(extension_on_nodes);  CHKERRXX(ierr); }
   if (residual            != NULL)  { ierr = VecDestroy(residual);            CHKERRXX(ierr); }
   if (solution            != NULL)  { ierr = VecDestroy(solution);            CHKERRXX(ierr); }
   if (jump_flux           != NULL)  { ierr = VecDestroy(jump_flux);           CHKERRXX(ierr); }
-}
-
-void my_p4est_xgfm_cells_t::set_interface(my_p4est_interface_manager_t* interface_manager_)
-{
-  my_p4est_poisson_jump_cells_t::set_interface(interface_manager_);
-
-  local_interpolators.resize(interface_manager->get_interface_capturing_ngbd_n().get_nodes()->num_owned_indeps);
-  return;
 }
 
 void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_all_interface_capturing_nodes() const
@@ -52,96 +43,40 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_all_interface_ca
   PetscErrorCode ierr;
   P4EST_ASSERT(jump_flux != NULL);
   const double *jump_u_p, *jump_normal_flux_u_p, *grad_phi_p;
-  const double *extension_on_nodes_p = NULL;
   ierr = VecGetArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(jump_normal_flux_u, &jump_normal_flux_u_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-  if(extension_on_nodes != NULL){
-    ierr = VecGetArrayRead(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr); }
   double *jump_flux_p;
   ierr = VecGetArray(jump_flux, &jump_flux_p); CHKERRXX(ierr);
 
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_layer_size(); ++k)
     compute_jumps_in_flux_components_for_interface_capturing_node(interface_capturing_ngbd_n.get_layer_node(k), jump_flux_p,
-                                                                  jump_u_p, jump_normal_flux_u_p, grad_phi_p, extension_on_nodes_p);
+                                                                  jump_u_p, jump_normal_flux_u_p, grad_phi_p);
   ierr = VecGhostUpdateBegin(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_local_size(); ++k)
     compute_jumps_in_flux_components_for_interface_capturing_node(interface_capturing_ngbd_n.get_local_node(k), jump_flux_p,
-                                                                  jump_u_p, jump_normal_flux_u_p, grad_phi_p, extension_on_nodes_p);
+                                                                  jump_u_p, jump_normal_flux_u_p, grad_phi_p);
   ierr = VecGhostUpdateEnd(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(jump_flux, &jump_flux_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(jump_normal_flux_u, &jump_normal_flux_u_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-  if(extension_on_nodes != NULL){
-    ierr = VecRestoreArrayRead(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr); }
-
-  return;
-}
-
-void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only() const
-{
-  if(!interface_manager->is_storing_cell_FD_interface_data())
-  {
-    compute_jumps_in_flux_components_at_all_interface_capturing_nodes();
-    return;
-  }
-
-  PetscErrorCode ierr;
-  P4EST_ASSERT(jump_flux != NULL);
-  const double *jump_u_p, *jump_normal_flux_u_p, *grad_phi_p;
-  const double *extension_on_nodes_p = NULL;
-  ierr = VecGetArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(jump_normal_flux_u, &jump_normal_flux_u_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-  if(extension_on_nodes != NULL){
-    ierr = VecGetArrayRead(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr); }
-  double *jump_flux_p;
-  ierr = VecGetArray(jump_flux, &jump_flux_p); CHKERRXX(ierr);
-
-  const map_of_interface_neighbors_t& cell_FD_interface_data = interface_manager->get_cell_FD_interface_data();
-  const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
-  for (map_of_interface_neighbors_t::const_iterator it = cell_FD_interface_data.begin(); it != cell_FD_interface_data.end(); ++it) {
-    const linear_combination_of_dof_t& node_interpolant = it->second.node_interpolant;
-    for (size_t k = 0; k < node_interpolant.size(); ++k)
-      if(node_interpolant[k].dof_idx < interface_capturing_ngbd_n.get_nodes()->num_owned_indeps)
-        compute_jumps_in_flux_components_for_interface_capturing_node(node_interpolant[k].dof_idx, jump_flux_p,
-                                                                      jump_u_p, jump_normal_flux_u_p, grad_phi_p, extension_on_nodes_p);
-  }
-
-  ierr = VecGhostUpdateBegin(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(jump_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_flux, &jump_flux_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(jump_normal_flux_u, &jump_normal_flux_u_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-  if(extension_on_nodes != NULL){
-    ierr = VecRestoreArrayRead(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr); }
 
   return;
 }
 
 void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_for_interface_capturing_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
-                                                                                          const double *jump_u_p, const double *jump_normal_flux_p, const double *grad_phi_p,
-                                                                                          const double *extension_on_nodes_p) const
+                                                                                          const double *jump_u_p, const double *jump_normal_flux_p, const double *grad_phi_p) const
 {
   double grad_jump_u[P4EST_DIM];
-  double grad_extension[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)}; // set to 0.0 to avoid undefined behavior if extension_on_nodes_p == NULL
 
   const quad_neighbor_nodes_of_node_t *qnnn;
   if(activate_xGFM)
   {
     interface_manager->get_interface_capturing_ngbd_n().get_neighbors(node_idx, qnnn);
-    if(extension_on_nodes_p != NULL)
-    {
-      const double *inputs[2] = {jump_u_p,    extension_on_nodes_p};
-      double *outputs[2]      = {grad_jump_u, grad_extension};
-      qnnn->gradient(inputs, outputs, 2);
-    }
-    else
-      qnnn->gradient(jump_u_p, grad_jump_u);
+    qnnn->gradient(jump_u_p, grad_jump_u);
   }
 
   const double *grad_phi = grad_phi_p + P4EST_DIM*node_idx;
@@ -151,16 +86,11 @@ void my_p4est_xgfm_cells_t::compute_jumps_in_flux_components_for_interface_captu
                                     (mag_grad_phi > EPS ? grad_phi[2]/mag_grad_phi : 0.0))};
 
   const double grad_jump_u_cdot_normal    = SUMD(normal[0]*grad_jump_u[0], normal[1]*grad_jump_u[1], normal[2]*grad_jump_u[2]);
-  const double grad_extension_cdot_normal = SUMD(normal[0]*grad_extension[0], normal[1]*grad_extension[1], normal[2]*grad_extension[2]);
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     jump_flux_p[P4EST_DIM*node_idx + dim] = jump_normal_flux_p[node_idx]*normal[dim];
     if(activate_xGFM)
-    {
       jump_flux_p[P4EST_DIM*node_idx + dim] += (extend_negative_interface_values() ? mu_plus : mu_minus)*(grad_jump_u[dim] - grad_jump_u_cdot_normal*normal[dim]);
-      if(extension_on_nodes_p != NULL)
-        jump_flux_p[P4EST_DIM*node_idx + dim] += get_jump_in_mu()*(grad_extension[dim] - grad_extension_cdot_normal*normal[dim]);
-    }
   }
 
   return;
@@ -309,7 +239,22 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
         ierr = MatSetValue(A, quad_gloidx, compute_global_index(neighbor_quad.p.piggy3.local_num), -mu_jump * face_area/dxyz_min[oriented_dir/2], ADD_VALUES); CHKERRXX(ierr);
       }
       if(!rhs_is_set)
-        rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*interface_manager->GFM_jump_terms_for_flux_component_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_here, mu_across, (phi_quad > 0.0), jump_u_p, jump_flux_p);
+      {
+        double xgfm_flux_correction = 0.0;
+        if(activate_xGFM && !mus_are_equal())
+        {
+          const linear_combination_of_dof_t& xgfm_correction = get_and_store_xgfm_flux_correction_operator(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
+          if(extension_on_cells != NULL)
+          {
+            const double* extension_on_cells_p;
+            ierr = VecGetArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+            xgfm_flux_correction = xgfm_correction(extension_on_cells_p);
+            ierr = VecRestoreArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+          }
+        }
+
+        rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*interface_manager->GFM_jump_terms_for_flux_component_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_here, mu_across, (phi_quad > 0.0), jump_u_p, jump_flux_p, xgfm_flux_correction);
+      }
     }
   }
 
@@ -347,20 +292,17 @@ void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type , c
   ierr = setup_linear_solver(ksp_type, pc_type, xGFM_tolerance_on_rel_residual); CHKERRXX(ierr);
   KSPConvergedReason termination_reason = solve_linear_system();
   if(termination_reason <= 0)
-    throw std::runtime_error("my_p4est_xgfm_cells_t::solve() the Krylov solver failed to converge for the very first linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
+    throw std::runtime_error("my_p4est_xgfm_cells_t::solve_for_sharp_solution() the Krylov solver failed to converge for the very first linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
   if(!activate_xGFM || mus_are_equal())
     solver_monitor.log_iteration(0.0, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
   else
   {
     Vec former_extension_on_cells = extension_on_cells; // both should be NULL at this stage, this is the generalized usage for fix-point update
-    Vec former_extension_on_nodes = extension_on_nodes; // both should be NULL at this stage, this is the generalized usage for fix-point update
     Vec former_residual           = residual;           // both should be NULL at this stage, this is the generalized usage for fix-point update
     Vec former_rhs                = rhs;
     Vec former_solution           = solution;
-    if(extension_on_nodes != NULL) // should not be, ever, but if not NULL for whatever reason, we need this here for consistency
-      compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only(); // those jumps are function of extension_on_nodes so they need to be updated first if known for whatever reason
     // fix-point update
-    extend_interface_values(former_extension_on_cells, former_extension_on_nodes);
+    extend_interface_values(former_extension_on_cells);
     update_rhs_and_residual(former_rhs, former_residual);
     solver_monitor.log_iteration(0.0, this);
 
@@ -369,12 +311,11 @@ void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type , c
     {
       // we need to keep going : find the next fix-point rhs and fix-point residual based,
       // and linearly combine the two last states in order to minimize the next residual
-      extend_interface_values(former_extension_on_cells, former_extension_on_nodes);
+      extend_interface_values(former_extension_on_cells);
       update_rhs_and_residual(former_rhs, former_residual);
 
       // linear combination of last two solver's states that minimizes the next residual
-      const double max_correction = set_solver_state_minimizing_L2_norm_of_residual(former_solution, former_extension_on_cells, former_extension_on_nodes,
-                                                                                    former_rhs, former_residual);
+      const double max_correction = set_solver_state_minimizing_L2_norm_of_residual(former_solution, former_extension_on_cells, former_rhs, former_residual);
       solver_monitor.log_iteration(max_correction, this);
     }
 
@@ -382,8 +323,6 @@ void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type , c
     ierr = VecDestroy(former_solution); CHKERRXX(ierr);
     if(former_extension_on_cells != extension_on_cells){
       ierr = VecDestroy(former_extension_on_cells); CHKERRXX(ierr); }
-    if(former_extension_on_nodes != extension_on_nodes){
-      ierr = VecDestroy(former_extension_on_nodes); CHKERRXX(ierr); }
     if(former_rhs != rhs){
       ierr = VecDestroy(former_rhs); CHKERRXX(ierr); }
     if(former_residual != residual){
@@ -396,35 +335,73 @@ void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type , c
 }
 
 // this function assumes that the (relevant) jumps_in_flux_components are up-to-date and will reset the extension of the appropriate interface-defined value
-void my_p4est_xgfm_cells_t::extend_interface_values(Vec &former_extension_on_cells, Vec &former_extension_on_nodes, const double& threshold, const uint& niter_max)
+void my_p4est_xgfm_cells_t::extend_interface_values(Vec &former_extension_on_cells, const double& threshold, const uint& niter_max)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_extend_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(interface_is_set() && jumps_have_been_set() && threshold > EPS && niter_max > 0);
 
-  // save the current cell-sampled extension
-  std::swap(former_extension_on_cells, extension_on_cells);
-  // create a new vector if needed and build an educated guess for the TVD extension to come:
-  if(extension_on_cells == NULL || extension_on_cells == former_extension_on_cells){
-    ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells); CHKERRXX(ierr); } // we need a new vector for the fix-point iteration step with the currently known extension_on_nodes
+  const double *solution_p, *jump_u_p, *jump_flux_p;
+  ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(jump_flux, &jump_flux_p); CHKERRXX(ierr);
+  Vec extension_on_cells_n, extension_on_cells_np1; // (extensions at pseudo times n and np1)
+  ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells_n); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells_np1); CHKERRXX(ierr);
+  if(extension_on_cells != NULL){
+    ierr = VecCopyGhost(extension_on_cells, extension_on_cells_n); CHKERRXX(ierr); }
+  else
+    initialize_extension_on_cells(extension_on_cells_n);
 
-  if(former_extension_on_cells == NULL)
-    initialize_extension_on_cells(); // we start from scratch, build an educated guess using jump_u where needed
-  else {
-    ierr = VecCopyGhost(former_extension_on_cells, extension_on_cells); CHKERRXX(ierr); }  // we knew something already, use it as initial guess...
+  const double control_band = 3.0*diag_min();
+  double max_increment_in_band = 10.0*threshold;
+  uint iter = 0;
+  while (max_increment_in_band > threshold && iter < niter_max)
+  {
+    double *extension_on_cells_n_p, *extension_on_cells_np1_p;
+    ierr = VecGetArray(extension_on_cells_n,    &extension_on_cells_n_p); CHKERRXX(ierr);
+    ierr = VecGetArray(extension_on_cells_np1,  &extension_on_cells_np1_p); CHKERRXX(ierr);
+    max_increment_in_band = 0.0; // reset the measure;
+    /* Main loop over all local quadrant */
+    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k) {
+      const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
+      const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k), control_band);
+      extension_on_cells_np1_p[quad_idx] = extension_on_cells_n_p[quad_idx]
+          + extension_increment(extension_on_cells_n_p, solution_p, jump_u_p, jump_flux_p, *this, max_increment_in_band);
+    }
+    ierr = VecGhostUpdateBegin(extension_on_cells_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
+      const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
+      const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k), control_band);
+      extension_on_cells_np1_p[quad_idx] = extension_on_cells_n_p[quad_idx]
+          + extension_increment(extension_on_cells_n_p, solution_p, jump_u_p, jump_flux_p, *this, max_increment_in_band);
+    }
+    if(!extension_operators_are_stored_and_set)
+      extension_operators_are_stored_and_set = true;
 
-  // now do the real TVD extension task on the cell-sampled solution field with the currently known extension_on_nodes
-  cell_TVD_extension_of_interface_values(threshold, niter_max);
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_increment_in_band, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    ierr = VecGhostUpdateEnd(extension_on_cells_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  // redefine the extension_on_nodes by interpolating the newly defined cell-sampled interface values
-  // save the current node-sampled extension
-  std::swap(former_extension_on_nodes, extension_on_nodes);
-  // create a new vector if needed
-  if(extension_on_nodes == NULL || extension_on_nodes == former_extension_on_nodes){
-    const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
-    ierr = VecCreateGhostNodes(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), &extension_on_nodes); CHKERRXX(ierr); // we need a new vector to store the interpolated result
+    ierr = VecRestoreArray(extension_on_cells_n,    &extension_on_cells_n_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(extension_on_cells_np1,  &extension_on_cells_np1_p); CHKERRXX(ierr);
+
+    // swap the vectors before moving on
+    Vec tmp = extension_on_cells_n; extension_on_cells_n = extension_on_cells_np1; extension_on_cells_np1 = tmp;
+
+    iter++;
   }
-  interpolate_cell_extension_to_interface_capturing_nodes();
+
+
+  ierr = VecDestroy(extension_on_cells_np1);  CHKERRXX(ierr);
+  if(former_extension_on_cells != NULL){
+    ierr = VecDestroy(former_extension_on_cells); CHKERRXX(ierr); }
+  former_extension_on_cells = extension_on_cells;
+  extension_on_cells = extension_on_cells_n;
+
+  ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(jump_flux, &jump_flux_p); CHKERRXX(ierr);
+  return;
 
   ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_extend_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -492,8 +469,6 @@ void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec& former_rhs, Vec& former
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(rhs != NULL);
 
-  // update the relevant jumps in flux components according to the newly defined node-sampled extension
-  compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only();
   // update the rhs consistently with those new jumps in flux components
   // save the rhs first
   std::swap(former_rhs, rhs);
@@ -522,8 +497,7 @@ void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec& former_rhs, Vec& former
 
 // linearly combines the last known solver's state (provided by the user) with the current state in such a way that
 // the linearly combined states minimize the L2 norm of the residual
-double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_extension_on_nodes,
-                                                                              Vec former_rhs, Vec former_residual)
+double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_rhs, Vec former_residual)
 {
   PetscErrorCode ierr;
   PetscReal former_residual_dot_residual, L2_norm_residual;
@@ -532,10 +506,8 @@ double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Ve
   const double step_size = (SQR(solver_monitor.latest_L2_norm_of_residual()) - former_residual_dot_residual)/(SQR(solver_monitor.latest_L2_norm_of_residual()) - 2.0*former_residual_dot_residual + SQR(L2_norm_residual));
 
   // doing the state update of relevant internal variable all at once and knowingly avoiding separate Petsc operations that would multiply the number of such loops
-  const double *former_extension_on_nodes_p, *former_rhs_p, *former_extension_on_cells_p, *former_solution_p, *former_residual_p;
-  double *extension_on_nodes_p, *rhs_p, *extension_on_cells_p, *solution_p, *residual_p;
-  ierr = VecGetArrayRead(former_extension_on_nodes, &former_extension_on_nodes_p); CHKERRXX(ierr);
-  ierr = VecGetArray(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr);
+  const double *former_rhs_p, *former_extension_on_cells_p, *former_solution_p, *former_residual_p;
+  double *rhs_p, *extension_on_cells_p, *solution_p, *residual_p;
   ierr = VecGetArrayRead(former_rhs, &former_rhs_p); CHKERRXX(ierr);
   ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(former_extension_on_cells, &former_extension_on_cells_p); CHKERRXX(ierr);
@@ -558,8 +530,6 @@ double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Ve
       solution_p[idx]           = (1.0 - step_size)*former_solution_p[idx] + step_size*solution_p[idx];
       extension_on_cells_p[idx] = (1.0 - step_size)*former_extension_on_cells_p[idx] + step_size*extension_on_cells_p[idx];
     }
-    if(idx < interface_capturing_nodes->indep_nodes.elem_count)
-      extension_on_nodes_p[idx] = (1.0 - step_size)*former_extension_on_nodes_p[idx] + step_size*extension_on_nodes_p[idx];
   }
   ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(former_solution, &former_solution_p); CHKERRXX(ierr);
@@ -569,12 +539,7 @@ double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Ve
   ierr = VecRestoreArrayRead(former_extension_on_cells, &former_extension_on_cells_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(former_rhs, &former_rhs_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(former_extension_on_nodes, &former_extension_on_nodes_p); CHKERRXX(ierr);
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_correction, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  // the jumps in flux component are multilinear in extension_on_nodes
-  // --> need to be updated as well for future consistent extension, since extension_on_nodes and rhs were updated!
-  compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only();
 
   return max_correction;
 }
@@ -602,32 +567,32 @@ bool my_p4est_xgfm_cells_t::solve_for_fixpoint_solution(Vec& former_solution)
   return (termination_reason > 0 && nksp_iteration == 0);
 }
 
-void my_p4est_xgfm_cells_t::initialize_extension_on_cells()
+void my_p4est_xgfm_cells_t::initialize_extension_on_cells(Vec cell_sampled_extension)
 {
   P4EST_ASSERT(interface_is_set() && jumps_have_been_set());
   PetscErrorCode ierr;
-  P4EST_ASSERT(extension_on_cells != NULL && VecIsSetForCells(extension_on_cells, p4est, ghost, 1));
+  P4EST_ASSERT(cell_sampled_extension != NULL && VecIsSetForCells(cell_sampled_extension, p4est, ghost, 1));
 
   const double *solution_p;
-  double *extension_on_cells_p;
+  double *cell_sampled_extension_p;
   ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
-  ierr = VecGetArray(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+  ierr = VecGetArray(cell_sampled_extension, &cell_sampled_extension_p); CHKERRXX(ierr);
 
   const my_p4est_hierarchy_t* hierarchy = cell_ngbd->get_hierarchy();
   for (size_t k = 0; k < hierarchy->get_layer_size(); ++k) {
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_layer_quadrant(k);
     const p4est_locidx_t quad_idx = hierarchy->get_local_index_of_layer_quadrant(k);
-    initialize_extension_on_cells_local(quad_idx, tree_idx, solution_p, extension_on_cells_p);
+    initialize_extension_on_cells_local(quad_idx, tree_idx, solution_p, cell_sampled_extension_p);
   }
-  ierr = VecGhostUpdateBegin(extension_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(cell_sampled_extension, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < hierarchy->get_inner_size(); ++k) {
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_inner_quadrant(k);
     const p4est_locidx_t quad_idx = hierarchy->get_local_index_of_inner_quadrant(k);
-    initialize_extension_on_cells_local(quad_idx, tree_idx, solution_p, extension_on_cells_p);
+    initialize_extension_on_cells_local(quad_idx, tree_idx, solution_p, cell_sampled_extension_p);
   }
-  ierr = VecGhostUpdateEnd(extension_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(cell_sampled_extension, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(cell_sampled_extension, &cell_sampled_extension_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
@@ -727,217 +692,47 @@ my_p4est_xgfm_cells_t::get_extension_increment_operator_for(const p4est_locidx_t
   return pseudo_time_step_operator;
 }
 
-void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(const double& threshold, const uint& niter_max)
+linear_combination_of_dof_t my_p4est_xgfm_cells_t::get_xgfm_flux_correction_operator(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const bool& look_in_map, const bool& underresolved_tangency_point) const
 {
-  P4EST_ASSERT(interface_is_set() && threshold > EPS && niter_max > 0);
-  const double *solution_p, *jump_u_p, *jump_flux_p;
-  PetscErrorCode ierr;
-  ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(jump_flux, &jump_flux_p); CHKERRXX(ierr);
-  Vec extension_on_cells_np1; // (next pseudo-time step values)
-  ierr = VecCreateGhostCells(p4est, ghost, &extension_on_cells_np1); CHKERRXX(ierr);
-
-  const double control_band = 3.0*diag_min();
-  double max_increment_in_band = 10.0*threshold;
-  uint iter = 0;
-  while (max_increment_in_band > threshold && iter < niter_max)
+  if(look_in_map)
   {
-    double *extension_on_cells_n_p;
-    double *extension_on_cells_np1_p;
-    ierr = VecGetArray(extension_on_cells, &extension_on_cells_n_p); CHKERRXX(ierr);
-    ierr = VecGetArray(extension_on_cells_np1, &extension_on_cells_np1_p); CHKERRXX(ierr);
-    max_increment_in_band = 0.0; // reset the measure;
-    /* Main loop over all local quadrant */
-    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k) {
-      const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
-      const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k), control_band);
-      extension_on_cells_np1_p[quad_idx] = extension_on_cells_n_p[quad_idx]
-          + extension_increment(extension_on_cells_n_p, solution_p, jump_u_p, jump_flux_p, *this, max_increment_in_band);
-    }
-    ierr = VecGhostUpdateBegin(extension_on_cells_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
-      const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
-      const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k), control_band);
-      extension_on_cells_np1_p[quad_idx] = extension_on_cells_n_p[quad_idx]
-          + extension_increment(extension_on_cells_n_p, solution_p, jump_u_p, jump_flux_p, *this, max_increment_in_band);
-    }
-    if(!extension_operators_are_stored_and_set)
-      extension_operators_are_stored_and_set = true;
-
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_increment_in_band, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    ierr = VecGhostUpdateEnd(extension_on_cells_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    // swap the vectors before moving on
-    Vec tmp = extension_on_cells; extension_on_cells = extension_on_cells_np1; extension_on_cells_np1 = tmp;
-
-    iter++;
+    // look up in the map, if you already have it in there :
+    which_interface_neighbor_t quad_couple({quad_idx, neighbor_quad_idx});
+    std::map<which_interface_neighbor_t, linear_combination_of_dof_t>::const_iterator it = xgfm_flux_correction_operator.find(quad_couple);
+    if(it != xgfm_flux_correction_operator.end())
+      return it->second;
   }
 
-  ierr = VecDestroy(extension_on_cells_np1); CHKERRXX(ierr);
-
-  ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(jump_u, &jump_u_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(jump_flux, &jump_flux_p); CHKERRXX(ierr);
-  return;
-}
-
-void my_p4est_xgfm_cells_t::interpolate_cell_extension_to_interface_capturing_nodes()
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_interpolate_cell_extension_to_interface_capturing_nodes, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  if(interface_manager->subcell_resolution() > 1)
-    throw std::runtime_error("my_p4est_xgfm_cells_t::interpolate_cell_extension_to_interface_capturing_nodes() is not implemented yet for a subcell resolution greater than 1");
-
-  const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
-
-  const double *extension_on_cells_p;
-  double *extension_on_nodes_p;
-  ierr = VecGetArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
-  ierr = VecGetArray(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr);
-
-  for (size_t nnn = 0; nnn < interface_capturing_ngbd_n.get_layer_size(); ++nnn)
-  {
-    const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_layer_node(nnn);
-    extension_on_nodes_p[node_idx] = interpolate_cell_field_at_local_interface_capturing_node(node_idx, interface_capturing_ngbd_n, extension_on_cells_p);
-  }
-  ierr = VecGhostUpdateBegin(extension_on_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for (size_t nnn = 0; nnn < interface_capturing_ngbd_n.get_local_size(); ++nnn)
-  {
-    const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_local_node(nnn);
-    extension_on_nodes_p[node_idx] = interpolate_cell_field_at_local_interface_capturing_node(node_idx, interface_capturing_ngbd_n, extension_on_cells_p);
-  }
-  ierr = VecGhostUpdateEnd(extension_on_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  if(!local_interpolators_are_stored_and_set) // if they were not already set, now they are!
-    local_interpolators_are_stored_and_set = true;
-
-  ierr = VecRestoreArray(extension_on_nodes, &extension_on_nodes_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_interpolate_cell_extension_to_interface_capturing_nodes, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  return;
-}
-
-double my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_interface_capturing_node(const p4est_locidx_t &node_idx, const my_p4est_node_neighbors_t &interface_capturing_ngbd_n, const double *cell_field_p)
-{
-  linear_combination_of_dof_t& cell_interpolator = local_interpolators[node_idx];
-
-  if(local_interpolators_are_stored_and_set) // no need for the hardwork if we have already done and memorized it
-    return cell_interpolator(cell_field_p);
-
-  cell_interpolator.clear();
-  double to_return;
-  double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
-  const p4est_indep_t* ni = (p4est_indep_t*) sc_const_array_index(&interface_capturing_ngbd_n.get_nodes()->indep_nodes, node_idx);
-
-  p4est_locidx_t node_idx_on_computational_grid = (interface_capturing_ngbd_n.get_nodes() == nodes ? node_idx : -1);
-
-  if(node_idx_on_computational_grid >= 0 || index_of_node((const p4est_quadrant_t*) ni, nodes, node_idx_on_computational_grid))
-  {
-    P4EST_ASSERT(node_idx_on_computational_grid >= 0);
-    set_of_neighboring_quadrants nearby_cell_neighbors;
-    const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = cell_ngbd->gather_neighbor_cells_of_node(node_idx_on_computational_grid, nodes, nearby_cell_neighbors);
-    const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
-    to_return = get_lsqr_interpolation_at_node(ni, xyz_node, cell_ngbd, nearby_cell_neighbors, scaling, cell_field_p, 2, xgfm_threshold_cond_number_lsqr, &cell_interpolator);
-    // note : if locally uniform the result of the above is the expected arithmetic average of neighbor cells
-  }
+  // if not in there yet, you gotta build it, man!
+  double xyz_interface[P4EST_DIM];
+  if(!underresolved_tangency_point)
+    interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface);
   else
   {
-    // find smallest (coarse) quad containing point
-    p4est_quadrant_t coarse_quad; std::vector<p4est_quadrant_t> remote_matches; remote_matches.resize(0);
-    int rank = cell_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_node, coarse_quad, remote_matches, false, true); P4EST_ASSERT(rank != -1); (void) rank;
-    double quad_xyz[P4EST_DIM]; quad_xyz_fr_q(coarse_quad.p.piggy3.local_num, coarse_quad.p.piggy3.which_tree, p4est, ghost, quad_xyz);
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      if(periodicity[dim])
-      {
-        const double pp = (xyz_node[dim] - quad_xyz[dim])/(xyz_max[dim] - xyz_min[dim]);
-        xyz_node[dim] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
-      }
-    char local_orientation_in_coarse_cell[P4EST_DIM];
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      local_orientation_in_coarse_cell[dim] = (fabs(quad_xyz[dim] - xyz_node[dim]) < EPS*tree_dimensions[dim] ? 0 : (xyz_node[dim] < quad_xyz[dim] ? -1 : +1));
-
-    if(ANDD(local_orientation_in_coarse_cell[0] == 0, local_orientation_in_coarse_cell[1] == 0, local_orientation_in_coarse_cell[1] == 0))
-    {
-      to_return = cell_field_p[coarse_quad.p.piggy3.local_num];
-      cell_interpolator.add_term(coarse_quad.p.piggy3.local_num, 1.0);
-      P4EST_ASSERT(cell_interpolator.size() == 1);
-    }
-    else
-    {
-      if(SUMD(abs(local_orientation_in_coarse_cell[0]), abs(local_orientation_in_coarse_cell[1]), abs(local_orientation_in_coarse_cell[2])) >= P4EST_DIM)
-      {
-        node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
-        std::cout << "investigating what can go wrong with this node : " << xyz_node[0] << ", " << xyz_node[1] << std::endl;
-        std::cout << "quad center is : " << quad_xyz[0] << ", " << quad_xyz[1] << std::endl;
-      }
-      P4EST_ASSERT(SUMD(abs(local_orientation_in_coarse_cell[0]), abs(local_orientation_in_coarse_cell[1]), abs(local_orientation_in_coarse_cell[2])) < P4EST_DIM); // because if not, it is a vertex on the coarse grid and it should have been found...
-      set_of_neighboring_quadrants quads_sharing_subrefined_node;
-      quads_sharing_subrefined_node.insert(coarse_quad);
-      int8_t max_coarse_level = ((splitting_criteria_t*) p4est->user_pointer)->max_lvl;
-      bool fine_uniform_neighborhood = coarse_quad.level == max_coarse_level;
-      for (char ii = MIN(local_orientation_in_coarse_cell[0], (char) 0); ii <= MAX(local_orientation_in_coarse_cell[0], (char) 0); ++ii)
-        for (char jj = MIN(local_orientation_in_coarse_cell[1], (char) 0); jj <= MAX(local_orientation_in_coarse_cell[1], (char) 0); ++jj)
-#ifdef P4_TO_P8
-          for (char kk = MIN(local_orientation_in_coarse_cell[2], (char) 0); kk <= MAX(local_orientation_in_coarse_cell[2], (char) 0); ++kk)
-#endif
-          {
-            if(ANDD(ii == 0, jj == 0, kk == 0))
-              continue;
-            if(ORD(ii != 0 && is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::x + (ii == 1 ? 1 : 0)),
-                   jj != 0 && is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::y + (jj == 1 ? 1 : 0)),
-                   kk != 0 && is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::z + (kk == 1 ? 1 : 0)))) // it's a wall, nothing to find there
-              fine_uniform_neighborhood = false;
-            else
-            {
-              set_of_neighboring_quadrants tmp;
-              cell_ngbd->find_neighbor_cells_of_cell(tmp, coarse_quad.p.piggy3.local_num, coarse_quad.p.piggy3.which_tree, DIM(ii, jj, kk));
-              P4EST_ASSERT(tmp.size() == 1); // must have found *one* neighbor (or the hierarchy didn't do its job right in the first place)
-              fine_uniform_neighborhood = fine_uniform_neighborhood && tmp.begin()->level == max_coarse_level;
-              for (set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
-                quads_sharing_subrefined_node.insert(*it);
-            }
-          }
-      P4EST_ASSERT(!fine_uniform_neighborhood || quads_sharing_subrefined_node.size() == (size_t) 2*SUMD(abs(local_orientation_in_coarse_cell[0]), abs(local_orientation_in_coarse_cell[1]), abs(local_orientation_in_coarse_cell[2])));
-      fine_uniform_neighborhood = fine_uniform_neighborhood && quads_sharing_subrefined_node.size() == (size_t) 2*SUMD(abs(local_orientation_in_coarse_cell[0]), abs(local_orientation_in_coarse_cell[1]), abs(local_orientation_in_coarse_cell[2])); // should be useless but let's play safe in release...
-      if(fine_uniform_neighborhood) // avoid lsqr in that case, keep it simple
-      {
-        to_return = 0.0;
-        for (set_of_neighboring_quadrants::const_iterator it = quads_sharing_subrefined_node.begin(); it != quads_sharing_subrefined_node.end(); ++it)
-        {
-          to_return += cell_field_p[it->p.piggy3.local_num]/(double) quads_sharing_subrefined_node.size();
-          cell_interpolator.add_term(it->p.piggy3.local_num, 1.0/(double) quads_sharing_subrefined_node.size());
-        }
-        P4EST_ASSERT(cell_interpolator.size() == quads_sharing_subrefined_node.size());
-      }
-      else
-      {
-        // we'll build the lsqr interpolant based on the quads sharing the point and their tranverse neighbors
-        p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
-        // we won't search (extra) neighbors past in the directions where we already found the quads sharing the point (except if the cell is a wall)
-        const bool no_search[P4EST_DIM] = {DIM(local_orientation_in_coarse_cell[0] != 0 || is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::x + (local_orientation_in_coarse_cell[0] == 1 ? 1 : 0)),
-                                           local_orientation_in_coarse_cell[1] != 0 || is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::y + (local_orientation_in_coarse_cell[1] == 1 ? 1 : 0)),
-                                           local_orientation_in_coarse_cell[2] != 0 || is_quad_Wall(p4est, coarse_quad.p.piggy3.which_tree, &coarse_quad, 2*dir::z + (local_orientation_in_coarse_cell[2] == 1 ? 1 : 0)))};
-        set_of_neighboring_quadrants lsqr_neighbors;
-        for (set_of_neighboring_quadrants::const_iterator it = quads_sharing_subrefined_node.begin(); it != quads_sharing_subrefined_node.end(); ++it)
-          logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(*it, lsqr_neighbors, false, no_search));
-        const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
-        to_return = get_lsqr_interpolation_at_node(ni, xyz_node, cell_ngbd, lsqr_neighbors, scaling, cell_field_p, 2, xgfm_threshold_cond_number_lsqr, &cell_interpolator);
-      }
-    }
+    quad_xyz_fr_q(quad_idx, tree_index_of_quad(quad_idx, p4est, ghost), p4est, ghost, xyz_interface);
+    xyz_interface[oriented_dir/2] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*dxyz_min[oriented_dir/2];
   }
 
-#ifdef DEBUG
-  const double value_check = cell_interpolator(cell_field_p);
-  if(ISNAN(value_check))
-    std::cout << "my_p4est_xgfm_cells_t::interpolate_cell_field_at_local_node(): tracking a NAN : the local_interpolator returns a NAN for node_idx = " << node_idx
-              << " (on the nodes of the interface-capturing grid) on proc " << p4est->mpirank << std::endl;
-  P4EST_ASSERT(fabs(value_check - to_return) < MAX(EPS, 0.000001*MAX(fabs(value_check), fabs(to_return))));
-#endif
+  const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
+  const p4est_quadrant_t neighbor_quad  = get_quad(neighbor_quad_idx, p4est, ghost, true);
+  set_of_neighboring_quadrants nearby_cell_neighbors;
+  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = cell_ngbd->gather_neighbor_cells_of_cell(quad, nearby_cell_neighbors);
+  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(neighbor_quad, nearby_cell_neighbors));
+  const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
 
-  return to_return;
+  linear_combination_of_dof_t lsqr_cell_grad_operator[P4EST_DIM];
+  get_lsqr_cell_gradient_operator_at_point(xyz_interface, cell_ngbd, nearby_cell_neighbors, scaling_distance, lsqr_cell_grad_operator);
+  double normal_at_interface[P4EST_DIM];
+  interface_manager->grad_phi(xyz_interface, normal_at_interface);
+  const double mag_normal = sqrt(SUMD(SQR(normal_at_interface[0]), SQR(normal_at_interface[1]), SQR(normal_at_interface[2])));
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    normal_at_interface[dim] = (mag_normal > EPS ? normal_at_interface[dim]/mag_normal : 0.0);
+
+  linear_combination_of_dof_t xgfm_flux_correction; xgfm_flux_correction.clear();
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    xgfm_flux_correction.add_operator_on_same_dofs(lsqr_cell_grad_operator[dim], get_jump_in_mu()*((oriented_dir/2 == dim ? 1.0 : 0.0) - normal_at_interface[oriented_dir/2]*normal_at_interface[dim]));
+
+  return xgfm_flux_correction;
 }
 
 double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const
@@ -995,7 +790,8 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
       if(signs_of_phi_are_different(phi_q, phi_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across the interface
       {
         const double flux_component_across = (phi_face > 0.0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
-
+        /* --- you may want to clean this eventually --- */
+        /* -\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/--\/- */
         const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
         p4est_quadrant_t best_match;
         std::vector<p4est_quadrant_t> remote_matches;
@@ -1018,12 +814,22 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
         for (u_char k = 0; k < P4EST_CHILDREN; ++k)
           flux_jump_face += linear_interpolation_weights[k]*jump_flux_p[P4EST_DIM*interface_capturing_nodes->local_nodes[P4EST_CHILDREN*best_match.p.piggy3.local_num + k] + dim];
 
+        double xgfm_flux_correction = 0.0;
+        if(activate_xGFM)
+        {
+          P4EST_ASSERT(direct_neighbors.size() == 1);
+          const linear_combination_of_dof_t xgfm_correction = get_xgfm_flux_correction_operator(quad_idx, direct_neighbors.begin()->p.piggy3.local_num, oriented_dir, false, true);
+          if(extension_on_cells != NULL)
+          {
+            const double* extension_on_cells_p;
+            ierr = VecGetArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+            xgfm_flux_correction = xgfm_correction(extension_on_cells_p);
+            ierr = VecRestoreArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+          }
+        }
+        /* _/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\__/\_ */
 
-
-        std::cout << "yo man, you're here!" << std::endl;
-
-
-        sharp_flux_component = flux_component_across + (phi_face > 0.0 ? +1.0 : -1.0)*flux_jump_face;
+        sharp_flux_component = flux_component_across + (phi_face > 0.0 ? +1.0 : -1.0)*(flux_jump_face + xgfm_flux_correction);
       }
       else
         sharp_flux_component = mu_face*stable_projection_derivative(solution_p);
@@ -1034,7 +840,21 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
       const double &mu_across       = (phi_q <= 0.0 ? mu_plus   : mu_minus);
       const bool in_positive_domain = (phi_q > 0.0);
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
-      sharp_flux_component = interface_manager->GFM_flux_at_face_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p, jump_u_p, jump_flux_p);
+
+      double xgfm_flux_correction = 0.0;
+      if(activate_xGFM)
+      {
+        const linear_combination_of_dof_t xgfm_correction = get_xgfm_flux_correction_operator(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
+        if(extension_on_cells != NULL)
+        {
+          const double* extension_on_cells_p;
+          ierr = VecGetArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+          xgfm_flux_correction = xgfm_correction(extension_on_cells_p);
+          ierr = VecRestoreArrayRead(extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+        }
+      }
+
+      sharp_flux_component = interface_manager->GFM_flux_at_face_between_cells(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir, mu_this_side, mu_across, in_positive_domain, !signs_of_phi_are_different(phi_q, phi_face), solution_p, jump_u_p, jump_flux_p, xgfm_flux_correction);
     }
   }
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);

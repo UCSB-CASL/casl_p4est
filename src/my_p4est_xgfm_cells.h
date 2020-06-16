@@ -12,10 +12,9 @@ const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 {
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
-  Vec residual;             // cell-sampled, residual residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_on_nodes)
-  Vec extension_on_cells;   // cell-sampled, extension of interface-defined values
-  Vec extension_on_nodes;   // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
-  Vec jump_flux;            // node-sampled, P4EST_DIM block-structure, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
+  Vec residual;           // cell-sampled, residual residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_on_cells)
+  Vec extension_on_cells; // cell-sampled, extension of interface-defined values
+  Vec jump_flux;          // node-sampled, P4EST_DIM block-structure, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   bool activate_xGFM;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
@@ -99,19 +98,35 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
       interface_terms.clear();
     }
 
-    inline double operator()(const double* extension_on_cells_p, // input for regular neighbor terms (same side of the interface)
+    inline double operator()(const double* extension_on_cells_n_p, // input for regular neighbor terms (same side of the interface)
                              const double* solution_p, const double* jump_u_p, const double* jump_flux_p, const my_p4est_xgfm_cells_t& solver, // input for evaluating interface-defined values
                              double& max_correction_in_band) const // inout control parameter
     {
-      double increment = regular_terms(extension_on_cells_p);
+      double increment = regular_terms(extension_on_cells_n_p);
       if(interface_terms.size() > 0)
       {
-        const double& mu_this_side    = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
-        const double& mu_across       = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
+        const double& mu_this_side  = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
+        const double& mu_across     = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
         const bool extending_positive_values = !solver.extend_negative_interface_values();
         for (size_t k = 0; k < interface_terms.size(); ++k)
+        {
+          double xgfm_flux_correction = 0.0;
+          if(solver.activate_xGFM)
+          {
+            const linear_combination_of_dof_t xgfm_correction = solver.get_xgfm_flux_correction_operator(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
+            if(solver.extension_on_cells != NULL)
+            {
+              PetscErrorCode ierr;
+              const double* extension_on_cells_p;
+              ierr = VecGetArrayRead(solver.extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+              xgfm_flux_correction = xgfm_correction(extension_on_cells_p);
+              ierr = VecRestoreArrayRead(solver.extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
+            }
+          }
+
           increment += interface_terms[k].weight*solver.interface_manager->GFM_interface_value_between_cells(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir,
-                                                                                                             mu_this_side, mu_across, in_positive_domain, extending_positive_values, solution_p, jump_u_p, jump_flux_p);
+                                                                                                             mu_this_side, mu_across, in_positive_domain, extending_positive_values, solution_p, jump_u_p, jump_flux_p, xgfm_flux_correction);
+        }
       }
       if(in_band)
         max_correction_in_band = MAX(fabs(increment), max_correction_in_band);
@@ -123,9 +138,20 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   const extension_increment_operator& get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band);
   bool extension_operators_are_stored_and_set;
 
-  // memorized local interpolation operators
-  std::vector<linear_combination_of_dof_t> local_interpolators;
-  bool local_interpolators_are_stored_and_set;
+  // memorized local lsqr gradient operators
+  std::map<which_interface_neighbor_t, linear_combination_of_dof_t> xgfm_flux_correction_operator;
+  linear_combination_of_dof_t get_xgfm_flux_correction_operator(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const bool& look_in_map = true, const bool& underresolved_tangency_point = false) const;
+  inline const linear_combination_of_dof_t& get_and_store_xgfm_flux_correction_operator(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
+  {
+    // look up in the map, if you already have it in there:
+    which_interface_neighbor_t quad_couple({quad_idx, neighbor_quad_idx});
+    std::map<which_interface_neighbor_t, linear_combination_of_dof_t>::const_iterator it = xgfm_flux_correction_operator.find(quad_couple);
+    if(it != xgfm_flux_correction_operator.end())
+      return it->second;
+    // build it and insert it in map
+    xgfm_flux_correction_operator[quad_couple] = get_xgfm_flux_correction_operator(quad_idx, neighbor_quad_idx, oriented_dir, false);
+    return xgfm_flux_correction_operator[quad_couple];
+  }
 
   // disallow copy ctr and copy assignment
   my_p4est_xgfm_cells_t(const my_p4est_xgfm_cells_t& other);
@@ -136,57 +162,21 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
                                                           PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const;
   bool solve_for_fixpoint_solution(Vec& former_solution);
 
-  /*!
-   * \brief interpolate_cell_field_at_local_interface_capturing_node computes the interpolation of a cell-sampled field
-   * at a grid node of the interface-capturing grid. If the local interpolators are stored and set, they are used to
-   * calculate the results, right away; otherwise the hardwork calculation is done and the interpolators are built and
-   * stored internally, in order to shortcut subsequent local interpolation calls.
-   * \param [in] node_idx     : local index of the (possibly subrefined) node where the interpolated value is desired
-   * \param [in] cell_field_p : pointer to the cell-sampled data field to interpolate (sampled on the computational grid)
-   * \return value of the interpolated field at the desired node.
-   *
-   * Details of implementation:
-   * 1) the probed grid node exists on the computational grid (always the case if no subrefinement is used)
-   * --> the (first-degree only) cell neighbors of the node are sought and least-square interpolation is used
-   * (in case of locally uniform cell neighborhood, the results is identical to an arithmetic average between
-   * the P4EST_CHILDREN neighbor cells)
-   * 2) if the probed node does not exist on the computational grid (i.e. it is either a cell-, face- or edge-
-   * center on the computational grid) then
-   * 2a) if it is a cell-center on the computational grid, the corresponding cell-value is returned;
-   * 2b) otherwise, the computational cells sharing the point are fetched (2 cells if face center, possibly 4 if
-   * edge-center in 3D) and, if all those cells exist (i.e. no wall) and if they are all as fine as possible on
-   * the computatinal grid, the arithmetic average is returned; otherwise, their cell neighbors in tranverse
-   * Cartesian directions are fetched and least-square interpolation is used.
-   */
-  double interpolate_cell_field_at_local_interface_capturing_node(const p4est_locidx_t &node_idx, const my_p4est_node_neighbors_t& interface_capturing_ngbd_n, const double *cell_field_p);
-  /*!
-   * \brief interpolate_cell_extension_to_interface_capturing_nodes interpolates the cell-sampled field of the
-   * appropriate interface-defined values, i.e., from extension_on_cells, to all nodes of the interface-capturing,
-   * i.e., to extension_on_nodes. This function will do the hardwork on the very first call, but will
-   * store the relevant interpolation data internally to shortcut the task thereafter and optimize execution.
-   */
-  void interpolate_cell_extension_to_interface_capturing_nodes();
-
   // using PDE extrapolation : uses the current solution results and jump conditions to extend the appropriate
   // interface-defined values in the normal directions, using ASLAM's PDE-based extrapolation on the cells
-  void extend_interface_values(Vec &former_extension_on_cells, Vec &former_extension_on_nodes, const double& threshold = 1.0e-10, const uint& niter_max = 20);
-  // updates the right-hand side terms for cells involving jump terms (after extension_on_nodes has been updated)
+  void extend_interface_values(Vec &former_extension_on_cells, const double& threshold = 1.0e-10, const uint& niter_max = 20);
+  // updates the right-hand side terms for cells involving jump terms (after extension_on_cells has been updated)
   void update_rhs_in_relevant_cells_only();
   void update_rhs_and_residual(Vec& former_rhs, Vec& former_residual);
-  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_extension_on_nodes,
-                                                         Vec former_rhs, Vec former_residual);
+  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_rhs, Vec former_residual);
 
-  void compute_jumps_in_flux_components_at_all_interface_capturing_nodes() const;
-  void compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only() const;
+  void compute_jumps_in_flux_components_at_all_interface_capturing_nodes() const ;
   void compute_jumps_in_flux_components_for_interface_capturing_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
-                                                                     const double *jump_u_p, const double *jump_normal_flux_p, const double *grad_phi_p,
-                                                                     const double *extension_on_nodes_p) const;
+                                                                     const double *jump_u_p, const double *jump_normal_flux_p, const double *grad_phi_p) const ;
 
-  void initialize_extension_on_cells();
+  void initialize_extension_on_cells(Vec cell_sampled_extension);
   void initialize_extension_on_cells_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                            const double* const &solution_p, double* const &extension_on_cells_p) const;
-
-  void cell_TVD_extension_of_interface_values(const double& threshold, const uint& niter_max);
 
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
 
@@ -203,25 +193,18 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     if(extension_on_cells == NULL)
     {
       P4EST_ASSERT(jump_flux != NULL);
-      P4EST_ASSERT(extension_on_nodes == NULL); // those can't be set if extenson_on_cells is not set
       P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
-      extend_interface_values(extension_on_cells, extension_on_nodes);
+      extend_interface_values(extension_on_cells);
     }
-    P4EST_ASSERT(extension_on_cells != NULL && extension_on_nodes != NULL);
+    P4EST_ASSERT(extension_on_cells != NULL);
     return;
   }
 
-  inline void make_sure_jumps_in_flux_are_defined(const bool& at_all_nodes)
+  inline void make_sure_jumps_in_flux_are_defined()
   {
     if(activate_xGFM)
-    {
       make_sure_solution_is_set(); // the (accurate) jumps in flux components are functions of the solution (through the extended interface-values) in case of xGFM so make sure it is defined, first
-      P4EST_ASSERT(extension_on_nodes != NULL);
-    }
-    if(at_all_nodes)
-      compute_jumps_in_flux_components_at_all_interface_capturing_nodes();
-    else
-      compute_jumps_in_flux_components_at_relevant_interface_capturing_nodes_only();
+    compute_jumps_in_flux_components_at_all_interface_capturing_nodes();
     P4EST_ASSERT(jump_flux != NULL);
   }
 
@@ -231,7 +214,6 @@ public:
   my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   ~my_p4est_xgfm_cells_t();
 
-  void set_interface(my_p4est_interface_manager_t* interface_manager_);
   inline void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
   {
     my_p4est_poisson_jump_cells_t::set_jumps(jump_u_, jump_normal_flux_u_);
@@ -243,15 +225,14 @@ public:
     compute_jumps_in_flux_components_at_all_interface_capturing_nodes(); // we need the jumps in flux components for this solver
   }
 
-  inline Vec get_extended_interface_values()                                { make_sure_extensions_are_defined();               return extension_on_cells;  }
-  inline Vec get_extended_interface_values_on_interface_capturing_nodes()   { make_sure_extensions_are_defined();               return extension_on_nodes;  }
-  inline Vec get_jump_in_flux(const bool& everywhere = true)                { make_sure_jumps_in_flux_are_defined(everywhere);  return jump_flux;           }
-  inline Vec get_solution()                                                 { make_sure_solution_is_set();                      return solution;            }
-  inline int get_number_of_xGFM_corrections()                         const { return solver_monitor.get_number_of_xGFM_corrections();                       }
-  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()        const { return solver_monitor.get_n_ksp_iterations();                                 }
-  inline std::vector<double> get_max_corrections()                    const { return solver_monitor.get_max_corrections();                                  }
-  inline std::vector<double> get_relative_residuals()                 const { return solver_monitor.get_relative_residuals();                               }
-  inline bool is_using_xGFM()                                         const { return activate_xGFM;                                                         }
+  inline Vec get_extended_interface_values()                          { make_sure_extensions_are_defined();     return extension_on_cells;  }
+  inline Vec get_jump_in_flux()                                       { make_sure_jumps_in_flux_are_defined();  return jump_flux;           }
+  inline Vec get_solution()                                           { make_sure_solution_is_set();            return solution;            }
+  inline int get_number_of_xGFM_corrections()                   const { return solver_monitor.get_number_of_xGFM_corrections();             }
+  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()  const { return solver_monitor.get_n_ksp_iterations();                       }
+  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();                        }
+  inline std::vector<double> get_relative_residuals()           const { return solver_monitor.get_relative_residuals();                     }
+  inline bool is_using_xGFM()                                   const { return activate_xGFM;                                               }
 
   /* Benchmark tests revealed that PCHYPRE is MUCH faster than PCSOR as PCType!
    * The linear system is supposed to be symmetric positive (semi-) definite, so KSPCG is ok as KSPType

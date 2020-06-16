@@ -68,31 +68,31 @@ struct FD_interface_data
   }
 
   inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain,
-                                                  const double* jump_p, const double* jump_flux_p, const double* dxyz) const
+                                                  const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
   {
     GFM_jump_info jump_info = get_GFM_jump_data(jump_p, jump_flux_p, oriented_dir/2);
 
     return GFM_mu_jump(mu_this_side, mu_across)*(this_side_is_in_positive_domain ? +1.0 : -1.0)*
-        (jump_info.jump_flux_component*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump_info.jump_field/dxyz[oriented_dir/2]);
+        ((jump_info.jump_flux_component + xgfm_flux_correction)*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump_info.jump_field/dxyz[oriented_dir/2]);
   }
 
   inline double GFM_flux_component_this_side(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain,
                                              const double& solution_this_side, const double& solution_across,
-                                             const double* jump_p, const double* jump_flux_p, const double* dxyz) const
+                                             const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
   {
     return (oriented_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/dxyz[oriented_dir/2]
-        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, this_side_is_in_positive_domain, jump_p, jump_flux_p, dxyz);
+        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, this_side_is_in_positive_domain, jump_p, jump_flux_p, xgfm_flux_correction, dxyz);
   }
 
   inline double GFM_interface_defined_value(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain, const bool& get_positive_interface_value,
                                             const double& solution_this_side, const double& solution_across,
-                                            const double* jump_p, const double* jump_flux_p, const double* dxyz) const
+                                            const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
   {
     GFM_jump_info jump_info = get_GFM_jump_data(jump_p, jump_flux_p, oriented_dir/2);
 
     return ((1.0 - theta)*mu_this_side*(solution_this_side  + (this_side_is_in_positive_domain != get_positive_interface_value ? (this_side_is_in_positive_domain ? -1.0 : +1.0)*jump_info.jump_field : 0.0))
             +      theta *mu_across   *(solution_across     + (this_side_is_in_positive_domain == get_positive_interface_value ? (this_side_is_in_positive_domain ? +1.0 : -1.0)*jump_info.jump_field : 0.0))
-            + (this_side_is_in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[oriented_dir/2]*jump_info.jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
+            + (this_side_is_in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[oriented_dir/2]*(jump_info.jump_flux_component + xgfm_flux_correction))/GFM_mu_tilde(mu_this_side, mu_across);
   }
 };
 
@@ -171,7 +171,6 @@ public:
   my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_);
   ~my_p4est_interface_manager_t();
 
-  // the interpolation method for phi is (or at least should be) irrelevant in presence of subrefinement, since all relevant points are sampled
   /*!
    * \brief set_levelset sets the levelset values, which *MUST* be sampled on the nodes of the interface-capturing grid, i.e.,
    * on the nodes of the interpolation_node_ngbd.
@@ -286,6 +285,8 @@ public:
     return interface_point.theta;
   }
 
+  void get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const;
+
   /*!
    * \brief GFM_mu_jump_between_cells self-explanatory calculates the "effective diffusion coefficient"
    * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local cell]
@@ -321,10 +322,10 @@ public:
    */
   inline double GFM_jump_terms_for_flux_component_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir,
                                                                 const double& mu_this_side, const double& mu_across, const bool& in_positive_domain,
-                                                                const double* jump_field_p, const double* jump_flux_p) const
+                                                                const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
   {
     const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump_field_p, jump_flux_p, dxyz_min);
+    return interface_point.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min);
   }
 
   /*!
@@ -347,10 +348,10 @@ public:
    */
   inline double GFM_interface_value_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir,
                                                   const double& mu_this_side, const double mu_across, const bool& in_positive_domain, const bool& get_positive_interface_value,
-                                                  const double* solution_p, const double* jump_field_p, const double* jump_flux_p) const
+                                                  const double* solution_p, const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
   {
     const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_interface_defined_value(mu_this_side, mu_across, oriented_dir, in_positive_domain, get_positive_interface_value, solution_p[quad_idx], solution_p[neighbor_quad_idx], jump_field_p, jump_flux_p, dxyz_min);
+    return interface_point.GFM_interface_defined_value(mu_this_side, mu_across, oriented_dir, in_positive_domain, get_positive_interface_value, solution_p[quad_idx], solution_p[neighbor_quad_idx], jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min);
   }
 
   /*!
@@ -372,11 +373,11 @@ public:
    */
   inline double GFM_flux_at_face_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const double& mu_this_side, const double mu_across,
                                                const bool& in_positive_domain, const bool face_is_on_this_side, const double* solution_p,
-                                               const double* jump_field_p, const double* jump_flux_p) const
+                                               const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
   {
     const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_flux_component_this_side(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad_idx],jump_field_p, jump_flux_p, dxyz_min)
-        + (face_is_on_this_side ? 0.0 : (in_positive_domain ? -1.0 : +1.0)*interface_point.node_interpolant(jump_flux_p, oriented_dir/2, P4EST_DIM));
+    return interface_point.GFM_flux_component_this_side(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad_idx],jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min)
+        + (face_is_on_this_side ? 0.0 : (in_positive_domain ? -1.0 : +1.0)*(interface_point.node_interpolant(jump_flux_p, oriented_dir/2, P4EST_DIM) + xgfm_flux_correction));
   }
 
   /*!

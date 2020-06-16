@@ -256,6 +256,23 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
     return *tmp_FD_interface_data;
 }
 
+void my_p4est_interface_manager_t::get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const
+{
+  const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
+  const p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
+  quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz);
+  xyz[oriented_dir/2] += (oriented_dir%2 == 1 ? +1.0 : -1.0)*interface_point.theta*dxyz_min[oriented_dir/2];
+  if(interpolation_node_ngbd->get_hierarchy()->get_periodicity()[oriented_dir/2]) // do the periodic wrapping if necessary
+  {
+    const my_p4est_brick_t* brick = c_ngbd->get_brick();
+    const double x_min = brick->xyz_min[oriented_dir/2];
+    const double x_max = brick->xyz_max[oriented_dir/2];
+    xyz[oriented_dir/2] -= floor((xyz[oriented_dir/2] - x_min)/(x_max - x_min))*(x_max - x_min);
+  }
+  return;
+}
+
+
 void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const
 {
 #ifdef CASL_THROWS
@@ -411,10 +428,16 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
           {
             const p4est_quadrant_t* ghost_quad = p4est_const_quadrant_array_index(&ghost->ghosts, q);
             if(ghost_quad->p.piggy3.local_num == queries[kk].neighbor_dof_idx)
+            {
               queries[kk].neighbor_dof_idx = q + p4est->local_num_quadrants;
+              break;
+            }
           }
           if(cell_FD_interface_data->find(queries[kk]) == cell_FD_interface_data->end())
+          {
+            std::cerr << "Queried FD cell interface data not found locally : local index = " << queries[kk].local_dof_idx << ", neighbor index " << queries[kk].neighbor_dof_idx << " on proc " << p4est->mpirank << ", queried from proc " << status.MPI_SOURCE << std::endl;
             it_is_alright = false;
+          }
           else
             response[kk] = cell_FD_interface_data->at(queries[kk]).theta;
         }
