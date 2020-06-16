@@ -737,11 +737,34 @@ public:
     return *this;
   }
 
+  inline linear_combination_of_dof_t& add_operator_on_same_dofs(const linear_combination_of_dof_t& other, const double& scaling_factor = 1.0)
+  {
+    if(this->size() == 0) // empty operator
+    {
+      *this = other;
+      *this *= scaling_factor;
+      return *this;
+    }
+    P4EST_ASSERT(this->size() == other.size());
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+    {
+      P4EST_ASSERT(this->linear_combination[k].dof_idx == other.linear_combination[k].dof_idx);
+      this->linear_combination[k].weight += scaling_factor*other.linear_combination[k].weight;
+    }
+    return *this;
+  }
+
   inline size_t size() const {
     return linear_combination.size();
   }
 
   inline const dof_weighted_term& operator[](size_t k) const
+  {
+    P4EST_ASSERT(k < linear_combination.size());
+    return linear_combination[k];
+  }
+
+  inline dof_weighted_term& operator[](size_t k)
   {
     P4EST_ASSERT(k < linear_combination.size());
     return linear_combination[k];
@@ -832,21 +855,18 @@ inline p4est_locidx_t get_fine_node_idx_of_face_in_quad(const p4est_t* fine_p4es
 inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) { return (phi_0 > 0.0) != (phi_1 > 0.0); }
 
 /*!
- * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
- * interpolation). The method also returns the cartesian difference in terms of logical coordinates units (in order to efficiently and
- * unambiguously count the number of independent points along Cartesian directions.
- * \param p4est               [in]  pointer to the forest owning the quadrant quad
- * \param quad                [in]  pointer to the quadrant (whose p.piggy3 data must be valid)
- * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
- * \param node                [in]  pointer to the grid node of interest
- * \param tree_dimensions     [in]  pointer to an array of P4EST_DIM doubles: dimensions of the trees in physical domain units (assumes trees of the same size everywhere)
- * \param brick               [in]  pointer to the brick (macromesh) structure
- * \param xyz_rel             [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the quadrant and the point in physical units
- * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the quadrant and the point in logical units
- * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
+ * \brief rel_xyz_quad_fr_point calculates the relative cartesian coordinates between a quad center and a given point (very useful for lsqr
+ * interpolation). The method also returns the logical coordinates of the given quadrant (in order to efficiently and unambiguously count
+ * the number of independent points along Cartesian directions.
+ * \param p4est       [in]  pointer to the forest owning the quadrant quad
+ * \param quad        [in]  pointer to the quadrant (whose p.piggy3 data must be valid)
+ * \param xyz         [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the point of interest
+ * \param brick       [in]  pointer to the brick (macromesh) structure
+ * \param xyz_rel     [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the quadrant and the point in physical units (periodicity wrapping done internally)
+ * \param qcoord_quad [out] pointer to an array of P4EST_DIM int64_t: Cartesian coordinates of the quadrant in logical units, i.e., in logical p4est-style grid units
+ * NOTE: qcoord_quad must point to int64_t type to make sure that logical differences and calculations across trees are correct.
  */
-void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
-                           double *xyz_rel, int64_t* logical_qcoord_diff);
+void rel_xyz_quad_fr_point(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz, const my_p4est_brick_t* brick, double *xyz_rel, int64_t* qcoord_quad);
 
 /*!
  * \brief get_local_interpolation_weights calculates the local geometry information and interpolation weights required for linear and, if desired,
@@ -1373,6 +1393,37 @@ inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
 #endif
 
   return p4est_tree_array_index(p4est->trees, tr);
+}
+
+inline p4est_quadrant_t get_quad(const p4est_locidx_t& cumulative_quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost, const bool& set_cumulative_local_index_in_piggy3 = false)
+{
+#ifdef CASL_THROWS
+  if(cumulative_quad_idx < 0 || cumulative_quad_idx >= p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count) {
+    std::ostringstream oss;
+    oss << "Quad with cumulative index " << cumulative_quad_idx << " is outside range. "
+        << "Number of quadrants on this partition is " << p4est->local_num_quadrants << " local quadrants + " << ghost->ghosts.elem_count << " ghost quadrants" << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+  p4est_quadrant_t quad;
+  if(cumulative_quad_idx < p4est->local_num_quadrants)
+  {
+    const p4est_topidx_t tree_idx = tree_index_of_quad(cumulative_quad_idx, p4est, ghost);
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = *p4est_const_quadrant_array_index(&tree->quadrants, cumulative_quad_idx - tree->quadrants_offset);
+    if(set_cumulative_local_index_in_piggy3)
+    {
+      quad.p.piggy3.local_num   = cumulative_quad_idx;
+      quad.p.piggy3.which_tree  = tree_idx;
+    }
+  }
+  else
+  {
+    quad = *p4est_const_quadrant_array_index(&ghost->ghosts, cumulative_quad_idx - p4est->local_num_quadrants);
+    quad.p.piggy3.local_num = cumulative_quad_idx;
+  }
+
+  return quad;
 }
 
 inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_tree_t* tree)

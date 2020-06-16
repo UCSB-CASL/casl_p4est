@@ -234,7 +234,7 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
   if(phi != NULL){
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr); }
 
-  const double to_return = get_lsqr_interpolation_at_node(node, xyz_node, c_ngbd, cell_ngbd, scaling, cell_field_p, bc, n_ngbd, phi_p);
+  const double to_return = get_lsqr_interpolation_at_node(xyz_node, c_ngbd, cell_ngbd, scaling, cell_field_p, bc, n_ngbd, phi_p);
 
   ierr = VecRestoreArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
   if(phi != NULL){
@@ -243,9 +243,8 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
   return to_return;
 }
 
-double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
-                                      const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
-                                      const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
+double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                      const double* cell_sampled_field_p, const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
                                       const u_char &degree, const double &thresh_condition_number, linear_combination_of_dof_t* interpolator)
 {
   matrix_t A;
@@ -253,26 +252,26 @@ double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xy
   std::vector<double> lsqr_rhs; lsqr_rhs.resize(0);
   if(interpolator != NULL)
     interpolator->clear();
-  std::set<int64_t> rel_qcoord[P4EST_DIM];
+  std::set<int64_t> set_of_qcoord[P4EST_DIM];
 
   const double min_weight     = 1.0e-6;
   const double inv_max_weight = 1.0e-6;
   P4EST_ASSERT(ngbd_of_cells.size() > 0);
 
   for(set_of_neighboring_quadrants::const_iterator it = ngbd_of_cells.begin(); it != ngbd_of_cells.end(); ++it)
-    if(bc == NULL || quadrant_value_is_well_defined(*bc, ngbd_n->get_p4est(), ngbd_n->get_ghost(), ngbd_n->get_nodes(), it->p.piggy3.local_num,it->p.piggy3.which_tree, node_sampled_phi_p))
+    if(bc == NULL || quadrant_value_is_well_defined(*bc, ngbd_n->get_p4est(), ngbd_n->get_ghost(), ngbd_n->get_nodes(), it->p.piggy3.local_num, it->p.piggy3.which_tree, node_sampled_phi_p))
     {
       /* the value is well-defined we can use it */
       const p4est_locidx_t &quad_idx = it->p.piggy3.local_num;
 
       double xyz_t[P4EST_DIM];
-      int64_t logical_qcoord_diff[P4EST_DIM];
-      rel_qxyz_quad_fr_node(ngbd_c->get_p4est(), *it, xyz_node, node, ngbd_c->get_tree_dimensions(), ngbd_c->get_brick(), xyz_t, logical_qcoord_diff);
+      int64_t qcoord_quad[P4EST_DIM];
+      rel_xyz_quad_fr_point(ngbd_c->get_p4est(), *it, xyz_node, ngbd_c->get_brick(), xyz_t, qcoord_quad);
 
       for(u_char i = 0; i < P4EST_DIM; ++i)
       {
         xyz_t[i] /= scaling;
-        rel_qcoord[i].insert(logical_qcoord_diff[i]);
+        set_of_qcoord[i].insert(qcoord_quad[i]);
       }
 
       const double weight = MAX(min_weight, 1./MAX(inv_max_weight, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
@@ -311,10 +310,84 @@ double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xy
   P4EST_ASSERT(interpolator == NULL || interpolator->size() > 0);
   std::vector<double>* interp_weights = (interpolator == NULL ? NULL : new std::vector<double>(interpolator->size()));
 
-  const double value_to_return = solve_lsqr_system(A, lsqr_rhs, DIM(rel_qcoord[0].size(), rel_qcoord[1].size(), rel_qcoord[2].size()), degree, 0, interp_weights, thresh_condition_number);
+  const double value_to_return = solve_lsqr_system(A, lsqr_rhs, DIM(set_of_qcoord[0].size(), set_of_qcoord[1].size(), set_of_qcoord[2].size()), degree, 0, interp_weights, thresh_condition_number);
   if(interpolator != NULL)
     (*interpolator) *= *interp_weights;
 
   return value_to_return;
+}
+
+void get_lsqr_cell_gradient_operator_at_point(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& is_point_quad_center, const p4est_locidx_t& idx_of_quad_center)
+{
+  P4EST_ASSERT(ngbd_of_cells.size() > 0);
+  P4EST_ASSERT(!is_point_quad_center || idx_of_quad_center >= 0);
+#ifdef CASL_THROWS
+  if(ngbd_of_cells.size() < 1 + P4EST_DIM)
+    throw std::invalid_argument("get_lsqr_cell_gradient_operator_at_point() : not enough neighbor cells to build a gradient");
+#endif
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    grad_operator[dim].clear();
+
+  matrix_t A(ngbd_of_cells.size() - (is_point_quad_center ? 1 : 0), (is_point_quad_center ? 0 : 1 ) + P4EST_DIM);
+
+  std::set<int64_t> set_of_qcoord[P4EST_DIM];
+  int row_idx = 0;
+  for(set_of_neighboring_quadrants::const_iterator it = ngbd_of_cells.begin(); it != ngbd_of_cells.end(); ++it)
+  {
+    if(is_point_quad_center && it->p.piggy3.local_num == idx_of_quad_center)
+      continue; // done at the very end for that term
+    double xyz_t[P4EST_DIM];
+    int64_t qcoord_quad[P4EST_DIM];
+    rel_xyz_quad_fr_point(ngbd_c->get_p4est(), *it, xyz_node, ngbd_c->get_brick(), xyz_t, qcoord_quad);
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      grad_operator[dim].add_term(it->p.piggy3.local_num, 1.0);
+      set_of_qcoord[dim].insert(qcoord_quad[dim]);
+    }
+
+    // constant term
+    u_char col_idx = 0;
+    if(!is_point_quad_center)
+      A.set_value(row_idx, col_idx++, 1.0);
+    // linear terms
+    for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+      A.set_value(row_idx, col_idx++, xyz_t[uu]/scaling);
+
+    row_idx++;
+  }
+
+  matrix_t AtA, inv_AtA;
+  A.mtm_product(AtA);
+  const bool is_inversion_successful = solve_cholesky(AtA, NULL, NULL, 0, 1e4, NULL, &inv_AtA);
+
+  if(!is_inversion_successful)
+  {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      if(set_of_qcoord[dim].size() < 2)
+        throw std::runtime_error(std::string("get_lsqr_cell_gradient_operator_at_point : you have less than two linearly independent neighbors along cartesian direction ")
+                                 + std::string(dim == dir::x ? "x" : ONLY3D(OPEN_PARENTHESIS dim == dir::y ? ) "y" ONLY3D( : "z" CLOSE_PARENTHESIS)));
+    throw std::runtime_error("get_lsqr_cell_gradient_operator_at_point : the inversion of the lsqr system failed.");
+  }
+
+  matrix_t operator_coeffs;
+  A.matrix_product(inv_AtA, operator_coeffs);
+
+  double sum_of_coeffs[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
+
+  for (int term = 0; term < A.num_rows(); ++term)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      grad_operator[dim][term].weight = operator_coeffs.get_value(term, (is_point_quad_center ? 0 : 1) + dim)/scaling;
+      sum_of_coeffs[dim] += grad_operator[dim][term].weight;
+    }
+
+  if(is_point_quad_center)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      grad_operator[dim].add_term(idx_of_quad_center, -sum_of_coeffs[dim]);
+
+  return;
 }
 

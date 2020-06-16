@@ -235,16 +235,17 @@ public:
  */
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc = NULL, const Vec phi = NULL);
 
-double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
-                                      const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
-                                      const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
+double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                      const double* cell_sampled_field_p, const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
                                       const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL);
 
-inline double get_lsqr_interpolation_at_node(const p4est_indep_t* node, const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c,
-                                             const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling, const double* cell_sampled_field_p,
-                                             const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
+inline double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                             const double* cell_sampled_field_p, const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
 {
-  return get_lsqr_interpolation_at_node(node, xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
+  return get_lsqr_interpolation_at_node(xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
 }
+
+void get_lsqr_cell_gradient_operator_at_point(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& point_is_quad_center = false, const p4est_locidx_t& idx_of_quad_center = -1);
 
 #endif /* !MY_P4EST_CELL_NEIGHBORS_H */

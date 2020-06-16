@@ -24,44 +24,21 @@ size_t tri_idx(size_t i, size_t j)
   return i*(i + 1)/2 + j;
 }
 
-/*!
- * \brief solve_cholesky solves linear system(s) of equations of the type A*x = b where A is
- * symmetric (and semi-positive definite), using cholesky factorization of A, i.e. finding the
- * lower triangular matrix Lf such that A = Lf*transpose(Lf). The mandatory inputs must be such
- * that
- * - A is symmetric, say N by N;
- * - b is an array of right hand side vector(s), all of size N;
- * - x is an array of solution(s), all of size N;
- * \param [in]    A         : matrix of the linear system(s) to be solved (must be SPD)
- * \param [in]    b         : array of right hand side vector(s)
- * \param [out]   x         : array of solution(s)
- * \param [in]    n_vectors : number of elements in the array b
- * \param [in]    cond_thr  : threshold value for the condition number of the Lf matrix to
- *                            consider the system non-singular
- * \param [inout] first_line: (optional, disregarded if NULL), pointer to a vector storing the first
- *                            line of the inverse of A (required to store local interpolators, if desired)
- * \param [inout] A_inv     : (optional, disregarded if NULL), pointer to a Matrix storing the (full) inverse
- *                            of A (required to store local interpolators + access derivatives, if desired)
- * \return a boolean flag that is true if the resolution was executed successfully, false otherwise
- * NOTE: the condition number of L is evaluated on the fly and the resolution is aborted (return false)
- * if any diagonal element becomes INF, NaN or if the condition number exceeds the provided threshold
- * [Comments and revisions by Raphael Egan, Feb 26, 2020 (for the long_overdue_merge).]
- */
-bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> x[], const size_t& n_vectors, const double& cond_thr, vector<double>* first_line = NULL, matrix_t* A_inv = NULL)
+bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> x[], const size_t& n_vectors, const double& cond_thr, vector<double>* first_line, matrix_t* A_inv)
 {
 #ifdef CASL_THROWS
-  if(n_vectors == 0)
-    throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: the number of rhs's must be strictly positive!");
-  for (size_t k = 0; k < n_vectors; ++k) {
-    if(A.num_cols() != A.num_rows() || (size_t) A.num_rows() != b[k].size() || !A.is_symmetric())
-      throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: solve_cholesky: invalid input matrix A: the matrix must be symmetric)");
-    if(b[k].size() != (size_t) A.num_rows())
-      throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: solve_cholesky: invalid input rhs: all rhs vectors must be of the same size (and of the number of rows in A)");
-  }
+  if ((b != NULL && n_vectors == 0) || (b == NULL && n_vectors != 0))
+    throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: the number of rhs's must be strictly positive if rhs's are provided or 0 otherwise!");
+  if (A.num_cols() != A.num_rows() || !A.is_symmetric())
+    throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: solve_cholesky: invalid input matrix A: the matrix must be symmetric)");
+  if (b != NULL)
+    for (size_t k = 0; k < n_vectors; ++k)
+      if (b[k].size() != (size_t) A.num_rows())
+        throw std::invalid_argument("my_p4est_solve_lsqr::solve_cholesky: solve_cholesky: invalid input rhs: all rhs vectors must be of the same size (and of the number of rows in A)");
 #endif
 
   // initialize procedure
-  size_t n = b[0].size();
+  size_t n = A.num_rows();
   for (size_t k = 0; k < n_vectors; ++k)
     x[k].resize(n);
   if(first_line != NULL)
@@ -120,10 +97,11 @@ bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> 
   }
 
   /* forward solve L*Y=B' */
-  double Y[n][n_vectors];
+  double *Y[n];
 
   for(size_t i = 0; i < n; ++i)
   {
+    Y[i] = new double[n_vectors]; // allowed even if n_vectors == 0
     size_t tri_ii = tri_idx(i, i);
     for (size_t k = 0; k < n_vectors; ++k)
       Y[i][k] = b[k][i];
@@ -182,6 +160,8 @@ bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> 
     }
     for (size_t k = 0; k < n_vectors; ++k)
       x[k][i] /= Lf[tri_ii];
+
+    delete Y[i];
   }
 
   if(Linv != NULL)

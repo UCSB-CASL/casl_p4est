@@ -312,29 +312,21 @@ bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_
   return index_of_node(tmp_ptr, fine_nodes, fine_vertex_idx);
 }
 
-void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
-                           double *xyz_rel, int64_t* logical_qcoord_diff)
+void rel_xyz_quad_fr_point(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz, const my_p4est_brick_t* brick, double *xyz_rel, int64_t* qcoord_quad)
 {
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[quad.p.piggy3.which_tree*P4EST_CHILDREN + 0];
-  double tree_xyz_min[P4EST_DIM];
-  for(unsigned char i = 0; i < P4EST_DIM; ++i)
-    tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
+  const double* tree_xyz_min = p4est->connectivity->vertices + 3*v_m;
+  const double tree_dimension[P4EST_DIM] = {DIM((brick->xyz_max[0] - brick->xyz_min[0])/brick->nxyztrees[0], (brick->xyz_max[1] - brick->xyz_min[1])/brick->nxyztrees[1], (brick->xyz_max[2] - brick->xyz_min[2])/brick->nxyztrees[2])};
 
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     p4est_qcoord_t quad_qxyz = P4EST_QUADRANT_LEN(quad.level + 1) + (dim == dir::x ? quad.x  : ONLY3D(OPEN_PARENTHESIS dim == dir::y ?) quad.y ONLY3D(: quad.z CLOSE_PARENTHESIS));
-    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : ONLY3D(OPEN_PARENTHESIS dim == dir::y ?) node->y ONLY3D(: node->z CLOSE_PARENTHESIS));
-    xyz_rel[dim] = tree_dimensions[dim]*(double)quad_qxyz/(double)P4EST_ROOT_LEN + tree_xyz_min[dim] - xyz_node[dim];
-    double xyz_diff_tree = tree_xyz_min[dim] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + dim];
-    p4est_topidx_t tree_xyz_diff = (p4est_topidx_t) round(xyz_diff_tree/tree_dimensions[dim]); // assumes trees of constant size across the domain and cartesian block-structured
-    logical_qcoord_diff[dim] = tree_xyz_diff*P4EST_ROOT_LEN + quad_qxyz - (node_qxyz != P4EST_ROOT_LEN - 1 ? node_qxyz : P4EST_ROOT_LEN); // node might be clamped
+    qcoord_quad[dim] = ((p4est_topidx_t) round((tree_xyz_min[dim] - brick->xyz_min[dim])/tree_dimension[dim]))*P4EST_ROOT_LEN + quad_qxyz;
+    xyz_rel[dim] = tree_dimension[dim]*(double)quad_qxyz/(double)P4EST_ROOT_LEN + tree_xyz_min[dim] - xyz[dim];
     if(is_periodic(p4est, dim))
-      for (char i = -1; i < 2; i += 2)
-      {
-        if(fabs(xyz_rel[dim] + i*((double) brick->nxyztrees[dim])*tree_dimensions[dim]) < fabs(xyz_rel[dim]))
-          xyz_rel[dim] += i*((double) brick->nxyztrees[dim])*tree_dimensions[dim];
-        if(abs(logical_qcoord_diff[dim] + i*brick->nxyztrees[dim]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[dim]))
-          logical_qcoord_diff[dim] += i*brick->nxyztrees[dim]*P4EST_ROOT_LEN;
-      }
+    {
+      const double pp = xyz_rel[dim]/(brick->xyz_max[dim] - brick->xyz_min[dim]);
+      xyz_rel[dim] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(brick->xyz_max[dim] - brick->xyz_min[dim]);
+    }
   }
 }
 
