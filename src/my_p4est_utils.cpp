@@ -56,7 +56,7 @@ bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &
     /* check if quadrant is well defined */
     phi_q = 0.0;
     bool one_corner_in_neg_domain = false;
-    for(unsigned char i = 0; i < P4EST_CHILDREN; ++i)
+    for(u_char i = 0; i < P4EST_CHILDREN; ++i)
     {
       const double &tmp = node_sampled_phi_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + i]];
       one_corner_in_neg_domain = one_corner_in_neg_domain || tmp < 0.0;
@@ -351,31 +351,31 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   double qxyz_min[P4EST_DIM]; quad_xyz_fr_ijk(&quad, qxyz_min);
 
   double xyz[P4EST_DIM] = {DIM(xyz_global[0], xyz_global[1], xyz_global[2])};
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
 
   P4EST_ASSERT(ANDD(!is_periodic(p4est, dir::x) || (xyz[0] >= qxyz_min[0] - qh/10 && xyz[0] <= qxyz_min[0] + qh + qh/10),
       !is_periodic(p4est, dir::y) || (xyz[1] >= qxyz_min[1] - qh/10 && xyz[1] <= qxyz_min[1] + qh + qh/10),
       !is_periodic(p4est, dir::z) || (xyz[2] >= qxyz_min[2] - qh/10 && xyz[2] <= qxyz_min[2] + qh + qh/10)));
 
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     xyz[dir] = (xyz[dir] - qxyz_min[dir])/qh;
 
   double d_[P4EST_DIM][2];
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     d_[dim][0] = 1.0 - xyz[dim];
     d_[dim][1] = xyz[dim];
   }
 
 #ifdef P4_TO_P8
-  for (unsigned char inc_z = 0; inc_z < 2; ++inc_z)
+  for (u_char inc_z = 0; inc_z < 2; ++inc_z)
 #endif
-    for (unsigned char inc_y = 0; inc_y < 2; ++inc_y)
-      for (unsigned char inc_x = 0; inc_x < 2; ++inc_x)
+    for (u_char inc_y = 0; inc_y < 2; ++inc_y)
+      for (u_char inc_x = 0; inc_x < 2; ++inc_x)
         linear_weight[SUMD(inc_x, 2*inc_y, 4*inc_z)] = MULTD(d_[0][inc_x], d_[1][inc_y], d_[2][inc_z]);
   if(second_derivative_weight != NULL)
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       second_derivative_weight[dim] = SQR((tree_xyz_max[dim] - tree_xyz_min[dim])*qh)*d_[dim][0]*d_[dim][1];
 
   return;
@@ -430,7 +430,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
   unsigned int i, jm, jp;
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       fdd[dir] = 0.0;
 
     i = 0;
@@ -458,7 +458,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 #endif
 
     results[k] = 0.0;
-    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
+    for (u_char j = 0; j < P4EST_CHILDREN; ++j)
       results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
 
     results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
@@ -481,7 +481,7 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   double fdd_m, fdd_p;
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       fdd[dir] = 0.0;
 
     i = 0;
@@ -518,7 +518,7 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
 #endif
 
     results[k] = 0.0;
-    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
+    for (u_char j = 0; j < P4EST_CHILDREN; ++j)
       results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
 
     results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
@@ -1104,7 +1104,7 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double *v = p4est->connectivity->vertices;
 
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
 }
 
@@ -1178,13 +1178,13 @@ void fill_quad_oct_values_from_node_sampled_vector(QuadValue* quad_val, const p4
 {
   const p4est_locidx_t *q2n = nodes->local_nodes + P4EST_CHILDREN*quad_idx;
 
-  for (unsigned char inc_x = 0; inc_x < 2; ++inc_x)
-    for (unsigned char inc_y = 0; inc_y < 2; ++inc_y)
+  for (u_char inc_x = 0; inc_x < 2; ++inc_x)
+    for (u_char inc_y = 0; inc_y < 2; ++inc_y)
 #ifdef P4_TO_P8
-      for (unsigned char inc_z = 0; inc_z < 2; ++inc_z)
+      for (u_char inc_z = 0; inc_z < 2; ++inc_z)
 #endif
       {
-        const unsigned char idx_in_quad_oct_value = SUMD((1 << (P4EST_DIM - 1))*inc_x, (1 << (P4EST_DIM - 2))*inc_y, inc_z);
+        const u_char idx_in_quad_oct_value = SUMD((1 << (P4EST_DIM - 1))*inc_x, (1 << (P4EST_DIM - 2))*inc_y, inc_z);
         const p4est_locidx_t node_sub_idx_in_quad = q2n[SUMD(inc_x, 2*inc_y, 4*inc_z)];
         for (unsigned int ff = 0; ff < n_fields; ++ff)
           quad_val[ff].val[idx_in_quad_oct_value] = node_sampled_values_p[ff][node_sub_idx_in_quad];
@@ -1746,7 +1746,7 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[])
   return is_any;
 }
 
-bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir)
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const u_char& oriented_dir)
 {
   switch(oriented_dir)
   {

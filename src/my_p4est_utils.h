@@ -203,8 +203,8 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m0
                                                                  { nn_mp0, nn_0p0, nn_pp0 }};
 const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
-const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
-const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
+const u_char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
+const u_char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
 #endif
 
 const static std::string null_str    = "NULL";
@@ -344,10 +344,10 @@ enum {
   WALL_PARALLEL_TO_FACE = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with (very stretched) rectangular grids
 };
 
-inline int WALL_idx(unsigned char oriented_cart_dir)
+inline int WALL_idx(u_char oriented_cart_dir)
 {
   P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
-  return (-1 - ((int) oriented_cart_dir));
+  return (- 1 - ((int) oriented_cart_dir));
 }
 
 typedef enum {
@@ -1913,7 +1913,7 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[
  * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
  */
-bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const u_char& oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1987,18 +1987,18 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_connectivity_t *const conn, const unsigned char & dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, const u_char & dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
 
-  const unsigned char face = 2 * dir;
+  const u_char face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
   return !(conn->tree_to_tree[tfindex] == 0 &&
            conn->tree_to_face[tfindex] == face);
 }
-inline bool is_periodic(const p4est_t *p4est, const unsigned char &dir)
+inline bool is_periodic(const p4est_t *p4est, const u_char &dir)
 {
   return is_periodic(p4est->connectivity, dir);
 }
@@ -2019,7 +2019,7 @@ inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
 {
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   bool periodic[P4EST_DIM];
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
   {
     xyz_min[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0]+dir];
     xyz_max[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*p4est->connectivity->num_trees - 1] + dir];
