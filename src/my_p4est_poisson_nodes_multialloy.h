@@ -92,7 +92,8 @@ private:
   double latent_heat_;
 
   // front conditions
-  CF_DIM           *c0_guess_;
+  Vec               c0_guess_;
+//  CF_DIM           *c0_guess_;
   CF_DIM           *gibbs_thomson_;
   CF_DIM           *front_temp_value_jump_;
   CF_DIM           *front_temp_flux_jump_;
@@ -220,7 +221,8 @@ public:
     }
   }
 
-  inline void set_c0_guess(CF_DIM &c0_guess) { c0_guess_ = &c0_guess; }
+//  inline void set_c0_guess(CF_DIM &c0_guess) { c0_guess_ = &c0_guess; }
+  inline void set_c0_guess(Vec c0_guess) { c0_guess_ = c0_guess; }
 private:
 
   //--------------------------------------------------

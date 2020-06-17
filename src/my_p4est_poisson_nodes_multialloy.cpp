@@ -650,19 +650,24 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   pw_c0_values_.resize(solver_conc_leading_->pw_bc_num_value_pts(0), 0);
   pw_psi_c0_values_.resize(solver_conc_leading_->pw_bc_num_value_pts(0), 0);
 
-  // sample c0 guess at boundary points
-  double xyz[P4EST_DIM];
-  for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
-    solver_conc_leading_->pw_bc_xyz_value_pt(0, i, xyz);
-    pw_c0_values_[i] = c0_guess_->value(xyz);
-  }
+//  // sample c0 guess at boundary points
+//  double xyz[P4EST_DIM];
+//  for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
+//    solver_conc_leading_->pw_bc_xyz_value_pt(0, i, xyz);
+//    pw_c0_values_[i] = c0_guess_->value(xyz);
+//  }
 
   // initialize bc points interpolator
+  double xyz[P4EST_DIM];
   interp_bc_points.clear();
   for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
     solver_conc_leading_->pw_bc_xyz_value_pt(0, i, xyz);
     interp_bc_points.add_point(i, xyz);
   }
+
+  // sample c0 guess at boundary points
+  interp_bc_points.set_input(c0_guess_, linear);
+  interp_bc_points.interpolate(pw_c0_values_.data());
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_initialize_solvers, 0, 0, 0, 0); CHKERRXX(ierr);
 }
