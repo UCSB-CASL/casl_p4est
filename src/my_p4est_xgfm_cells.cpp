@@ -716,8 +716,11 @@ linear_combination_of_dof_t my_p4est_xgfm_cells_t::get_xgfm_flux_correction_oper
   const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
   const p4est_quadrant_t neighbor_quad  = get_quad(neighbor_quad_idx, p4est, ghost, true);
   set_of_neighboring_quadrants nearby_cell_neighbors;
-  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = cell_ngbd->gather_neighbor_cells_of_cell(quad, nearby_cell_neighbors);
-  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(neighbor_quad, nearby_cell_neighbors));
+  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
+  if(underresolved_tangency_point || interface_manager->get_FD_theta_between_cells(quad_idx, neighbor_quad_idx, oriented_dir) <= 0.5)
+    logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(quad, nearby_cell_neighbors));
+  if(underresolved_tangency_point || interface_manager->get_FD_theta_between_cells(quad_idx, neighbor_quad_idx, oriented_dir) >= 0.5)
+    logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(neighbor_quad, nearby_cell_neighbors));
   const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
 
   linear_combination_of_dof_t lsqr_cell_grad_operator[P4EST_DIM];
