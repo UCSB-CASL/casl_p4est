@@ -267,7 +267,9 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
 
   PetscErrorCode ierr;
   // register for logging purpose
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+
+  P4EST_ASSERT(interface_is_set() && jumps_have_been_set()); // otherwise, well, it's going to be hard...
 
   if(!rhs_is_set)
   {
@@ -316,7 +318,7 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
 
   matrix_is_set = rhs_is_set = true;
 
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
   return;
 }

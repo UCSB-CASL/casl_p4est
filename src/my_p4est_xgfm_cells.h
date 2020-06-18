@@ -12,9 +12,10 @@ const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 {
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
-  Vec residual;           // cell-sampled, residual residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_on_cells)
-  Vec extension_on_cells; // cell-sampled, extension of interface-defined values
-  Vec jump_flux;          // node-sampled, P4EST_DIM block-structure, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
+  Vec residual;   // cell-sampled, residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_of_interface_defined_values)
+  Vec extension;  // cell-sampled, extension of interface-defined values
+  Vec grad_jump;  // node-sampled, P4EST_DIM block-structure, gradient of jump_u, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
+  my_p4est_interpolation_nodes_t * interp_grad_jump;
   bool activate_xGFM;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
@@ -98,11 +99,11 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
       interface_terms.clear();
     }
 
-    inline double operator()(const double* extension_on_cells_n_p, // input for regular neighbor terms (same side of the interface)
-                             const double* solution_p, const double* jump_u_p, const double* jump_flux_p, const my_p4est_xgfm_cells_t& solver, // input for evaluating interface-defined values
+    inline double operator()(const double* extension_n_p, // input for regular neighbor terms (same side of the interface)
+                             const double* solution_p, const double* current_extension_p, my_p4est_xgfm_cells_t& solver, // input for evaluating interface-defined values
                              double& max_correction_in_band) const // inout control parameter
     {
-      double increment = regular_terms(extension_on_cells_n_p);
+      double increment = regular_terms(extension_n_p);
       if(interface_terms.size() > 0)
       {
         const double& mu_this_side  = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
@@ -110,22 +111,10 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
         const bool extending_positive_values = !solver.extend_negative_interface_values();
         for (size_t k = 0; k < interface_terms.size(); ++k)
         {
-          double xgfm_flux_correction = 0.0;
-          if(solver.activate_xGFM)
-          {
-            const linear_combination_of_dof_t xgfm_correction = solver.get_xgfm_flux_correction_operator(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
-            if(solver.extension_on_cells != NULL)
-            {
-              PetscErrorCode ierr;
-              const double* extension_on_cells_p;
-              ierr = VecGetArrayRead(solver.extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
-              xgfm_flux_correction = xgfm_correction(extension_on_cells_p);
-              ierr = VecRestoreArrayRead(solver.extension_on_cells, &extension_on_cells_p); CHKERRXX(ierr);
-            }
-          }
-
-          increment += interface_terms[k].weight*solver.interface_manager->GFM_interface_value_between_cells(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir,
-                                                                                                             mu_this_side, mu_across, in_positive_domain, extending_positive_values, solution_p, jump_u_p, jump_flux_p, xgfm_flux_correction);
+          const xgfm_jump& jump_info = solver.get_xgfm_jump_between_quads(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
+          const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
+          increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, extending_positive_values,
+                                                                                           solution_p[quad_idx], solution_p[interface_terms[k].neighbor_quad_idx_across], jump_info.jump_field, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min);
         }
       }
       if(in_band)
@@ -138,20 +127,12 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   const extension_increment_operator& get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band);
   bool extension_operators_are_stored_and_set;
 
-  // memorized local lsqr gradient operators
-  std::map<which_interface_neighbor_t, linear_combination_of_dof_t> xgfm_flux_correction_operator;
-  linear_combination_of_dof_t get_xgfm_flux_correction_operator(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const bool& look_in_map = true, const bool& underresolved_tangency_point = false) const;
-  inline const linear_combination_of_dof_t& get_and_store_xgfm_flux_correction_operator(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
-  {
-    // look up in the map, if you already have it in there:
-    which_interface_neighbor_t quad_couple({quad_idx, neighbor_quad_idx});
-    std::map<which_interface_neighbor_t, linear_combination_of_dof_t>::const_iterator it = xgfm_flux_correction_operator.find(quad_couple);
-    if(it != xgfm_flux_correction_operator.end())
-      return it->second;
-    // build it and insert it in map
-    xgfm_flux_correction_operator[quad_couple] = get_xgfm_flux_correction_operator(quad_idx, neighbor_quad_idx, oriented_dir, false);
-    return xgfm_flux_correction_operator[quad_couple];
-  }
+  // memorized jump information for interface-point between quadrants
+  map_of_xgfm_jumps_t xgfm_jump_between_quads;
+  linear_combination_of_dof_t build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
+                                                                                const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const;
+  const xgfm_jump& get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir);
+
 
   // disallow copy ctr and copy assignment
   my_p4est_xgfm_cells_t(const my_p4est_xgfm_cells_t& other);
@@ -164,19 +145,15 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 
   // using PDE extrapolation : uses the current solution results and jump conditions to extend the appropriate
   // interface-defined values in the normal directions, using ASLAM's PDE-based extrapolation on the cells
-  void extend_interface_values(Vec &former_extension_on_cells, const double& threshold = 1.0e-10, const uint& niter_max = 20);
-  // updates the right-hand side terms for cells involving jump terms (after extension_on_cells has been updated)
+  void extend_interface_values(Vec &former_extension, const double& threshold = 1.0e-10, const uint& niter_max = 20);
+  // updates the right-hand side terms for cells involving jump terms (after extension has been updated)
   void update_rhs_in_relevant_cells_only();
   void update_rhs_and_residual(Vec& former_rhs, Vec& former_residual);
-  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension_on_cells, Vec former_rhs, Vec former_residual);
+  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension, Vec former_rhs, Vec former_residual);
 
-  void compute_jumps_in_flux_components_at_all_interface_capturing_nodes() const ;
-  void compute_jumps_in_flux_components_for_interface_capturing_node(const p4est_locidx_t& node_idx, double *jump_flux_p,
-                                                                     const double *jump_u_p, const double *jump_normal_flux_p, const double *grad_phi_p) const ;
-
-  void initialize_extension_on_cells(Vec cell_sampled_extension);
-  void initialize_extension_on_cells_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                           const double* const &solution_p, double* const &extension_on_cells_p) const;
+  void initialize_extension(Vec cell_sampled_extension);
+  void initialize_extension_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                  const double* solution_p, double* extension_p) const;
 
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
 
@@ -190,22 +167,13 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   inline void make_sure_extensions_are_defined()
   {
     make_sure_solution_is_set();
-    if(extension_on_cells == NULL)
+    if(extension == NULL)
     {
-      P4EST_ASSERT(jump_flux != NULL);
       P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
-      extend_interface_values(extension_on_cells);
+      extend_interface_values(extension);
     }
-    P4EST_ASSERT(extension_on_cells != NULL);
+    P4EST_ASSERT(extension != NULL);
     return;
-  }
-
-  inline void make_sure_jumps_in_flux_are_defined()
-  {
-    if(activate_xGFM)
-      make_sure_solution_is_set(); // the (accurate) jumps in flux components are functions of the solution (through the extended interface-values) in case of xGFM so make sure it is defined, first
-    compute_jumps_in_flux_components_at_all_interface_capturing_nodes();
-    P4EST_ASSERT(jump_flux != NULL);
   }
 
   double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const;
@@ -217,22 +185,27 @@ public:
   inline void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
   {
     my_p4est_poisson_jump_cells_t::set_jumps(jump_u_, jump_normal_flux_u_);
-    if(jump_flux == NULL)
+
+    if(activate_xGFM)
     {
       const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
-      PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &jump_flux); CHKERRXX(ierr);
+      if(grad_jump == NULL){
+        PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &grad_jump); CHKERRXX(ierr); }
+      interface_capturing_ngbd_n.first_derivatives_central(jump_u, grad_jump);
+      if(interp_grad_jump == NULL)
+        interp_grad_jump = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
+
+      interp_grad_jump->set_input(grad_jump, linear, P4EST_DIM);
     }
-    compute_jumps_in_flux_components_at_all_interface_capturing_nodes(); // we need the jumps in flux components for this solver
   }
 
-  inline Vec get_extended_interface_values()                          { make_sure_extensions_are_defined();     return extension_on_cells;  }
-  inline Vec get_jump_in_flux()                                       { make_sure_jumps_in_flux_are_defined();  return jump_flux;           }
-  inline Vec get_solution()                                           { make_sure_solution_is_set();            return solution;            }
-  inline int get_number_of_xGFM_corrections()                   const { return solver_monitor.get_number_of_xGFM_corrections();             }
-  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()  const { return solver_monitor.get_n_ksp_iterations();                       }
-  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();                        }
-  inline std::vector<double> get_relative_residuals()           const { return solver_monitor.get_relative_residuals();                     }
-  inline bool is_using_xGFM()                                   const { return activate_xGFM;                                               }
+  inline Vec get_extended_interface_values()                          { make_sure_extensions_are_defined();     return extension; }
+  inline Vec get_solution()                                           { make_sure_solution_is_set();            return solution;  }
+  inline int get_number_of_xGFM_corrections()                   const { return solver_monitor.get_number_of_xGFM_corrections();   }
+  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()  const { return solver_monitor.get_n_ksp_iterations();             }
+  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();              }
+  inline std::vector<double> get_relative_residuals()           const { return solver_monitor.get_relative_residuals();           }
+  inline bool is_using_xGFM()                                   const { return activate_xGFM;                                     }
 
   /* Benchmark tests revealed that PCHYPRE is MUCH faster than PCSOR as PCType!
    * The linear system is supposed to be symmetric positive (semi-) definite, so KSPCG is ok as KSPType

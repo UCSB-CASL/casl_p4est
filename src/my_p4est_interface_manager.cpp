@@ -13,12 +13,12 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
 #endif
   interp_grad_phi   = NULL;
   interp_phi_xxyyzz = NULL;
-  cell_FD_interface_data  = new map_of_interface_neighbors_t;
-  tmp_FD_interface_data   = new FD_interface_data;
-  clear_cell_FD_interface_data();
+  cell_FD_interface_neighbors = new map_of_interface_neighbors_t;
+  tmp_FD_interface_neighbor   = new FD_interface_neighbor;
+  clear_cell_FD_interface_neighbors();
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    face_FD_interface_data[dim] = new map_of_interface_neighbors_t;
-    clear_face_FD_interface_data(dim);
+    face_FD_interface_neighbors[dim] = new map_of_interface_neighbors_t;
+    clear_face_FD_interface_neighbors(dim);
   }
   grad_phi_local              = NULL;
   phi_on_computational_nodes  = NULL;
@@ -27,13 +27,13 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
 
 my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
 {
-  if(cell_FD_interface_data != NULL)
-    delete cell_FD_interface_data;
+  if(cell_FD_interface_neighbors != NULL)
+    delete cell_FD_interface_neighbors;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    if(face_FD_interface_data[dim] != NULL)
-      delete face_FD_interface_data[dim];
+    if(face_FD_interface_neighbors[dim] != NULL)
+      delete face_FD_interface_neighbors[dim];
 
-  delete tmp_FD_interface_data;
+  delete tmp_FD_interface_neighbor;
 
   if(interp_grad_phi != NULL)
     delete interp_grad_phi;
@@ -43,31 +43,31 @@ my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
     PetscErrorCode ierr = VecDestroy(grad_phi_local); CHKERRXX(ierr); }
 }
 
-void my_p4est_interface_manager_t::do_not_store_cell_FD_interface_data()
+void my_p4est_interface_manager_t::do_not_store_cell_FD_interface_neighbors()
 {
-  if(cell_FD_interface_data != NULL){
-    delete cell_FD_interface_data;
-    cell_FD_interface_data = NULL;
+  if(cell_FD_interface_neighbors != NULL){
+    delete cell_FD_interface_neighbors;
+    cell_FD_interface_neighbors = NULL;
   }
   return;
 }
 
-void my_p4est_interface_manager_t::do_not_store_face_FD_interface_data()
+void my_p4est_interface_manager_t::do_not_store_face_FD_interface_neighbors()
 {
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    if(face_FD_interface_data[dim] != NULL){
-      delete face_FD_interface_data[dim];
-      face_FD_interface_data[dim] = NULL;
+    if(face_FD_interface_neighbors[dim] != NULL){
+      delete face_FD_interface_neighbors[dim];
+      face_FD_interface_neighbors[dim] = NULL;
     }
 
   return;
 }
 
-void my_p4est_interface_manager_t::clear_all_FD_interface_data()
+void my_p4est_interface_manager_t::clear_all_FD_interface_neighbors()
 {
-  clear_cell_FD_interface_data();
+  clear_cell_FD_interface_neighbors();
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    clear_face_FD_interface_data(dim);
+    clear_face_FD_interface_neighbors(dim);
   return;
 }
 
@@ -137,15 +137,15 @@ void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
   return;
 }
 
-const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_data_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
+const FD_interface_neighbor& my_p4est_interface_manager_t::get_cell_FD_interface_neighbor_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
 {
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants && // must be a local quadrant
                0 <= neighbor_quad_idx && neighbor_quad_idx < p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count); // must be a known quadrant
 
-  if(cell_FD_interface_data != NULL) // check in map if storing them, first
+  if(cell_FD_interface_neighbors != NULL) // check in map if storing them, first
   {
-    map_of_interface_neighbors_t::iterator it = cell_FD_interface_data->find({quad_idx, neighbor_quad_idx});
-    if(it != cell_FD_interface_data->end())
+    map_of_interface_neighbors_t::iterator it = cell_FD_interface_neighbors->find({quad_idx, neighbor_quad_idx});
+    if(it != cell_FD_interface_neighbors->end())
     {
       if((it->first.local_dof_idx == neighbor_quad_idx && !it->second.swapped) || (it->first.local_dof_idx == quad_idx && it->second.swapped)) // currently set for the reversed pair --> swap it
       {
@@ -179,7 +179,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
   double phi_Q = interp_phi(xyz_Q);
   double phi_N = interp_phi(xyz_N);
   P4EST_ASSERT(signs_of_phi_are_different(phi_Q, phi_N));
-  tmp_FD_interface_data->theta  = 0.0;
+  tmp_FD_interface_neighbor->theta  = 0.0;
   double rel_scale = 1.0;
   double xyz_M[P4EST_DIM] = {DIM(xyz_Q[0], xyz_Q[1], xyz_Q[2])};
   for (int k = 0; k < max_level_interpolation_p4est - max_level_p4est; ++k)
@@ -197,7 +197,7 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
     const double phi_M = interp_phi(xyz_M);
     if(!signs_of_phi_are_different(phi_Q, phi_M))
     {
-      tmp_FD_interface_data->theta += rel_scale;
+      tmp_FD_interface_neighbor->theta += rel_scale;
       phi_Q = phi_M;
       xyz_Q[oriented_dir/2] = xyz_M[oriented_dir/2];
     }
@@ -217,48 +217,26 @@ const FD_interface_data& my_p4est_interface_manager_t::get_cell_FD_interface_dat
   else
     subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain(phi_Q, phi_N, rel_scale*dxyz_min[oriented_dir/2], rel_scale*dxyz_min[oriented_dir/2]);
   const double to_add = rel_scale*(phi_Q > 0.0 ? 1.0 - subscale_theta_negative : subscale_theta_negative);
-  tmp_FD_interface_data->theta += to_add;
-  tmp_FD_interface_data->theta = MAX(0.0, MIN(1.0, tmp_FD_interface_data->theta));
+  tmp_FD_interface_neighbor->theta += to_add;
+  tmp_FD_interface_neighbor->theta = MAX(0.0, MIN(1.0, tmp_FD_interface_neighbor->theta));
 
-  // finally, let's build the linear interpolant for the interface point and save it
-  tmp_FD_interface_data->node_interpolant.clear();
+  P4EST_ASSERT(0.0 <= tmp_FD_interface_neighbor->theta && tmp_FD_interface_neighbor->theta <= 1.0);
+  tmp_FD_interface_neighbor->swapped = false;
 
-  xyz_M[oriented_dir/2] = xyz_Q[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*to_add*dxyz_min[oriented_dir/2];
-  if(interpolation_node_ngbd->get_hierarchy()->get_periodicity()[oriented_dir/2]) // do the periodic wrapping if necessary
+  if(cell_FD_interface_neighbors != NULL)
   {
-    const my_p4est_brick_t* brick = c_ngbd->get_brick();
-    const double x_min = brick->xyz_min[oriented_dir/2];
-    const double x_max = brick->xyz_max[oriented_dir/2];
-    xyz_M[oriented_dir/2] -= floor((xyz_M[oriented_dir/2] - x_min)/(x_max - x_min))*(x_max - x_min);
-  }
-  p4est_quadrant_t best_match; std::vector<p4est_quadrant_t> remotes;
-  int rank_owner = interpolation_node_ngbd->get_hierarchy()->find_smallest_quadrant_containing_point(xyz_M, best_match, remotes, false, true);
-  P4EST_ASSERT(rank_owner != -1 && best_match.level == max_level_interpolation_p4est); (void) rank_owner;
-
-  double linear_interpolation_weights[P4EST_CHILDREN];
-  get_local_interpolation_weights(interpolation_node_ngbd->get_p4est(), best_match.p.piggy3.which_tree, best_match, xyz_M, linear_interpolation_weights);
-  const p4est_locidx_t* local_interpolation_nodes = interpolation_node_ngbd->get_nodes()->local_nodes;
-  for (u_char k = 0; k < P4EST_CHILDREN; ++k)
-    if (fabs(linear_interpolation_weights[k]) > EPS)
-      tmp_FD_interface_data->node_interpolant.add_term(local_interpolation_nodes[P4EST_CHILDREN*best_match.p.piggy3.local_num + k], linear_interpolation_weights[k]);
-
-  P4EST_ASSERT(0.0 <= tmp_FD_interface_data->theta && tmp_FD_interface_data->theta <= 1.0);
-  tmp_FD_interface_data->swapped = false;
-
-  if(cell_FD_interface_data != NULL)
-  {
-    which_interface_neighbor_t which_one = {quad_idx, neighbor_quad_idx};
-    std::pair<map_of_interface_neighbors_t::iterator, bool> ret = cell_FD_interface_data->insert({which_one, *tmp_FD_interface_data}); // add it to the map so that future access is read from memory;
+    couple_of_dofs quad_couple = {quad_idx, neighbor_quad_idx};
+    std::pair<map_of_interface_neighbors_t::iterator, bool> ret = cell_FD_interface_neighbors->insert({quad_couple, *tmp_FD_interface_neighbor}); // add it to the map so that future access is read from memory;
     P4EST_ASSERT(ret.second);
     return ret.first->second;
   }
   else
-    return *tmp_FD_interface_data;
+    return *tmp_FD_interface_neighbor;
 }
 
 void my_p4est_interface_manager_t::get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const
 {
-  const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
+  const FD_interface_neighbor& interface_point = get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad_idx, oriented_dir);
   const p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
   quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz);
   xyz[oriented_dir/2] += (oriented_dir%2 == 1 ? +1.0 : -1.0)*interface_point.theta*dxyz_min[oriented_dir/2];
@@ -344,19 +322,19 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
 #ifdef DEBUG
 int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
 {
-  P4EST_ASSERT(cell_FD_interface_data != NULL);
+  P4EST_ASSERT(cell_FD_interface_neighbors != NULL);
 
   int mpiret;
   std::vector<int> senders(p4est->mpisize, 0);
   int num_expected_replies = 0;
 
   int it_is_alright = true;
-  std::map<int, std::vector<which_interface_neighbor_t> > map_of_query_interface_neighbors; map_of_query_interface_neighbors.clear();
-  std::map<int, std::vector<which_interface_neighbor_t> > map_of_mirrors; map_of_mirrors.clear();
+  std::map<int, std::vector<couple_of_dofs> > map_of_query_interface_neighbors; map_of_query_interface_neighbors.clear();
+  std::map<int, std::vector<couple_of_dofs> > map_of_mirrors; map_of_mirrors.clear();
   int first_rank_ghost_owner = 0;
   while (first_rank_ghost_owner < p4est->mpisize && ghost->proc_offsets[first_rank_ghost_owner + 1] == 0) { first_rank_ghost_owner++; }
 
-  for (map_of_interface_neighbors_t::const_iterator it = cell_FD_interface_data->begin(); it != cell_FD_interface_data->end(); ++it)
+  for (map_of_interface_neighbors_t::const_iterator it = cell_FD_interface_neighbors->begin(); it != cell_FD_interface_neighbors->end(); ++it)
   {
     const p4est_locidx_t local_quad_idx = MIN(it->first.local_dof_idx, it->first.neighbor_dof_idx);
     const p4est_locidx_t ghost_quad_idx = MAX(it->first.local_dof_idx, it->first.neighbor_dof_idx);
@@ -372,10 +350,10 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
         num_expected_replies += 1;
         senders[rank_owner] = 1;
       }
-      which_interface_neighbor_t other_one;
-      other_one.local_dof_idx = ghost_nb_quad->p.piggy3.local_num;
-      other_one.neighbor_dof_idx = local_quad_idx;
-      map_of_query_interface_neighbors[rank_owner].push_back(other_one);
+      couple_of_dofs remote_quad_couple;
+      remote_quad_couple.local_dof_idx    = ghost_nb_quad->p.piggy3.local_num;
+      remote_quad_couple.neighbor_dof_idx = local_quad_idx; // will be overwritten after communication...
+      map_of_query_interface_neighbors[rank_owner].push_back(remote_quad_couple);
       map_of_mirrors[rank_owner].push_back({local_quad_idx, ghost_quad_idx});
     }
   }
@@ -388,7 +366,7 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
   std::vector<MPI_Request> mpi_reply_requests; mpi_reply_requests.resize(0);
 
   // send the requests...
-  for (std::map<int, std::vector<which_interface_neighbor_t> >::const_iterator it = map_of_query_interface_neighbors.begin();
+  for (std::map<int, std::vector<couple_of_dofs> >::const_iterator it = map_of_query_interface_neighbors.begin();
        it != map_of_query_interface_neighbors.end(); ++it) {
     if (it->first == p4est->mpirank)
       continue;
@@ -397,7 +375,7 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
     P4EST_ASSERT(senders[rank] == 1);
 
     MPI_Request req;
-    mpiret = MPI_Isend((void*) &map_of_query_interface_neighbors[rank][0], sizeof(which_interface_neighbor_t)*(map_of_query_interface_neighbors[rank].size()), MPI_BYTE, it->first, 15351, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Isend((void*) map_of_query_interface_neighbors[rank].data(), sizeof(couple_of_dofs)*(map_of_query_interface_neighbors[rank].size()), MPI_BYTE, it->first, 15351, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
     mpi_query_requests.push_back(req);
   }
 
@@ -414,13 +392,13 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
       {
         int byte_count;
         mpiret = MPI_Get_count(&status, MPI_BYTE, &byte_count); SC_CHECK_MPI(mpiret);
-        P4EST_ASSERT(byte_count%sizeof(which_interface_neighbor_t) == 0);
-        std::vector<which_interface_neighbor_t> queries(byte_count/sizeof(which_interface_neighbor_t));
+        P4EST_ASSERT(byte_count%sizeof(couple_of_dofs) == 0);
+        std::vector<couple_of_dofs> queries(byte_count/sizeof(couple_of_dofs));
 
-        mpiret = MPI_Recv((void*) &queries[0], byte_count, MPI_BYTE, status.MPI_SOURCE, 15351, p4est->mpicomm, MPI_STATUS_IGNORE); SC_CHECK_MPI(mpiret);
+        mpiret = MPI_Recv((void*) queries.data(), byte_count, MPI_BYTE, status.MPI_SOURCE, 15351, p4est->mpicomm, MPI_STATUS_IGNORE); SC_CHECK_MPI(mpiret);
 
         std::vector<double>& response = map_of_responses[status.MPI_SOURCE];
-        response.resize(byte_count/sizeof(which_interface_neighbor_t));
+        response.resize(byte_count/sizeof(couple_of_dofs));
 
         for (size_t kk = 0; kk < response.size(); ++kk)
         {
@@ -429,22 +407,22 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
             const p4est_quadrant_t* ghost_quad = p4est_const_quadrant_array_index(&ghost->ghosts, q);
             if(ghost_quad->p.piggy3.local_num == queries[kk].neighbor_dof_idx)
             {
-              queries[kk].neighbor_dof_idx = q + p4est->local_num_quadrants;
+              queries[kk].neighbor_dof_idx = q + p4est->local_num_quadrants; // overwrite it to match local indexing
               break;
             }
           }
-          if(cell_FD_interface_data->find(queries[kk]) == cell_FD_interface_data->end())
+          if(cell_FD_interface_neighbors->find(queries[kk]) == cell_FD_interface_neighbors->end())
           {
             std::cerr << "Queried FD cell interface data not found locally : local index = " << queries[kk].local_dof_idx << ", neighbor index " << queries[kk].neighbor_dof_idx << " on proc " << p4est->mpirank << ", queried from proc " << status.MPI_SOURCE << std::endl;
             it_is_alright = false;
           }
           else
-            response[kk] = cell_FD_interface_data->at(queries[kk]).theta;
+            response[kk] = cell_FD_interface_neighbors->at(queries[kk]).theta;
         }
 
         // we are done, lets send the buffer back
         MPI_Request req;
-        mpiret = MPI_Isend((void*)&response[0], (response.size())*sizeof(double), MPI_BYTE, status.MPI_SOURCE, 42624, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
+        mpiret = MPI_Isend((void*) response.data(), (response.size())*sizeof(double), MPI_BYTE, status.MPI_SOURCE, 42624, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
         mpi_reply_requests.push_back(req);
         num_remaining_queries--;
       }
@@ -463,10 +441,10 @@ int my_p4est_interface_manager_t::cell_FD_map_is_consistent_across_procs()
 
         mpiret = MPI_Recv((void*)&reply_buffer[0], byte_count, MPI_BYTE, status.MPI_SOURCE, 42624, p4est->mpicomm, MPI_STATUS_IGNORE);  SC_CHECK_MPI(mpiret);
         for (size_t kk = 0; kk < reply_buffer.size(); ++kk) {
-          which_interface_neighbor_t mirror   = map_of_mirrors[status.MPI_SOURCE][kk];
-          which_interface_neighbor_t queried  = map_of_query_interface_neighbors[status.MPI_SOURCE][kk];
+          const couple_of_dofs& mirror   = map_of_mirrors[status.MPI_SOURCE][kk];
+          const couple_of_dofs& queried  = map_of_query_interface_neighbors[status.MPI_SOURCE][kk];
 
-          const bool consistent_with_other_proc_data = fabs(cell_FD_interface_data->at(mirror).theta + reply_buffer[kk] - 1.0) < EPS;
+          const bool consistent_with_other_proc_data = fabs(cell_FD_interface_neighbors->at(mirror).theta + reply_buffer[kk] - 1.0) < EPS;
           it_is_alright = it_is_alright && consistent_with_other_proc_data;
           reply_buffer[kk];
 

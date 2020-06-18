@@ -13,24 +13,25 @@
 #include <map>
 #endif
 
-struct GFM_jump_info
-{
+typedef struct {
   double jump_field;
-  double jump_flux_component;
-};
+  double known_jump_flux_component;
+  linear_combination_of_dof_t xgfm_jump_flux_component_correction;
+  inline double jump_flux_component(const double* extension_p = NULL) const { return known_jump_flux_component + (extension_p != NULL  ? xgfm_jump_flux_component_correction(extension_p) : 0.0); }
+} xgfm_jump;
 
-struct which_interface_neighbor_t
+struct couple_of_dofs
 {
   p4est_locidx_t local_dof_idx;
   p4est_locidx_t neighbor_dof_idx;
 
-  inline bool operator==(const which_interface_neighbor_t& other) const // equality comparator
+  inline bool operator==(const couple_of_dofs& other) const // equality comparator
   {
     return (this->local_dof_idx == other.local_dof_idx && this->neighbor_dof_idx == other.neighbor_dof_idx)
         || (this->local_dof_idx == other.neighbor_dof_idx && this->neighbor_dof_idx == other.local_dof_idx);
   }
 
-  inline bool operator<(const which_interface_neighbor_t& other) const // comparison operator for storing in (standard) ordered map
+  inline bool operator<(const couple_of_dofs& other) const // comparison operator for storing in (standard) ordered map
   {
     return (MIN(this->local_dof_idx, this->neighbor_dof_idx) < MIN(other.local_dof_idx, other.neighbor_dof_idx)
             || (MIN(this->local_dof_idx, this->neighbor_dof_idx) == MIN(other.local_dof_idx, other.neighbor_dof_idx)
@@ -39,17 +40,18 @@ struct which_interface_neighbor_t
 };
 
 /*!
- * \brief The FD_interface_data struct contains the geometric-related data pertaining to finite-difference
+ * \brief The FD_interface_neighbor struct encapsulates the geometric-related data pertaining to finite-difference
  * interface neighbor points, i.e., intersection between the interface and the (cartesian) grid line joining
- * the degrees of freedom of interest, on the computational grid.
- * theta            : fraction of the grid spacing covered by the domain in which the cell of interest is;
- * node_interpolant : basic operator required to interpolate data (linear interpolation) from the nodes of the
- *                    interpolation_node_ngbd to the relevant interface point.
+ * the degrees of freedom of interest on the computational grid. This structure is meant to store the relevant
+ * interface-related information in a unique (i.e., non-duplicated) way as entries of a map whose keys are of
+ * type couple_of_dofs.
+ * theta    : fraction of the grid spacing covered by the domain in which the dof of interest is;
+ * swapped  : internal flag, indicating if the user is interested in the data as it was originally constructed or
+ *            its mirror (i.e., if the corresponding key in the map was the reversed couple of dofs)
  */
-struct FD_interface_data
+struct FD_interface_neighbor
 {
   double theta;
-  linear_combination_of_dof_t node_interpolant;
   bool swapped;
 
   inline double GFM_mu_tilde(const double& mu_this_side, const double& mu_across) const
@@ -57,56 +59,96 @@ struct FD_interface_data
     return (1.0 - theta)*mu_this_side + theta*mu_across;
   }
 
+  /*!
+   * \brief GFM_mu_jump self-explanatory calculates the "effective diffusion coefficient"
+   * \param [in] mu_this_side value of the diffusion coefficient as seen from the dof of interest
+   * \param [in] mu_across    value of the diffusion coefficient as seen from the neighbor dof acoss the interface
+   * \return the value of the "effective diffusion coefficient", i.e. the value \hat{mu}, as defined in the standard Ghost Fluid Method
+   * (as defined in "A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
+   */
   inline double GFM_mu_jump(const double& mu_this_side, const double& mu_across) const
   {
     return mu_this_side*mu_across/GFM_mu_tilde(mu_this_side, mu_across);
   }
 
-  inline GFM_jump_info get_GFM_jump_data(const double* jump_p, const double* jump_flux_p, const u_char& flux_component) const
+  /*!
+   * \brief GFM_jump_terms_for_flux_component evaluates the jump terms contributing to the (one-sided) flux components close to the interface
+   * \param [in] mu_this_side         value of the diffusion coefficient as seen from the dof of interest
+   * \param [in] mu_across            value of the diffusion coefficient as seen from the neighbor dof acoss the interface
+   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor dof is, as seen from the dof of interest
+   * \param [in] in_positive_domain   flag indicating if the dof of interest is in the positive domain (true) or in the negative domain (false)
+   * \param [in] jump                 jump on the field of interest at the interface point
+   * \param [in] jump_flux_component  jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
+   * \param [in] dxyz                 array of P4EST_DIM local grid size in cartesian directions
+   * \return the value of jump_terms such that the relevant flux component between the dof of interest and its neighbor dof (therefore along
+   *          the cartesian direction oriented_dir/2), as seen from the dof of interest (not across the interface) can be evaluated as
+   *  flux component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(\hat{mu}*(value on neighbor dof - value on dof of interest)/dxyz_min[oriented_dir/2] + jump_terms)
+   * --> relevant for adding to RHS when assembling linear systems...
+   */
+  inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
+                                                  const double& jump, const double jump_flux_component, const double* dxyz) const
   {
-    return {node_interpolant(jump_p), node_interpolant(jump_flux_p, flux_component, P4EST_DIM)};
+    return GFM_mu_jump(mu_this_side, mu_across)*(in_positive_domain ? +1.0 : -1.0)*
+        (jump_flux_component*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump/dxyz[oriented_dir/2]);
   }
 
-  inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain,
-                                                  const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
-  {
-    GFM_jump_info jump_info = get_GFM_jump_data(jump_p, jump_flux_p, oriented_dir/2);
-
-    return GFM_mu_jump(mu_this_side, mu_across)*(this_side_is_in_positive_domain ? +1.0 : -1.0)*
-        ((jump_info.jump_flux_component + xgfm_flux_correction)*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump_info.jump_field/dxyz[oriented_dir/2]);
-  }
-
-  inline double GFM_flux_component_this_side(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain,
-                                             const double& solution_this_side, const double& solution_across,
-                                             const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
+  /*!
+   * \brief GFM_flux_component evaluates the appropriate, one-sided flux component as seen from the cell of interest
+   * \param [in] mu_this_side         value of the diffusion coefficient as seen from the cell of interest
+   * \param [in] mu_across            value of the diffusion coefficient as seen from the neighbor cell acoss the interface
+   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
+   * \param [in] in_positive_domain   flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
+   * \param [in] solution_this_side   value of the solution at the dof of interest
+   * \param [in] solution_across      value of the solution at the neighbor dof across the interface
+   * \param [in] jump                 jump on the field of interest at the interface point
+   * \param [in] jump_flux_component  jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
+   * \param [in] dxyz                 array of P4EST_DIM local grid size in cartesian directions
+   * \return the desired, one-sided, flux component, as seen from the cell of interest!
+   */
+  inline double GFM_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
+                                   const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double* dxyz) const
   {
     return (oriented_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/dxyz[oriented_dir/2]
-        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, this_side_is_in_positive_domain, jump_p, jump_flux_p, xgfm_flux_correction, dxyz);
+        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump, jump_flux_component, dxyz);
   }
 
-  inline double GFM_interface_defined_value(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &this_side_is_in_positive_domain, const bool& get_positive_interface_value,
-                                            const double& solution_this_side, const double& solution_across,
-                                            const double* jump_p, const double* jump_flux_p, const double& xgfm_flux_correction, const double* dxyz) const
+  /*!
+   * \brief GFM_interface_value evaluates the GFM-consistent interface-defined value given solution values on either side and jump conditions
+   * \param [in] mu_this_side                 value of the diffusion coefficient as seen from the dof of interest
+   * \param [in] mu_across                    value of the diffusion coefficient as seen from the neighbor dof acoss the interface
+   * \param [in] oriented_dir                 oriented cartesian direction in which the neighbor dof is, as seen from the dof of interest
+   * \param [in] in_positive_domain           flag indicating if the of of interest is in the positive domain (true) or in the negative domain (false)
+   * \param [in] get_positive_interface_value flag indicating if the user wants the positive (true) or negative (false) interface-defined value
+   * \param [in] solution_this_side           value of the solution at the dof of interest
+   * \param [in] solution_across              value of the solution at the neighbor dof across the interface
+   * \param [in] jump                         jump on the field of interest at the interface point
+   * \param [in] jump_flux_component          jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
+   * \param [in] dxyz                         array of P4EST_DIM local grid size in cartesian directions
+   * \return the desired interface-defined value
+   * --> essential, key concept for xGFM strategy
+   */
+  inline double GFM_interface_value(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain, const bool& get_positive_interface_value,
+                                    const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double* dxyz) const
   {
-    GFM_jump_info jump_info = get_GFM_jump_data(jump_p, jump_flux_p, oriented_dir/2);
-
-    return ((1.0 - theta)*mu_this_side*(solution_this_side  + (this_side_is_in_positive_domain != get_positive_interface_value ? (this_side_is_in_positive_domain ? -1.0 : +1.0)*jump_info.jump_field : 0.0))
-            +      theta *mu_across   *(solution_across     + (this_side_is_in_positive_domain == get_positive_interface_value ? (this_side_is_in_positive_domain ? +1.0 : -1.0)*jump_info.jump_field : 0.0))
-            + (this_side_is_in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[oriented_dir/2]*(jump_info.jump_flux_component + xgfm_flux_correction))/GFM_mu_tilde(mu_this_side, mu_across);
+    return ((1.0 - theta)*mu_this_side*(solution_this_side  + (in_positive_domain != get_positive_interface_value ? (in_positive_domain ? -1.0 : +1.0)*jump : 0.0))
+            +      theta *mu_across   *(solution_across     + (in_positive_domain == get_positive_interface_value ? (in_positive_domain ? +1.0 : -1.0)*jump : 0.0))
+            + (in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[oriented_dir/2]*jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
   }
 };
 
 #if __cplusplus >= 201103L
 // hash value for unordered map keys
 struct hash_functor{
-  inline size_t operator()(const which_interface_neighbor_t& key) const
+  inline size_t operator()(const couple_of_dofs& key) const
   {
     return ((size_t) MIN(key.local_dof_idx, key.neighbor_dof_idx) << 8*sizeof (p4est_locidx_t)) + MAX(key.local_dof_idx, key.neighbor_dof_idx);
   }
 };
-typedef std::unordered_map<which_interface_neighbor_t, FD_interface_data, hash_functor> map_of_interface_neighbors_t;
+typedef std::unordered_map<couple_of_dofs, FD_interface_neighbor, hash_functor> map_of_interface_neighbors_t;
+typedef std::unordered_map<couple_of_dofs, xgfm_jump, hash_functor> map_of_xgfm_jumps_t;
 #else
-typedef std::map<which_interface_neighbor_t, interface_neighbor> map_of_interface_neighbors_t;
+typedef std::map<couple_of_dofs, FD_interface_neighbor> map_of_interface_neighbors_t;
+typedef std::map<couple_of_dofs, xgfm_jump> map_of_xgfm_jumps_t;
 #endif
 
 class my_p4est_interface_manager_t
@@ -129,20 +171,18 @@ class my_p4est_interface_manager_t
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
 
-  FD_interface_data *tmp_FD_interface_data; // unique element to be used at first construction/pass through map or if maps are not used at all (pointer so that I can keep most methods const hereunder);
-  map_of_interface_neighbors_t *cell_FD_interface_data;
-  map_of_interface_neighbors_t *face_FD_interface_data[P4EST_DIM];
+  FD_interface_neighbor *tmp_FD_interface_neighbor; // unique element to be used at first construction/pass through map or if maps are not used at all (pointer so that I can keep most methods const hereunder);
+  map_of_interface_neighbors_t *cell_FD_interface_neighbors;
+  map_of_interface_neighbors_t *face_FD_interface_neighbors[P4EST_DIM];
 
-  inline void clear_cell_FD_interface_data() {
-    if(cell_FD_interface_data != NULL)
-      cell_FD_interface_data->clear();
+  inline void clear_cell_FD_interface_neighbors() {
+    if(cell_FD_interface_neighbors != NULL)
+      cell_FD_interface_neighbors->clear();
   }
-  inline void clear_face_FD_interface_data(const u_char& dim) {
-    if(face_FD_interface_data[dim] != NULL)
-      face_FD_interface_data[dim]->clear();
+  inline void clear_face_FD_interface_neighbors(const u_char& dim) {
+    if(face_FD_interface_neighbors[dim] != NULL)
+      face_FD_interface_neighbors[dim]->clear();
   }
-
-  const FD_interface_data& get_cell_FD_interface_data_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
 
   void build_grad_phi_locally();
 
@@ -234,34 +274,34 @@ public:
   void set_under_resolved_levelset(Vec phi_on_computational_nodes_);
 
   /*!
-   * \brief do_not_store_cell_FD_interface_data deactivates the internal storage of
-   * finite-difference interface data between cell dofs
+   * \brief do_not_store_cell_FD_interface_neighbors deactivates the internal storage of
+   * finite-difference interface neighbors between cell dofs
    */
-  void do_not_store_cell_FD_interface_data();
+  void do_not_store_cell_FD_interface_neighbors();
 
   /*!
-   * \brief do_not_store_face_FD_interface_data deactivates the internal storage of
-   * finite-difference interface data between face dofs
+   * \brief do_not_store_face_FD_interface_neighbors deactivates the internal storage of
+   * finite-difference interface neighbors between face dofs
    */
-  void do_not_store_face_FD_interface_data();
+  void do_not_store_face_FD_interface_neighbors();
 
   /*!
-   * \brief clear_all_FD_interface_data clears the content  of all finite-difference
-   * data stored internally (between cells as well as between faces)
+   * \brief clear_all_FD_interface_neighbors clears the content  of all finite-difference
+   * neighbors stored internally (between cells as well as between faces)
    */
-  void clear_all_FD_interface_data();
+  void clear_all_FD_interface_neighbors();
 
   /*!
-   * \brief is_storing_cell_FD_interface_data self_explanatory
-   * \return true if storing finite-difference data between cell dofs internally
+   * \brief is_storing_cell_FD_interface_neighbors self_explanatory
+   * \return true if storing finite-difference neighbors between cell dofs internally
    */
-  inline bool is_storing_cell_FD_interface_data() const { return cell_FD_interface_data != NULL; }
+  inline bool is_storing_cell_FD_interface_neighbors() const { return cell_FD_interface_neighbors != NULL; }
 
   /*!
-   * \brief is_storing_face_FD_interface_data self_explanatory
-   * \return true if storing finite-difference data between face dofs internally
+   * \brief is_storing_face_FD_interface_neighbors self_explanatory
+   * \return true if storing finite-difference neighbors between face dofs internally
    */
-  inline bool is_storing_face_FD_interface_data() const { return ANDD(face_FD_interface_data[0] != NULL, face_FD_interface_data[1] != NULL, face_FD_interface_data[2] != NULL); }
+  inline bool is_storing_face_FD_interface_neighbors() const { return ANDD(face_FD_interface_neighbors[0] != NULL, face_FD_interface_neighbors[1] != NULL, face_FD_interface_neighbors[2] != NULL); }
 
   /*!
    * \brief evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available self-explanatory
@@ -271,126 +311,29 @@ public:
   inline void evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available(const bool& flag) { use_second_derivative_when_computing_FD_theta = flag; }
 
   /*!
-   * \brief get_FD_theta_between_cells self-explanatory
-   * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local cell]
+   * \brief get_cell_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two quadrants
+   * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local quadrant]
    * \param [in] neighbor_quad_idx  local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
    * \param [in] oriented_dir       oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \return the infamous finite-difference theta value, AS SEEN FROM THE CELL OF INTEREST, i.e., as seen from the cell of local index quad_idx.
+   * \return the FD_interface_neighbor structure, as seen from the qadrant of interest, i.e., as seen from the quadrant of local index quad_idx
    * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
    * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
    */
-  inline double get_FD_theta_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
-  {
-    const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.theta;
-  }
+  const FD_interface_neighbor& get_cell_FD_interface_neighbor_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
 
   void get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const;
 
   /*!
-   * \brief GFM_mu_jump_between_cells self-explanatory calculates the "effective diffusion coefficient"
-   * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local cell]
-   * \param [in] neighbor_quad_idx  local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir       oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \param [in] mu_this_side       value of the diffusion coefficient as seen from the cell of interest
-   * \param [in] mu_across          value of the diffusion coefficient as seen from the neighbor cell acoss the interface
-   * \return the value of the "effective diffusion coefficient", i.e. the value \hat{mu}, as defined in the standard Ghost Fluid Method
-   * (as defined in "A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
-   */
-  inline double GFM_mu_jump_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const double& mu_this_side, const double& mu_across) const
-  {
-    const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_mu_jump(mu_this_side, mu_across);
-  }
-
-  /*!
-   * \brief GFM_jump_terms_for_flux_component_between_cells evaluates the jump terms contributing to the (one-sided) flux components close to the interface
-   * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local cell]
-   * \param [in] neighbor_quad_idx  local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir       oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \param [in] mu_this_side       value of the diffusion coefficient as seen from the cell of interest
-   * \param [in] mu_across          value of the diffusion coefficient as seen from the neighbor cell acoss the interface
-   * \param [in] in_positive_domain flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
-   * \param [in] jump_field_p       pointer to (constant) node-sampled values of the jump on the field of interest
-   *                                (must be sampled on the nodes of the interpolation_node_ngbd)
-   * \param [in] jump_flux_p        pointer to (constant) node-sampled values of the jump in flux components for the field of interest
-   *                                (must be P4EST_DIM-block structued and sampled on the nodes of the interpolation_node_ngbd)
-   * \return the value of jump_terms such that the relevant flux component between the cell of interest and its neighbor cell (therefore along
-   *          the cartesian direction oriented_dir/2), as seen from the cell of interest (not across the interface) can be evaluated as
-   *  flux component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(\hat{mu}*(value on neighbor_cell - value on cell of interest)/dxyz_min[oriented_dir/2] + jump_terms)
-   * --> relevant for adding to RHS when assembling linear systems...
-   */
-  inline double GFM_jump_terms_for_flux_component_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir,
-                                                                const double& mu_this_side, const double& mu_across, const bool& in_positive_domain,
-                                                                const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
-  {
-    const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min);
-  }
-
-  /*!
-   * \brief GFM_interface_value_between_cells evaluates the GFM-consistently interface-defined value given a cell-sampled solution field
-   * and jump conditions
-   * \param [in] quad_idx                     local index of the cell of interest (cumulative over the local trees) [must be a local cell]
-   * \param [in] neighbor_quad_idx            local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir                 oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \param [in] mu_this_side                 value of the diffusion coefficient as seen from the cell of interest
-   * \param [in] mu_across                    value of the diffusion coefficient as seen from the neighbor cell acoss the interface
-   * \param [in] in_positive_domain           flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
-   * \param [in] get_positive_interface_value flag indicating if the user wants the positive or negative interface-defined value
-   * \param [in] solution_p                   a pointer to the (constant) cell-sampled solution field
-   * \param [in] jump_field_p                 pointer to (constant) node-sampled values of the jump on the field of interest
-   *                                          (must be sampled on the nodes of the interpolation_node_ngbd)
-   * \param [in] jump_flux_p                  pointer to (constant) node-sampled values of the jump in flux components for the field of interest
-   *                                          (must be P4EST_DIM-block structued and sampled on the nodes of the interpolation_node_ngbd)
-   * \return the desired interface-defined value
-   * --> essential, key concept for xGFM strategy
-   */
-  inline double GFM_interface_value_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir,
-                                                  const double& mu_this_side, const double mu_across, const bool& in_positive_domain, const bool& get_positive_interface_value,
-                                                  const double* solution_p, const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
-  {
-    const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_interface_defined_value(mu_this_side, mu_across, oriented_dir, in_positive_domain, get_positive_interface_value, solution_p[quad_idx], solution_p[neighbor_quad_idx], jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min);
-  }
-
-  /*!
-   * \brief GFM_flux_at_face_between_cells evaluate the appropriate, one-sided relevant flux component at the face separating two cells
-   * across the interface
-   * \param [in] quad_idx                     local index of the cell of interest (cumulative over the local trees) [must be a local cell]
-   * \param [in] neighbor_quad_idx            local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir                 oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \param [in] mu_this_side                 value of the diffusion coefficient as seen from the cell of interest
-   * \param [in] mu_across                    value of the diffusion coefficient as seen from the neighbor cell acoss the interface
-   * \param [in] in_positive_domain           flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
-   * \param [in] face_is_on_this_side         flag indicating if the face of interest is on the same side of (true) or acrpss (false) the interface as the cell of interest
-   * \param [in] solution_p                   a pointer to the (constant) cell-sampled solution field
-   * \param [in] jump_field_p                 pointer to (constant) node-sampled values of the jump on the field of interest
-   *                                          (must be sampled on the nodes of the interpolation_node_ngbd)
-   * \param [in] jump_flux_p                  pointer to (constant) node-sampled values of the jump in flux components for the field of interest
-   *                                          (must be P4EST_DIM-block structued and sampled on the nodes of the interpolation_node_ngbd)
-   * \return the desired, one-sided, flux component, on the side of the interface where the face lies!
-   */
-  inline double GFM_flux_at_face_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, const double& mu_this_side, const double mu_across,
-                                               const bool& in_positive_domain, const bool face_is_on_this_side, const double* solution_p,
-                                               const double* jump_field_p, const double* jump_flux_p, const double& xgfm_flux_correction) const
-  {
-    const FD_interface_data& interface_point = get_cell_FD_interface_data_for(quad_idx, neighbor_quad_idx, oriented_dir);
-    return interface_point.GFM_flux_component_this_side(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad_idx],jump_field_p, jump_flux_p, xgfm_flux_correction, dxyz_min)
-        + (face_is_on_this_side ? 0.0 : (in_positive_domain ? -1.0 : +1.0)*(interface_point.node_interpolant(jump_flux_p, oriented_dir/2, P4EST_DIM) + xgfm_flux_correction));
-  }
-
-  /*!
-   * \brief get_cell_FD_interface_data self-explanatory
+   * \brief get_cell_FD_interface_neighbors self-explanatory
    * \return
    */
-  inline const map_of_interface_neighbors_t& get_cell_FD_interface_data() const
+  inline const map_of_interface_neighbors_t& get_cell_FD_interface_neighbors() const
   {
 #ifdef CASL_THROWS
-    if(cell_FD_interface_data == NULL)
-      throw std::runtime_error("my_p4est_interface_manager_t::get_cell_FD_interface_data() called but the corresponding data is not stored...");
+    if(cell_FD_interface_neighbors == NULL)
+      throw std::runtime_error("my_p4est_interface_manager_t::get_cell_FD_interface_neighbors() called but the corresponding data is not stored...");
 #endif
-    return *cell_FD_interface_data;
+    return *cell_FD_interface_neighbors;
   }
 
   /*!
