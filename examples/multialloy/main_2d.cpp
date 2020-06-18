@@ -63,15 +63,15 @@ param_list_t pl;
 // computational domain parameters
 //-------------------------------------
 param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 2, "ny", "Number of trees in the y-direction");
+param_t<int>    ny   (pl, 5, "ny", "Number of trees in the y-direction");
 param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
 param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
-param_t<double> xmax (pl, 0.5, "xmax", "Box xmax");
-param_t<double> ymax (pl, 1, "ymax", "Box ymax");
+param_t<double> xmax (pl, 1, "xmax", "Box xmax");
+param_t<double> ymax (pl, 5, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
 param_t<double> xc   (pl, .51, "xc", "Centering point x");
@@ -86,13 +86,13 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
 param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
-param_t<double> lip  (pl, 1.0, "lip",  "Fine-to-coarse grid transition width");
+param_t<double> lip  (pl, 2.0, "lip",  "Fine-to-coarse grid transition width");
 param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
 
 //-------------------------------------
@@ -103,14 +103,17 @@ param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "")
 
 param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
 param_t<int>    order_in_time   (pl, 1,      "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
+param_t<int>    max_iterations  (pl, 6,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.45,    "cfl_number",      "");
+param_t<double> cfl_number      (pl, 0.9,    "cfl_number",      "");
 param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
+param_t<double> base_cfl        (pl, 0.3,    "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
 param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
+
+param_t<bool> start_from_moving_front (pl, 1, "start_from_moving_front", "");
 
 //-------------------------------------
 // output parameters
@@ -118,7 +121,7 @@ param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps",
 param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
 param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
-param_t<bool>   save_timings         (pl, 0, "save_timings", "");
+param_t<bool>   save_timings         (pl, 1, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
@@ -214,9 +217,9 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity (pl, 0.02,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 10000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient    (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -239,7 +242,7 @@ param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              
 param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               "");
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 
-param_t<double> box_size (pl, 2.e-2, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 1.5e-2, "box_size", "Physical width (in x) of the box in cm");
 //param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
 double scaling() { return 1./box_size.val; }
@@ -336,7 +339,7 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 0.2e-5;
+      eps_c.val = 1.0e-5;
       eps_v.val = 0*5e-2;
       eps_a.val = 0*0.05;
       symmetry.val = 4;
@@ -841,6 +844,7 @@ double Ai[4], Bi[4];
 double lam;
 double Tstar, Cstar[4];
 double t_start;
+double kp[4];
 
 double F(double x)
 {
@@ -1187,12 +1191,21 @@ public:
       case -2: return analytic::cl_exact(idx, t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::cl_exact(idx, t, ABS1(y-ymin()));
       case  0:
+        if (start_from_moving_front.val) {
+          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
+                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+        }
       case  1:
       case  2:
       case  3:
       case  4:
       case  5:
-      case  6: return *initial_conc_all[idx];
+      case  6:
+        if (start_from_moving_front.val) {
+          return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
+                                           exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
+        }
+      return *initial_conc_all[idx];
       default: throw;
     }
   }
@@ -1218,14 +1231,14 @@ public:
     switch (geometry()) {
       case -3:
       case -2:
-      case -1: return (*part_coeff_all[idx])*analytic::Cstar[idx];
+      case -1:
       case  0:
       case  1:
       case  2:
       case  3:
       case  4:
       case  5:
-      case  6: return (*part_coeff_all[idx])*(*initial_conc_all[idx]);
+      case  6: return (analytic::kp[idx])*analytic::Cstar[idx];
       default: throw;
     }
   }
@@ -1246,14 +1259,6 @@ class tl_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    std::vector<double> c(num_comps());
-
-    if (geometry() >= 0) {
-      for (int i = 0; i < num_comps(); ++i) {
-        c[i] = (*cl_cf_all[i])(DIM(x,y,z));
-      }
-    }
-
     switch (geometry())
     {
 #ifdef P4_TO_P8
@@ -1261,13 +1266,13 @@ public:
 #endif
       case -2: return analytic::tl_exact(t, ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::tl_exact(t, ABS1(y-ymin.val));
-      case  0: return liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
-      case  1: return liquidus_value(c.data());
-      case  2: return liquidus_value(c.data());
-      case  3: return liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
-      case  4: return liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())));
-      case  5: return liquidus_value(c.data());
-      case  6: return liquidus_value(c.data()) + (y-front_location())*temp_gradient();
+      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  1: return analytic::Tstar;
+      case  2: return analytic::Tstar;
+      case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())));
+      case  4: return analytic::Tstar + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())));
+      case  5: return analytic::Tstar;
+      case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       default: throw;
     }
   }
@@ -1278,14 +1283,6 @@ class ts_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    std::vector<double> c(num_comps());
-
-    if (geometry() >= 0) {
-      for (int i = 0; i < num_comps(); ++i) {
-        c[i] = (*cl_cf_all[i])(DIM(x,y,z));
-      }
-    }
-
     switch (geometry())
     {
 #ifdef P4_TO_P8
@@ -1293,13 +1290,13 @@ public:
 #endif
       case -2: return analytic::ts_exact(t, ABS2(x-xc(), y-yc()));
       case -1: return analytic::ts_exact(t, ABS1(y-ymin()));
-      case  0: return liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient();
-      case  1: return liquidus_value(c.data());
-      case  2: return liquidus_value(c.data());
-      case  3: return liquidus_value(c.data()) - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
-      case  4: return liquidus_value(c.data()) + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())))*thermal_cond_l()/thermal_cond_s();
-      case  5: return liquidus_value(c.data());
-      case  6: return liquidus_value(c.data()) + (y-front_location())*temp_gradient();
+      case  0: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  1: return analytic::Tstar;
+      case  2: return analytic::Tstar;
+      case  3: return analytic::Tstar - container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer()-front_location())))*thermal_cond_l()/thermal_cond_s();
+      case  4: return analytic::Tstar + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())))*thermal_cond_l()/thermal_cond_s();
+      case  5: return analytic::Tstar;
+      case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       default: throw;
     }
   }
@@ -1310,27 +1307,19 @@ class tf_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    std::vector<double> c(num_comps());
-
-    if (geometry() >= 0) {
-      for (int i = 0; i < num_comps(); ++i) {
-        c[i] = (*cl_cf_all[i])(DIM(x,y,z));
-      }
-    }
-
     switch (geometry()) {
 #ifdef P4_TO_P8
-      case -3: return analytic::Tstar;
+      case -3:
 #endif
-      case -2: return analytic::Tstar;
-      case -1: return analytic::Tstar;
-      case  0: return liquidus_value(c.data());
-      case  1: return liquidus_value(c.data());
-      case  2: return liquidus_value(c.data());
-      case  3: return liquidus_value(c.data());
-      case  4: return liquidus_value(c.data());
-      case  5: return liquidus_value(c.data());
-      case  6: return liquidus_value(c.data());
+      case -2:
+      case -1:
+      case  0:
+      case  1:
+      case  2:
+      case  3:
+      case  4:
+      case  5:
+      case  6: return analytic::Tstar;
       default: throw;
     }
   }
@@ -1367,6 +1356,14 @@ public:
           case DDY: return analytic::vn_exact(t);
           default:  return 0;
         }
+      case 0:
+        if (start_from_moving_front.val) {
+          switch (what) {
+            case VAL:
+            case DDY: return cooling_velocity.val;
+            default:  return 0;
+          }
+        }
       default: return 0;
     }
   }
@@ -1388,6 +1385,10 @@ public:
 #endif
       case -2: return analytic::vf_exact(ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::vf_exact(ABS1(y-ymin.val));
+      case  0:
+        if (start_from_moving_front.val) {
+          return cooling_velocity.val;
+        }
       default: return 0;
     }
   }
@@ -1404,6 +1405,10 @@ public:
 #endif
       case -2: return analytic::ft_exact(ABS2(x-xc.val, y-yc.val));
       case -1: return analytic::ft_exact(ABS1(y-ymin.val));
+      case  0:
+        if (start_from_moving_front.val) {
+          return (y-front_location.val) / cooling_velocity.val;
+        }
       default: return 0;
     }
   }
@@ -1428,7 +1433,8 @@ public:
                   analytic::ts_exact(t, container_radius_inner.val) :
                   analytic::tl_exact(t, container_radius_outer.val);
           case -1: return y < .5*(ymin.val+ymax.val) ? analytic::ts_exact(t, 0) : analytic::tl_exact(t, ymax.val-ymin.val);
-          case  0:
+          case  0: return y < .5*(ymin.val+ymax.val) ? analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()
+                                                     : analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*(temp_gradient()*thermal_cond_l.val + cooling_velocity.val*latent_heat.val)/thermal_cond_s.val;
           case  1:
           case  2:
           case  3:
@@ -1448,7 +1454,7 @@ public:
                   -thermal_cond_s.val*analytic::dts_exact(t, container_radius_inner.val) :
                   +thermal_cond_l.val*analytic::dtl_exact(t, container_radius_outer.val);
           case -1: return y < .5*(ymin.val+ymax.val) ? -analytic::dts_exact(t, 0) : analytic::dtl_exact(t, ymax.val-ymin.val);
-          case  0: return y > .5*(ymin.val+ymax.val) ? temp_gradient.val : -(temp_gradient.val + cooling_velocity.val*latent_heat.val/thermal_cond_s.val * smooth_start(t));
+          case  0: return y > .5*(ymin.val+ymax.val) ? temp_gradient.val : -(temp_gradient.val*thermal_cond_l.val/thermal_cond_s.val + cooling_velocity.val*(latent_heat.val+density_l.val*temp_gradient.val*heat_capacity_l.val*(ymax.val-ymin.val))/thermal_cond_s.val * smooth_start(t));
           case  1: return -seed_radius.val/container_radius_outer.val*cooling_velocity.val*latent_heat.val*smooth_start(t);
           case  2: return -(container_radius_outer.val-front_location.val)/container_radius_outer.val*cooling_velocity.val*latent_heat.val*smooth_start(t);
           case  3:
@@ -1696,6 +1702,29 @@ int main (int argc, char* argv[])
   temp_gradient.val    /= scaling();
   cooling_velocity.val *= scaling();
 
+
+  // initialize constants in initial and boundary conditions
+  for (int i = 0; i < num_comps.val; ++i) {
+    analytic::Cstar[i] = (*initial_conc_all[i]);
+  }
+
+  for (int i = 0; i < num_comps.val; ++i) {
+    analytic::kp[i] = part_coeff(i, analytic::Cstar);
+  }
+
+  if (start_from_moving_front.val && geometry.val == 0) {
+    if (const_part_coeff.val) {
+      for (int i = 0; i < num_comps.val; ++i) { analytic::Cstar[i] = (*initial_conc_all[i])/analytic::kp[i]; }
+    } else {
+      for (int j = 0; j < 10; ++j) {
+        for (int i = 0; i < num_comps.val; ++i) { analytic::Cstar[i] = (*initial_conc_all[i])/analytic::kp[i]; }
+        for (int i = 0; i < num_comps.val; ++i) { analytic::kp[i]    = part_coeff(i, analytic::Cstar);  }
+      }
+    }
+  }
+
+  analytic::Tstar = liquidus_value(analytic::Cstar);
+
   switch (geometry.val) {
     case -2: analytic::set_analytical_solution(gradient_ratio.val, cooling_velocity.val, container_radius_inner.val + front_location.val); break;
     case -1: analytic::set_analytical_solution(gradient_ratio.val, cooling_velocity.val, front_location.val); break;
@@ -1832,10 +1861,13 @@ int main (int argc, char* argv[])
   mas.set_volumetric_heat(volumetric_heat_cf);
 
   // set time steps
-  double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-  double dt_curv = 0.0005*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
-  mas.set_dt_limits(0, MIN(dt_curv, 10*dt));
-//  mas.set_dt_limits(dt, dt);
+//  double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
+//  double dt_curv = 0.0015*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
+//  dt_curv = 15.e-04;
+
+  double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
+//  mas.set_dt_limits(0, MIN(dt_curv, 10*dt));
+  mas.set_dt_limits(0, dt_max);
 
   // set initial conditions
   mas.set_velocity(vn_cf, DIM(vx_cf, vy_cf, vz_cf), vf_cf);
