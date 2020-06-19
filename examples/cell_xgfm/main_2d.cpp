@@ -341,7 +341,7 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_layer_quadrant(k);
     const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_layer_quadrant(k);
     double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-    if(interface_manager->phi(xyz_quad) > 0.0)
+    if(interface_manager->phi_at_point(xyz_quad) > 0.0)
       err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     else
       err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
@@ -353,7 +353,7 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
     const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_inner_quadrant(k);
     const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_inner_quadrant(k);
     double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-    if(interface_manager->phi(xyz_quad) > 0.0)
+    if(interface_manager->phi_at_point(xyz_quad) > 0.0)
       err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     else
       err_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
@@ -367,7 +367,7 @@ void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
     err_derivatives_components[dim] = 0.0;
     for(p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
       double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
-      const double phi_face = interface_manager->phi(xyz_face);
+      const double phi_face = interface_manager->phi_at_point(xyz_face);
       if(phi_face > 0.0)
       {
         const double mu_ = test_problem->get_mu_plus();

@@ -193,15 +193,14 @@ class my_p4est_interface_manager_t
 public:
   /*!
    * \brief my_p4est_interface_manager_t constructor of the interface manager object
-   * \param [in] faces_ pointer to a constant face structure for your computational grid
-   *             (all the grid-related information is fetched from there, except for the nodes)
-   * \param [in] nodes_ pointer to a constant node structure for your computational grid
-   * \param [in] interpolation_node_ngbd_ pointer to a constant node-neighborhood information
-   *             for your interface-capturing grid. Your interface-capturing grid may be identical
-   *             to your computational grid or subresolved close to the interface, but if it MUST
-   *             NOT be coarser than your computational grid!
-   *             (if you're smart enough, you'll have initialized that neighborhood beforehand,
-   *              because it can't be done thereafter given the internal 'const' qualifier...)
+   * \param [in] faces_:                    pointer to a constant face structure for your computational grid (all the grid-related
+   *                                        information is fetched from there, except for the nodes)
+   * \param [in] nodes_:                    pointer to a constant node structure for your computational grid
+   * \param [in] interpolation_node_ngbd_:  pointer to a constant node-neighborhood information for your interface-capturing grid.
+   *                                        Your interface-capturing grid may be identical to your computational grid or subresolved
+   *                                        close to the interface, but if it MUST NOT be coarser than your computational grid!
+   *                                        (if you're smart enough, you'll have initialized that neighborhood beforehand, because
+   *                                        it can't be done thereafter given the internal 'const' qualifier...)
    * - This constructor creates relevant (empty) maps for storing finite-difference related data for
    * cell and faces dofs. The default behavior of the object is to store that information internally
    * (and without duplicates) to accelerate interface-specific treatment of any type thereafter.
@@ -214,9 +213,9 @@ public:
   /*!
    * \brief set_levelset sets the levelset values, which *MUST* be sampled on the nodes of the interface-capturing grid, i.e.,
    * on the nodes of the interpolation_node_ngbd.
-   * \param [in] phi                            vector of node-sampled levelset values, must be sampled on the nodes of the
+   * \param [in] phi:                           vector of node-sampled levelset values, must be sampled on the nodes of the
    *                                            interface-capturing grid, i.e., on the nodes of interpolation_node_ngbd_n.
-   * \param [in] method_interp_phi              [optional] desired interpolation method for evaluating your levelset function
+   * \param [in] method_interp_phi:             [optional] desired interpolation method for evaluating your levelset function
    *                                            at points, deault is linear interpolation.
    *                                            If your interface-capturing grid is subresolving, this parameter should be
    *                                            rather irrelevant regarding the subsequent behavior of (jump) solver(s) for
@@ -224,7 +223,7 @@ public:
    *                                            actually be sampled at those points in that case.
    *                                            However, this should definitely be specified by the user if not using a
    *                                            subresolving interface-capturing grid grid .
-   * \param [in] phi_xxyyzz                     [optional] second derivatives of your levelset function, must be
+   * \param [in] phi_xxyyzz:                    [optional] second derivatives of your levelset function, must be
    *                                            P4EST_DIM block-structured, and sampled on the nodes of the interface-capturing
    *                                            grid, i.e., on the nodes of interpolation_node_ngbd_n. This input is optional
    *                                            but it is advised and/or required to provide them in the following cases
@@ -242,7 +241,7 @@ public:
    *                                            polation, where needed (other methods of interpolation would required 4th order
    *                                            derivatives of phi, which would probably be as good as a white noise signal input,
    *                                            anyways)
-   * \param [in] build_and_set_grad_phi_locally [optional] flag activating the calculation and configuration of the internal inter-
+   * \param [in] build_and_set_grad_phi_locally:[optional] flag activating the calculation and configuration of the internal inter-
    *                                            -polation tool for evaluating gradients of the levelset function (the gradient of
    *                                            the levelset function is computed internally and owned by this object in that case)
    * NOTE : if _NOT_ using a subresolving interpolation_node_ngbd, this method will also set phi as the "phi_on_computational_nodes"
@@ -253,7 +252,7 @@ public:
   /*!
    * \brief set_grad_phi sets the vector of node-sampled gradient values of the interface-capturing levelset function.
    * If provided by the user, this object doesn't take ownership, otherwise, it will build it and compute it internally.
-   * \param [in] grad_phi_in                    [option] first derivatives of your levelset function or NULL pointer. If not NULL,
+   * \param [in] grad_phi_in:                   [optional] first derivatives of your levelset function or NULL pointer. If not NULL,
    *                                            the vector must be P4EST_DIM block-structured, and sampled on the nodes of the
    *                                            interface-capturing grid, i.e., on the nodes of interpolation_node_ngbd_n. If NULL
    *                                            (or disregarded), this method will calculate them internally (and own them).
@@ -268,7 +267,7 @@ public:
    * are only available via interpolation if not invoked and if using a subresolving interpolation_node_ngbd. If not using a subresolving
    * interpolation_node_ngbd, this method will also set the internal levelset interpolation tool if it is not done yet (with a default linear
    * interpolation method)
-   * \param [in] phi_on_computational_nodes_    vector of node-sampled levelset values, sampled on the nodes of your computational grids, i.e.,
+   * \param [in] phi_on_computational_nodes_:   vector of node-sampled levelset values, sampled on the nodes of your computational grids, i.e.,
    *                                            on "nodes" (and _NOT_ on interpolation_node_ngbd.get_nodes() if they're different).
    */
   void set_under_resolved_levelset(Vec phi_on_computational_nodes_);
@@ -305,16 +304,16 @@ public:
 
   /*!
    * \brief evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available self-explanatory
-   * \param [in] flag : the user's choice
+   * \param [in] flag: the user's choice
    * NOTE: (default flag value is set to true internally if this function is never called)
    */
   inline void evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available(const bool& flag) { use_second_derivative_when_computing_FD_theta = flag; }
 
   /*!
    * \brief get_cell_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two quadrants
-   * \param [in] quad_idx           local index of the cell of interest (cumulative over the local trees) [must be a local quadrant]
-   * \param [in] neighbor_quad_idx  local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir       oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
+   * \param [in] quad_idx:          local index of the cell of interest (cumulative over the local trees) [must be a local quadrant]
+   * \param [in] neighbor_quad_idx: local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
+   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
    * \return the FD_interface_neighbor structure, as seen from the qadrant of interest, i.e., as seen from the quadrant of local index quad_idx
    * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
    * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
@@ -338,28 +337,28 @@ public:
 
   /*!
    * \brief compute_subvolumes_in_cell self-explanatory
-   * \param [in] quad_idx         local index of the quadrant of interest (cumulative over trees) [must be a local cell]
-   * \param [in] tree_idx         index of the tree owning the quadrant of interest
-   * \param [out] negative_volume surface, resp. volume, of the quadrant that is in the negative domain in 2D (resp. 3D)
-   * \param [out] positive_volume surface, resp. volume, of the quadrant that is in the positive domain in 2D (resp. 3D) --> complement of the above
+   * \param [in]  quad_idx:         local index of the quadrant of interest (cumulative over trees) [must be a local cell]
+   * \param [in]  tree_idx:         index of the tree owning the quadrant of interest
+   * \param [out] negative_volume:  surface, resp. volume, of the quadrant that is in the negative domain in 2D (resp. 3D)
+   * \param [out] positive_volume:  surface, resp. volume, of the quadrant that is in the positive domain in 2D (resp. 3D) --> complement of the above
    * [Integration in subrefining quadrants is executed if subresolving interface-capturing is used]
    */
   void compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
 
   /*!
-   * \brief phi evaluates the levelset value at a given point
-   * \param [in] xyz coordinates of the point where the levelset value is desired
+   * \brief phi_at_point evaluates the levelset value at a given point
+   * \param [in] xyz: coordinates of the point where the levelset value is desired
    * \return the levelset value
    */
-  inline double phi(const double *xyz) const { return interp_phi(xyz); }
+  inline double phi_at_point(const double *xyz) const { return interp_phi(xyz); }
 
   /*!
-   * \brief grad_phi evaluates the gradient of the levelset function at a given point
-   * \param [in] xyz coordinates of the point where the gradient of the levelset function is desired
-   * \param [out] grad_phi the computed gradient at xyz
+   * \brief grad_phi_at_point evaluates the gradient of the levelset function at a given point
+   * \param [in]  xyz:      coordinates of the point where the gradient of the levelset function is desired
+   * \param [out] grad_phi: the computed gradient at xyz
    * [set_grad_phi, must have been called first!]
    */
-  inline void grad_phi(const double *xyz, double* grad_phi) const
+  inline void grad_phi_at_point(const double *xyz, double* grad_phi) const
   {
 #ifdef CASL_THROWS
     if(interp_grad_phi == NULL)
@@ -367,6 +366,34 @@ public:
 #endif
     (*interp_grad_phi)(xyz, grad_phi);
     return;
+  }
+
+  /*!
+   * \brief normal_vector_at_point evaluates the (possibly signed) normal vector, as the normalized gradient of the levelset function,
+   * at a given point.
+   * \param [in]  xyz:    coordinates of the point where the normal vector of the levelset function is desired
+   * \param [out] normal: the computed normal vector
+   * \param [in]  scale:  [optional] value of the desired scale of the normal vector --> can be negative. Default is 1.0.
+   * [NOTE :] if the gradient is locally ill-defined, i.e., if the magnitude of the gradient of phi is below EPS, the normal
+   * vector is set to the zero vector
+   */
+  inline void normal_vector_at_point(const double *xyz, double* normal, const double& magnitude = 1.0) const
+  {
+    grad_phi_at_point(xyz, normal);
+    const double mag_grad_phi = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      normal[dim] = (mag_grad_phi > EPS ? magnitude*normal[dim]/mag_grad_phi : 0.0);
+    return;
+  }
+
+  inline double signed_distance_at_point(const double *xyz) const
+  {
+    double signed_dist = phi_at_point(xyz);
+    double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
+    const double mag_grad_phi = sqrt(SUMD(grad_phi_local[0], grad_phi_local[1], grad_phi_local[2]));
+    if(mag_grad_phi < EPS)
+      throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the signed distance to the interface for a point where the gradient of phi is ill-defined");
+    return signed_dist/mag_grad_phi;
   }
 
   /*!

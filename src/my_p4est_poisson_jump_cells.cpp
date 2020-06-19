@@ -140,7 +140,7 @@ my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(con
   const bool major_quad_is_leading    = (oriented_dir%2 == (quad_is_major ? 0 : 1));
   const p4est_quadrant_t& major_quad  = (quad_is_major ? *quad : *direct_neighbors.begin());
   quad_xyz_fr_q((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), (quad_is_major ? tree_idx : major_quad.p.piggy3.which_tree), p4est, ghost, xyz_);
-  const double phi_major_quad = interface_manager->phi(xyz_);
+  const double phi_major_quad = interface_manager->phi_at_point(xyz_);
   all_cell_centers_on_same_side = true;
 
   set_of_neighboring_quadrants *minor_quads = NULL;
@@ -165,7 +165,7 @@ my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(con
     split_face_check += surface_ratio; quad_is_among_sharers = quad_is_among_sharers || it->p.piggy3.local_num == quad_idx;
 #endif
     quad_xyz_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost, xyz_);
-    all_cell_centers_on_same_side = all_cell_centers_on_same_side && !signs_of_phi_are_different(phi_major_quad, interface_manager->phi(xyz_));
+    all_cell_centers_on_same_side = all_cell_centers_on_same_side && !signs_of_phi_are_different(phi_major_quad, interface_manager->phi_at_point(xyz_));
   }
   P4EST_ASSERT(quad_is_among_sharers && fabs(split_face_check - 1.0) < EPS);
   discretization_distance *= tree_dimensions[oriented_dir/2];

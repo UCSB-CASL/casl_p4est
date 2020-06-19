@@ -271,7 +271,7 @@ public:
         double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
         // crude estimate but whatever, it's mostly to get closer to what we expect...
         sharp_integral_solution += sol_p[quad_idx]*(negative_volume + positive_volume);
-        sharp_integral_solution += (interface_manager->phi(xyz_quad) <= 0.0 ? positive_volume : -negative_volume)*(*interp_jump_u)(xyz_quad);
+        sharp_integral_solution += (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? positive_volume : -negative_volume)*(*interp_jump_u)(xyz_quad);
       }
     }
     ierr = VecRestoreArray(solution, &sol_p); CHKERRXX(ierr);

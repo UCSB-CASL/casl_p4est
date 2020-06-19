@@ -101,7 +101,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
   const double cell_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
 
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  const double phi_quad = interface_manager->phi(xyz_quad);
+  const double phi_quad = interface_manager->phi_at_point(xyz_quad);
   const double &mu_this_side = (phi_quad > 0.0 ? mu_plus : mu_minus);
 
   /* First add the diagonal term */
@@ -126,7 +126,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
       double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])};
       xyz_face[oriented_dir/2] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[oriented_dir/2];
 #ifdef CASL_THROWS
-      const double phi_face = interface_manager->phi(xyz_face);
+      const double phi_face = interface_manager->phi_at_point(xyz_face);
       if(signs_of_phi_are_different(phi_quad, phi_face))
         throw std::invalid_argument("my_p4est_xgfm_cells_t::build_discretization_for_quad() : a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
@@ -219,10 +219,7 @@ const xgfm_jump& my_p4est_xgfm_cells_t::get_xgfm_jump_between_quads(const p4est_
   double xyz_interface_point[P4EST_DIM];
   double normal[P4EST_DIM];
   interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface_point);
-  interface_manager->grad_phi(xyz_interface_point, normal);
-  const double mag_normal = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    normal[dim] = (mag_normal > EPS ? normal[dim]/mag_normal : 0.0);
+  interface_manager->normal_vector_at_point(xyz_interface_point, normal);
 
   to_insert_in_map.jump_field                 = (*interp_jump_u)(xyz_interface_point);
   to_insert_in_map.known_jump_flux_component  = (*interp_jump_normal_flux)(xyz_interface_point)*normal[oriented_dir/2];
@@ -566,7 +563,7 @@ void my_p4est_xgfm_cells_t::initialize_extension_local(const p4est_locidx_t& qua
                                                        const double* solution_p, double* extension_p) const
 {
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  const double phi_q = interface_manager->phi(xyz_quad);
+  const double phi_q = interface_manager->phi_at_point(xyz_quad);
 
   // build the educated initial guess : we extend u^{-}_{interface} if mu_m is larger, u^{+}_{interface} otherwise
   extension_p[quad_idx] = solution_p[quad_idx];
@@ -595,15 +592,12 @@ my_p4est_xgfm_cells_t::get_extension_increment_operator_for(const p4est_locidx_t
   const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  const double phi_quad = interface_manager->phi(xyz_quad);
+  const double phi_quad = interface_manager->phi_at_point(xyz_quad);
   pseudo_time_step_operator.quad_idx            = quad_idx;
   pseudo_time_step_operator.in_band             = fabs(phi_quad) < control_band;
   pseudo_time_step_operator.in_positive_domain  = phi_quad > 0.0;
-  double grad_phi[P4EST_DIM]; interface_manager->grad_phi(xyz_quad, grad_phi);
-  const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi[0]), SQR(grad_phi[1]), SQR(grad_phi[2])));
-  const double signed_normal[P4EST_DIM] = {DIM((mag_grad_phi > EPS ? (phi_quad <= 0.0 ? -1.0 : +1.0)*grad_phi[0]/mag_grad_phi : 0.0),
-                                   (mag_grad_phi > EPS ? (phi_quad <= 0.0 ? -1.0 : +1.0)*grad_phi[1]/mag_grad_phi : 0.0),
-                                   (mag_grad_phi > EPS ? (phi_quad <= 0.0 ? -1.0 : +1.0)*grad_phi[2]/mag_grad_phi : 0.0))};
+  double signed_normal[P4EST_DIM];
+  interface_manager->normal_vector_at_point(xyz_quad, signed_normal, (phi_quad <= 0.0 ? -1.0 : +1.0));
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     const u_char oriented_dir = 2*dim + (signed_normal[dim] > 0.0 ? 0 : 1);
@@ -665,8 +659,8 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
 
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
   double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_face[dim] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[dim];
-  phi_face = interface_manager->phi(xyz_face);
-  const double phi_q    = interface_manager->phi(xyz_quad);
+  phi_face = interface_manager->phi_at_point(xyz_face);
+  const double phi_q    = interface_manager->phi_at_point(xyz_quad);
   const double mu_face  = (phi_face > 0.0 ? mu_plus : mu_minus);
   PetscErrorCode ierr;
   const double *solution_p;
@@ -713,10 +707,7 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
         // evaluate the jump in flux component as defined consistently with the logic for regular interface point
         const double jump_normal_flux = (*interp_jump_normal_flux)(xyz_face);
         double normal[P4EST_DIM];
-        interface_manager->grad_phi(xyz_face, normal);
-        const double mag_grad_phi = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
-        for (u_char dd = 0; dd < P4EST_DIM; ++dd)
-          normal[dd] = (mag_grad_phi > EPS ? normal[dd]/mag_grad_phi : 0.0);
+        interface_manager->normal_vector_at_point(xyz_face, normal);
 
         double jump_in_flux_component = jump_normal_flux*normal[dim];
         if(activate_xGFM)
