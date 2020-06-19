@@ -12,8 +12,7 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_xgfm_cells_solve_for_sharp_solution;
-extern PetscLogEvent log_my_p4est_xgfm_cells_extend_interface_values;
-extern PetscLogEvent log_my_p4est_xgfm_cells_interpolate_cell_extension_to_interface_capturing_nodes;
+extern PetscLogEvent log_my_p4est_xgfm_cells_update_extension_of_interface_values;
 extern PetscLogEvent log_my_p4est_xgfm_cells_update_rhs_and_residual;
 #endif
 
@@ -28,6 +27,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   pseudo_time_step_increment_operator.resize(p4est->local_num_quadrants);
   extension_operators_are_stored_and_set = false;
   xgfm_jump_between_quads.clear();
+  solver_monitor.clear();
 }
 
 my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
@@ -263,78 +263,93 @@ linear_combination_of_dof_t my_p4est_xgfm_cells_t::build_xgfm_jump_flux_correcti
   return xgfm_flux_correction;
 }
 
-void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type , const PCType& pc_type)
+void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
-  P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2]));   // make sure we have wall boundary conditions if we need them
-  P4EST_ASSERT(interface_is_set() && jumps_have_been_set());                          // make sure the problem is fully defined
+  // make sure the problem is fully defined
+  P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
+  P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
+  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (user_vstar_minus != NULL && user_vstar_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
 
   PetscBool saved_ksp_original_guess_flag;
   ierr = KSPGetInitialGuessNonzero(ksp, &saved_ksp_original_guess_flag); // we'll change that one to true internally, but we want to set it back to whatever it originally was
 
-  /* clear the solver monitoring */
-  solver_monitor.clear();
-
-  /* Set the linear system, the linear solver and solve it (regular GFM, i.e., "Boundary Condition-Capturing scheme...") */
+  /* Set the linear system, the linear solver and solve it */
   setup_linear_system();
   ierr = setup_linear_solver(ksp_type, pc_type, xGFM_tolerance_on_rel_residual); CHKERRXX(ierr);
 
-  KSPConvergedReason termination_reason = solve_linear_system();
-  if(termination_reason <= 0)
-    throw std::runtime_error("my_p4est_xgfm_cells_t::solve_for_sharp_solution() the Krylov solver failed to converge for the very first linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
-
   if(!activate_xGFM || mus_are_equal())
+  {
+    solve_linear_system();
     solver_monitor.log_iteration(0.0, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
+  }
   else
   {
-    Vec former_extension  = extension;  // both should be NULL at this stage, this is the generalized usage for fix-point update
-    Vec former_residual   = residual;   // both should be NULL at this stage, this is the generalized usage for fix-point update
-    Vec former_rhs        = rhs;
-    Vec former_solution   = solution;
-    // fix-point update
-    extend_interface_values(former_extension);
-    update_rhs_and_residual(former_rhs, former_residual);
-    solver_monitor.log_iteration(0.0, this);
+    // We will need to memorize former solver's states for the xgfm iterative procedure
+    Vec former_rhs, former_solution, former_extension, former_residual;
+    former_rhs = former_solution = former_extension = former_residual = NULL; // the procedure will adequately determine/create them
 
-    while (!solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual)
-           && !solve_for_fixpoint_solution(former_solution))
+    while(update_solution(former_solution))
     {
-      // we need to keep going : find the next fix-point rhs and fix-point residual based,
-      // and linearly combine the two last states in order to minimize the next residual
-      extend_interface_values(former_extension);
+      // fix-point update
+      update_extension_of_interface_values(former_extension);
       update_rhs_and_residual(former_rhs, former_residual);
-
-      // linear combination of last two solver's states that minimizes the next residual
+      // linear combination of the last two solver's states to minimize minimize L2 residual:
       const double max_correction = set_solver_state_minimizing_L2_norm_of_residual(former_solution, former_extension, former_rhs, former_residual);
       solver_monitor.log_iteration(max_correction, this);
+      // check if good enough, yet
+      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual))
+        break;
     }
-
-    P4EST_ASSERT(former_solution != solution);
-    ierr = VecDestroy(former_solution); CHKERRXX(ierr);
-    if(former_extension != extension){
+    if(former_solution != NULL){
+      ierr = VecDestroy(former_solution); CHKERRXX(ierr); }
+    if(former_extension != NULL){
       ierr = VecDestroy(former_extension); CHKERRXX(ierr); }
-    if(former_rhs != rhs){
+    if(former_rhs != NULL){
       ierr = VecDestroy(former_rhs); CHKERRXX(ierr); }
-    if(former_residual != residual){
+    if(former_residual != NULL){
       ierr = VecDestroy(former_residual); CHKERRXX(ierr); }
   }
+
   ierr = KSPSetInitialGuessNonzero(ksp, saved_ksp_original_guess_flag); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
 }
 
-// this function assumes that the (relevant) jumps_in_flux_components are up-to-date and will reset the extension of the appropriate interface-defined value
-void my_p4est_xgfm_cells_t::extend_interface_values(Vec &former_extension, const double& threshold, const uint& niter_max)
+bool my_p4est_xgfm_cells_t::update_solution(Vec &former_solution)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_extend_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // save current solution needed by xgfm iterative procedure
+  std::swap(former_solution, solution); // save former solution
+  if(solution == NULL){
+    ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); }
+  if(former_solution != NULL || user_initial_guess != NULL){
+    ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
+    if(former_solution != NULL){ // former solution has precedence as initial guess, if defined
+      ierr = VecCopyGhost(former_solution, solution); CHKERRXX(ierr); }
+    else{ // copy the given initial guess
+      ierr = VecCopyGhost(user_initial_guess, solution); CHKERRXX(ierr); }
+  }
+  solve_linear_system();
+
+  PetscInt nksp_iteration;
+  ierr = KSPGetIterationNumber(ksp, &nksp_iteration); CHKERRXX(ierr);
+
+  return nksp_iteration != 0; // if the ksp solver did at least one iteration, there was an update
+}
+
+void my_p4est_xgfm_cells_t::update_extension_of_interface_values(Vec& former_extension, const double& threshold, const uint& niter_max)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(interface_is_set() && jumps_have_been_set() && threshold > EPS && niter_max > 0);
 
   const double *solution_p;
-  const double *current_extension_p = NULL;
+  const double *current_extension_p = NULL; // --> this feeds the jump conditions that were used to define "solution" so it's required to determine the interface-defined values
   ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
   Vec extension_n, extension_np1; // (extensions at pseudo times n and np1)
   ierr = VecCreateGhostCells(p4est, ghost, &extension_n); CHKERRXX(ierr);
@@ -384,30 +399,43 @@ void my_p4est_xgfm_cells_t::extend_interface_values(Vec &former_extension, const
     iter++;
   }
 
-  // restore pointer
+  // restore pointers
   if(current_extension_p != NULL){
     ierr = VecRestoreArrayRead(extension, &current_extension_p); CHKERRXX(ierr); }
-  // former extension is destroyed if not NULL
-  // solver's current extension goes into former extension
-  // new extension goes into solver's extension (extension_n is the most advance in pseudo-time at this point, because of the final "swap" in the loop here above)...
-  ierr = VecDestroy(extension_np1);  CHKERRXX(ierr);
-  if(former_extension != NULL){
-    ierr = VecDestroy(former_extension); CHKERRXX(ierr); }
-  former_extension = extension;
-  extension = extension_n;
-
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_extend_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
+  // destroy what needs be
+  // extension_n is the most advanced in pseudo-time at this point (because of the final "swap" in the loop here above) --> destroy extension_np1
+  ierr = VecDestroy(extension_np1);  CHKERRXX(ierr);
+
+  // avoid memory leak, destroy former_extension if needed before making it point to the former extension
+  if(former_extension != NULL){
+    ierr = VecDestroy(former_extension); CHKERRXX(ierr); }
+
+  former_extension  = extension;
+  extension         = extension_n;
+
+  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return;
 }
 
-// update the rhs values associated with cells involving jump conditions (fix-point update)
-void my_p4est_xgfm_cells_t::update_rhs_in_relevant_cells_only()
+void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec &former_rhs, Vec &former_residual)
 {
-  rhs_is_set = false; // lower this flag in order to update the rhs terms appropriately
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
+  P4EST_ASSERT(solution != NULL && rhs != NULL);
 
+  // update the rhs in the cells that are affected by the new jumps in flux components (because of new extension)
+  // save the current rhs first
+  std::swap(former_rhs, rhs);
+  // create a new vector if needed
+  if(rhs == NULL){
+    ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr);
+    ierr = VecCopy(former_rhs, rhs); CHKERRXX(ierr);
+  }
+
+  rhs_is_set = false; // lower this flag in order to update the rhs terms appropriately
   std::set<p4est_locidx_t> already_done; already_done.clear();
   for (map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.begin(); it != xgfm_jump_between_quads.end(); ++it)
   {
@@ -426,36 +454,13 @@ void my_p4est_xgfm_cells_t::update_rhs_in_relevant_cells_only()
       already_done.insert(it->first.neighbor_dof_idx);
     }
   }
-
   rhs_is_set = true; // rise the flag up again since you're done
 
-  return;
-}
-
-// this function recalculates the (relevant) jumps in flux components given the currently known node-sampled extension of interface-defined values
-// updates the discretized rhs accordingly and calculates the updated residual of the system based on the current solution and those newly updated jump
-// conditions. If a fix-point was reached, this residual should be (close to) 0.0 basically...
-void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec& former_rhs, Vec& former_residual)
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
-  P4EST_ASSERT(rhs != NULL);
-
-  // update the rhs consistently with those new jumps in flux components
-  // save the rhs first
-  std::swap(former_rhs, rhs);
-  // create a new vector if needed
-  if(rhs == former_rhs){
-    ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr);
-    ierr = VecCopy(former_rhs, rhs); CHKERRXX(ierr);
-  }
-
-  update_rhs_in_relevant_cells_only();
 
   // save the current residual
   std::swap(former_residual, residual);
   // create a new vector if needed:
-  if(residual == NULL || residual == former_residual){
+  if(residual == NULL){
     ierr = VecCreateNoGhostCells(p4est, &residual); CHKERRXX(ierr); }
 
   // calculate the fix-point residual
@@ -467,10 +472,15 @@ void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec& former_rhs, Vec& former
   return;
 }
 
-// linearly combines the last known solver's state (provided by the user) with the current state in such a way that
-// the linearly combined states minimize the L2 norm of the residual
 double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension, Vec former_rhs, Vec former_residual)
 {
+  P4EST_ASSERT(solution != NULL && extension != NULL && rhs !=NULL && residual != NULL);
+  if(former_residual == NULL)
+  {
+    P4EST_ASSERT(former_solution == NULL && former_extension == NULL); // otherwise, something went wrong...
+    return 0.0; // if the former residual is not known (0th step), we can't do anything and we need to leave the solver's state as is (0.0 returned because no actual "correction")
+  }
+
   PetscErrorCode ierr;
   PetscReal former_residual_dot_residual, L2_norm_residual;
   ierr = VecDot(former_residual, residual, &former_residual_dot_residual); CHKERRXX(ierr);
@@ -514,29 +524,6 @@ double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Ve
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_correction, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   return max_correction;
-}
-
-bool my_p4est_xgfm_cells_t::solve_for_fixpoint_solution(Vec& former_solution)
-{
-  P4EST_ASSERT(solution != NULL);
-  // save current solution
-  std::swap(former_solution, solution);
-  PetscErrorCode ierr;
-  ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
-  // create a new vector if needed
-  if(solution == former_solution){
-    ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); } // we need a new one for fixpoint iteration
-
-  ierr = VecCopyGhost(former_solution, solution); CHKERRXX(ierr); // update solution <= former_solution to have a good initial guess for next KSP solve
-
-  KSPConvergedReason termination_reason = solve_linear_system(); CHKERRXX(ierr);
-  if(termination_reason <= 0)
-    throw std::runtime_error("my_p4est_xgfm_cells_t::solve_for_fixpoint_solution() the Krylov solver failed to converge for one of the subsequent linear systems to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
-
-  PetscInt nksp_iteration;
-  ierr = KSPGetIterationNumber(ksp, &nksp_iteration); CHKERRXX(ierr);
-
-  return (termination_reason > 0 && nksp_iteration == 0);
 }
 
 void my_p4est_xgfm_cells_t::initialize_extension(Vec cell_sampled_extension)

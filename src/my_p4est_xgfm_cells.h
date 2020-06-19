@@ -79,7 +79,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     }
   } solver_monitor;
 
-  // (possibly memorized) extension operators for interface-defined values
+  // Extension-related objects (extension operators are memorized)
   inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
   struct interface_extension_neighbor
   {
@@ -127,7 +127,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   const extension_increment_operator& get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band);
   bool extension_operators_are_stored_and_set;
 
-  // memorized jump information for interface-point between quadrants
+  // Memorized jump information for interface-point between quadrants
   map_of_xgfm_jumps_t xgfm_jump_between_quads;
   linear_combination_of_dof_t build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
                                                                                 const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const;
@@ -138,17 +138,55 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   my_p4est_xgfm_cells_t(const my_p4est_xgfm_cells_t& other);
   my_p4est_xgfm_cells_t& operator=(const my_p4est_xgfm_cells_t& other);
 
-  // internal procedures
+  // preallocation-related
   void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                           PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const;
-  bool solve_for_fixpoint_solution(Vec& former_solution);
 
-  // using PDE extrapolation : uses the current solution results and jump conditions to extend the appropriate
-  // interface-defined values in the normal directions, using ASLAM's PDE-based extrapolation on the cells
-  void extend_interface_values(Vec &former_extension, const double& threshold = 1.0e-10, const uint& niter_max = 20);
-  // updates the right-hand side terms for cells involving jump terms (after extension has been updated)
-  void update_rhs_in_relevant_cells_only();
-  void update_rhs_and_residual(Vec& former_rhs, Vec& former_residual);
+  // methods involved in the xgfm iterative procedure, minimizing the residual
+  /*!
+   * \brief update_solution saves the currently known solution and solves the current linear system with the best available initial guess
+   * \param [out] former_solution   : solution as known by the solver before this call
+   * \return true if there was indeed an update in the solution (otherwise, it means that a fix-point was found)
+   */
+  bool update_solution(Vec &former_solution);
+
+  /*!
+   * \brief update_extension_of_interface_values computes the new extension of relevant interface-defined values, which are function of the current
+   * solution and jump conditions (which depend on the currently known extension). Then the currently known extension is saved and return to calling
+   * procedure via "former_extension" and the internal "extension" is updated with the newly calculated results.
+   * The extension is Aslam's PDE extendion, with first order in pseudo-time forward Euler integration and subcell resolution close to the interface.
+   * The derivatives of the cell-sampled extension are evaluated consistently with the derivatives defined for stable projection operators, away from
+   * the interface. (The result of the extension must be a linear function of the interface-defined values to ensure convergence of the xgfm iterative
+   * procedure)
+   * \param [out] former_extension  : extension of relevant interface-defined values, as known by the solver before this call
+   * \param [in] threshold          : [optional] absolute threshold value to abort stop the pseudo-time procedure: if the interface-extended values do
+   *                                  not change by more than this threshold over one pseudo-time step in a band of 3 diag from the interface, it is
+   *                                  assumed that convergence is reached. Default value is 1e-10
+   * \param [in] niter_max          : [optional] maximum number of pseudo time steps for the extension. Default value is 20.
+   */
+  void update_extension_of_interface_values(Vec &former_extension, const double& threshold = 1.0e-10, const uint& niter_max = 20);
+
+  /*!
+   * \brief update_rhs_and_residual saves the currently known (discretized) rhs and residual and updates them thereafter (given the current "extension"
+   * and the associated Cartesian jump conditions)
+   * \param [out] former_rhs        : discretized rhs, as known by the solver before this call
+   * \param [out] former_residual   : residual (Ax - b), as known by the solver before this call
+   */
+  void update_rhs_and_residual(Vec &former_rhs, Vec &former_residual);
+
+  /*!
+   * \brief set_solver_state_minimizing_L2_norm_of_residual linearly combines the former solver's state (provided by the user)
+   * with the current one (understood as the result of a fix-point update) in such a way that the linearly combined states
+   * minimize the L2 norm of the residual. If no former state is actually known (i.e., if it is the very first pass through the
+   * procedure, meaning that former_residual, former_solution and former_extension are all NULL), then the current state is left
+   * unchanged.
+   * \param [in] former_solution  : solution as known by the solver before the fixpoint update
+   * \param [in] former_extension : extension of the relevant interface-defined values, as known by the solver before the fixpoint update
+   * \param [in] former_rhs       : discretized rhs, as known by the solver before the fixpoint update
+   * \param [in] former_residual  : (fixpoint) residual of the targeted jump problem, as known by the solver before the fixpoint update
+   * \return the maximum of the absolute value of the correction to "former_solution" defining the new solver's solution (if a
+   * former_solution was provided, 0.0 otherwise)
+   */
   double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension, Vec former_rhs, Vec former_residual);
 
   void initialize_extension(Vec cell_sampled_extension);
@@ -161,7 +199,6 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   {
     if(solution == NULL)
       solve_for_sharp_solution();
-    P4EST_ASSERT(solution != NULL);
   }
 
   inline void make_sure_extensions_are_defined()
@@ -170,9 +207,9 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     if(extension == NULL)
     {
       P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
-      extend_interface_values(extension);
+      Vec dummy = NULL;
+      update_extension_of_interface_values(dummy); // argument is dummy in that case...
     }
-    P4EST_ASSERT(extension != NULL);
     return;
   }
 

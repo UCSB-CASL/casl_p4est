@@ -24,7 +24,7 @@ protected:
   double dxyz_min[P4EST_DIM];
   inline double diag_min() const { return sqrt(SUMD(SQR(dxyz_min[0]), SQR(dxyz_min[1]), SQR(dxyz_min[2]))); }
 
-  // this solver needs an interface manager (and may help build it)
+  // this solver needs an interface manager (and may contribute to building some of its interface cell-specific maps)
   my_p4est_interface_manager_t* interface_manager;
 
   // equation parameters
@@ -42,6 +42,7 @@ protected:
   my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
   inline bool jumps_have_been_set() const { return jump_u != NULL && jump_normal_flux_u != NULL; }
+  Vec user_initial_guess;
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec solution;   // cell-sampled, sharp
   Vec rhs;        // cell-sampled, discretized rhs of the linear system to invert
@@ -65,11 +66,10 @@ protected:
   // internal procedures
   virtual void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                                   PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const = 0;
-  void preallocate_matrix();
 
+  void preallocate_matrix();
   PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const;
-  KSPConvergedReason solve_linear_system();
-  bool solve_for_fixpoint_solution(Vec& former_solution);
+  void solve_linear_system();
   inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
   inline void reset_linear_system() { matrix_is_set = rhs_is_set = false; setup_linear_system(); }
@@ -144,22 +144,15 @@ public:
   }
 
   virtual void solve_for_sharp_solution(const KSPType &ksp, const PCType& pc) = 0;
-  virtual inline void solve(Vec& sol, const bool& use_non_zero_initial_guess, const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE)
+  inline void solve(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE, Vec initial_guess_ = NULL)
   {
-    P4EST_ASSERT(VecIsSetForCells(sol, p4est, ghost, 1));
+    P4EST_ASSERT(initial_guess_ == NULL || VecIsSetForCells(initial_guess_, p4est, ghost, 1));
     PetscErrorCode ierr;
-    if(solution != NULL){
-      ierr = VecDestroy(solution); CHKERRXX(ierr); // avoid memory leak
-    }
-    solution = sol;
-    if(use_non_zero_initial_guess){ // activates initial guess
+    user_initial_guess = initial_guess_;
+    if(user_initial_guess != NULL){ // activates initial guess
       ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr); }
 
     solve_for_sharp_solution(ksp_type, pc_type);
-
-    // return_ownership_of_solution :
-    sol = solution;
-    solution = NULL; // will be handled by user from now on, hopefully!
     return;
   }
 

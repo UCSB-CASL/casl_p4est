@@ -16,6 +16,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   user_rhs_minus = user_rhs_plus = NULL;
   user_vstar_minus = user_vstar_plus = NULL;
   jump_u = jump_normal_flux_u = NULL;
+  user_initial_guess = NULL;
   rhs = NULL;
   interp_jump_u           = NULL;
   interp_jump_normal_flux = NULL;
@@ -183,12 +184,17 @@ my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(con
   return local_derivative_operator;
 }
 
-KSPConvergedReason my_p4est_poisson_jump_cells_t::solve_linear_system()
+void my_p4est_poisson_jump_cells_t::solve_linear_system()
 {
   PetscErrorCode ierr;
 
-  if(solution == NULL) {
-    ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr); }
+  if (solution == NULL) {
+    ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr);
+    if(user_initial_guess != NULL){
+      ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = VecCopyGhost(user_initial_guess, solution); CHKERRXX(ierr);
+    }
+  }
 
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
@@ -198,10 +204,13 @@ KSPConvergedReason my_p4est_poisson_jump_cells_t::solve_linear_system()
   ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  KSPConvergedReason convergence_reason;
-  ierr = KSPGetConvergedReason(ksp, &convergence_reason); CHKERRXX(ierr);
-
-  return convergence_reason; // positive values indicate convergence
+#ifdef CASL_THROWS
+  KSPConvergedReason termination_reason;
+  ierr = KSPGetConvergedReason(ksp, &termination_reason); CHKERRXX(ierr);
+  if(termination_reason <= 0)
+    throw std::runtime_error("my_p4est_poisson_jump_cells_t::solve_linear_system() : the Krylov solver failed to converge for a linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
+#endif
+  return;
 }
 
 PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const
