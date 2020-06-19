@@ -103,7 +103,7 @@ param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "")
 
 param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
 param_t<int>    order_in_time   (pl, 1,      "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 6,     "max_iterations",  "");
+param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.9,    "cfl_number",      "");
 param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
@@ -124,8 +124,10 @@ param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
 param_t<bool>   save_timings         (pl, 1, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
-param_t<bool>   save_vtk_history     (pl, 1, "save_vtk_history", "");
+param_t<bool>   save_vtk_solid       (pl, 1, "save_vtk_solid", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
+param_t<bool>   save_p4est           (pl, 1, "save_vtk", "");
+param_t<bool>   save_p4est_solid     (pl, 1, "save_vtk_solid", "");
 
 param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
@@ -217,9 +219,9 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity (pl, 0.02,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity (pl, 0.1,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient    (pl, 4000, "temp_gradient",    "Temperature gradient (pl, K/cm");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -230,7 +232,7 @@ param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRIC
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, DBL_MAX, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-8,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.05,     "front_location",         "");
@@ -242,7 +244,7 @@ param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              
 param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               "");
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 
-param_t<double> box_size (pl, 1.5e-2, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 5.e-3, "box_size", "Physical width (in x) of the box in cm");
 //param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
 double scaling() { return 1./box_size.val; }
@@ -1666,13 +1668,22 @@ int main (int argc, char* argv[])
     pl.save_all(file.str().c_str());
   }
 
-  if (save_vtk.val || save_vtk_history.val || save_vtk_analytical.val)
+  if (save_vtk.val || save_vtk_solid.val || save_vtk_analytical.val)
   {
     std::ostringstream command;
     command << "mkdir -p " << out_dir << "/vtu";
     int ret_sys = system(command.str().c_str());
     if (ret_sys<0)
       throw std::invalid_argument("could not create OUT_DIR/vtu directory");
+  }
+
+  if (save_p4est.val || save_p4est_solid.val)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/p4est";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create OUT_DIR/p4est directory");
   }
 
   if (save_dendrites.val)
@@ -1984,249 +1995,217 @@ int main (int argc, char* argv[])
     }
 
     // save field data
-    if (save_dendrites.val && save_now) {
-      mas.count_dendrites(vtk_idx);
-    }
-    if (save_vtk.val && save_now) {
-//      mas.count_dendrites(vtk_idx);
-      mas.save_VTK(vtk_idx);
-      mas.save_p4est(vtk_idx);
-//      mas.save_VTK_solid(vtk_idx);
-    }
-    if (save_vtk_history.val && save_now) {
-      mas.save_VTK_solid(vtk_idx);
-    }
-
-    // compute error
-    if ((save_vtk_analytical.val || save_accuracy.val) && save_now)
+    if (save_now)
     {
-      front_phi_cf.t = tn;
-      ts_cf.t = tn;
-      tl_cf.t = tn;
-      vn_cf.t = tn;
-      ft_cf.t = tn;
-      tf_cf.t = tn;
-      vf_cf.t = tn;
-      for (int i = 0; i < num_comps.val; ++i) {
-        cl_cf_all[i]->t = tn;
-        cs_cf_all[i]->t = tn;
-      }
+      if (save_dendrites.val)   mas.count_dendrites(vtk_idx);
+      if (save_vtk.val)         mas.save_VTK(vtk_idx);
+      if (save_vtk_solid.val)   mas.save_VTK_solid(vtk_idx);
+      if (save_p4est.val)       mas.save_p4est(vtk_idx);
+      if (save_p4est_solid.val) mas.save_p4est_solid(vtk_idx);
 
-      p4est_t       *p4est = mas.get_p4est();
-      p4est_nodes_t *nodes = mas.get_nodes();
+      // compute error
+      if (save_vtk_analytical.val || save_accuracy.val)
+      {
+        front_phi_cf.t = tn;
+        ts_cf.t = tn;
+        tl_cf.t = tn;
+        vn_cf.t = tn;
+        ft_cf.t = tn;
+        tf_cf.t = tn;
+        vf_cf.t = tn;
+        for (int i = 0; i < num_comps.val; ++i) {
+          cl_cf_all[i]->t = tn;
+          cs_cf_all[i]->t = tn;
+        }
 
-      vec_and_ptr_t front; front.vec = mas.get_front_phi();
-      vec_and_ptr_t contr; contr.vec = mas.get_contr_phi();
-      vec_and_ptr_t ts;    ts.vec    = mas.get_ts();
-      vec_and_ptr_t tl;    tl.vec    = mas.get_tl();
-      vec_and_ptr_t vn;    vn.vec    = mas.get_normal_velocity();
-      vec_and_ptr_array_t cl(num_comps.val);
-      for (int i = 0; i < num_comps.val; ++i) {
-        cl.vec[i] = mas.get_cl()[i];
-      }
+        p4est_t       *p4est = mas.get_p4est();
+        p4est_nodes_t *nodes = mas.get_nodes();
 
-      my_p4est_interpolation_nodes_t interp(mas.get_history_ngbd());
-      interp.add_all_nodes(p4est, nodes);
+        vec_and_ptr_t front; front.vec = mas.get_front_phi();
+        vec_and_ptr_t contr; contr.vec = mas.get_contr_phi();
+        vec_and_ptr_t ts;    ts.vec    = mas.get_ts();
+        vec_and_ptr_t tl;    tl.vec    = mas.get_tl();
+        vec_and_ptr_t vn;    vn.vec    = mas.get_normal_velocity();
+        vec_and_ptr_array_t cl(num_comps.val);
+        for (int i = 0; i < num_comps.val; ++i) {
+          cl.vec[i] = mas.get_cl()[i];
+        }
 
-      vec_and_ptr_t ft(front.vec); interp.set_input(mas.get_ft(), linear); interp.interpolate(ft.vec);
-      vec_and_ptr_t tf(front.vec); interp.set_input(mas.get_tf(), linear); interp.interpolate(tf.vec);
-      vec_and_ptr_t vf(front.vec); interp.set_input(mas.get_vf(), linear); interp.interpolate(vf.vec);
-      vec_and_ptr_array_t cs(num_comps.val, front.vec);
-      for (int i = 0; i < num_comps.val; ++i) {
-        interp.set_input(mas.get_cs(i), linear);
-        interp.interpolate(cs.vec[i]);
-      }
+        my_p4est_interpolation_nodes_t interp(mas.get_solid_ngbd());
+        interp.add_all_nodes(p4est, nodes);
 
-      vec_and_ptr_t front_exact(front.vec); sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_exact.vec);
-      vec_and_ptr_t ts_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ts_cf, ts_exact.vec);
-      vec_and_ptr_t tl_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tl_cf, tl_exact.vec);
-      vec_and_ptr_t vn_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vn_cf, vn_exact.vec);
-      vec_and_ptr_t ft_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ft_cf, ft_exact.vec);
-      vec_and_ptr_t tf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tf_cf, tf_exact.vec);
-      vec_and_ptr_t vf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vf_cf, vf_exact.vec);
-      vec_and_ptr_array_t cl_exact(num_comps.val, front.vec);
-      vec_and_ptr_array_t cs_exact(num_comps.val, front.vec);
-      for (int i = 0; i < num_comps.val; ++i) {
-        sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl_exact.vec[i]);
-        sample_cf_on_nodes(p4est, nodes, *cs_cf_all[i], cs_exact.vec[i]);
-      }
+        vec_and_ptr_t ft(front.vec); interp.set_input(mas.get_ft(), linear); interp.interpolate(ft.vec);
+        vec_and_ptr_t tf(front.vec); interp.set_input(mas.get_tf(), linear); interp.interpolate(tf.vec);
+        vec_and_ptr_t vf(front.vec); interp.set_input(mas.get_vf(), linear); interp.interpolate(vf.vec);
+        vec_and_ptr_array_t cs(num_comps.val, front.vec);
+        for (int i = 0; i < num_comps.val; ++i) {
+          interp.set_input(mas.get_cs(i), linear);
+          interp.interpolate(cs.vec[i]);
+        }
 
-      vec_and_ptr_t front_error(front.vec);
-      vec_and_ptr_t ts_error(front.vec);
-      vec_and_ptr_t tl_error(front.vec);
-      vec_and_ptr_t vn_error(front.vec);
-      vec_and_ptr_t ft_error(front.vec);
-      vec_and_ptr_t tf_error(front.vec);
-      vec_and_ptr_t vf_error(front.vec);
-      vec_and_ptr_array_t cl_error(num_comps.val, front.vec);
-      vec_and_ptr_array_t cs_error(num_comps.val, front.vec);
+        vec_and_ptr_t front_exact(front.vec); sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_exact.vec);
+        vec_and_ptr_t ts_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ts_cf, ts_exact.vec);
+        vec_and_ptr_t tl_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tl_cf, tl_exact.vec);
+        vec_and_ptr_t vn_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vn_cf, vn_exact.vec);
+        vec_and_ptr_t ft_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, ft_cf, ft_exact.vec);
+        vec_and_ptr_t tf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, tf_cf, tf_exact.vec);
+        vec_and_ptr_t vf_exact(front.vec);    sample_cf_on_nodes(p4est, nodes, vf_cf, vf_exact.vec);
+        vec_and_ptr_array_t cl_exact(num_comps.val, front.vec);
+        vec_and_ptr_array_t cs_exact(num_comps.val, front.vec);
+        for (int i = 0; i < num_comps.val; ++i) {
+          sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl_exact.vec[i]);
+          sample_cf_on_nodes(p4est, nodes, *cs_cf_all[i], cs_exact.vec[i]);
+        }
 
-      contr.get_array();
-      front.get_array(); front_exact.get_array(); front_error.get_array();
-      ts.get_array(); ts_exact.get_array(); ts_error.get_array();
-      tl.get_array(); tl_exact.get_array(); tl_error.get_array();
-      vn.get_array(); vn_exact.get_array(); vn_error.get_array();
-      ft.get_array(); ft_exact.get_array(); ft_error.get_array();
-      tf.get_array(); tf_exact.get_array(); tf_error.get_array();
-      vf.get_array(); vf_exact.get_array(); vf_error.get_array();
-      cl.get_array(); cl_exact.get_array(); cl_error.get_array();
-      cs.get_array(); cs_exact.get_array(); cs_error.get_array();
+        vec_and_ptr_t front_error(front.vec);
+        vec_and_ptr_t ts_error(front.vec);
+        vec_and_ptr_t tl_error(front.vec);
+        vec_and_ptr_t vn_error(front.vec);
+        vec_and_ptr_t ft_error(front.vec);
+        vec_and_ptr_t tf_error(front.vec);
+        vec_and_ptr_t vf_error(front.vec);
+        vec_and_ptr_array_t cl_error(num_comps.val, front.vec);
+        vec_and_ptr_array_t cs_error(num_comps.val, front.vec);
 
-      double band = 1.5*dxyz[0];
-      foreach_node(n, nodes) {
-        if (contr.ptr[n] < 0.) {
-          if (front.ptr[n] > 0.) {
-            ts_error.ptr[n] = fabs(ts.ptr[n] - ts_exact.ptr[n]);
-            tl_error.ptr[n] = 0;
-            ft_error.ptr[n] = fabs(ft.ptr[n] - ft_exact.ptr[n]);
-            tf_error.ptr[n] = fabs(tf.ptr[n] - tf_exact.ptr[n]);
-            vf_error.ptr[n] = fabs(vf.ptr[n] - vf_exact.ptr[n]);
-            for (int i = 0; i < num_comps.val; ++i) {
-              cl_error.ptr[i][n] = 0;
-              cs_error.ptr[i][n] = fabs(cs.ptr[i][n] - cs_exact.ptr[i][n]);
+        contr.get_array();
+        front.get_array(); front_exact.get_array(); front_error.get_array();
+        ts.get_array(); ts_exact.get_array(); ts_error.get_array();
+        tl.get_array(); tl_exact.get_array(); tl_error.get_array();
+        vn.get_array(); vn_exact.get_array(); vn_error.get_array();
+        ft.get_array(); ft_exact.get_array(); ft_error.get_array();
+        tf.get_array(); tf_exact.get_array(); tf_error.get_array();
+        vf.get_array(); vf_exact.get_array(); vf_error.get_array();
+        cl.get_array(); cl_exact.get_array(); cl_error.get_array();
+        cs.get_array(); cs_exact.get_array(); cs_error.get_array();
+
+        double band = 1.5*dxyz[0];
+        foreach_node(n, nodes) {
+          if (contr.ptr[n] < 0.) {
+            if (front.ptr[n] > 0.) {
+              ts_error.ptr[n] = fabs(ts.ptr[n] - ts_exact.ptr[n]);
+              tl_error.ptr[n] = 0;
+              ft_error.ptr[n] = fabs(ft.ptr[n] - ft_exact.ptr[n]);
+              tf_error.ptr[n] = fabs(tf.ptr[n] - tf_exact.ptr[n]);
+              vf_error.ptr[n] = fabs(vf.ptr[n] - vf_exact.ptr[n]);
+              for (int i = 0; i < num_comps.val; ++i) {
+                cl_error.ptr[i][n] = 0;
+                cs_error.ptr[i][n] = fabs(cs.ptr[i][n] - cs_exact.ptr[i][n]);
+              }
+            } else {
+              ts_error.ptr[n] = 0;
+              tl_error.ptr[n] = fabs(tl.ptr[n] - tl_exact.ptr[n]);
+              ft_error.ptr[n] = 0;
+              tf_error.ptr[n] = 0;
+              vf_error.ptr[n] = 0;
+              for (int i = 0; i < num_comps.val; ++i) {
+                cl_error.ptr[i][n] = fabs(cl.ptr[i][n] - cl_exact.ptr[i][n]);
+                cs_error.ptr[i][n] = 0;
+              }
             }
-          } else {
-            ts_error.ptr[n] = 0;
-            tl_error.ptr[n] = fabs(tl.ptr[n] - tl_exact.ptr[n]);
-            ft_error.ptr[n] = 0;
-            tf_error.ptr[n] = 0;
-            vf_error.ptr[n] = 0;
-            for (int i = 0; i < num_comps.val; ++i) {
-              cl_error.ptr[i][n] = fabs(cl.ptr[i][n] - cl_exact.ptr[i][n]);
-              cs_error.ptr[i][n] = 0;
+
+            if (fabs(front.ptr[n]) < band) {
+              vn_error.ptr[n]    = fabs(vn.ptr[n] + vn_exact.ptr[n]);
+              front_error.ptr[n] = fabs(front.ptr[n] - front_exact.ptr[n]);
+            } else {
+              vn_error.ptr[n]    = 0;
+              front_error.ptr[n] = 0;
             }
           }
+        }
 
-          if (fabs(front.ptr[n]) < band) {
-            vn_error.ptr[n]    = fabs(vn.ptr[n] + vn_exact.ptr[n]);
-            front_error.ptr[n] = fabs(front.ptr[n] - front_exact.ptr[n]);
-          } else {
-            vn_error.ptr[n]    = 0;
-            front_error.ptr[n] = 0;
+        if (save_vtk_analytical.val) {
+          char name[1000];
+          sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
+
+          // cell data
+          std::vector<double *>    cell_data;
+          std::vector<std::string> cell_data_names;
+
+          // point data
+          std::vector<double *>    point_data;
+          std::vector<std::string> point_data_names;
+
+          point_data.push_back(contr.ptr); point_data_names.push_back("contr");
+          point_data.push_back(front.ptr); point_data_names.push_back("phi");
+          point_data.push_back(tl.ptr); point_data_names.push_back("tl");
+          point_data.push_back(ts.ptr); point_data_names.push_back("ts");
+          point_data.push_back(vn.ptr); point_data_names.push_back("vn");
+          point_data.push_back(ft.ptr); point_data_names.push_back("ft");
+          point_data.push_back(tf.ptr); point_data_names.push_back("tf");
+          point_data.push_back(vf.ptr); point_data_names.push_back("vf");
+
+          point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
+          point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
+          point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
+          point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
+          point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
+          point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
+          point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
+
+          point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
+          point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
+          point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
+          point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
+          point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
+          point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
+          point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
+
+          for (int i = 0; i < num_comps.val; ++i) {
+            char numstr[21]; sprintf(numstr, "%d", i);
+
+            point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
+            point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
+            point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
+
+            point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
+            point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
+            point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
           }
-        }
-      }
 
-      if (save_vtk_analytical.val) {
-        char name[1000];
-        sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
+          my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
+                                       P4EST_TRUE, P4EST_TRUE,
+                                       name,
+                                       point_data, point_data_names,
+                                       cell_data, cell_data_names);
 
-        // cell data
-        std::vector<double *>    cell_data;
-        std::vector<std::string> cell_data_names;
 
-        // point data
-        std::vector<double *>    point_data;
-        std::vector<std::string> point_data_names;
+          PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
 
-        point_data.push_back(contr.ptr); point_data_names.push_back("contr");
-        point_data.push_back(front.ptr); point_data_names.push_back("phi");
-        point_data.push_back(tl.ptr); point_data_names.push_back("tl");
-        point_data.push_back(ts.ptr); point_data_names.push_back("ts");
-        point_data.push_back(vn.ptr); point_data_names.push_back("vn");
-        point_data.push_back(ft.ptr); point_data_names.push_back("ft");
-        point_data.push_back(tf.ptr); point_data_names.push_back("tf");
-        point_data.push_back(vf.ptr); point_data_names.push_back("vf");
-
-        point_data.push_back(front_exact.ptr); point_data_names.push_back("phi_exact");
-        point_data.push_back(tl_exact.ptr); point_data_names.push_back("tl_exact");
-        point_data.push_back(ts_exact.ptr); point_data_names.push_back("ts_exact");
-        point_data.push_back(vn_exact.ptr); point_data_names.push_back("vn_exact");
-        point_data.push_back(ft_exact.ptr); point_data_names.push_back("ft_exact");
-        point_data.push_back(tf_exact.ptr); point_data_names.push_back("tf_exact");
-        point_data.push_back(vf_exact.ptr); point_data_names.push_back("vf_exact");
-
-        point_data.push_back(front_error.ptr); point_data_names.push_back("phi_error");
-        point_data.push_back(tl_error.ptr); point_data_names.push_back("tl_error");
-        point_data.push_back(ts_error.ptr); point_data_names.push_back("ts_error");
-        point_data.push_back(vn_error.ptr); point_data_names.push_back("vn_error");
-        point_data.push_back(ft_error.ptr); point_data_names.push_back("ft_error");
-        point_data.push_back(tf_error.ptr); point_data_names.push_back("tf_error");
-        point_data.push_back(vf_error.ptr); point_data_names.push_back("vf_error");
-
-        for (int i = 0; i < num_comps.val; ++i) {
-          char numstr[21]; sprintf(numstr, "%d", i);
-
-          point_data.push_back(cl.ptr[i]);       point_data_names.push_back(std::string("cl") + numstr);
-          point_data.push_back(cl_exact.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_exact"));
-          point_data.push_back(cl_error.ptr[i]); point_data_names.push_back(std::string("cl") + numstr + std::string("_error"));
-
-          point_data.push_back(cs.ptr[i]);       point_data_names.push_back(std::string("cs") + numstr);
-          point_data.push_back(cs_exact.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_exact"));
-          point_data.push_back(cs_error.ptr[i]); point_data_names.push_back(std::string("cs") + numstr + std::string("_error"));
+          contr.restore_array();
+          front.restore_array(); front_exact.restore_array(); front_error.restore_array();
+          ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
+          tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
+          vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+          ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+          tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+          vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
+          cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+          cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
         }
 
-        my_p4est_vtk_write_all_lists(p4est, nodes, mas.get_ghost(),
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     name,
-                                     point_data, point_data_names,
-                                     cell_data, cell_data_names);
+        // write into file
+        if (save_accuracy.val) {
+          std::vector<double> errors_max(2*num_comps.val+7, 0);
 
+          ierr = VecMax(front_error.vec, NULL, &errors_max[0]); CHKERRXX(ierr);
+          ierr = VecMax(ts_error.vec, NULL, &errors_max[1]); CHKERRXX(ierr);
+          ierr = VecMax(tl_error.vec, NULL, &errors_max[2]); CHKERRXX(ierr);
+          ierr = VecMax(vn_error.vec, NULL, &errors_max[3]); CHKERRXX(ierr);
+          ierr = VecMax(ft_error.vec, NULL, &errors_max[4]); CHKERRXX(ierr);
+          ierr = VecMax(tf_error.vec, NULL, &errors_max[5]); CHKERRXX(ierr);
+          ierr = VecMax(vf_error.vec, NULL, &errors_max[6]); CHKERRXX(ierr);
+          for (int i = 0; i < num_comps.val; ++i) {
+            ierr = VecMax(cl_error.vec[i], NULL, &errors_max[7+i]); CHKERRXX(ierr);
+            ierr = VecMax(cs_error.vec[i], NULL, &errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+          }
 
-        PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
+          mpiret = MPI_Allreduce(MPI_IN_PLACE, errors_max.data(), errors_max.size(), MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-        contr.restore_array();
-        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
-        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
-        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
-        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
-        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
-        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
-        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
-        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
-        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
-      }
+          for (int i = 0; i < errors_max.size(); ++i) {
+            errors_max_over_time[i] = MAX(errors_max_over_time[i], errors_max[i]);
+          }
 
-      // write into file
-      if (save_accuracy.val) {
-        std::vector<double> errors_max(2*num_comps.val+7, 0);
-
-        ierr = VecMax(front_error.vec, NULL, &errors_max[0]); CHKERRXX(ierr);
-        ierr = VecMax(ts_error.vec, NULL, &errors_max[1]); CHKERRXX(ierr);
-        ierr = VecMax(tl_error.vec, NULL, &errors_max[2]); CHKERRXX(ierr);
-        ierr = VecMax(vn_error.vec, NULL, &errors_max[3]); CHKERRXX(ierr);
-        ierr = VecMax(ft_error.vec, NULL, &errors_max[4]); CHKERRXX(ierr);
-        ierr = VecMax(tf_error.vec, NULL, &errors_max[5]); CHKERRXX(ierr);
-        ierr = VecMax(vf_error.vec, NULL, &errors_max[6]); CHKERRXX(ierr);
-        for (int i = 0; i < num_comps.val; ++i) {
-          ierr = VecMax(cl_error.vec[i], NULL, &errors_max[7+i]); CHKERRXX(ierr);
-          ierr = VecMax(cs_error.vec[i], NULL, &errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
-        }
-
-        mpiret = MPI_Allreduce(MPI_IN_PLACE, errors_max.data(), errors_max.size(), MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-        for (int i = 0; i < errors_max.size(); ++i) {
-          errors_max_over_time[i] = MAX(errors_max_over_time[i], errors_max[i]);
-        }
-
-        ierr = PetscFOpen(mpi.comm(), name_analytic, "a", &fich); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
-        for (int i = 0; i < num_comps.val; ++i) {
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
-        }
-        ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
-        ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-        ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", name_analytic); CHKERRXX(ierr);
-
-        // save last and max over time
-        if (!keep_going) {
-
-          char name_max[10000];
-          char name_last[10000];
-          sprintf(name_max, "%s/analytic_max.dat", out_dir);
-          sprintf(name_last, "%s/analytic_last.dat", out_dir);
-
-          ierr = PetscFOpen(mpi.comm(), name_last, "w", &fich); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
+          ierr = PetscFOpen(mpi.comm(), name_analytic, "a", &fich); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
@@ -2242,49 +2221,77 @@ int main (int argc, char* argv[])
           }
           ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-          ierr = PetscPrintf(mpi.comm(), "saved last errors in %s\n", name_last); CHKERRXX(ierr);
+          ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", name_analytic); CHKERRXX(ierr);
 
-          ierr = PetscFOpen(mpi.comm(), name_max, "w", &fich); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[0]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[1]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[2]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[3]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[4]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[5]); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[6]); CHKERRXX(ierr);
-          for (int i = 0; i < num_comps.val; ++i) {
-            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+i]); CHKERRXX(ierr);
-            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+num_comps.val+i]); CHKERRXX(ierr);
+          // save last and max over time
+          if (!keep_going) {
+
+            char name_max[10000];
+            char name_last[10000];
+            sprintf(name_max, "%s/analytic_max.dat", out_dir);
+            sprintf(name_last, "%s/analytic_last.dat", out_dir);
+
+            ierr = PetscFOpen(mpi.comm(), name_last, "w", &fich); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[1]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[2]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[3]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[4]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[5]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[6]); CHKERRXX(ierr);
+            for (int i = 0; i < num_comps.val; ++i) {
+              ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+i]); CHKERRXX(ierr);
+              ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[7+num_comps.val+i]); CHKERRXX(ierr);
+            }
+            ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+            ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+            ierr = PetscPrintf(mpi.comm(), "saved last errors in %s\n", name_last); CHKERRXX(ierr);
+
+            ierr = PetscFOpen(mpi.comm(), name_max, "w", &fich); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", dxyz[0]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[0]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[1]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[2]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[3]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[4]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[5]); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[6]); CHKERRXX(ierr);
+            for (int i = 0; i < num_comps.val; ++i) {
+              ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+i]); CHKERRXX(ierr);
+              ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max_over_time[7+num_comps.val+i]); CHKERRXX(ierr);
+            }
+            ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+            ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+            ierr = PetscPrintf(mpi.comm(), "saved max errors in %s\n", name_max); CHKERRXX(ierr);
           }
-          ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-          ierr = PetscPrintf(mpi.comm(), "saved max errors in %s\n", name_max); CHKERRXX(ierr);
         }
+
+        front_exact.destroy(); front_error.destroy();
+        ts_exact.destroy(); ts_error.destroy();
+        tl_exact.destroy(); tl_error.destroy();
+        vn_exact.destroy(); vn_error.destroy();
+        cl_exact.destroy(); cl_error.destroy();
+
+        ft.destroy(); ft_exact.destroy(); ft_error.destroy();
+        tf.destroy(); tf_exact.destroy(); tf_error.destroy();
+        vf.destroy(); vf_exact.destroy(); vf_error.destroy();
+        cs.destroy(); cs_exact.destroy(); cs_error.destroy();
+
+        //      sample_cf_on_nodes(p4est, nodes, front_phi_cf, front.vec);
+        //      sample_cf_on_nodes(p4est, nodes, ts_cf, ts.vec);
+        //      sample_cf_on_nodes(p4est, nodes, tl_cf, tl.vec);
+        //      sample_cf_on_nodes(p4est, nodes, vn_cf, vn.vec);
+        //      for (int i = 0; i < num_comps.val; ++i) {
+        //        sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl.vec[i]);
+        //      }
       }
 
-      front_exact.destroy(); front_error.destroy();
-      ts_exact.destroy(); ts_error.destroy();
-      tl_exact.destroy(); tl_error.destroy();
-      vn_exact.destroy(); vn_error.destroy();
-      cl_exact.destroy(); cl_error.destroy();
-
-      ft.destroy(); ft_exact.destroy(); ft_error.destroy();
-      tf.destroy(); tf_exact.destroy(); tf_error.destroy();
-      vf.destroy(); vf_exact.destroy(); vf_error.destroy();
-      cs.destroy(); cs_exact.destroy(); cs_error.destroy();
-
-//      sample_cf_on_nodes(p4est, nodes, front_phi_cf, front.vec);
-//      sample_cf_on_nodes(p4est, nodes, ts_cf, ts.vec);
-//      sample_cf_on_nodes(p4est, nodes, tl_cf, tl.vec);
-//      sample_cf_on_nodes(p4est, nodes, vn_cf, vn.vec);
-//      for (int i = 0; i < num_comps.val; ++i) {
-//        sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl.vec[i]);
-//      }
     }
-
     if (!keep_going) break;
 
     mas.compute_dt();
@@ -2305,7 +2312,7 @@ int main (int argc, char* argv[])
       mas.compute_geometric_properties_front();
     }
 
-    mas.update_grid_history();
+    mas.update_grid_solid();
 
     bc_error_max = 0;
     // solve nonlinear system for temperature, concentration and velocity at t_n
