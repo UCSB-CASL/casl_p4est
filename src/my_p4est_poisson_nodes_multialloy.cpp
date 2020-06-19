@@ -456,8 +456,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     // adjust boundary conditions
     compute_c0_change(iteration_scheme_);
 
-    for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i)
-    {
+    for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i) {
       pw_c0_values_[i] -= pw_c0_change_[i];
     }
 

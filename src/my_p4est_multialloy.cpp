@@ -62,7 +62,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 
   dt_.resize(num_time_layers_);
 
-  solid_cs_.resize(num_comps_);
+  solid_cl_.resize(num_comps_);
   solid_part_coeff_.resize(num_comps_);
 
   solute_diff_.assign(num_comps_, 1.e-5);
@@ -176,7 +176,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   solid_front_curvature_.destroy();
   solid_front_velo_norm_.destroy();
   solid_tf_.destroy();
-  solid_cs_.destroy();
+  solid_cl_.destroy();
   solid_part_coeff_.destroy();
   solid_seed_.destroy();
   solid_time_.destroy();
@@ -345,7 +345,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   solid_time_.create(solid_front_phi_.vec);
   solid_tf_.create(solid_front_phi_.vec);
-  solid_cs_.create(solid_front_phi_.vec);
+  solid_cl_.create(solid_front_phi_.vec);
   solid_part_coeff_.create(solid_front_phi_.vec);
   solid_seed_.create(solid_front_phi_.vec);
 
@@ -852,11 +852,11 @@ void my_p4est_multialloy_t::update_grid_solid()
   vec_and_ptr_array_t cs_tmp(num_comps_, solid_front_phi_.vec);
   for (int i = 0; i < num_comps_; ++i)
   {
-    solid_interp.set_input(solid_cs_.vec[i], linear);
+    solid_interp.set_input(solid_cl_.vec[i], linear);
     solid_interp.interpolate(cs_tmp.vec[i]);
   }
-  solid_cs_.destroy();
-  solid_cs_.set(cs_tmp.vec.data());
+  solid_cl_.destroy();
+  solid_cl_.set(cs_tmp.vec.data());
 
   vec_and_ptr_array_t part_coeff_tmp(num_comps_, solid_front_phi_.vec);
   for (int i = 0; i < num_comps_; ++i)
@@ -1234,13 +1234,13 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   solid_seed_           .get_array(); point_data.push_back(solid_seed_.ptr);            point_data_names.push_back("seed");
   solid_tf_             .get_array(); point_data.push_back(solid_tf_.ptr);              point_data_names.push_back("tf");
   solid_time_           .get_array(); point_data.push_back(solid_time_.ptr);            point_data_names.push_back("time");
-  solid_cs_             .get_array();
+  solid_cl_             .get_array();
   for (int i = 0; i < num_comps_; ++i)
   {
     char numstr[21];
     sprintf(numstr, "%d", i);
     std::string name("cl");
-    point_data.push_back(solid_cs_.ptr[i]); point_data_names.push_back(name + numstr);
+    point_data.push_back(solid_cl_.ptr[i]); point_data_names.push_back(name + numstr);
   }
 
   solid_part_coeff_.get_array();
@@ -1270,7 +1270,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   solid_front_curvature_.restore_array();
   solid_front_velo_norm_.restore_array();
   solid_tf_             .restore_array();
-  solid_cs_             .restore_array();
+  solid_cl_             .restore_array();
   solid_part_coeff_     .restore_array();
   solid_seed_           .restore_array();
   solid_time_           .restore_array();
@@ -1358,7 +1358,7 @@ void my_p4est_multialloy_t::save_p4est_solid(int iter)
   vecs_to_save.push_back(solid_time_.vec);
 
   for (int i = 0; i < num_comps_; ++i) {
-    vecs_to_save.push_back(solid_cs_.vec[i]);
+    vecs_to_save.push_back(solid_cl_.vec[i]);
     vecs_to_save.push_back(solid_part_coeff_.vec[i]);
   }
 
@@ -1545,7 +1545,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     h_interp.set_input(solid_front_velo_norm_.vec, linear); h_interp.interpolate_local(line_vf.data());
     for (int i = 0; i < num_comps_; ++i)
     {
-      h_interp.set_input(solid_cs_.vec[i], linear); h_interp.interpolate_local(line_cs[i].data());
+      h_interp.set_input(solid_cl_.vec[i], linear); h_interp.interpolate_local(line_cs[i].data());
     }
 
     int mpiret;
@@ -1937,7 +1937,7 @@ void my_p4est_multialloy_t::compute_solid()
   vn_old.get_array();
   vn_new.get_array();
 
-  solid_cs_.get_array();
+  solid_cl_.get_array();
   solid_part_coeff_.get_array();
   solid_tf_.get_array();
   solid_time_.get_array();
@@ -1958,11 +1958,10 @@ void my_p4est_multialloy_t::compute_solid()
 
     for (int i = 0; i < num_comps_; ++i) {
       solid_part_coeff_.ptr[i][n] = part_coeff_(i, cl_all.data());
-      solid_cs_.ptr[i][n] = part_coeff_(i, cl_all.data())*cl_all[i];
+      solid_cl_.ptr[i][n] = cl_all[i];
     }
     solid_tf_.ptr[n] = tl_old.ptr[n]*(1.-tau) + tl_new.ptr[n]*tau;
     solid_time_.ptr[n] = (time_-dt_[0])*(1.-tau) + time_*tau;
-//    solid_time_.ptr[n] = tau;
     solid_front_velo_norm_.ptr[n] = vn_old.ptr[n]*(1.-tau) + vn_new.ptr[n]*tau;
   }
 
@@ -1973,7 +1972,7 @@ void my_p4est_multialloy_t::compute_solid()
   vn_old.restore_array();
   vn_new.restore_array();
 
-  solid_cs_.restore_array();
+  solid_cl_.restore_array();
   solid_part_coeff_.restore_array();
   solid_tf_.restore_array();
   solid_time_.restore_array();
@@ -1990,7 +1989,7 @@ void my_p4est_multialloy_t::compute_solid()
   VecScaleGhost(solid_front_phi_.vec, -1.);
   for (int i = 0; i < num_comps_; ++i)
   {
-    ls.extend_Over_Interface_TVD(solid_front_phi_.vec, solid_cs_.vec[i], 5, 1);
+    ls.extend_Over_Interface_TVD(solid_front_phi_.vec, solid_cl_.vec[i], 5, 1);
     ls.extend_Over_Interface_TVD(solid_front_phi_.vec, solid_part_coeff_.vec[i], 5, 1);
   }
   ls.extend_Over_Interface_TVD(solid_front_phi_.vec, solid_tf_.vec,  5, 1);

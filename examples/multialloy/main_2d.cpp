@@ -107,7 +107,7 @@ param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.9,    "cfl_number",      "");
 param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
-param_t<double> base_cfl        (pl, 0.3,    "base_cfl",      "");
+param_t<double> base_cfl        (pl, 0.15,    "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
@@ -1240,7 +1240,7 @@ public:
       case  3:
       case  4:
       case  5:
-      case  6: return (analytic::kp[idx])*analytic::Cstar[idx];
+      case  6: return analytic::Cstar[idx];
       default: throw;
     }
   }
@@ -1383,13 +1383,13 @@ public:
   {
     switch (geometry.val) {
 #ifdef P4_TO_P8
-      case -3: return analytic::vf_exact(ABS3(x-xc.val, y-yc.val, z-zc.val));
+      case -3: return -analytic::vf_exact(ABS3(x-xc.val, y-yc.val, z-zc.val));
 #endif
-      case -2: return analytic::vf_exact(ABS2(x-xc.val, y-yc.val));
-      case -1: return analytic::vf_exact(ABS1(y-ymin.val));
+      case -2: return -analytic::vf_exact(ABS2(x-xc.val, y-yc.val));
+      case -1: return -analytic::vf_exact(ABS1(y-ymin.val));
       case  0:
         if (start_from_moving_front.val) {
-          return cooling_velocity.val;
+          return -cooling_velocity.val;
         }
       default: return 0;
     }
@@ -2038,9 +2038,12 @@ int main (int argc, char* argv[])
         vec_and_ptr_t tf(front.vec); interp.set_input(mas.get_tf(), linear); interp.interpolate(tf.vec);
         vec_and_ptr_t vf(front.vec); interp.set_input(mas.get_vf(), linear); interp.interpolate(vf.vec);
         vec_and_ptr_array_t cs(num_comps.val, front.vec);
+        vec_and_ptr_array_t kps(num_comps.val, front.vec);
         for (int i = 0; i < num_comps.val; ++i) {
           interp.set_input(mas.get_cs(i), linear);
           interp.interpolate(cs.vec[i]);
+          interp.set_input(mas.get_kps(i), linear);
+          interp.interpolate(kps.vec[i]);
         }
 
         vec_and_ptr_t front_exact(front.vec); sample_cf_on_nodes(p4est, nodes, front_phi_cf, front_exact.vec);
@@ -2077,6 +2080,7 @@ int main (int argc, char* argv[])
         vf.get_array(); vf_exact.get_array(); vf_error.get_array();
         cl.get_array(); cl_exact.get_array(); cl_error.get_array();
         cs.get_array(); cs_exact.get_array(); cs_error.get_array();
+        kps.get_array();
 
         double band = 1.5*dxyz[0];
         foreach_node(n, nodes) {
@@ -2089,7 +2093,7 @@ int main (int argc, char* argv[])
               vf_error.ptr[n] = fabs(vf.ptr[n] - vf_exact.ptr[n]);
               for (int i = 0; i < num_comps.val; ++i) {
                 cl_error.ptr[i][n] = 0;
-                cs_error.ptr[i][n] = fabs(cs.ptr[i][n] - cs_exact.ptr[i][n]);
+                cs_error.ptr[i][n] = fabs(cs.ptr[i][n]*kps.ptr[i][n] - cs_exact.ptr[i][n]);
               }
             } else {
               ts_error.ptr[n] = 0;
@@ -2170,18 +2174,19 @@ int main (int argc, char* argv[])
 
 
           PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
-
-          contr.restore_array();
-          front.restore_array(); front_exact.restore_array(); front_error.restore_array();
-          ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
-          tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
-          vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
-          ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
-          tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
-          vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
-          cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
-          cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
         }
+
+        contr.restore_array();
+        front.restore_array(); front_exact.restore_array(); front_error.restore_array();
+        ts.restore_array(); ts_exact.restore_array(); ts_error.restore_array();
+        tl.restore_array(); tl_exact.restore_array(); tl_error.restore_array();
+        vn.restore_array(); vn_exact.restore_array(); vn_error.restore_array();
+        ft.restore_array(); ft_exact.restore_array(); ft_error.restore_array();
+        tf.restore_array(); tf_exact.restore_array(); tf_error.restore_array();
+        vf.restore_array(); vf_exact.restore_array(); vf_error.restore_array();
+        cl.restore_array(); cl_exact.restore_array(); cl_error.restore_array();
+        cs.restore_array(); cs_exact.restore_array(); cs_error.restore_array();
+        kps.restore_array();
 
         // write into file
         if (save_accuracy.val) {
@@ -2281,14 +2286,7 @@ int main (int argc, char* argv[])
         tf.destroy(); tf_exact.destroy(); tf_error.destroy();
         vf.destroy(); vf_exact.destroy(); vf_error.destroy();
         cs.destroy(); cs_exact.destroy(); cs_error.destroy();
-
-        //      sample_cf_on_nodes(p4est, nodes, front_phi_cf, front.vec);
-        //      sample_cf_on_nodes(p4est, nodes, ts_cf, ts.vec);
-        //      sample_cf_on_nodes(p4est, nodes, tl_cf, tl.vec);
-        //      sample_cf_on_nodes(p4est, nodes, vn_cf, vn.vec);
-        //      for (int i = 0; i < num_comps.val; ++i) {
-        //        sample_cf_on_nodes(p4est, nodes, *cl_cf_all[i], cl.vec[i]);
-        //      }
+        kps.destroy();
       }
 
     }

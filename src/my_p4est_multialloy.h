@@ -108,7 +108,7 @@ private:
   vec_and_ptr_t       solid_front_velo_norm_;
   vec_and_ptr_t       solid_time_; // temperature at which alloy solidified
   vec_and_ptr_t       solid_tf_; // temperature at which alloy solidified
-  vec_and_ptr_array_t solid_cs_; // composition of solidified region
+  vec_and_ptr_array_t solid_cl_; // composition of solidified region
   vec_and_ptr_array_t solid_part_coeff_; // partition coefficient at freezing
   vec_and_ptr_t       solid_seed_; // seed tag
 
@@ -373,7 +373,7 @@ public:
     for (int j = 0; j < num_comps_; ++j)
     {
       interp.set_input(cs[j], linear);
-      interp.interpolate(solid_cs_.vec[j]);
+      interp.interpolate(solid_cl_.vec[j]);
     }
   }
 
@@ -387,8 +387,26 @@ public:
         sample_cf_on_nodes(p4est_, nodes_, *cl[j], cl_[i].vec[j]);
       }
 
-      sample_cf_on_nodes(solid_p4est_, solid_nodes_, *cs[j], solid_cs_.vec[j]);
+      sample_cf_on_nodes(solid_p4est_, solid_nodes_, *cs[j], solid_cl_.vec[j]);
     }
+
+    // compute partition coefficient inside solid
+    solid_cl_.get_array();
+    solid_part_coeff_.get_array();
+
+    vector<double> cl_all(num_comps_);
+    foreach_node(n, solid_nodes_) {
+      for (int i = 0; i < num_comps_; ++i) {
+        cl_all[i] = solid_cl_.ptr[i][n];
+      }
+
+      for (int i = 0; i < num_comps_; ++i) {
+        solid_part_coeff_.ptr[i][n] = part_coeff_(i, cl_all.data());
+      }
+    }
+
+    solid_cl_.restore_array();
+    solid_part_coeff_.restore_array();
   }
 
   inline void set_normal_velocity(Vec v)
@@ -401,8 +419,6 @@ public:
         VecPointwiseMultGhost(front_velo_[i].vec[dim], v, front_normal_.vec[dim]);
       }
     }
-    // todo
-    // copy to solid_front_velo
   }
 
   inline void set_velocity(CF_DIM &vn, DIM(CF_DIM &vx, CF_DIM &vy, CF_DIM &vz), CF_DIM &vf)
@@ -460,8 +476,10 @@ public:
   inline Vec  get_ft() { return solid_time_.vec; }
   inline Vec  get_tf() { return solid_tf_.vec; }
   inline Vec  get_vf() { return solid_front_velo_norm_.vec; }
-  inline Vec* get_cs() { return solid_cs_.vec.data(); }
-  inline Vec  get_cs(int idx) { return solid_cs_.vec[idx]; }
+  inline Vec* get_cs() { return solid_cl_.vec.data(); }
+  inline Vec  get_cs(int idx) { return solid_cl_.vec[idx]; }
+  inline Vec* get_kps() { return solid_part_coeff_.vec.data(); }
+  inline Vec  get_kps(int idx) { return solid_part_coeff_.vec[idx]; }
 
   inline double get_dt() { return dt_[0]; }
   inline double get_front_velocity_max() { return front_velo_norm_max_; }
