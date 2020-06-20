@@ -87,7 +87,7 @@ void matrix_t::tranpose_matvec(const vector<double> x[], vector<double> b[], con
   }
 }
 
-void matrix_t::matrix_product(const matrix_t& b, matrix_t& c)
+void matrix_t::matrix_product(const matrix_t& b, matrix_t& c) const
 {
 #ifdef CASL_THROWS
   if(n != b.m) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product: the matrix sizes don't match");
