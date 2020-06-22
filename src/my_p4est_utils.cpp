@@ -2922,16 +2922,13 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
   }
 }
 
-void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order, int cube_refinement, bool compute_centroids, double perturb)
+void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                             const double* xyz_C, const double* dxyz, const bool* is_wall,
+                             const std::vector<const CF_DIM *>& phi, const std::vector<mls_opn_t>& opn,
+                             const int& order, const int& cube_refinement, const bool& compute_centroids, const double& perturb)
 {
-  double xyz_C[P4EST_DIM];
-  double dxyz [P4EST_DIM];
-
-  node_xyz_fr_n(n, p4est, nodes, xyz_C);
-  dxyz_min(p4est, dxyz);
-
-  double scale = 1./MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
-  double diag  = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
+  const double scale = 1./MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
+  const double diag  = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
 
   // Reconstruct geometry
   double cube_xyz_min[] = { DIM( 0, 0, 0 ) };
@@ -2942,31 +2939,17 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
   CODE3D( cube3_mls_t cube );
 
   // determine dimensions of cube
-  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    if(is_wall == NULL || !is_wall[2*dim])    { cube_mnk[dim] += cube_refinement; cube_xyz_min[dim] -= .5*dxyz[dim]*scale;  }
+    if(is_wall == NULL || !is_wall[2*dim + 1]){ cube_mnk[dim] += cube_refinement; cube_xyz_max[dim] += .5*dxyz[dim]*scale;  }
+  }
 
-  if (!is_node_xmWall(p4est, ni)) { cube_mnk[0] += cube_refinement; cube_xyz_min[0] -= .5*dxyz[0]*scale; }
-  if (!is_node_xpWall(p4est, ni)) { cube_mnk[0] += cube_refinement; cube_xyz_max[0] += .5*dxyz[0]*scale; }
+  fv.full_cell_volume = MULTD( cube_xyz_max[0] - cube_xyz_min[0],
+                               cube_xyz_max[1] - cube_xyz_min[1],
+                               cube_xyz_max[2] - cube_xyz_min[2] ) / pow(scale, P4EST_DIM);
 
-  if (!is_node_ymWall(p4est, ni)) { cube_mnk[1] += cube_refinement; cube_xyz_min[1] -= .5*dxyz[1]*scale; }
-  if (!is_node_ypWall(p4est, ni)) { cube_mnk[1] += cube_refinement; cube_xyz_max[1] += .5*dxyz[1]*scale; }
-#ifdef P4_TO_P8
-  if (!is_node_zmWall(p4est, ni)) { cube_mnk[2] += cube_refinement; cube_xyz_min[2] -= .5*dxyz[2]*scale; }
-  if (!is_node_zpWall(p4est, ni)) { cube_mnk[2] += cube_refinement; cube_xyz_max[2] += .5*dxyz[2]*scale; }
-#endif
-
-  fv.full_cell_volume = MULTD( cube_xyz_max[0]-cube_xyz_min[0],
-                               cube_xyz_max[1]-cube_xyz_min[1],
-                               cube_xyz_max[2]-cube_xyz_min[2] ) / pow(scale, P4EST_DIM);
-
-  fv.full_face_area[dir::f_m00] = (cube_xyz_max[1]-cube_xyz_min[1]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
-  fv.full_face_area[dir::f_p00] = (cube_xyz_max[1]-cube_xyz_min[1]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
-
-  fv.full_face_area[dir::f_0m0] = (cube_xyz_max[0]-cube_xyz_min[0]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
-  fv.full_face_area[dir::f_0p0] = (cube_xyz_max[0]-cube_xyz_min[0]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
-#ifdef P4_TO_P8
-  fv.full_face_area[dir::f_00m] = (cube_xyz_max[0]-cube_xyz_min[0])*(cube_xyz_max[1]-cube_xyz_min[1]) / pow(scale, P4EST_DIM-1);
-  fv.full_face_area[dir::f_00p] = (cube_xyz_max[0]-cube_xyz_min[0])*(cube_xyz_max[1]-cube_xyz_min[1]) / pow(scale, P4EST_DIM-1);
-#endif
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    fv.full_face_area[2*dim] = fv.full_face_area[2*dim + 1] = (cube_xyz_max[(dim + 1)%P4EST_DIM] - cube_xyz_min[(dim + 1)%P4EST_DIM]) CODE3D(*(cube_xyz_max[(dim + 2)%P4EST_DIM] - cube_xyz_min[(dim + 2)%P4EST_DIM])) / pow(scale, P4EST_DIM - 1);
 
   if (cube_refinement == 0) cube_mnk[0] = cube_mnk[1] = CODE3D( cube_mnk[2] = ) 1;
 
@@ -2980,7 +2963,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
   int    points_total = x_grid.size();
   double num_phi      = phi.size();
 
-  std::vector<double> phi_cube(num_phi*points_total,-1);
+  std::vector<double> phi_cube(num_phi*points_total, -1);
 
   // compute values of level-set functions at needed points
   for (int phi_idx=0; phi_idx<num_phi; ++phi_idx)
@@ -3085,7 +3068,9 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
   XCODE( fv.face_centroid_x[dir::f_m00] = cube_xyz_min[0]/scale; fv.face_centroid_x[dir::f_p00] = cube_xyz_max[0]/scale );
   YCODE( fv.face_centroid_y[dir::f_0m0] = cube_xyz_min[1]/scale; fv.face_centroid_y[dir::f_0p0] = cube_xyz_max[1]/scale );
   ZCODE( fv.face_centroid_z[dir::f_00m] = cube_xyz_min[2]/scale; fv.face_centroid_z[dir::f_00p] = cube_xyz_max[2]/scale );
+  return;
 }
+
 
 void compute_wall_normal(const int &dir, double normal[])
 {

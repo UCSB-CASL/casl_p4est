@@ -2823,7 +2823,7 @@ public:
 //  }
 //};
 
-inline void reconstruct_cube(cube2_mls_t &cube, std::vector<double> &phi, std::vector<mls_opn_t> &opn, std::vector<int> &clr)
+inline void reconstruct_cube(cube2_mls_t &cube, const std::vector<double> &phi, const std::vector<mls_opn_t> &opn, const std::vector<int> &clr)
 {
   std::vector<action_t> acn;
 
@@ -2927,25 +2927,31 @@ struct interface_point_cartesian_t
   double interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM]);
 };
 
+/** The interface_info_t datatype encapsulates the data relevant for finite-volume interface-related operations
+ * (integration) within a cell crossed by (possibly several) interfaces */
 struct interface_info_t
 {
-  int    id;
-  double area;
-  double centroid[P4EST_DIM];
+  int    id;                  /**< integer ID of the interface (index of levelset function in the vector originally provided by the user) */
+  double area;                /**< area of the portion of the interface ID crossing the cell of interest */
+  double centroid[P4EST_DIM]; /**< coordinates of the centroid of that portion of the interface ID in cell
+                                --> function(centroid)*area ~= approximation of the integral of function over the portion of the interface in the cell */
 };
 
+/** The my_p4est_finite_volume_t datatype encapsulates all data relevant to finite-volume discretization, when
+ * considering a rectangular control volume, possibly crossed by (possibly several) interfaces. */
 struct my_p4est_finite_volume_t
 {
-  double full_cell_volume;
-  double volume;
+  double full_cell_volume;                      /**< volume of the full (Cartesian) control cell */
+  double volume;                                /**< volume of the control cell that lies in the negative domain */
 
-  std::vector<interface_info_t> interfaces;
+  std::vector<interface_info_t> interfaces;     /**< information about all interfaces that intersect this cell
+                                                  This vector contains as many elements as the number of interfaces in the cell of interest */
 
-  _CODE( double full_face_area [P4EST_FACES]; )
-  _CODE( double face_area      [P4EST_FACES]; )
-  XCODE( double face_centroid_x[P4EST_FACES]; )
-  YCODE( double face_centroid_y[P4EST_FACES]; )
-  ZCODE( double face_centroid_z[P4EST_FACES]; )
+  _CODE( double full_face_area [P4EST_FACES]; ) /**< full areas of the faces of the (Cartesian) control cell */
+  _CODE( double face_area      [P4EST_FACES]; ) /**< areas of the faces of the (Cartesian) control cell in the negative domain */
+  XCODE( double face_centroid_x[P4EST_FACES]; ) /**< x-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
+  YCODE( double face_centroid_y[P4EST_FACES]; ) /**< y-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
+  ZCODE( double face_centroid_z[P4EST_FACES]; ) /**< z-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
 
   my_p4est_finite_volume_t() { interfaces.reserve(1); }
 
@@ -2974,7 +2980,71 @@ struct my_p4est_finite_volume_t
   }
 };
 
-void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order=1, int cube_refinement=0, bool compute_centroids=false, double perturb=1.0e-12);
+/*!
+ * \brief construct_finite_volume constructs the finite-volume-related data structure for a cube centered at xyz_C, of
+ * dimensions dxyz.
+ * \param [out] fv                : finite-volume-related information to build (see my_p4est_finite_volume_t structure)
+ * \param [in]  xyz_C             : Cartesian coordinates of the center of the cube whose finite-volume data is desired
+ * \param [in]  dxyz              : Cartesian dimensions of the cube whose finite-volume data is desired
+ * \param [in]  is_wall           : array of P4EST_FACES flag indicating that xyz_C is lying on a wall in (oriented) direction face_dir if is_wall[face_dir] is true.
+ *                                  If not provided, i.e. if NULL, it assumes 'false' for all entries
+ * \param [in]  phi               : vector of (possibly multiple) levelset functors
+ * \param [in]  opn               : vector of (possibly multiple) levelset operations, must be of same size as phi
+ * \param [in]  order             : order of geometric elements (1 == linear, i.e. planar, elements, 2 == quadratic, i.e. curved, elements) used to represent the interface
+ * \param [in]  cube_refinement   : let d == cube_refinement, then you consider only the sub-cubes from the [MAX(1, 2*d), MAX(1, 2*d), MAX(1, 2*d)] sub-cubes that are in the domain.
+ * \param [in]  compute_centroids : flag activating the calculation of face_centroids in the my_p4est_finite_volume_t to construct (see my_p4est_finite_volume_t for more info)
+ * \param [in]  perturb           : if one of the relevant local levelset values is below perturb*diag (in absolute value), the routine will internally consider it is +perturb*diag
+ *                                  (supposed to removed very tiny volumes, where diag = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2]))))
+ */
+void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                             const double* xyz_C, const double* dxyz, const bool* is_wall,
+                             const std::vector<const CF_DIM *>& phi, const std::vector<mls_opn_t>& opn,
+                             const int& order, const int& cube_refinement, const bool& compute_centroids, const double& perturb);
+
+inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                                    const p4est_locidx_t& n, const p4est_t *p4est, const p4est_nodes_t *nodes,
+                                    const std::vector<const CF_DIM *>& phi, const std::vector<mls_opn_t>& opn,
+                                    const int& order = 1, const int& cube_refinement = 0, const bool& compute_centroids = false, const double& perturb=1.0e-12)
+{
+  double xyz_C[P4EST_DIM];
+  double dxyz [P4EST_DIM];
+  bool is_node_wall[P4EST_FACES];
+
+  node_xyz_fr_n(n, p4est, nodes, xyz_C);
+  dxyz_min(p4est, dxyz);
+  const p4est_indep_t *ni = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, n);
+  for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
+    is_node_wall[oriented_dir] = is_node_Wall(p4est, ni, oriented_dir);
+
+  construct_finite_volume(fv, xyz_C, dxyz, is_node_wall, phi, opn, order, cube_refinement, compute_centroids, perturb);
+  return;
+}
+
+inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                                    const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est,
+                                    const CF_DIM *phi,
+                                    const int& order = 1, const int& cube_refinement = 0, const bool& compute_centroids = false, const double& perturb=1.0e-12)
+{
+  if(quad_idx < 0 || quad_idx > p4est->local_num_quadrants)
+    throw std::out_of_range("my_p4est_utils::construct_finite_volume : only accepts local quadrants");
+
+  const p4est_tree_t*     tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+
+  double xyz_C[P4EST_DIM];
+  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_C);
+  const double dxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+                                  (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+                                  (tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN))};
+
+  const std::vector<const CF_DIM*> ls_functors(1, phi);
+  const std::vector<mls_opn_t> ls_opn(1, MLS_INTERSECTION);
+
+  construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, order, cube_refinement, compute_centroids, perturb);
+  return;
+}
 
 void compute_wall_normal(const int &dir, double normal[]);
 

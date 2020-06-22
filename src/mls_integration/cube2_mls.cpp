@@ -6,7 +6,7 @@ cube2_mls_t::cube2_mls_t(double xyz_min[], double xyz_max[], int mnk[], int orde
 }
 
 
-void cube2_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int order)
+void cube2_mls_t::initialize(const double xyz_min[], const double xyz_max[], const int mnk[], const int& order)
 {
   for (unsigned int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
   for (unsigned int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
@@ -51,7 +51,7 @@ cube2_mls_t::~cube2_mls_t()
 }
 
 
-void cube2_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void cube2_mls_t::reconstruct(const std::vector<double> &phi, const std::vector<action_t> &acn, const std::vector<int> &clr)
 {
   unsigned int num_phi = acn.size();
 

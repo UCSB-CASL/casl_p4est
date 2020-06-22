@@ -1,6 +1,6 @@
 #include "cube2_mls_q.h"
 
-void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr)
+void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, const std::vector<action_t> &acn, const std::vector<int> &clr)
 {
   bool all_positive, all_negative;
 

@@ -260,8 +260,8 @@ public :
   std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
   std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
 
-  std::vector<CF_DIM *> bdry_phi_cf_;
-  std::vector<CF_DIM *> infc_phi_cf_;
+  std::vector<const CF_DIM *> bdry_phi_cf_;
+  std::vector<const CF_DIM *> infc_phi_cf_;
 
   void interpolators_initialize();
   void interpolators_prepare(p4est_locidx_t n);
