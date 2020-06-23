@@ -57,8 +57,8 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     nodes_(ngbd->nodes),
     ghost_(ngbd->ghost),
     brick_(ngbd->myb),
-    bdry_(ngbd_, p4est_, nodes_),
-    infc_(ngbd_, p4est_, nodes_),
+    bdry_(ngbd_, ngbd->p4est, ngbd->nodes),
+    infc_(ngbd_, ngbd->p4est, ngbd->nodes),
     mu_m_interp_(ngbd),
     mu_p_interp_(ngbd)
 {
@@ -713,8 +713,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   // structures for quick reassembling
   if (new_submat_main_)
   {
-    for (int i = 0; i < bc_.size(); ++i) bc_[i].reset(nodes_->num_owned_indeps);
-    for (int i = 0; i < jc_.size(); ++i) jc_[i].reset(nodes_->num_owned_indeps);
+    for (size_t i = 0; i < bc_.size(); ++i) bc_[i].reset(nodes_->num_owned_indeps);
+    for (size_t i = 0; i < jc_.size(); ++i) jc_[i].reset(nodes_->num_owned_indeps);
 
     wall_pieces_map.reinitialize(nodes_->num_owned_indeps);
     wall_pieces_id.clear();
@@ -876,7 +876,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                 case DIRICHLET: is_ngbd_crossed_dirichlet = true; break;
                 case NEUMANN:   is_ngbd_crossed_neumann   = true; break;
                 case ROBIN:     is_ngbd_crossed_neumann   = true; break;
-                default: throw;
+                default:
+#ifdef CASL_THROWS
+                 throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown boundary condition, only DIRICHLET, NEUMANN, and ROBIN implemented.");
+#endif
+               break;
               }
             }
           }
@@ -1042,6 +1046,15 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             areas_p_ptr[n] = face_area_max_p/face_area_scalling_;
           }
           break;
+//          default:
+//          {
+//#ifdef CASL_THROWS
+//        throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.")
+
+//#endif
+//          }
+//          break;
+
         }
       }
 
@@ -1454,7 +1467,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             o_elems.clear();
 
             //
-            for (int i = 0; i < entries_main[n].size(); ++i)
+            for (size_t i = 0; i < entries_main[n].size(); ++i)
             {
               cur = entries_main[n][i].n;
 
@@ -1464,7 +1477,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                 d_elems.insert(cur);
             }
 
-            for (int i = ia[n]; i < ia[n+1]; ++i)
+            for (size_t i = ia[n]; i < ia[n+1]; ++i)
             {
               // add element from mat_product to submat_main
               if (fabs(data[i]) > EPS)
@@ -1727,7 +1740,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                   values.push_back(value);
                 }
               }
-              ierr = MatSetOption(A_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);  CHKERRXX(ierr);
+              //ierr = MatSetOption(A_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);  CHKERRXX(ierr);
               ierr = MatSetValues(A_, 1, &n_gl, columns.size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
             }
           }
@@ -1784,7 +1797,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
             columns.clear();
             values.clear();
-            for (int m=0; m < row->size(); ++m)
+            for (size_t m=0; m < row->size(); ++m)
             {
               columns.push_back(row->at(m).n);
               values.push_back(row->at(m).val);
@@ -1881,7 +1894,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 //  }
 }
 
-void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix)
+void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submatrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1917,7 +1930,7 @@ void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_
 
       columns.clear();
       values.clear();
-      for (int m=0; m < row->size(); ++m)
+      for (size_t m=0; m < row->size(); ++m)
       {
         columns.push_back(row->at(m).n);
         values.push_back(row->at(m).val);
@@ -2782,7 +2795,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, bool
 
 void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                         double infc_phi_eff_000, bool is_wall[],
-                                                        std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz)
+                                                        std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
 {
   double  mu;
   double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
@@ -3190,7 +3203,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locid
 
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                            double infc_phi_eff_000, bool is_wall[],
-                                                           std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz)
+                                                           std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
 {
   double  mu;
   double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
@@ -3442,7 +3455,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
       std::vector<double> bc_values(P4EST_FACES, 0);
 
       // first get pointwise given values
-      for (int i = 0; i < bc_.size(); ++i) {
+      for (size_t i = 0; i < bc_.size(); ++i) {
         if (bc_[i].type == DIRICHLET && bc_[i].pointwise) {
           for (int j = 0; j < bc_[i].num_value_pts(n); ++j){
             // TODO: this is kind of ugly, fix this
@@ -3555,9 +3568,9 @@ void my_p4est_poisson_nodes_mls_t::gf_direction(const quad_neighbor_nodes_of_nod
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                            double infc_phi_eff_000, bool is_wall[],
                                                            vector<int> &gf_map, vector<double> &gf_nodes, vector<double> &gf_phi,
-                                                           std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                                                           std::vector<mat_entry_t> *row_gf, int &d_nnz_gf, int &o_nnz_gf,
-                                                           std::vector<mat_entry_t> *row_gf_ghost, int &d_nnz_gf_ghost, int &o_nnz_gf_ghost)
+                                                           std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                                                           std::vector<mat_entry_t> *row_gf, PetscInt &d_nnz_gf, PetscInt &o_nnz_gf,
+                                                           std::vector<mat_entry_t> *row_gf_ghost, PetscInt &d_nnz_gf_ghost, PetscInt &o_nnz_gf_ghost)
 {
   double  mu;
   double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
@@ -3948,8 +3961,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
 
 void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                     double infc_phi_eff_000, bool is_wall[],
-                                                    std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                                                    std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc)
+                                                    std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                                                    std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc)
 {
   double  mu;
   double *mue_ptr;
@@ -4044,7 +4057,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
     if (new_submat_main_)
     {
       // get information about boundaries
-      for (int i=0; i<fv.interfaces.size(); ++i)
+      for (size_t i=0; i<fv.interfaces.size(); ++i)
       {
         interface_point_t pt(DIM(xyz_C[0] + fv.interfaces[i].centroid[0],
                                  xyz_C[1] + fv.interfaces[i].centroid[1],
@@ -4056,7 +4069,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
       }
 
       // project interface centroids onto interfaces
-      for (int i=0; i<bdry_id.size(); ++i)
+      for (size_t i=0; i<bdry_id.size(); ++i)
       {
         int phi_idx = bdry_id[i];
         interface_point_t *pt = &bdry_xyz[i];
@@ -4234,7 +4247,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
         rhs_ptr[n] = rhs_loc_ptr[n]*volume_cut_cell;
 
         // neumann flux through domain boundary
-        for (int i=0; i<bdry_area.size(); ++i)
+        for (size_t i=0; i<bdry_area.size(); ++i)
         {
           rhs_ptr[n] += bdry_area[i] * (bc_[bdry_id[i]].pointwise ? bc_[bdry_id[i]].get_value_pw(n,0) : bc_[bdry_id[i]].get_value_cf(bdry_xyz[i].xyz));
         }
@@ -4290,7 +4303,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
           }
 
           // bdry pieces
-          for (int i=0; i<bdry_area.size(); ++i)
+          for (size_t i=0; i<bdry_area.size(); ++i)
           {
             int id = bdry_id[i];
 
@@ -4313,7 +4326,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
           }
 
           // wall pieces
-          for (int i=0; i<wall_area.size(); ++i)
+          for (size_t i=0; i<wall_area.size(); ++i)
           {
             double normal[P4EST_DIM]; compute_wall_normal(wall_dir[i], normal);
             double xyz_pr[P4EST_DIM]; wall_xyz[i].get_xyz(xyz_pr);
@@ -4334,7 +4347,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
           double gamma = 3.*log(10.);
 
           // loop through all present interfaces and interpolate separately for each of them
-          for (int bdry_it=0; bdry_it<bdry_area.size(); ++bdry_it)
+          for (size_t bdry_it=0; bdry_it<bdry_area.size(); ++bdry_it)
           {
             if (sc_scheme_successful)
             {
@@ -4367,7 +4380,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               }
 
               // bdry pieces
-              for (int i=0; i<bdry_area.size(); ++i)
+              for (size_t i=0; i<bdry_area.size(); ++i)
               {
                 num_constraints_present++;
                 interface_point_t *centroid_pr_other = &bdry_xyz[i];
@@ -4377,7 +4390,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               }
 
               // wall pieces
-              for (int i=0; i<wall_area.size(); ++i)
+              for (size_t i=0; i<wall_area.size(); ++i)
               {
                 num_constraints_present++;
                 interface_point_t *centroid_pr_other = &wall_xyz[i];
@@ -4459,7 +4472,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               ZCODE( double rhs_z_term = 0 );
 
               // bdry pieces
-              for (int i=0; i<bdry_area.size(); ++i)
+              for (size_t i=0; i<bdry_area.size(); ++i)
               {
                 _CODE( rhs_c_term += coeff_c_term[bdry_offset + i] * bc_values[i] );
                 XCODE( rhs_x_term += coeff_x_term[bdry_offset + i] * bc_values[i] );
@@ -4468,7 +4481,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               }
 
               // wall pieces
-              for (int i=0; i<wall_area.size(); ++i)
+              for (size_t i=0; i<wall_area.size(); ++i)
               {
                 _CODE( rhs_c_term += coeff_c_term[wall_offset + i] * wc_values[i] );
                 XCODE( rhs_x_term += coeff_x_term[wall_offset + i] * wc_values[i] );
@@ -4554,7 +4567,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
             double b_coeff[P4EST_DIM];
 
             // bdry pieces
-            for (int i=0; i<bdry_area.size(); ++i)
+            for (size_t i=0; i<bdry_area.size(); ++i)
             {
               int id = bdry_id[i];
 
@@ -4572,7 +4585,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
             // wall pieces
             int wall_offset = bdry_area.size();
-            for (int i=0; i<wall_area.size(); ++i)
+            for (size_t i=0; i<wall_area.size(); ++i)
             {
               double normal[P4EST_DIM]; compute_wall_normal(wall_dir[i], normal);
               double xyz_pr[P4EST_DIM]; wall_xyz[i].get_xyz(xyz_pr);
@@ -4608,7 +4621,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
             }
 #endif
 
-            for (int i=0; i<bdry_area.size() + wall_area.size(); ++i)
+            for (size_t i=0; i<bdry_area.size() + wall_area.size(); ++i)
             {
               double xyz_pr[P4EST_DIM];
               if (i < bdry_area.size()) bdry_xyz[i].get_xyz(xyz_pr);
@@ -4641,7 +4654,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
             }
 
             // compute integrals
-            for (int i=0; i<bdry_area.size(); ++i)
+            for (size_t i=0; i<bdry_area.size(); ++i)
             {
               double xyz_pr[P4EST_DIM]; bdry_xyz[i].get_xyz(xyz_pr);
 
@@ -4660,7 +4673,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
           }
           else // Cells without kinks
           {
-            for (int i=0; i<bdry_area.size(); i++)
+            for (size_t i=0; i<bdry_area.size(); i++)
             {
               int id = bdry_id[i];
 
@@ -4742,9 +4755,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
 void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                    bool is_wall[],
-                                                   std::vector<mat_entry_t> *row_main, int& d_nnz_main, int& o_nnz_main,
-                                                   std::vector<mat_entry_t> *row_jump, int& d_nnz_jump, int& o_nnz_jump,
-                                                   std::vector<mat_entry_t> *row_jump_ghost, int& d_nnz_jump_ghost, int& o_nnz_jump_ghost)
+                                                   std::vector<mat_entry_t> *row_main, PetscInt& d_nnz_main, PetscInt& o_nnz_main,
+                                                   std::vector<mat_entry_t> *row_jump, PetscInt& d_nnz_jump, PetscInt& o_nnz_jump,
+                                                   std::vector<mat_entry_t> *row_jump_ghost, PetscInt& d_nnz_jump_ghost, PetscInt& o_nnz_jump_ghost)
 {
   interpolators_prepare(n);
 
@@ -5035,7 +5048,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
   if (new_submat_main_)
   {
-    for (int i=0; i<fv_m.interfaces.size(); ++i)
+    for (size_t i=0; i<fv_m.interfaces.size(); ++i)
     {
       interface_point_t pt(DIM(xyz_C[0] + fv_m.interfaces[i].centroid[0],
                                xyz_C[1] + fv_m.interfaces[i].centroid[1],
@@ -5047,7 +5060,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     }
 
     // project interface centroids onto interfaces
-    for (int i=0; i<infc_id.size(); ++i)
+    for (size_t i=0; i<infc_id.size(); ++i)
     {
       int phi_idx = infc_id[i];
       interface_point_t *pt = &infc_xyz[i];
@@ -5090,7 +5103,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   rhs_p_ptr[n]*volume_cut_cell_p);
 
     // neumann flux through domain boundary
-    for (int i=0; i<infc_area.size(); ++i)
+    for (size_t i=0; i<infc_area.size(); ++i)
     {
       interface_conditions_t *jc = &jc_[infc_id[i]];
 
@@ -5404,8 +5417,8 @@ void my_p4est_poisson_nodes_mls_t::interpolators_prepare(p4est_locidx_t n)
 
 void my_p4est_poisson_nodes_mls_t::interpolators_finalize()
 {
-  for (int i=0; i<bdry_phi_interp_.size(); ++i) delete bdry_phi_interp_[i];
-  for (int i=0; i<infc_phi_interp_.size(); ++i) delete infc_phi_interp_[i];
+  for (size_t i=0; i<bdry_phi_interp_.size(); ++i) delete bdry_phi_interp_[i];
+  for (size_t i=0; i<infc_phi_interp_.size(); ++i) delete infc_phi_interp_[i];
 }
 
 
@@ -5511,7 +5524,7 @@ void my_p4est_poisson_nodes_mls_t::save_infc_data(p4est_locidx_t n, vector<int> 
       infc_ids.size() != infc_taylor_pts.size())
     throw std::invalid_argument("Vectors of different sizes\n");
 
-  for (int i=0; i<infc_ids.size(); ++i)
+  for (size_t i=0; i<infc_ids.size(); ++i)
   {
     jc_[infc_ids[i]].add_pt(n, infc_areas[i], infc_taylor_pts[i], infc_integr_pts[i]);
   }
@@ -5524,7 +5537,7 @@ void my_p4est_poisson_nodes_mls_t::load_infc_data(p4est_locidx_t n, vector<int> 
   infc_integr_pts.clear();
   infc_taylor_pts.clear();
 
-  for (int i = 0; i < jc_.size(); ++i)
+  for (size_t i = 0; i < jc_.size(); ++i)
   {
     interface_conditions_t *jc = &jc_[i];
 
@@ -5546,7 +5559,7 @@ void my_p4est_poisson_nodes_mls_t::save_wall_data(p4est_locidx_t n, vector<int> 
   if (wall_id.size() != wall_area.size() || wall_id.size() != wall_xyz.size())
     throw std::invalid_argument("Vectors of different sizes\n");
 
-  for (int i=0; i<wall_id.size(); ++i)
+  for (size_t i=0; i<wall_id.size(); ++i)
   {
     wall_pieces_map     .add_point(n);
     wall_pieces_id      .push_back(wall_id  [i]);
@@ -5561,7 +5574,7 @@ void my_p4est_poisson_nodes_mls_t::load_wall_data(p4est_locidx_t n, vector<int> 
   wall_xyz .clear();
   wall_area.clear();
 
-  for (int i=0; i<wall_pieces_map.size[n]; ++i)
+  for (size_t i=0; i<wall_pieces_map.size[n]; ++i)
   {
     int idx = wall_pieces_map.get_idx(n,i);
     wall_id  .push_back(wall_pieces_id      [idx]);
