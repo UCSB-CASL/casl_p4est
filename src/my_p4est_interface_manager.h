@@ -353,6 +353,19 @@ public:
   inline double phi_at_point(const double *xyz) const { return interp_phi(xyz); }
 
   /*!
+   * \brief get_phi_as_local_cf returns the representation of the levelset (as seen from this manager), as a local functor
+   * [use locally, ONLY!]
+   * \return a (pointer to a) functor matching the internal representation of the levelset, as seen from this manager
+   */
+  inline const CF_DIM* get_phi_as_local_cf() const { return &interp_phi; }
+
+  /*!
+   * \brief get_interpolation_method_for_phi self-explanatory
+   * \return the interpolation method used for representing the levelset method
+   */
+  inline interpolation_method get_interpolation_method_for_phi() const { return interp_phi.get_interpolation_method(); }
+
+  /*!
    * \brief grad_phi_at_point evaluates the gradient of the levelset function at a given point
    * \param [in]  xyz:      coordinates of the point where the gradient of the levelset function is desired
    * \param [out] grad_phi: the computed gradient at xyz
@@ -394,6 +407,19 @@ public:
     if(mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the signed distance to the interface for a point where the gradient of phi is ill-defined");
     return signed_dist/mag_grad_phi;
+  }
+
+  inline void projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
+  {
+    double signed_dist = phi_at_point(xyz);
+    double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
+    const double mag_grad_phi = sqrt(SUMD(grad_phi_local[0], grad_phi_local[1], grad_phi_local[2]));
+    if(mag_grad_phi < EPS)
+      throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the projection onto the interface for a point where the gradient of phi is ill-defined");
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      xyz_projected[dim] = xyz[dim] - signed_dist*grad_phi_local[dim]/mag_grad_phi;
+    return;
   }
 
   /*!
@@ -449,6 +475,12 @@ public:
    * \return the subresolution level, i.e., the difference in maximum refinement levle between the inteface-capturing grid and the computational grid
    */
   inline int subcell_resolution() const { return max_level_interpolation_p4est - max_level_p4est; }
+
+  /*!
+   * \brief get_max_level_computational_grid self-explanatory
+   * \return the maximum resolution level of the trees of the computational grid
+   */
+  inline int get_max_level_computational_grid() const { return max_level_p4est; }
 
 #ifdef DEBUG
   int cell_FD_map_is_consistent_across_procs();

@@ -78,6 +78,8 @@ public:
   void operator()(const double *xyz, double *results, const u_int& comp = ALL_COMPONENTS) const;
   void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const u_int &comp) const;
 
+  interpolation_method get_interpolation_method() const { return method; }
+
 };
 
 #endif /* MY_P4EST_INTERPOLATION_NODES */

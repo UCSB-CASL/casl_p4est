@@ -93,7 +93,7 @@ public:
   my_p4est_poisson_jump_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   virtual ~my_p4est_poisson_jump_cells_t();
 
-  virtual void set_interface(my_p4est_interface_manager_t* interface_manager_);
+  void set_interface(my_p4est_interface_manager_t* interface_manager_);
 
   /*!
    * \brief set_jumps sets the jump in solution and in its normal flux, sampled on the nodes of the interpolation_node_ngbd

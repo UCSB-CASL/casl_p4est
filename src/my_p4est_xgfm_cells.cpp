@@ -230,7 +230,6 @@ const xgfm_jump& my_p4est_xgfm_cells_t::get_xgfm_jump_between_quads(const p4est_
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       to_insert_in_map.known_jump_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dim == oriented_dir/2 ? 1.0 : 0.0) - normal[oriented_dir/2]*normal[dim])*local_grad_jump[dim];
 
-    to_insert_in_map.xgfm_jump_flux_component_correction.clear();
     if(!mus_are_equal())
       to_insert_in_map.xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_interface_point, normal, quad_idx, neighbor_quad_idx, oriented_dir/2);
   }
@@ -253,7 +252,7 @@ linear_combination_of_dof_t my_p4est_xgfm_cells_t::build_xgfm_jump_flux_correcti
   linear_combination_of_dof_t lsqr_cell_grad_operator[P4EST_DIM];
   get_lsqr_cell_gradient_operator_at_point(xyz, cell_ngbd, nearby_cell_neighbors, scaling_distance, lsqr_cell_grad_operator);
 
-  linear_combination_of_dof_t xgfm_flux_correction; xgfm_flux_correction.clear();
+  linear_combination_of_dof_t xgfm_flux_correction;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     xgfm_flux_correction.add_operator_on_same_dofs(lsqr_cell_grad_operator[dim], get_jump_in_mu()*((flux_component == dim ? 1.0 : 0.0) - normal[flux_component]*normal[dim]));
 

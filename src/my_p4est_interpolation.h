@@ -559,7 +559,7 @@ public:
   }
 
   inline const std::vector<Vec>& get_input_fields() const { return Fi; }
-  inline const u_int& get_blocksize_of_inupt_fields() const { return bs_f; }
+  inline const u_int& get_blocksize_of_input_fields() const { return bs_f; }
 };
 
 
