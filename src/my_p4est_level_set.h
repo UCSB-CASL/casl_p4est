@@ -230,7 +230,7 @@ public:
 
   double advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt);
 
-  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20) const
+  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20, Vec mask=NULL) const
   {
     PetscErrorCode ierr;
     Vec tmp;
@@ -241,7 +241,7 @@ public:
       ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
     }
 
-    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations);
+    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations, mask);
 
     ierr = VecDestroy(q); CHKERRXX(ierr);
     q = tmp;

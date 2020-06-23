@@ -113,6 +113,7 @@ class my_p4est_scft_t
   int time_discretization;
   int integration_order;
   int cube_refinement;
+  int bc_scheme; // 0 - using rho's, using mu_m (assumes scft covergence)
 
   std::vector<Vec*> normal;
   std::vector<Vec>  kappa;
@@ -158,7 +159,7 @@ public:
 
   void compute_normal_and_curvature();
 
-  void compute_energy_shape_derivative(int phi_idx, Vec velo);
+  void compute_energy_shape_derivative(int phi_idx, Vec velo, bool assume_convergence=true);
   void compute_energy_shape_derivative_contact_term(int phi0_idx, int phi1_idx);
 
   double compute_change_in_energy(int phi_idx, Vec norm_velo, double dt);

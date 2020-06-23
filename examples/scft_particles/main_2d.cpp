@@ -97,8 +97,8 @@ param_t<int> nz (pl, 1, "nz", "number of trees in z-dimension");
 param_t<int> lmin (pl, 7, "lmin", "min level of trees");
 param_t<int> lmax (pl, 7, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 6, "lmin", "min level of trees");
-param_t<int> lmax (pl, 8, "lmax", "max level of trees");
+param_t<int> lmin (pl, 7, "lmin", "min level of trees");
+param_t<int> lmax (pl, 7, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.1, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
@@ -106,10 +106,10 @@ param_t<bool>   refine_only_inside (pl, 1, "refine_only_inside", "Refine only in
 
 
 // advection parameters
-param_t<double> cfl                     (pl, 0.4,    "cfl", "CFL number");
+param_t<double> cfl                     (pl, 1.0,    "cfl", "CFL number");
 param_t<bool>   use_neumann             (pl, 1,      "use_neumann", "Impose contact angle use Neumann BC 0/1");
 param_t<bool>   compute_exact           (pl, 0,      "compute_exact", "Compute exact final shape (only for pure-curvature) 0/1");
-param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle (pl, 1 -  (pl, 2 - special");
+param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special");
 param_t<int>    volume_corrections      (pl, 2,      "volume_corrections", "Number of volume correction after each move");
 param_t<int>    max_iterations          (pl, 1000,   "max_iterations", "Maximum number of advection steps");
 param_t<double> tolerance               (pl, 1.0e-8, "tolerance", "Stopping criteria");
@@ -117,9 +117,9 @@ param_t<double> tolerance               (pl, 1.0e-8, "tolerance", "Stopping crit
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
 
 // scft parameters
-param_t<bool>   use_scft            (pl, 0,     "use_scft", "Turn on/off SCFT 0/1");
+param_t<bool>   use_scft            (pl, 1,     "use_scft", "Turn on/off SCFT 0/1");
 param_t<bool>   smooth_pressure     (pl, 1,     "smooth_pressure", "Smooth pressure after first BC adjustment 0/1");
-param_t<int>    max_scft_iterations (pl, 300,   "max_scft_iterations", "Maximum SCFT iterations");
+param_t<int>    max_scft_iterations (pl, 150,   "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min", "Minimun SCFT steps between adjusting BC");
 param_t<double> scft_tol            (pl, 1.e-4, "scft_tol", "Tolerance for SCFT");
 param_t<double> scft_bc_tol         (pl, 1.e-3, "scft_bc_tol", "Tolerance for adjusting BC");
@@ -138,16 +138,16 @@ param_t<int>  save_every_dn   (pl, 1, "save_every_dn", ""); // for vtk
 
 // problem setting
 
-param_t<int>    geometry_ptcl (pl, 1, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    geometry_ptcl (pl, 2, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
 param_t<int>    geometry_free (pl, 0, "geometry_free", "Initial polymer shape: 0 - drop (pl, 1 - film (pl, 2 - combination");
 param_t<int>    geometry_wall (pl, 0, "geometry_wall", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
 
 param_t<bool>   minimize (pl, 0, "minimize", "Turn on/off energy minimization (0/1)");
 param_t<int>    velocity (pl, 3, "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    rotation (pl, 0, "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    rotation (pl, 1, "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
 
 param_t<int>    wall_pattern (pl, 0, "wall_pattern", "Wall chemical pattern: 0 - no pattern");
-param_t<int>    n_seed       (pl, 4, "n_seed", "Seed: 0 - zero (pl, 1 - random (pl, 2 - horizontal stripes (pl, 3 - vertical stripes (pl, 4 - dots");
+param_t<int>    n_seed       (pl, 2, "n_seed", "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots");
 param_t<int>    n_example    (pl, 0, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
@@ -156,7 +156,7 @@ param_t<double> pairwise_potential_width (pl, 5, "pairwise_potential_width", "Wi
 
 // surface energies
 param_t<double> gamma_a  (pl, 0, "gamma_a" , "Surface tension of A block");
-param_t<double> gamma_b  (pl, 1, "gamma_b" , "Surface tension of B block");
+param_t<double> gamma_b  (pl, 2, "gamma_b" , "Surface tension of B block");
 
 param_t<int> wall_energy_type (pl, 1, "wall_energy_type", "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) (pl, 1 - through contact angles (i.e. convert angles to XN)");
 
@@ -767,7 +767,7 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       p.gBx_cf = &gB.ddx;
       p.gBy_cf = &gB.ddy;
 
-      p.xyz[0] = -0.01; p.xyz[1] = -0.22; particles.push_back(p);
+      p.xyz[0] = -0.27; p.xyz[1] = -0.23; particles.push_back(p);
     }
       break;
 
@@ -1053,7 +1053,7 @@ int main (int argc, char* argv[])
   ngbd->init_neighbors();
 
   double dxyz[P4EST_DIM], h, diag;
-  get_dxyz_min(p4est, dxyz, h, diag);
+  get_dxyz_min(p4est, dxyz, &h, &diag);
 
   // ------------------------------------------------------------------------------------------------------------------
   // create and allocate fields (mu_m is choosen to be the template for all other Vec's)
@@ -1091,7 +1091,7 @@ int main (int argc, char* argv[])
 
   my_p4est_level_set_t ls(ngbd);
   if (geometry_free() != 0) ls.reinitialize_2nd_order(phi_free);
-  if (geometry_wall()    != 0) ls.reinitialize_2nd_order(phi_wall);
+  if (geometry_wall() != 0) ls.reinitialize_2nd_order(phi_wall);
 
   // ------------------------------------------------------------------------------------------------------------------
   // compute initial volume for volume-loss corrections
@@ -1257,8 +1257,6 @@ int main (int argc, char* argv[])
 
       ierr = VecDestroy(phi_ptcl); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_free, &phi_ptcl); CHKERRXX(ierr);
-
-      sample_cf_on_nodes(p4est_np1, nodes_np1, phi_ptcl_cf, phi_ptcl);
     }
 
     // delete old p4est
@@ -1287,8 +1285,9 @@ int main (int argc, char* argv[])
 
       my_p4est_level_set_t ls(ngbd);
       if (geometry_free() != 0) ls.reinitialize_2nd_order(phi_free);
-      if (geometry_wall()    != 0) ls.reinitialize_2nd_order(phi_wall);
+      if (geometry_wall() != 0) ls.reinitialize_2nd_order(phi_wall);
     }
+    sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
 
     // ------------------------------------------------------------------------------------------------------------------
     // allocate fields
@@ -1443,6 +1442,8 @@ int main (int argc, char* argv[])
     double rho_avg = 1;
     double energy  = 0;
 
+    bool adaptive = false;
+
     if (use_scft())
     {
       my_p4est_scft_t scft(ngbd, ns());
@@ -1457,7 +1458,7 @@ int main (int argc, char* argv[])
 
       scft.set_scaling(scaling);
       scft.set_polymer(f(), XN());
-      scft.set_rho_avg(1);
+      scft.set_rho_avg(rho_old);
 
       // initialize potentials
       Vec mu_m_tmp = scft.get_mu_m();
@@ -1477,29 +1478,54 @@ int main (int argc, char* argv[])
       double scft_error     = 2.*scft_tol()+1.;
       int    pressure_resets = 0;
       smooth_pressure.val = true;
-      while (scft_iteration < max_scft_iterations() && scft_error > scft_tol() || scft_iteration < bc_adjust_min()+1)
+      while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol()) ||
+             (scft_iteration < bc_adjust_min()+1))
       {
+        for (int i=3;i--;) {
+          scft.initialize_bc_smart(adaptive); adaptive = true;
+          scft.solve_for_propogators();
+          scft.calculate_densities();
+//          scft.save_VTK(scft_iteration++);
+          ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+                             scft_iteration,
+                             scft.get_energy(),
+                             scft.get_pressure_force(),
+                             scft.get_exchange_force()); CHKERRXX(ierr);
+        }
         // do an SCFT step
-        scft.solve_for_propogators();
-        scft.calculate_densities();
+//        scft.solve_for_propogators();
+//        scft.calculate_densities();
         scft.update_potentials();
-//        scft.save_VTK(scft_iteration);
+        scft.save_VTK(scft_iteration);
 
-        if (scft.get_exchange_force() < scft_bc_tol() && bc_iters >= bc_adjust_min())
-        {
-          scft.initialize_bc_smart();
-//          if (smooth_pressure())
+//        if (scft.get_exchange_force() < scft_bc_tol() && bc_iters >= bc_adjust_min())
+//        {
+//          scft.initialize_bc_smart();
+////          if (smooth_pressure())
+////          {
+////            scft.smooth_singularity_in_pressure_field();
+////            smooth_pressure.val = false;
+////          }
+//          if (pressure_resets < 1)
 //          {
 //            scft.smooth_singularity_in_pressure_field();
-//            smooth_pressure.val = false;
+//            pressure_resets++;
+
+//            double pressure_force = scft.get_pressure_force();
+//            while (scft.get_pressure_force() >= pressure_force) {
+//              scft.solve_for_propogators();
+//              scft.calculate_densities();
+//              scft.update_potentials(false, true);
+
+//              ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+//                                 scft_iteration,
+//                                 scft.get_energy(),
+//                                 scft.get_pressure_force(),
+//                                 scft.get_exchange_force()); CHKERRXX(ierr);
+//            }
 //          }
-          if (pressure_resets < 1)
-          {
-            scft.smooth_singularity_in_pressure_field();
-            pressure_resets++;
-          }
-          bc_iters = 0;
-        }
+//          bc_iters = 0;
+//        }
 
         ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e%s\n",
                            scft_iteration,
@@ -1521,7 +1547,7 @@ int main (int argc, char* argv[])
       if (geometry_free() != 0)
       {
         scft.compute_energy_shape_derivative(0, shape_grad_free);
-        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, mu_m, 20, phi_wall);
+        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, mu_m, 50, phi_wall);
       }
       else
       {
@@ -1531,7 +1557,7 @@ int main (int argc, char* argv[])
       if (geometry_ptcl() != 0)
       {
         scft.compute_energy_shape_derivative(2, shape_grad_ptcl);
-        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_ptcl, shape_grad_ptcl, mu_m, 20, phi_wall);
+        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_ptcl, shape_grad_ptcl, mu_m, 50, phi_wall);
       }
       else
       {
