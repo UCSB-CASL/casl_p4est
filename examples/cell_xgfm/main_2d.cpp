@@ -3,10 +3,12 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_xgfm_cells.h>
+#include <src/my_p8est_poisson_jump_cells_fv.h>
 #else
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_xgfm_cells.h>
+#include <src/my_p4est_poisson_jump_cells_fv.h>
 #endif
 
 #include <src/Parser.h>
@@ -41,7 +43,7 @@ const bool default_print_summary  = false;
 const bool default_subrefinement  = true;
 const int default_test_number = 3;
 
-const bool track_residuals_and_corrections = false;
+const bool track_xgfm_residuals_and_corrections = false;
 
 #if defined(STAMPEDE)
 const string default_work_folder = "/scratch/04965/tg842642/cell_xgfm";
@@ -312,7 +314,7 @@ void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, const test_case_f
   ierr = VecRestoreArray(rhs_plus,  &rhs_plus_p);   CHKERRXX(ierr);
 }
 
-void measure_errors(my_p4est_xgfm_cells_t& solver, my_p4est_faces_t* faces,
+void measure_errors(my_p4est_poisson_jump_cells_t& solver, my_p4est_faces_t* faces,
                     const test_case_for_scalar_jump_problem_t *test_problem,
                     Vec err_cells, double &err_n, double err_flux_components[P4EST_DIM], double err_derivatives_components[P4EST_DIM])
 {
@@ -582,23 +584,6 @@ void shift_solution_to_match_exact_integral(my_p4est_xgfm_cells_t& solver, const
   return;
 }
 
-void print_iteration_info(const mpi_environment_t &mpi, const my_p4est_xgfm_cells_t& solver)
-{
-  vector<double> max_corr = solver.get_max_corrections();
-  vector<double> rel_res = solver.get_relative_residuals();
-  vector<PetscInt> nb_iter = solver.get_numbers_of_ksp_iterations();
-
-  if(mpi.rank() == 0)
-  {
-    PetscInt total_nb_iterations = nb_iter.at(0);
-    for(size_t tt = 1; tt < max_corr.size(); ++tt){
-      total_nb_iterations += nb_iter.at(tt);
-      if(track_residuals_and_corrections)
-        cout << "max corr " << tt << " = " << max_corr[tt] << " and rel residual " << tt << " = " << rel_res[tt] << " after " << nb_iter[tt] << " iterations." << endl;
-    }
-    cout << "The solver converged after a total of " << total_nb_iterations << " iterations." << std::endl;
-  }
-}
 
 void print_errors_and_orders(const mpi_environment_t &mpi, const int &iter, const double err[][2], const double err_flux_components[][2][P4EST_DIM], const double err_derivatives_components[][2][P4EST_DIM])
 {
@@ -975,7 +960,7 @@ int main (int argc, char* argv[])
       jump_solver.solve_for_sharp_solution();
       watch.stop(); watch.read_duration();
 
-      print_iteration_info(mpi, jump_solver);
+      jump_solver.print_solve_info();
 
       /* if null space, shift solution */
       if(jump_solver.get_matrix_has_nullspace())

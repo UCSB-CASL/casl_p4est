@@ -64,6 +64,52 @@ public:
 
   void solve_for_sharp_solution(const KSPType &ksp = KSPBCGS, const PCType& pc = PCHYPRE);
 
+  inline double get_sharp_integral_solution() const
+  {
+    PetscErrorCode ierr;
+    P4EST_ASSERT(solution != NULL);
+    double *sol_p;
+    ierr = VecGetArray(solution, &sol_p); CHKERRXX(ierr);
+
+    double sharp_integral_solution = 0.0;
+    const double *tree_xyz_min, *tree_xyz_max;
+    for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
+      const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        const p4est_quadrant_t* quad;
+        fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+        const double cell_volume = MULTD((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+            (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+            (tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN));
+        sharp_integral_solution += sol_p[quad_idx]*cell_volume;
+        map_of_finite_volume_t::const_iterator it_fv = finite_volume_data_for_quad.find(quad_idx);
+        if(it_fv != finite_volume_data_for_quad.end())
+        {
+          const my_p4est_finite_volume_t& finite_volume = it_fv->second;
+          double xyz_quad[P4EST_DIM]; xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad);
+          const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : 1);
+          map_of_correction_functions_t::const_iterator it_corr_fun = correction_function_for_quad.find(quad_idx);
+          if(it_corr_fun == correction_function_for_quad.end())
+            throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_sharp_integral_solution() : couldn't find the correction function for local quadrant " + std::to_string(quad_idx));
+          const correction_function_t& correction_function = correction_function_for_quad.at(quad_idx);
+          sharp_integral_solution -= sgn_quad*(sgn_quad < 0 ? finite_volume.volume_in_positive_domain() : finite_volume.volume_in_negative_domain())*correction_function(sol_p);
+        }
+      }
+    }
+    ierr = VecRestoreArray(solution, &sol_p); CHKERRXX(ierr);
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sharp_integral_solution, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    return sharp_integral_solution;
+  }
+
+  inline void print_solve_info() const
+  {
+    PetscInt nksp_iterations;
+    PetscErrorCode ierr = KSPGetIterationNumber(ksp, &nksp_iterations); CHKERRXX(ierr);
+    if(p4est->mpirank == 0)
+      std::cout << "The solver converged after a total of " << nksp_iterations << " iterations." << std::endl;
+  }
+
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_FV_H

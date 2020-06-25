@@ -172,6 +172,7 @@ public:
   inline const my_p4est_cell_neighbors_t* get_cell_ngbd()       const { return cell_ngbd;                   }
   inline const my_p4est_hierarchy_t* get_hierarchy()            const { return cell_ngbd->get_hierarchy();  }
   inline const double* get_smallest_dxyz()                      const { return dxyz_min;                    }
+  inline Vec get_solution()                                     const { return solution;                    }
   inline Vec get_jump()                                         const { return jump_u;                      }
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
@@ -182,6 +183,10 @@ public:
   {
     get_sharp_flux_components_and_subtract_them_from_velocities(flux, faces, NULL, NULL, NULL);
   }
+
+  virtual double get_sharp_integral_solution() const = 0;
+
+  virtual void print_solve_info() const = 0;
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_H

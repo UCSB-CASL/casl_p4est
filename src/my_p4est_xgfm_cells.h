@@ -20,6 +20,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
   class solver_monitor_t {
+    friend class my_p4est_xgfm_cells_t;
     typedef struct
     {
       PetscInt n_ksp_iterations;
@@ -195,15 +196,10 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
 
-  inline void make_sure_solution_is_set()
+  inline void make_sure_extensions_are_defined()
   {
     if(solution == NULL)
       solve_for_sharp_solution();
-  }
-
-  inline void make_sure_extensions_are_defined()
-  {
-    make_sure_solution_is_set();
     if(extension == NULL)
     {
       P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
@@ -237,7 +233,6 @@ public:
   }
 
   inline Vec get_extended_interface_values()                          { make_sure_extensions_are_defined();     return extension; }
-  inline Vec get_solution()                                           { make_sure_solution_is_set();            return solution;  }
   inline int get_number_of_xGFM_corrections()                   const { return solver_monitor.get_number_of_xGFM_corrections();   }
   inline std::vector<PetscInt> get_numbers_of_ksp_iterations()  const { return solver_monitor.get_n_ksp_iterations();             }
   inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();              }
@@ -277,6 +272,24 @@ public:
     ierr = VecRestoreArray(solution, &sol_p); CHKERRXX(ierr);
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &sharp_integral_solution, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     return sharp_integral_solution;
+  }
+
+  inline void print_solve_info() const { print_solve_info(false); }
+
+  inline void print_solve_info(const bool& print_xgfm_residuals_and_corrections) const
+  {
+    if(p4est->mpirank == 0)
+    {
+      PetscInt total_nb_iterations = solver_monitor.logger[0].n_ksp_iterations;
+      for(size_t tt = 1; tt < solver_monitor.logger.size(); ++tt){
+        total_nb_iterations += solver_monitor.logger[tt].n_ksp_iterations;
+        if(print_xgfm_residuals_and_corrections)
+          std::cout << "After iterative step " << tt << "(" << solver_monitor.logger[tt].n_ksp_iterations << " iterations): " <<std::endl
+                    << " \t\t max correction = " << solver_monitor.logger[tt].max_correction << std::endl
+                    << " \t\t relative residual = " << solver_monitor.relative_residual(tt) << std::endl;
+      }
+      std::cout << "The solver converged after a total of " << total_nb_iterations << " iterations." << std::endl;
+    }
   }
 
   void inline activate_xGFM_corrections(const bool flag_) { activate_xGFM = flag_; }
