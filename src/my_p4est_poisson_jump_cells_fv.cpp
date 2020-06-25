@@ -1,6 +1,22 @@
+#ifdef P4_TO_P8
+#include "my_p8est_poisson_jump_cells_fv.h"
+#else
 #include "my_p4est_poisson_jump_cells_fv.h"
+#endif
 
-my_p4est_poisson_jump_cells_fv::my_p4est_poisson_jump_cells_fv(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_)
+
+// logging variables -- defined in src/petsc_logging.cpp
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution;
+#endif
+
+
+my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_)
   : my_p4est_poisson_jump_cells_t(ngbd_c, nodes_)
 {
 //  phi_quad = NULL;
@@ -9,7 +25,7 @@ my_p4est_poisson_jump_cells_fv::my_p4est_poisson_jump_cells_fv(const my_p4est_ce
   are_required_finite_volumes_and_correction_functions = false;
 }
 
-void my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functions()
+void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
 {
   if(are_required_finite_volumes_and_correction_functions)
     return;
@@ -28,7 +44,7 @@ void my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functio
     if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed))
     {
       if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
       build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
 
       // figure out if required by another process
@@ -80,7 +96,7 @@ void my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functio
     if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed))
     {
       if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
       build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
     }
   }
@@ -125,7 +141,7 @@ void my_p4est_poisson_jump_cells_fv::build_finite_volumes_and_correction_functio
   are_required_finite_volumes_and_correction_functions = true;
 }
 
-void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx)
+void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx)
 {
   if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() &&
      finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end())
@@ -133,7 +149,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
 
 #ifdef CASL_THROWS
   if(quad_idx < 0 || quad_idx > p4est->local_num_quadrants)
-    throw std::invalid_argument("my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed() cannot be called for nonlocal quadrants");
+    throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() cannot be called for nonlocal quadrants");
 #endif
 
   // construct finite volume info
@@ -145,7 +161,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
   fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
 #ifdef CASL_THROWS
   if(quad->level != interface_manager->get_max_level_computational_grid())
-    throw std::logic_error("my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed() : called on a quadrant that is not as fine as expected.");
+    throw std::logic_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() : called on a quadrant that is not as fine as expected.");
 #endif
 
   // get projected point onto the interface, signed distance, normal vector at projected point
@@ -155,7 +171,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
   interface_manager->projection_onto_interface_of_point(xyz_quad, xyz_quad_projected);
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     if(fabs(xyz_quad[dim] - xyz_quad_projected[dim]) > 1.5*dxyz_min[dim]) // this is considered an essential runtime error --> throw even if CASL_THROWS is not defined...
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed() : the projection of a quad center onto th interface lies out of a 3 by 3 (by 3) surrounding box");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() : the projection of a quad center onto th interface lies out of a 3 by 3 (by 3) surrounding box");
     clip_in_domain(xyz_quad_projected, p4est);
   }
 
@@ -183,7 +199,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
     }
 
     if(first_degree_neighbors_in_slow_side.size() < 1 + P4EST_DIM)
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed() not enough neighbor in the slow side");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() not enough neighbor in the slow side");
 
     const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
 
@@ -214,7 +230,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
     const double lhs_coeff = (1.0 + (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? +1.0 : -1.0)*signed_distance*get_jump_in_mu()*(*quad_weight_for_normal_derivative_on_slow_side_at_projected_point)/fast_mu);
 #ifdef CASL_THROWS
     if(fabs(lhs_coeff) < EPS)
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad_if_needed() : the denominator is ill-defined in the definition of on correction function");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() : the denominator is ill-defined in the definition of on correction function");
 #endif
     scaling_factor = 1.0/lhs_coeff;
   }
@@ -234,7 +250,7 @@ void my_p4est_poisson_jump_cells_fv::build_and_store_double_valued_info_for_quad
   return;
 }
 
-void my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                                                         PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const
 {
   const p4est_quadrant_t *quad;
@@ -254,7 +270,7 @@ void my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_f
     map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(quad_idx);
 #ifdef CASL_THROWS
     if(it == correction_function_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
 #endif
     const correction_function_t& correction_function = it->second;
     for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k)
@@ -279,7 +295,7 @@ void my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_f
       map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
 #ifdef CASL_THROWS
       if(it == correction_function_for_quad.end())
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
+        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
                                  + ", neighbor of quad " + std::to_string(quad_idx) + " in direction " + std::to_string(oriented_dir)
                                  + " on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
@@ -308,7 +324,7 @@ void my_p4est_poisson_jump_cells_fv::get_numbers_of_cells_involved_in_equation_f
   return;
 }
 
-void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector)
+void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector)
 {
   PetscErrorCode ierr;
   const double *user_rhs_minus_p  = NULL;
@@ -322,7 +338,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
     if(user_rhs_plus != NULL){
       ierr = VecGetArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr); }
     if(user_vstar_minus != NULL || user_vstar_plus != NULL)
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad : not able to handle vstar as rhs, yet --> implement that now, please");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad : not able to handle vstar as rhs, yet --> implement that now, please");
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
   }
 
@@ -344,15 +360,15 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
   if(is_quad_crossed)
   {
     if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
 
     map_of_correction_functions_t::const_iterator it_corr_fun = correction_function_for_quad.find(quad_idx);
     map_of_finite_volume_t::const_iterator        it_fv       = finite_volume_data_for_quad.find(quad_idx);
 #ifdef CASL_THROWS
     if(it_corr_fun == correction_function_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
     if(it_fv == finite_volume_data_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() couldn't find the finite volume data for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the finite volume data for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
 #endif
     correction_function_of_quad = &it_corr_fun->second;
     finite_volume_of_quad       = &it_fv->second;
@@ -396,7 +412,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
     {
 #ifdef CASL_THROWS
       if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_quad, sgn_quad))
-        throw std::invalid_argument("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() : a wall-face is crossed by the interface, this is not handled yet...");
+        throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : a wall-face is crossed by the interface, this is not handled yet...");
 #endif
       switch(bc->wallType(xyz_face))
       {
@@ -419,7 +435,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
       }
         break;
       default:
-        throw std::invalid_argument("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() : unknown boundary condition on a wall.");
+        throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : unknown boundary condition on a wall.");
       }
       continue;
     }
@@ -466,7 +482,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
         // |-/-------|----------------|
         // | |       |                |
         //   | <- interface
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() : the stable-projection derivative operator for quad "
+        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : the stable-projection derivative operator for quad "
                                  + std::to_string(quad_idx) + " at (probably uncrossed but shared) face of orientation " + std::to_string(oriented_dir) +
                                  " on proc " + std::to_string(p4est->mpirank) + " involves quadrants lying on the other side of the domain.");
       }
@@ -481,7 +497,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
         map_of_correction_functions_t::const_iterator it_corr_fun = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
 #ifdef CASL_THROWS
         if(it_corr_fun == correction_function_for_quad.end())
-          throw std::runtime_error("my_p4est_poisson_jump_cells_fv::build_discretization_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
+          throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
                                    + ", neighbor of quad " + std::to_string(quad_idx) + " in direction " + std::to_string(oriented_dir)
                                    + " on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
@@ -541,7 +557,7 @@ void my_p4est_poisson_jump_cells_fv::build_discretization_for_quad(const p4est_l
 }
 
 
-double my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
+double my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -568,7 +584,7 @@ double my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(const p4es
     P4EST_ASSERT(f_idx != NO_VELOCITY);
 #ifdef CASL_THROWS
     if(signs_of_phi_are_different(sgn_q, sgn_face ))
-      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
     switch(bc->wallType(xyz_face))
     {
@@ -579,7 +595,7 @@ double my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(const p4es
       sharp_flux_component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_face*bc->wallValue(xyz_face);
       break;
     default:
-      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv::get_flux_components_and_subtract_them_from_velocities_local(): unknown boundary condition on a wall.");
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::get_flux_components_and_subtract_them_from_velocities_local(): unknown boundary condition on a wall.");
     }
   }
   else
@@ -610,7 +626,7 @@ double my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(const p4es
           map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(idx_dof);
 #ifdef CASL_THROWS
           if(it == correction_function_for_quad.end())
-            throw std::runtime_error("my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local couldn't find the correction function for quad " + std::to_string(idx_dof)
+            throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local couldn't find the correction function for quad " + std::to_string(idx_dof)
                                      + ", required for the calculation of flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
                                      + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
                                      + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
@@ -626,7 +642,7 @@ double my_p4est_poisson_jump_cells_fv::get_sharp_flux_component_local(const p4es
   return sharp_flux_component;
 }
 
-void my_p4est_poisson_jump_cells_fv::solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type)
+void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);

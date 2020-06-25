@@ -7,7 +7,7 @@
 #include <src/my_p4est_poisson_jump_cells.h>
 #endif
 
-class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
+class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 {
   union global_correction_function_elementary_data_t
   {
@@ -59,8 +59,8 @@ class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
   double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const;
 
 public:
-  my_p4est_poisson_jump_cells_fv(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
-  ~my_p4est_poisson_jump_cells_fv() {}; // no extra data allocated dynamically
+  my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
+  ~my_p4est_poisson_jump_cells_fv_t() {}; // no extra data allocated dynamically
 
   void solve_for_sharp_solution(const KSPType &ksp = KSPBCGS, const PCType& pc = PCHYPRE);
 
