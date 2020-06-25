@@ -46,11 +46,11 @@ const int default_test_number = 3;
 const bool track_xgfm_residuals_and_corrections = false;
 
 #if defined(STAMPEDE)
-const string default_work_folder = "/scratch/04965/tg842642/cell_xgfm";
+const string default_work_folder = "/scratch/04965/tg842642/poisson_jump_cells";
 #elif defined(POD_CLUSTER)
-const string default_work_folder = "/scratch/regan/cell_xgfm";
+const string default_work_folder = "/scratch/regan/poisson_jump_cells";
 #else
-const string default_work_folder = "/home/regan/workspace/projects/cell_center_xgfm";
+const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_cells";
 #endif
 
 
@@ -943,9 +943,9 @@ int main (int argc, char* argv[])
     get_sharp_rhs(p4est, ghost, test_problem, sharp_rhs_minus, sharp_rhs_plus);
 
     my_p4est_xgfm_cells_t *GFM_solver = new my_p4est_xgfm_cells_t(ngbd_c, nodes); // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
-    GFM_solver->activate_xGFM_corrections(false);
+    GFM_solver->activate_xGFM_corrections(false, track_xgfm_residuals_and_corrections);
     my_p4est_xgfm_cells_t *xGFM_solver = new my_p4est_xgfm_cells_t(ngbd_c, nodes);  // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
-    xGFM_solver->activate_xGFM_corrections(true);
+    xGFM_solver->activate_xGFM_corrections(true, track_xgfm_residuals_and_corrections);
     for(u_char xgfm_flag = 0; xgfm_flag < 2; ++xgfm_flag) {
       interface_manager->clear_all_FD_interface_neighbors(); // for representative timing, if storing the maps
       my_p4est_xgfm_cells_t& jump_solver = (xgfm_flag == 0 ? *GFM_solver : *xGFM_solver);

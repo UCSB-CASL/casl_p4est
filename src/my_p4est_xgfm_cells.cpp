@@ -28,6 +28,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   extension_operators_are_stored_and_set = false;
   xgfm_jump_between_quads.clear();
   solver_monitor.clear();
+  print_residuals_and_corrections_with_solve_info = false;
 }
 
 my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
