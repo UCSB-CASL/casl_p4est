@@ -68,7 +68,16 @@ protected:
                                                                   PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const = 0;
 
   void preallocate_matrix();
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const;
+  /*!
+   * \brief setup_linear_solver sets the Krylov solver for the linear system of equations to be inverted
+   * \param [in] ksp_type                   solver type desired by the user
+   *                                        IMPORTANT NOTE: PetSc recommends using GMRES for singular problems
+   *                                        --> GMRES is enforces in that case and the provided ksp_type is irrelevant then (i.e. if A_null_space != NULL)
+   * \param [in] pc_type                    preconditioner type desired by the user
+   * \param [in] tolerance_on_rel_residual  [optional] tolerance on the relative residual (all other tolerances are PETSC_DEFAULT), default value is 1.0e-12
+   * \return a PetscError code to check if anything went wrong
+   */
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual = 1.0e-12) const;
   void solve_linear_system();
   inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
@@ -143,8 +152,8 @@ public:
     rhs_is_set = false;
   }
 
-  virtual void solve_for_sharp_solution(const KSPType &ksp, const PCType& pc) = 0;
-  inline void solve(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE, Vec initial_guess_ = NULL)
+  virtual void solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type) = 0;
+  inline void solve(const KSPType& ksp_type, const PCType& pc_type = PCHYPRE, Vec initial_guess_ = NULL)
   {
     P4EST_ASSERT(initial_guess_ == NULL || VecIsSetForCells(initial_guess_, p4est, ghost, 1));
     PetscErrorCode ierr;
