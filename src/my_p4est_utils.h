@@ -800,6 +800,8 @@ bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_
 
 p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
 
+p4est_locidx_t find_local_index_of_quad(const p4est_gloidx_t& quad_global_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
 
 /*!
@@ -1432,20 +1434,24 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
   return (p4est_indep_t*) sc_array_index(&nodes->indep_nodes, n);
 }
 
-inline void fetch_quad_and_tree_coordinates(const p4est_quadrant_t* &quad, const double* &tree_xyz_min, const double* &tree_xyz_max,
-                                            const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline const p4est_quadrant* fetch_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   if(quad_idx < p4est->local_num_quadrants)
   {
     const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+    return p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
     P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
-    quad = p4est_const_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
+    return p4est_const_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
   }
+}
 
+inline void fetch_quad_and_tree_coordinates(const p4est_quadrant_t* &quad, const double* &tree_xyz_min, const double* &tree_xyz_max,
+                                            const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+{
+  quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
   tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx];
   tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN - 1];
   return;

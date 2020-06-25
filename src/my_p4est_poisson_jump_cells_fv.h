@@ -9,6 +9,18 @@
 
 class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
 {
+  union global_correction_function_elementary_data_t
+  {
+    p4est_gloidx_t  quad_global_idx;
+    double          jump_dependent_terms;
+    size_t          n_solution_dependent_terms;
+    p4est_gloidx_t  solution_dependent_term_global_index;
+    double          solution_dependent_term_weight;
+  };
+
+  // arbitrary-defined tag used to label the communications between processes related to correction function data
+  const static int correction_function_communication_tag = 14789632;
+
   struct correction_function_t {
     double                      jump_dependent_terms;
     linear_combination_of_dof_t solution_dependent_terms;
@@ -18,6 +30,7 @@ class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
     }
     correction_function_t() { solution_dependent_terms.clear(); }
   };
+
 
 #if __cplusplus >= 201103L
   typedef std::unordered_map<p4est_locidx_t, correction_function_t> map_of_correction_functions_t;
@@ -29,13 +42,20 @@ class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
 
   map_of_correction_functions_t correction_function_for_quad; //
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
-  bool                          finite_volumes_and_correction_functions_are_known;
+  bool                          are_required_finite_volumes_and_correction_functions;
 
   void build_finite_volumes_and_correction_functions();
 
   void build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx);
 
   bool is_point_in_slow_side(const double* xyz) const { return mus_are_equal() || ((mu_minus < mu_plus) == (interface_manager->phi_at_point(xyz) <= 0.0)); }
+
+
+  void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                                          PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const;
+
+  void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
+
 
 
 public:

@@ -469,7 +469,7 @@ public:
    *                                      found in the given quadrant. This vector is empty (size 0) on return if the given
    *                                      quadrant is finer than the leaf HiearchyCell found to contain it.
    */
-  void get_all_quadrants_in(const p4est_quadrant_t* const &quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const;
+  void get_all_quadrants_in(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const;
 
   /*!
    * \brief update update the my_p4est_hiearchy to match the new p4est and ghost

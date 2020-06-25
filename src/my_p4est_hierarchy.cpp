@@ -83,7 +83,7 @@ p4est_locidx_t my_p4est_hierarchy_t::get_index_of_hierarchy_cell_matching_or_con
   return ind;
 }
 
-void my_p4est_hierarchy_t::get_all_quadrants_in(const p4est_quadrant_t* const &quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const
+void my_p4est_hierarchy_t::get_all_quadrants_in(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx, std::vector<p4est_locidx_t>& list_of_local_quad_idx) const
 {
   list_of_local_quad_idx.clear();
 

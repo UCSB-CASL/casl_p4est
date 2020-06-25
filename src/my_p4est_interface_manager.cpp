@@ -111,7 +111,7 @@ void my_p4est_interface_manager_t::set_under_resolved_levelset(Vec phi_on_comput
 void my_p4est_interface_manager_t::build_grad_phi_locally()
 {
 #ifdef CASL_THROWS
-  if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_inupt_fields() != 1)
+  if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_input_fields() != 1)
     throw std::runtime_error("my_p4est_interface_manager_t::build_grad_phi_locally(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
 #endif
 
@@ -317,6 +317,117 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
   positive_volume = (phi_q <= 0.0 ? 0.0         : quad_volume);
 
   return;
+}
+
+void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                                                bool &intersection_found, bool which_face_is_intersected[P4EST_FACES]) const
+{
+  const double *phi_on_computational_nodes_p = NULL;
+  if(phi_on_computational_nodes != NULL){
+    PetscErrorCode ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
+
+  const double *tree_xyz_min, *tree_xyz_max;
+  const p4est_quadrant_t* quad;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  double xyz_mmm[P4EST_DIM]; xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_mmm);
+  const double dxyz_quad[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+                                       (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
+                                       (tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN))};
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    xyz_mmm[dim] -= 0.5*dxyz_quad[dim];
+  const double xyz_ppp[P4EST_DIM] = {DIM(xyz_mmm[0] + dxyz_quad[0], xyz_mmm[1] + dxyz_quad[1], xyz_mmm[2] + dxyz_quad[2])};
+
+  const double phi_mmm = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx                      ]] : interp_phi(xyz_mmm));
+  const double phi_ppp = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + P4EST_CHILDREN - 1 ]] : interp_phi(xyz_ppp));
+  intersection_found        = signs_of_phi_are_different(phi_mmm, phi_ppp);
+  if(which_face_is_intersected != NULL)
+    for (u_char face_dir = 0; face_dir < P4EST_FACES; ++face_dir)
+      which_face_is_intersected[face_dir] = false;
+
+  // check the vertices first
+  for (char kx = 0; kx < 2; ++kx)
+    for (char ky = 0; ky < 2; ++ky)
+#ifdef P4_TO_P8
+      for (char kz = 0; kz < 2; ++kz)
+#endif
+      {
+        if(ANDD(kx == 0, ky == 0, kz == 0) || ANDD(kx == 1, ky == 1, kz == 1)) // mmm and ppp vertices
+          continue;
+        const double phi_vertex = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + SUMD(kx, 2*ky, 4*kz)]] :
+                                   interp_phi(DIM(xyz_mmm[0] + kx*dxyz_quad[0], xyz_mmm[1] + ky*dxyz_quad[1], xyz_mmm[2] + kz*dxyz_quad[2])));
+        intersection_found = intersection_found || signs_of_phi_are_different(phi_mmm, phi_vertex);
+
+        if(which_face_is_intersected != NULL)
+        {
+          which_face_is_intersected[2*dir::x + kx] = which_face_is_intersected[2*dir::x + kx] || signs_of_phi_are_different((kx == 0 ? phi_mmm : phi_ppp), phi_vertex);
+          which_face_is_intersected[2*dir::y + ky] = which_face_is_intersected[2*dir::y + ky] || signs_of_phi_are_different((ky == 0 ? phi_mmm : phi_ppp), phi_vertex);
+#ifdef P4_TO_P8
+          which_face_is_intersected[2*dir::z + kz] = which_face_is_intersected[2*dir::z + kz] || signs_of_phi_are_different((kz == 0 ? phi_mmm : phi_ppp), phi_vertex);
+#endif
+        }
+      }
+  if(phi_on_computational_nodes_p != NULL){
+    PetscErrorCode ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
+
+  const u_int n_mls_points_per_dimension = (1 << subcell_resolution())*interpolation_degree() + 1;
+  if(n_mls_points_per_dimension > 2) // more points to check
+  {
+    const double dxyz_mls[P4EST_DIM]  = {DIM(dxyz_quad[0]/(double) (n_mls_points_per_dimension - 1), dxyz_quad[1]/(double) (n_mls_points_per_dimension - 1), dxyz_quad[2]/(double) (n_mls_points_per_dimension - 1))};
+
+    for (u_int kx = 0; kx < n_mls_points_per_dimension; ++kx)
+      for (u_int ky = 0; ky < n_mls_points_per_dimension; ++ky)
+  #ifdef P4_TO_P8
+        for (u_int kz = 0; kz < n_mls_points_per_dimension; ++kz)
+  #endif
+        {
+          if(ANDD(kx == 0 || kx == n_mls_points_per_dimension - 1, ky == 0 || ky == n_mls_points_per_dimension - 1, kz == 0 || kz == n_mls_points_per_dimension - 1)) // that's a vertex, already done
+            continue;
+          const double xyz_mls_point[P4EST_DIM] = {DIM(xyz_mmm[0] + ((double) kx)*dxyz_mls[0], xyz_mmm[1] + ((double) ky)*dxyz_mls[1], xyz_mmm[2] + ((double) kz)*dxyz_mls[2])};
+          const double phi_mls_point = interp_phi(xyz_mls_point);
+
+          intersection_found = intersection_found || signs_of_phi_are_different(phi_mmm, phi_mls_point);
+          if(which_face_is_intersected != NULL && ORD(kx == 0 || kx == n_mls_points_per_dimension - 1, ky == 0 || ky == n_mls_points_per_dimension - 1, kz == 0 || kz == n_mls_points_per_dimension - 1)) // mls point on face
+          {
+            if(kx == 0 || kx == n_mls_points_per_dimension - 1)
+              which_face_is_intersected[2*dir::x + (kx == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::x + (kx == 0 ? 0 : 1)] || signs_of_phi_are_different((kx == 0 ? phi_mmm : phi_ppp), phi_mls_point);
+            if(ky == 0 || ky == n_mls_points_per_dimension - 1)
+              which_face_is_intersected[2*dir::y + (ky == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::y + (ky == 0 ? 0 : 1)] || signs_of_phi_are_different((ky == 0 ? phi_mmm : phi_ppp), phi_mls_point);
+#ifdef P4_TO_P8
+            if(kz == 0 || kz == n_mls_points_per_dimension - 1)
+              which_face_is_intersected[2*dir::z + (kz == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::z + (kz == 0 ? 0 : 1)] || signs_of_phi_are_different((kz == 0 ? phi_mmm : phi_ppp), phi_mls_point);
+#endif
+          }
+        }
+  }
+  return;
+}
+
+bool my_p4est_interface_manager_t::is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, bool which_face_is_intersected[P4EST_FACES]) const
+{
+  const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
+
+  if(quad->level < (int8_t) max_level_p4est)
+  {
+#ifdef CASL_THROWS
+    bool intersection_found;
+    detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found);
+    if(intersection_found)
+      throw std::logic_error("my_p4est_interface_manager_t::is_quad_crossed_by_interface() : found a cell bigger than expected but containing an interface intersection.");
+#endif
+    return false;
+  }
+
+  bool intersection_found;
+  detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found, which_face_is_intersected);
+
+  return intersection_found;
+}
+
+my_p4est_finite_volume_t my_p4est_interface_manager_t::get_finite_volume_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx) const
+{
+  my_p4est_finite_volume_t fv_to_build;
+  construct_finite_volume(fv_to_build, quad_idx, tree_idx, p4est, &interp_phi, interpolation_degree(), subcell_resolution());
+  return fv_to_build;
 }
 
 #ifdef DEBUG

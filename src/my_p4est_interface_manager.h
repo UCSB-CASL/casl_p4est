@@ -190,6 +190,9 @@ class my_p4est_interface_manager_t
   my_p4est_interface_manager_t(const my_p4est_interface_manager_t& other);
   my_p4est_interface_manager_t& operator=(const my_p4est_interface_manager_t& other);
 
+  void detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                    bool &intersection_found, bool which_face_is_intersected[P4EST_FACES] = NULL) const;
+
 public:
   /*!
    * \brief my_p4est_interface_manager_t constructor of the interface manager object
@@ -345,25 +348,16 @@ public:
    */
   void compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
 
+  bool is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, bool which_face_is_intersected[P4EST_FACES]) const;
+
+  my_p4est_finite_volume_t get_finite_volume_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx) const;
+
   /*!
    * \brief phi_at_point evaluates the levelset value at a given point
    * \param [in] xyz: coordinates of the point where the levelset value is desired
    * \return the levelset value
    */
   inline double phi_at_point(const double *xyz) const { return interp_phi(xyz); }
-
-  /*!
-   * \brief get_phi_as_local_cf returns the representation of the levelset (as seen from this manager), as a local functor
-   * [use locally, ONLY!]
-   * \return a (pointer to a) functor matching the internal representation of the levelset, as seen from this manager
-   */
-  inline const CF_DIM* get_phi_as_local_cf() const { return &interp_phi; }
-
-  /*!
-   * \brief get_interpolation_method_for_phi self-explanatory
-   * \return the interpolation method used for representing the levelset method
-   */
-  inline interpolation_method get_interpolation_method_for_phi() const { return interp_phi.get_interpolation_method(); }
 
   /*!
    * \brief grad_phi_at_point evaluates the gradient of the levelset function at a given point
@@ -466,7 +460,6 @@ public:
 #ifdef CASL_THROWS
     std::cerr << "my_p4est_interface_manager_t::get_phi_on_computational_nodes() called but phi is not available on the computational nodes, returning NULL..." << std::endl;
 #endif
-
     return NULL;
   }
 
@@ -475,6 +468,12 @@ public:
    * \return the subresolution level, i.e., the difference in maximum refinement levle between the inteface-capturing grid and the computational grid
    */
   inline int subcell_resolution() const { return max_level_interpolation_p4est - max_level_p4est; }
+
+  /*!
+   * \brief interpolation_degree
+   * \return the degree of the interpolation technique used for the levelset representation
+   */
+  inline int interpolation_degree() const { return (interp_phi.get_interpolation_method() == linear ? 1 : 2); }
 
   /*!
    * \brief get_max_level_computational_grid self-explanatory

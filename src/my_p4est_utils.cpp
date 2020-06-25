@@ -185,6 +185,40 @@ p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx
   return p4est->global_first_quadrant[quad_find_ghost_owner(ghost, quad_local_idx - p4est->local_num_quadrants)] + quad->p.piggy3.local_num;
 }
 
+p4est_locidx_t find_local_index_of_quad(const p4est_gloidx_t& quad_global_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
+{
+  P4EST_ASSERT(0 <= quad_global_idx && quad_global_idx < p4est->global_num_quadrants);
+  if(p4est->global_first_quadrant[p4est->mpirank] <= quad_global_idx && quad_global_idx < p4est->global_first_quadrant[p4est->mpirank] + p4est->local_num_quadrants)
+    return quad_global_idx - p4est->global_first_quadrant[p4est->mpirank];
+
+  // search in ghost
+  int owner_rank = 0;
+  int rank_up   = p4est->mpisize;
+  while(rank_up - owner_rank > 1)
+  {
+    const int r = (owner_rank + rank_up)/2;
+    if(p4est->global_first_quadrant[r] <= quad_global_idx)
+      owner_rank = r;
+    else
+      rank_up = r;
+  }
+
+  p4est_locidx_t ghost_idx    = ghost->proc_offsets[owner_rank];
+  p4est_locidx_t ghost_idx_up = ghost->proc_offsets[owner_rank + 1];
+  const p4est_quadrant_t* ghost_quad = p4est_const_quadrant_array_index(&ghost->ghosts, ghost_idx);
+  while (p4est->global_first_quadrant[owner_rank] + ghost_quad->p.piggy3.local_num != quad_global_idx) {
+    P4EST_ASSERT(ghost_idx_up - ghost_idx > 1);
+    const p4est_locidx_t mid_ghost_idx = (ghost_idx + ghost_idx_up)/2;
+    ghost_quad = p4est_const_quadrant_array_index(&ghost->ghosts, mid_ghost_idx);
+    if(p4est->global_first_quadrant[owner_rank] + ghost_quad->p.piggy3.local_num <= quad_global_idx)
+      ghost_idx = mid_ghost_idx;
+    else
+      ghost_idx_up = mid_ghost_idx;
+  }
+
+  return ghost_quad->p.piggy3.local_num;
+}
+
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
 {
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants + (ghost != NULL ? (p4est_locidx_t) ghost->ghosts.elem_count : 0));
@@ -339,8 +373,8 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   const double* tree_xyz_min    = (p4est->connectivity->vertices + 3*v_m);
   const double* tree_xyz_max    = (p4est->connectivity->vertices + 3*v_p);
 
-  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double qxyz_min[P4EST_DIM]; quad_xyz_fr_ijk(&quad, qxyz_min);
+  const double qh = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  const double qxyz_min[P4EST_DIM] = {DIM((double) quad.x/(double) P4EST_ROOT_LEN, (double) quad.y/(double) P4EST_ROOT_LEN, (double) quad.z/(double) P4EST_ROOT_LEN)};
 
   double xyz[P4EST_DIM] = {DIM(xyz_global[0], xyz_global[1], xyz_global[2])};
   for (u_char dir = 0; dir < P4EST_DIM; ++dir)
