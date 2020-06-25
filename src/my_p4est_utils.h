@@ -854,7 +854,7 @@ inline p4est_locidx_t get_fine_node_idx_of_face_in_quad(const p4est_t* fine_p4es
 }
 
 // my rigorous interface-identification rule [Raphael]
-inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) { return (phi_0 > 0.0) != (phi_1 > 0.0); }
+template<typename T> inline bool signs_of_phi_are_different(const T& phi_0, const T& phi_1) { return (phi_0 > (T) 0) != (phi_1 > (T) 0); }
 
 /*!
  * \brief rel_xyz_quad_fr_point calculates the relative cartesian coordinates between a quad center and a given point (very useful for lsqr

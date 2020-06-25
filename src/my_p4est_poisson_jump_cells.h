@@ -86,7 +86,7 @@ protected:
   void setup_linear_system();
 
 
-  virtual double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const = 0;
+  virtual double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const = 0;
 
 public:
 

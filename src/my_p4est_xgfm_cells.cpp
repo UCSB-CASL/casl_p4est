@@ -101,11 +101,11 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
   const double cell_volume = MULTD(cell_dxyz[0], cell_dxyz[1], cell_dxyz[2]);
 
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
-  const double phi_quad = interface_manager->phi_at_point(xyz_quad);
-  const double &mu_this_side = (phi_quad > 0.0 ? mu_plus : mu_minus);
+  const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : 1);
+  const double &mu_this_side = (sgn_quad > 0 ? mu_plus : mu_minus);
 
   /* First add the diagonal term */
-  const double& add_diag = (phi_quad > 0.0 ? add_diag_plus : add_diag_minus);
+  const double& add_diag = (sgn_quad > 0 ? add_diag_plus : add_diag_minus);
   if(!matrix_is_set && fabs(add_diag) > EPS)
   {
     ierr = MatSetValue(A, quad_gloidx, quad_gloidx, cell_volume*add_diag, ADD_VALUES); CHKERRXX(ierr);
@@ -113,7 +113,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
       *nullspace_contains_constant_vector = 0;
   }
   if(!rhs_is_set)
-    rhs_p[quad_idx] = (phi_quad <= 0.0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
+    rhs_p[quad_idx] = (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
 
   for(u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
   {
@@ -126,8 +126,8 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
       double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])};
       xyz_face[oriented_dir/2] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[oriented_dir/2];
 #ifdef CASL_THROWS
-      const double phi_face = interface_manager->phi_at_point(xyz_face);
-      if(signs_of_phi_are_different(phi_quad, phi_face))
+      const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : 1);
+      if(signs_of_phi_are_different(sgn_quad, sgn_face))
         throw std::invalid_argument("my_p4est_xgfm_cells_t::build_discretization_for_quad() : a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
       switch(bc->wallType(xyz_face))
@@ -176,7 +176,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
         throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
       const FD_interface_neighbor& cell_interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
-      const double& mu_across = (phi_quad > 0.0 ? mu_minus : mu_plus);
+      const double& mu_across = (sgn_quad > 0 ? mu_minus : mu_plus);
       if(!matrix_is_set)
       {
         const double mu_jump = cell_interface_neighbor.GFM_mu_jump(mu_this_side, mu_across);
@@ -186,7 +186,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
       if(!rhs_is_set)
       {
         const xgfm_jump& jump_info = get_xgfm_jump_between_quads(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
-        rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*cell_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, (phi_quad > 0.0),
+        rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*cell_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, (sgn_quad > 0),
                                                                                                                                    jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min);
       }
     }
@@ -644,7 +644,7 @@ my_p4est_xgfm_cells_t::get_extension_increment_operator_for(const p4est_locidx_t
   return pseudo_time_step_operator;
 }
 
-double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, double& phi_face) const
+double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -658,9 +658,9 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
 
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
   double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_face[dim] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[dim];
-  phi_face = interface_manager->phi_at_point(xyz_face);
-  const double phi_q    = interface_manager->phi_at_point(xyz_quad);
-  const double mu_face  = (phi_face > 0.0 ? mu_plus : mu_minus);
+  sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+  const char   sgn_q    = (interface_manager->phi_at_point(xyz_quad) <= 0 ? -1 : +1);
+  const double mu_face  = (sgn_face > 0 ? mu_plus : mu_minus);
   PetscErrorCode ierr;
   const double *solution_p;
   const double *extension_p = NULL;
@@ -675,7 +675,7 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
   {
     P4EST_ASSERT(f_idx != NO_VELOCITY);
 #ifdef CASL_THROWS
-    if(signs_of_phi_are_different(phi_q, phi_face))
+    if(signs_of_phi_are_different(sgn_q, sgn_face))
       throw std::invalid_argument("my_p4est_xgfm_cells_t::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
     switch(bc->wallType(xyz_face))
@@ -698,10 +698,10 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
 
     if(one_sided)
     {
-      if(signs_of_phi_are_different(phi_q, phi_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across the interface
+      if(signs_of_phi_are_different(sgn_q, sgn_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across the interface
       {
         // calculate the flux component as seen from the other side
-        const double flux_component_across = (phi_face > 0.0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
+        const double flux_component_across = (sgn_face > 0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
 
         // evaluate the jump in flux component as defined consistently with the logic for regular interface point
         const double jump_normal_flux = (*interp_jump_normal_flux)(xyz_face);
@@ -724,16 +724,16 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
           }
         }
 
-        sharp_flux_component = flux_component_across + (phi_face > 0.0 ? +1.0 : -1.0)*jump_in_flux_component;
+        sharp_flux_component = flux_component_across + (sgn_face > 0 ? +1.0 : -1.0)*jump_in_flux_component;
       }
       else
         sharp_flux_component = mu_face*stable_projection_derivative(solution_p);
     }
     else
     {
-      const double &mu_this_side    = (phi_q <= 0.0 ? mu_minus  : mu_plus);
-      const double &mu_across       = (phi_q <= 0.0 ? mu_plus   : mu_minus);
-      const bool in_positive_domain = (phi_q > 0.0);
+      const double &mu_this_side    = (sgn_q < 0 ? mu_minus  : mu_plus);
+      const double &mu_across       = (sgn_q < 0 ? mu_plus   : mu_minus);
+      const bool in_positive_domain = (sgn_q > 0);
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
 
       const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
@@ -746,8 +746,8 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
 
       sharp_flux_component = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
           jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min);
-      if(signs_of_phi_are_different(phi_q, phi_face))
-        sharp_flux_component += (phi_face > 0.0 ? +1.0 : -1.0)*jump_info.jump_flux_component(extension_p);
+      if(signs_of_phi_are_different(sgn_q, sgn_face))
+        sharp_flux_component += (sgn_face > 0 ? +1.0 : -1.0)*jump_info.jump_flux_component(extension_p);
     }
   }
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
