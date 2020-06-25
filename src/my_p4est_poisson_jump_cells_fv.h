@@ -56,11 +56,13 @@ class my_p4est_poisson_jump_cells_fv : public my_p4est_poisson_jump_cells_t
 
   void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL);
 
-
+  double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const;
 
 public:
   my_p4est_poisson_jump_cells_fv(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
-  ~my_p4est_poisson_jump_cells_fv();
+  ~my_p4est_poisson_jump_cells_fv() {}; // no extra data allocated dynamically
+
+  void solve_for_sharp_solution(const KSPType &ksp = KSPBCGS, const PCType& pc = PCHYPRE);
 
 };
 
