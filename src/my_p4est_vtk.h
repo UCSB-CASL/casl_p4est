@@ -245,10 +245,28 @@ int                 my_p4est_vtk_write_footer (const p4est_t * p4est,
 
 void my_p4est_vtk_write_ghost_layer(const p4est_t *p4est, const p4est_ghost_t *ghost);
 
-void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
-                                  int write_rank, int write_tree, const char *filename,
-                                  std::vector<double *> point_data, std::vector<std::string> point_data_names,
-                                  std::vector<double *> cell_data,  std::vector<std::string> cell_data_names);
+void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                          const int& write_rank, const int& write_tree, const char *filename,
+                                          const std::vector<const double *>* node_scalar_data,              const std::vector<std::string>* node_scalar_names,
+                                          const std::vector<const double *>* node_vector_data_by_component, const std::vector<std::string>* node_vector_data_by_component_names,
+                                          const std::vector<const double *>* node_vector_data_block,        const std::vector<std::string>* node_vector_data_block_names,
+                                          const std::vector<const double *>* cell_scalar_data,              const std::vector<std::string>* cell_scalar_names,
+                                          const std::vector<const double *>* cell_vector_data_by_component, const std::vector<std::string>* cell_vector_data_by_component_names,
+                                          const std::vector<const double *>* cell_vector_data_block,        const std::vector<std::string>* cell_vector_data_block_names);
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<const double *>& point_data, const std::vector<std::string>& point_data_names,
+                                         const std::vector<const double *>& cell_data,  const std::vector<std::string>& cell_data_names)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &point_data, &point_data_names,
+                                       NULL, NULL,
+                                       NULL, NULL,
+                                       &cell_data, &cell_data_names,
+                                       NULL, NULL,
+                                       NULL, NULL);
+}
 
 SC_EXTERN_C_END;
 

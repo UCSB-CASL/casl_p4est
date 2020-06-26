@@ -121,154 +121,73 @@ inline bool is_tree_zpWall(const p4est_t* p4est, p4est_topidx_t tr)
 void
 my_p4est_vtk_write_all_wrapper (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                 int write_rank, int write_tree,
-                                int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
+                                int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
                                 int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
                                 const char *filename, va_list ap)
 {
-  PetscErrorCode ierr;
-  int                 retval;
-  int                 i;
-  int                 all_p_scalar, all_p_vector_block, all_p_vector_by_component;
-  int                 all_c_scalar, all_c_vector_block, all_c_vector_by_component;
-  int                 cell_scalar_strlen, point_scalar_strlen;
-  int                 cell_vector_block_strlen, point_vector_block_strlen, cell_vector_by_component_strlen, point_vector_by_component_strlen;
-  char                cell_scalars[BUFSIZ], cell_vectors_block[BUFSIZ], cell_vectors_by_component[BUFSIZ];
-  char                point_scalars[BUFSIZ], point_vectors_block[BUFSIZ], point_vectors_by_component[BUFSIZ];
-  const char         *tmp_ptr;
-  const char        **cell_scalar_names,    **cell_vector_by_component_names,   **cell_vector_block_names;
-  const char        **point_scalar_names,   **point_vector_by_component_names,  **point_vector_block_names;
-  const double      **point_scalar_values,  **point_vector_values_block,        **point_vector_values_by_component[P4EST_DIM];
-  const double      **cell_scalar_values,   **cell_vector_values_block,         **cell_vector_values_by_component[P4EST_DIM];
-  int                 vtk_type;
 
-  P4EST_ASSERT (num_point_scalars >= 0 && num_point_vectors_by_component >= 0 && num_point_vectors_block >= 0 &&
+  P4EST_ASSERT (num_node_scalars >= 0 && num_node_vectors_by_component >= 0 && num_node_vectors_block >= 0 &&
                 num_cell_scalars  >= 0 && num_cell_vectors_by_component >=0   && num_cell_vectors_block >= 0);
 
-  // logging
-  ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
+  std::vector<const double*>* node_scalar_data                = (num_node_scalars > 0 ?               new std::vector<const double*>  : NULL);
+  std::vector<std::string>* node_scalar_names                 = (num_node_scalars > 0 ?               new std::vector<std::string>    : NULL);
+  std::vector<const double*>* node_vector_by_components_data  = (num_node_vectors_by_component > 0 ?  new std::vector<const double*>  : NULL);
+  std::vector<std::string>* node_vector_by_components_names   = (num_node_vectors_by_component > 0 ?  new std::vector<std::string>    : NULL);
+  std::vector<const double*>* node_vector_block_data          = (num_node_vectors_block > 0 ?         new std::vector<const double*>  : NULL);
+  std::vector<std::string>* node_vector_block_names           = (num_node_vectors_block > 0 ?         new std::vector<std::string>    : NULL);
+  std::vector<const double*>* cell_scalar_data                = (num_cell_scalars > 0 ?               new std::vector<const double*>  : NULL);
+  std::vector<std::string>* cell_scalar_names                 = (num_cell_scalars > 0 ?               new std::vector<std::string>    : NULL);
+  std::vector<const double*>* cell_vector_by_components_data  = (num_cell_vectors_by_component > 0 ?  new std::vector<const double*>  : NULL);
+  std::vector<std::string>* cell_vector_by_components_names   = (num_cell_vectors_by_component > 0 ?  new std::vector<std::string>    : NULL);
+  std::vector<const double*>* cell_vector_block_data          = (num_cell_vectors_block > 0 ?         new std::vector<const double*>  : NULL);
+  std::vector<std::string>* cell_vector_block_names           = (num_cell_vectors_block > 0 ?         new std::vector<std::string>    : NULL);
 
-  /* Allocate memory for the data and their names */
-  point_scalar_values                             = P4EST_ALLOC(const double * , num_point_scalars);
-  point_vector_values_block                       = P4EST_ALLOC(const double * , num_point_vectors_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    point_vector_values_by_component[dir]         = P4EST_ALLOC(const double * , num_point_vectors_by_component);
-  cell_scalar_values                              = P4EST_ALLOC(const double * , num_cell_scalars);
-  cell_vector_values_block                        = P4EST_ALLOC(const double * , num_cell_vectors_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    cell_vector_values_by_component[dir]          = P4EST_ALLOC(const double * , num_cell_vectors_by_component);
 
-  cell_scalar_names                               = P4EST_ALLOC (const char *, num_cell_scalars);
-  cell_vector_by_component_names                  = P4EST_ALLOC (const char *, num_cell_vectors_by_component);
-  cell_vector_block_names                         = P4EST_ALLOC (const char *, num_cell_vectors_block);
-  point_scalar_names                              = P4EST_ALLOC (const char *, num_point_scalars);
-  point_vector_by_component_names                 = P4EST_ALLOC (const char *, num_point_vectors_by_component);
-  point_vector_block_names                        = P4EST_ALLOC (const char *, num_point_vectors_block);
-
-  all_c_scalar = all_c_vector_block = all_c_vector_by_component = 0;
-  all_p_scalar = all_p_vector_block = all_p_vector_by_component = 0;
-  cell_scalar_strlen = cell_vector_block_strlen = cell_vector_by_component_strlen = 0;
-  point_scalar_strlen = point_vector_block_strlen = point_vector_by_component_strlen = 0;
-  cell_scalars[0] = cell_vectors_block[0] = cell_vectors_by_component[0] = '\0';
-  point_scalars[0] = point_vectors_block[0] = point_vectors_by_component[0] = '\0';
-  for (i = 0;
-       i < (num_point_scalars+num_point_vectors_block+num_point_vectors_by_component+
-            num_cell_scalars+num_cell_vectors_block+num_cell_vectors_by_component);
+  for (int i = 0;
+       i < (num_node_scalars + num_node_vectors_block + num_node_vectors_by_component
+            + num_cell_scalars + num_cell_vectors_block + num_cell_vectors_by_component);
        ++i)
   {
     /* first get the type */
-    vtk_type = va_arg(ap, int);
+    int vtk_type = va_arg(ap, int);
 
     switch (vtk_type) {
-    case VTK_POINT_DATA:
+    case VTK_NODE_SCALAR:
     {
-      tmp_ptr = point_scalar_names[all_p_scalar] = va_arg(ap, const char*);
-      retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
-                         "%s%s", (all_p_scalar == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point scalars");
-      point_scalar_strlen += retval;
-
-      /* now get the values */
-      point_scalar_values[all_p_scalar] = va_arg(ap, double*);
-
-      all_p_scalar++;
+      node_scalar_names->push_back(std::string(va_arg(ap, const char*)));
+      node_scalar_data->push_back(va_arg(ap, const double*));
       break;
     }
     case VTK_NODE_VECTOR_BLOCK:
     {
-      tmp_ptr = point_vector_block_names[all_p_vector_block] = va_arg(ap, const char*);
-      retval = snprintf (point_vectors_block + point_vector_block_strlen, BUFSIZ - point_vector_block_strlen,
-                         "%s%s", (all_p_vector_block == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point block-structured vectors");
-      point_vector_block_strlen += retval;
-
-      /* now get the values */
-      point_vector_values_block[all_p_vector_block]   = va_arg(ap, double*);
-
-      all_p_vector_block++;
+      node_vector_block_names->push_back(std::string(va_arg(ap, const char*)));
+      node_vector_block_data->push_back(va_arg(ap, const double*));
       break;
     }
     case VTK_NODE_VECTOR_BY_COMPONENTS:
     {
-      tmp_ptr = point_vector_by_component_names[all_p_vector_by_component] = va_arg(ap, const char*);
-      retval = snprintf (point_vectors_by_component + point_vector_by_component_strlen, BUFSIZ - point_vector_by_component_strlen,
-                         "%s%s", (all_p_vector_by_component == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point vectors given by components");
-      point_vector_by_component_strlen += retval;
-
-      /* now get the values */
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        point_vector_values_by_component[dir][all_p_vector_by_component]   = va_arg(ap, double*);
-
-      all_p_vector_by_component++;
+      node_vector_by_components_names->push_back(std::string(va_arg(ap, const char*)));
+      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+        node_vector_by_components_data->push_back(va_arg(ap, const double*));
       break;
     }
     case VTK_CELL_DATA:
     {
-      tmp_ptr = cell_scalar_names[all_c_scalar] = va_arg(ap, const char*);
-      retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
-                         "%s%s", (all_c_scalar == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell scalars");
-      cell_scalar_strlen += retval;
-
-      /* now get the values */
-      cell_scalar_values[all_c_scalar] = va_arg(ap, double*);
-
-      all_c_scalar++;
+      cell_scalar_names->push_back(std::string(va_arg(ap, const char*)));
+      cell_scalar_data->push_back(va_arg(ap, const double*));
       break;
     }
     case VTK_CELL_VECTOR_BLOCK:
     {
-      tmp_ptr = cell_vector_block_names[all_c_vector_block] = va_arg(ap, const char*);
-      retval = snprintf (cell_vectors_block + cell_vector_block_strlen, BUFSIZ - cell_vector_block_strlen,
-                         "%s%s", (all_c_vector_block == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell block-structured vectors");
-      cell_vector_block_strlen += retval;
-
-      /* now get the values */
-      cell_vector_values_block[all_c_vector_block]   = va_arg(ap, double*);
-
-      all_c_vector_block++;
+      cell_vector_block_names->push_back(std::string(va_arg(ap, const char*)));
+      cell_vector_block_data->push_back(va_arg(ap, const double*));
       break;
     }
     case VTK_CELL_VECTOR_BY_COMPONENTS:
     {
-      tmp_ptr = cell_vector_by_component_names[all_c_vector_by_component] = va_arg(ap, const char*);
-      retval = snprintf (cell_vectors_by_component + cell_vector_by_component_strlen, BUFSIZ - cell_vector_by_component_strlen,
-                         "%s%s", (all_c_vector_by_component == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell vectors given by components");
-      cell_vector_by_component_strlen += retval;
-
-      /* now get the values */
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        cell_vector_values_by_component[dir][all_c_vector_by_component]   = va_arg(ap, double*);
-
-      all_c_vector_by_component++;
+      cell_vector_by_components_names->push_back(std::string(va_arg(ap, const char*)));
+      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+        cell_vector_by_components_data->push_back(va_arg(ap, const double*));
       break;
     }
     default:
@@ -276,55 +195,52 @@ my_p4est_vtk_write_all_wrapper (const p4est_t * p4est, const p4est_nodes_t *node
       break;
     }
   }
+  P4EST_ASSERT(node_scalar_names == NULL                || (node_scalar_names->size()               == (size_t) num_node_scalars              && node_scalar_data->size()               == (size_t) num_node_scalars));
+  P4EST_ASSERT(node_vector_by_components_names == NULL  || (node_vector_by_components_names->size() == (size_t) num_node_vectors_by_component && node_vector_by_components_data->size() == (size_t) P4EST_DIM*num_node_vectors_by_component));
+  P4EST_ASSERT(node_vector_block_names == NULL          || (node_vector_block_names->size()         == (size_t) num_node_vectors_block        && node_vector_block_data->size()         == (size_t) num_node_vectors_block));
+  P4EST_ASSERT(cell_scalar_names == NULL                || (cell_scalar_names->size()               == (size_t) num_cell_scalars              && cell_scalar_data->size()               == (size_t) num_cell_scalars));
+  P4EST_ASSERT(cell_vector_by_components_names == NULL  || (cell_vector_by_components_names->size() == (size_t) num_cell_vectors_by_component && cell_vector_by_components_data->size() == (size_t) P4EST_DIM*num_cell_vectors_by_component));
+  P4EST_ASSERT(cell_vector_block_names == NULL          || (cell_vector_block_names->size()         == (size_t) num_cell_vectors_block        && cell_vector_block_data->size()         == (size_t) num_cell_vectors_block));
 
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost,
+                                       write_rank, write_tree, filename,
+                                       node_scalar_data, node_scalar_names,
+                                       node_vector_by_components_data, node_vector_by_components_names,
+                                       node_vector_block_data, node_vector_block_names,
+                                       cell_scalar_data, cell_scalar_names,
+                                       cell_vector_by_components_data, cell_vector_by_components_names,
+                                       cell_vector_block_data, cell_vector_block_names);
 
-  retval = my_p4est_vtk_write_header (p4est, nodes, ghost, filename);
-  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
-
-  /* now write the actual data */
-
-  retval = my_p4est_vtk_write_node_data( p4est, nodes, ghost, filename,
-                                         num_point_scalars, num_point_vectors_block, num_point_vectors_by_component,
-                                         point_scalars, point_vectors_block, point_vectors_by_component,
-                                         point_scalar_names, point_vector_block_names, point_vector_by_component_names,
-                                         point_scalar_values, point_vector_values_block, point_vector_values_by_component);
-  SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing point scalars");
-
-  retval = my_p4est_vtk_write_cell_data( p4est, ghost, write_rank, write_tree, filename,
-                                         num_cell_scalars, num_cell_vectors_block, num_cell_vectors_by_component,
-                                         cell_scalars, cell_vectors_block, cell_vectors_by_component,
-                                         cell_scalar_names, cell_vector_block_names, cell_vector_by_component_names,
-                                         cell_scalar_values, cell_vector_values_block, cell_vector_values_by_component);
-  SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing cell scalars");
-
-
-  retval = my_p4est_vtk_write_footer (p4est, filename);
-  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
-
-  P4EST_FREE(point_scalar_values);
-  P4EST_FREE(point_vector_values_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    P4EST_FREE(point_vector_values_by_component[dir]);
-  P4EST_FREE(cell_scalar_values);
-  P4EST_FREE(cell_vector_values_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    P4EST_FREE(cell_vector_values_by_component[dir]);
-  P4EST_FREE(cell_scalar_names);
-  P4EST_FREE(cell_vector_by_component_names);
-  P4EST_FREE(cell_vector_block_names);
-  P4EST_FREE(point_scalar_names);
-  P4EST_FREE(point_vector_by_component_names);
-  P4EST_FREE(point_vector_block_names);
-
-  ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
+  if(node_scalar_data != NULL)
+    delete node_scalar_data;
+  if(node_scalar_names != NULL)
+    delete node_scalar_names;
+  if(node_vector_by_components_data != NULL)
+    delete node_vector_by_components_data;
+  if(node_vector_by_components_names != NULL)
+    delete node_vector_by_components_names;
+  if(node_vector_block_data != NULL)
+    delete node_vector_block_data;
+  if(node_vector_block_names != NULL)
+    delete node_vector_block_names;
+  if(cell_scalar_data != NULL)
+    delete cell_scalar_data;
+  if(cell_scalar_names != NULL)
+    delete cell_scalar_names;
+  if(cell_vector_by_components_data != NULL)
+    delete cell_vector_by_components_data;
+  if(cell_vector_by_components_names != NULL)
+    delete cell_vector_by_components_names;
+  if(cell_vector_block_data != NULL)
+    delete cell_vector_block_data;
+  if(cell_vector_block_names != NULL)
+    delete cell_vector_block_names;
 }
 
 void
 my_p4est_vtk_write_all_general(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                int write_rank, int write_tree,
-                               int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
+                               int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
                                int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
                                const char *filename, ...)
 {
@@ -332,7 +248,7 @@ my_p4est_vtk_write_all_general(const p4est_t * p4est, const p4est_nodes_t *nodes
   va_start(ap, filename);
   my_p4est_vtk_write_all_wrapper(p4est, nodes, ghost,
                                  write_rank, write_tree,
-                                 num_point_scalars, num_point_vectors_by_component, num_point_vectors_block,
+                                 num_node_scalars, num_node_vectors_by_component, num_node_vectors_block,
                                  num_cell_scalars, num_cell_vectors_by_component, num_cell_vectors_block,
                                  filename, ap);
   va_end(ap);
@@ -341,14 +257,14 @@ my_p4est_vtk_write_all_general(const p4est_t * p4est, const p4est_nodes_t *nodes
 void
 my_p4est_vtk_write_all (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                         int write_rank, int write_tree,
-                        int num_point_scalars, int num_cell_scalars,
+                        int num_node_scalars, int num_cell_scalars,
                         const char *filename, ...)
 {
   va_list ap;
   va_start(ap, filename);
   my_p4est_vtk_write_all_wrapper(p4est, nodes, ghost,
                                  write_rank, write_tree,
-                                 num_point_scalars, 0, 0,
+                                 num_node_scalars, 0, 0,
                                  num_cell_scalars, 0, 0,
                                  filename, ap);
   va_end(ap);
@@ -2060,86 +1976,210 @@ void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
 }
 
 void
-my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
-                             int write_rank, int write_tree, const char *filename,
-                             std::vector<double *> point_data, std::vector<std::string> point_data_names,
-                             std::vector<double *> cell_data,  std::vector<std::string> cell_data_names)
+my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                     const int& write_rank, const int& write_tree, const char *filename,
+                                     const std::vector<const double *>* node_scalar_data,              const std::vector<std::string>* node_scalar_str_names,
+                                     const std::vector<const double *>* node_vector_data_by_component, const std::vector<std::string>* node_vector_data_by_component_str_names,
+                                     const std::vector<const double *>* node_vector_data_block,        const std::vector<std::string>* node_vector_data_block_str_names,
+                                     const std::vector<const double *>* cell_scalar_data,              const std::vector<std::string>* cell_scalar_str_names,
+                                     const std::vector<const double *>* cell_vector_data_by_component, const std::vector<std::string>* cell_vector_data_by_component_str_names,
+                                     const std::vector<const double *>* cell_vector_data_block,        const std::vector<std::string>* cell_vector_data_block_str_names)
 {
   PetscErrorCode ierr;
   int                 retval;
-  int                 i;
-  int                 cell_scalar_strlen, point_scalar_strlen;
-  char                cell_scalars[BUFSIZ], point_scalars[BUFSIZ];
-  const char         *cell_name, *point_name, **cell_names, **point_names;
-  const double       **cell_values, **point_values;
-
-  int num_point_scalars = point_data.size();
-  int num_cell_scalars  = cell_data.size();
-
-  P4EST_ASSERT (num_cell_scalars >= 0  && num_point_scalars >= 0 );
+  int                 cell_scalar_strlen, node_scalar_strlen;
+  int                 cell_vector_block_strlen, node_vector_block_strlen, cell_vector_by_component_strlen, node_vector_by_component_strlen;
+  char                cell_scalars[BUFSIZ], cell_vectors_block[BUFSIZ], cell_vectors_by_component[BUFSIZ];
+  char                node_scalars[BUFSIZ], node_vectors_block[BUFSIZ], node_vectors_by_component[BUFSIZ];
+  const char         *tmp_ptr;
+  const char        **cell_scalar_names,  **cell_vector_by_component_names, **cell_vector_block_names;
+  const char        **node_scalar_names,  **node_vector_by_component_names, **node_vector_block_names;
+  const double      **node_scalar_values, **node_vector_values_block,       **node_vector_values_by_component[P4EST_DIM];
+  const double      **cell_scalar_values, **cell_vector_values_block,       **cell_vector_values_by_component[P4EST_DIM];
 
   // logging
   ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 
   /* Allocate memory for the data and their names */
-  cell_values  = P4EST_ALLOC(const double * , num_cell_scalars);
-  point_values = P4EST_ALLOC(const double * , num_point_scalars);
-  cell_names   = P4EST_ALLOC (const char *, num_cell_scalars);
-  point_names  = P4EST_ALLOC (const char *, num_point_scalars);
+  P4EST_ASSERT(node_vector_data_by_component == NULL || node_vector_data_by_component->size()%P4EST_DIM == 0);
+  P4EST_ASSERT(cell_vector_data_by_component == NULL || cell_vector_data_by_component->size()%P4EST_DIM == 0);
+  const size_t num_node_scalars                 = (node_scalar_data               != NULL ? node_scalar_data->size()                        : 0);
+  const size_t num_node_vectors_block           = (node_vector_data_block         != NULL ? node_vector_data_block->size()                  : 0);
+  const size_t num_node_vectors_by_component    = (node_vector_data_by_component  != NULL ? node_vector_data_by_component->size()/P4EST_DIM : 0);
+  const size_t num_cell_scalars                 = (cell_scalar_data               != NULL ? cell_scalar_data->size()                        : 0);
+  const size_t num_cell_vectors_block           = (cell_vector_data_block         != NULL ? cell_vector_data_block->size()                  : 0);
+  const size_t num_cell_vectors_by_component    = (cell_vector_data_by_component  != NULL ? cell_vector_data_by_component->size()/P4EST_DIM : 0);
 
-  cell_scalar_strlen = point_scalar_strlen = 0;
-  cell_scalars[0] = point_scalars[0] = '\0';
+  node_scalar_values                            = P4EST_ALLOC(const double * , num_node_scalars);
+  node_vector_values_block                      = P4EST_ALLOC(const double * , num_node_vectors_block);
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+    node_vector_values_by_component[dir]        = P4EST_ALLOC(const double * , num_node_vectors_by_component);
+  cell_scalar_values                            = P4EST_ALLOC(const double * , num_cell_scalars);
+  cell_vector_values_block                      = P4EST_ALLOC(const double * , num_cell_vectors_block);
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+    cell_vector_values_by_component[dir]        = P4EST_ALLOC(const double * , num_cell_vectors_by_component);
 
-  for (i = 0; i < num_point_scalars; ++i)
+  node_scalar_names                             = P4EST_ALLOC (const char *, num_node_scalars);
+  node_vector_block_names                       = P4EST_ALLOC (const char *, num_node_vectors_block);
+  node_vector_by_component_names                = P4EST_ALLOC (const char *, num_node_vectors_by_component);
+  cell_scalar_names                             = P4EST_ALLOC (const char *, num_cell_scalars);
+  cell_vector_block_names                       = P4EST_ALLOC (const char *, num_cell_vectors_block);
+  cell_vector_by_component_names                = P4EST_ALLOC (const char *, num_cell_vectors_by_component);
+
+  node_scalar_strlen = node_vector_block_strlen = node_vector_by_component_strlen = 0;
+  cell_scalar_strlen = cell_vector_block_strlen = cell_vector_by_component_strlen = 0;
+  node_scalars[0] = node_vectors_block[0] = node_vectors_by_component[0] = '\0';
+  cell_scalars[0] = cell_vectors_block[0] = cell_vectors_by_component[0] = '\0';
+
+  // node-sampled scalar fields
+  if(node_scalar_data != NULL)
   {
-    point_name = point_names[i] = point_data_names[i].c_str();
-    retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
-                       "%s%s", i == 0 ? "" : ", ", point_name);
-    SC_CHECK_ABORT (retval > 0,
-                    P4EST_STRING "_vtk: Error collecting point scalars");
-    point_scalar_strlen += retval;
+    P4EST_ASSERT(node_scalar_str_names != NULL && node_scalar_data->size() == node_scalar_str_names->size());
+    for (size_t k = 0; k < node_scalar_data->size(); ++k)
+    {
+      tmp_ptr = node_scalar_names[k] = (*node_scalar_str_names)[k].c_str();
+      retval = snprintf (node_scalars + node_scalar_strlen, BUFSIZ - node_scalar_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting node-sampled scalars");
+      node_scalar_strlen += retval;
 
-    /* now get the values */
-    point_values[i] = point_data[i];
+      /* now get the values */
+      node_scalar_values[k] = (*node_scalar_data)[k];
+    }
   }
 
-  for (i = 0; i < num_cell_scalars; ++i)
+  // node-sampled vector fields (by block)
+  if(node_vector_data_block != NULL)
   {
-    cell_name = cell_names[i] = cell_data_names[i].c_str();
-    retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
-                       "%s%s", i == 0 ? "" : ", ", cell_name);
-    SC_CHECK_ABORT (retval > 0,
-                    P4EST_STRING "_vtk: Error collecting point scalars");
-    cell_scalar_strlen += retval;
+    P4EST_ASSERT(node_vector_data_block_str_names != NULL && node_vector_data_block->size() == node_vector_data_block_str_names->size());
+    for (size_t k = 0; k < node_vector_data_block->size(); ++k)
+    {
+      tmp_ptr = node_vector_block_names[k] = (*node_vector_data_block_str_names)[k].c_str();
+      retval = snprintf (node_vectors_block + node_vector_block_strlen, BUFSIZ - node_vector_block_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting node-sampled vector (by block)");
+      node_vector_block_strlen += retval;
 
-    /* get the values */
-    cell_values[i] = cell_data[i];
+      /* now get the values */
+      node_vector_values_block[k] = (*node_vector_data_block)[k];
+    }
   }
 
+  // node-sampled vector fields (component-by-component)
+  if(node_vector_data_by_component != NULL)
+  {
+    P4EST_ASSERT(node_vector_data_by_component_str_names != NULL && node_vector_data_by_component->size() == P4EST_DIM*node_vector_data_by_component_str_names->size());
+    for (size_t k = 0; k < node_vector_data_by_component_str_names->size(); ++k)
+    {
+      tmp_ptr = node_vector_by_component_names[k] = (*node_vector_data_by_component_str_names)[k].c_str();
+      retval = snprintf (node_vectors_by_component + node_vector_by_component_strlen, BUFSIZ - node_vector_by_component_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting node-sampled vector (component by component)");
+      node_vector_by_component_strlen += retval;
+
+      /* now get the values */
+      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+        node_vector_values_by_component[dir][k] = (*node_vector_data_by_component)[P4EST_DIM*k + dir];
+    }
+  }
+
+  // cell-sampled scalar fields
+  if(cell_scalar_data != NULL)
+  {
+    P4EST_ASSERT(cell_scalar_str_names != NULL && cell_scalar_data->size() == cell_scalar_str_names->size());
+    for (size_t k = 0; k < cell_scalar_data->size(); ++k)
+    {
+      tmp_ptr = cell_scalar_names[k] = (*cell_scalar_str_names)[k].c_str();
+      retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting cell-sampled scalars");
+      cell_scalar_strlen += retval;
+
+      /* now get the values */
+      cell_scalar_values[k] = (*cell_scalar_data)[k];
+    }
+  }
+
+  // cell-sampled vector fields (by block)
+  if(cell_vector_data_block != NULL)
+  {
+    P4EST_ASSERT(cell_vector_data_block_str_names != NULL && cell_vector_data_block->size() == cell_vector_data_block_str_names->size());
+    for (size_t k = 0; k < cell_vector_data_block->size(); ++k)
+    {
+      tmp_ptr = cell_vector_block_names[k] = (*cell_vector_data_block_str_names)[k].c_str();
+      retval = snprintf (cell_vectors_block + cell_vector_block_strlen, BUFSIZ - cell_vector_block_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting cell-sampled vector (by block)");
+      cell_vector_block_strlen += retval;
+
+      /* now get the values */
+      cell_vector_values_block[k] = (*cell_vector_data_block)[k];
+    }
+  }
+
+  // cell-sampled vector fields (component-by-component)
+  if(cell_vector_data_by_component != NULL)
+  {
+    P4EST_ASSERT(cell_vector_data_by_component_str_names != NULL && cell_vector_data_by_component->size() == P4EST_DIM*cell_vector_data_by_component_str_names->size());
+    for (size_t k = 0; k < cell_vector_data_by_component_str_names->size(); ++k)
+    {
+      tmp_ptr = cell_vector_by_component_names[k] = (*cell_vector_data_by_component_str_names)[k].c_str();
+      retval = snprintf (cell_vectors_by_component + cell_vector_by_component_strlen, BUFSIZ - cell_vector_by_component_strlen,
+                         "%s%s", (k == 0 ? "" : ", "), tmp_ptr);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting cell-sampled vector (component by component)");
+      cell_vector_by_component_strlen += retval;
+
+      /* now get the values */
+      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+        cell_vector_values_by_component[dir][k] = (*cell_vector_data_by_component)[P4EST_DIM*k + dir];
+    }
+  }
 
   retval = my_p4est_vtk_write_header (p4est, nodes, ghost, filename);
   SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
 
   /* now write the actual data */
 
-  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, ghost, filename,
-                                            num_point_scalars, point_scalars, point_names, point_values);
+  retval = my_p4est_vtk_write_node_data(p4est, nodes, ghost, filename,
+                                        num_node_scalars, num_node_vectors_block, num_node_vectors_by_component,
+                                        node_scalars, node_vectors_block, node_vectors_by_component,
+                                        node_scalar_names, node_vector_block_names, node_vector_by_component_names,
+                                        node_scalar_values, node_vector_values_block, node_vector_values_by_component);
   SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing point scalars");
+                  P4EST_STRING "_vtk: Error writing node-sampled fields");
 
-  retval = my_p4est_vtk_write_cell_scalar (p4est, ghost, write_rank, write_tree, filename,
-                                           num_cell_scalars, cell_scalars, cell_names, cell_values);
+  retval = my_p4est_vtk_write_cell_data(p4est, ghost, write_rank, write_tree, filename,
+                                        num_cell_scalars, num_cell_vectors_block, num_cell_vectors_by_component,
+                                        cell_scalars, cell_vectors_block, cell_vectors_by_component,
+                                        cell_scalar_names, cell_vector_block_names, cell_vector_by_component_names,
+                                        cell_scalar_values, cell_vector_values_block, cell_vector_values_by_component);
   SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing cell scalars");
+                  P4EST_STRING "_vtk: Error writing cell-sampled fields");
 
 
   retval = my_p4est_vtk_write_footer (p4est, filename);
   SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
 
-  P4EST_FREE (cell_values);
-  P4EST_FREE (point_values);
-  P4EST_FREE (cell_names);
-  P4EST_FREE (point_names);
+  P4EST_FREE(node_scalar_values);
+  P4EST_FREE(node_vector_values_block);
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+    P4EST_FREE(node_vector_values_by_component[dir]);
+  P4EST_FREE(cell_scalar_values);
+  P4EST_FREE(cell_vector_values_block);
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+    P4EST_FREE(cell_vector_values_by_component[dir]);
+  P4EST_FREE(node_scalar_names);
+  P4EST_FREE(node_vector_block_names);
+  P4EST_FREE(node_vector_by_component_names);
+  P4EST_FREE(cell_scalar_names);
+  P4EST_FREE(cell_vector_block_names);
+  P4EST_FREE(cell_vector_by_component_names);
 
   ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 }
