@@ -388,6 +388,8 @@ public:
   {
     grad_phi_at_point(xyz, normal);
     const double mag_grad_phi = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
+    if(mag_grad_phi < EPS)
+      throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the normal vector for a point where the gradient of phi is ill-defined");
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       normal[dim] = (mag_grad_phi > EPS ? magnitude*normal[dim]/mag_grad_phi : 0.0);
     return;
@@ -397,7 +399,7 @@ public:
   {
     double signed_dist = phi_at_point(xyz);
     double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
-    const double mag_grad_phi = sqrt(SUMD(grad_phi_local[0], grad_phi_local[1], grad_phi_local[2]));
+    const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2])));
     if(mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the signed distance to the interface for a point where the gradient of phi is ill-defined");
     return signed_dist/mag_grad_phi;
@@ -405,14 +407,14 @@ public:
 
   inline void projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
   {
-    double signed_dist = phi_at_point(xyz);
+    const double phi = phi_at_point(xyz);
     double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
-    const double mag_grad_phi = sqrt(SUMD(grad_phi_local[0], grad_phi_local[1], grad_phi_local[2]));
-    if(mag_grad_phi < EPS)
+    const double sqr_mag_grad_phi = SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2]));
+    if(sqr_mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the projection onto the interface for a point where the gradient of phi is ill-defined");
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      xyz_projected[dim] = xyz[dim] - signed_dist*grad_phi_local[dim]/mag_grad_phi;
+      xyz_projected[dim] = xyz[dim] - phi*grad_phi_local[dim]/sqr_mag_grad_phi;
     return;
   }
 

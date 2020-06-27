@@ -22,12 +22,12 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
 //  phi_quad = NULL;
   correction_function_for_quad.clear();
   finite_volume_data_for_quad.clear();
-  are_required_finite_volumes_and_correction_functions = false;
+  are_required_finite_volumes_and_correction_functions_known = false;
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
 {
-  if(are_required_finite_volumes_and_correction_functions)
+  if(are_required_finite_volumes_and_correction_functions_known)
     return;
 
   std::map<int, std::vector<global_correction_function_elementary_data_t> > serialized_global_correction_functions_to_send_to;
@@ -138,7 +138,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
 
   mpiret = MPI_Waitall(nonblocking_send_requests.size(), nonblocking_send_requests.data(), MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
-  are_required_finite_volumes_and_correction_functions = true;
+  are_required_finite_volumes_and_correction_functions_known = true;
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx)
@@ -263,14 +263,15 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
 
   std::set<p4est_locidx_t> local_quad_indices_involved;
   local_quad_indices_involved.insert(quad_idx); // this quad goes in, for sure
-  bool is_face_crossed[P4EST_FACES];
+  bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
   if(is_quad_crossed)
   {
     map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(quad_idx);
 #ifdef CASL_THROWS
     if(it == correction_function_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function for local quad "
+                               + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank) + ", located at (" + std::to_string(xyz_quad[0]) + ", " + std::to_string(xyz_quad[1]) ONLY3D(+ ", " + std::to_string(xyz_quad[1])) + ")");
 #endif
     const correction_function_t& correction_function = it->second;
     for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k)
@@ -287,7 +288,7 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
     set_of_neighboring_quadrants direct_neighbors;
     bool are_all_cell_centers_on_same_side;
     linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side);
-    if(is_face_crossed[oriented_dir] || !are_all_cell_centers_on_same_side || signs_of_phi_are_different(sgn_face, sgn_quad)) // the neighbor's correction function kicks in
+    if(is_face_crossed[oriented_dir] || (!are_all_cell_centers_on_same_side && !signs_of_phi_are_different(sgn_face, sgn_quad))) // the neighbor's correction function kicks in
     {
       P4EST_ASSERT(direct_neighbors.size() == 1);
       const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
@@ -295,9 +296,8 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
       map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
 #ifdef CASL_THROWS
       if(it == correction_function_for_quad.end())
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
-                                 + ", neighbor of quad " + std::to_string(quad_idx) + " in direction " + std::to_string(oriented_dir)
-                                 + " on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
+                                 + ", neighbor in direction " + std::to_string(oriented_dir) + " of quad " + std::to_string(quad_idx)  + " located at (" + std::to_string(xyz_quad[0]) +  ", " + std::to_string(xyz_quad[1]) ONLY3D( + ", " + std::to_string(xyz_quad[2])) + "),  on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
 
       local_quad_indices_involved.insert(direct_neighbor.p.piggy3.local_num);
@@ -391,10 +391,10 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   {
     if(is_quad_crossed)
     {
-      P4EST_ASSERT(finite_volume_of_quad->interfaces.size() == 1);
+      P4EST_ASSERT(finite_volume_of_quad->interfaces.size() <= 1); // could be 0.0 if only one point is 0.0 and the rest are > 0.0
       rhs_p[quad_idx] = finite_volume_of_quad->volume_in_negative_domain()*user_rhs_minus_p[quad_idx] + finite_volume_of_quad->volume_in_positive_domain()*user_rhs_plus_p[quad_idx];
       for (size_t k = 0; k < finite_volume_of_quad->interfaces.size(); ++k)
-        rhs_p[quad_idx] += finite_volume_of_quad->interfaces[0].area*(*interp_jump_normal_flux)(finite_volume_of_quad->interfaces[0].centroid);
+        rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(finite_volume_of_quad->interfaces[k].centroid);
     }
     else
       rhs_p[quad_idx] = (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
@@ -651,6 +651,10 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
   P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (user_vstar_minus != NULL && user_vstar_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
+
+  // build required finite volumes and correction functions
+  if(!are_required_finite_volumes_and_correction_functions_known)
+    build_finite_volumes_and_correction_functions();
 
   /* Set the linear system, the linear solver and solve it */
   setup_linear_system();

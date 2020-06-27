@@ -22,7 +22,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   xGFM_absolute_accuracy_threshold  = 1e-8;   // default value
   xGFM_tolerance_on_rel_residual    = 1e-12;  // default value
 
-  residual = solution = extension = grad_jump = NULL;
+  residual = extension = grad_jump = NULL;
   interp_grad_jump = NULL;
   pseudo_time_step_increment_operator.resize(p4est->local_num_quadrants);
   extension_operators_are_stored_and_set = false;

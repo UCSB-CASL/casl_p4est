@@ -42,7 +42,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
   map_of_correction_functions_t correction_function_for_quad; //
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
-  bool                          are_required_finite_volumes_and_correction_functions;
+  bool                          are_required_finite_volumes_and_correction_functions_known;
 
   void build_finite_volumes_and_correction_functions();
 

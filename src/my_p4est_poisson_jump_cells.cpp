@@ -17,7 +17,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   user_vstar_minus = user_vstar_plus = NULL;
   jump_u = jump_normal_flux_u = NULL;
   user_initial_guess = NULL;
-  rhs = NULL;
+  solution = rhs = NULL;
   interp_jump_u           = NULL;
   interp_jump_normal_flux = NULL;
 
@@ -333,7 +333,7 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   return;
 }
 
-void my_p4est_poisson_jump_cells_t::get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[], my_p4est_faces_t *faces,
+void my_p4est_poisson_jump_cells_t::get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[], const my_p4est_faces_t *faces,
                                                                                                 Vec vstar_minus[], Vec vstar_plus[], Vec sharp_vnp1[]) const
 {
   P4EST_ASSERT(faces->get_p4est() == p4est); // the faces must be built from the same computational grid

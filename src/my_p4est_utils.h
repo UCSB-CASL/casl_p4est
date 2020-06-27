@@ -386,6 +386,26 @@ inline bool case_insenstive_str_compare(std::string const& a, std::string const&
     return false;
 }
 
+inline void case_insensitive_find_substr_in_str(const std::string& str, const std::string& substr, std::vector<size_t>& substr_was_found_in_str_at)
+{
+  substr_was_found_in_str_at.clear();
+  if(substr.size() > str.size() || substr.size() == 0)
+    return;
+  size_t k = 0;
+  while (k < str.size() - substr.size() + 1) {
+    size_t subk = 0;
+    while (subk < substr.size() && case_insenstive_char_compare(str[k], substr[subk])) {
+      subk++;
+      k++;
+    }
+    if(subk == substr.size())
+      substr_was_found_in_str_at.push_back(k - subk);
+    k += 1 - subk; // to catch possibly overlapping words like "find 'GFG' in GFGFGFGFGFGFG"
+  }
+  return;
+}
+
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 

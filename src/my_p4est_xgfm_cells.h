@@ -296,6 +296,8 @@ public:
     print_residuals_and_corrections_with_solve_info = activate_xGFM && print_xGFM_residuals_and_corrections;
   }
 
+  bool inline uses_xGFM_corrections() const { return activate_xGFM; }
+
 };
 
 #endif // MY_P4EST_XGFM_CELLS_H
