@@ -116,7 +116,7 @@ void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_
 
   if(interp_jump_normal_flux == NULL)
     interp_jump_normal_flux = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
-  interp_jump_normal_flux->set_input(jump_normal_flux_u_, linear);
+  interp_jump_normal_flux->set_input(jump_normal_flux_u, linear);
 
   rhs_is_set = false;
   return;
