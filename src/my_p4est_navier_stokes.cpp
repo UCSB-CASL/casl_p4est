@@ -2029,11 +2029,25 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
 }
 
 // ELYCE TRYING SOMETHING:
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
+                                                                    p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
+                                                                    my_p4est_node_neighbors_t* ngbd_np1,
+                                                                    /*my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1,*/ my_p4est_hierarchy_t* hierarchy_np1)
 {
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // Create new faces and ngbd_c for NS to use based on new grid provided:
+  my_p4est_cell_neighbors_t* ngbd_c_np1 = NULL;
+  my_p4est_faces_t* faces_np1 = NULL;
+
+  // Get the new cell neighbors:
+  ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
+
+  // Create new the faces:
+  faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,ngbd_c_np1);
+
 
   // (1) Set phi as the new phi on new grid -------------------------------------
   phi = phi_np1;
@@ -2090,6 +2104,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
 
+
   // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
   /* set velocity inside solid to bc_v */
   //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
@@ -2112,11 +2127,13 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
       interp_cell.add_point(quad_idx, xyz_c);
     }
   }
+
   interp_cell.set_input(hodge, phi, &bc_hodge);
   Vec hodge_tmp;
   ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge_tmp); CHKERRXX(ierr);
   interp_cell.interpolate(hodge_tmp);
   interp_cell.clear();
+
   ierr = VecDestroy(hodge); CHKERRXX(ierr);
   hodge = hodge_tmp;
   ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2130,6 +2147,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
    * [Raphael's note:] it might be better and more efficient to recalculate them from the interpolated Hodge here
    * above for better consistent conditioning of the iterative solver (since this is how the solver itself defines
    * its components within a solve step) --> ask Frederic's opinion! */
+
   my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
 
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
@@ -2143,7 +2161,9 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
       interp_faces.add_point(f_idx, xyz);
     }
     interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
+
     interp_faces.interpolate(dxyz_hodge_tmp);
+
     interp_faces.clear();
 
     ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
@@ -2166,14 +2186,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-
-
-
-  /* update the variables */ // NOTE: Elyce: We are not destroying anything here because all this deletion will be handled externally of the NS class
-  if(p4est_nm1 != p4est_n && p4est_nm1 != NULL){
-    p4est_destroy(p4est_nm1);
-    printf("DESTROYS P4EST_NM1 \n");
-  }
+  // destruction of p4est_nm1 is handled externally
   p4est_nm1 = p4est_n; p4est_n = p4est_np1;
 
   ghost_nm1 = ghost_n; ghost_n = ghost_np1;
@@ -2183,14 +2196,15 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   hierarchy_nm1 = hierarchy_n; hierarchy_n = hierarchy_np1;
 
   ngbd_nm1 = ngbd_n; ngbd_n = ngbd_np1;
+
   delete ngbd_c;
   ngbd_c = ngbd_c_np1;
+
   delete faces_n;
   faces_n = faces_np1;
 
   semi_lagrangian_backtrace_is_done         = false;
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
-
 }
 
 // DONE ELYCE TRYING SOMETHING.

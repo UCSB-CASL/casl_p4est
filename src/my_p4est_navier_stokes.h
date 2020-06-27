@@ -522,7 +522,13 @@ public:
   inline p4est_t *get_p4est() { return p4est_n; }
 
   // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
-  inline void nullify_p4est_nm1() { p4est_nm1 = NULL; }
+  inline void nullify_p4est_nm1() {
+    p4est_nm1 = NULL;
+    nodes_nm1 = NULL;
+    ghost_nm1 = NULL;
+    hierarchy_nm1=NULL;
+    ngbd_nm1 = NULL;
+  }
 
 
   inline const BoundaryConditionsDIM &get_bc_hodge() const { return bc_hodge; }
@@ -694,7 +700,10 @@ public:
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
 
-  void update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
+  void update_from_tn_to_tnp1_grid_external(Vec phi_np1,
+                                            p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
+                                            my_p4est_node_neighbors_t* ngbd_np1, /*my_p4est_faces_t* faces_np1,
+                                            my_p4est_cell_neighbors_t* ngbd_c_np1,*/ my_p4est_hierarchy_t* hierarchy_np1);
   void compute_pressure();
 
   /*!
