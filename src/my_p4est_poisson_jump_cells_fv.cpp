@@ -394,7 +394,10 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       P4EST_ASSERT(finite_volume_of_quad->interfaces.size() <= 1); // could be 0.0 if only one point is 0.0 and the rest are > 0.0
       rhs_p[quad_idx] = finite_volume_of_quad->volume_in_negative_domain()*user_rhs_minus_p[quad_idx] + finite_volume_of_quad->volume_in_positive_domain()*user_rhs_plus_p[quad_idx];
       for (size_t k = 0; k < finite_volume_of_quad->interfaces.size(); ++k)
-        rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(finite_volume_of_quad->interfaces[k].centroid);
+      {
+        const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + finite_volume_of_quad->interfaces[k].centroid[0], xyz_quad[1] + finite_volume_of_quad->interfaces[k].centroid[1], xyz_quad[2] + finite_volume_of_quad->interfaces[k].centroid[2])};
+        rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
+      }
     }
     else
       rhs_p[quad_idx] = (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
