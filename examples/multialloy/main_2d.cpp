@@ -86,7 +86,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -101,17 +101,17 @@ param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
 param_t<bool> use_points_on_interface   (pl, 0, "use_points_on_interface", "");
 param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
 
-param_t<int>    update_c0_robin (pl, 1,      "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
-param_t<int>    order_in_time   (pl, 1,      "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 10,     "max_iterations",  "");
+param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
+param_t<int>    order_in_time   (pl, 1,     "order_in_time",   "");
+param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.9,    "cfl_number",      "");
-param_t<double> phi_thresh      (pl, 0.1,    "phi_thresh",      "");
-param_t<double> base_cfl        (pl, 0.15,    "base_cfl",      "");
+param_t<double> cfl_number      (pl, 0.77,  "cfl_number",      "");
+param_t<double> base_cfl        (pl, 0.4,   "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
 param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
+param_t<double> proximity_smoothing       (pl, 1.0, "curvature_smoothing",       "");
 
 param_t<bool> start_from_moving_front (pl, 1, "start_from_moving_front", "");
 
@@ -182,7 +182,6 @@ param_t<double> eps_v    (pl, 0, "eps_v",    "Kinetic undercooling coefficient -
 param_t<double> eps_a    (pl, 0, "eps_a",    "Anisotropy coefficient");
 param_t<double> symmetry (pl, 4, "symmetry", "Symmetric of crystals");
 
-
 // auxiliary variable for linearized phase diagram
 param_t<double> melting_temp (pl, 1728, "melting_temp", "Pure-substance melting point for linearized slope (pl, K");
 
@@ -219,9 +218,9 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity (pl, 0.1,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 4000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient    (pl, 1750, "temp_gradient",    "Temperature gradient (pl, K/cm");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -231,7 +230,7 @@ param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRIC
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
-param_t<double> growth_limit         (pl, DBL_MAX, "growth_limit", "");
+param_t<double> growth_limit         (pl, 2, "growth_limit", "");
 param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
@@ -244,7 +243,7 @@ param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              
 param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               "");
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 
-param_t<double> box_size (pl, 5.e-3, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.04, "box_size", "Physical width (in x) of the box in cm");
 //param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
 double scaling() { return 1./box_size.val; }
@@ -1890,9 +1889,9 @@ int main (int argc, char* argv[])
   mas.set_bc_tolerance             (bc_tolerance.val);
   mas.set_max_iterations           (max_iterations.val);
   mas.set_cfl                      (cfl_number.val);
-  mas.set_phi_thresh               (phi_thresh.val);
   mas.set_front_smoothing          (front_smoothing.val);
   mas.set_curvature_smoothing      (curvature_smoothing.val, curvature_smoothing_steps.val);
+  mas.set_proximity_smoothing      (proximity_smoothing.val);
 
   mas.set_use_superconvergent_robin(use_superconvergent_robin.val);
   mas.set_use_points_on_interface  (use_points_on_interface.val);

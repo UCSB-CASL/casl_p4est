@@ -162,15 +162,15 @@ private:
   int update_c0_robin_;
   int front_smoothing_;
 
+  double proximity_smoothing_;
+
   double bc_tolerance_;
-  double phi_thresh_;
   double cfl_number_;
   double curvature_smoothing_;
   int    curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
-  bool save_solid_;
   bool enforce_planar_front_;
 
   interpolation_method interpolation_between_grids_;
@@ -513,12 +513,12 @@ public:
                                             int    steps) { curvature_smoothing_       = value;
                                                             curvature_smoothing_steps_ = steps; }
 
-  inline void set_phi_thresh               (double value) { phi_thresh_                = value; }
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }
   inline void set_cfl                      (double value) { cfl_number_                = value; }
   inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
   inline void set_dendrite_min_length      (double value) { dendrite_min_length_       = value; }
-  inline void set_volumetric_heat          (CF_DIM &value) { vol_heat_gen_              =&value; }
+  inline void set_volumetric_heat          (CF_DIM &value){ vol_heat_gen_              =&value; }
+  inline void set_proximity_smoothing      (double value) { proximity_smoothing_       = value; }
 
 
   void regularize_front();

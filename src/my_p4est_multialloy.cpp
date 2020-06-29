@@ -101,8 +101,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   max_iterations_ = 50;
 
   bc_tolerance_   = 1.e-5;
-  phi_thresh_     = 0.001;
-  cfl_number_     = 0.1;
+  cfl_number_     = 0.5;
 
   time_   = 0;
   dt_max_ = DBL_MAX;
@@ -111,7 +110,6 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   use_superconvergent_robin_ = false;
   use_points_on_interface_   = true;
   update_c0_robin_           = 0;
-  save_solid_              = true;
   enforce_planar_front_      = false;
 
   interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v2;
@@ -123,6 +121,7 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
   front_smoothing_ = 0;
   curvature_smoothing_ = 0;
   curvature_smoothing_steps_ = 0;
+  proximity_smoothing_ = 1.0;
 
   connectivity_ = NULL;
   p4est_ = NULL;
@@ -743,6 +742,8 @@ void my_p4est_multialloy_t::update_grid()
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
   regularize_front();
+
+
 
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
@@ -1623,19 +1624,20 @@ void my_p4est_multialloy_t::sample_along_line(const double xyz0[], const double 
 void my_p4est_multialloy_t::regularize_front()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
-  /* remove problem geometries */
-  PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
+  ierr = PetscPrintf(p4est_->mpicomm, "Removing problem geometries... "); CHKERRXX(ierr);
 
+  // auxiliary pointers (in case a corser grid is used further)
   vec_and_ptr_t front_phi_cur;
-
   front_phi_cur.set(front_phi_.vec);
-
   p4est_t       *p4est_cur = p4est_;
   p4est_nodes_t *nodes_cur = nodes_;
   p4est_ghost_t *ghost_cur = ghost_;
   my_p4est_node_neighbors_t *ngbd_cur = ngbd_;
   my_p4est_hierarchy_t *hierarchy_cur = hierarchy_;
 
+  double new_phi_val = .5*dxyz_min_*pow(2., front_smoothing_);
+
+  // interpolate level-set function onto a coarses grid (not really used)
   if (front_smoothing_ != 0)
   {
     p4est_cur = p4est_copy(p4est_, P4EST_FALSE);
@@ -1684,107 +1686,144 @@ void my_p4est_multialloy_t::regularize_front()
     ngbd_cur->init_neighbors();
   }
 
-  vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
+  // old "by-hand" procedure to remove sharp corner and narrow necks
+  if (0) {
+//    vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
 
-  p4est_locidx_t nei_n[num_neighbors_cube];
-  bool           nei_e[num_neighbors_cube];
+//    p4est_locidx_t nei_n[num_neighbors_cube];
+//    bool           nei_e[num_neighbors_cube];
 
-  double band = 2.*diag_;
+//    double band = 2.*diag_;
 
-  front_phi_tmp.get_array();
-  front_phi_cur.get_array();
+//    front_phi_tmp.get_array();
+//    front_phi_cur.get_array();
 
-  // first pass: smooth out extremely curved regions
-  // TODO: make it iterative
+//    // first pass: smooth out extremely curved regions
+//    // TODO: make it iterative
+//    bool is_changed = false;
+//    foreach_local_node(n, nodes_cur)
+//    {
+//      if (fabs(front_phi_cur.ptr[n]) < band)
+//      {
+//        ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
+
+//        unsigned short num_neg = 0;
+//        unsigned short num_pos = 0;
+
+//        for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
+//        {
+//          if (front_phi_cur.ptr[nei_n[nn]] <= 0) num_neg++;
+//          if (front_phi_cur.ptr[nei_n[nn]] >= 0) num_pos++;
+//        }
+
+//        if ( (front_phi_cur.ptr[n] <= 0 && num_neg < 3) ||
+//             (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
+//        {
+//          //        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+//          //        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+//          if (num_neg < 3) front_phi_cur.ptr[n] =  0.01*diag_;
+//          if (num_pos < 3) front_phi_cur.ptr[n] = -0.01*diag_;
+
+//          // check if node is a layer node (= a ghost node for another process)
+//          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
+//          if (ni->pad8 != 0) is_changed = true;
+//          //        throw;
+//        }
+//      }
+//    }
+
+//    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+//    if (is_changed)
+//    {
+//      ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//      ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    }
+
+//    VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
+
+//    // second pass: bridge narrow gaps
+//    // TODO: develop a more general approach that works in 3D as well
+
+//    is_changed = false;
+//    bool is_ghost_changed = false;
+//    // this needs fixing for 3D
+//    foreach_local_node(n, nodes_cur)
+//    {
+//      if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
+//      {
+//        ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
+
+//        bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
+//                     front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
+//            front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
+//            front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
+//            || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
+//            || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
+
+//        if (merge)
+//        {
+//          front_phi_tmp.ptr[n] = new_phi_val;
+
+//          // check if node is a layer node (= a ghost node for another process)
+//          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
+//          if (ni->pad8 != 0) is_ghost_changed = true;
+
+//          is_changed = true;
+//        }
+
+//      }
+//    }
+
+//    front_phi_tmp.restore_array();
+//    front_phi_cur.restore_array();
+
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+//    if (is_ghost_changed)
+//    {
+//      ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//      ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    }
+  }
+
   bool is_changed = false;
-  foreach_local_node(n, nodes_cur)
-  {
-    if (fabs(front_phi_cur.ptr[n]) < band)
-    {
-      ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
+  if (proximity_smoothing_ != 0) {
+    // shift level-set upwards and reinitialize
+    my_p4est_level_set_t ls(ngbd_cur);
+    vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
+    double shift = dxyz_min_*proximity_smoothing_;
+    VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
+    VecShiftGhost(front_phi_tmp.vec, shift);
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+    VecShiftGhost(front_phi_tmp.vec, -shift);
 
-      unsigned short num_neg = 0;
-      unsigned short num_pos = 0;
+    // "solidify" nodes that changed sign
+    front_phi_cur.get_array();
+    front_phi_tmp.get_array();
 
-      for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
-      {
-        if (front_phi_cur.ptr[nei_n[nn]] <= 0) num_neg++;
-        if (front_phi_cur.ptr[nei_n[nn]] >= 0) num_pos++;
-      }
-
-      if ( (front_phi_cur.ptr[n] <= 0 && num_neg < 3) ||
-           (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
-      {
-//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
-//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
-        if (num_neg < 3) front_phi_cur.ptr[n] =  0.01*diag_;
-        if (num_pos < 3) front_phi_cur.ptr[n] = -0.01*diag_;
-
-        // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
-        if (ni->pad8 != 0) is_changed = true;
-//        throw;
-      }
-    }
-  }
-
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
-  if (is_changed)
-  {
-    ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
-
-  // second pass: bridge narrow gaps
-  // TODO: develop a more general approach that works in 3D as well
-  double new_phi_val = .5*dxyz_min_*pow(2., front_smoothing_);
-  is_changed = false;
-  bool is_ghost_changed = false;
-  foreach_local_node(n, nodes_cur)
-  {
-    if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
-    {
-      ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
-
-      bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
-                   front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
-          front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
-          front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
-          || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
-          || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
-          (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
-
-      if (merge)
-      {
-        front_phi_tmp.ptr[n] = new_phi_val;
-
-        // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
-        if (ni->pad8 != 0) is_ghost_changed = true;
-
+    foreach_node(n, nodes_) {
+      if (front_phi_cur.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
+        std::cout << "smoothing node " << n << " : " << front_phi_cur.ptr[n] << " -> " << front_phi_tmp.ptr[n] << "\n";
+        front_phi_cur.ptr[n] = front_phi_tmp.ptr[n];
         is_changed = true;
       }
-
     }
+
+    front_phi_cur.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(ierr);
   }
 
-  front_phi_tmp.restore_array();
-  front_phi_cur.restore_array();
-
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
-  if (is_ghost_changed)
-  {
-    ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+  vec_and_ptr_t front_phi_tmp;
+  front_phi_tmp.set(front_phi_cur.vec);
 
   // third pass: look for isolated pools of liquid and remove them
   if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
@@ -1851,8 +1890,8 @@ void my_p4est_multialloy_t::regularize_front()
 
 //  front_phi_cur.destroy();
 //  front_phi_cur.set(front_phi_tmp.vec);
-  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
-  front_phi_tmp.destroy();
+//  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
+//  front_phi_tmp.destroy();
 
   // iterpolate back onto fine grid
   if (front_smoothing_ != 0)
@@ -1881,6 +1920,8 @@ void my_p4est_multialloy_t::regularize_front()
   } else {
     front_phi_.set(front_phi_cur.vec);
   }
+
+  ierr = PetscPrintf(p4est_->mpicomm, "done!\n"); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
