@@ -414,6 +414,9 @@ bool my_p4est_interface_manager_t::is_quad_crossed_by_interface(const p4est_loci
     if(intersection_found)
       throw std::logic_error("my_p4est_interface_manager_t::is_quad_crossed_by_interface() : found a cell bigger than expected but containing an interface intersection.");
 #endif
+    if(which_face_is_intersected != NULL)
+      for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
+        which_face_is_intersected[oriented_dir] = false;
     return false;
   }
 
