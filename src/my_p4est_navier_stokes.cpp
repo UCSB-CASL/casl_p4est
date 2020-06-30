@@ -2032,16 +2032,13 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
 void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
                                                                     p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
                                                                     my_p4est_node_neighbors_t* ngbd_np1,
-                                                                    /*my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1,*/ my_p4est_hierarchy_t* hierarchy_np1)
+                                                                    my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
 {
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  // Create new faces and ngbd_c for NS to use based on new grid provided:
-  my_p4est_cell_neighbors_t* ngbd_c_np1 = NULL;
-  my_p4est_faces_t* faces_np1 = NULL;
-
+  // Create new faces and ngbd_c for NS to use based on new grid provided: (old ones will be deleted when we slide the fields)
   // Get the new cell neighbors:
   ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
 
