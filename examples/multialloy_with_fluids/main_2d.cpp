@@ -5224,7 +5224,6 @@ int main(int argc, char** argv) {
 
           bool compute_pressure_to_save = false;
           compute_pressure_to_save = are_we_saving_vtk(tstep + 1,tn + dt, false,out_idx,false);
-          PetscPrintf(mpi.comm(),"Compute pressure to save? %s \n",compute_pressure_to_save?"Yes":"No");
           // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
           navier_stokes_step(ns,p4est_np1,nodes_np1,
