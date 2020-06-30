@@ -188,7 +188,7 @@ p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx
 p4est_locidx_t find_local_index_of_quad(const p4est_gloidx_t& quad_global_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
 {
   P4EST_ASSERT(0 <= quad_global_idx && quad_global_idx < p4est->global_num_quadrants);
-  if(p4est->global_first_quadrant[p4est->mpirank] <= quad_global_idx && quad_global_idx < p4est->global_first_quadrant[p4est->mpirank] + p4est->local_num_quadrants)
+  if(p4est->global_first_quadrant[p4est->mpirank] <= quad_global_idx && quad_global_idx < p4est->global_first_quadrant[p4est->mpirank + 1])
     return quad_global_idx - p4est->global_first_quadrant[p4est->mpirank];
 
   // search in ghost
@@ -216,7 +216,7 @@ p4est_locidx_t find_local_index_of_quad(const p4est_gloidx_t& quad_global_idx, c
       ghost_idx_up = mid_ghost_idx;
   }
 
-  return ghost_quad->p.piggy3.local_num;
+  return p4est->local_num_quadrants + ghost_idx;
 }
 
 p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost)
