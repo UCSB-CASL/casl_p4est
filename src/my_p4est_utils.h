@@ -1491,13 +1491,19 @@ inline double z_of_quad_center(const p4est_quadrant_t* quad, const double* tree_
   return (tree_xyz_max[2] - tree_xyz_min[2])*((double)(quad->z + P4EST_QUADRANT_LEN(quad->level + 1))/(double) P4EST_ROOT_LEN) + tree_xyz_min[2];
 }
 #endif
-inline void xyz_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max, double *xyz)
+inline void xyz_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max, double *xyz, double dxyz_quad[P4EST_DIM] = NULL)
 {
   xyz[0] = x_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
   xyz[1] = y_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
 #ifdef P4_TO_P8
   xyz[2] = z_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
 #endif
+  if(dxyz_quad != NULL)
+  {
+    const double logical_size_quad = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      dxyz_quad[dim] = logical_size_quad*(tree_xyz_max[dim] - tree_xyz_min[dim]);
+  }
   return;
 }
 
@@ -3054,16 +3060,11 @@ inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
   if(quad_idx < 0 || quad_idx > p4est->local_num_quadrants)
     throw std::out_of_range("my_p4est_utils::construct_finite_volume : only accepts local quadrants");
 
-  const p4est_tree_t*     tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  const p4est_quadrant_t* quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
-  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
-  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
-
-  double xyz_C[P4EST_DIM];
-  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_C);
-  const double dxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
-                                  (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
-                                  (tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN))};
+  const double *tree_xyz_min, *tree_xyz_max;
+  const p4est_quadrant_t* quad;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, NULL);
+  double xyz_C[P4EST_DIM], dxyz[P4EST_DIM];
+  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_C, dxyz);
 
   const std::vector<const CF_DIM*> ls_functors(1, phi);
   const std::vector<mls_opn_t> ls_opn(1, MLS_INTERSECTION);
