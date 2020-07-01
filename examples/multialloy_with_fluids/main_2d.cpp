@@ -98,7 +98,7 @@ DEFINE_PARAMETER(pl,int,check_mem_every_iter,1000,"Checks memory usage every n n
 DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
 
 
-DEFINE_PARAMETER(pl,int,timing_every_n,100,"Print timing info every n iterations (default 100)");
+DEFINE_PARAMETER(pl,int,timing_every_n,1000,"Print timing info every n iterations (default 100)");
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
 DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper liFmit before closing the program -- in bytes");
@@ -394,7 +394,7 @@ void set_physical_properties(){
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:
       alpha_s = (1.1e-6); //ice - [m^2]/s
-      alpha_l = (1.3e-7); //water- [m^2]/s  // 6-16-2020: changed from 1.5 e-7 to 1.3e-7 to be more consistent with Okada paper peclet number --> Pe ~ 13, before was doing Pe ~ 11
+      alpha_l = (1.315e-7); //water- [m^2]/s  // 6-16-2020: changed from 1.5 e-7 to 1.3e-7 to be more consistent with Okada paper prandtl number --> Pr ~ 13, before was doing Pr ~ 11
       k_s = 2.22; // W/[m*K]
       k_l = 0.608; // W/[m*K]
       L = 334.e3;  // J/kg
@@ -520,7 +520,7 @@ void simulation_time_info(){
   switch(example_){
     case FRANK_SPHERE:
       tfinal = 1.30;
-      dt_max_allowed = 1.e-4;/*0.1;*/
+      dt_max_allowed = 0.1;
       tstart = 1.0;
       break;
     case FLOW_PAST_CYLINDER:
@@ -1869,7 +1869,6 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
   PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n",tn + dt,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);
   ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
 
-
   // If we are saving this timestep, output the results to vtk:
   if(are_we_saving_vtk){
       std::vector<std::string> point_names;
@@ -1882,11 +1881,9 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
       std::vector<std::string> cell_names = {};
       std::vector<double*> cell_data = {};
 
-      //my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
       my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
 
     }
-
 
   T_l.restore_array();
   T_s.restore_array();
@@ -1895,7 +1892,6 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   T_ana.restore_array();v_interface_ana.restore_array();phi_ana.restore_array();
   T_l_err.restore_array();T_s_err.restore_array();v_interface_err.restore_array();phi_err.restore_array();
-
   T_ana.destroy();v_interface_ana.destroy();phi_ana.destroy();
   T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
 }
@@ -2451,7 +2447,7 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
       // Compute the jump in the local nodes:
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
-          if(/*true*/fabs(phi.ptr[n])<2.*uniform_band*dxyz_close_to_interface){
+          if(fabs(phi.ptr[n])<2.*uniform_band*dxyz_close_to_interface){
 
               foreach_dimension(d){
                   if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
@@ -4061,12 +4057,13 @@ int main(int argc, char** argv) {
       }
 
       // Navier-Stokes fields:
-      if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
 
       INITIAL_VELOCITY *v_init_cf[P4EST_DIM];
       velocity_component* analytical_soln[P4EST_DIM];
 
       if(solve_navier_stokes){
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
+
         if(example_ == NS_GIBOU_EXAMPLE || example_ == COUPLED_PROBLEM_EXAMPLE)
         {
           for(unsigned char d=0;d<P4EST_DIM;++d){
@@ -4101,10 +4098,11 @@ int main(int argc, char** argv) {
         if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
           delete analytical_soln[d];
         }
-        delete v_init_cf[d];
+        if(solve_navier_stokes) delete v_init_cf[d];
+
       }
 
-      NS_norm = max(u0,v0);
+      if(solve_navier_stokes)NS_norm = max(u0,v0);
     } // end of (if not loading from previous state)
 
     // ------------------------------------------------------------
@@ -4185,71 +4183,6 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // First, initialize the Navier-Stokes solver with the grid:
     vec_and_ptr_dim_t v_n_NS, v_nm1_NS;
-//    vec_and_ptr_dim_t v_n_NS(p4est,nodes);
-//    vec_and_ptr_dim_t v_nm1_NS(p4est,nodes); // fields for NS solver to own
-    if(solve_navier_stokes){
-//      PetscPrintf(mpi.comm(),"Initializing the navier stokes solver ... \n");
-
-//      // Initialize faces and cell neighbors: (will be updated in time loop)
-//      ngbd_c_n = new my_p4est_cell_neighbors_t(hierarchy);
-//      faces_n = new my_p4est_faces_t(p4est,ghost,&brick,ngbd_c_n); // not sure we need to do this
-
-//      // Initialize the NS solver:
-//      ns = new my_p4est_navier_stokes_t(ngbd,ngbd,faces_n);
-
-//      // Set the LSF:
-//      ns->set_phi(phi.vec);
-//      ns->set_dt(dt_nm1,dt);
-
-      // Initialize the velocity objects that the NS solver will own:
-/*      foreach_dimension(d){
-        ierr = VecCopyGhost(v_n.vec[d],v_n_NS.vec[d]);
-        ierr = VecCopyGhost(v_nm1.vec[d],v_nm1_NS.vec[d]);
-      }*//*
-      ns->set_velocities(v_nm1_NS.vec,v_n_NS.vec);
-
-      // These get passed into the NS solver to handle, and NS solver will handle deleting them
-
-      PetscPrintf(mpi.comm(),"CFL: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl,rho_l,mu_l);
-
-      ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl);
-
-      // Set the initial boundary conditions: (for the first timestep) -- need to do this to do proper interpolation to new grid
-
-      for(unsigned char d=0;d<P4EST_DIM;d++){
-        if(example_ == ICE_AROUND_CYLINDER){
-          bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
-        }
-        bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
-        bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
-        bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
-        bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
-      }
-
-      // Set pressure conditions:
-      bc_pressure.setInterfaceType(interface_bc_type_pressure);
-      bc_pressure.setInterfaceValue(bc_interface_value_pressure);
-      bc_pressure.setWallTypes(bc_wall_type_pressure);
-      bc_pressure.setWallValues(bc_wall_value_pressure);
-
-      // Set the boundary conditions:
-      ns->set_bc(bc_velocity,&bc_pressure);
-
-      CF_DIM *external_forces[P4EST_DIM]=
-      {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
-      if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
-        ns->set_external_forces(external_forces);
-      }
-
-      if(!loading_from_previous_state){
-        // Do an initial NS step -- this gets the grid and objects all initialized in a way consistent with how our setup is
-        navier_stokes_step(ns,p4est,nodes,
-                           v_n.vec,v_nm1.vec,vorticity.vec,press_nodes.vec,
-                           face_solver_type,pc_face,cell_solver_type,pc_cell,
-                           NULL,NULL,NULL);
-      }*/
-    }
-
 
     // -----------------------------------------------
     // Initialize files to output various data of interest:
@@ -5224,6 +5157,7 @@ int main(int argc, char** argv) {
 
           bool compute_pressure_to_save = false;
           compute_pressure_to_save = are_we_saving_vtk(tstep + 1,tn + dt, false,out_idx,false);
+          compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == NS_GIBOU_EXAMPLE);
           // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
           navier_stokes_step(ns,p4est_np1,nodes_np1,
@@ -5289,18 +5223,18 @@ int main(int argc, char** argv) {
           // Initialize the neigbors:
           ngbd_np1->init_neighbors();
         }
-
         // -------------------------------
         // Do a memory safety check as user specified
         // -------------------------------
         PetscLogDouble mem_safety_check;
-
         if((tstep%check_mem_every_iter)==0){
           MPI_Barrier(mpi.comm());
           PetscMemoryGetCurrentUsage(&mem_safety_check);
 
+
           int no = nodes->num_owned_indeps;
           MPI_Allreduce(MPI_IN_PLACE,&no,1,MPI_INT,MPI_SUM,mpi.comm());
+
 
           MPI_Allreduce(MPI_IN_PLACE,&mem_safety_check,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
 
@@ -5328,7 +5262,6 @@ int main(int argc, char** argv) {
             ierr = PetscFPrintf(mpi.comm(),fich_mem,"tstep mem vtk_bool\n"
                                                     "%d %g %d \n",tstep,mem_safety_check,are_we_saving);CHKERRXX(ierr);
             ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
-
           }
           else{
             ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
@@ -5337,7 +5270,7 @@ int main(int argc, char** argv) {
 
           }
         }
-      } // <-- End of for loop through time
+    } // <-- End of for loop through time
 
     PetscPrintf(mpi.comm(),"Time loop exited \n");
 
