@@ -48,7 +48,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
   void build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx);
 
-  bool is_point_in_slow_side(const double* xyz) const { return mus_are_equal() || ((mu_minus < mu_plus) == (interface_manager->phi_at_point(xyz) <= 0.0)); }
+  bool is_point_in_slow_side(const char& sgn_point) const { return mus_are_equal() || ((mu_minus < mu_plus) == (sgn_point < 0)); }
 
 
   void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,

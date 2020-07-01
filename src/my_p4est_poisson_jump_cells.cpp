@@ -238,12 +238,10 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
    * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
    */
   if (!strcmp(pc_type, PCHYPRE)){
-    /* 1- Strong threshold:
-     * Between 0 to 1
-     * "0 "gives better convergence rate (in 3D).
-     * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
-    */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRQ(ierr);
+    // a large value for this factor was found to be more robust for the jump problems (especially with Daniil's FV solver)
+    // should be in )0, 1(, HYPRE manual suggests 0.25 for 2D problems, 0.5 for 3D,
+    // (arbitrarily) set to 0.7 because it seemed to work for all test cases
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.7"); CHKERRQ(ierr);
 
     /* 2- Coarsening type
      * Available Options:
@@ -251,7 +249,7 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRQ(ierr);
 
-    /* 3- Trancation factor
+    /* 3- Truncation factor
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
