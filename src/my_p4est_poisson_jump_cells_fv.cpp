@@ -19,7 +19,6 @@ extern PetscLogEvent log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution
 my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_)
   : my_p4est_poisson_jump_cells_t(ngbd_c, nodes_)
 {
-//  phi_quad = NULL;
   correction_function_for_quad.clear();
   finite_volume_data_for_quad.clear();
   are_required_finite_volumes_and_correction_functions_known = false;
@@ -36,17 +35,26 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
   int mpiret;
   std::vector<MPI_Request> nonblocking_send_requests;
 
-  // loop through layer quadrants, build correction functions where needed,
-  // serialize correction functions (made global) and send to other processes, if found to be required there (non-blocking send)
+  // loop through layer quadrants
+  // 1) build correction functions where needed (i.e., if quadrant is crossed by the interface)
+  // 2) check direct neighbors and
+  //    a) check if any direct neighbor is ghost and required the specific correction function associated with this cell
+  //       --> make the correction function global (local -> global indices), and serialize it for communication
+  //    b) check if any direct neighbor is ghost and not on the same side of the domain
+  //       --> expect a message from the process owning that ghost cell in such a case
   for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k) {
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k);
-    bool is_face_crossed[P4EST_FACES];
-    const bool quad_is_double_valued = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
-    if(quad_is_double_valued && ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
 
-    if(quad_is_double_valued)
+    bool is_face_crossed[P4EST_FACES];
+    const bool is_quad_double_valued = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
+
+#ifdef CASL_THROWS
+    if(is_quad_double_valued && ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+#endif
+
+    if(is_quad_double_valued)
       build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
 
     // figure out if required by another process and or if this process expects communications from another one
@@ -73,18 +81,19 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           const char sgn_face     = (interface_manager->phi_at_point(xyz_face)      <= 0.0 ? -1 : +1);
           const char sgn_neighbor = (interface_manager->phi_at_point(xyz_neighbor)  <= 0.0 ? -1 : +1);
           const int rank_owning_neighbor = quad_find_ghost_owner(ghost, neighbor_across_face.p.piggy3.local_num - p4est->local_num_quadrants);
-          if(quad_is_double_valued && (is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_quad)))
+          if(is_quad_double_valued && (is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_quad))) // you need to send the correction function you have just constructed to that one
             ranks_to_communicate_correction_function_with.insert(rank_owning_neighbor);
-          if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_neighbor))
+          if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_neighbor)) // you expect a correction function for the ghost quad
             ranks_to_receive_correction_functions_from.insert(rank_owning_neighbor);
         }
       }
     }
-    P4EST_ASSERT(quad_is_double_valued || ranks_to_communicate_correction_function_with.size() == 0);
-    if(quad_is_double_valued && ranks_to_communicate_correction_function_with.size() > 0)
+    P4EST_ASSERT(is_quad_double_valued || ranks_to_communicate_correction_function_with.size() == 0); // nothing to send if you haven't constructed anything --> sanity check
+    if(is_quad_double_valued && ranks_to_communicate_correction_function_with.size() > 0) // you gotta send stuff
     {
+      P4EST_ASSERT(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end()); // make sure it is known and accessible
       // serialize your message(s)
-      const correction_function_t& correction_function = correction_function_for_quad.at(quad_idx);
+      const correction_function_t& correction_function = correction_function_for_quad[quad_idx];
       global_correction_function_elementary_data_t data_to_send;
       for (std::set<int>::const_iterator it = ranks_to_communicate_correction_function_with.begin(); it != ranks_to_communicate_correction_function_with.end(); ++it)
       {
@@ -102,7 +111,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
     }
   }
 
-  // nonblocking sends of the serialized, (global) correction functions to relevant neighbor processes
+  // Send (nonblocking) the (global) serialized correction functions to the relevant neighbor processes
   for (std::map<int, std::vector<global_correction_function_elementary_data_t> >::const_iterator it = serialized_global_correction_functions_to_send_to.begin();
        it != serialized_global_correction_functions_to_send_to.end(); ++it){
     const int& rank = it->first;
@@ -113,20 +122,25 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
     nonblocking_send_requests.push_back(req);
   }
 
-  // loop through inner quadrants, build correction functions where needed
+  // loop through inner quadrants, build correction functions where needed (nothing else to do there)
   for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k);
     bool is_face_crossed[P4EST_FACES];
     if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed))
     {
+#ifdef CASL_THROWS
       if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
         throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+#endif
       build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
     }
   }
 
-  // receive messages
+  // Receive (blocking) the serialized (global) correction functions from the relevant neighbors
+  // 1) deserialize the message;
+  // 2) make the correction functions local (global -> local indices)
+  // 3) insert in map
   while (ranks_to_receive_correction_functions_from.size() > 0) {
     int is_msg_pending;
     MPI_Status status;
@@ -146,19 +160,20 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
       // deserialize the message and add it to the local map of correction functions
       size_t running_idx = 0;
       while (running_idx < received_serialized_global_correction_functions.size()) {
-        const p4est_locidx_t local_quad_idx = find_local_index_of_quad(received_serialized_global_correction_functions[running_idx].quad_global_idx, p4est, ghost); running_idx++;
+        const p4est_locidx_t local_quad_idx = find_local_index_of_quad(received_serialized_global_correction_functions[running_idx++].quad_global_idx, p4est, ghost);
         P4EST_ASSERT(local_quad_idx >= p4est->local_num_quadrants); // must be a ghost quadrant!
         P4EST_ASSERT(correction_function_for_quad.find(local_quad_idx) == correction_function_for_quad.end()); // must not be in there yet
         correction_function_t correction_function_for_ghost_quad;
-        correction_function_for_ghost_quad.jump_dependent_terms = received_serialized_global_correction_functions[running_idx].jump_dependent_terms; running_idx++;
-        const size_t n_solution_dependent_terms = received_serialized_global_correction_functions[running_idx].n_solution_dependent_terms; running_idx++;
+        correction_function_for_ghost_quad.jump_dependent_terms = received_serialized_global_correction_functions[running_idx++].jump_dependent_terms;
+        const size_t n_solution_dependent_terms = received_serialized_global_correction_functions[running_idx++].n_solution_dependent_terms;
         for (size_t k = 0; k < n_solution_dependent_terms; ++k){
-          const p4est_locidx_t local_idx_of_term = find_local_index_of_quad(received_serialized_global_correction_functions[running_idx].solution_dependent_term_global_index, p4est, ghost); running_idx++;
-          const double weight_for_term = received_serialized_global_correction_functions[running_idx].solution_dependent_term_weight; running_idx++;
+          const p4est_locidx_t local_idx_of_term = find_local_index_of_quad(received_serialized_global_correction_functions[running_idx++].solution_dependent_term_global_index, p4est, ghost);
+          const double weight_for_term = received_serialized_global_correction_functions[running_idx++].solution_dependent_term_weight;
           correction_function_for_ghost_quad.solution_dependent_terms.add_term(local_idx_of_term, weight_for_term);
         }
         correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(local_quad_idx, correction_function_for_ghost_quad));
       }
+      // remove the source from the set of expected messengers
       ranks_to_receive_correction_functions_from.erase(status.MPI_SOURCE);
     }
   }
@@ -293,13 +308,12 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
   if(is_quad_crossed)
   {
-    map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(quad_idx);
 #ifdef CASL_THROWS
-    if(it == correction_function_for_quad.end())
+    if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end())
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function for local quad "
                                + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank) + ", located at (" + std::to_string(xyz_quad[0]) + ", " + std::to_string(xyz_quad[1]) ONLY3D(+ ", " + std::to_string(xyz_quad[1])) + ")");
 #endif
-    const correction_function_t& correction_function = it->second;
+    const correction_function_t& correction_function = correction_function_for_quad.at(quad_idx);
     for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k)
       local_quad_indices_involved.insert(correction_function.solution_dependent_terms[k].dof_idx);
   }
@@ -319,15 +333,14 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
       P4EST_ASSERT(direct_neighbors.size() == 1);
       const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
       P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
-      map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
 #ifdef CASL_THROWS
-      if(it == correction_function_for_quad.end())
+      if(correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num) == correction_function_for_quad.end())
         throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
                                  + ", neighbor in direction " + std::to_string(oriented_dir) + " of quad " + std::to_string(quad_idx)  + " located at (" + std::to_string(xyz_quad[0]) +  ", " + std::to_string(xyz_quad[1]) ONLY3D( + ", " + std::to_string(xyz_quad[2])) + "),  on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
 
       local_quad_indices_involved.insert(direct_neighbor.p.piggy3.local_num);
-      const correction_function_t& correction_function_of_direct_neighbor = it->second;
+      const correction_function_t& correction_function_of_direct_neighbor = correction_function_for_quad.at(direct_neighbor.p.piggy3.local_num);
       for (size_t k = 0; k < correction_function_of_direct_neighbor.solution_dependent_terms.size(); ++k)
         local_quad_indices_involved.insert(correction_function_of_direct_neighbor.solution_dependent_terms[k].dof_idx);
     }
@@ -384,19 +397,17 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
   if(is_quad_crossed)
   {
-    if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
+    if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !&it_corr_fun->seconis_face_crossed[4] && !is_face_crossed[5]))
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
 
-    map_of_correction_functions_t::const_iterator it_corr_fun = correction_function_for_quad.find(quad_idx);
-    map_of_finite_volume_t::const_iterator        it_fv       = finite_volume_data_for_quad.find(quad_idx);
 #ifdef CASL_THROWS
-    if(it_corr_fun == correction_function_for_quad.end())
+    if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end())
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
-    if(it_fv == finite_volume_data_for_quad.end())
+    if(finite_volume_data_for_quad.find(quad_idx) == finite_volume_data_for_quad.end())
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the finite volume data for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
 #endif
-    correction_function_of_quad = &it_corr_fun->second;
-    finite_volume_of_quad       = &it_fv->second;
+    correction_function_of_quad = &correction_function_for_quad.at(quad_idx);
+    finite_volume_of_quad       = &finite_volume_data_for_quad.at(quad_idx);
   }
 
   /* First add the diagonal terms */
@@ -522,14 +533,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       const correction_function_t* correction_function_of_direct_neighbor = NULL;
       if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_direct_neighbor))
       {
-        map_of_correction_functions_t::const_iterator it_corr_fun = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
 #ifdef CASL_THROWS
-        if(it_corr_fun == correction_function_for_quad.end())
+        if(correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num) == correction_function_for_quad.end())
           throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the correction function for direct neighbor quad " + std::to_string(direct_neighbor.p.piggy3.local_num)
                                    + ", neighbor of quad " + std::to_string(quad_idx) + " in direction " + std::to_string(oriented_dir)
                                    + " on proc " + std::to_string(p4est->mpirank) + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
-        correction_function_of_direct_neighbor = &it_corr_fun->second;
+        correction_function_of_direct_neighbor = &correction_function_for_quad.at(direct_neighbor.p.piggy3.local_num);
       }
       // make sure we have access to all we need right away:
       P4EST_ASSERT((is_face_crossed[oriented_dir] && finite_volume_of_quad != NULL && correction_function_of_quad != NULL && correction_function_of_direct_neighbor != NULL)
@@ -650,15 +660,14 @@ double my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(const p4
         sharp_flux_component += coeff_dof*solution_p[idx_dof];
         if(signs_of_phi_are_different(sgn_face, sgn_dof))
         {
-          map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(idx_dof);
 #ifdef CASL_THROWS
-          if(it == correction_function_for_quad.end())
+          if(correction_function_for_quad.find(idx_dof) == correction_function_for_quad.end())
             throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local couldn't find the correction function for quad " + std::to_string(idx_dof)
                                      + ", required for the calculation of flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
                                      + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
                                      + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
-          const correction_function_t& correction_function_dof = it->second;
+          const correction_function_t& correction_function_dof = correction_function_for_quad.at(idx_dof);
           sharp_flux_component += coeff_dof*(sgn_face > 0 ? +1.0 : -1.0)*correction_function_dof(solution_p);
         }
       }

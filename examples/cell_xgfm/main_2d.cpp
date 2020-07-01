@@ -395,11 +395,10 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
   for (size_t k = 0; k < convergence_anlayzers.size(); ++k) {
     my_p4est_poisson_jump_cells_t* jump_solver = convergence_anlayzers[k].jump_cell_solver;
-    my_p4est_xgfm_cells_t*            xgfm_solver = dynamic_cast<my_p4est_xgfm_cells_t*>(jump_solver);
-    my_p4est_poisson_jump_cells_fv_t* fv_solver   = dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver);
+    my_p4est_xgfm_cells_t* xgfm_solver = dynamic_cast<my_p4est_xgfm_cells_t*>(jump_solver);
 
     const string name_extension = std::string("_") + convert_to_string(convergence_anlayzers[k].tag);
-    P4EST_ASSERT((xgfm_solver != NULL && fv_solver == NULL) || (xgfm_solver == NULL && fv_solver != NULL));
+    P4EST_ASSERT((xgfm_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) == NULL) || (xgfm_solver == NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) != NULL));
 
     list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(jump_solver->get_solution(), "solution" + name_extension));
     add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);

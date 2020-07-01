@@ -397,12 +397,12 @@ public:
 
   inline double signed_distance_at_point(const double *xyz) const
   {
-    double signed_dist = phi_at_point(xyz);
+    double phi = phi_at_point(xyz);
     double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
     const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2])));
     if(mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the signed distance to the interface for a point where the gradient of phi is ill-defined");
-    return signed_dist/mag_grad_phi;
+    return phi/mag_grad_phi;
   }
 
   inline void projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
