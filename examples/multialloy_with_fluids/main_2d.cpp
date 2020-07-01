@@ -1896,115 +1896,6 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
   T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
 }
 
-//void check_coupled_problem_error(vec_and_ptr_t phi,vec_and_ptr_dim_t v_n, vec_and_ptr_t p, vec_and_ptr_t Tl, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, double dxyz_close_to_interface, char *name, FILE *fich, int tstep){
-//  PetscErrorCode ierr;
-
-//  double u_error = 0.0;
-//  double v_error = 0.0;
-//  double P_error = 0.0;
-//  double T_error = 0.0;
-
-//  double L_inf_u = 0.0;
-//  double L_inf_v = 0.0;
-//  double L_inf_P = 0.0;
-//  double L_inf_T = 0.0;
-
-
-//  // Get arrays:
-//  v_n.get_array();
-//  p.get_array();
-//  phi.get_array();
-//  Tl.get_array();
-
-//  // Get local errors in negative subdomain:
-//  double xyz[P4EST_DIM];
-//  double x;
-//  double y;
-//  foreach_local_node(n,nodes){
-//    if(phi.ptr[n] < 0.){
-//        node_xyz_fr_n(n,p4est,nodes,xyz);
-
-//        x = xyz[0]; y = xyz[1];
-
-//        u_error = fabs(v_n.ptr[0][n] - u_ana_tn(x,y));
-//        v_error = fabs(v_n.ptr[1][n] - v_ana_tn(x,y));
-//        P_error = fabs(p.ptr[n] - p_ana_tn(x,y));
-//        T_error = fabs(Tl.ptr[n] - T_ana_tn(x,y));
-
-//        L_inf_u = max(L_inf_u,u_error);
-//        L_inf_v = max(L_inf_v,v_error);
-//        L_inf_P = max(L_inf_P,P_error);
-//        L_inf_T = max(L_inf_T,T_error);
-
-//      }
-//  }
-
-////  // Loop over each quadrant in each tree, check the error in hodge
-////  double xyz_c[P4EST_DIM];
-////  double x_c; double y_c;
-////  my_p4est_interpolation_nodes_t interp_phi(ngbd);
-////  interp_phi.set_input(phi.vec,linear);
-////  foreach_tree(tr,p4est){
-////    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees,tr);
-
-////    foreach_local_quad(q,tree){
-////      // Get the global index of the quadrant:
-////      p4est_locidx_t quad_idx = tree->quadrants_offset + q;
-
-////      // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
-////      quad_xyz_fr_q(quad_idx,tr,p4est,ghost,xyz_c);
-////      x_c = xyz_c[0]; y_c = xyz_c[1];
-
-////      // Get the error in the negative subdomain:
-////      if(interp_phi(x_c,y_c) < 0){
-////          P_error = fabs(p.ptr[quad_idx] - p_analytical(x_c,y_c));
-////        }
-
-////    }
-////  }
-
-
-//  // NEED TO GRAB PRESSURE ERROR AT QUADS, NEED TO CHANGE PRESSURE TO VEC_AND_PTR_CELLS
-//  // Restore arrays
-//  v_n.restore_array();
-//  p.restore_array();
-//  phi.restore_array();
-//  Tl.restore_array();
-
-//  // Get the global errors:
-//  double local_Linf_errors[4] = {L_inf_u,L_inf_v,L_inf_P, L_inf_T};
-//  double global_Linf_errors[4] = {0.0,0.0,0.0,0.0};
-
-//  int mpi_err;
-
-//  mpi_err = MPI_Allreduce(local_Linf_errors,global_Linf_errors,4,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);SC_CHECK_MPI(mpi_err);
-
-//  // Print errors to application output:
-//  int num_nodes = nodes->indep_nodes.elem_count;
-//  PetscPrintf(p4est->mpicomm,"\n -------------------------------------\n "
-//                             "Errors on Coupled Problem Example "
-//                             "\n -------------------------------------\n "
-//                             "Linf on u: %0.4e \n"
-//                             "Linf on v: %0.4e \n"
-//                             "Linf on P: %0.4e \n"
-//                             "Linf on Tl: %0.4e \n"
-//                             "Number grid points used: %d \n"
-//                             "dxyz close to interface : %0.4f \n",
-//                              global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],
-//                              num_nodes,dxyz_close_to_interface);
-
-
-
-//  // Print errors to file:
-
-//  ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
-//  ierr = PetscFPrintf(p4est->mpicomm,fich,"%g %g %d %g %g %g %g %d %g \n",tn,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);CHKERRXX(ierr);
-//  ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
-
-
-
-//}
-
 void check_ice_cylinder_v_and_radius(vec_and_ptr_t phi,p4est_t* p4est,p4est_nodes_t* nodes,double dxyz_close,char *name,FILE *fich){
 
   std::vector<double> theta;
@@ -2415,9 +2306,23 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s, Vec v_interface[P4EST_
 } // end of interpolate_values_onto_new_grid
 
 
-void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d, vec_and_ptr_dim_t jump, vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, my_p4est_node_neighbors_t *ngbd, double dxyz_close_to_interface){
+void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
+                                  vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d,
+                                  vec_and_ptr_dim_t jump, vec_and_ptr_dim_t &v_interface,
+                                  vec_and_ptr_t phi,
+                                  p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t *ngbd,
+                                  double dxyz_close_to_interface){
 
-  if(!force_interfacial_velocity_to_zero){  // Get arrays:
+  if(!force_interfacial_velocity_to_zero){
+    // Get the first derivatives to compute the jump
+    T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
+    ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
+    ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+
+    // Create vector to hold the jump values:
+    jump.create(p4est,nodes);
+
+      // Get arrays:
       jump.get_array();
       T_l_d.get_array();
       T_s_d.get_array();
@@ -2475,13 +2380,23 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
       foreach_dimension(d){
          ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
       }
-  }
 
-
-  if(force_interfacial_velocity_to_zero){
+      // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
+      if(example_ == COUPLED_PROBLEM_EXAMPLE){
         foreach_dimension(d){
-            VecScaleGhost(v_interface.vec[d],0.0);
+         VecScaleGhost(v_interface.vec[d],coupled_test_sign);
         }
+      }
+
+      // Destroy values once no longer needed:
+      T_l_d.destroy();
+      T_s_d.destroy();
+      jump.destroy();
+  }
+  else{ // Case where we are forcing interfacial velocity to zero
+    foreach_dimension(d){
+        VecScaleGhost(v_interface.vec[d],0.0);
+    }
   }
 }
 
@@ -2492,7 +2407,6 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
 
   if(example_ == COUPLED_PROBLEM_EXAMPLE){
     global_max_vnorm = PI; // known analytically
-
   }
   else {
     // Check the values of v_interface locally:
@@ -2628,6 +2542,234 @@ void prepare_refinement_fields(vec_and_ptr_t phi, vec_and_ptr_t vorticity, vec_a
 }
 
 
+void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
+                     p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                     p4est_t* &p4est, p4est_nodes_t* &nodes,
+                     vec_and_ptr_t &phi, vec_and_ptr_dim_t v_interface,
+                     vec_and_ptr_t phi_cylinder,
+                     vec_and_ptr_dim_t phi_dd,
+                     vec_and_ptr_t vorticity, vec_and_ptr_t vorticity_refine,
+                     vec_and_ptr_t T_l_n,vec_and_ptr_dim_t T_l_dd,
+                     my_p4est_node_neighbors_t* ngbd){
+  PetscErrorCode ierr;
+  int mpi_comm = p4est_np1->mpicomm;
+
+
+  bool use_block = false;
+  bool expand_ghost_layer = true;
+  double threshold = vorticity_threshold; // originally was set to 0.
+
+  std::vector<compare_option_t> compare_opn;
+  std::vector<compare_diagonal_option_t> diag_opn;
+  std::vector<double> criteria;
+
+  PetscInt num_fields = 0;
+  if(solve_navier_stokes) num_fields+=1;// for vorticity
+  if(refine_by_d2T)num_fields+=2; // for second derivatives of temperature
+
+  // Create array of fields we wish to refine by, to pass to the refinement tools
+  Vec fields_[num_fields];
+
+  // Create vectors for our refinement fields:
+  if(solve_navier_stokes && (num_fields!=0)){
+    // Only use values of vorticity and d2T in the positive subdomain for refinement:
+    vorticity_refine.create(p4est,nodes);
+
+    if(refine_by_d2T){
+        T_l_dd.create(p4est,nodes);
+        ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
+      }
+
+    // Prepare refinement fields:
+    prepare_refinement_fields(phi,vorticity,vorticity_refine,T_l_dd,ngbd);
+
+    // Add our refinement fields to the array:
+    PetscInt fields_idx = 0;
+    fields_[fields_idx++] = vorticity_refine.vec;
+    if(refine_by_d2T){
+        fields_[fields_idx++] = T_l_dd.vec[0];
+        fields_[fields_idx++] = T_l_dd.vec[1];
+      }
+
+    P4EST_ASSERT(fields_idx ==num_fields);
+
+    // Add our instructions:
+    // Coarsening instructions: (for vorticity)
+    compare_opn.push_back(LESS_THAN);
+    diag_opn.push_back(DIVIDE_BY);
+    criteria.push_back(threshold*NS_norm/2.);
+
+    // Refining instructions: (for vorticity)
+    compare_opn.push_back(GREATER_THAN);
+    diag_opn.push_back(DIVIDE_BY);
+    criteria.push_back(threshold*NS_norm);
+
+    if(refine_by_d2T){
+      double dxyz_smallest[P4EST_DIM];
+      dxyz_min(p4est,dxyz_smallest);
+      double dTheta = (theta_wall - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
+
+      // Coarsening instructions: (for dT/dx)
+      compare_opn.push_back(SIGN_CHANGE);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(dTheta*gradT_threshold); // did 0.1* () for the coarsen if no sign change OR below threshold case
+
+      // Refining instructions: (for dT/dx)
+      compare_opn.push_back(SIGN_CHANGE);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(dTheta*gradT_threshold);
+
+      // Coarsening instructions: (for dT/dy)
+      compare_opn.push_back(SIGN_CHANGE);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(dTheta*gradT_threshold*0.1);
+
+      // Refining instructions: (for dT/dy)
+      compare_opn.push_back(SIGN_CHANGE);
+      diag_opn.push_back(DIVIDE_BY);
+      criteria.push_back(dTheta*gradT_threshold); // doesnt get used
+      }
+    } // end of "if solve navier stokes and num_fields!=0"
+
+  // -------------------------------
+  // Call grid advection and update:
+  // -------------------------------
+
+  if(solve_stefan){
+    // Create second derivatives for phi in the case that we are using update_p4est:
+    if(solve_stefan){
+      phi_dd.create(p4est,nodes);
+      ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
+
+      // Get inner cylinder LSF if needed
+      if(example_ == ICE_AROUND_CYLINDER){
+        phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
+        sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+        }
+      }
+    // Call advection and refinement
+    sl.update_p4est(v_interface.vec, dt,
+                  phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec: NULL,
+                  num_fields ,use_block ,true,
+                  uniform_band,uniform_band*(1.5),
+                  fields_ ,NULL,
+                  criteria,compare_opn,diag_opn,
+                  expand_ghost_layer);
+
+  if(print_checkpoints) PetscPrintf(mpi_comm,"Grid update completed \n");
+
+  // Destroy 2nd derivatives of LSF now that not needed
+  phi_dd.destroy();
+
+  // Destroy cylinder LSF if it was created, now that it is not needed:
+  if(example_==ICE_AROUND_CYLINDER){ phi_cylinder.destroy();}
+  }
+  else {
+      // NS only case --> no advection --> do grid update iteration manually:
+      splitting_criteria_tag_t sp_NS(sp.min_lvl,sp.max_lvl,sp.lip);
+
+      // Create a new vector which will hold the updated values of the fields -- since we will interpolate with each grid iteration
+      Vec fields_new_[num_fields];
+      if(num_fields!=0)
+        {
+          for(unsigned int k = 0;k<num_fields; k++){
+              ierr = VecCreateGhostNodes(p4est_np1,nodes_np1,&fields_new_[k]);
+              ierr = VecCopyGhost(fields_[k],fields_new_[k]);
+            }
+        }
+
+      // Create a vector which will hold the updated values of the LSF:
+      vec_and_ptr_t phi_new;
+      phi_new.create(p4est,nodes);
+      ierr = VecCopyGhost(phi.vec,phi_new.vec);
+
+      bool is_grid_changing = true;
+      int no_grid_changes = 0;
+      bool last_grid_balance = false;
+      while(is_grid_changing){
+          if(!last_grid_balance){
+              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_new_,NULL,criteria,compare_opn,diag_opn);
+
+              if(no_grid_changes>0 && !is_grid_changing){
+                  last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid
+                }
+            }
+
+          if(is_grid_changing || last_grid_balance){
+              no_grid_changes++;
+              PetscPrintf(mpi_comm,"NS grid changed %d times \n",no_grid_changes);
+              if(last_grid_balance){
+                  p4est_balance(p4est_np1,P4EST_CONNECT_FULL,NULL);
+                  PetscPrintf(mpi_comm,"Does last grid balance \n");
+                }
+
+              my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
+              p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1,P4EST_CONNECT_FULL);
+              my_p4est_ghost_expand(p4est_np1,ghost_np1);
+              p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1,ghost_np1);
+
+              // Destroy fields_new and create it on the new grid:
+              if(num_fields!=0){
+                  for(unsigned int k = 0; k<num_fields; k++){
+                      ierr = VecDestroy(fields_new_[k]);
+                      ierr = VecCreateGhostNodes(p4est_np1,nodes_np1,&fields_new_[k]);
+                  }
+              }
+              phi_new.destroy();
+              phi_new.create(p4est_np1,nodes_np1);
+
+              // Interpolate fields onto new grid:
+              my_p4est_interpolation_nodes_t interp_refine_and_coarsen(ngbd);
+              double xyz_interp[P4EST_DIM];
+              foreach_node(n,nodes_np1){
+                node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz_interp);
+                interp_refine_and_coarsen.add_point(n,xyz_interp);
+              }
+              if(num_fields!=0){
+                  interp_refine_and_coarsen.set_input(fields_,quadratic_non_oscillatory_continuous_v2,num_fields);
+                  // Interpolate fields
+                  interp_refine_and_coarsen.interpolate(fields_new_);
+                }
+              interp_refine_and_coarsen.set_input(phi.vec,quadratic_non_oscillatory_continuous_v2);
+              interp_refine_and_coarsen.interpolate(phi_new.vec);
+
+              if(last_grid_balance){
+                  last_grid_balance = false;
+                }
+            } // End of if grid is changing
+
+          // Do last balancing of the grid, and final interp of phi:
+          if(no_grid_changes>10) {PetscPrintf(mpi_comm,"NS grid did not converge!\n"); break;}
+        } // end of while grid is changing
+
+      // Update the LSF accordingly:
+      phi.destroy();
+      phi.create(p4est_np1,nodes_np1);
+      ierr = VecCopyGhost(phi_new.vec,phi.vec);
+
+      // Destroy the vectors we created for refine and coarsen:
+      for(unsigned int k = 0;k<num_fields; k++){
+          ierr = VecDestroy(fields_new_[k]);
+        }
+      phi_new.destroy();
+    } // end of if only navier stokes
+
+  // -------------------------------
+  // Destroy refinement fields now that they're not in use:
+  // -------------------------------
+  if(solve_navier_stokes){
+      vorticity_refine.destroy();
+      if(refine_by_d2T){T_l_dd.destroy();}
+    }
+  // -------------------------------
+  // Clear up the memory from the std vectors holding refinement info:
+  // -------------------------------
+
+  compare_opn.clear(); diag_opn.clear(); criteria.clear();
+  compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
+
+};
+
 void poisson_step(Vec phi, Vec phi_solid,
                   Vec phi_dd[P4EST_DIM], Vec phi_solid_dd[P4EST_DIM],
                   Vec* T_l, Vec* T_s,
@@ -2635,10 +2777,13 @@ void poisson_step(Vec phi, Vec phi_solid,
                   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
                   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
                   my_p4est_node_neighbors_t* ngbd,
+                  my_p4est_poisson_nodes_mls_t* &solver_Tl,
+                  my_p4est_poisson_nodes_mls_t* &solver_Ts,
+
                   int cube_refinement,
                   Vec phi_cylinder=NULL, Vec phi_cylinder_dd[P4EST_DIM]=NULL ){
-  my_p4est_poisson_nodes_mls_t* solver_Tl=NULL;
-  my_p4est_poisson_nodes_mls_t* solver_Ts = NULL;
+//  my_p4est_poisson_nodes_mls_t* &solver_Tl=NULL;
+//  my_p4est_poisson_nodes_mls_t* &solver_Ts = NULL;
 
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
@@ -3753,8 +3898,8 @@ int main(int argc, char** argv) {
 
   // Poisson problem:---------------------------------
   int cube_refinement = 1;
-//  my_p4est_poisson_nodes_mls_t *solver_Tl;  // will solve poisson problem for Temperature in liquid domains
-//  my_p4est_poisson_nodes_mls_t *solver_Ts;  // will solve poisson problem for Temperature in solid domain
+  my_p4est_poisson_nodes_mls_t *solver_Tl = NULL;  // will solve poisson problem for Temperature in liquid domains
+  my_p4est_poisson_nodes_mls_t *solver_Ts = NULL;  // will solve poisson problem for Temperature in solid domain
 
   vec_and_ptr_t T_l_n;
   vec_and_ptr_t T_l_nm1;
@@ -3771,6 +3916,8 @@ int main(int argc, char** argv) {
 
   vec_and_ptr_dim_t T_l_dd;
   // Stefan problem:------------------------------------
+
+
   vec_and_ptr_dim_t v_interface;;
   vec_and_ptr_dim_t jump;
 
@@ -4290,6 +4437,8 @@ int main(int argc, char** argv) {
     // Begin stepping through time
     // ------------------------------------------------------------
     for (tn=tstart;tn<tfinal; tn+=dt, tstep++){
+//    tn=tstart;
+//    while(tn+dt<tfinal){ // trying something
       // ------------------------------------------------------------
       // Print iteration information:
       // ------------------------------------------------------------
@@ -4518,35 +4667,25 @@ int main(int argc, char** argv) {
         char stefan_timestep[1000];
         if(solve_stefan){
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
-          // Get the first derivatives to compute the jump
-          T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
-          ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
-          ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
-
-          // Create vector to hold the jump values:
-          jump.create(p4est,nodes);
           v_interface.destroy();
           v_interface.create(p4est,nodes);
 
-          compute_interfacial_velocity(T_l_d,T_s_d,jump,v_interface,phi,ngbd,dxyz_close_to_interface);
-
-          // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
-          if(example_ == COUPLED_PROBLEM_EXAMPLE){
-            foreach_dimension(d){
-             VecScaleGhost(v_interface.vec[d],coupled_test_sign);
-            }
-          }
-
-          // Destroy values once no longer needed:
-          T_l_d.destroy();
-          T_s_d.destroy();
-          jump.destroy();
+          compute_interfacial_velocity(T_l_n,T_s_n,
+                                       T_l_d,T_s_d,
+                                       jump,v_interface,
+                                       phi,
+                                       p4est,nodes,ngbd,dxyz_close_to_interface);
 
           // Compute timestep:
           compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest,nodes,p4est); // this function modifies the variable dt
 
           sprintf(stefan_timestep,"Computed interfacial velocity: \n"
-                                  " - Computational : %0.3e  - Physical : %0.3e [m/s]  - Physical : %0.3e  [mm/s] \n",v_interface_max_norm,v_interface_max_norm*u_inf,v_interface_max_norm*u_inf*1000.);
+                                  " - Computational : %0.3e  "
+                                  "- Physical : %0.3e [m/s]  "
+                                  "- Physical : %0.3e  [mm/s] \n",
+                                  v_interface_max_norm,
+                                  v_interface_max_norm*u_inf,
+                                  v_interface_max_norm*u_inf*1000.);
           }
         // Take NS timestep into account if relevant:
         if(solve_navier_stokes){
@@ -4563,7 +4702,13 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"\n"
                                "%s \n"
                                "Computed timestep: \n"
-                               " - dt used: %0.3e -dt_NS : %0.3e  -dxyz close to interface : %0.3e \n \n",solve_stefan?stefan_timestep:"",dt,dt_NS,dxyz_close_to_interface);
+                               " - dt used: %0.3e "
+                               "-dt_NS : %0.3e  "
+                               "-dxyz close to interface : %0.3e "
+                               "\n \n",solve_stefan?stefan_timestep:"",
+                              dt,dt_NS,
+                              dxyz_close_to_interface);
+
 
         // Clip the timestep if we are near the end of our simulation, to get the proper end time:
         bool is_last_step = false;
@@ -4596,221 +4741,14 @@ int main(int argc, char** argv) {
 
         my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
-        // -------------------------------
-        // Prepare refinement tool necessary information
-        // -------------------------------
-
-        bool use_block = false;
-        bool expand_ghost_layer = true;
-        double threshold = vorticity_threshold; // originally was set to 0.
-
-        std::vector<compare_option_t> compare_opn;
-        std::vector<compare_diagonal_option_t> diag_opn;
-        std::vector<double> criteria;
-
-        PetscInt num_fields = 0;
-        if(solve_navier_stokes) num_fields+=1;// for vorticity
-        if(refine_by_d2T)num_fields+=2; // for second derivatives of temperature
-
-        // Create array of fields we wish to refine by, to pass to the refinement tools
-        Vec fields_[num_fields];
-
-        // Create vectors for our refinement fields:
-        if(solve_navier_stokes && (num_fields!=0)){
-          // Only use values of vorticity and d2T in the positive subdomain for refinement:
-          vorticity_refine.create(p4est,nodes);
-
-          if(refine_by_d2T){
-              T_l_dd.create(p4est,nodes);
-              ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
-            }
-
-          // Prepare refinement fields:
-          prepare_refinement_fields(phi,vorticity,vorticity_refine,T_l_dd,ngbd);
-
-          // Add our refinement fields to the array:
-          PetscInt fields_idx = 0;
-          fields_[fields_idx++] = vorticity_refine.vec;
-          if(refine_by_d2T){
-              fields_[fields_idx++] = T_l_dd.vec[0];
-              fields_[fields_idx++] = T_l_dd.vec[1];
-            }
-
-          P4EST_ASSERT(fields_idx ==num_fields);
-
-          // Add our instructions:
-          // Coarsening instructions: (for vorticity)
-          compare_opn.push_back(LESS_THAN);
-          diag_opn.push_back(DIVIDE_BY);
-          criteria.push_back(threshold*NS_norm/2.);
-
-          // Refining instructions: (for vorticity)
-          compare_opn.push_back(GREATER_THAN);
-          diag_opn.push_back(DIVIDE_BY);
-          criteria.push_back(threshold*NS_norm);
-
-          if(refine_by_d2T){
-            double dTheta = (theta_wall - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
-
-            // Coarsening instructions: (for dT/dx)
-            compare_opn.push_back(SIGN_CHANGE);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(dTheta*gradT_threshold); // did 0.1* () for the coarsen if no sign change OR below threshold case
-
-            // Refining instructions: (for dT/dx)
-            compare_opn.push_back(SIGN_CHANGE);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(dTheta*gradT_threshold);
-
-            // Coarsening instructions: (for dT/dy)
-            compare_opn.push_back(SIGN_CHANGE);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(dTheta*gradT_threshold*0.1);
-
-            // Refining instructions: (for dT/dy)
-            compare_opn.push_back(SIGN_CHANGE);
-            diag_opn.push_back(DIVIDE_BY);
-            criteria.push_back(dTheta*gradT_threshold); // doesnt get used
-            }
-          } // end of "if solve navier stokes and num_fields!=0"
-
-        // -------------------------------
-        // Call grid advection and update:
-        // -------------------------------
-
-        if(solve_stefan){
-          // Create second derivatives for phi in the case that we are using update_p4est:
-          if(solve_stefan){
-            phi_dd.create(p4est,nodes);
-            ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
-
-            // Get inner cylinder LSF if needed
-            if(example_ == ICE_AROUND_CYLINDER){
-              phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
-              sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-              }
-            }
-          // Call advection and refinement
-          sl.update_p4est(v_interface.vec, dt,
-                        phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec: NULL,
-                        num_fields ,use_block ,true,
-                        uniform_band,uniform_band*(1.5),
-                        fields_ ,NULL,
-                        criteria,compare_opn,diag_opn,
-                        expand_ghost_layer);
-
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Grid update completed \n");
-
-        // Destroy 2nd derivatives of LSF now that not needed
-        phi_dd.destroy();
-
-        // Destroy cylinder LSF if it was created, now that it is not needed:
-        if(example_==ICE_AROUND_CYLINDER){ phi_cylinder.destroy();}
-        }
-        else {
-            // NS only case --> no advection --> do grid update iteration manually:
-            splitting_criteria_tag_t sp_NS(sp.min_lvl,sp.max_lvl,sp.lip);
-
-            // Create a new vector which will hold the updated values of the fields -- since we will interpolate with each grid iteration
-            Vec fields_new_[num_fields];
-            if(num_fields!=0)
-              {
-                for(unsigned int k = 0;k<num_fields; k++){
-                    ierr = VecCreateGhostNodes(p4est_np1,nodes_np1,&fields_new_[k]);
-                    ierr = VecCopyGhost(fields_[k],fields_new_[k]);
-                  }
-              }
-
-            // Create a vector which will hold the updated values of the LSF:
-            vec_and_ptr_t phi_new;
-            phi_new.create(p4est,nodes);
-            ierr = VecCopyGhost(phi.vec,phi_new.vec);
-
-            bool is_grid_changing = true;
-            int no_grid_changes = 0;
-            bool last_grid_balance = false;
-            while(is_grid_changing){
-                if(!last_grid_balance){
-                    is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_new_,NULL,criteria,compare_opn,diag_opn);
-
-                    if(no_grid_changes>0 && !is_grid_changing){
-                        last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid
-                      }
-                  }
-
-                if(is_grid_changing || last_grid_balance){
-                    no_grid_changes++;
-                    PetscPrintf(mpi.comm(),"NS grid changed %d times \n",no_grid_changes);
-                    if(last_grid_balance){
-                        p4est_balance(p4est_np1,P4EST_CONNECT_FULL,NULL);
-                        PetscPrintf(mpi.comm(),"Does last grid balance \n");
-                      }
-
-                    my_p4est_partition(p4est_np1,P4EST_FALSE,NULL);
-                    p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1,P4EST_CONNECT_FULL);
-                    my_p4est_ghost_expand(p4est_np1,ghost_np1);
-                    p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1,ghost_np1);
-
-                    // Destroy fields_new and create it on the new grid:
-                    if(num_fields!=0){
-                        for(unsigned int k = 0; k<num_fields; k++){
-                            ierr = VecDestroy(fields_new_[k]);
-                            ierr = VecCreateGhostNodes(p4est_np1,nodes_np1,&fields_new_[k]);
-                        }
-                    }
-                    phi_new.destroy();
-                    phi_new.create(p4est_np1,nodes_np1);
-
-                    // Interpolate fields onto new grid:
-                    my_p4est_interpolation_nodes_t interp_refine_and_coarsen(ngbd);
-                    double xyz_interp[P4EST_DIM];
-                    foreach_node(n,nodes_np1){
-                      node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz_interp);
-                      interp_refine_and_coarsen.add_point(n,xyz_interp);
-                    }
-                    if(num_fields!=0){
-                        interp_refine_and_coarsen.set_input(fields_,quadratic_non_oscillatory_continuous_v2,num_fields);
-                        // Interpolate fields
-                        interp_refine_and_coarsen.interpolate(fields_new_);
-                      }
-                    interp_refine_and_coarsen.set_input(phi.vec,quadratic_non_oscillatory_continuous_v2);
-                    interp_refine_and_coarsen.interpolate(phi_new.vec);
-
-                    if(last_grid_balance){
-                        last_grid_balance = false;
-                      }
-                  } // End of if grid is changing
-
-                // Do last balancing of the grid, and final interp of phi:
-                if(no_grid_changes>10) {PetscPrintf(mpi.comm(),"NS grid did not converge!\n"); break;}
-              } // end of while grid is changing
-
-            // Update the LSF accordingly:
-            phi.destroy();
-            phi.create(p4est_np1,nodes_np1);
-            ierr = VecCopyGhost(phi_new.vec,phi.vec);
-
-            // Destroy the vectors we created for refine and coarsen:
-            for(unsigned int k = 0;k<num_fields; k++){
-                ierr = VecDestroy(fields_new_[k]);
-              }
-            phi_new.destroy();
-          } // end of if only navier stokes
-
-        // -------------------------------
-        // Destroy refinement fields now that they're not in use:
-        // -------------------------------
-        if(solve_navier_stokes){
-            vorticity_refine.destroy();
-            if(refine_by_d2T){T_l_dd.destroy();}
-          }
-        // -------------------------------
-        // Clear up the memory from the std vectors holding refinement info:
-        // -------------------------------
-
-        compare_opn.clear(); diag_opn.clear(); criteria.clear();
-        compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
-
+        update_the_grid(sl,sp,
+                        p4est_np1,nodes_np1,ghost_np1,
+                        p4est,nodes,
+                        phi,v_interface,
+                        phi_cylinder,phi_dd,
+                        vorticity,vorticity_refine,
+                        T_l_n,T_l_dd,
+                        ngbd);
         // -------------------------------
         // Update hierarchy and neighbors to match new updated grid:
         // -------------------------------
@@ -5022,7 +4960,8 @@ int main(int argc, char** argv) {
                        &T_l_n.vec,&T_s_n.vec,
                        rhs_Tl.vec,rhs_Ts.vec,
                        bc_interface_val_temp,bc_wall_value_temp,
-                       ngbd_np1,cube_refinement,
+                       ngbd_np1, solver_Tl, solver_Ts,
+                       cube_refinement,
                        (example_==ICE_AROUND_CYLINDER)? phi_cylinder.vec:NULL,
                        (example_==ICE_AROUND_CYLINDER)? phi_cylinder_dd.vec:NULL);
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
@@ -5270,6 +5209,11 @@ int main(int argc, char** argv) {
 
           }
         }
+
+
+//        // Update time: // trying something
+//        tn+=dt;
+//        tstep++;
     } // <-- End of for loop through time
 
     PetscPrintf(mpi.comm(),"Time loop exited \n");
