@@ -150,7 +150,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   }
 
   // pinning point (for ill-defined all-neumann case)
-  matrix_has_nullspace_ = false;
+  matrix_has_nullspace_ = true;
   fixed_value_idx_l_    = global_node_offset_[p4est_->mpisize];
   fixed_value_idx_g_    = global_node_offset_[p4est_->mpisize];
 
@@ -1877,7 +1877,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   // check for null space
   // FIXME: the return value should be checked for errors ...
   if (new_submat_main_ || new_submat_diag_ || new_submat_robin_) {
-    MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace_, 1, MPI_INT, MPI_LAND, p4est_->mpicomm);
+    MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace_, 1, MPI_C_BOOL, MPI_LAND, p4est_->mpicomm);
   }
 
 //  if (matrix_has_nullspace) {

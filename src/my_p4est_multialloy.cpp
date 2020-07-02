@@ -906,7 +906,7 @@ void my_p4est_multialloy_t::update_grid_solid()
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-int my_p4est_multialloy_t::one_step(double &bc_error_max, int it_scheme)
+int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1047,8 +1047,10 @@ int my_p4est_multialloy_t::one_step(double &bc_error_max, int it_scheme)
 
 //  solver_all_in_one.set_verbose_mode(1);
 
-  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, bc_error_.vec, bc_error_max, 1,
-      NULL, NULL, psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
+  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, true,
+      bc_error_.vec, bc_error_max, bc_error_avg,
+      num_pdes, bc_error_max_all, bc_error_avg_all,
+      psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
 
 
   rhs_tl.destroy();

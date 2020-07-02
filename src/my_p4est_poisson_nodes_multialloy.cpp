@@ -69,6 +69,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   temp_diag_s_ = 1.;
   latent_heat_ = 1.;
   bc_error_max_ = 1.;
+  bc_error_avg_ = 1.;
 
   solver_temp_ = NULL;
   solver_conc_leading_ = NULL;
@@ -265,8 +266,9 @@ void my_p4est_poisson_nodes_multialloy_t::set_container(Vec phi, Vec* phi_dd)
   }
 }
 
-int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[], Vec bc_error, double &bc_error_max, bool use_non_zero_guess,
-                                               std::vector<double> *num_pdes, std::vector<double> *error,
+int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[], bool use_non_zero_guess,
+                                               Vec bc_error, double *bc_error_max, double *bc_error_avg,
+                                               std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all,
                                                Vec psi_tl, Vec psi_ts, Vec psi_cl[])
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -367,7 +369,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
   // for logging purposes
   if (num_pdes != NULL) num_pdes->clear();
-  if (error    != NULL) error   ->clear();
+  if (bc_error_max_all != NULL) bc_error_max_all->clear();
+  if (bc_error_avg_all != NULL) bc_error_avg_all->clear();
   int num_pdes_solved = 0;
 
   initialize_solvers();
@@ -462,9 +465,10 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
     // logging for convergence studies
     if (num_pdes != NULL) { num_pdes->push_back(num_pdes_solved); }
-    if (error    != NULL) { error->push_back(bc_error_max_); }
+    if (bc_error_max_all != NULL) { bc_error_max_all->push_back(bc_error_max_); }
+    if (bc_error_avg_all != NULL) { bc_error_avg_all->push_back(bc_error_avg_); }
 
-    ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: bc error = %g, max velo = %g\n", iteration, bc_error_max_, velo_max_); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: max bc error = %2.3e, avg bc error = %2.3e, max velo = %2.5e\n", iteration, bc_error_max_, bc_error_avg_, velo_max_); CHKERRXX(ierr);
   }
 
 
@@ -510,7 +514,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   liquid_normal_.destroy();
   solid_normal_.destroy();
 
-  bc_error_max = bc_error_max_;
+  if (bc_error_max != NULL) *bc_error_max = bc_error_max_;
+  if (bc_error_avg != NULL) *bc_error_avg = bc_error_avg_;
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1579,6 +1584,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_adjust_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 
   bc_error_max_ = 0;
+  bc_error_avg_ = 0;
   velo_max_     = 0;
 
   int num_bc_points = solver_conc_leading_->pw_bc_num_value_pts(0);
@@ -1688,6 +1694,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
 
       bc_error_.ptr[n] = MAX(bc_error_.ptr[n], fabs(error));
       bc_error_max_    = MAX(bc_error_max_,    fabs(error));
+      bc_error_avg_   += fabs(error);
 
       pw_c0_change_[idx] = error;
 
@@ -1791,10 +1798,14 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
   }
   bc_error_.restore_array();
 
-  double buffer[2] = { bc_error_max_, velo_max_ };
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, buffer, 2, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-  bc_error_max_ = buffer[0];
-  velo_max_     = buffer[1];
+  double buffer[4] = { bc_error_max_, bc_error_avg_, velo_max_, double(solver_conc_leading_->pw_bc_num_value_pts(0)) };
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, buffer, 4, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  bc_error_max_  = buffer[0];
+  bc_error_avg_  = buffer[1];
+  velo_max_      = buffer[2];
+  double num_points = buffer[3];
+
+  bc_error_avg_ /= num_points;
 
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_adjust_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 }

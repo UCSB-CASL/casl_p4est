@@ -532,7 +532,7 @@ public:
   void update_grid();
   void update_grid_eno();
   void update_grid_solid();
-  int  one_step(double &bc_error_max, int it_scheme=2);
+  int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
   void save_p4est(int iter);

@@ -54,10 +54,9 @@
 
 using namespace std;
 
-namespace defining_parameters {
-
-//parameter_list_t pl;
 param_list_t pl;
+
+param_t<bool> track_memory_usage (pl, 1, "track_memory_usage", "");
 
 //-------------------------------------
 // computational domain parameters
@@ -86,7 +85,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -105,7 +104,7 @@ param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 usi
 param_t<int>    order_in_time   (pl, 1,     "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.77,  "cfl_number",      "");
+param_t<double> cfl_number      (pl, 0.8,   "cfl_number",      "");
 param_t<double> base_cfl        (pl, 0.4,   "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
@@ -113,21 +112,20 @@ param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",      
 param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
 param_t<double> proximity_smoothing       (pl, 1.0, "curvature_smoothing",       "");
 
-param_t<bool> start_from_moving_front (pl, 1, "start_from_moving_front", "");
-
 //-------------------------------------
 // output parameters
 //-------------------------------------
 param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
 param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
-param_t<bool>   save_timings         (pl, 1, "save_timings", "");
+param_t<bool>   save_timings         (pl, 0, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_solid       (pl, 1, "save_vtk_solid", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 param_t<bool>   save_p4est           (pl, 1, "save_vtk", "");
 param_t<bool>   save_p4est_solid     (pl, 1, "save_vtk_solid", "");
+param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
 
 param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
@@ -155,7 +153,7 @@ param_t<double> latent_heat  (pl, 2350, "latent_heat",  "Latent heat of fusion (
 param_t<bool>   linearized_liquidus (pl, 0, "linearized_liquidus", "Use linearized liquidus surface or true one");
 param_t<bool>   const_part_coeff    (pl, 0, "const_part_coeff",    "Use averaged partition coefficients or true ones");
 
-param_t<int> num_comps (pl, 1, "num_comps", "Number of solutes");
+param_t<int>    num_comps (pl, 1, "num_comps", "Number of solutes");
 
 param_t<double> initial_conc_0 (pl, 0.4, "initial_conc_0", "Initial concentration of component no. 0");
 param_t<double> initial_conc_1 (pl, 0.4, "initial_conc_1", "Initial concentration of component no. 1");
@@ -218,9 +216,10 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
-param_t<double> gradient_ratio   (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient    (pl, 1750, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> cooling_velocity        (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
+param_t<double> temp_gradient           (pl, 1000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
@@ -242,29 +241,25 @@ param_t<double> seed_radius            (pl, 0.005,    "seed_radius",            
 param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              "");
 param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               "");
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
-
+param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
+                                                            "1 - misaligned");
 param_t<double> box_size (pl, 0.04, "box_size", "Physical width (in x) of the box in cm");
-//param_t<double> box_size (pl, 2.5e-3, "box_size", "Physical width (in x) of the box in cm");
 
-double scaling() { return 1./box_size.val; }
+param_t<int>    geometry (pl,  0, "geometry", "-3 - analytical spherical solidification,"
+                                              "-2 - analytical cylindrical solidification,"
+                                              "-1 - analytical planar solidification,"
+                                              " 0 - directional solidification,"
+                                              " 1 - growth of a spherical seed in a spherical container,"
+                                              " 2 - growth of a spherical film in a spherical container,"
+                                              " 3 - radial directional solidification in,"
+                                              " 4 - radial directional solidification out,"
+                                              " 5 - three spherical seeds,"
+                                              " 6 - planar front and three spherical seeds");
 
-param_t<int> geometry (pl,  0, "geometry", "-3 - analytical spherical solidification,"
-                                           "-2 - analytical cylindrical solidification,"
-                                           "-1 - analytical planar solidification,"
-                                           " 0 - directional solidification,"
-                                           " 1 - growth of a spherical seed in a spherical container,"
-                                           " 2 - growth of a spherical film in a spherical container,"
-                                           " 3 - radial directional solidification in,"
-                                           " 4 - radial directional solidification out,"
-                                           " 5 - three spherical seeds,"
-                                           " 6 - planar front and three spherical seeds");
 
-param_t<int> seed_type (pl, 0, "seed_type", "0 - aligned,"
-                                            "1 - misaligned");
-
-} using namespace defining_parameters;
-
-namespace setting_alloy_parameters {
+// ----------------------------------------
+// alloy parameters
+// ----------------------------------------
 void set_alloy_parameters()
 {
   switch (alloy())
@@ -833,9 +828,9 @@ double part_coeff(int which_comp, double *c)
   }
 }
 
-} using namespace setting_alloy_parameters;
-
+// ----------------------------------------
 // analytical solution
+// ----------------------------------------
 namespace analytic {
 
 double Al, Bl;
@@ -929,62 +924,28 @@ inline double dcl_exact(int i, double t, double r) { return Bi[i] * Fp(nu(*solut
 
 }
 
+// ----------------------------------------
 // define problem geometry
-namespace setting_problem_geometry {
-
-bool px()
+// ----------------------------------------
+double scaling() { return 1./box_size.val; }
+bool periodicity(int dir)
 {
   switch (geometry.val) {
 #ifdef P4_TO_P8
     case -3: return false;
 #endif
     case -2: return false;
-    case -1: return true;
-    case  0: return true;
+    case -1: return (dir == 0 ? 1 : 0);
+    case  0: return (dir == 0 ? 1 : 0);
     case  1: return false;
     case  2: return false;
     case  3: return false;
     case  4: return false;
     case  5: return true;
-    case  6: return true;
+    case  6: return (dir == 0 ? 1 : 0);
     default: throw;
   }
 }
-bool py()
-{
-  switch (geometry.val) {
-#ifdef P4_TO_P8
-    case -3: return false;
-#endif
-    case -2: return false;
-    case -1: return false;
-    case  0: return false;
-    case  1: return false;
-    case  2: return false;
-    case  3: return false;
-    case  4: return false;
-    case  5: return true;
-    case  6: return false;
-  }
-}
-#ifdef P4_TO_P8
-bool pz()
-{
-  switch (geometry.val) {
-    case -3: return false;
-    case -2: return false;
-    case -1: return true;
-    case  0: return true;
-    case  1: return false;
-    case  2: return false;
-    case  3: return false;
-    case  4: return false;
-    case  5: return true;
-    case  6: return true;
-    default: throw;
-  }
-}
-#endif
 
 class front_phi_cf_t : public CF_DIM
 {
@@ -1173,11 +1134,44 @@ double theta0(int seed)
     }
   }
 }
-} using namespace setting_problem_geometry;
 
+class eps_c_cf_t : public CF_DIM
+{
+  double theta0;
+public:
+  eps_c_cf_t(double theta0 = 0) : theta0(theta0) {}
+  double operator()(DIM(double nx, double ny, double nz)) const
+  {
+#ifdef P4_TO_P8
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_c.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+#else
+    double theta = atan2(ny, nx);
+    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+#endif
+  }
+};
+
+class eps_v_cf_t : public CF_DIM
+{
+  double theta0;
+public:
+  eps_v_cf_t(double theta0 = 0) : theta0(theta0) {}
+  double operator()(DIM(double nx, double ny, double nz)) const
+  {
+#ifdef P4_TO_P8
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_v.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+#else
+    double theta = atan2(ny, nx);
+    return eps_v.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
+#endif
+  }
+};
+
+// ----------------------------------------
 // define initial fields and boundary conditions
-namespace defining_continuous_functions {
-
+// ----------------------------------------
 class cl_cf_t : public CF_DIM
 {
   int idx;
@@ -1538,41 +1532,6 @@ CF_DIM* bc_value_conc_all[] = { &bc_value_conc_0,
                                 &bc_value_conc_2,
                                 &bc_value_conc_3 };
 
-
-class eps_c_cf_t : public CF_DIM
-{
-  double theta0;
-public:
-  eps_c_cf_t(double theta0 = 0) : theta0(theta0) {}
-  double operator()(DIM(double nx, double ny, double nz)) const
-  {
-#ifdef P4_TO_P8
-    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
-    return eps_c.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
-#else
-    double theta = atan2(ny, nx);
-    return eps_c.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
-#endif
-  }
-};
-
-class eps_v_cf_t : public CF_DIM
-{
-  double theta0;
-public:
-  eps_v_cf_t(double theta0 = 0) : theta0(theta0) {}
-  double operator()(DIM(double nx, double ny, double nz)) const
-  {
-#ifdef P4_TO_P8
-    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
-    return eps_v.val*(1.0-4.0*eps_a.val*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
-#else
-    double theta = atan2(ny, nx);
-    return eps_v.val*(1.-15.*eps_a.val*cos(symmetry.val*(theta-theta0)))/(1.+15.*eps_a.val);
-#endif
-  }
-};
-
 class volumetric_heat_cf_t : public CF_DIM
 {
 public:
@@ -1583,14 +1542,32 @@ public:
   }
 } volumetric_heat_cf;
 
-} using namespace defining_continuous_functions;
-
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
 
   mpi_environment_t mpi;
   mpi.init(argc, argv);
+
+//  // checking whether mpi version causes random memory leaks
+//  int nnn = 0;
+//  while (1) {
+//    Vec test;
+//    int nghosts = 00000;
+//    int nloc = 1024*1024;
+//    vector<PetscInt> ghost_nodes(nghosts, 123);
+//    ierr = VecCreateGhost(mpi.comm(), nloc, PETSC_DECIDE,
+//                          ghost_nodes.size(), NULL, &test); CHKERRXX(ierr);
+
+//    ierr = VecSetFromOptions(test); CHKERRXX(ierr);
+//    VecDestroy(test);
+
+//    if (mpi.rank() == 0) {
+//      PetscLogDouble mem_petsc = 0;
+//      PetscMemoryGetCurrentUsage(&mem_petsc);
+//      std::cout << nnn++ << " " << mem_petsc/1024./1024. << "\n";
+//    }
+//  }
 
   cmdParser cmd;
 
@@ -1615,33 +1592,43 @@ int main (int argc, char* argv[])
   }
 
   FILE *fich;
-  char name[10000];
-  char name_timings[10000];
-  char name_analytic[10000];
-  sprintf(name, "%s/characteristics.dat", out_dir);
-  sprintf(name_analytic, "%s/analytic.dat", out_dir);
-  sprintf(name_timings, "%s/timings.dat", out_dir);
+  char filename_characteristics[1024];
+  char filename_timings[1024];
+  char filename_analytic[1024];
+  char filename_error_max[1024];
+  char filename_error_avg[1024];
+  sprintf(filename_characteristics, "%s/characteristics.dat", out_dir);
+  sprintf(filename_analytic, "%s/analytic.dat", out_dir);
+  sprintf(filename_timings, "%s/timings.dat", out_dir);
+  sprintf(filename_error_max, "%s/error_max.dat", out_dir);
+  sprintf(filename_error_avg, "%s/error_avg.dat", out_dir);
 
-  if (save_characteristics.val)
-  {
-    ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(), fich, "time "
+  if (save_step_convergence.val) {
+    ierr = PetscFOpen(mpi.comm(), filename_error_max, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+    ierr = PetscFOpen(mpi.comm(), filename_error_avg, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+  }
+
+  if (save_characteristics.val) {
+    ierr = PetscFOpen(mpi.comm(), filename_characteristics, "w", &fich); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fich, "step "
+                                          "time "
+                                          "growth "
                                           "average_interface_velocity "
                                           "max_interface_velocity "
                                           "front_area "
                                           "solid_volume "
-                                          "time_elapsed iteration "
-                                          "local_nodes "
-                                          "ghost_nodes "
+                                          "time_elapsed "
                                           "sub_iterations "
-                                          "bc_error_max\n"); CHKERRXX(ierr);
+                                          "bc_error_max "
+                                          "bc_error_avg "
+                                          "memory_usage\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
-
-  if (save_accuracy.val)
-  {
-    ierr = PetscFOpen(mpi.comm(), name_analytic, "w", &fich); CHKERRXX(ierr);
+  if (save_accuracy.val) {
+    ierr = PetscFOpen(mpi.comm(), filename_analytic, "w", &fich); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fich, "step "
                                           "time "
                                           "phi "
@@ -1777,14 +1764,14 @@ int main (int argc, char* argv[])
   int n_xyz[]      = { DIM(nx.val*initial_division, ny.val*initial_division, nz.val*initial_division) };
   double xyz_min[] = { DIM(xmin.val, ymin.val, zmin.val) };
   double xyz_max[] = { DIM(xmax.val, ymax.val, zmax.val)};
-  int periodic[]   = { DIM(px(),  py(),  pz())};
+  int periodic[]   = { DIM(periodicity(0), periodicity(1), periodicity(2))};
 
   int lmin_new = lmin.val-lvl_decrease;
   int lmax_new = lmax.val-lvl_decrease;
 
-  double dx_eff = (xmax.val-xmin.val)/double(n_xyz[0])/pow(2., lmax_new);
-  double lmax_eff = lmax_new + log(initial_division)/log(2.);
-  double lmin_eff = lmin_new + log(initial_division)/log(2.);
+//  double dx_eff = (xmax.val-xmin.val)/double(n_xyz[0])/pow(2., lmax_new);
+//  double lmax_eff = lmax_new + log(initial_division)/log(2.);
+//  double lmin_eff = lmin_new + log(initial_division)/log(2.);
 
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps.val, order_in_time.val);
@@ -1837,7 +1824,6 @@ int main (int argc, char* argv[])
 
   // set alloy parameters
   double solute_diff_all[] = { solute_diff_0.val, solute_diff_1.val, solute_diff_2.val, solute_diff_3.val };
-  double part_coeff_all [] = { part_coeff_0.val, part_coeff_1.val, part_coeff_2.val, part_coeff_3.val };
 
   mas.set_liquidus(liquidus_value, liquidus_slope, part_coeff);
   mas.set_composition_parameters(solute_diff_all);
@@ -1871,12 +1857,7 @@ int main (int argc, char* argv[])
   mas.set_volumetric_heat(volumetric_heat_cf);
 
   // set time steps
-//  double dt = cfl_number.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-//  double dt_curv = 0.0015*sqrt(dx*dx*dx)/MAX(eps_c.val, 1.e-20);
-//  dt_curv = 15.e-04;
-
   double dt_max = base_cfl.val*MIN(DIM(dx,dy,dz))/cooling_velocity.val;
-//  mas.set_dt_limits(0, MIN(dt_curv, 10*dt));
   mas.set_dt_limits(0, dt_max);
 
   // set initial conditions
@@ -1901,7 +1882,7 @@ int main (int argc, char* argv[])
   mas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction.val);
   mas.set_dendrite_min_length      (dendrite_min_length.val);
 
-
+  // compute container volume
   vec_and_ptr_t ones(front_phi.vec);
   VecSetGhost(ones.vec, 1.);
   double container_volume = integrate_over_negative_domain(p4est, nodes, contr_phi.vec, ones.vec);
@@ -1916,12 +1897,17 @@ int main (int argc, char* argv[])
   bool   keep_going     = true;
   double tn             = 0;
   double total_growth   = 0;
-  double base           = 0.1;
+  double base           = front_location.val;
   double bc_error_max   = 0;
+  double bc_error_avg   = 0;
   int    iteration      = 0;
   int    sub_iterations = 0;
   int    vtk_idx        = 0;
   int    mpiret;
+
+  vector<double> bc_error_max_all;
+  vector<double> bc_error_avg_all;
+  vector<int> num_pdes;
 
   std::vector<bool>   logevent;
   std::vector<double> old_time;
@@ -1937,8 +1923,7 @@ int main (int argc, char* argv[])
         (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
         (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
-    // save velocity, lenght of interface and area of solid phase in time
-//    if (save_characteristics.val && save_now)
+    // save velocity, area of interface, volume of solid phase, etc
     if (save_characteristics.val)
     {
       vec_and_ptr_t vn;
@@ -1971,22 +1956,28 @@ int main (int argc, char* argv[])
       num_local_nodes = buffer[0];
       num_ghost_nodes = buffer[1];
 
+      PetscLogDouble mem_petsc = 0;
+      if (track_memory_usage.val) {
+        PetscMemoryGetCurrentUsage(&mem_petsc);
+      }
+
       // write into file
-      ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d %e\n",
-                   tn,
-                   velocity_avg/scaling(),
-                   mas.get_front_velocity_max()/scaling(),
-                   front_area,
-                   solid_volume,
-                   time_elapsed,
-                   iteration,
-                   num_local_nodes,
-                   num_ghost_nodes,
-                   sub_iterations,
-                   bc_error_max);
+      ierr = PetscFOpen(mpi.comm(), filename_characteristics, "a", &fich); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), fich, "%d %e %e %e %e %e %e %e %d %e %e %e\n",
+                          iteration,
+                          tn,
+                          total_growth,
+                          velocity_avg/scaling(),
+                          mas.get_front_velocity_max()/scaling(),
+                          front_area,
+                          solid_volume,
+                          time_elapsed,
+                          sub_iterations,
+                          bc_error_max,
+                          bc_error_avg,
+                          mem_petsc/1024./1024.); CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Saved characteristics in %s\n", filename_characteristics); CHKERRXX(ierr);
 
       sub_iterations = 0;
       ones.destroy();
@@ -2117,7 +2108,7 @@ int main (int argc, char* argv[])
         }
 
         if (save_vtk_analytical.val) {
-          char name[1000];
+          char name[1024];
           sprintf(name, "%s/vtu/analytic_lvl_%d_%d.%05d", out_dir, lmin.val, lmax.val, vtk_idx);
 
           // cell data
@@ -2209,7 +2200,7 @@ int main (int argc, char* argv[])
             errors_max_over_time[i] = MAX(errors_max_over_time[i], errors_max[i]);
           }
 
-          ierr = PetscFOpen(mpi.comm(), name_analytic, "a", &fich); CHKERRXX(ierr);
+          ierr = PetscFOpen(mpi.comm(), filename_analytic, "a", &fich); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%d ", iteration); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%e ", tn); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(), fich, "%e ", errors_max[0]); CHKERRXX(ierr);
@@ -2225,7 +2216,7 @@ int main (int argc, char* argv[])
           }
           ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-          ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", name_analytic); CHKERRXX(ierr);
+          ierr = PetscPrintf(mpi.comm(), "saved errors in %s\n", filename_analytic); CHKERRXX(ierr);
 
           // save last and max over time
           if (!keep_going) {
@@ -2287,34 +2278,51 @@ int main (int argc, char* argv[])
         cs.destroy(); cs_exact.destroy(); cs_error.destroy();
         kps.destroy();
       }
-
     }
+
     if (!keep_going) break;
 
+    // compute time step
     mas.compute_dt();
-
-    // check for time limit
-    if (tn + mas.get_dt() > time_limit.val)
-    {
+    if (tn + mas.get_dt() > time_limit.val) {
       mas.set_dt(time_limit.val-tn);
       keep_going = false;
     }
 
     // advance front to t_{n+1}
     mas.update_grid();
-
-    if (0) {
-      front_phi_cf.t = tn+mas.get_dt();
-      sample_cf_on_nodes(mas.get_p4est(),  mas.get_nodes(), front_phi_cf, mas.get_front_phi());
-      mas.compute_geometric_properties_front();
-    }
-
     mas.update_grid_solid();
 
-    bc_error_max = 0;
     // solve nonlinear system for temperature, concentration and velocity at t_n
-    sub_iterations += mas.one_step(bc_error_max, 2);
+    bc_error_max = 0;
+    bc_error_avg = 0;
+
+    sub_iterations += mas.one_step(2, &bc_error_max, &bc_error_avg, &num_pdes, &bc_error_max_all, &bc_error_avg_all);
     tn             += mas.get_dt();
+
+    if (save_step_convergence()) {
+      // max bc error
+      ierr = PetscFOpen(mpi.comm(), filename_error_max, "a", &fich); CHKERRXX(ierr);
+      for (size_t i = 0; i < bc_error_max_all.size(); ++i) {
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", bc_error_max_all[i]); CHKERRXX(ierr);
+      }
+      for (int i = bc_error_max_all.size(); i < max_iterations(); ++i) {
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", 0.0); CHKERRXX(ierr);
+      }
+      ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+
+      // avg bc error
+      ierr = PetscFOpen(mpi.comm(), filename_error_avg, "a", &fich); CHKERRXX(ierr);
+      for (size_t i = 0; i < bc_error_avg_all.size(); ++i) {
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", bc_error_avg_all[i]); CHKERRXX(ierr);
+      }
+      for (int i = bc_error_avg_all.size(); i < max_iterations(); ++i) {
+        ierr = PetscFPrintf(mpi.comm(), fich, "%e ", 0.0); CHKERRXX(ierr);
+      }
+      ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+    }
 
     // compute total growth
     total_growth = base;
@@ -2324,10 +2332,8 @@ int main (int argc, char* argv[])
     front_phi.vec = mas.get_front_phi();
 
     front_phi.get_array();
-    foreach_node(n, nodes)
-    {
-      if (front_phi.ptr[n] > 0)
-      {
+    foreach_node(n, nodes) {
+      if (front_phi.ptr[n] > 0) {
         double xyz[P4EST_DIM];
         node_xyz_fr_n(n, p4est, nodes, xyz);
         total_growth = MAX(total_growth, xyz[1]);
@@ -2351,7 +2357,7 @@ int main (int argc, char* argv[])
 
       if (vtk_idx == 0)
       {
-        ierr = PetscFOpen(mpi.comm(), name_timings, "w", &fich); CHKERRXX(ierr);
+        ierr = PetscFOpen(mpi.comm(), filename_timings, "w", &fich); CHKERRXX(ierr);
 
         logevent.resize(localNumEvents, false);
         old_time.resize(localNumEvents, 0);
@@ -2371,7 +2377,7 @@ int main (int argc, char* argv[])
         ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       }
 
-      ierr = PetscFOpen(mpi.comm(), name_timings, "a", &fich); CHKERRXX(ierr);
+      ierr = PetscFOpen(mpi.comm(), filename_timings, "a", &fich); CHKERRXX(ierr);
 
       PetscFPrintf(mpi.comm(), fich, "%d ", iteration);
       for (PetscInt event = 0; event < localNumEvents; ++event)
@@ -2386,7 +2392,7 @@ int main (int argc, char* argv[])
       PetscFPrintf(mpi.comm(), fich, "\n");
 
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "saved timings in %s\n", name_timings); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "saved timings in %s\n", filename_timings); CHKERRXX(ierr);
     }
 
     if (save_now) vtk_idx++;

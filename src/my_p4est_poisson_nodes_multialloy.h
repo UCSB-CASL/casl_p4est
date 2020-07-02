@@ -277,6 +277,7 @@ private:
   vec_and_ptr_t bc_error_;
 
   double bc_error_max_;
+  double bc_error_avg_;
   double velo_max_;
 
   void initialize_solvers();
@@ -300,8 +301,9 @@ private:
 
 public:
   my_p4est_poisson_nodes_mls_t* get_solver_temp() { return solver_temp_; }
-  int solve(Vec tl, Vec ts, Vec c[], Vec c0d[], Vec bc_error, double &bc_error_max, bool use_non_zero_guess = false,
-            std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL,
+  int solve(Vec tl, Vec ts, Vec c[], Vec c0d[], bool use_non_zero_guess = false,
+            Vec bc_error = NULL, double *bc_error_max = NULL, double *bc_error_avg = NULL,
+            std::vector<int> *num_pdes = NULL, std::vector<double> *bc_error_max_all = NULL, std::vector<double> *bc_error_avg_all = NULL,
             Vec psi_tl=NULL, Vec psi_ts=NULL, Vec psi_c[]=NULL);
 private:
 
