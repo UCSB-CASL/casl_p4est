@@ -3506,6 +3506,44 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
 }
 
+void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
+                       p4est_ghost_t* ghost, my_p4est_node_neighbors_t* ngbd,
+                       int out_idx, int grid_res_iter,
+                       vec_and_ptr_t phi, vec_and_ptr_t phi_cylinder,
+                       vec_and_ptr_t T_l_n,vec_and_ptr_t T_s_n,
+                       vec_and_ptr_dim_t v_interface,
+                       vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity){
+  int mpi_comm = p4est->mpicomm;
+  PetscPrintf(mpi_comm,"Saving to vtk... \n");
+
+  char output[1000];
+  if(save_coupled_fields){
+      const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
+      if(!out_dir_coupled){
+          throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
+        }
+
+     if(example_ !=COUPLED_PROBLEM_EXAMPLE){
+        // Create the cylinder just for visualization purposes, then destroy after saving
+        phi_cylinder.create(p4est,nodes);
+        sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+
+        sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+        save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+
+        phi_cylinder.destroy();
+      }
+  }
+  if(save_navier_stokes){
+      const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
+      if(example_ != NS_GIBOU_EXAMPLE){
+        sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+        save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
+      }
+    }
+  if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
+
+};
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
 // --------------------------------------------------------------------------------------------------------------
@@ -4438,6 +4476,19 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     for (tn=tstart;tn<tfinal; tn+=dt, tstep++){
 //    tn=tstart;
+    // Do initial step to get the interface at tn
+
+    // Extend fields:
+
+    // Save initial time:
+
+    // Compute v
+
+    // Advect to get phi_n
+
+
+
+//    tn+=dt;
 //    while(tn+dt<tfinal){ // trying something
       // ------------------------------------------------------------
       // Print iteration information:
@@ -4597,34 +4648,38 @@ int main(int argc, char** argv) {
 
         // Save to VTK if we are saving this timestep:
         if(are_we_saving){
-          PetscPrintf(mpi.comm(),"Saving to vtk... \n");
+          save_fields_to_vtk(p4est,nodes,ghost,ngbd,out_idx,grid_res_iter,
+                             phi,phi_cylinder,T_l_n,T_s_n,
+                             v_interface,
+                             v_n,press_nodes,vorticity);
+//          PetscPrintf(mpi.comm(),"Saving to vtk... \n");
 
-          char output[1000];
-          if(save_coupled_fields){
-              const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
-              if(!out_dir_coupled){
-                  throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
-                }
+//          char output[1000];
+//          if(save_coupled_fields){
+//              const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
+//              if(!out_dir_coupled){
+//                  throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
+//                }
 
-             if(example_ !=COUPLED_PROBLEM_EXAMPLE){
-                // Create the cylinder just for visualization purposes, then destroy after saving
-                phi_cylinder.create(p4est,nodes);
-                sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+//             if(example_ !=COUPLED_PROBLEM_EXAMPLE){
+//                // Create the cylinder just for visualization purposes, then destroy after saving
+//                phi_cylinder.create(p4est,nodes);
+//                sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
 
-                sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-                save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+//                sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+//                save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
 
-                phi_cylinder.destroy();
-              }
-          }
-          if(save_navier_stokes){
-              const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
-              if(example_ != NS_GIBOU_EXAMPLE){
-                sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-                save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
-              }
-            }
-          if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
+//                phi_cylinder.destroy();
+//              }
+//          }
+//          if(save_navier_stokes){
+//              const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
+//              if(example_ != NS_GIBOU_EXAMPLE){
+//                sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+//                save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
+//              }
+//            }
+//          if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
 
         } // end of if "are we saving"
 
