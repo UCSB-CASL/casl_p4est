@@ -11,4 +11,4 @@ HEADERS += \
     $$PARCASL/examples/scalar_jump_tests/scalar_tests.h
 
 #include(../../qmake/libparcasl.pri)
-include(../../qmake/libparcasl_xgfm.pri)
+include(../../qmake/libparcasl_poisson_jump_cells.pri)

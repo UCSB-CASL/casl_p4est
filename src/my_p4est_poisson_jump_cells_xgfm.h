@@ -1,5 +1,5 @@
-#ifndef MY_P4EST_XGFM_CELLS_H
-#define MY_P4EST_XGFM_CELLS_H
+#ifndef MY_P4EST_POISSON_JUMP_CELLS_XGFM_H
+#define MY_P4EST_POISSON_JUMP_CELLS_XGFM_H
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_poisson_jump_cells.h>
@@ -9,7 +9,7 @@
 
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 
-class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
+class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
 {
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec residual;   // cell-sampled, residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_of_interface_defined_values)
@@ -20,7 +20,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
   class solver_monitor_t {
-    friend class my_p4est_xgfm_cells_t;
+    friend class my_p4est_poisson_jump_cells_xgfm_t;
     typedef struct
     {
       PetscInt n_ksp_iterations;
@@ -31,7 +31,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     std::vector<solver_iteration_log> logger;
   public:
     void clear() { logger.clear(); }
-    void log_iteration(const double& max_correction, const my_p4est_xgfm_cells_t* solver)
+    void log_iteration(const double& max_correction, const my_p4est_poisson_jump_cells_xgfm_t* solver)
     {
       PetscErrorCode ierr;
       solver_iteration_log log_entry;
@@ -101,7 +101,7 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
     }
 
     inline double operator()(const double* extension_n_p, // input for regular neighbor terms (same side of the interface)
-                             const double* solution_p, const double* current_extension_p, my_p4est_xgfm_cells_t& solver, // input for evaluating interface-defined values
+                             const double* solution_p, const double* current_extension_p, my_p4est_poisson_jump_cells_xgfm_t& solver, // input for evaluating interface-defined values
                              double& max_correction_in_band) const // inout control parameter
     {
       double increment = regular_terms(extension_n_p);
@@ -136,8 +136,8 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
 
 
   // disallow copy ctr and copy assignment
-  my_p4est_xgfm_cells_t(const my_p4est_xgfm_cells_t& other);
-  my_p4est_xgfm_cells_t& operator=(const my_p4est_xgfm_cells_t& other);
+  my_p4est_poisson_jump_cells_xgfm_t(const my_p4est_poisson_jump_cells_xgfm_t& other);
+  my_p4est_poisson_jump_cells_xgfm_t& operator=(const my_p4est_poisson_jump_cells_xgfm_t& other);
 
   // preallocation-related
   void get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
@@ -212,8 +212,8 @@ class my_p4est_xgfm_cells_t : public my_p4est_poisson_jump_cells_t
   double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const;
 
 public:
-  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
-  ~my_p4est_xgfm_cells_t();
+  my_p4est_poisson_jump_cells_xgfm_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
+  ~my_p4est_poisson_jump_cells_xgfm_t();
 
   inline void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
   {
@@ -300,5 +300,5 @@ public:
 
 };
 
-#endif // MY_P4EST_XGFM_CELLS_H
+#endif // MY_P4EST_POISSON_JUMP_CELLS_XGFM_H
 

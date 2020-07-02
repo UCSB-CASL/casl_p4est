@@ -2,12 +2,12 @@
 #ifdef P4_TO_P8
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_xgfm_cells.h>
+#include <src/my_p8est_poisson_jump_cells_xgfm.h>
 #include <src/my_p8est_poisson_jump_cells_fv.h>
 #else
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_xgfm_cells.h>
+#include <src/my_p4est_poisson_jump_cells_xgfm.h>
 #include <src/my_p4est_poisson_jump_cells_fv.h>
 #endif
 
@@ -19,14 +19,14 @@ using namespace std;
 #undef MAX
 
 const static string main_description =
-    string("In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n")
-    + string("across an irregular interface. \n")
+    string("In this example, we test the different solvers developed for cell-sampled scalar Poisson problems with \n")
+    + string("discontinuities across an irregular interface. \n")
     + string("The user can choose from several test cases (described in the list of possible 'test'), set various \n")
     + string("Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n")
-    + string("the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n")
-    + string("can be saved in vtk format as well and the order of accuracy for the localization of interface points\n")
-    + string("based on the levelset values can be chosen between 1 and 2. \n")
-    + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n");
+    + string("the number of trees long every Cartesian direction, in the macromesh and, most importantly, choose the\n")
+    + string("solvers to be tested (possible choices are 'GFM', 'xGFM' and/or 'FV'). Results and illustration data \n")
+    + string("can be saved in vtk format as well. \n")
+    + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018 and Summer 2020\n");
 
 const int default_lmin = 3;
 const int default_lmax = 4;
@@ -57,7 +57,7 @@ const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_
 enum solver_tag {
   GFM   = 0, // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
   xGFM  = 1, // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
-  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions onCartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
+  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
 };
 
 std::string convert_to_string(const solver_tag& tag)
@@ -395,7 +395,7 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
   for (size_t k = 0; k < convergence_anlayzers.size(); ++k) {
     my_p4est_poisson_jump_cells_t* jump_solver = convergence_anlayzers[k].jump_cell_solver;
-    my_p4est_xgfm_cells_t* xgfm_solver = dynamic_cast<my_p4est_xgfm_cells_t*>(jump_solver);
+    my_p4est_poisson_jump_cells_xgfm_t* xgfm_solver = dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(jump_solver);
 
     const string name_extension = std::string("_") + convert_to_string(convergence_anlayzers[k].tag);
     P4EST_ASSERT((xgfm_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) == NULL) || (xgfm_solver == NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) != NULL));
@@ -856,8 +856,6 @@ int main (int argc, char* argv[])
   for (size_t k = 0; k < solvers_to_test.size(); ++k)
     solver_analyses.push_back(convergence_analyzer_for_jump_cell_solver_t(solvers_to_test[k]));
 
-
-
   parStopWatch watch, watch_global;
   watch_global.start("Total run time");
 
@@ -883,8 +881,6 @@ int main (int argc, char* argv[])
   my_p4est_cell_neighbors_t     *ngbd_c     = NULL;
   my_p4est_faces_t              *faces      = NULL;
   my_p4est_interface_manager_t  *interface_manager = NULL;
-
-
 
   for(int iter = 0; iter < ngrids; ++iter)
   {
@@ -945,7 +941,7 @@ int main (int argc, char* argv[])
       case GFM:
       case xGFM:
       {
-        my_p4est_xgfm_cells_t *solver = new my_p4est_xgfm_cells_t(ngbd_c, nodes);
+        my_p4est_poisson_jump_cells_xgfm_t *solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes);
         solver->activate_xGFM_corrections(solver_analyses[k].tag == xGFM, track_xgfm_residuals_and_corrections);
         solver_analyses[k].jump_cell_solver = solver;
         interface_manager->clear_all_FD_interface_neighbors(); // for representative timing, if storing the maps
@@ -971,7 +967,7 @@ int main (int argc, char* argv[])
       jump_solver.set_rhs(sharp_rhs_minus, sharp_rhs_plus);
 
       watch.start("Total time:");
-      KSPType ksp_solver = (dynamic_cast<my_p4est_xgfm_cells_t*>(&jump_solver) != NULL ? KSPCG : KSPBCGS);
+      KSPType ksp_solver = (dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(&jump_solver) != NULL ? KSPCG : KSPBCGS);
       jump_solver.solve_for_sharp_solution(ksp_solver, PCHYPRE);
       watch.stop(); watch.read_duration();
 

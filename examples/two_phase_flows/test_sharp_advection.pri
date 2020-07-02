@@ -84,6 +84,9 @@ HEADERS += \
   $$PARCASL/src/my_p4est_node_neighbors.h \
   $$PARCASL/src/my_p4est_poisson_cells.h \
   $$PARCASL/src/my_p4est_poisson_faces.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_fv.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.h \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p4est_refine_coarsen.h \
   $$PARCASL/src/my_p4est_semi_lagrangian.h \
@@ -96,8 +99,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_tools.h \
   $$PARCASL/src/voronoi2D.h \
   $$PARCASL/src/my_p4est_save_load.h \
-  $$PARCASL/src/my_p4est_two_phase_flows.h \
-  $$PARCASL/src/my_p4est_xgfm_cells.h
+  $$PARCASL/src/my_p4est_two_phase_flows.h
 
 SOURCES += \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
@@ -114,6 +116,9 @@ SOURCES += \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_fv.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.cpp \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p4est_refine_coarsen.cpp \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
@@ -126,8 +131,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/voronoi2D.cpp \
   $$PARCASL/src/my_p4est_save_load.cpp \
-  $$PARCASL/src/my_p4est_two_phase_flows.cpp \
-  $$PARCASL/src/my_p4est_xgfm_cells.cpp
+  $$PARCASL/src/my_p4est_two_phase_flows.cpp
 
 # headers-only stuff
 HEADERS += \
@@ -151,6 +155,9 @@ HEADERS += \
   $$PARCASL/src/my_p8est_node_neighbors.h \
   $$PARCASL/src/my_p8est_poisson_cells.h \
   $$PARCASL/src/my_p8est_poisson_faces.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_fv.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.h \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p8est_refine_coarsen.h \
   $$PARCASL/src/my_p8est_semi_lagrangian.h \
@@ -163,8 +170,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_tools.h \
   $$PARCASL/src/voronoi3D.h \
   $$PARCASL/src/my_p8est_save_load.h \
-  $$PARCASL/src/my_p8est_two_phase_flows.h \
-  $$PARCASL/src/my_p8est_xgfm_cells.h
+  $$PARCASL/src/my_p8est_two_phase_flows.h
 
 SOURCES += \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
@@ -181,6 +187,9 @@ SOURCES += \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_fv.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.cpp \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \
   $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
@@ -193,8 +202,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/voronoi3D.cpp \
   $$PARCASL/src/my_p8est_save_load.cpp \
-  $$PARCASL/src/my_p8est_two_phase_flows.cpp \
-  $$PARCASL/src/my_p8est_xgfm_cells.cpp
+  $$PARCASL/src/my_p8est_two_phase_flows.cpp
 
 # headers-only stuff
 HEADERS += \

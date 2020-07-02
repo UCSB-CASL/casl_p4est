@@ -1,7 +1,7 @@
 #ifdef P4_TO_P8
-#include "my_p8est_xgfm_cells.h"
+#include "my_p8est_poisson_jump_cells_xgfm.h"
 #else
-#include "my_p4est_xgfm_cells.h"
+#include "my_p4est_poisson_jump_cells_xgfm.h"
 #endif
 
 // logging variables -- defined in src/petsc_logging.cpp
@@ -11,12 +11,12 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-extern PetscLogEvent log_my_p4est_xgfm_cells_solve_for_sharp_solution;
-extern PetscLogEvent log_my_p4est_xgfm_cells_update_extension_of_interface_values;
-extern PetscLogEvent log_my_p4est_xgfm_cells_update_rhs_and_residual;
+extern PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution;
+extern PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values;
+extern PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual;
 #endif
 
-my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t* nodes_)
+my_p4est_poisson_jump_cells_xgfm_t::my_p4est_poisson_jump_cells_xgfm_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t* nodes_)
   : my_p4est_poisson_jump_cells_t (ngbd_c, nodes_), activate_xGFM(true) // default behavior is to activate the xGFM corrections
 {
   xGFM_absolute_accuracy_threshold  = 1e-8;   // default value
@@ -31,7 +31,7 @@ my_p4est_xgfm_cells_t::my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ng
   print_residuals_and_corrections_with_solve_info = false;
 }
 
-my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
+my_p4est_poisson_jump_cells_xgfm_t::~my_p4est_poisson_jump_cells_xgfm_t()
 {
   PetscErrorCode ierr;
   if (extension != NULL)  { ierr = VecDestroy(extension); CHKERRXX(ierr); }
@@ -42,7 +42,7 @@ my_p4est_xgfm_cells_t::~my_p4est_xgfm_cells_t()
     delete interp_grad_jump;
 }
 
-void my_p4est_xgfm_cells_t::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+void my_p4est_poisson_jump_cells_xgfm_t::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                                                PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const
 {
   const p4est_tree_t *tree  = p4est_tree_array_index(p4est->trees, tree_idx);
@@ -72,7 +72,7 @@ void my_p4est_xgfm_cells_t::get_numbers_of_cells_involved_in_equation_for_quad(c
   return;
 }
 
-void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int* nullspace_contains_constant_vector)
+void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int* nullspace_contains_constant_vector)
 {
   PetscErrorCode ierr;
   const double *user_rhs_minus_p  = NULL;
@@ -87,7 +87,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
     if(user_rhs_plus != NULL){
       ierr = VecGetArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr); }
     if(user_vstar_minus != NULL || user_vstar_plus != NULL)
-      throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad : not able to handle vstar as rhs, yet --> implement that now, please");
+      throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad : not able to handle vstar as rhs, yet --> implement that now, please");
     if(extension != NULL) {
       ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr); }
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
@@ -129,7 +129,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
 #ifdef CASL_THROWS
       const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : 1);
       if(signs_of_phi_are_different(sgn_quad, sgn_face))
-        throw std::invalid_argument("my_p4est_xgfm_cells_t::build_discretization_for_quad() : a wall-cell is crossed by the interface, this is not handled yet...");
+        throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad() : a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
       switch(bc->wallType(xyz_face))
       {
@@ -152,7 +152,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
       }
         break;
       default:
-        throw std::invalid_argument("my_p4est_xgfm_cells_t::build_discretization_for_quad() : unknown boundary condition on a wall.");
+        throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad() : unknown boundary condition on a wall.");
       }
       continue;
     }
@@ -172,9 +172,9 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
     {
       /* If no one-side, we assume that the interface is tesselated with uniform finest grid level */
       if(direct_neighbors.size() != 1)
-        throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad(): did not find one single direct neighbor for a cell center across the interface. \n Is your grid uniform across the interface?");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): did not find one single direct neighbor for a cell center across the interface. \n Is your grid uniform across the interface?");
       if(quad->level != ((splitting_criteria_t*) p4est->user_pointer)->max_lvl || quad->level != direct_neighbors.begin()->level)
-        throw std::runtime_error("my_p4est_xgfm_cells_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
       const FD_interface_neighbor& cell_interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
       const double& mu_across = (sgn_quad > 0 ? mu_minus : mu_plus);
@@ -208,7 +208,7 @@ void my_p4est_xgfm_cells_t::build_discretization_for_quad(const p4est_locidx_t& 
   return;
 }
 
-const xgfm_jump& my_p4est_xgfm_cells_t::get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
+const xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
 {
   couple_of_dofs quad_couple({quad_idx, neighbor_quad_idx});
   map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
@@ -239,7 +239,7 @@ const xgfm_jump& my_p4est_xgfm_cells_t::get_xgfm_jump_between_quads(const p4est_
   return xgfm_jump_between_quads.at(quad_couple);
 }
 
-linear_combination_of_dof_t my_p4est_xgfm_cells_t::build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
+linear_combination_of_dof_t my_p4est_poisson_jump_cells_xgfm_t::build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
                                                                                                      const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const
 {
   const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
@@ -260,10 +260,10 @@ linear_combination_of_dof_t my_p4est_xgfm_cells_t::build_xgfm_jump_flux_correcti
   return xgfm_flux_correction;
 }
 
-void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)
+void my_p4est_poisson_jump_cells_xgfm_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   // make sure the problem is fully defined
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
@@ -311,12 +311,12 @@ void my_p4est_xgfm_cells_t::solve_for_sharp_solution(const KSPType& ksp_type, co
   }
 
   ierr = KSPSetInitialGuessNonzero(ksp, saved_ksp_original_guess_flag); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
 }
 
-bool my_p4est_xgfm_cells_t::update_solution(Vec &former_solution)
+bool my_p4est_poisson_jump_cells_xgfm_t::update_solution(Vec &former_solution)
 {
   PetscErrorCode ierr;
 
@@ -339,10 +339,10 @@ bool my_p4est_xgfm_cells_t::update_solution(Vec &former_solution)
   return nksp_iteration != 0; // if the ksp solver did at least one iteration, there was an update
 }
 
-void my_p4est_xgfm_cells_t::update_extension_of_interface_values(Vec& former_extension, const double& threshold, const uint& niter_max)
+void my_p4est_poisson_jump_cells_xgfm_t::update_extension_of_interface_values(Vec& former_extension, const double& threshold, const uint& niter_max)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(interface_is_set() && jumps_have_been_set() && threshold > EPS && niter_max > 0);
 
   const double *solution_p;
@@ -412,15 +412,15 @@ void my_p4est_xgfm_cells_t::update_extension_of_interface_values(Vec& former_ext
   former_extension  = extension;
   extension         = extension_n;
 
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return;
 }
 
-void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec &former_rhs, Vec &former_residual)
+void my_p4est_poisson_jump_cells_xgfm_t::update_rhs_and_residual(Vec &former_rhs, Vec &former_residual)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_xgfm_cells_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
   P4EST_ASSERT(solution != NULL && rhs != NULL);
 
   // update the rhs in the cells that are affected by the new jumps in flux components (because of new extension)
@@ -464,12 +464,12 @@ void my_p4est_xgfm_cells_t::update_rhs_and_residual(Vec &former_rhs, Vec &former
   ierr = VecAXPBY(residual, -1.0, 0.0, rhs); CHKERRXX(ierr);
   ierr = MatMultAdd(A, solution, residual, residual); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_my_p4est_xgfm_cells_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return;
 }
 
-double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension, Vec former_rhs, Vec former_residual)
+double my_p4est_poisson_jump_cells_xgfm_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution, Vec former_extension, Vec former_rhs, Vec former_residual)
 {
   P4EST_ASSERT(solution != NULL && extension != NULL && rhs !=NULL && residual != NULL);
   if(former_residual == NULL)
@@ -523,7 +523,7 @@ double my_p4est_xgfm_cells_t::set_solver_state_minimizing_L2_norm_of_residual(Ve
   return max_correction;
 }
 
-void my_p4est_xgfm_cells_t::initialize_extension(Vec cell_sampled_extension)
+void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension(Vec cell_sampled_extension)
 {
   P4EST_ASSERT(interface_is_set() && jumps_have_been_set());
   PetscErrorCode ierr;
@@ -559,7 +559,7 @@ void my_p4est_xgfm_cells_t::initialize_extension(Vec cell_sampled_extension)
   return;
 }
 
-void my_p4est_xgfm_cells_t::initialize_extension_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                        const double* solution_p, double* extension_p) const
 {
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
@@ -575,8 +575,8 @@ void my_p4est_xgfm_cells_t::initialize_extension_local(const p4est_locidx_t& qua
   return;
 }
 
-const my_p4est_xgfm_cells_t::extension_increment_operator&
-my_p4est_xgfm_cells_t::get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band)
+const my_p4est_poisson_jump_cells_xgfm_t::extension_increment_operator&
+my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double& control_band)
 {
   if(extension_operators_are_stored_and_set)
     return pseudo_time_step_increment_operator[quad_idx];
@@ -645,7 +645,7 @@ my_p4est_xgfm_cells_t::get_extension_increment_operator_for(const p4est_locidx_t
   return pseudo_time_step_operator;
 }
 
-double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
+double my_p4est_poisson_jump_cells_xgfm_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -677,7 +677,7 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
     P4EST_ASSERT(f_idx != NO_VELOCITY);
 #ifdef CASL_THROWS
     if(signs_of_phi_are_different(sgn_q, sgn_face))
-      throw std::invalid_argument("my_p4est_xgfm_cells_t::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
     switch(bc->wallType(xyz_face))
     {
@@ -688,7 +688,7 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
       sharp_flux_component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_face*bc->wallValue(xyz_face);
       break;
     default:
-      throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities_local(): unknown boundary condition on a wall.");
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::get_flux_components_and_subtract_them_from_velocities_local(): unknown boundary condition on a wall.");
     }
   }
   else
@@ -741,7 +741,7 @@ double my_p4est_xgfm_cells_t::get_sharp_flux_component_local(const p4est_locidx_
       const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
       map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
       if(it == xgfm_jump_between_quads.end())
-        throw std::runtime_error("my_p4est_xgfm_cells_t::get_sharp_flux_component_local(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::get_sharp_flux_component_local(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
 
       const xgfm_jump& jump_info = it->second;
 

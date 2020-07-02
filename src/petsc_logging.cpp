@@ -82,10 +82,10 @@ PetscLogEvent log_my_p4est_poisson_jump_cells_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_jump_cells_setup_linear_system;
 PetscLogEvent log_my_p4est_poisson_jump_cells_KSPSolve;
 
-// my_p4est_xgfm_cells_t
-PetscLogEvent log_my_p4est_xgfm_cells_solve_for_sharp_solution;
-PetscLogEvent log_my_p4est_xgfm_cells_update_extension_of_interface_values;
-PetscLogEvent log_my_p4est_xgfm_cells_update_rhs_and_residual;
+// my_p4est_poisson_jump_cells_xgfm_t
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution;
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values;
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual;
 
 // my_p4est_poisson_jump_cells_fv_t
 PetscLogEvent log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution;
@@ -280,11 +280,13 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_t::setup_linear_system      ", 0, &log_my_p4est_poisson_jump_cells_setup_linear_system); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_t::solve_linear_system      ", 0, &log_my_p4est_poisson_jump_cells_KSPSolve); CHKERRXX(ierr);
 
-  // my_p4est_xgfm_cells_t
-  ierr = PetscLogEventRegister("my_p4est_xgfm_cells_t::solve_for_sharp_solution         ", 0, &log_my_p4est_xgfm_cells_solve_for_sharp_solution); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_xgfm_cells_t::update_extension_of_interface_values",
-                                                                                           0, &log_my_p4est_xgfm_cells_update_extension_of_interface_values); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_xgfm_cells_t::update_rhs_and_residual          ", 0, &log_my_p4est_xgfm_cells_update_rhs_and_residual); CHKERRXX(ierr);
+  // my_p4est_poisson_jump_cells_xgfm_
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::solve_for_sharp_solution",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::update_extension_of_interface_values",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::update_rhs_and_residual",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual); CHKERRXX(ierr);
 
   // my_p4est_poisson_jump_cells_fv_t
   ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution",

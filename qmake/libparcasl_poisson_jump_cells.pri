@@ -83,6 +83,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_poisson_faces.h \
   $$PARCASL/src/my_p4est_poisson_jump_cells.h \
   $$PARCASL/src/my_p4est_poisson_jump_cells_fv.h \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.h \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.h \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p4est_refine_coarsen.h \
@@ -92,7 +93,6 @@ HEADERS += \
   $$PARCASL/src/my_p4est_log_wrappers.h \
   $$PARCASL/src/my_p4est_nodes.h \
   $$PARCASL/src/my_p4est_tools.h \
-  $$PARCASL/src/my_p4est_xgfm_cells.h \
   $$PARCASL/src/voronoi2D.h
 
 SOURCES += \
@@ -112,6 +112,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_cells_fv.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.cpp \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.cpp \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p4est_refine_coarsen.cpp \
@@ -121,7 +122,6 @@ SOURCES += \
   $$PARCASL/src/my_p4est_log_wrappers.c \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
-  $$PARCASL/src/my_p4est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi2D.cpp
 
 # headers-only stuff
@@ -148,6 +148,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_poisson_faces.h \
   $$PARCASL/src/my_p8est_poisson_jump_cells.h \
   $$PARCASL/src/my_p8est_poisson_jump_cells_fv.h \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.h \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.h \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p8est_refine_coarsen.h \
@@ -157,7 +158,6 @@ HEADERS += \
   $$PARCASL/src/my_p8est_log_wrappers.h \
   $$PARCASL/src/my_p8est_nodes.h \
   $$PARCASL/src/my_p8est_tools.h \
-  $$PARCASL/src/my_p8est_xgfm_cells.h \
   $$PARCASL/src/voronoi3D.h
 
 SOURCES += \
@@ -177,6 +177,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_cells_fv.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.cpp \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.cpp \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \
@@ -186,7 +187,6 @@ SOURCES += \
   $$PARCASL/src/my_p8est_log_wrappers.c \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
-  $$PARCASL/src/my_p8est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi3D.cpp
 
 # headers-only stuff

@@ -802,7 +802,7 @@ double my_p4est_two_phase_flows_t::compute_divergence(p4est_locidx_t quad_idx, p
  * jump_hodge = (dt_n/(alpha*rho))*jump_pressure
  * jump_normal_flux_hodge = (dt_n/(alpha*rho))*jump_normal_flux_pressure = 0.0!
  */
-void my_p4est_two_phase_flows_t::solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp, const PCType pc)
+void my_p4est_two_phase_flows_t::solve_projection(my_p4est_poisson_jump_cells_xgfm_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp, const PCType pc)
 {
   PetscErrorCode ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -847,7 +847,8 @@ void my_p4est_two_phase_flows_t::solve_projection(my_p4est_xgfm_cells_t* &cell_p
   /* solve the linear system */
   if(cell_poisson_jump_solver == NULL)
   {
-    cell_poisson_jump_solver = new my_p4est_xgfm_cells_t(ngbd_c, ngbd_n, fine_ngbd_n, activate_xgfm);
+    cell_poisson_jump_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+    cell_poisson_jump_solver->activate_xGFM_corrections(activate_xgfm);
 
     //    const double *fine_phi_p, *fine_phi_xxyyzz_p, *fine_normal_p, *fine_jump_hodge_p, *fine_jump_normal_flux_hodge_p;
     //    ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);

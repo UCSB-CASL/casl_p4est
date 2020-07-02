@@ -7,7 +7,8 @@
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_interpolation_faces.h>
 #include <src/my_p8est_interpolation_nodes.h>
-#include <src/my_p8est_xgfm_cells.h>
+#include <src/my_p8est_poisson_jump_cells_fv.h>
+#include <src/my_p8est_poisson_jump_cells_xgfm.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/voronoi3D.h>
 #else
@@ -16,7 +17,8 @@
 #include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_interpolation_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/my_p4est_xgfm_cells.h>
+#include <src/my_p4est_poisson_jump_cells_fv.h>
+#include <src/my_p4est_poisson_jump_cells_xgfm.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/voronoi2D.h>
 #endif
@@ -1191,11 +1193,11 @@ public:
 
   void solve_projection(const bool activate_xgfm)
   {
-    my_p4est_xgfm_cells_t* cell_poisson_jump_solver = NULL;
+    my_p4est_poisson_jump_cells_xgfm_t* cell_poisson_jump_solver = NULL;
     solve_projection(cell_poisson_jump_solver, activate_xgfm);
     delete cell_poisson_jump_solver;
   }
-  void solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCSOR /*PCHYPRE*/);
+  void solve_projection(my_p4est_poisson_jump_cells_xgfm_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCSOR /*PCHYPRE*/);
 
   void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = PSEUDO_TIME, const unsigned int& n_iteration = 10, const unsigned char& extrapolation_degree = 1);
   void compute_velocity_at_nodes();

@@ -255,7 +255,7 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
 {
 #ifdef CASL_THROWS
   if(quad_idx >= p4est->local_num_quadrants)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::compute_subvolumes_in_computational_cell(): cannot be called on ghost cells");
+    throw std::invalid_argument("my_p4est_interface_manager_t::compute_subvolumes_in_cell(): cannot be called on ghost cells");
 #endif
   const p4est_tree_t     *tree = p4est_tree_array_index(p4est->trees, tree_idx);
   const p4est_quadrant_t *quad = p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
