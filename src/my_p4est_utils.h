@@ -1454,7 +1454,7 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
   return (p4est_indep_t*) sc_array_index(&nodes->indep_nodes, n);
 }
 
-inline const p4est_quadrant* fetch_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline const p4est_quadrant_t* fetch_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   if(quad_idx < p4est->local_num_quadrants)
   {
@@ -2871,7 +2871,7 @@ inline void reconstruct_cube(cube2_mls_t &cube, const std::vector<double> &phi, 
   cube.reconstruct(phi, acn, clr);
 }
 
-inline void reconstruct_cube(cube3_mls_t &cube, std::vector<double> &phi, std::vector<mls_opn_t> &opn, std::vector<int> &clr)
+inline void reconstruct_cube(cube3_mls_t &cube, const std::vector<double> &phi, const std::vector<mls_opn_t> &opn, const std::vector<int> &clr)
 {
   std::vector<action_t> acn;
 

@@ -39,7 +39,7 @@ public:
   cube3_mls_t(double xyz_min[], double xyz_max[], int mnk[], int order)
   { initialize(xyz_min, xyz_max, mnk, order); }
 
-  void initialize (double xyz_min[], double xyz_max[], int mnk[], int order);
+  void initialize (const double xyz_min[], const double xyz_max[], const int mnk[], const int& order);
 
   ~cube3_mls_t();
 
@@ -49,7 +49,7 @@ public:
 
   inline void set_check_for_curvature(bool value) { check_for_curvature_ = value; }
 
-  void reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void reconstruct(const std::vector<double> &phi, const std::vector<action_t> &acn, const std::vector<int> &clr);
 
   void quadrature_over_domain      (                              std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
   void quadrature_over_interface   (int num0,                     std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);

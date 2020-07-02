@@ -407,7 +407,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
   if(is_quad_crossed)
   {
-    if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !&it_corr_fun->seconis_face_crossed[4] && !is_face_crossed[5]))
+    if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
 
 #ifdef CASL_THROWS
