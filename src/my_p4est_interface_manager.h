@@ -395,27 +395,19 @@ public:
     return;
   }
 
-  inline double signed_distance_at_point(const double *xyz) const
+  inline double signed_distance_and_projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
   {
-    double phi = phi_at_point(xyz);
     double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
     const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2])));
     if(mag_grad_phi < EPS)
-      throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the signed distance to the interface for a point where the gradient of phi is ill-defined");
-    return phi/mag_grad_phi;
-  }
-
-  inline void projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
-  {
-    const double phi = phi_at_point(xyz);
-    double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
-    const double sqr_mag_grad_phi = SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2]));
-    if(sqr_mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the projection onto the interface for a point where the gradient of phi is ill-defined");
 
+    const double signed_distance = phi_at_point(xyz)/mag_grad_phi;
+
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      xyz_projected[dim] = xyz[dim] - phi*grad_phi_local[dim]/sqr_mag_grad_phi;
-    return;
+      xyz_projected[dim] = xyz[dim] - signed_distance*grad_phi_local[dim]/mag_grad_phi;
+
+    return signed_distance;
   }
 
   /*!
