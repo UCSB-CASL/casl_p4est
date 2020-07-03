@@ -254,16 +254,17 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
         first_degree_neighbors_in_fast_side.insert(*it);
     }
 
-    const bool use_slow_side = (first_degree_neighbors_in_slow_side.size() >= 1 + P4EST_DIM); // --> take the slow side if possible
-    mu_across_normal_derivative                                     = (use_slow_side ? mu_fast : mu_slow);
-    const set_of_neighboring_quadrants& one_sided_neighbors_to_use  = (use_slow_side ? first_degree_neighbors_in_slow_side : first_degree_neighbors_in_fast_side);
-    P4EST_ASSERT(one_sided_neighbors_to_use.size() >= 1 + P4EST_DIM);
-
+    bool use_slow_side = true; // --> take the slow side if possible
     const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
-
     linear_combination_of_dof_t lsqr_cell_grad_operator_on_slow_side_at_projected_point[P4EST_DIM];
-    get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, one_sided_neighbors_to_use, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point);
+    try {
+      get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_slow_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point);
+    } catch (std::exception e) { // it couldn't be done on the slow side
+      use_slow_side = false;
+      get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point); // this should work if the other didn't (hopefully, otherwise, we're screwed)
+    }
 
+    mu_across_normal_derivative = (use_slow_side ? mu_fast : mu_slow);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       one_sided_normal_derivative_at_projected_point->add_operator_on_same_dofs(lsqr_cell_grad_operator_on_slow_side_at_projected_point[dim], normal_at_projected_point[dim]);
 
