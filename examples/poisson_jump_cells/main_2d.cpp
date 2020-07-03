@@ -847,7 +847,7 @@ int main (int argc, char* argv[])
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
 
-  std::vector<solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); // default_solvers_to_test.push_back(FV);
+  std::vector<solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
   const std::vector<solver_tag> solvers_to_test = cmd.get<std::vector<solver_tag> >("solver", default_solvers_to_test);
   if(solvers_to_test.size() > 3)
     throw std::invalid_argument("main for testing my_p4est_poisson_jump_cells : do not duplicate the solvers to test, that is not allowed...");
