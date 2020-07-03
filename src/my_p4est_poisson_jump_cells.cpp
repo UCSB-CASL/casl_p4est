@@ -15,6 +15,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   add_diag_minus = add_diag_plus = 0.0;
   user_rhs_minus = user_rhs_plus = NULL;
   user_vstar_minus = user_vstar_plus = NULL;
+  interp_jump_vstar = NULL;
   jump_u = jump_normal_flux_u = NULL;
   user_initial_guess = NULL;
   solution = rhs = NULL;
@@ -124,7 +125,8 @@ void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_
 
 linear_combination_of_dof_t
 my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
-                                                                             set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const
+                                                                             set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side,
+                                                                             linear_combination_of_dof_t *vstar_on_face_for_stable_projection) const
 {
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants);
   const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
@@ -172,10 +174,15 @@ my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(con
   discretization_distance *= tree_dimensions[oriented_dir/2];
 
   linear_combination_of_dof_t local_derivative_operator;
+  if(vstar_on_face_for_stable_projection != NULL)
+    vstar_on_face_for_stable_projection->clear();
   for (set_of_neighboring_quadrants::const_iterator it = minor_quads->begin(); it != minor_quads->end(); ++it)
   {
     const double surface_ratio = pow((double) P4EST_QUADRANT_LEN(it->level)/(double) P4EST_ROOT_LEN, (double) P4EST_DIM - 1)/shared_surface;
     local_derivative_operator.add_term(it->p.piggy3.local_num, (major_quad_is_leading ? -1.0 : +1.0)*surface_ratio/discretization_distance);
+    if(vstar_on_face_for_stable_projection != NULL)
+      vstar_on_face_for_stable_projection->add_term(interface_manager->get_faces()->q2f(it->p.piggy3.local_num, oriented_dir + (quad_is_major ? (oriented_dir%2 == 0 ? 1 : -1) : 0)),
+                                                    pow(2.0, (double)(major_quad.level - it->level)*(P4EST_DIM - 1)));
   }
   local_derivative_operator.add_term((quad_is_major ? quad_idx : major_quad.p.piggy3.local_num), (major_quad_is_leading ? +1.0 : -1.0)/discretization_distance);
 

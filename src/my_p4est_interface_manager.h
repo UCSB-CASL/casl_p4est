@@ -483,6 +483,8 @@ public:
    */
   inline int get_max_level_computational_grid() const { return max_level_p4est; }
 
+  inline const my_p4est_faces_t* get_faces() const { return faces; }
+
 #ifdef DEBUG
   int cell_FD_map_is_consistent_across_procs();
 #endif

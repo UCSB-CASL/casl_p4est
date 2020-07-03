@@ -38,6 +38,7 @@ protected:
   Vec user_rhs_minus, user_rhs_plus;        // cell-sampled rhs of the continuum-level problem --> sharp, cell-sampled value of the continuum value of f defining the rhs as diag*u - div(mu*grad(u)) = f
   // - or sharp, face-sampled values of the two-phase velocity field that needs to be made divergence-free
   Vec *user_vstar_minus, *user_vstar_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
+  const my_p4est_interpolation_nodes_t* interp_jump_vstar; // interpolator to the jump in vstar components --> considered to be 0.0 if not provided
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
@@ -89,7 +90,8 @@ protected:
   }
 
   linear_combination_of_dof_t stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
-                                                                            set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side) const;
+                                                                            set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side,
+                                                                            linear_combination_of_dof_t *vstar_on_face_for_stable_projection = NULL) const;
 
   virtual void build_discretization_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, int *nullspace_contains_constant_vector = NULL) = 0;
   void setup_linear_system();
@@ -149,6 +151,16 @@ public:
     P4EST_ASSERT(VecIsSetForCells(user_rhs_minus_, p4est, ghost, 1, false) && VecIsSetForCells(user_rhs_plus_, p4est, ghost, 1, false));
     user_rhs_minus  = user_rhs_minus_;
     user_rhs_plus   = user_rhs_plus_;
+    rhs_is_set = false;
+  }
+
+  inline void set_vstar(Vec* user_vstar_minus_, Vec* user_vstar_plus_, const my_p4est_interpolation_nodes_t* interp_jump_vstar_ = NULL)
+  {
+    P4EST_ASSERT(!interface_is_set() || (VecsAreSetForFaces(user_vstar_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(user_vstar_plus_, interface_manager->get_faces(), 1)));
+    P4EST_ASSERT(interp_jump_vstar_ == NULL || interp_jump_vstar_->get_blocksize_of_input_fields() == P4EST_DIM);
+    user_vstar_minus  = user_vstar_minus_;
+    user_vstar_plus   = user_vstar_plus_;
+    interp_jump_vstar = interp_jump_vstar_;
     rhs_is_set = false;
   }
 

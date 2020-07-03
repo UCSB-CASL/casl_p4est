@@ -378,17 +378,34 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   PetscErrorCode ierr;
   const double *user_rhs_minus_p  = NULL;
   const double *user_rhs_plus_p   = NULL;
+  const double *user_vstar_minus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+  const double *user_vstar_plus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
   double       *rhs_p             = NULL;
+
+  P4EST_ASSERT((user_rhs_minus == NULL && user_rhs_plus == NULL) || (user_rhs_minus != NULL && user_rhs_plus != NULL));         // can't have one provided but not the other...
+  P4EST_ASSERT((user_vstar_minus == NULL && user_vstar_plus == NULL) || (user_vstar_minus != NULL && user_vstar_plus != NULL)); // can't have one provided but not the other...
+  const bool with_cell_sampled_rhs = user_rhs_minus != NULL && user_rhs_plus != NULL;
+  const bool is_projecting_vstar = user_vstar_minus != NULL && user_vstar_plus != NULL;
+  linear_combination_of_dof_t vstar_on_face;
+  P4EST_ASSERT(!is_projecting_vstar || (ANDD(user_vstar_minus[0] != NULL, user_vstar_minus[1] != NULL, user_vstar_minus[2] != NULL) && ANDD(user_vstar_plus[0] != NULL, user_vstar_plus[1] != NULL, user_vstar_plus[2] != NULL)));
 
   if(!rhs_is_set)
   {
-    if(user_rhs_minus != NULL){
-      ierr = VecGetArrayRead(user_rhs_minus, &user_rhs_minus_p); CHKERRXX(ierr); }
-    if(user_rhs_plus != NULL){
-      ierr = VecGetArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr); }
-    if(user_vstar_minus != NULL || user_vstar_plus != NULL)
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad : not able to handle vstar as rhs, yet --> implement that now, please");
+    if(with_cell_sampled_rhs)
+    {
+      ierr = VecGetArrayRead(user_rhs_minus, &user_rhs_minus_p); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr);
+    }
+    if(is_projecting_vstar)
+    {
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecGetArrayRead(user_vstar_minus[dim], &user_vstar_minus_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(user_vstar_plus[dim], &user_vstar_plus_p[dim]); CHKERRXX(ierr);
+      }
+    }
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
+    // initialize the discretized rhs
+    rhs_p[quad_idx] = 0.0;
   }
 
   const p4est_quadrant_t *quad;
@@ -401,8 +418,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   const double &mu_this_side = (sgn_quad > 0 ? mu_plus : mu_minus);
   const PetscInt quad_gloidx = compute_global_index(quad_idx);
 
-  const my_p4est_finite_volume_t* finite_volume_of_quad                   = NULL;
-  const correction_function_t*    correction_function_of_quad             = NULL;
+  const my_p4est_finite_volume_t* finite_volume_of_quad       = NULL;
+  const correction_function_t*    correction_function_of_quad = NULL;
   bool is_face_crossed[P4EST_FACES];
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
   if(is_quad_crossed)
@@ -433,20 +450,34 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     if(nullspace_contains_constant_vector != NULL)
       *nullspace_contains_constant_vector = 0;
   }
+
+  // bulk terms (volumetric terms and integral of fluxes across the interface) coming into the discretized rhs
   if(!rhs_is_set)
   {
+    if(with_cell_sampled_rhs)
+    {
+      if(is_quad_crossed)
+        rhs_p[quad_idx] += finite_volume_of_quad->volume_in_negative_domain()*user_rhs_minus_p[quad_idx] + finite_volume_of_quad->volume_in_positive_domain()*user_rhs_plus_p[quad_idx];
+      else
+        rhs_p[quad_idx] += (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
+    }
     if(is_quad_crossed)
     {
-      P4EST_ASSERT(finite_volume_of_quad->interfaces.size() <= 1); // could be 0.0 if only one point is 0.0 and the rest are > 0.0
-      rhs_p[quad_idx] = finite_volume_of_quad->volume_in_negative_domain()*user_rhs_minus_p[quad_idx] + finite_volume_of_quad->volume_in_positive_domain()*user_rhs_plus_p[quad_idx];
+      P4EST_ASSERT(finite_volume_of_quad->interfaces.size() <= 1); // could be 0 if only one point is 0.0 and the rest are > 0.0, but we are not dealing yet with > 1 interfaces...
       for (size_t k = 0; k < finite_volume_of_quad->interfaces.size(); ++k)
       {
         const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + finite_volume_of_quad->interfaces[k].centroid[0], xyz_quad[1] + finite_volume_of_quad->interfaces[k].centroid[1], xyz_quad[2] + finite_volume_of_quad->interfaces[k].centroid[2])};
         rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
+        if(interp_jump_vstar != NULL) // --> 0.0 if not given
+        {
+          double jump_vstar[P4EST_DIM];     (*interp_jump_vstar)(xyz_interface_quadrature, jump_vstar);
+          double normal_vector[P4EST_DIM];  interface_manager->normal_vector_at_point(xyz_interface_quadrature, normal_vector);
+          const double jump_vstar_dot_normal = SUMD(jump_vstar[0]*normal_vector[0], jump_vstar[1]*normal_vector[1], jump_vstar[2]*normal_vector[2]);
+
+          rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*jump_vstar_dot_normal;
+        }
       }
     }
-    else
-      rhs_p[quad_idx] = (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
   }
 
   for(u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
@@ -463,6 +494,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_quad, sgn_quad))
         throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : a wall-face is crossed by the interface, this is not handled yet...");
 #endif
+      if(!rhs_is_set && is_projecting_vstar)
+      {
+        const p4est_locidx_t f_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
+        const double* &vstar_to_consider  (sgn_quad < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+        rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*full_face_area*vstar_to_consider[f_idx];
+      }
+
       switch(bc->wallType(xyz_face))
       {
       case DIRICHLET:
@@ -491,7 +529,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     // not a wall in that direction
     set_of_neighboring_quadrants direct_neighbors;
     bool are_all_cell_centers_on_same_side;
-    linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side);
+    linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side, (is_projecting_vstar ? &vstar_on_face : NULL));
     /* Two possible scenarii :
      * 1) two local equations to consider (and sum up), which happens if
      *    a) the face is crossed --> no trivial (i.e. identically 0.0) term in either equation to consider;
@@ -554,14 +592,22 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       // make sure we have access to all we need right away:
       P4EST_ASSERT((is_face_crossed[oriented_dir] && finite_volume_of_quad != NULL && correction_function_of_quad != NULL && correction_function_of_direct_neighbor != NULL)
                    || (!is_face_crossed[oriented_dir] && (!signs_of_phi_are_different(sgn_quad, sgn_face) || correction_function_of_quad != NULL) && (!signs_of_phi_are_different(sgn_face, sgn_direct_neighbor) || correction_function_of_direct_neighbor != NULL)));
+      const p4est_locidx_t face_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
       for (char sgn_eqn = (is_face_crossed[oriented_dir] ? -1 : sgn_face); sgn_eqn < (is_face_crossed[oriented_dir] ? 1 : sgn_face) + 1; sgn_eqn += 2) { // sum up all nontrivial equation terms
         const double face_area = (is_face_crossed[oriented_dir] ? (sgn_eqn < 0 ? finite_volume_of_quad->face_area_in_negative_domain(oriented_dir) : finite_volume_of_quad->face_area_in_positive_domain(oriented_dir)) : full_face_area);
+
+        if(!rhs_is_set && is_projecting_vstar)
+        {
+          const double* &vstar_to_consider = (sgn_eqn < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+          rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_to_consider[face_idx]*face_area;
+        }
 
         // loop over the two terms, play with references, +/-1 prefactor for this quad/direct neighbor and that's it
         for (u_char dof = 0; dof < 2; ++dof) { // dof == 0 : this quadrant; dof == 1 : the direct neighbor
           const double coeff_dof                = (dof == 0 ? +1.0 : -1.0)*(sgn_eqn < 0 ? mu_minus : mu_plus)*face_area/dxyz_min[oriented_dir/2];
           const p4est_gloidx_t& global_idx_dof  = (dof == 0 ? quad_gloidx : compute_global_index(direct_neighbor.p.piggy3.local_num));
           const char& sgn_dof                   = (dof == 0 ? sgn_quad : sgn_direct_neighbor);
+
 
           if(!matrix_is_set){
             ierr = MatSetValue(A, quad_gloidx, global_idx_dof, coeff_dof, ADD_VALUES); CHKERRXX(ierr); }
@@ -588,15 +634,28 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
           ierr = MatSetValue(A, quad_gloidx, compute_global_index(stable_projection_derivative_operator[k].dof_idx),
                              (oriented_dir%2 == 1 ? -1.0 : +1.0)*mu_this_side*full_face_area*stable_projection_derivative_operator[k].weight, ADD_VALUES); CHKERRXX(ierr);
         }
+      if(!rhs_is_set && is_projecting_vstar)
+      {
+        const double* &vstar_dir_to_consider = (sgn_quad < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+        rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_on_face(vstar_dir_to_consider)*full_face_area;
+      }
     }
   }
 
   if(!rhs_is_set)
   {
-    if(user_rhs_minus_p != NULL){
-      ierr = VecRestoreArrayRead(user_rhs_minus, &user_rhs_minus_p); CHKERRXX(ierr); }
-    if(user_rhs_plus_p != NULL){
-      ierr = VecRestoreArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr); }
+    if(with_cell_sampled_rhs)
+    {
+      ierr = VecRestoreArrayRead(user_rhs_minus, &user_rhs_minus_p);  CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(user_rhs_plus, &user_rhs_plus_p);    CHKERRXX(ierr);
+    }
+    if(is_projecting_vstar)
+    {
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecRestoreArrayRead(user_vstar_minus[dim], &user_vstar_minus_p[dim]);  CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(user_vstar_plus[dim], &user_vstar_plus_p[dim]);    CHKERRXX(ierr);
+      }
+    }
 
     ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
   }
