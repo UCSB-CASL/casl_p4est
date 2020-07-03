@@ -2027,7 +2027,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
 inline bool is_periodic(const p4est_connectivity_t *const conn, const u_char & dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
-  P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
+  P4EST_ASSERT (dir < P4EST_DIM);
 
   const u_char face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
