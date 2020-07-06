@@ -409,6 +409,7 @@ void my_p4est_multialloy_t::compute_geometric_properties_contr()
 void my_p4est_multialloy_t::compute_velocity()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
+  PetscPrintf(p4est_->mpicomm, "Computing velocity... ");
 
   // TODO: implement a smarter extend from interface
   vec_and_ptr_dim_t c0_dd(front_normal_.vec);
@@ -530,6 +531,8 @@ void my_p4est_multialloy_t::compute_velocity()
     ones.destroy();
   }
 
+  PetscPrintf(p4est_->mpicomm, "done!\n");
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -542,6 +545,7 @@ void my_p4est_multialloy_t::compute_dt()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  PetscPrintf(p4est_->mpicomm, "Computing time step: ");
   double velo_norm_max = 0;
   double curvature_max = 0;
 
@@ -576,7 +580,7 @@ void my_p4est_multialloy_t::compute_dt()
 
   double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
 
-  PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
+  PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e done!\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -587,7 +591,7 @@ void my_p4est_multialloy_t::update_grid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  PetscPrintf(p4est_->mpicomm, "Updating grid...\n");
+  PetscPrintf(p4est_->mpicomm, "Updating grid... ");
 
   // advect interface and update p4est
   p4est_t       *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
@@ -609,7 +613,8 @@ void my_p4est_multialloy_t::update_grid()
   /* interpolate the quantities onto the new grid */
   // also shifts n+1 -> n
 
-  PetscPrintf(p4est_->mpicomm, "Transfering data between grids...\n");
+  PetscPrintf(p4est_->mpicomm, "done!\n");
+  PetscPrintf(p4est_->mpicomm, "Transfering data between grids... ");
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
   my_p4est_interpolation_nodes_t interp(ngbd_);
 
@@ -739,6 +744,7 @@ void my_p4est_multialloy_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
+  PetscPrintf(p4est_->mpicomm, "done!\n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
 
   regularize_front();
@@ -765,17 +771,13 @@ void my_p4est_multialloy_t::update_grid()
   compute_geometric_properties_front();
   compute_geometric_properties_contr();
 
-  /* refine solid_p4est_ */
-//  update_grid_solid();
-
-  PetscPrintf(p4est_->mpicomm, "Done \n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::update_grid_solid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
-  PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data...\n");
+  PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data... ");
 
   Vec tmp = solid_front_phi_.vec;
   solid_front_phi_.vec = solid_front_phi_nm1_.vec;
@@ -792,7 +794,7 @@ void my_p4est_multialloy_t::update_grid_solid()
   bool is_grid_changing = true;
   int  counter          = 0;
 
-  while (is_grid_changing)
+  while (is_grid_changing && counter < 5)
   {
     // interpolate from a coarse grid to a fine one
     front_phi_np1.get_array();
@@ -814,6 +816,8 @@ void my_p4est_multialloy_t::update_grid_solid()
 
     front_phi_np1.restore_array();
 
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_grid_changing, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
     if (is_grid_changing)
     {
       my_p4est_partition(solid_p4est_np1, P4EST_TRUE, NULL);
@@ -833,6 +837,8 @@ void my_p4est_multialloy_t::update_grid_solid()
 
   solid_front_phi_.destroy();
   solid_front_phi_.set(front_phi_np1.vec);
+
+  PetscPrintf(p4est_->mpicomm, "almost there... ");
 
   // transfer variables to the new grid
   my_p4est_interpolation_nodes_t solid_interp(solid_ngbd_);
@@ -903,12 +909,14 @@ void my_p4est_multialloy_t::update_grid_solid()
   p4est_nodes_destroy(solid_nodes_); solid_nodes_ = solid_nodes_np1;
   solid_hierarchy_->update(solid_p4est_, solid_ghost_);
   solid_ngbd_->update(solid_hierarchy_, solid_nodes_);
+  PetscPrintf(p4est_->mpicomm, "done!\n");
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double *bc_error_avg, std::vector<int> *num_pdes, std::vector<double> *bc_error_max_all, std::vector<double> *bc_error_avg_all)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+  PetscPrintf(p4est_->mpicomm, "Solving nonlinear system:\n");
 
   time_ += dt_[0];
 
@@ -1056,6 +1064,8 @@ int my_p4est_multialloy_t::one_step(int it_scheme, double *bc_error_max, double 
   rhs_tl.destroy();
   rhs_ts.destroy();
   rhs_cl.destroy();
+
+  PetscPrintf(p4est_->mpicomm, "done!\n");
 
   // compute velocity
   compute_velocity();
@@ -1795,6 +1805,7 @@ void my_p4est_multialloy_t::regularize_front()
   }
 
   bool is_changed = false;
+  int num_nodes_smoothed = 0;
   if (proximity_smoothing_ != 0) {
     // shift level-set upwards and reinitialize
     my_p4est_level_set_t ls(ngbd_cur);
@@ -1811,9 +1822,8 @@ void my_p4est_multialloy_t::regularize_front()
 
     foreach_node(n, nodes_) {
       if (front_phi_cur.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
-        std::cout << "smoothing node " << n << " : " << front_phi_cur.ptr[n] << " -> " << front_phi_tmp.ptr[n] << "\n";
         front_phi_cur.ptr[n] = front_phi_tmp.ptr[n];
-        is_changed = true;
+        num_nodes_smoothed++;
       }
     }
 
@@ -1821,15 +1831,16 @@ void my_p4est_multialloy_t::regularize_front()
     front_phi_tmp.restore_array();
     front_phi_tmp.destroy();
 
-    ierr = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(ierr);
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(ierr);
   }
 
   vec_and_ptr_t front_phi_tmp;
   front_phi_tmp.set(front_phi_cur.vec);
 
   // third pass: look for isolated pools of liquid and remove them
-  if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+  if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
   {
+    ierr = PetscPrintf(p4est_->mpicomm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
     int num_islands = 0;
     vec_and_ptr_t island_number(front_phi_cur.vec);
 
@@ -1839,6 +1850,7 @@ void my_p4est_multialloy_t::regularize_front()
 
     if (num_islands > 1)
     {
+      ierr = PetscPrintf(p4est_->mpicomm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
       island_number.get_array();
       front_phi_tmp.get_array();
 

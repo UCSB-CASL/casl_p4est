@@ -62,7 +62,7 @@ param_t<bool> track_memory_usage (pl, 1, "track_memory_usage", "");
 // computational domain parameters
 //-------------------------------------
 param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 5, "ny", "Number of trees in the y-direction");
+param_t<int>    ny   (pl, 1, "ny", "Number of trees in the y-direction");
 param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
@@ -70,7 +70,7 @@ param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
 param_t<double> xmax (pl, 1, "xmax", "Box xmax");
-param_t<double> ymax (pl, 5, "ymax", "Box ymax");
+param_t<double> ymax (pl, 1, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
 param_t<double> xc   (pl, .51, "xc", "Centering point x");
@@ -85,7 +85,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -117,7 +117,7 @@ param_t<double> proximity_smoothing       (pl, 1.0, "curvature_smoothing",      
 //-------------------------------------
 param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
-param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
+param_t<bool>   save_accuracy        (pl, 1, "save_accuracy", "");
 param_t<bool>   save_timings         (pl, 0, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
@@ -228,13 +228,14 @@ param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRIC
 param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
+//param_t<int>    step_limit           (pl, 300, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, 2, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 0.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.05,     "front_location",         "");
-param_t<double> front_location_final   (pl, 0.15,     "front_location_final",   "");
+param_t<double> front_location         (pl, 0.05+7.402344e-02,     "front_location",         "");
+param_t<double> front_location_final   (pl, 0.30,     "front_location_final",   "");
 param_t<double> container_radius_inner (pl, 0.15,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");
 param_t<double> seed_radius            (pl, 0.005,    "seed_radius",            "");
@@ -883,14 +884,30 @@ void set_analytical_solution(double M, double v, double R)
 //  Tstar = melting_temp.val;
   Bl = 0;
 
+  for (int j = 0; j < num_comps.val; ++j) {
+    Cstar[j] = (*initial_conc_all[j]);
+  }
+
+  for (int jj = 0; jj < 20; ++jj) {
+    for (int j = 0; j < num_comps.val; ++j) {
+      kp[j] = part_coeff(j, Cstar);
+    }
+    for (int j = 0; j < num_comps.val; ++j) {
+      std::cout << Cstar[j] << " ";
+      Cstar[j] = (*initial_conc_all[j])/(1. + 2.*(1.-kp[j])*xF_Fp(sqrt(lam/(*solute_diff_all[j]))));
+    }
+    std::cout << "\n";
+  }
+
   for (int j = 0; j < num_comps.val; ++j)
   {
-    Cstar[j] = (*initial_conc_all[j])/(1. + 2.*(1.-(*part_coeff_all[j]))*xF_Fp(sqrt(lam/(*solute_diff_all[j]))));
+//    Cstar[j] = (*initial_conc_all[j])/(1. + 2.*(1.-(*part_coeff_all[j]))*xF_Fp(sqrt(lam/(*solute_diff_all[j]))));
 //    Tstar = Tstar + (*liquidus_slope_all[j])*Cstar[j];
     Ai[j] = (*initial_conc_all[j]);
     Bi[j] = (Cstar[j]-(*initial_conc_all[j]))/F(sqrt(lam/(*solute_diff_all[j])));
 
-    Bl = Bl + (*liquidus_slope_all[j])*Bi[j]*xFp(sqrt(lam/(*solute_diff_all[j])));
+//    Bl = Bl + (*liquidus_slope_all[j])*Bi[j]*xFp(sqrt(lam/(*solute_diff_all[j])));
+    Bl = Bl + liquidus_slope(j, Cstar)*Bi[j]*xFp(sqrt(lam/(*solute_diff_all[j])));
   }
 
   Tstar = liquidus_value(Cstar);
@@ -1551,13 +1568,15 @@ int main (int argc, char* argv[])
 
 //  // checking whether mpi version causes random memory leaks
 //  int nnn = 0;
+//  PetscLogDouble mem_petsc_old = 0;
+
 //  while (1) {
 //    Vec test;
-//    int nghosts = 00000;
+//    int nghosts = 10000;
 //    int nloc = 1024*1024;
 //    vector<PetscInt> ghost_nodes(nghosts, 123);
 //    ierr = VecCreateGhost(mpi.comm(), nloc, PETSC_DECIDE,
-//                          ghost_nodes.size(), NULL, &test); CHKERRXX(ierr);
+//                          ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], &test); CHKERRXX(ierr);
 
 //    ierr = VecSetFromOptions(test); CHKERRXX(ierr);
 //    VecDestroy(test);
@@ -1565,7 +1584,11 @@ int main (int argc, char* argv[])
 //    if (mpi.rank() == 0) {
 //      PetscLogDouble mem_petsc = 0;
 //      PetscMemoryGetCurrentUsage(&mem_petsc);
-//      std::cout << nnn++ << " " << mem_petsc/1024./1024. << "\n";
+//      if (mem_petsc != mem_petsc_old) {
+//        std::cout << nnn << " " << mem_petsc/1024./1024. << "\n";
+//      }
+//      mem_petsc_old = mem_petsc;
+//      nnn++;
 //    }
 //  }
 
@@ -1947,7 +1970,7 @@ int main (int argc, char* argv[])
       double solid_volume    = container_volume - liquid_volume;
       double front_area      = integrate_over_interface(p4est, nodes, front_phi.vec, ones.vec);
       double velocity_avg    = integrate_over_interface(p4est, nodes, front_phi.vec, vn.vec) / front_area;
-      double time_elapsed    = w1.read_duration_current();
+      double time_elapsed    = w1.get_duration_current();
       int    num_local_nodes = nodes->num_owned_indeps;
       int    num_ghost_nodes = nodes->indep_nodes.elem_count - num_local_nodes;
 
@@ -2163,7 +2186,7 @@ int main (int argc, char* argv[])
                                        cell_data, cell_data_names);
 
 
-          PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", name);
+          PetscPrintf(p4est->mpicomm, "VTK with analytic saved in %s\n", name);
         }
 
         contr.restore_array();
@@ -2322,6 +2345,7 @@ int main (int argc, char* argv[])
       }
       ierr = PetscFPrintf(mpi.comm(), fich, "\n"); CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Step convergence saved in %s and %s\n", filename_error_max, filename_error_avg); CHKERRXX(ierr);
     }
 
     // compute total growth
@@ -2345,7 +2369,10 @@ int main (int argc, char* argv[])
 
     total_growth -= base;
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration %d, growth %e, time %e\n", iteration, total_growth, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "------------------------------------------------------------------------------------------------------\n"
+                                   "Time step %d: growth %e, simulation time %e, compute time %e\n"
+                                   "------------------------------------------------------------------------------------------------------\n",
+                       iteration, total_growth, tn, w1.get_duration_current()); CHKERRXX(ierr);
 
     if (save_timings.val && save_now)
     {

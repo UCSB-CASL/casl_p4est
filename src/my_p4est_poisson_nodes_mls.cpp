@@ -149,10 +149,10 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     petsc_gloidx_[i+nodes_->num_owned_indeps] = global_node_offset_[nodes_->nonlocal_ranks[i]] + ni->p.piggy3.local_num;
   }
 
-  // pinning point (for ill-defined all-neumann case)
-  matrix_has_nullspace_ = true;
-  fixed_value_idx_l_    = global_node_offset_[p4est_->mpisize];
-  fixed_value_idx_g_    = global_node_offset_[p4est_->mpisize];
+  // tracking nullspace
+  nullspace_main_ = true;
+  nullspace_diag_ = true;
+  nullspace_robin_ = true;
 
   // forces
   rhs_m_ = NULL; rhs_m_ptr = NULL;
@@ -491,8 +491,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
   ierr = KSPSetType(ksp_, ksp_type); CHKERRXX(ierr);
   ierr = KSPSetInitialGuessNonzero(ksp_, (PetscBool) use_nonzero_guess); CHKERRXX(ierr);
 
-  if (new_pc_ || 1)
-  {
+  if (new_pc_) {
     new_pc_ = false;
     ierr = KSPSetOperators(ksp_, A_, A_, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -537,7 +536,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0."); CHKERRXX(ierr);
 
     // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
-    if (matrix_has_nullspace_){
+    if (nullspace_main_ && nullspace_diag_ && nullspace_robin_){
       ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_relax_type_coarse", "symmetric-SOR/Jacobi"); CHKERRXX(ierr);
     }
   }
@@ -557,7 +556,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
 //  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_KSPSolve, ksp_, rhs_, solution, 0); CHKERRXX(ierr);
   MatNullSpace A_null;
-  if (matrix_has_nullspace_) {
+  if (nullspace_main_ && nullspace_diag_ && nullspace_robin_) {
     ierr = MatNullSpaceCreate(p4est_->mpicomm, PETSC_TRUE, 0, NULL, &A_null); CHKERRXX(ierr);
     ierr = MatSetNullSpace(A_, A_null);
 
@@ -589,7 +588,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp_, rhs_, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
-  if (matrix_has_nullspace_) {
+  if (nullspace_main_ && nullspace_diag_ && nullspace_robin_) {
     ierr = MatNullSpaceDestroy(A_null);
   }
 //  ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_mls_KSPSolve, ksp_, rhs_, solution, 0); CHKERRXX(ierr);
@@ -614,8 +613,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
   }
 
   // update ghosts
-  if (update_ghost)
-  {
+  if (update_ghost) {
     ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
@@ -780,9 +778,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   p4est_locidx_t neighbors      [num_neighbors_cube];
 
   // addition to rhs from jump condition discretization
-//  Vec     rhs_jump;
-//  double *rhs_jump_ptr;
-
   if (setup_rhs && there_is_jump_)
   {
     if (rhs_jump_ != NULL) { ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr); }
@@ -797,6 +792,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(rhs_gf_, &rhs_gf_ptr); CHKERRXX(ierr);
   }
 
+  if (new_submat_main_)  nullspace_main_  = true;
+  if (new_submat_diag_)  nullspace_diag_  = true;
+  if (new_submat_robin_) nullspace_robin_ = true;
 
   // interpolators
   interpolators_initialize();
@@ -810,9 +808,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     node_scheme_.resize(nodes_->num_owned_indeps, UNDEFINED);
     int num_bdry_fvs = 0;
     int num_infc_fvs = 0;
-//    int num_bdry_cart_points = 0;
-//    int num_bdry_pieces = 0;
-//    int num_infc_pieces = 0;
     int num_wall_pieces = 0;
 
     foreach_local_node(n, nodes_)
@@ -1225,8 +1220,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       {
         if (assembling_main) {
           row_main->push_back(mat_entry_t(petsc_gloidx_[n], 1));
-          if (bdry_phi_eff_000 < 0. || bdry_.num_phi == 0)
-            matrix_has_nullspace_ = false;
+          if (bdry_phi_eff_000 < 0. || bdry_.num_phi == 0) {
+            nullspace_main_ = false;
+          }
         }
 
         if (setup_rhs) {
@@ -1328,8 +1324,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   }
 
   // restore pointers
-  if (assembling_main)
-  {
+  if (assembling_main) {
     ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
 
@@ -1339,32 +1334,27 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGhostUpdateEnd  (mask_p_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  if (new_submat_diag_ && there_is_diag_)
-  {
+  if (new_submat_diag_ && there_is_diag_) {
     ierr = VecRestoreArray(submat_diag_, &submat_diag_ptr); CHKERRXX(ierr);
 
-    if (there_is_jump_)
-    {
+    if (there_is_jump_) {
       ierr = VecRestoreArray(submat_diag_ghost_, &submat_diag_ghost_ptr); CHKERRXX(ierr);
     }
   }
 
-  if (var_diag_)
-  {
+  if (var_diag_) {
     ierr = VecRestoreArray(diag_m_, &diag_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
 
-  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
-  {
+  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_) {
     ierr = VecRestoreArray(submat_robin_sym_, &submat_robin_sym_ptr); CHKERRXX(ierr);
   }
 
   bdry_.restore_arrays();
   infc_.restore_arrays();
 
-  if (var_mu_)
-  {
+  if (var_mu_) {
     _CODE( ierr = VecRestoreArray(mue_m_,    &mue_m_ptr   ); CHKERRXX(ierr); );
     _CODE( ierr = VecRestoreArray(mue_p_,    &mue_p_ptr   ); CHKERRXX(ierr); );
 
@@ -1378,18 +1368,13 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ZCODE( ierr = VecRestoreArray(mue_p_zz_, &mue_p_zz_ptr); CHKERRXX(ierr); );
   }
 
-  if (setup_rhs)
-  {
+  if (setup_rhs) {
     ierr = VecRestoreArray(rhs_, &rhs_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(rhs_m_, &rhs_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(rhs_p_, &rhs_p_ptr); CHKERRXX(ierr);
-
-//    ierr = VecGhostUpdateBegin(rhs_, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd  (rhs_, ADD_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  if (there_is_neumann_ || there_is_robin_ || there_is_jump_)
-  {
+  if (there_is_neumann_ || there_is_robin_ || there_is_jump_) {
     ierr = VecRestoreArray(volumes_m_, &volumes_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(volumes_p_, &volumes_p_ptr); CHKERRXX(ierr);
 
@@ -1397,15 +1382,18 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(areas_p_, &areas_p_ptr); CHKERRXX(ierr);
   }
 
-  if (setup_rhs && there_is_jump_)
-  {
+  if (setup_rhs && there_is_jump_) {
     ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
   }
 
-  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ == 1)
-  {
+  if (setup_rhs && there_is_dirichlet_ && dirichlet_scheme_ == 1) {
     ierr = VecRestoreArray(rhs_gf_, &rhs_gf_ptr); CHKERRXX(ierr);
   }
+
+  // check for null space
+  if (new_submat_main_)  { ierr = MPI_Allreduce(MPI_IN_PLACE, &nullspace_main_,  1, MPI_C_BOOL, MPI_LAND, p4est_->mpicomm); SC_CHECK_MPI(ierr); }
+  if (new_submat_diag_)  { ierr = MPI_Allreduce(MPI_IN_PLACE, &nullspace_diag_,  1, MPI_C_BOOL, MPI_LAND, p4est_->mpicomm); SC_CHECK_MPI(ierr); }
+  if (new_submat_robin_) { ierr = MPI_Allreduce(MPI_IN_PLACE, &nullspace_robin_, 1, MPI_C_BOOL, MPI_LAND, p4est_->mpicomm); SC_CHECK_MPI(ierr); }
 
   if (assembling_main)
   {
@@ -1683,8 +1671,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   new_submat_robin_ = false;
 
   // compute resulting matrix (if needed)
-  if (A_needs_reassembly_ && setup_rhs)
-  {
+  if (A_needs_reassembly_ && setup_rhs) {
+    new_pc_ = true;
     A_needs_reassembly_ = false;
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1873,25 +1861,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecPointwiseMult(rhs_, rhs_, diag_scaling_); CHKERRXX(ierr);
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
   }
-
-  // check for null space
-  // FIXME: the return value should be checked for errors ...
-  if (new_submat_main_ || new_submat_diag_ || new_submat_robin_) {
-    MPI_Allreduce(MPI_IN_PLACE, &matrix_has_nullspace_, 1, MPI_C_BOOL, MPI_LAND, p4est_->mpicomm);
-  }
-
-//  if (matrix_has_nullspace) {
-//    ierr = MatSetOption(A, MAT_NO_OFF_PROC_ZERO_ROWS, PETSC_TRUE); CHKERRXX(ierr);
-//    p4est_gloidx_t fixed_value_idx;
-//    MPI_Allreduce(&fixed_value_idx_g, &fixed_value_idx, 1, MPI_LONG_LONG_INT, MPI_MIN, p4est->mpicomm);
-//    if (fixed_value_idx_g != fixed_value_idx){ // we are not setting the fixed value
-//      fixed_value_idx_l = -1;
-//      fixed_value_idx_g = fixed_value_idx;
-//    } else {
-//      // reset the value
-//      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
-//    }
-//  }
 }
 
 void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix)
@@ -2853,7 +2822,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locid
     submat_diag_ptr[n] = diag_add;
 
     if (fabs(diag_add) > EPS) {
-      matrix_has_nullspace_ = false;
+      nullspace_diag_ = false;
     }
   }
 
@@ -3161,12 +3130,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locid
       if (ABS(w_00p_pp) > EPS) { ent.n = petsc_gloidx_[qnnn.node_00p_pp]; ent.val = w_00p_pp; row_main->push_back(ent); (qnnn.node_00p_pp < nodes_->num_owned_indeps) ? d_nnz++ : o_nnz++; }
     }
 #endif
-
-    if (petsc_gloidx_[n] < fixed_value_idx_g_)
-    {
-      fixed_value_idx_l_ = n;
-      fixed_value_idx_g_ = petsc_gloidx_[n];
-    }
   }
 
   //---------------------------------------------------------------------
@@ -3300,7 +3263,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
       bdry_point_weight[0] = 1;
 
       row_main->push_back(mat_entry_t(n, 1));
-      matrix_has_nullspace_ = false;
+      nullspace_main_ = false;
     }
 
     // compute submat_rhs
@@ -3323,7 +3286,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
       // assemble submat_diag
       submat_diag_ptr[n] = diag_add;
       if (fabs(diag_add) > EPS) {
-        matrix_has_nullspace_ = false;
+        nullspace_diag_ = false;
       }
     }
 
@@ -3424,13 +3387,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
 
       foreach_direction(dim) {
         if (is_interface[dim]) {
-          matrix_has_nullspace_ = false;
+          nullspace_main_ = false;
         }
-      }
-
-      if (petsc_gloidx_[n] < fixed_value_idx_g_) {
-        fixed_value_idx_l_ = n;
-        fixed_value_idx_g_ = petsc_gloidx_[n];
       }
 
       bdry_point_weight[dir::f_m00] = w_m00;
@@ -3862,7 +3820,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
     if (new_submat_diag_ && there_is_diag_) {
       submat_diag_ptr[n] = diag_add;
       if (fabs(diag_add) > EPS) {
-        matrix_has_nullspace_ = false;
+        nullspace_diag_ = false;
       }
     }
 
@@ -3924,11 +3882,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
           }
 
         }
-      }
-
-      if (petsc_gloidx_[n] < fixed_value_idx_g_) {
-        fixed_value_idx_l_ = n;
-        fixed_value_idx_g_ = petsc_gloidx_[n];
       }
 
       mask_ptr[n] = -1.;
@@ -4149,7 +4102,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
       if (there_is_diag_ && new_submat_diag_)
       {
         submat_diag_ptr[n] = diag_add*volume_cut_cell;
-        if (fabs(submat_diag_ptr[n]) > EPS) matrix_has_nullspace_ = false;
+        if (fabs(submat_diag_ptr[n]) > EPS) nullspace_diag_ = false;
       }
 
       //---------------------------------------------------------------------
@@ -4505,7 +4458,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                                                                    coeff_z_term[nei]*z_term );
                 }
 
-                if (fabs(c_term) > 0) matrix_has_nullspace_ = false;
+                if (fabs(c_term) > 0) nullspace_robin_ = false;
               }
 
               if (setup_rhs) add_to_rhs -= rhs_c_term*c_term + SUMD( rhs_x_term*x_term,
@@ -4717,7 +4670,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                   rhs_ptr[n] -= bdry_area[i]*bc_coeff_proj*bc_value_proj*dist/(bc_coeff_proj*dist-mu_proj);
                 }
 
-                if (fabs(bc_coeff_proj) > 0) matrix_has_nullspace_ = false;
+                if (new_submat_robin_) {
+                  if (fabs(bc_coeff_proj) > 0) nullspace_robin_ = false;
+                }
               }
             }
           }
@@ -4898,7 +4853,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       else           submat_diag_ghost_ptr[n] = diag_m_scalar_*volume_cut_cell_m;
     }
 
-    if (fabs(submat_diag_ptr[n]) > EPS) matrix_has_nullspace_ = false;
+    if (fabs(submat_diag_ptr[n]) > EPS) nullspace_diag_ = false;
   }
 
   //---------------------------------------------------------------------

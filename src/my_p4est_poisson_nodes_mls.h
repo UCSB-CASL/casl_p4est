@@ -104,10 +104,10 @@ protected:
   std::vector<PetscInt> global_node_offset_;
   std::vector<PetscInt> petsc_gloidx_;
 
-  // pinning point (for ill-defined all-neumann case)
-  bool           matrix_has_nullspace_;
-  p4est_gloidx_t fixed_value_idx_g_;
-  p4est_gloidx_t fixed_value_idx_l_;
+  // tracking nullspace
+  bool nullspace_main_;
+  bool nullspace_diag_;
+  bool nullspace_robin_;
 
   // geometry
   class geometry_t
@@ -629,7 +629,7 @@ public:
   inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
 
-  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+//  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
 
   inline Mat get_matrix() { return A_; }
 
