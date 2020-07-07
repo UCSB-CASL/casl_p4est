@@ -380,7 +380,7 @@ public:
    * \param [in] myb_   macromesh description (cartesian array of elementary root cells)
    */
   my_p4est_hierarchy_t(p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
-    : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees), periodic{DIM(is_periodic(p4est_, dir::x), is_periodic(p4est_, dir::y), is_periodic(p4est_, dir::z))}
+    : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est_->connectivity->num_trees), periodic{DIM(is_periodic(p4est_, dir::x), is_periodic(p4est_, dir::y), is_periodic(p4est_, dir::z))}
   {
     for (size_t tr = 0; tr < trees.size(); tr++)
     {
