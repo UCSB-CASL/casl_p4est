@@ -116,8 +116,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
        it != serialized_global_correction_functions_to_send_to.end(); ++it){
     const int& rank = it->first;
     MPI_Request req;
-    mpiret = MPI_Isend(serialized_global_correction_functions_to_send_to[rank].data(),
-                       serialized_global_correction_functions_to_send_to[rank].size()*sizeof (global_correction_function_elementary_data_t),
+    mpiret = MPI_Isend(it->second.data(), it->second.size()*sizeof (global_correction_function_elementary_data_t),
                        MPI_BYTE, rank, correction_function_communication_tag, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
     nonblocking_send_requests.push_back(req);
   }

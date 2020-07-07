@@ -19,7 +19,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   };
 
   // arbitrary-defined tag used to label the communications between processes related to correction function data
-  const static int correction_function_communication_tag = 14789632;
+  const int correction_function_communication_tag = 1493; // Don't go with crazy large values (except if you want to spend days figuring out why it fails on several nodes...)
 
   struct correction_function_t {
     double                      jump_dependent_terms;
