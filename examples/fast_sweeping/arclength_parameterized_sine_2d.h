@@ -435,11 +435,12 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 			std::pair<double, double> uPair = bisect( distThetaFunctorDerivative, uStart, uEnd, epsToleranceFunctor, it );
 			double uRange = uPair.second - uPair.first;
 			double vOfD = 1;
+			double uResult;
 
 			while( vOfD > 1e-8 )							// For standing interval, keep iterating until convergence.
 			{												// Now that we have a narrow bracket, use Newton-Raphson's.
-				double uResult = ( uPair.first + uPair.second ) / 2;		// Normally-randomize initial guess around
-				uResult += normalDistribution( gen ) * ( uRange / 6 );		// midpoint.
+				uResult = ( uPair.first + uPair.second ) / 2;	// Normally-randomize initial guess around midpoint.
+				uResult += normalDistribution( gen ) * ( uRange / 6 );
 				uResult = MAX( uPair.first, MIN( uResult, uPair.second ) );
 				it = MAX_IT;
 				uResult = newton_raphson_iterate( distThetaFunctorDerivativeNR, uResult, uPair.first, uPair.second, get_digits, it );
@@ -448,15 +449,16 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 				if( verbose && it >= MAX_IT )
 					std::cerr << "Node " << n << ":  Unable to locate solution in " << MAX_IT << " iterations!" << std::endl;
 
-				double dx = U - uResult;
-				double dy = V - A * sin( uResult );
-				double d = SQR( dx ) + SQR( dy );
-				if( d < minD )								// Don't discard the possibility that we may have distinct
-				{											// valid intervals.  If so, get the one with the parameter
-					minD = d;								// that yields the miminum distance among all.
-					minU = uResult;
-				}
 				iterations++;
+			}
+
+			double dx = U - uResult;
+			double dy = V - A * sin( uResult );
+			double d = SQR( dx ) + SQR( dy );
+			if( d < minD )									// Don't discard the possibility that we may have distinct
+			{												// valid intervals.  If so, get the one with the parameter
+				minD = d;									// that yields the miminum distance among all.
+				minU = uResult;
 			}
 
 			if( verbose && iterations > 20 )

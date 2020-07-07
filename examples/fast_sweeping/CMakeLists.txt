@@ -8,12 +8,12 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC sinusoidal_datasets_2d.cpp arclength_parameterized_sine_2d.h )
+	list( APPEND SRC star_datasets_2d.cpp )
 endif()
 
-#if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC sphere_datasets_3d.cpp )
-#endif()
+if( DIMENSION MATCHES 3d )
+	list( APPEND SRC sphere_datasets_3d.cpp )
+endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
 

@@ -78,32 +78,52 @@ namespace geom
 	public:
 		/**
 		 * Constructor
-		 * @param [in] a: Perturbation amplitude.
-		 * @param [in] b: Base circle radius.
-		 * @param [in] p: Number of arms.
+		 * @param [in] a Perturbation amplitude.
+		 * @param [in] b Base circle radius.
+		 * @param [in] p Number of arms.
 		 */
 		explicit Star( double a = -1.0, double b = 3.0, int p = 8 )
 			: _a( a ), _b( b ), _p( p ){}
 
 		/**
 		 * Level set evaluation at a given point.
-		 * @param [in] x: Point x-coordinate.
-		 * @param [in] y: Point y-coordinate.
+		 * @param [in] x Point x-coordinate.
+		 * @param [in] y Point y-coordinate.
 		 * @return phi(x,y).
 		 */
 		double operator()( double x, double y ) const override
 		{
-			return -_a * cos( _p * atan2( y, x ) ) + sqrt( x * x + y * y ) - _b;
+			return -_a * cos( _p * atan2( y, x ) ) + sqrt( SQR( x ) + SQR( y ) ) - _b;
 		}
 
 		/**
 		 * Compute point on interface given an angular parameter.
-		 * @param [in] theta: Angular parameter.
+		 * @param [in] theta Angular parameter.
 		 * @return r(theta).
 		 */
 		[[nodiscard]] double r( double theta ) const
 		{
 			return _a * cos( _p * theta ) + _b;
+		}
+
+		/**
+		 * Compute first derivative of star at a given angle.
+		 * @param theta Angular parameter.
+		 * @return r'(theta).
+		 */
+		[[nodiscard]] double rPrime( double theta ) const
+		{
+			return -_a * _p * sin( _p * theta );
+		}
+
+		/**
+		 * Compute second derivative of star at a given angle.
+		 * @param theta Angular parameter.
+		 * @return r''(theta).
+		 */
+		[[nodiscard]] double rPrimePrime( double theta ) const
+		{
+			return -_a * SQR( _p ) * cos( _p * theta );
 		}
 
 		/**
@@ -118,15 +138,15 @@ namespace geom
 
 		/**
 		 * Compute curvature.
-		 * @param [in] theta: Angle parameter.
+		 * @param [in] theta Angle parameter.
 		 * @return kappa.
 		 */
 		[[nodiscard]] double curvature( double theta ) const
 		{
-			double r = this->r( theta );								// r(theta).
-			double rPrime = -_a * _p * sin( _p * theta );				// r'(theta).
-			double rPrimePrime = -_a * _p * _p * cos( _p * theta );		// r''(theta).
-			return ( r * r + 2 * rPrime * rPrime - r * rPrimePrime ) / pow( r * r + rPrime * rPrime, 1.5 );
+			double r = this->r( theta );						// r(theta).
+			double rPrime = this->rPrime( theta );				// r'(theta).
+			double rPrimePrime = this->rPrimePrime( theta );	// r''(theta).
+			return ( SQR( r ) + 2 * SQR( rPrime ) - r * rPrimePrime ) / pow( SQR( r ) + SQR( rPrime ), 1.5 );
 		}
 
 		/**

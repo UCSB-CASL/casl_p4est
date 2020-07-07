@@ -115,7 +115,7 @@ void generateColumnHeaders( std::string header[] )
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, v, valOfDerivative, centerU;
+	double u, valOfDerivative, centerU;
 	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
@@ -144,8 +144,7 @@ void generateColumnHeaders( std::string header[] )
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
 		valOfDerivative = 1;
 		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
-		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
-		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+//		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
 
 		if( newDistance - distances[s] > EPS )
 		{

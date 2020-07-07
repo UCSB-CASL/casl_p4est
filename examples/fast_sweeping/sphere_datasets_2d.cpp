@@ -152,8 +152,8 @@ int main ( int argc, char* argv[] )
 		sdfFile.precision( 15 );							// Precision for floating point numbers.
 		rlsFile.precision( 15 );
 
-		// Variables to control the spread of circles' radii, which must vary uniformly from MIN_RADIUS to MAX_RADIUS.
-		double distance = MAX_RADIUS - MIN_RADIUS;			// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
+		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
+		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
 		double linspace[NUM_CIRCLES];
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
@@ -166,19 +166,20 @@ int main ( int argc, char* argv[] )
 
 		int nSamples = 0;
 		int nc = 0;								// Keeps track of number of circles whose samples has been collected.
+		const double MAX_SAMPLES_PER_RADIUS = 7000;
 		while( nc < NUM_CIRCLES )
 		{
-			const double R = MIN_RADIUS + linspace[nc] * distance;	// Circle radius to be evaluated.
-			const double H_KAPPA = H / R;							// Expected dimensionless curvature: h\kappa = h/r.
+			const double KAPPA = 1 / MIN_RADIUS + linspace[nc] * kappaDistance;
+			const double R = 1 / KAPPA;			// Circle radius to be evaluated.
+			const double H_KAPPA = H * KAPPA;	// Expected dimensionless curvature: h\kappa = h/r.
 			std::vector<std::vector<double>> rlsSamples;
 			std::vector<std::vector<double>> sdfSamples;
 
 			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
-			// reach a given maximum.  This helps smaller circles to have more samples, but not as many as the largest one.
+			// reach a given maximum.
 			double maxRE = 0;										// Maximum relative error.
 			int nSamplesForSameRadius = 0;
-			int maxSamplesForSameRadius = floor( 1750 + ( 7000 - 1750 ) * linspace[nc] );
-			while( nSamplesForSameRadius < maxSamplesForSameRadius )
+			while( nSamplesForSameRadius < MAX_SAMPLES_PER_RADIUS )
 			{
 				const double C[] = {
 					DIM( HALF_D + uniformDistribution( gen ),		// Center coords are randomly chosen
@@ -296,7 +297,7 @@ int main ( int argc, char* argv[] )
 
 							// Counting samples.
 							nSamplesForSameRadius += 2;		// Positive and negative for a given interface node.
-							if( nSamplesForSameRadius >= maxSamplesForSameRadius )
+							if( nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
 								break;
 						}
 					}

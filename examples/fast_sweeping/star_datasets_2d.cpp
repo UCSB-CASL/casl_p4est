@@ -116,7 +116,7 @@ void generateColumnHeaders( std::string header[] )
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
-	std::uniform_real_distribution<double>& uniformDistribution,
+	std::normal_distribution<double>& normalDistribution,
 	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
@@ -127,11 +127,10 @@ void generateColumnHeaders( std::string header[] )
 	double grad[P4EST_DIM];
 	double gradNorm;
 	double xyz[P4EST_DIM];
-	double pOnInterfaceX, pOnInterfaceY, newPOnInterfaceX, newPOnInterfaceY;
+	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double theta, r, newTheta, valOfDerivative, centerTheta;
-	double dx, dy, newDistance, distanceBtwnPOnInterface;
-	int iterations;
+	double theta, r, valOfDerivative, centerTheta;
+	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
 		sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
@@ -153,6 +152,13 @@ void generateColumnHeaders( std::string header[] )
 		pOnInterfaceX = r * cos( theta );
 		pOnInterfaceY = r * sin( theta );				// Better approximation of projection of stencil point onto star.
 
+//		if( s == 4 )
+//		{
+//			std::cout << std::setprecision( 15 )
+//					  << "plot(" << xyz[0] << ", " << xyz[1] << ", 'b.', " << pOnInterfaceX << ", " << pOnInterfaceY
+//					  << ", 'mo');" << std::endl;
+//		}
+
 		// Compute current distance to \Gamma using the improved point on interface.
 		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
@@ -160,41 +166,34 @@ void generateColumnHeaders( std::string header[] )
 
 		// Find theta that yields "a" minimum distance between stencil point and star using Newton-Raphson's method.
 		valOfDerivative = 1;
-		iterations = 0;
-		while( ABS( valOfDerivative ) > 1e-8 && iterations < 20 )	// Avoiding local minima with random exploration.
+		theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
+			valOfDerivative, newDistance );
+
+//		if( s == 4 )
+//		{
+//			r = star.r( theta );						// Recalculating closest point on interface.
+//			pOnInterfaceX = r * cos( theta );
+//			pOnInterfaceY = r * sin( theta );
+//			std::cout << std::setprecision( 15 )
+//					  << "plot(" << pOnInterfaceX << ", " << pOnInterfaceY << ", 'ko');" << std::endl;
+//		}
+
+		if( newDistance - distances[s] > EPS )			// Verify that new point is closest than previous approximmation.
 		{
-			double h = ( ( iterations % 2 )? H : -H ) * uniformDistribution( gen );	// Flip sign to explore a wide range.
-			newTheta = theta + h;									// Initial parametric guess for root finding.
-			newTheta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, valOfDerivative, newTheta, newTheta - H,
-				newTheta + H );
-			iterations++;
+			std::ostringstream stream;
+			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+				   << ".  Old dist: " << distances[s];
+			throw std::runtime_error( stream.str() );
 		}
-		r = star.r( newTheta );										// Recalculating closest point on interface.
-		newPOnInterfaceX = r * cos( newTheta );
-		newPOnInterfaceY = r * sin( newTheta );
 
-		// Compute new distance with "normal projection" of query point onto sine wave.
-		dx = xyz[0] - newPOnInterfaceX;
-		dy = xyz[1] - newPOnInterfaceY;
-		newDistance = sqrt( SQR( dx ) + SQR( dy ) );
-
-		// Compute distance between previous projection and new projection.
-		dx = newPOnInterfaceX - pOnInterfaceX;
-		dy = newPOnInterfaceY - pOnInterfaceY;
-		distanceBtwnPOnInterface = sqrt( SQR( dx ) + SQR( dy ) );
-		if( distanceBtwnPOnInterface > H && ABS( valOfDerivative ) > 1e-8 )
-			throw std::runtime_error( "Failure with node " + std::to_string( stencil[s] ) );
-
-		if( newDistance < distances[s] )
-			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
-		else
-			newTheta = theta;
+		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
 
 		if( sample[s] < 0 )								// Fix sign.
 			distances[s] *= -1;
 
 		if( s == 4 )									// For center node we need theta to yield curvature.
-			centerTheta = newTheta;
+			centerTheta = theta;
 	}
 
 	sample[s] = H * star.curvature( centerTheta );		// Last column holds h\kappa.
@@ -217,7 +216,6 @@ void generateColumnHeaders( std::string header[] )
 void checkOrCreateDirectory( const std::string& path )
 {
 	struct stat info{};
-	char aux[10];
 	if( stat( path.c_str(), &info ) != 0 )							// Directory doesn't exist?
 	{
 		if( mkdir( path.c_str(), 0777 ) == -1 )						// Try to create it.
@@ -232,7 +230,6 @@ int main ( int argc, char* argv[] )
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [0,1]^{P4EST_DIM}.
-	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
@@ -245,7 +242,7 @@ int main ( int argc, char* argv[] )
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
 	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
-	std::uniform_real_distribution<double> uniformDistribution;
+	std::normal_distribution<double> normalDistribution;					// Used for bracketing and root finding.
 
 	try
 	{
@@ -466,7 +463,7 @@ int main ( int argc, char* argv[] )
 					{
 						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, uniformDistribution,
+							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, normalDistribution,
 							pointsFilesMap[key], anglesFilesMap[key], distances );
 						samples.push_back( sample );
 						nSamples++;
