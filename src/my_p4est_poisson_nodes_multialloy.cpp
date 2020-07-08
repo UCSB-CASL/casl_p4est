@@ -557,7 +557,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_conc_leading_->set_dirichlet_scheme(1);
   solver_conc_leading_->set_gf_order(2);
   solver_conc_leading_->set_gf_thresh(-0.1);
-  solver_conc_leading_->set_gf_stabilized(1);
+  solver_conc_leading_->set_gf_stabilized(2);
 
   if (contr_phi_.vec != NULL)
   {

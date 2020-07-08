@@ -110,7 +110,7 @@ param_t<double> base_cfl        (pl, 0.4,   "base_cfl",      "");
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
 param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
-param_t<double> proximity_smoothing       (pl, 1.0, "curvature_smoothing",       "");
+param_t<double> proximity_smoothing       (pl, 1.0, "proximity_smoothing",       "");
 
 //-------------------------------------
 // output parameters

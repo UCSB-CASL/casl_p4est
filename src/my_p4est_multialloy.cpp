@@ -1813,6 +1813,61 @@ void my_p4est_multialloy_t::regularize_front()
     double shift = dxyz_min_*proximity_smoothing_;
     VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
     VecShiftGhost(front_phi_tmp.vec, shift);
+
+    int num_islands = 0;
+    vec_and_ptr_t island_number(front_phi_cur.vec);
+
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+    compute_islands_numbers(*ngbd_cur, front_phi_tmp.vec, num_islands, island_number.vec);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+
+    if (num_islands > 1)
+    {
+      ierr = PetscPrintf(p4est_->mpicomm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
+      island_number.get_array();
+      front_phi_tmp.get_array();
+
+      // compute liquid pools areas
+      // TODO: make it real area instead of number of points
+      std::vector<double> island_area(num_islands, 0);
+
+      foreach_local_node(n, nodes_cur) {
+        if (island_number.ptr[n] >= 0) {
+          ++island_area[ (int) island_number.ptr[n] ];
+        }
+      }
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+      // find the biggest liquid pool
+      int main_island = 0;
+      int island_area_max = island_area[0];
+
+      for (int i = 1; i < num_islands; ++i) {
+        if (island_area[i] > island_area_max) {
+          main_island     = i;
+          island_area_max = island_area[i];
+        }
+      }
+
+      if (main_island < 0) throw;
+
+      // solidify all but the biggest pool
+      foreach_node(n, nodes_cur) {
+        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
+          front_phi_tmp.ptr[n] = new_phi_val;
+        }
+      }
+
+      island_number.restore_array();
+      front_phi_tmp.restore_array();
+
+      // TODO: make the decision whether to solidify a liquid pool or not independently
+      // for each pool based on its size and shape
+    }
+
+    island_number.destroy();
+
     ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
     VecShiftGhost(front_phi_tmp.vec, -shift);
 
@@ -1822,6 +1877,8 @@ void my_p4est_multialloy_t::regularize_front()
 
     foreach_node(n, nodes_) {
       if (front_phi_cur.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
+//        double blending = smoothstep(2, front_phi_tmp.ptr[n]/shift);
+//        front_phi_cur.ptr[n] = blending*front_phi_cur.ptr[n] + (1.-blending)*front_phi_tmp.ptr[n];
         front_phi_cur.ptr[n] = front_phi_tmp.ptr[n];
         num_nodes_smoothed++;
       }
