@@ -4,7 +4,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
   : faces(faces_), c_ngbd(faces_->get_ngbd_c()), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()),
     nodes(nodes_), dxyz_min(faces_->get_smallest_dxyz()),
     interpolation_node_ngbd(interpolation_node_ngbd_), interp_phi(interpolation_node_ngbd_),
-    max_level_p4est(((splitting_criteria_t*) p4est->user_pointer)->max_lvl),
+    max_level_p4est(((splitting_criteria_t*) faces_->get_p4est()->user_pointer)->max_lvl),
     max_level_interpolation_p4est(((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)
 {
 #ifdef CASL_THROWS

@@ -70,7 +70,6 @@ HEADERS += \
   $$PARCASL/src/my_p4est_cell_neighbors.h \
   $$PARCASL/src/my_p4est_faces.h \
   $$PARCASL/src/my_p4est_hierarchy.h \
-  $$PARCASL/src/my_p4est_integration_mls.h \
   $$PARCASL/src/my_p4est_interface_manager.h \
   $$PARCASL/src/my_p4est_interpolation.h \
   $$PARCASL/src/my_p4est_interpolation_cells.h \
@@ -79,8 +78,6 @@ HEADERS += \
   $$PARCASL/src/my_p4est_interpolation_nodes_local.h \
   $$PARCASL/src/my_p4est_level_set.h \
   $$PARCASL/src/my_p4est_node_neighbors.h \
-  $$PARCASL/src/my_p4est_poisson_cells.h \
-  $$PARCASL/src/my_p4est_poisson_faces.h \
   $$PARCASL/src/my_p4est_poisson_jump_cells.h \
   $$PARCASL/src/my_p4est_poisson_jump_cells_fv.h \
   $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.h \
@@ -99,7 +96,6 @@ SOURCES += \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
-  $$PARCASL/src/my_p4est_integration_mls.cpp \
   $$PARCASL/src/my_p4est_interface_manager.cpp \
   $$PARCASL/src/my_p4est_interpolation.cpp \
   $$PARCASL/src/my_p4est_interpolation_cells.cpp \
@@ -108,8 +104,6 @@ SOURCES += \
   $$PARCASL/src/my_p4est_interpolation_nodes_local.cpp \
   $$PARCASL/src/my_p4est_level_set.cpp \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
-  $$PARCASL/src/my_p4est_poisson_cells.cpp \
-  $$PARCASL/src/my_p4est_poisson_faces.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_cells_fv.cpp \
   $$PARCASL/src/my_p4est_poisson_jump_cells_xgfm.cpp \
@@ -126,8 +120,7 @@ SOURCES += \
 
 # headers-only stuff
 HEADERS += \
-  $$PARCASL/src/my_p4est_macros.h \
-  $$PARCASL/src/my_p4est_shapes.h
+  $$PARCASL/src/my_p4est_macros.h
 }
 
 CONFIG(3d, 2d|3d): {
@@ -135,7 +128,6 @@ HEADERS += \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
   $$PARCASL/src/my_p8est_faces.h \
   $$PARCASL/src/my_p8est_hierarchy.h \
-  $$PARCASL/src/my_p8est_integration_mls.h \
   $$PARCASL/src/my_p8est_interface_manager.h \
   $$PARCASL/src/my_p8est_interpolation.h \
   $$PARCASL/src/my_p8est_interpolation_cells.h \
@@ -144,8 +136,6 @@ HEADERS += \
   $$PARCASL/src/my_p8est_interpolation_nodes_local.h \
   $$PARCASL/src/my_p8est_level_set.h \
   $$PARCASL/src/my_p8est_node_neighbors.h \
-  $$PARCASL/src/my_p8est_poisson_cells.h \
-  $$PARCASL/src/my_p8est_poisson_faces.h \
   $$PARCASL/src/my_p8est_poisson_jump_cells.h \
   $$PARCASL/src/my_p8est_poisson_jump_cells_fv.h \
   $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.h \
@@ -164,7 +154,6 @@ SOURCES += \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \
-  $$PARCASL/src/my_p8est_integration_mls.cpp \
   $$PARCASL/src/my_p8est_interface_manager.cpp \
   $$PARCASL/src/my_p8est_interpolation.cpp \
   $$PARCASL/src/my_p8est_interpolation_cells.cpp \
@@ -173,8 +162,6 @@ SOURCES += \
   $$PARCASL/src/my_p8est_interpolation_nodes_local.cpp \
   $$PARCASL/src/my_p8est_level_set.cpp \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
-  $$PARCASL/src/my_p8est_poisson_cells.cpp \
-  $$PARCASL/src/my_p8est_poisson_faces.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_cells_fv.cpp \
   $$PARCASL/src/my_p8est_poisson_jump_cells_xgfm.cpp \
@@ -191,6 +178,5 @@ SOURCES += \
 
 # headers-only stuff
 HEADERS += \
-  $$PARCASL/src/my_p8est_macros.h \
-  $$PARCASL/src/my_p8est_shapes.h
+  $$PARCASL/src/my_p8est_macros.h
 }
