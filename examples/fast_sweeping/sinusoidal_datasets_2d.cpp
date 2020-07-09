@@ -171,6 +171,23 @@ void generateColumnHeaders( std::string header[] )
 }
 
 
+/**
+ * Rotate the level-set function values in a sample vector by 90 degrees counter-clockwise.
+ * This is used to augment data sets.  Input samples are modified in place.  Dimensionless curvature remains the same.
+ * @param [in|out] sample The sample vector with level-set function values in the standard order (e.g. mm, m0, mp, ...)
+ * @param [in] NUM_COLUMNS Number of columns in sample.  Last column holds the target h\kappa value and stays unchanged.
+ */
+void rotatePhiValues90( std::vector<double>& sample, const int NUM_COLUMNS )
+{
+	double phiVals[] = {
+		sample[2], sample[5], sample[8], sample[1], sample[4], sample[7], sample[0], sample[3], sample[6]
+	};
+
+	for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+		sample[i] = phiVals[i];
+}
+
+
 int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
@@ -385,8 +402,14 @@ int main ( int argc, char* argv[] )
 									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
 									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.95 / 2  )
 								{
-									rlsSamples.push_back( data );
-									sdfSamples.push_back( distances );
+									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
+									{								// three times.
+										rlsSamples.push_back( data );
+										sdfSamples.push_back( distances );
+
+										rotatePhiValues90( data, NUM_COLUMNS );
+										rotatePhiValues90( distances, NUM_COLUMNS );
+									}
 
 									// Error metric for validation.
 									for( int i = 0; i < NUM_COLUMNS - 1; i++ )
@@ -423,14 +446,14 @@ int main ( int argc, char* argv[] )
 				for( const auto& row : rlsSamples )
 				{
 					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
-					rlsFile << row.back() << std::endl;
+					rlsFile << std::setprecision( 8 ) << row.back() << std::setprecision( 15 ) << std::endl;
 				}
 
 				// Same for signed distance function.
 				for( const auto& row : sdfSamples )
 				{
 					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );		// Inner elements.
-					sdfFile << row.back() << std::endl;
+					sdfFile << std::setprecision( 8 ) << row.back() << std::setprecision( 15 ) << std::endl;
 				}
 
 				nSamples += rlsSamples.size();
