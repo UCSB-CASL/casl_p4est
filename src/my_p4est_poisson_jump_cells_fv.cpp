@@ -343,7 +343,9 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
     set_of_neighboring_quadrants direct_neighbors;
     bool are_all_cell_centers_on_same_side;
     linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side);
-    if(is_face_crossed[oriented_dir] || (!are_all_cell_centers_on_same_side && !signs_of_phi_are_different(sgn_face, sgn_quad))) // the neighbor's correction function kicks in
+    if(is_face_crossed[oriented_dir]
+       || (!are_all_cell_centers_on_same_side && !signs_of_phi_are_different(sgn_face, sgn_quad))
+       || (are_all_cell_centers_on_same_side  &&  signs_of_phi_are_different(sgn_face, sgn_quad))) // the neighbor's correction function kicks in (--> see build_discretization_for_quad)
     {
       P4EST_ASSERT(direct_neighbors.size() == 1);
       const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
