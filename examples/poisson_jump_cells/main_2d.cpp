@@ -703,10 +703,13 @@ void build_interface_capturing_grid_data(p4est_t* p4est_comp, my_p4est_brick_t *
 
 void shift_solution_to_match_exact_integral(my_p4est_poisson_jump_cells_t& solver, const test_case_for_scalar_jump_problem_t* test_problem)
 {
-  if(ISNAN(test_problem->get_integral_of_solution()) && solver.get_p4est()->mpirank == 0)
+  if(ISNAN(test_problem->get_integral_of_solution()))
   {
-    std::cerr << "The average of the exact solution is unknown and would be required to check the accuracy " << endl << "of the solution (for shifting the solution and matching average value)" << endl;
-    std::cerr << "Disregard the errors on the solution fields and consider derivatives/fluxes only!" << std::endl << std::endl;
+    if(solver.get_p4est()->mpirank == 0)
+    {
+      std::cerr << "The average of the exact solution is unknown and would be required to check the accuracy " << endl << "of the solution (for shifting the solution and matching average value)" << endl;
+      std::cerr << "Disregard the errors on the solution fields and consider derivatives/fluxes only!" << std::endl << std::endl;
+    }
     return;
   }
   const double shift = (test_problem->get_integral_of_solution() - solver.get_sharp_integral_solution())/MULTD(test_problem->get_domain().length(), test_problem->get_domain().height(), test_problem->get_domain().width());
