@@ -371,6 +371,8 @@ int main (int argc, char* argv[])
   double cost_function_nnn = 0;
   double cost_function_nm1 = 0;
 
+  double rho_avg_old = 1;
+
   /* main loop */
   int iteration = 0;
   while (iteration < max_iterations.val)
@@ -412,7 +414,7 @@ int main (int argc, char* argv[])
       scft.set_scaling(scaling);
       scft.set_polymer(f.val, XN.val);
       scft.add_boundary(phi, MLS_INT, gamma_A_cf, gamma_B_cf);
-      scft.set_rho_avg(1);
+      scft.set_rho_avg(rho_avg_old);
 
       Vec mu_m_tmp = scft.get_mu_m();
       Vec mu_p_tmp = scft.get_mu_p();
@@ -430,6 +432,18 @@ int main (int argc, char* argv[])
              (scft_iteration < bc_adjust_min.val+1) ||
              bc_iters == 0)
       {
+
+        for (int i=3;i--;) {
+          scft.initialize_bc_smart(adaptive); adaptive = true;
+          scft.solve_for_propogators();
+          scft.calculate_densities();
+//          scft.save_VTK(scft_iteration++);
+          ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+                             scft_iteration,
+                             scft.get_energy(),
+                             scft.get_pressure_force(),
+                             scft.get_exchange_force()); CHKERRXX(ierr);
+        }
         scft.solve_for_propogators();
         scft.calculate_densities();
         scft.update_potentials();
@@ -453,6 +467,8 @@ int main (int argc, char* argv[])
 
         scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
       }
+
+      rho_avg_old = scft.get_rho_avg();
 
       scft.sync_and_extend();
       scft.dsa_initialize();

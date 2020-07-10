@@ -119,13 +119,13 @@ interpolation_method interpolation_between_grids = quadratic_non_oscillatory_con
 // scft parameters
 param_t<bool>   use_scft            (pl, 1,     "use_scft", "Turn on/off SCFT 0/1");
 param_t<bool>   smooth_pressure     (pl, 1,     "smooth_pressure", "Smooth pressure after first BC adjustment 0/1");
-param_t<int>    max_scft_iterations (pl, 150,   "max_scft_iterations", "Maximum SCFT iterations");
+param_t<int>    max_scft_iterations (pl, 100,   "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min", "Minimun SCFT steps between adjusting BC");
 param_t<double> scft_tol            (pl, 1.e-4, "scft_tol", "Tolerance for SCFT");
 param_t<double> scft_bc_tol         (pl, 1.e-3, "scft_bc_tol", "Tolerance for adjusting BC");
 
 // polymer
-param_t<double> box_size (pl, 1, "box_size", "Box size in units of Rg");
+param_t<double> box_size (pl, 2.34, "box_size", "Box size in units of Rg");
 param_t<double> f        (pl, .5, "f", "Fraction of polymer A");
 param_t<double> XN       (pl, 20, "XN", "Flory-Higgins interaction parameter");
 param_t<int>    ns       (pl, 40, "ns", "Discretization of polymer chain");
@@ -151,7 +151,7 @@ param_t<int>    n_seed       (pl, 2, "n_seed", "Seed: 0 - zero, 1 - random, 2 - 
 param_t<int>    n_example    (pl, 0, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
-param_t<double> pairwise_potential_mag   (pl, 0.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
+param_t<double> pairwise_potential_mag   (pl, 1.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
 param_t<double> pairwise_potential_width (pl, 5, "pairwise_potential_width", "Width of pairwise potential");
 
 // surface energies
@@ -1466,7 +1466,7 @@ int main (int argc, char* argv[])
 
       ierr = VecCopyGhost(mu_m, mu_m_tmp); CHKERRXX(ierr);
 //      ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
-      ierr = VecSetGhost(mu_p, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
 
       // initialize diffusion solvers for propagators
       scft.initialize_solvers();
@@ -1579,7 +1579,7 @@ int main (int argc, char* argv[])
 
     double energy_change_predicted = 0;
     // ------------------------------------------------------------------------------------------------------------------
-    // shape derivative with respect ot free surface position
+    // shape derivative with respect to free surface position
     // ------------------------------------------------------------------------------------------------------------------
     double vmax = 0;
     double dt_free = DBL_MAX;
@@ -1621,7 +1621,6 @@ int main (int argc, char* argv[])
       if (!use_scft())
       {
         energy += integration.integrate_over_interface(0, surf_tns);
-
 
         if (geometry_wall() != 0)
         {
