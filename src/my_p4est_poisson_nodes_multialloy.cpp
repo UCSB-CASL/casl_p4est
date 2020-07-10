@@ -1707,26 +1707,25 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0_change(int scheme)
       {
         case 0:
         {
-//          pw_c0_change_[idx] /= -liquidus_slope_(0, c_all.data());
+          pw_c0_change_[idx] /= -liquidus_slope_(0, c_all.data());
 
+//          double psi_vn = (-vn*(1.-part_coeff_all[0]) + sqrt(conc_diff_[0]*conc_diag_[0]))/c_all[0]/(1.-part_coeff_all[0]);
+//          std::vector<double> psi_c_all(num_comps_);
+//          psi_c_all[0] = 1.;
+//          for (int k = update_c0_robin_ == 2 ? 0 : 1; k < num_comps_; ++k)
+//          {
+//            psi_c_all[k] = psi_vn/(-vn*(1.-part_coeff_all[k]) + sqrt(conc_diff_[k]*conc_diag_[k]))*c_all[k]*(1.-part_coeff_all[k]);
+//          }
 
-          double psi_vn = (-vn*(1.-part_coeff_all[0]) + sqrt(conc_diff_[0]*conc_diag_[0]))/c_all[0]/(1.-part_coeff_all[0]);
-          std::vector<double> psi_c_all(num_comps_);
-          psi_c_all[0] = 1.;
-          for (int k = update_c0_robin_ == 2 ? 0 : 1; k < num_comps_; ++k)
-          {
-            psi_c_all[k] = psi_vn/(-vn*(1.-part_coeff_all[k]) + sqrt(conc_diff_[k]*conc_diag_[k]))*c_all[k]*(1.-part_coeff_all[k]);
-          }
+//          double psi_tl_val =psi_vn*latent_heat_/(sqrt(temp_diff_l_*temp_diag_l_)+sqrt(temp_diff_s_*temp_diag_s_));
 
-          double psi_tl_val =psi_vn*latent_heat_/(sqrt(temp_diff_l_*temp_diag_l_)+sqrt(temp_diff_s_*temp_diag_s_));
+//          double psi_conc_term = 0;
+//          for (int k = 0; k < num_comps_; ++k)
+//          {
+//            psi_conc_term += liquidus_slope_(k, c_all.data())*psi_c_all[k];
+//          }
 
-          double psi_conc_term = 0;
-          for (int k = 0; k < num_comps_; ++k)
-          {
-            psi_conc_term += liquidus_slope_(k, c_all.data())*psi_c_all[k];
-          }
-
-          pw_c0_change_[idx] /= psi_tl_val - psi_conc_term - eps_v*psi_vn;
+//          pw_c0_change_[idx] /= psi_tl_val - psi_conc_term - eps_v*psi_vn;
 //          pw_inverse_gradient_[idx] = 1./(psi_tl_val - psi_conc_term - eps_v*psi_vn);
         }
         break;

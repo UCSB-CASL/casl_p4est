@@ -84,8 +84,8 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 7, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -101,16 +101,16 @@ param_t<bool> use_points_on_interface   (pl, 0, "use_points_on_interface", "");
 param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
-param_t<int>    order_in_time   (pl, 1,     "order_in_time",   "");
+param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.8,   "cfl_number",      "");
-param_t<double> base_cfl        (pl, 0.4,   "base_cfl",      "");
+param_t<double> base_cfl        (pl, 0.5,   "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
 param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
-param_t<double> proximity_smoothing       (pl, 1.0, "proximity_smoothing",       "");
+param_t<double> proximity_smoothing       (pl, 1.1, "proximity_smoothing",       "");
 
 //-------------------------------------
 // output parameters
@@ -123,11 +123,11 @@ param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
 param_t<bool>   save_vtk_solid       (pl, 1, "save_vtk_solid", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
-param_t<bool>   save_p4est           (pl, 1, "save_vtk", "");
-param_t<bool>   save_p4est_solid     (pl, 1, "save_vtk_solid", "");
-param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
+param_t<bool>   save_p4est           (pl, 1, "save_p4est", "");
+param_t<bool>   save_p4est_solid     (pl, 1, "save_p4est_solid", "");
+param_t<bool>   save_step_convergence(pl, 1, "save_step_convergence", "");
 
-param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -218,7 +218,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
 param_t<double> cooling_velocity        (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient           (pl, 1000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient           (pl, 5000, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
@@ -234,9 +234,9 @@ param_t<double> growth_limit         (pl, 2, "growth_limit", "");
 param_t<double> init_perturb         (pl, 0.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.05+7.402344e-02,     "front_location",         "");
-param_t<double> front_location_final   (pl, 0.30,     "front_location_final",   "");
-param_t<double> container_radius_inner (pl, 0.15,     "container_radius_inner", "");
+param_t<double> front_location         (pl, 0.1,     "front_location",         "");
+param_t<double> front_location_final   (pl, 0.25,     "front_location_final",   "");
+param_t<double> container_radius_inner (pl, 0.1,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");
 param_t<double> seed_radius            (pl, 0.005,    "seed_radius",            "");
 param_t<double> seed_dist              (pl, 0.1,      "seed_dist",              "");
@@ -244,12 +244,12 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.04, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.02, "box_size", "Physical width (in x) of the box in cm");
 
-param_t<int>    geometry (pl,  0, "geometry", "-3 - analytical spherical solidification,"
+param_t<int>    geometry (pl, -2, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
                                               "-1 - analytical planar solidification,"
-                                              " 0 - directional solidification,"
+                                             " 0 - directional solidification,"
                                               " 1 - growth of a spherical seed in a spherical container,"
                                               " 2 - growth of a spherical film in a spherical container,"
                                               " 3 - radial directional solidification in,"
@@ -336,7 +336,7 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 1.0e-5;
+      eps_c.val = 0*1.0e-5;
       eps_v.val = 0*5e-2;
       eps_a.val = 0*0.05;
       symmetry.val = 4;
@@ -893,10 +893,8 @@ void set_analytical_solution(double M, double v, double R)
       kp[j] = part_coeff(j, Cstar);
     }
     for (int j = 0; j < num_comps.val; ++j) {
-      std::cout << Cstar[j] << " ";
       Cstar[j] = (*initial_conc_all[j])/(1. + 2.*(1.-kp[j])*xF_Fp(sqrt(lam/(*solute_diff_all[j]))));
     }
-    std::cout << "\n";
   }
 
   for (int j = 0; j < num_comps.val; ++j)

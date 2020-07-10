@@ -1125,7 +1125,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(node_numbers, &node_numbers_ptr); CHKERRXX(ierr);
 
     foreach_node(n, nodes_) {
-      node_numbers_ptr[n] = petsc_gloidx_[n];
+      node_numbers_ptr[n] = double(petsc_gloidx_[n]);
     }
 
     ierr = VecRestoreArray(node_numbers, &node_numbers_ptr); CHKERRXX(ierr);
@@ -3643,8 +3643,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
         double del = ABSD(delta_xyz[0], delta_xyz[1], delta_xyz[2]);
 
         // get level-set values an global node indices
-        vector<double>   phi_values(gf_stencil_size(), -1);
-        vector<PetscInt> global_idx(gf_stencil_size(), -1);
+        vector<double> phi_values(gf_stencil_size(), -1);
+        vector<double> global_idx(gf_stencil_size(), -1);
 
         phi_values[0] = bdry_.phi_eff_ptr[n];
         phi_values[1] = bdry_.phi_eff_ptr[neighbors[nei]];
@@ -3706,41 +3706,41 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
         if (gf_order_ == 3 && num_good_neis >= 4 && gf_stabilized_ != 0) { // cubic continuous
 
           // double interpolation
-          w[1] = 1./36.*(   0. - 108.*theta +  88.*pow(theta, 2) +  39.*pow(theta, 3) - 17.*pow(theta, 4) -  3.*pow(theta, 5) +    pow(theta, 6)),
-          w[2] = 1./36.*(-216. + 432.*theta - 108.*pow(theta, 2) - 156.*pow(theta, 3) + 39.*pow(theta, 4) + 12.*pow(theta, 5) - 3.*pow(theta, 6)),
-          w[3] = 1./36.*( 144. - 216.*theta -  54.*pow(theta, 2) + 159.*pow(theta, 3) - 21.*pow(theta, 4) - 15.*pow(theta, 5) + 3.*pow(theta, 6)),
-          w[4] = 1./36.*(- 36. +  48.*theta +  20.*pow(theta, 2) -  36.*pow(theta, 3) -     pow(theta, 4) +  6.*pow(theta, 5) -    pow(theta, 6)),
-          weight_bc = -1./36.*(144. - 156.*theta + 54.*pow(theta, 2) - 6.*pow(theta, 3));
+          w[1] = 1./36.*(   0. - 108.*theta +  88.*pow(theta, 2.) +  39.*pow(theta, 3.) - 17.*pow(theta, 4.) -  3.*pow(theta, 5.) +    pow(theta, 6.)),
+          w[2] = 1./36.*(-216. + 432.*theta - 108.*pow(theta, 2.) - 156.*pow(theta, 3.) + 39.*pow(theta, 4.) + 12.*pow(theta, 5.) - 3.*pow(theta, 6.)),
+          w[3] = 1./36.*( 144. - 216.*theta -  54.*pow(theta, 2.) + 159.*pow(theta, 3.) - 21.*pow(theta, 4.) - 15.*pow(theta, 5.) + 3.*pow(theta, 6.)),
+          w[4] = 1./36.*(- 36. +  48.*theta +  20.*pow(theta, 2.) -  36.*pow(theta, 3.) -     pow(theta, 4.) +  6.*pow(theta, 5.) -    pow(theta, 6.)),
+          weight_bc = -1./36.*(144. - 156.*theta + 54.*pow(theta, 2.) - 6.*pow(theta, 3.));
 
 //          // least-squares based
-//          double den = 18 + 66*theta+ 301*pow(theta, 2) + 456*pow(theta, 3) + 301*pow(theta, 4) + 90*pow(theta, 5) + 10*pow(theta, 6);
-//          w[1] = 3*theta*(-292 - 272*theta+ 153*pow(theta, 2) + 281*pow(theta, 3) + 115*pow(theta, 4) + 15*pow(theta, 5))/2./den;
-//          w[2] =    -3*(72 + 120*theta- 56*pow(theta, 2) - 140*pow(theta, 3) - 21*pow(theta, 4) + 20*pow(theta, 5) + 5*pow(theta, 6))/2./den;
-//          w[3] =   (144 + 312*theta+ 410*pow(theta, 2) - 189*pow(theta, 3) - 457*pow(theta, 4) - 195*pow(theta, 5) - 25*pow(theta, 6))/2./den;
-//          w[4] =   3*(-12 - 28*theta- 50*pow(theta, 2) + 4*pow(theta, 3) + 51*pow(theta, 4) + 30*pow(theta, 5) + 5*pow(theta, 6))/2./den;
-//          weight_bc =   -(72 + 570*theta+ 495*pow(theta, 2) + 105*pow(theta, 3))/den;
+//          double den = 18 + 66*theta+ 301*pow(theta, 2.) + 456*pow(theta, 3.) + 301*pow(theta, 4.) + 90*pow(theta, 5.) + 10*pow(theta, 6.);
+//          w[1] = 3*theta*(-292 - 272*theta+ 153*pow(theta, 2.) + 281*pow(theta, 3.) + 115*pow(theta, 4.) + 15*pow(theta, 5.))/2./den;
+//          w[2] =    -3*(72 + 120*theta- 56*pow(theta, 2.) - 140*pow(theta, 3.) - 21*pow(theta, 4.) + 20*pow(theta, 5.) + 5*pow(theta, 6.))/2./den;
+//          w[3] =   (144 + 312*theta+ 410*pow(theta, 2.) - 189*pow(theta, 3.) - 457*pow(theta, 4.) - 195*pow(theta, 5.) - 25*pow(theta, 6.))/2./den;
+//          w[4] =   3*(-12 - 28*theta- 50*pow(theta, 2.) + 4*pow(theta, 3.) + 51*pow(theta, 4.) + 30*pow(theta, 5.) + 5*pow(theta, 6.))/2./den;
+//          weight_bc =   -(72 + 570*theta+ 495*pow(theta, 2.) + 105*pow(theta, 3.))/den;
 
         } else if (gf_order_ == 3 && num_good_neis >= 3 && gf_stabilized_ != 1) { // cubic native
 
-          w[1] = 3.*(-2. -    theta + 2.*pow(theta,2) +    pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
-          w[2] =    ( 0. + 6.*theta - 3.*pow(theta,2) - 3.*pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
-          w[3] =    ( 0. -    theta + 0.              +    pow(theta,3))/(theta*(2. + 3.*theta + pow(theta,2)));
-          weight_bc = -6./(theta*(2. + 3.*theta + pow(theta,2)));
+          w[1] = 3.*(-2. -    theta + 2.*pow(theta,2.) +    pow(theta,3.))/(theta*(2. + 3.*theta + pow(theta,2.)));
+          w[2] =    ( 0. + 6.*theta - 3.*pow(theta,2.) - 3.*pow(theta,3.))/(theta*(2. + 3.*theta + pow(theta,2.)));
+          w[3] =    ( 0. -    theta + 0.              +    pow(theta,3.))/(theta*(2. + 3.*theta + pow(theta,2.)));
+          weight_bc = -6./(theta*(2. + 3.*theta + pow(theta,2.)));
 
         } else if (gf_order_ >= 2 && num_good_neis >= 3 && gf_stabilized_ != 0) { // quadratic continuous
 
           // double interpolation
-          w[1] =  0. - 2.0*theta + 1.75*pow(theta,2) + 0.5*pow(theta,3) - 0.25*pow(theta,4);
-          w[2] = -3. + 6.0*theta - 2.00*pow(theta,2) - 1.5*pow(theta,3) + 0.50*pow(theta,4);
-          w[3] =  1. - 1.5*theta - 0.25*pow(theta,2) + 1.0*pow(theta,3) - 0.25*pow(theta,4);
-          weight_bc =  -(3. - 2.5*theta + 0.5*pow(theta,2));
+          w[1] =  0. - 2.0*theta + 1.75*pow(theta,2.) + 0.5*pow(theta,3.) - 0.25*pow(theta,4.);
+          w[2] = -3. + 6.0*theta - 2.00*pow(theta,2.) - 1.5*pow(theta,3.) + 0.50*pow(theta,4.);
+          w[3] =  1. - 1.5*theta - 0.25*pow(theta,2.) + 1.0*pow(theta,3.) - 0.25*pow(theta,4.);
+          weight_bc =  -(3. - 2.5*theta + 0.5*pow(theta,2.));
 
 //          // least-squares based
-//          double den = 2 + 6 *theta+ 15 *pow(theta, 2) + 12 *pow(theta,3) + 3 *pow(theta,4);
-//          w[1] = theta*(-13 - theta+ 10 *pow(theta, 2) + 4 *pow(theta,3))/den;
-//          w[2] = (-6 - 6 *theta+ 5 *pow(theta, 2) + 6 *pow(theta,3) + pow(theta,4))/den;
-//          w[3] = (2 +  3 *theta+ pow(theta, 2) - 4 *pow(theta,3) - 2 *pow(theta,4))/den;
-//          weight_bc = -(6 + 22 *theta+ 10 *pow(theta, 2))/den;
+//          double den = 2 + 6 *theta+ 15 *pow(theta, 2.) + 12 *pow(theta,3.) + 3 *pow(theta,4.);
+//          w[1] = theta*(-13 - theta+ 10 *pow(theta, 2.) + 4 *pow(theta,3.))/den;
+//          w[2] = (-6 - 6 *theta+ 5 *pow(theta, 2.) + 6 *pow(theta,3.) + pow(theta,4.))/den;
+//          w[3] = (2 +  3 *theta+ pow(theta, 2.) - 4 *pow(theta,3.) - 2 *pow(theta,4.))/den;
+//          weight_bc = -(6 + 22 *theta+ 10 *pow(theta, 2.))/den;
 
         } else if (gf_order_ >= 2 && num_good_neis >= 2 && gf_stabilized_ != 1) { // quadratic native
 
@@ -3773,7 +3773,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
 
         for (int i = 0; i < num_good_neis+1; ++i) {
           if (w[i] != 0) {
-            row_gf_ghost->push_back(mat_entry_t(global_idx[i], w[i]));
+            row_gf_ghost->push_back(mat_entry_t(PetscInt(round(global_idx[i])), w[i]));
           }
         }
 

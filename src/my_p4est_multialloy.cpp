@@ -604,11 +604,11 @@ void my_p4est_multialloy_t::update_grid()
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 //  sl.set_velo_interpolation(linear);
 
-  if (num_time_layers_ == 2) {
+//  if (num_time_layers_ == 2) {
     sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
-  } else {
-    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
-  }
+//  } else {
+//    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+//  }
 
   /* interpolate the quantities onto the new grid */
   // also shifts n+1 -> n
@@ -1306,8 +1306,8 @@ void my_p4est_multialloy_t::save_p4est(int iter)
 
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
 
-  char name_grid[1000]; sprintf(name_grid, "%s/p4est/grid_solid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
-  char name_vecs[1000]; sprintf(name_vecs, "%s/p4est/vecs_solid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
+  char name_grid[1000]; sprintf(name_grid, "%s/p4est/grid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
+  char name_vecs[1000]; sprintf(name_vecs, "%s/p4est/vecs_lvl_%d_%d.%05d.petscbin", out_dir, data->min_lvl, data->max_lvl, iter);
 
   my_p4est_save_forest(name_grid, p4est_, nodes_, NULL);
 
@@ -1328,8 +1328,6 @@ void my_p4est_multialloy_t::save_p4est(int iter)
   vecs_to_save.push_back(front_velo_norm_[0].vec);
   vecs_to_save.push_back(front_curvature_.vec);
   vecs_to_save.push_back(bc_error_.vec);
-  vecs_to_save.push_back(dendrite_number_.vec);
-  vecs_to_save.push_back(dendrite_tip_.vec);
   vecs_to_save.push_back(front_curvature_filtered_.vec);
   vecs_to_save.push_back(seed_map_.vec);
 
@@ -1349,10 +1347,10 @@ void my_p4est_multialloy_t::save_p4est_solid(int iter)
 
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
 
-  char name_grid[1000]; sprintf(name_grid, "%s/p4est/grid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
-  char name_vecs[1000]; sprintf(name_vecs, "%s/p4est/vecs_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
+  char name_grid[1000]; sprintf(name_grid, "%s/p4est/grid_solid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
+  char name_vecs[1000]; sprintf(name_vecs, "%s/p4est/vecs_solid_lvl_%d_%d.%05d.petscbin", out_dir, data->min_lvl, data->max_lvl, iter);
 
-  my_p4est_save_forest(name_grid, p4est_, nodes_, NULL);
+  my_p4est_save_forest(name_grid, solid_p4est_, solid_nodes_, NULL);
 
   std::vector<Vec> vecs_to_save;
 
