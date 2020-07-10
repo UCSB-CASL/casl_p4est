@@ -121,7 +121,7 @@ void generateColumnHeaders( std::string header[] )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 	distances.clear();
-	distances.reserve( NUM_COLUMNS - 1 );				// Only true distances.
+	distances.reserve( NUM_COLUMNS );					// True distances and target h/kappa as well.
 
 	int s;												// Index to fill in the sample vector.
 	double grad[P4EST_DIM];
@@ -197,6 +197,7 @@ void generateColumnHeaders( std::string header[] )
 	}
 
 	sample[s] = H * star.curvature( centerTheta );		// Last column holds h\kappa.
+	distances.push_back( sample[s] );
 
 	// Write center sample node index and coordinates.
 	node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
@@ -283,8 +284,10 @@ int main ( int argc, char* argv[] )
 		// based equation using 5, 10, and 20 iterations.
 		std::string phiKeys[4] = { "fsm", "iter5", "iter10", "iter20" };	// The 4 types of reinitialized phi values.
 		std::unordered_map<std::string, std::ofstream> phiFilesMap;
+		std::unordered_map<std::string, std::ofstream> sdfPhiFilesMap;
 		std::unordered_map<std::string, double> maxREMap;					// Track the (relative) maximum absolute error.
 		phiFilesMap.reserve( 4 );
+		sdfPhiFilesMap.reserve( 4 );
 		maxREMap.reserve( 4 );
 		for( const auto& key : phiKeys )
 		{
@@ -302,6 +305,15 @@ int main ( int argc, char* argv[] )
 
 			phiFilesMap[key].precision( 15 );							// Precision for floating point numbers.
 			maxREMap[key] = 0;
+
+			// Signed-distance files.
+			sdfPhiFilesMap[key] = std::ofstream();
+			fileName = DATA_PATH + key + "_phi_sdf.csv";
+			sdfPhiFilesMap[key].open( fileName, std::ofstream::trunc );
+			if( !sdfPhiFilesMap[key].is_open() )
+				throw std::runtime_error( "Exact signed-distance phi values output file " + fileName + " couldn't be opened!" );
+			sdfPhiFilesMap[key] << headerStream.str() << std::endl;
+			sdfPhiFilesMap[key].precision( 15 );
 		}
 
 		// Prepare files where to write sampled nodes' cartesian coordinates for each reinitialization scheme.
@@ -451,9 +463,10 @@ int main ( int argc, char* argv[] )
 			ierr = VecGetArrayRead( reinitPhis[key], &reinitPhiReadPtrs[key] );
 			CHKERRXX( ierr );
 
-			// Now, collect samples with reinitialized level-set function values and target h\kappa.
+			// Now, collect samples with reinitialized and exact signed-distance level-set function values and target h\kappa.
 			int nSamples = 0;
 			std::vector<std::vector<double>> samples;
+			std::vector<std::vector<double>> sdfSamples;
 			for( auto n : indices )
 			{
 				std::vector<p4est_locidx_t> stencil;	// Contains 9 nodal indices in 2D.
@@ -466,6 +479,7 @@ int main ( int argc, char* argv[] )
 							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, normalDistribution,
 							pointsFilesMap[key], anglesFilesMap[key], distances );
 						samples.push_back( sample );
+						sdfSamples.push_back( distances );
 						nSamples++;
 
 						if( key == "fsm" )				// Set valid node-along-interface indicator (just once, in fsm).
@@ -487,11 +501,18 @@ int main ( int argc, char* argv[] )
 				}
 			}
 
-			// Write all samples collected.
+			// Write all reinitialized samples collected.
 			for( const auto& row : samples )
 			{
 				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( phiFilesMap[key], "," ) );		// Inner elements.
 				phiFilesMap[key] << row.back() << std::endl;
+			}
+
+			// Also write all exact signed-distance function values.
+			for( const auto& row : sdfSamples )
+			{
+				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfPhiFilesMap[key], "," ) );		// Inner elements.
+				sdfPhiFilesMap[key] << row.back() << std::endl;
 			}
 
 			std::cout << "   Generated " << nSamples << " samples for reinitialization " << key << std::endl;

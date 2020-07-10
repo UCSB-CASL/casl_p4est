@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC sinusoidal_datasets_2d.cpp )
+	list( APPEND SRC star_datasets_2d.cpp )
 endif()
 
 if( DIMENSION MATCHES 3d )
