@@ -1054,7 +1054,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   sprintf(name, "%s/vtu/multialloy_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
   // cell data
-  std::vector<double *>    cell_data;
+  std::vector<const double *>    cell_data;
   std::vector<std::string> cell_data_names;
 
   /* save the size of the leaves */
@@ -1082,7 +1082,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
 
   // point data
-  std::vector<double *>    point_data;
+  std::vector<const double *>    point_data;
   std::vector<std::string> point_data_names;
 
   front_phi_.get_array(); point_data.push_back(front_phi_.ptr); point_data_names.push_back("phi");
@@ -1165,7 +1165,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
   // cell data
-  std::vector<double *>    cell_data;
+  std::vector<const double *>    cell_data;
   std::vector<std::string> cell_data_names;
 
   /* save the size of the leaves */
@@ -1193,7 +1193,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
 
   // point data
-  std::vector<double *>    point_data;
+  std::vector<const double *>    point_data;
   std::vector<std::string> point_data_names;
 
   history_front_phi_      .get_array(); point_data.push_back(history_front_phi_.ptr);       point_data_names.push_back("phi");

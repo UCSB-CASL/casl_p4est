@@ -1037,6 +1037,8 @@ bool VecIsSetForNodes(const Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& 
  */
 bool VecIsSetForCells(const Vec& v, const p4est_t* p4est, const p4est_ghost_t* ghost, const unsigned int &blocksize, const bool &ghosted = true);
 
+PetscErrorCode delete_and_nullify_vector(Vec& vv);
+
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
  * \param p4est      [in]  p4est object

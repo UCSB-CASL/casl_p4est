@@ -190,7 +190,7 @@ public:
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
 
   void get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[P4EST_DIM], const my_p4est_faces_t *faces,
-                                                             Vec vstar_minus[P4EST_DIM], Vec vstar_plus[P4EST_DIM], Vec sharp_vnp1[P4EST_DIM]) const;
+                                                                   Vec vstar_minus[P4EST_DIM], Vec vstar_plus[P4EST_DIM], Vec sharp_vnp1[P4EST_DIM]) const;
   inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces) const
   {
     get_sharp_flux_components_and_subtract_them_from_velocities(flux, faces, NULL, NULL, NULL);

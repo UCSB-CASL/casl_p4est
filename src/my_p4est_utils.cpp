@@ -775,6 +775,16 @@ bool VecIsSetForCells(const Vec& v, const p4est_t* p4est, const p4est_ghost_t* g
   return my_test;
 }
 
+PetscErrorCode delete_and_nullify_vector(Vec& vv)
+{
+  PetscErrorCode ierr = 0;
+  if(vv != NULL){
+    ierr = VecDestroy(vv); CHKERRQ(ierr);
+    vv = NULL;
+  }
+  return ierr;
+}
+
 PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;

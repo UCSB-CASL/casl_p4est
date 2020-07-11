@@ -477,6 +477,12 @@ public:
 
   inline const my_p4est_faces_t* get_faces() const { return faces; }
 
+  inline PetscErrorCode create_vector_on_interface_capturing_nodes(Vec &vv) const
+  {
+    PetscErrorCode ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &vv); CHKERRQ(ierr);
+    return ierr;
+  }
+
 #ifdef DEBUG
   int cell_FD_map_is_consistent_across_procs();
 #endif
