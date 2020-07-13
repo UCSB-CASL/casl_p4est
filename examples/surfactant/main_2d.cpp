@@ -740,8 +740,8 @@ int main(int argc, char** argv) {
   mpi.init(argc, argv);
 
   // Stopwatch
-  parStopWatch w;
-  w.start("Running example: surfactant");
+  parStopWatch watch;
+  watch.start("Running example: surfactant");
 
   // Test number
   test_number = 0;
@@ -769,7 +769,7 @@ int main(int argc, char** argv) {
 
   // Refinement levels
   const int lmin = 3;
-  const int lmax = 7;
+  const int lmax = 8;
 #ifdef P4_TO_P8
   dmin = MIN((xmax-xmin),(ymax-ymin),(zmax-zmin))/pow(2,lmax);
 #else
@@ -777,7 +777,7 @@ int main(int argc, char** argv) {
 #endif
 
   // Time
-  int integ = 3;
+  int integ = 1;
   bool use_SL = true;
   double CFL = 0.990;
   double u_max = 1.0;
@@ -920,10 +920,7 @@ int main(int argc, char** argv) {
     surf->advect_interface_one_step();
 
     P4EST_ASSERT(tn >= 0.0);
-//    if(tn > EPS*dt)
-      surf->compute_one_step_Gamma((TimeIntegrator)integ, use_SL, true, iter);
-//    else
-//      surf->compute_one_step_Gamma((TimeIntegrator)0, use_SL, true, iter);
+      surf->compute_one_step_Gamma((TimeIntegrator)integ, use_SL, true);
 
     tn+=dt;
     iter++;
@@ -960,9 +957,9 @@ int main(int argc, char** argv) {
   my_p4est_brick_destroy(conn, &brick);
 
   // Stop and print timer
-  w.stop();
+  watch.stop();
   ierr = PetscPrintf(mpi.comm(),"\n"); CHKERRXX(ierr);
-  w.print_duration();
+  watch.read_duration();
 
   // Finish
   return 0;
