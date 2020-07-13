@@ -389,7 +389,7 @@ public:
   {
 #ifdef CASL_THROWS
     if(interp_grad_phi == NULL)
-      throw std::runtime_error("my_p4est_interface_manager_t::grad_phi() called but interp_grad_phi is not available...");
+      throw std::runtime_error("my_p4est_interface_manager_t::grad_phi_at_point() called but interp_grad_phi is not available...");
 #endif
     (*interp_grad_phi)(xyz, grad_phi);
     return;
@@ -431,15 +431,15 @@ public:
 
   inline double signed_distance_and_projection_onto_interface_of_point(const double *xyz, double* xyz_projected) const
   {
-    double grad_phi_local[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi_local);
-    const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2])));
+    double grad_phi[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi);
+    const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi[0]), SQR(grad_phi[1]), SQR(grad_phi[2])));
     if(mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the projection onto the interface for a point where the gradient of phi is ill-defined");
 
     const double signed_distance = phi_at_point(xyz)/mag_grad_phi;
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      xyz_projected[dim] = xyz[dim] - signed_distance*grad_phi_local[dim]/mag_grad_phi;
+      xyz_projected[dim] = xyz[dim] - signed_distance*grad_phi[dim]/mag_grad_phi;
 
     return signed_distance;
   }

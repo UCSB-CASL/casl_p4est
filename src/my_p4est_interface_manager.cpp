@@ -201,7 +201,10 @@ void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
   P4EST_ASSERT(grad_phi != NULL && VecIsSetForNodes(grad_phi, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, P4EST_DIM, 1));
   if(interp_grad_phi == NULL)
     interp_grad_phi = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
-  interp_grad_phi->set_input(grad_phi_local, linear, P4EST_DIM);
+  interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
+  return;
+}
+
 void my_p4est_interface_manager_t::set_curvature(Vec curvature_in)
 {
   Vec curvature = curvature_in;
