@@ -316,7 +316,7 @@ private:
     P4EST_ASSERT(faces_n->q2f(quad_idx, loc_face_idx) == face_idx);
     const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est_n, ghost_n);
 
-    return (is_quad_Wall(p4est_n, tree_idx, quad, loc_face_idx) && bc_v[dir].wallType(xyz_face) == DIRICHLET);
+    return (is_quad_Wall(p4est_n, tree_idx, quad, loc_face_idx) && bc_velocity[dir].wallType(xyz_face) == DIRICHLET);
   }
   inline char sgn_of_wall_neighbor_of_face(const p4est_locidx_t& face_idx, const u_char &dir, const u_char &wall_dir, const double *xyz_wall = NULL)
   {
@@ -353,7 +353,7 @@ private:
 
     P4EST_ASSERT(!my_cell.is_set);
 
-    my_cell.cell_type = compute_voronoi_cell(my_cell.voro, faces_n, face_idx, dir, bc_v, NULL);
+    my_cell.cell_type = compute_voronoi_cell(my_cell.voro, faces_n, face_idx, dir, bc_velocity, NULL);
     P4EST_ASSERT(my_cell.cell_type != not_well_defined); // prohibited in two-phase flows, all Voronoi cell must be defined...
 
     my_cell.has_neighbor_across = false;
@@ -430,58 +430,8 @@ private:
   }
 #endif
 
-  void compute_normals_curvature_and_second_derivatives(const bool& set_second_derivatives);
   void compute_curvature();
   void normalize_normals();
-
-  inline void compute_gradient_and_second_derivatives(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                                      const double* fine_phi_p, double *fine_grad_phi_p, double *fine_phi_xxyyzz_p)
-  {
-    qnnn->gradient(fine_phi_p, (fine_grad_phi_p+P4EST_DIM*fine_node_idx));
-    if(fine_phi_xxyyzz_p != NULL)
-      qnnn->laplace(fine_phi_p, (fine_phi_xxyyzz_p+P4EST_DIM*fine_node_idx));
-  }
-
-  inline void compute_local_curvature(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                      const double* fine_phi_p, const double *fine_phi_xxyyzz_p,
-                                      const double *fine_grad_phi_p, double *fine_curvature_p)
-  {
-//    fine_curvature_p[fine_node_idx] = 1.0/0.5;
-    // compute first derivatives
-    double norm_of_grad = 0.0;
-    double dx = fine_grad_phi_p[P4EST_DIM*fine_node_idx+0]; norm_of_grad += SQR(dx);
-    double dy = fine_grad_phi_p[P4EST_DIM*fine_node_idx+1]; norm_of_grad += SQR(dy);
-#ifdef P4_TO_P8
-    double dz = fine_grad_phi_p[P4EST_DIM*fine_node_idx+2]; norm_of_grad += SQR(dz);
-#endif
-    norm_of_grad = sqrt(norm_of_grad);
-
-    if(norm_of_grad > EPS)
-    {
-      // compute second derivatives
-      double dxxyyzz[P4EST_DIM];
-      if(fine_phi_xxyyzz_p != NULL){
-        for (u_char der = 0; der < P4EST_DIM; ++der)
-          dxxyyzz[der] = fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+der];
-      } else
-        qnnn->laplace(fine_phi_p, dxxyyzz);
-
-
-      double dxy = qnnn->dy_central_component(fine_grad_phi_p, P4EST_DIM, dir::x);
-#ifdef P4_TO_P8
-      double dxz = qnnn->dz_central_component(fine_grad_phi_p, P4EST_DIM, dir::x); // d/dz{d/dx}
-      double dyz = qnnn->dz_central_component(fine_grad_phi_p, P4EST_DIM, dir::y); // d/dz{d/dy}
-#endif
-#ifdef P4_TO_P8
-      fine_curvature_p[fine_node_idx] = ((dxxyyzz[1]+dxxyyzz[2])*SQR(dx) + (dxxyyzz[0]+dxxyyzz[2])*SQR(dy) + (dxxyyzz[0]+dxxyyzz[1])*SQR(dz) -
-          2*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (norm_of_grad*norm_of_grad*norm_of_grad);
-#else
-      fine_curvature_p[fine_node_idx] = (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2*dx*dy*dxy) / (norm_of_grad*norm_of_grad*norm_of_grad);
-#endif
-    }
-    else
-      fine_curvature_p[fine_node_idx] = 0.0; // nothing better to suggest for now, sorry
-  }
 
   inline void compute_local_jump_mu_grad_v_elements(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *fine_qnnn,
                                                     const my_p4est_interpolation_nodes_t &interp_grad_underlined_vn_nodes,

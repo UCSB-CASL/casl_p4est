@@ -365,7 +365,7 @@ void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, c
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(phi_xxyyzz); CHKERRXX(ierr);
     interface_manager->get_interface_capturing_ngbd_n().second_derivatives_central(phi, phi_xxyyzz);
   }
-  interface_manager->set_levelset(phi, method, phi_xxyyzz, true);
+  interface_manager->set_levelset(phi, method, phi_xxyyzz, true, true);
   return;
 }
 
@@ -412,6 +412,7 @@ void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[
   ierr = VecRestoreArray(vn_nodes_plus,     &vn_nodes_plus_p);    CHKERRXX(ierr);
   compute_second_derivatives_of_nm1_velocities();
   compute_second_derivatives_of_n_velocities();
+  return;
 }
 
 void my_p4est_two_phase_flows_t::set_face_velocities_np1(CF_DIM* vnp1_minus_functor[P4EST_DIM], CF_DIM* vnp1_plus_functor[P4EST_DIM])
@@ -420,6 +421,10 @@ void my_p4est_two_phase_flows_t::set_face_velocities_np1(CF_DIM* vnp1_minus_func
   double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
   double xyz_face[P4EST_DIM];
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    if(vnp1_face_minus[dir] == NULL){
+      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr); }
+    if(vnp1_face_plus[dir] == NULL){
+      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir], dir); CHKERRXX(ierr); }
     ierr = VecGetArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
     ierr = VecGetArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
     for (size_t k = 0; k < faces_n->get_layer_size(dir); ++k) {
@@ -428,178 +433,55 @@ void my_p4est_two_phase_flows_t::set_face_velocities_np1(CF_DIM* vnp1_minus_func
       vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
       vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
     }
+    ierr = VecGhostUpdateBegin(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGhostUpdateBegin(vnp1_m[dir], INSERT_VALUES, SCATTER_FORWARD);          CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vnp1_p[dir],  INSERT_VALUES, SCATTER_FORWARD);         CHKERRXX(ierr);
-  }
+
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     for (size_t k = 0; k < faces_n->get_local_size(dir); ++k) {
       p4est_locidx_t face_idx = faces_n->get_local_face(dir, k);
       faces_n->xyz_fr_f(face_idx, dir, xyz_face);
-      if((*interp_phi)(xyz_face) <=0.0)
-      {
-        vnp1_m_p[dir][face_idx] = (*vnp1_m_[dir])(xyz_face);
-        vnp1_p_p[dir][face_idx] = DBL_MAX;
-      }
-      else
-      {
-        vnp1_p_p[dir][face_idx] = (*vnp1_p_[dir])(xyz_face);
-        vnp1_m_p[dir][face_idx] = DBL_MAX;
-      }
+      vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
+      vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
     }
+    ierr = VecGhostUpdateEnd(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
   }
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGhostUpdateEnd(vnp1_m[dir], INSERT_VALUES, SCATTER_FORWARD);            CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vnp1_p[dir],  INSERT_VALUES, SCATTER_FORWARD);           CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_m[dir], &vnp1_m_p[dir]);                              CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_p[dir],  &vnp1_p_p[dir]);                             CHKERRXX(ierr);
-  }
-}
-
-void my_p4est_two_phase_flows_t::set_jump_mu_grad_v(CF_DIM* jump_mu_grad_v_op[P4EST_DIM][P4EST_DIM])
-{
-  PetscErrorCode ierr;
-  double *fine_jump_mu_grad_v_p;
-  ierr = create_node_vector_if_needed(fine_jump_mu_grad_v, fine_p4est_n, fine_nodes_n, SQR_P4EST_DIM);      CHKERRXX(ierr);
-  ierr = VecGetArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);                                          CHKERRXX(ierr);
-  double xyz_node[P4EST_DIM];
-  for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k) {
-    node_xyz_fr_n(k, fine_p4est_n, fine_nodes_n, xyz_node);
-    for (u_char ii = 0; ii < P4EST_DIM; ++ii)
-      for (u_char jj = 0; jj < P4EST_DIM; ++jj)
-        fine_jump_mu_grad_v_p[SQR_P4EST_DIM*k + P4EST_DIM*ii + jj] = (*jump_mu_grad_v_op[ii][jj])(xyz_node);
-  }
-  ierr = VecRestoreArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);                                      CHKERRXX(ierr);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::compute_second_derivatives_of_n_velocities()
 {
   PetscErrorCode ierr;
-  ierr = create_node_vector_if_needed(vn_nodes_m_xxyyzz, p4est_n, nodes_n, SQR_P4EST_DIM);  CHKERRXX(ierr);
-  ierr = create_node_vector_if_needed(vn_nodes_p_xxyyzz, p4est_n, nodes_n, SQR_P4EST_DIM);  CHKERRXX(ierr);
+  if(vn_nodes_minus_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &vn_nodes_minus_xxyyzz); CHKERRXX(ierr);
+  }
+  if(vn_nodes_plus_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &vn_nodes_plus_xxyyzz); CHKERRXX(ierr);
+  }
 
-  Vec fields_to_differentiate[2]  = {vn_nodes_m,        vn_nodes_p};
-  Vec second_derivatives[2]       = {vn_nodes_m_xxyyzz, vn_nodes_p_xxyyzz};
+  Vec fields_to_differentiate[2]  = {vn_nodes_minus,        vn_nodes_plus};
+  Vec second_derivatives[2]       = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
   ngbd_n->second_derivatives_central(fields_to_differentiate, second_derivatives, 2, P4EST_DIM);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::compute_second_derivatives_of_nm1_velocities()
 {
   PetscErrorCode ierr;
-  ierr = create_node_vector_if_needed(vnm1_nodes_m_xxyyzz, p4est_nm1, nodes_nm1, SQR_P4EST_DIM);  CHKERRXX(ierr);
-  ierr = create_node_vector_if_needed(vnm1_nodes_p_xxyyzz, p4est_nm1, nodes_nm1, SQR_P4EST_DIM);  CHKERRXX(ierr);
+  if(vnm1_nodes_minus_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, SQR_P4EST_DIM, &vnm1_nodes_minus_xxyyzz); CHKERRXX(ierr);
+  }
+  if(vnm1_nodes_plus_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, SQR_P4EST_DIM, &vnm1_nodes_plus_xxyyzz); CHKERRXX(ierr);
+  }
 
-  Vec fields_to_differentiate[2] = {vnm1_nodes_m, vnm1_nodes_p};
-  Vec second_derivatives[2] = {vnm1_nodes_m_xxyyzz, vnm1_nodes_p_xxyyzz};
+  Vec fields_to_differentiate[2]  = {vnm1_nodes_minus,        vnm1_nodes_plus};
+  Vec second_derivatives[2]       = {vnm1_nodes_minus_xxyyzz, vnm1_nodes_plus_xxyyzz};
   ngbd_nm1->second_derivatives_central(fields_to_differentiate, second_derivatives, 2, P4EST_DIM);
-}
-
-void my_p4est_two_phase_flows_t::compute_normals_curvature_and_second_derivatives(const bool& set_second_derivatives)
-{
-  PetscErrorCode ierr;
-  // make sure normals are properly allocated
-  // same for second derivatives if desired
-  create_node_vector_if_needed(fine_normal, fine_p4est_n, fine_nodes_n, P4EST_DIM);
-  if(set_second_derivatives){
-    ierr = create_node_vector_if_needed(fine_phi_xxyyzz, fine_p4est_n, fine_nodes_n, P4EST_DIM);  CHKERRXX(ierr); }
-  else{
-    ierr = delete_and_nullify_vector(fine_phi_xxyyzz);                                            CHKERRXX(ierr); }
-  // get the normals now, and the second derivatives, if desired
-  // get the pointers
-  double *fine_normal_p, *fine_phi_xxyyzz_p;
-  const double* fine_phi_read_p;
-  ierr = VecGetArrayRead(fine_phi, &fine_phi_read_p);                                             CHKERRXX(ierr);
-  ierr = VecGetArray(fine_normal, &fine_normal_p);                                                CHKERRXX(ierr);
-  if(set_second_derivatives){
-    ierr = VecGetArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);                                      CHKERRXX(ierr); }
-  else
-    fine_phi_xxyyzz_p = NULL;
-
-  p4est_locidx_t fine_node_idx;
-  const quad_neighbor_nodes_of_node_t* qnnn;
-  // get the values for the layer nodes
-  for (size_t k = 0; k < fine_ngbd_n->layer_nodes.size(); ++k) {
-    fine_node_idx = fine_ngbd_n->get_layer_node(k);
-    fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
-    compute_gradient_and_second_derivatives(fine_node_idx, qnnn, fine_phi_read_p, fine_normal_p, fine_phi_xxyyzz_p);
-  }
-  ierr = VecGhostUpdateBegin(fine_normal, INSERT_VALUES, SCATTER_FORWARD);                        CHKERRXX(ierr);
-  if(set_second_derivatives){
-    ierr = VecGhostUpdateBegin(fine_phi_xxyyzz, INSERT_VALUES, SCATTER_FORWARD);                  CHKERRXX(ierr); }
-  for (size_t k = 0; k < fine_ngbd_n->local_nodes.size(); ++k) {
-    fine_node_idx = fine_ngbd_n->get_local_node(k);
-    fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
-    compute_gradient_and_second_derivatives(fine_node_idx, qnnn, fine_phi_read_p, fine_normal_p, fine_phi_xxyyzz_p);
-  }
-  ierr = VecGhostUpdateEnd(fine_normal, INSERT_VALUES, SCATTER_FORWARD);                          CHKERRXX(ierr);
-  if(set_second_derivatives){
-    ierr = VecGhostUpdateEnd(fine_phi_xxyyzz, INSERT_VALUES, SCATTER_FORWARD);                    CHKERRXX(ierr); }
-  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_read_p);                                         CHKERRXX(ierr);
-  ierr = VecRestoreArray(fine_normal, &fine_normal_p);                                            CHKERRXX(ierr);
-  if(set_second_derivatives){
-    ierr = VecRestoreArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);                                  CHKERRXX(ierr); }
-  compute_curvature();
-  normalize_normals();
-
-  my_p4est_level_set_t ls(fine_ngbd_n);
-  ls.extend_from_interface_to_whole_domain_TVD_in_place(fine_phi, fine_curvature);
-}
-
-void my_p4est_two_phase_flows_t::compute_curvature()
-{
-  PetscErrorCode ierr;
-  // make sure fine curvature is properly allocated
-  ierr = create_node_vector_if_needed(fine_curvature, fine_p4est_n, fine_nodes_n);                CHKERRXX(ierr);
-  double *fine_curvature_p;
-  const double *fine_phi_read_p, *fine_normal_p, *fine_phi_xxyyzz_p;
-  ierr = VecGetArray(fine_curvature, &fine_curvature_p);                                          CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_phi, &fine_phi_read_p);                                             CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_normal, &fine_normal_p);                                            CHKERRXX(ierr);
-  if(fine_phi_xxyyzz != NULL){
-    ierr = VecGetArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);                                  CHKERRXX(ierr);}
-  else
-    fine_phi_xxyyzz_p = NULL;
-  p4est_locidx_t fine_node_idx;
-  const quad_neighbor_nodes_of_node_t* qnnn;
-  // get the values for the layer nodes
-  for (size_t k = 0; k < fine_ngbd_n->layer_nodes.size(); ++k) {
-    fine_node_idx = fine_ngbd_n->get_layer_node(k);
-    fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
-    compute_local_curvature(fine_node_idx, qnnn, fine_phi_read_p, fine_phi_xxyyzz_p, fine_normal_p, fine_curvature_p);
-  }
-  ierr = VecGhostUpdateBegin(fine_curvature, INSERT_VALUES, SCATTER_FORWARD);                     CHKERRXX(ierr);
-  for (size_t k = 0; k < fine_ngbd_n->local_nodes.size(); ++k) {
-    fine_node_idx = fine_ngbd_n->get_local_node(k);
-    fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
-    compute_local_curvature(fine_node_idx, qnnn, fine_phi_read_p, fine_phi_xxyyzz_p, fine_normal_p, fine_curvature_p);
-  }
-  ierr = VecGhostUpdateEnd(fine_curvature, INSERT_VALUES, SCATTER_FORWARD);                       CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(fine_curvature, &fine_curvature_p);                                      CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_read_p);                                         CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);                                        CHKERRXX(ierr);
-  if(fine_phi_xxyyzz != NULL){
-    ierr = VecRestoreArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);                              CHKERRXX(ierr);
-  }
-}
-
-void my_p4est_two_phase_flows_t::normalize_normals()
-{
-  PetscErrorCode ierr;
-  double norm_of_grad;
-  double *fine_normal_p;
-  ierr = VecGetArray(fine_normal, &fine_normal_p);                                                CHKERRXX(ierr);
-  for (unsigned int n = 0; n < fine_nodes_n->indep_nodes.elem_count; ++n)
-  {
-    norm_of_grad = 0.0;
-    for (unsigned int dir = 0; dir < P4EST_DIM; ++dir)
-      norm_of_grad += SQR(fine_normal_p[P4EST_DIM*n + dir]);
-    norm_of_grad = sqrt(norm_of_grad);
-    for (unsigned int dir = 0; dir < P4EST_DIM; ++dir)
-      fine_normal_p[P4EST_DIM*n + dir] = (norm_of_grad > threshold_norm_of_n? fine_normal_p[P4EST_DIM*n + dir]/norm_of_grad : 0.0);
-  }
-  ierr = VecRestoreArray(fine_normal, &fine_normal_p);                                            CHKERRXX(ierr);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::get_velocity_seen_from_cell(neighbor_value& neighbor_velocity, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const int& face_dir,
@@ -3121,7 +3003,6 @@ void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_explicit_ite
   }
 }
 
-
 void my_p4est_two_phase_flows_t::extrapolate_normal_derivatives_of_face_velocity_local_pseudo_time(const p4est_locidx_t &local_face_idx, const u_char &dir, const my_p4est_interpolation_nodes_t &interp_normal, const double *fine_phi_p,
                                                                                                    double *normal_derivative_of_vnp1_m_p[P4EST_DIM], double *normal_derivative_of_vnp1_p_p[P4EST_DIM])
 {
@@ -3155,7 +3036,6 @@ void my_p4est_two_phase_flows_t::extrapolate_normal_derivatives_of_face_velocity
   const double dt_normal_derivative = MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]))/((double) P4EST_DIM); // as in other extensions (at nodes)
   normal_derivative_of_field_p[local_face_idx] += dt_normal_derivative*increment_normal_derivative;
 }
-
 
 void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_pseudo_time(const p4est_locidx_t &local_face_idx, const u_char &dir, const my_p4est_interpolation_nodes_t &interp_normal,
                                                                                 const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const u_char &extrapolation_degree,
