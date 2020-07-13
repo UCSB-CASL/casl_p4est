@@ -1356,7 +1356,7 @@ public:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
           if(!solve_stefan) return 0.;
           else{
-            return (*v_interface_interp)(x,y); // No slip on the interface
+            return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface
           }
       }
       case NS_GIBOU_EXAMPLE:
