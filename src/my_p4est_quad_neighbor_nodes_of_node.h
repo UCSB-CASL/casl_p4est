@@ -2005,6 +2005,55 @@ public:
     return (der == dir::x ? dx_central(f) : ONLY3D(OPEN_PARENTHESIS der == dir::y ?) dy_central(f) ONLY3D(: dz_central(f)CLOSE_PARENTHESIS));
   }
 
+  /*!
+   * \brief get_curvature evaluates the local mean curvature as divergence of (nabla phi/(magnitude of nabla of phi)).
+   * The user MUST provide nabla of phi to enable local calculation
+   * \param [in] grad_phi_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
+   * \param [in] phi_p        : pointer to the data of a node-sampled vector storing the values of phi
+   * \param [in] phi_xxyyzz_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
+   *                            respect to the P4EST_DIM Cartesian directions x, y, z
+   * NOTE 1: if phi_xxyyzz_p is provided, the second derivatives of phi are read from it and phi_p is disregarded. If they are not provided, they are
+   * calculated from phi_p.
+   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned value is 0.0.
+   * \return the value of the local mean curvature.
+   */
+  inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p) const
+  {
+    P4EST_ASSERT(grad_phi_p != NULL && (phi_p != NULL || phi_xxyyzz_p != NULL));
+    // fetch first derivatives
+    double mag_of_grad = 0.0;
+    const double dx = grad_phi_p[P4EST_DIM*node_000 + 0]; mag_of_grad += SQR(dx);
+    const double dy = grad_phi_p[P4EST_DIM*node_000 + 1]; mag_of_grad += SQR(dy);
+  #ifdef P4_TO_P8
+    const double dz = grad_phi_p[P4EST_DIM*node_000 + 2]; mag_of_grad += SQR(dz);
+  #endif
+    mag_of_grad = sqrt(mag_of_grad);
+
+    if(mag_of_grad > EPS)
+    {
+      // compute second derivatives
+      double dxxyyzz[P4EST_DIM];
+      if(phi_xxyyzz_p != NULL){
+        for (u_char der = 0; der < P4EST_DIM; ++der)
+          dxxyyzz[der] = phi_xxyyzz_p[P4EST_DIM*node_000 + der];
+      }
+      else
+        laplace(phi_p, dxxyyzz);
+
+      const double dxy = dy_central_component(grad_phi_p, P4EST_DIM, dir::x);
+#ifdef P4_TO_P8
+      const double dxz = dz_central_component(grad_phi_p, P4EST_DIM, dir::x); // d/dz{d/dx}
+      const double dyz = dz_central_component(grad_phi_p, P4EST_DIM, dir::y); // d/dz{d/dy}
+      return = ((dxxyyzz[1] + dxxyyzz[2])*SQR(dx) + (dxxyyzz[0] + dxxyyzz[2])*SQR(dy) + (dxxyyzz[0] + dxxyyzz[1])*SQR(dz) -
+          2*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (mag_of_grad*mag_of_grad*mag_of_grad);
+#else
+      return (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2*dx*dy*dxy) / (mag_of_grad*mag_of_grad*mag_of_grad);
+#endif
+    }
+    else
+      return 0.0; // nothing better to suggest for now, sorry
+  }
+
 
   // biased-first-derivative-related procedures
   // based on linear-interpolation neighbors

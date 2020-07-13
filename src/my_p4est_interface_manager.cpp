@@ -12,6 +12,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
     throw std::invalid_argument("my_p4est_interface_manager_t(): you're using UNDER-resolved interpolation tools for capturing the interface. Are you mentally sane? Go see a doctor or check your code...");
 #endif
   interp_grad_phi   = NULL;
+  interp_curvature  = NULL;
   interp_phi_xxyyzz = NULL;
   cell_FD_interface_neighbors = new map_of_interface_neighbors_t;
   tmp_FD_interface_neighbor   = new FD_interface_neighbor;
@@ -21,6 +22,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
     clear_face_FD_interface_neighbors(dim);
   }
   grad_phi_local              = NULL;
+  curvature_local             = NULL;
   phi_on_computational_nodes  = NULL;
   use_second_derivative_when_computing_FD_theta = true;
 }
@@ -37,10 +39,14 @@ my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
 
   if(interp_grad_phi != NULL)
     delete interp_grad_phi;
+  if(interp_curvature != NULL)
+    delete interp_curvature;
   if(interp_phi_xxyyzz != NULL)
     delete interp_phi_xxyyzz;
   if(grad_phi_local != NULL){
     PetscErrorCode ierr = VecDestroy(grad_phi_local); CHKERRXX(ierr); }
+  if(curvature_local != NULL){
+    PetscErrorCode ierr = VecDestroy(curvature_local); CHKERRXX(ierr); }
 }
 
 void my_p4est_interface_manager_t::do_not_store_cell_FD_interface_neighbors()
@@ -71,7 +77,9 @@ void my_p4est_interface_manager_t::clear_all_FD_interface_neighbors()
   return;
 }
 
-void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz, const bool& build_and_set_grad_phi_locally)
+void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz,
+                                                const bool& build_and_set_grad_phi_locally,
+                                                const bool& build_and_set_curvature_locally)
 {
   P4EST_ASSERT(phi != NULL);
   P4EST_ASSERT(VecIsSetForNodes(phi, interpolation_node_ngbd->get_nodes(), interpolation_node_ngbd->get_p4est()->mpicomm, 1));
@@ -91,6 +99,9 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
 
   if(build_and_set_grad_phi_locally)
     set_grad_phi();
+
+  if(build_and_set_curvature_locally)
+    set_curvature();
 
   return;
 }
@@ -122,6 +133,63 @@ void my_p4est_interface_manager_t::build_grad_phi_locally()
   return;
 }
 
+void my_p4est_interface_manager_t::build_curvature_locally()
+{
+#ifdef CASL_THROWS
+  if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_input_fields() != 1)
+    throw std::runtime_error("my_p4est_interface_manager_t::build_grad_phi_locally(): can't determine the curvature of the levelset function if the levelset function wasn't set first...");
+#endif
+
+  PetscErrorCode ierr;
+
+  if(interp_grad_phi == NULL && grad_phi_local == NULL)
+    build_grad_phi_locally();
+
+  if(curvature_local == NULL){
+    ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &curvature_local); CHKERRXX(ierr); }
+
+  double *curvature_p;
+  const double *phi_p, *grad_phi_p;
+  const double *phi_xxyyzz_p = NULL;
+  ierr = VecGetArrayRead(interp_phi.get_input_fields()[0], &phi_p); CHKERRXX(ierr);
+  Vec grad_phi_to_read = (interp_grad_phi == NULL ? grad_phi_local : interp_grad_phi->get_input_fields()[0]);
+  P4EST_ASSERT(grad_phi_to_read != NULL);
+  ierr = VecGetArrayRead(grad_phi_to_read, &grad_phi_p); CHKERRXX(ierr);
+  if(interp_phi_xxyyzz != NULL){
+    ierr = VecGetArrayRead(interp_phi_xxyyzz->get_input_fields()[0], &phi_xxyyzz_p); CHKERRXX(ierr); }
+  ierr = VecGetArray(curvature_local, &curvature_p); CHKERRXX(ierr);
+
+
+  quad_neighbor_nodes_of_node_t qnnn_buffer;
+  const quad_neighbor_nodes_of_node_t* qnnn_p = (interpolation_node_ngbd->neighbors_are_initialized() ? NULL : &qnnn_buffer);
+
+  for (size_t k = 0; k < interpolation_node_ngbd->get_layer_size(); ++k) {
+    const p4est_locidx_t node_idx = interpolation_node_ngbd->get_layer_node(k);
+    if(interpolation_node_ngbd->neighbors_are_initialized())
+      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    else
+      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
+    curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+  }
+  ierr = VecGhostUpdateBegin(curvature_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < interpolation_node_ngbd->get_local_size(); ++k) {
+    const p4est_locidx_t node_idx = interpolation_node_ngbd->get_local_node(k);
+    if(interpolation_node_ngbd->neighbors_are_initialized())
+      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    else
+      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
+    curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+  }
+  ierr = VecGhostUpdateEnd(curvature_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(curvature_local, &curvature_p); CHKERRXX(ierr);
+  if(interp_phi_xxyyzz != NULL){
+    ierr = VecRestoreArrayRead(interp_phi_xxyyzz->get_input_fields()[0], &phi_xxyyzz_p); CHKERRXX(ierr); }
+  ierr = VecRestoreArrayRead(grad_phi_to_read, &grad_phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(interp_phi.get_input_fields()[0], &phi_p); CHKERRXX(ierr);
+  return;
+}
+
 void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
 {
   Vec grad_phi = grad_phi_in;
@@ -134,6 +202,19 @@ void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
   if(interp_grad_phi == NULL)
     interp_grad_phi = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
   interp_grad_phi->set_input(grad_phi_local, linear, P4EST_DIM);
+void my_p4est_interface_manager_t::set_curvature(Vec curvature_in)
+{
+  Vec curvature = curvature_in;
+  if(curvature == NULL)
+  {
+    build_curvature_locally();
+    curvature = curvature_local;
+  }
+  P4EST_ASSERT(curvature != NULL && VecIsSetForNodes(curvature, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, 1));
+
+  if(interp_curvature == NULL)
+    interp_curvature = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
+  interp_curvature->set_input(curvature, linear);
   return;
 }
 

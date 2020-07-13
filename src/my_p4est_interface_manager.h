@@ -165,8 +165,9 @@ class my_p4est_interface_manager_t
   const my_p4est_node_neighbors_t *interpolation_node_ngbd;
   my_p4est_interpolation_nodes_t  interp_phi;
   my_p4est_interpolation_nodes_t  *interp_grad_phi;
+  my_p4est_interpolation_nodes_t  *interp_curvature;
   my_p4est_interpolation_nodes_t  *interp_phi_xxyyzz;
-  Vec                             grad_phi_local;
+  Vec                             grad_phi_local, curvature_local;
   const int                       max_level_p4est;
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
@@ -185,6 +186,7 @@ class my_p4est_interface_manager_t
   }
 
   void build_grad_phi_locally();
+  void build_curvature_locally();
 
   // disallow copy ctr and copy assignment
   my_p4est_interface_manager_t(const my_p4est_interface_manager_t& other);
@@ -247,10 +249,15 @@ public:
    * \param [in] build_and_set_grad_phi_locally:[optional] flag activating the calculation and configuration of the internal inter-
    *                                            -polation tool for evaluating gradients of the levelset function (the gradient of
    *                                            the levelset function is computed internally and owned by this object in that case)
+   * \param [in] build_and_set_curvature_locally:[optional] flag activating the calculation and configuration of the internal inter-
+   *                                            -polation tool for evaluating the curvature of the levelset function (the curvature
+   *                                            of the levelset function is computed internally, at the nodes of the interpolation_node_ngbd_n
+   *                                            and owned by this object in that case)
    * NOTE : if _NOT_ using a subresolving interpolation_node_ngbd, this method will also set phi as the "phi_on_computational_nodes"
    * (otherwise, the user is advised have to set it themselves using "set_under_resolved_levelset" if needed/desired)
    */
-  void set_levelset(Vec phi, const interpolation_method& method_interp_phi = linear, Vec phi_xxyyzz = NULL, const bool& build_and_set_grad_phi_locally = false);
+  void set_levelset(Vec phi, const interpolation_method& method_interp_phi = linear, Vec phi_xxyyzz = NULL,
+                    const bool& build_and_set_grad_phi_locally = false, const bool& build_and_set_curvature_locally = false);
 
   /*!
    * \brief set_grad_phi sets the vector of node-sampled gradient values of the interface-capturing levelset function.
@@ -264,6 +271,19 @@ public:
    */
   void set_grad_phi(Vec grad_phi_in = NULL);
   inline bool is_grad_phi_set() const { return interp_grad_phi != NULL; }
+
+  /*!
+   * \brief set_curvature sets the vector of node-sampled curvature values of the interface-capturing levelset function.
+   * If provided by the user, this object doesn't take ownership, otherwise, it will build it and compute it internally.
+   * \param [in] curavture_in:                  [optional] curvature of your levelset function or NULL pointer. If not NULL,
+   *                                            the vector must be sampled on the nodes of the interface-capturing grid, i.e.,
+   *                                            on the nodes of interpolation_node_ngbd_n. If NULL (or disregarded), this method
+   *                                            will calculate them internally (and own them).
+   * NOTE : the curvature of the levelset function will be interpolated with linear interpolation, where needed (other methods of
+   * interpolation would required 4th order derivatives of phi, which would probably be as good as a white noise signal input, anyways)
+   */
+  void set_curvature(Vec curavture_in = NULL);
+  inline bool is_curvature_set() const { return interp_curvature != NULL; }
 
   /*!
    * \brief set_under_resolved_levelset self-explanatory. The values of the levelset function on the nodes of your computational grids
@@ -376,6 +396,20 @@ public:
   }
 
   /*!
+   * \brief curvature_at_point evaluates the curvature of the levelset function at a given point
+   * \param [in] xyz: coordinates of the point where the gradient of the levelset function is desired
+   * \return the value of the curvature at the desired point
+   */
+  inline double curvature_at_point(const double *xyz) const
+  {
+#ifdef CASL_THROWS
+    if(interp_curvature == NULL)
+      throw std::runtime_error("my_p4est_interface_manager_t::curvature_at_point() called but interp_curvature is not available...");
+#endif
+    return  (*interp_curvature)(xyz);
+  }
+
+  /*!
    * \brief normal_vector_at_point evaluates the (possibly signed) normal vector, as the normalized gradient of the levelset function,
    * at a given point.
    * \param [in]  xyz:    coordinates of the point where the normal vector of the levelset function is desired
@@ -428,6 +462,15 @@ public:
       throw std::runtime_error("my_p4est_interface_manager_t::get_grad_phi() called but interp_grad_phi is not available...");
 #endif
     return interp_grad_phi->get_input_fields()[0];
+  }
+
+  inline Vec get_curvature() const
+  {
+#ifdef CASL_THROWS
+    if(interp_curvature == NULL)
+      throw std::runtime_error("my_p4est_interface_manager_t::get_curvature() called but interp_curvature is not available...");
+#endif
+    return interp_curvature->get_input_fields()[0];
   }
 
   /*!
