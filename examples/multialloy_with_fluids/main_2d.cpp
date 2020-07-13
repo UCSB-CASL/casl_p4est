@@ -1251,7 +1251,16 @@ public:
         return (*velocity_field[dir])(DIM(x,y,z));
         }
       case COUPLED_PROBLEM_EXAMPLE:{
+      if(xupper_wall(DIM(x,y,z))){
+        return velocity_field[dir]->_d(dir::x,DIM(x,y,z));
+      }
+      else if (yupper_wall(DIM(x,y,z))){
+        return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
+
+      }
+      else{
         return (*velocity_field[dir])(DIM(x,y,z));
+      }
         }
     default:
       throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
@@ -1285,8 +1294,15 @@ public:
       case NS_GIBOU_EXAMPLE:
         return DIRICHLET;
       case COUPLED_PROBLEM_EXAMPLE:{
+      if(xupper_wall(DIM(x,y,z))){
+        return NEUMANN;
+      }
+      else if (yupper_wall(DIM(x,y,z))){
+        return NEUMANN;
+      }
+      else{
         return DIRICHLET;
-        }
+      }        }
       default:
         throw std::runtime_error("WALL BC TYPE VELOCITY: unrecognized example \n");
       }
@@ -1438,8 +1454,16 @@ public:
             return NEUMANN;
         }
       case COUPLED_PROBLEM_EXAMPLE:{
-            return NEUMANN;
-//        return DIRICHLET;
+      if(xupper_wall(DIM(x,y,z))){
+        return DIRICHLET;
+      }
+      else if (yupper_wall(DIM(x,y,z))){
+        return DIRICHLET;
+
+      }
+      else{
+        return NEUMANN;
+      }
         }
       default:
         throw std::runtime_error("WALL BC TYPE PRESSURE: unrecognized example \n");
@@ -1465,7 +1489,7 @@ public:
         return 0.0;}
 
       case COUPLED_PROBLEM_EXAMPLE:{
-            return 0.0;
+            return 0.0; // Either homogeneous Dirichlet or homogeneous Neumann
         }
       default:
         throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
