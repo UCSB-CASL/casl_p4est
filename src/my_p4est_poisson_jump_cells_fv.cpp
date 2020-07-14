@@ -479,8 +479,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       {
         const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + finite_volume_of_quad->interfaces[k].centroid[0], xyz_quad[1] + finite_volume_of_quad->interfaces[k].centroid[1], xyz_quad[2] + finite_volume_of_quad->interfaces[k].centroid[2])};
         rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
-        if(interp_mass_flux != NULL) // --> 0.0 if not given
-          rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*get_jump_in_inverse_mu()*((*interp_mass_flux)(xyz_interface_quadrature));
+        if(interp_jump_normal_velocity != NULL) // --> 0.0 if not given
+          rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*((*interp_jump_normal_velocity)(xyz_interface_quadrature));
       }
     }
   }

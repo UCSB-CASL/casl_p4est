@@ -15,7 +15,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   add_diag_minus = add_diag_plus = 0.0;
   user_rhs_minus = user_rhs_plus = NULL;
   face_velocity_minus = face_velocity_plus = NULL;
-  interp_mass_flux = NULL;
+  interp_jump_normal_velocity = NULL;
   jump_u = jump_normal_flux_u = NULL;
   user_initial_guess = NULL;
   solution = rhs = NULL;

@@ -38,7 +38,7 @@ protected:
   Vec user_rhs_minus, user_rhs_plus;        // cell-sampled rhs of the continuum-level problem --> sharp, cell-sampled value of the continuum value of f defining the rhs as diag*u - div(mu*grad(u)) = f
   // - or sharp, face-sampled values of the two-phase velocity field that needs to be made divergence-free
   Vec *face_velocity_minus, *face_velocity_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
-  const my_p4est_interpolation_nodes_t* interp_mass_flux; // interpolator to the mass flux value --> considered to be 0.0 if not provided
+  const CF_DIM* interp_jump_normal_velocity; // interpolator to the jump in normal velocity value --> considered to be 0.0 if not provided
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
@@ -59,7 +59,6 @@ protected:
   inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
   inline double get_jump_in_mu()                      const { return (mu_plus - mu_minus); }
-  inline double get_jump_in_inverse_mu()              const { return (1.0/mu_plus - 1.0/mu_minus); }
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_jump_cells_t(const my_p4est_poisson_jump_cells_t& other);
@@ -156,13 +155,12 @@ public:
     rhs_is_set = false;
   }
 
-  inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const my_p4est_interpolation_nodes_t* interp_mass_flux_ = NULL)
+  inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
   {
     P4EST_ASSERT(!interface_is_set() || (VecsAreSetForFaces(face_velocity_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_, interface_manager->get_faces(), 1)));
-    P4EST_ASSERT(interp_mass_flux_ == NULL || interp_mass_flux_->get_blocksize_of_input_fields() == 1);
     face_velocity_minus = face_velocity_minus_;
     face_velocity_plus  = face_velocity_plus_;
-    interp_mass_flux    = interp_mass_flux_;
+    interp_jump_normal_velocity = interp_jump_normal_velocity_;
     rhs_is_set = false;
   }
 
