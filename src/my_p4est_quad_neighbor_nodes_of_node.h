@@ -2044,10 +2044,10 @@ public:
 #ifdef P4_TO_P8
       const double dxz = dz_central_component(grad_phi_p, P4EST_DIM, dir::x); // d/dz{d/dx}
       const double dyz = dz_central_component(grad_phi_p, P4EST_DIM, dir::y); // d/dz{d/dy}
-      return = ((dxxyyzz[1] + dxxyyzz[2])*SQR(dx) + (dxxyyzz[0] + dxxyyzz[2])*SQR(dy) + (dxxyyzz[0] + dxxyyzz[1])*SQR(dz) -
-          2*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (mag_of_grad*mag_of_grad*mag_of_grad);
+      return ((dxxyyzz[1] + dxxyyzz[2])*SQR(dx) + (dxxyyzz[0] + dxxyyzz[2])*SQR(dy) + (dxxyyzz[0] + dxxyyzz[1])*SQR(dz) -
+          2.0*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (mag_of_grad*mag_of_grad*mag_of_grad);
 #else
-      return (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2*dx*dy*dxy) / (mag_of_grad*mag_of_grad*mag_of_grad);
+      return (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2.0*dx*dy*dxy) / (mag_of_grad*mag_of_grad*mag_of_grad);
 #endif
     }
     else
