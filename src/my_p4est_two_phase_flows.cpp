@@ -213,7 +213,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // -------------------------------------------------------------------
   // scalar fields
   phi         = NULL;
-  jump_hodge  = NULL;
   mass_flux   = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_xxyyzz  = NULL;
@@ -275,7 +274,6 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   PetscErrorCode ierr;
   // node-sampled fields on the interface-capturing grid
   if(phi != NULL)                           { ierr = delete_and_nullify_vector(phi);                            CHKERRXX(ierr); }
-  if(jump_hodge != NULL)                    { ierr = delete_and_nullify_vector(jump_hodge);                     CHKERRXX(ierr); }
   if(mass_flux != NULL)                     { ierr = delete_and_nullify_vector(mass_flux);                      CHKERRXX(ierr); }
   if(phi_xxyyzz != NULL)                    { ierr = delete_and_nullify_vector(phi_xxyyzz);                     CHKERRXX(ierr); }
   if(interface_stress != NULL)              { ierr = delete_and_nullify_vector(interface_stress);               CHKERRXX(ierr); }
@@ -484,246 +482,33 @@ void my_p4est_two_phase_flows_t::compute_second_derivatives_of_nm1_velocities()
   return;
 }
 
-void my_p4est_two_phase_flows_t::get_velocity_seen_from_cell(neighbor_value& neighbor_velocity, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const int& face_dir,
-                                                             const double *vstar_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p)
-{
-  P4EST_ASSERT(quad_idx < p4est_n->local_num_quadrants);
-  p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
-  const p4est_quadrant_t* quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-  neighbor_velocity.distance  = convert_to_xyz[face_dir/2]*((double) P4EST_QUADRANT_LEN(quad->level+1)/((double) P4EST_ROOT_LEN));
-  neighbor_velocity.value     = 0.0;
-  if(is_quad_Wall(p4est_n, tree_idx, quad, face_dir))
-    neighbor_velocity.value   = vstar_p[faces_n->q2f(quad_idx, face_dir)];
-  else if(faces_n->q2f(quad_idx, face_dir) != NO_VELOCITY)
-  {
-    p4est_locidx_t fine_center_idx, fine_face_idx;
-    if(face_is_across(quad_idx, tree_idx, face_dir, fine_phi_p, fine_center_idx, fine_face_idx, quad))
-    {
-      const double phi_center = fine_phi_p[fine_center_idx];
-      double theta;
-      if(fine_phi_xxyyzz_p != NULL)
-        theta = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_center, fine_phi_p[fine_face_idx],
-                                                                                          fine_phi_xxyyzz_p[P4EST_DIM*fine_center_idx+(face_dir/2)], fine_phi_xxyyzz_p[P4EST_DIM*fine_face_idx+(face_dir/2)], neighbor_velocity.distance);
-      else
-        theta = fraction_Interval_Covered_By_Irregular_Domain(phi_center, fine_phi_p[fine_face_idx], neighbor_velocity.distance, neighbor_velocity.distance);
-      theta = (phi_center > 0.0 ? 1.0-theta : theta);
-      theta = (theta < EPS      ? 0.0       : MIN(theta, 1.0));
-      neighbor_velocity.distance *= theta;
-      p4est_locidx_t opposite_fine_face_idx;
-      if(face_is_across(quad_idx, tree_idx, (face_dir%2 == 0 ? face_dir+1: face_dir-1), fine_phi_p, fine_center_idx, opposite_fine_face_idx, quad))
-        throw std::runtime_error("get_velocity_seen_from_cell:: subrefined cell, not implemented yet...");
-      double jump_flux_comp_across = (1.0-theta)*fine_jump_mu_grad_v_p[SQR_P4EST_DIM*fine_center_idx+P4EST_DIM*(face_dir/2)+(face_dir/2)] + theta*fine_jump_mu_grad_v_p[SQR_P4EST_DIM*fine_face_idx+P4EST_DIM*(face_dir/2)+(face_dir/2)];
-      theta = 0.5*(1.0+theta);
-      neighbor_velocity.value = ((1.0-theta)*(phi_center > 0.0 ? mu_p : mu_m)*vstar_p[faces_n->q2f(quad_idx, (face_dir%2 == 0 ? face_dir+1 : face_dir-1))]
-          + theta*(phi_center > 0.0 ? mu_m : mu_p)*vstar_p[faces_n->q2f(quad_idx, face_dir)]
-          + (1.0-2.0*(face_dir%2))*(phi_center <= 0 ? +1.0 : -1.0)*theta*(1.0-theta)*dxyz_min[face_dir/2]*jump_flux_comp_across
-          )/((1.0-theta)*(phi_center > 0.0 ? mu_p : mu_m) + theta*(phi_center > 0.0 ? mu_m : mu_p));
-    }
-    else
-    {
-      set_of_neighboring_quadrants ngbd;
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, face_dir);
-      P4EST_ASSERT(ngbd.size() == 1);
-      p4est_quadrant_t quad_tmp = *ngbd.begin();
-      ngbd.clear();
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp.p.piggy3.local_num, quad_tmp.p.piggy3.which_tree, (face_dir%2 == 1 ? face_dir-1 : face_dir+1));
-      double inv_norm = 1.0/((double) (1<<(quad_tmp.level*(P4EST_DIM-1))));
-      for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-        neighbor_velocity.value += ((double) (1<<(it->level*(P4EST_DIM-1))))*inv_norm*vstar_p[faces_n->q2f(it->p.piggy3.local_num, face_dir)];
-    }
-  }
-  else
-  {
-    set_of_neighboring_quadrants ngbd;
-    ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, face_dir);
-    P4EST_ASSERT(ngbd.size() > 1);
-    double inv_norm = 1.0/((double) (1<<(quad->level*(P4EST_DIM-1))));
-    for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-      neighbor_velocity.value += ((double) (1<< (it->level*(P4EST_DIM-1))))*inv_norm*vstar_p[faces_n->q2f(it->p.piggy3.local_num, (face_dir%2 == 1 ? face_dir-1 : face_dir+1))];
-  }
-  return;
-}
-
-double my_p4est_two_phase_flows_t::compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const double *vstar_p[], const double *fine_phi_p,
-                                                      const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p)
-{
-  double val = 0;
-  neighbor_value nb_p, nb_m;
-  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
-  {
-    get_velocity_seen_from_cell(nb_p, quad_idx, tree_idx, 2*dir+1,  vstar_p[dir], fine_phi_p, fine_phi_xxyyzz_p, fine_jump_mu_grad_v_p);
-    get_velocity_seen_from_cell(nb_m, quad_idx, tree_idx, 2*dir,    vstar_p[dir], fine_phi_p, fine_phi_xxyyzz_p, fine_jump_mu_grad_v_p);
-    val += (nb_p.value - nb_m.value)/(nb_p.distance + nb_m.distance);
-  }
-  return val;
-
-//  PetscErrorCode ierr;
-//  p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
-//  p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-
-//  double dmin = (double)P4EST_QUADRANT_LEN(quad->level) / (double)P4EST_ROOT_LEN;
-//  double val = 0;
-
-//  set_of_neighboring_quadrants ngbd;
-//  p4est_quadrant_t quad_tmp;
-
-//  for(int dir=0; dir<P4EST_DIM; ++dir)
-//  {
-//    const double *vstar_p;
-//    ierr = VecGetArrayRead(vstar[dir], &vstar_p); CHKERRXX(ierr);
-
-//    double vm = 0;
-//    if(is_quad_Wall(p4est_n, tree_idx, quad, 2*dir))
-//    {
-//      vm = vstar_p[faces_n->q2f(quad_idx, 2*dir)];
-//    }
-//    else if(faces_n->q2f(quad_idx, 2*dir)!=NO_VELOCITY)
-//    {
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir);
-//      quad_tmp = *ngbd.begin();
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp.p.piggy3.local_num, quad_tmp.p.piggy3.which_tree, 2*dir+1);
-//      for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-//        vm += pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(it->p.piggy3.local_num, 2*dir)];
-//      vm /= pow((double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
-//    }
-//    else
-//    {
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir);
-//      for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-//        vm += pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(it->p.piggy3.local_num, 2*dir+1)];
-//      vm /= pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
-//    }
-
-//    double vp = 0;
-//    if(is_quad_Wall(p4est_n, tree_idx, quad, 2*dir+1))
-//    {
-//      vp = vstar_p[faces_n->q2f(quad_idx, 2*dir+1)];
-//    }
-//    else if(faces_n->q2f(quad_idx, 2*dir+1)!=NO_VELOCITY)
-//    {
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir+1);
-//      quad_tmp = *ngbd.begin();
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp.p.piggy3.local_num, quad_tmp.p.piggy3.which_tree, 2*dir);
-
-//      for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-//        vp += pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(it->p.piggy3.local_num, 2*dir+1)];
-//      vp /= pow((double)P4EST_QUADRANT_LEN(quad_tmp.level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
-//    }
-//    else
-//    {
-//      ngbd.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir+1);
-//      for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
-//        vp += pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1) * vstar_p[faces_n->q2f(it->p.piggy3.local_num, 2*dir)];
-//      vp /= pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, P4EST_DIM-1);
-//    }
-
-//    ierr = VecRestoreArrayRead(vstar[dir], &vstar_p); CHKERRXX(ierr);
-
-//    val += (vp-vm)/(convert_to_xyz[dir] * dmin);
-//  }
-
-//  return val;
-}
-
-/* solve the projection step
- * laplace Hodge = -div(vstar)
- * jump_hodge = (dt_n/(alpha*rho))*jump_pressure
- * jump_normal_flux_hodge = (dt_n/(alpha*rho))*jump_normal_flux_pressure = 0.0!
+/* solve the projection step, HODGE = (dt_n/alpha)*p
+ * -div((1/rho)*grad(HODGE)) = -div(vstar)
+ * jump_hodge = (dt_n/alpha)*surface_tensions*kappa
+ * jump_normal_flux_hodge = 0.0!
  */
-void my_p4est_two_phase_flows_t::solve_projection(my_p4est_poisson_jump_cells_xgfm_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp, const PCType pc)
+void my_p4est_two_phase_flows_t::solve_projection(my_p4est_poisson_jump_cells_fv_t* &cell_poisson_jump_solver, const KSPType ksp, const PCType pc)
 {
-  PetscErrorCode ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_projection, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  Vec rhs;
-  double *rhs_p;
-  const double *vstar_p[P4EST_DIM], *fine_phi_p, *fine_jump_mu_grad_v_p, *fine_phi_xxyyzz_p;
-
-  ierr = VecDuplicate(hodge, &rhs);                                         CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);      CHKERRXX(ierr);
-  if(fine_phi_xxyyzz != NULL){
-    ierr = VecGetArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);            CHKERRXX(ierr); }
-  else
-    fine_phi_xxyyzz_p = NULL;
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGetArrayRead(vstar[dir], &vstar_p[dir]);                      CHKERRXX(ierr);
-  }
-  ierr = VecGetArray(rhs, &rhs_p);                                          CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_phi, &fine_phi_p);                            CHKERRXX(ierr);
-  /* compute the right-hand-side */
-  for(p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx)
-  {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
-    for(size_t q_idx = 0; q_idx < tree->quadrants.elem_count; ++q_idx)
-    {
-      p4est_locidx_t quad_idx = q_idx + tree->quadrants_offset;
-//      rhs_p[quad_idx] = 0.0;
-      rhs_p[quad_idx] = -compute_divergence(quad_idx, tree_idx, vstar_p, fine_phi_p, fine_phi_xxyyzz_p, fine_jump_mu_grad_v_p);
-      P4EST_ASSERT(!ISNAN(rhs_p[quad_idx]));
-    }
-  }
-//  if(!cell_to_fine_node_map_is_set)
-//    cell_to_fine_node_map_is_set = true;
-
-  ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);  CHKERRXX(ierr);
-  if(fine_phi_xxyyzz != NULL){
-    ierr = VecRestoreArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p );       CHKERRXX(ierr); }
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecRestoreArrayRead(vstar[dir], &vstar_p[dir]);                  CHKERRXX(ierr); }
-  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);                        CHKERRXX(ierr);
-  ierr = VecRestoreArray(rhs, &rhs_p);                                      CHKERRXX(ierr);
-
-  /* solve the linear system */
+  /* Make the two-phase velocity field divergence free : */
   if(cell_poisson_jump_solver == NULL)
   {
-    cell_poisson_jump_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-    cell_poisson_jump_solver->activate_xGFM_corrections(activate_xgfm);
+    cell_poisson_jump_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
 
-    //    const double *fine_phi_p, *fine_phi_xxyyzz_p, *fine_normal_p, *fine_jump_hodge_p, *fine_jump_normal_flux_hodge_p;
-    //    ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
-    //    ierr = VecGetArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr);
-    //    ierr = VecGetArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
-    //    ierr = VecGetArrayRead(fine_jump_hodge, &fine_jump_hodge_p); CHKERRXX(ierr);
-    //    ierr = VecGetArrayRead(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p); CHKERRXX(ierr);
-    //    for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k) {
-    //      P4EST_ASSERT(!ISNAN(fine_phi_p[k]));
-    //      P4EST_ASSERT(!ISNAN(fine_jump_hodge_p[k]));
-    //      P4EST_ASSERT(!ISNAN(fine_jump_normal_flux_hodge_p[k]));
-    //      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-    //      {
-    //        P4EST_ASSERT(!ISNAN(fine_phi_xxyyzz_p[P4EST_DIM*k+dir]));
-    //        P4EST_ASSERT(!ISNAN(fine_normal_p[P4EST_DIM*k+dir]));
-    //      }
-    //    }
-    //    ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
-    //    ierr = VecRestoreArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr);
-    //    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
-    //    ierr = VecRestoreArrayRead(fine_jump_hodge, &fine_jump_hodge_p); CHKERRXX(ierr);
-    //    ierr = VecRestoreArrayRead(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p); CHKERRXX(ierr);
-
-    cell_poisson_jump_solver->set_phi(fine_phi, fine_phi_xxyyzz);
-    cell_poisson_jump_solver->set_normals(fine_normal);
+    cell_poisson_jump_solver->set_interface(interface_manager);
     cell_poisson_jump_solver->set_diagonals(0.0, 0.0);
-    cell_poisson_jump_solver->set_mus(1.0/rho_m, 1.0/rho_p);
+    cell_poisson_jump_solver->set_mus(1.0/rho_minus, 1.0/rho_plus);
     cell_poisson_jump_solver->set_bc(bc_hodge);
     cell_poisson_jump_solver->set_jumps(fine_jump_hodge, fine_jump_normal_flux_hodge);
   }
-  cell_poisson_jump_solver->set_rhs(rhs);
 
+  cell_poisson_jump_solver->set_vstar(vnp1_face_minus, vnp1_face_plus);
   cell_poisson_jump_solver->solve(ksp, pc);
 
-  cell_poisson_jump_solver->get_flux_components_and_subtract_them_from_velocities(dxyz_hodge, faces_n, vstar, vnp1_m, vnp1_p);
+  cell_poisson_jump_solver->get_sharp_flux_components_and_subtract_them_from_velocities(dxyz_hodge, faces_n, vstar, vnp1_m, vnp1_p);
   if(hodge != NULL){
     ierr = delete_and_nullify_vector(hodge);                                CHKERRXX(ierr); }
   hodge = cell_poisson_jump_solver->get_solution();
-  ierr = delete_and_nullify_vector(rhs);                                    CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_projection, 0, 0, 0, 0); CHKERRXX(ierr);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::compute_viscosity_jumps()

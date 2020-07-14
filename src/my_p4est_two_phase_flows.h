@@ -129,7 +129,7 @@ private:
   // -------------------------------------------------------------------
   // scalar fields
   Vec phi;
-  Vec jump_hodge, mass_flux; // mass_flux <-> jump in velocity
+  Vec mass_flux; // mass_flux <-> jump in velocity
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_xxyyzz, interface_stress;
   // -----------------------------------------------------------------------
@@ -689,13 +689,13 @@ public:
   void solve_viscosity_explicit();
 
 
-  void solve_projection(const bool& activate_xgfm)
+  void solve_projection()
   {
-    my_p4est_poisson_jump_cells_xgfm_t* cell_poisson_jump_solver = NULL;
-    solve_projection(cell_poisson_jump_solver, activate_xgfm);
+    my_p4est_poisson_jump_cells_fv_t* cell_poisson_jump_solver = NULL;
+    solve_projection(cell_poisson_jump_solver);
     delete cell_poisson_jump_solver;
   }
-  void solve_projection(my_p4est_poisson_jump_cells_xgfm_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCSOR /*PCHYPRE*/);
+  void solve_projection(my_p4est_poisson_jump_cells_fv_t* &cell_poisson_jump_solver, const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
 
   void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const u_int& n_iteration = 10, const u_char& extrapolation_degree = 1);
   void compute_velocity_at_nodes();
