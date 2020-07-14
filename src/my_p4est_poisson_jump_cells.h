@@ -37,8 +37,8 @@ protected:
   // - sharp, cell-sampled value of the continuum rhs
   Vec user_rhs_minus, user_rhs_plus;        // cell-sampled rhs of the continuum-level problem --> sharp, cell-sampled value of the continuum value of f defining the rhs as diag*u - div(mu*grad(u)) = f
   // - or sharp, face-sampled values of the two-phase velocity field that needs to be made divergence-free
-  Vec *user_vstar_minus, *user_vstar_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
-  const my_p4est_interpolation_nodes_t* interp_jump_vstar; // interpolator to the jump in vstar components --> considered to be 0.0 if not provided
+  Vec *face_velocity_minus, *face_velocity_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
+  const my_p4est_interpolation_nodes_t* interp_mass_flux; // interpolator to the mass flux value --> considered to be 0.0 if not provided
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
@@ -59,6 +59,7 @@ protected:
   inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
   inline double get_jump_in_mu()                      const { return (mu_plus - mu_minus); }
+  inline double get_jump_in_inverse_mu()              const { return (1.0/mu_plus - 1.0/mu_minus); }
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_jump_cells_t(const my_p4est_poisson_jump_cells_t& other);
@@ -97,7 +98,8 @@ protected:
   void setup_linear_system();
 
 
-  virtual double get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const = 0;
+  virtual void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
+                                         double* sharp_flux_component_p[P4EST_DIM], double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const = 0;
 
 public:
 
@@ -154,13 +156,13 @@ public:
     rhs_is_set = false;
   }
 
-  inline void set_vstar(Vec* user_vstar_minus_, Vec* user_vstar_plus_, const my_p4est_interpolation_nodes_t* interp_jump_vstar_ = NULL)
+  inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const my_p4est_interpolation_nodes_t* interp_mass_flux_ = NULL)
   {
-    P4EST_ASSERT(!interface_is_set() || (VecsAreSetForFaces(user_vstar_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(user_vstar_plus_, interface_manager->get_faces(), 1)));
-    P4EST_ASSERT(interp_jump_vstar_ == NULL || interp_jump_vstar_->get_blocksize_of_input_fields() == P4EST_DIM);
-    user_vstar_minus  = user_vstar_minus_;
-    user_vstar_plus   = user_vstar_plus_;
-    interp_jump_vstar = interp_jump_vstar_;
+    P4EST_ASSERT(!interface_is_set() || (VecsAreSetForFaces(face_velocity_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_, interface_manager->get_faces(), 1)));
+    P4EST_ASSERT(interp_mass_flux_ == NULL || interp_mass_flux_->get_blocksize_of_input_fields() == 1);
+    face_velocity_minus = face_velocity_minus_;
+    face_velocity_plus  = face_velocity_plus_;
+    interp_mass_flux    = interp_mass_flux_;
     rhs_is_set = false;
   }
 
@@ -189,11 +191,10 @@ public:
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
 
-  void get_sharp_flux_components_and_subtract_them_from_velocities(Vec sharp_flux[P4EST_DIM], const my_p4est_faces_t *faces,
-                                                                   Vec vstar_minus[P4EST_DIM], Vec vstar_plus[P4EST_DIM], Vec sharp_vnp1[P4EST_DIM]) const;
+  void project_face_velocities(const my_p4est_faces_t *faces, Vec* sharp_flux = NULL) const;
   inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces) const
   {
-    get_sharp_flux_components_and_subtract_them_from_velocities(flux, faces, NULL, NULL, NULL);
+    project_face_velocities(faces, flux);
   }
 
   virtual double get_sharp_integral_solution() const = 0;

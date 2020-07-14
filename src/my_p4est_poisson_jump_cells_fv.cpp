@@ -385,16 +385,20 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   PetscErrorCode ierr;
   const double *user_rhs_minus_p  = NULL;
   const double *user_rhs_plus_p   = NULL;
-  const double *user_vstar_minus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-  const double *user_vstar_plus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  const double *vstar_minus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+  const double *vstar_plus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
   double       *rhs_p             = NULL;
 
-  P4EST_ASSERT((user_rhs_minus == NULL && user_rhs_plus == NULL) || (user_rhs_minus != NULL && user_rhs_plus != NULL));         // can't have one provided but not the other...
-  P4EST_ASSERT((user_vstar_minus == NULL && user_vstar_plus == NULL) || (user_vstar_minus != NULL && user_vstar_plus != NULL)); // can't have one provided but not the other...
-  const bool with_cell_sampled_rhs = user_rhs_minus != NULL && user_rhs_plus != NULL;
-  const bool is_projecting_vstar = user_vstar_minus != NULL && user_vstar_plus != NULL;
+  P4EST_ASSERT((user_rhs_minus == NULL && user_rhs_plus == NULL) || (user_rhs_minus != NULL && user_rhs_plus != NULL));                     // can't have one provided but not the other...
+  P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)); // can't have one provided but not the other...
+  const bool with_cell_sampled_rhs  = user_rhs_minus != NULL && user_rhs_plus != NULL;
+  const bool is_projecting_vstar    = face_velocity_minus != NULL && face_velocity_plus != NULL;
+#ifdef CASL_THROWS
+  if(with_cell_sampled_rhs & is_projecting_vstar)
+    std::cerr << "my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(): [WARNING] the solver is configured with both cell-sampled rhs's and face-sampled velocity fields..." << std::endl;
+#endif
   linear_combination_of_dof_t vstar_on_face;
-  P4EST_ASSERT(!is_projecting_vstar || (ANDD(user_vstar_minus[0] != NULL, user_vstar_minus[1] != NULL, user_vstar_minus[2] != NULL) && ANDD(user_vstar_plus[0] != NULL, user_vstar_plus[1] != NULL, user_vstar_plus[2] != NULL)));
+  P4EST_ASSERT(!is_projecting_vstar || (ANDD(face_velocity_minus[0] != NULL, face_velocity_minus[1] != NULL, face_velocity_minus[2] != NULL) && ANDD(face_velocity_plus[0] != NULL, face_velocity_plus[1] != NULL, face_velocity_plus[2] != NULL)));
 
   if(!rhs_is_set)
   {
@@ -406,8 +410,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     if(is_projecting_vstar)
     {
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecGetArrayRead(user_vstar_minus[dim], &user_vstar_minus_p[dim]); CHKERRXX(ierr);
-        ierr = VecGetArrayRead(user_vstar_plus[dim], &user_vstar_plus_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(face_velocity_minus[dim], &vstar_minus_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(face_velocity_plus[dim], &vstar_plus_p[dim]); CHKERRXX(ierr);
       }
     }
     ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
@@ -475,14 +479,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       {
         const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + finite_volume_of_quad->interfaces[k].centroid[0], xyz_quad[1] + finite_volume_of_quad->interfaces[k].centroid[1], xyz_quad[2] + finite_volume_of_quad->interfaces[k].centroid[2])};
         rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
-        if(interp_jump_vstar != NULL) // --> 0.0 if not given
-        {
-          double jump_vstar[P4EST_DIM];     (*interp_jump_vstar)(xyz_interface_quadrature, jump_vstar);
-          double normal_vector[P4EST_DIM];  interface_manager->normal_vector_at_point(xyz_interface_quadrature, normal_vector);
-          const double jump_vstar_dot_normal = SUMD(jump_vstar[0]*normal_vector[0], jump_vstar[1]*normal_vector[1], jump_vstar[2]*normal_vector[2]);
-
-          rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*jump_vstar_dot_normal;
-        }
+        if(interp_mass_flux != NULL) // --> 0.0 if not given
+          rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*get_jump_in_inverse_mu()*((*interp_mass_flux)(xyz_interface_quadrature));
       }
     }
   }
@@ -504,7 +502,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       if(!rhs_is_set && is_projecting_vstar)
       {
         const p4est_locidx_t f_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
-        const double* &vstar_to_consider  (sgn_quad < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+        const double* &vstar_to_consider  (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
         rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*full_face_area*vstar_to_consider[f_idx];
       }
 
@@ -605,7 +603,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
 
         if(!rhs_is_set && is_projecting_vstar)
         {
-          const double* &vstar_to_consider = (sgn_eqn < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+          const double* &vstar_to_consider = (sgn_eqn < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
           rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_to_consider[face_idx]*face_area;
         }
 
@@ -643,7 +641,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
         }
       if(!rhs_is_set && is_projecting_vstar)
       {
-        const double* &vstar_dir_to_consider = (sgn_quad < 0 ? user_vstar_minus_p[oriented_dir/2] : user_vstar_plus_p[oriented_dir/2]);
+        const double* &vstar_dir_to_consider = (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
         rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_on_face(vstar_dir_to_consider)*full_face_area;
       }
     }
@@ -659,8 +657,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     if(is_projecting_vstar)
     {
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecRestoreArrayRead(user_vstar_minus[dim], &user_vstar_minus_p[dim]);  CHKERRXX(ierr);
-        ierr = VecRestoreArrayRead(user_vstar_plus[dim], &user_vstar_plus_p[dim]);    CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_velocity_minus[dim], &vstar_minus_p[dim]);  CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_velocity_plus[dim], &vstar_plus_p[dim]);    CHKERRXX(ierr);
       }
     }
 
@@ -670,8 +668,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   return;
 }
 
-
-double my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces, char& sgn_face) const
+void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
+                                                                 double* sharp_flux_component_p[P4EST_DIM], double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -683,32 +681,37 @@ double my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(const p4
   double xyz_quad[P4EST_DIM], cell_dxyz[P4EST_DIM];
   xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad, cell_dxyz);
   double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_face[dim] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[dim];
-  sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : 1);
+  const char sgn_face   = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : 1);
   const char sgn_q      = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : 1);
-  const double mu_face  = (sgn_face > 0 ? mu_plus : mu_minus);
+  const bool is_face_crossed = interface_manager->is_face_crossed_by_interface(f_idx, dim);
+
   PetscErrorCode ierr;
   const double *solution_p;
   ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
 
-  double sharp_flux_component;
+  double sharp_flux_component_minus, sharp_flux_component_plus;
+  sharp_flux_component_minus = sharp_flux_component_plus = NAN;
+  double *sharp_flux_at_face = (sgn_face < 0 ? &sharp_flux_component_minus : &sharp_flux_component_plus);
 
   if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
   {
     P4EST_ASSERT(f_idx != NO_VELOCITY);
 #ifdef CASL_THROWS
-    if(signs_of_phi_are_different(sgn_q, sgn_face ))
-      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(): a wall-cell is crossed by the interface, this is not handled yet...");
+    if(signs_of_phi_are_different(sgn_q, sgn_face) || is_face_crossed)
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(): a wall-cell is crossed by the interface, this is not handled yet...");
 #endif
     switch(bc->wallType(xyz_face))
     {
     case DIRICHLET:
-      sharp_flux_component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_face*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
+      *sharp_flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
       break;
     case NEUMANN:
-      sharp_flux_component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_face*bc->wallValue(xyz_face);
+    {
+      *sharp_flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(sgn_face > 0 ? mu_plus : mu_minus)*bc->wallValue(xyz_face);
       break;
+    }
     default:
-      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::get_flux_components_and_subtract_them_from_velocities_local(): unknown boundary condition on a wall.");
+      throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(): unknown boundary condition on a wall.");
     }
   }
   else
@@ -717,41 +720,71 @@ double my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local(const p4
     bool one_sided;
     linear_combination_of_dof_t stable_projection_derivative = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, one_sided);
 
-    if(one_sided && !signs_of_phi_are_different(sgn_q, sgn_face))
-      sharp_flux_component = mu_face*stable_projection_derivative(solution_p);
+    if(one_sided && !signs_of_phi_are_different(sgn_q, sgn_face) && !is_face_crossed)
+      *sharp_flux_at_face = (sgn_face > 0 ? mu_plus : mu_minus)*stable_projection_derivative(solution_p);
     else
     {
       P4EST_ASSERT(direct_neighbors.size() == 1);
       const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
       P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
-      const double &mu_face           = (sgn_face  < 0 ? mu_minus  : mu_plus);
       const char sgn_direct_neighbor  = (one_sided ? 1 : -1)*sgn_q;
 
-      sharp_flux_component = 0.0;
-      for (u_char dof = 0; dof < 2; ++dof) { // dof == 0 : this quadrant; dof == 1 : the direct neighbor
-        const double coeff_dof        = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(dof == 0 ? -1.0 : +1.0)*mu_face/dxyz_min[oriented_dir/2];
-        const p4est_locidx_t& idx_dof = (dof == 0 ? quad_idx  : direct_neighbor.p.piggy3.local_num);
-        const char& sgn_dof           = (dof == 0 ? sgn_q     : sgn_direct_neighbor);
+      for (char sgn_flux = (is_face_crossed ? -1 : sgn_face); sgn_flux <= (is_face_crossed ? +1 : sgn_face); sgn_flux += 2) {
+        const double &mu_flux = (sgn_flux < 0 ? mu_minus  : mu_plus);
+        sharp_flux_at_face    = (sgn_flux < 0 ? &sharp_flux_component_minus : &sharp_flux_component_plus);
+        *sharp_flux_at_face   = 0.0; // initialization
 
-        sharp_flux_component += coeff_dof*solution_p[idx_dof];
-        if(signs_of_phi_are_different(sgn_face, sgn_dof))
+        for (u_char dof = 0; dof < 2; ++dof) // dof == 0 : this quadrant; dof == 1 : the direct neighbor
         {
+          const double coeff_dof        = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(dof == 0 ? -1.0 : +1.0)*mu_flux/dxyz_min[oriented_dir/2];
+          const p4est_locidx_t& idx_dof = (dof == 0 ? quad_idx  : direct_neighbor.p.piggy3.local_num);
+          const char& sgn_dof           = (dof == 0 ? sgn_q     : sgn_direct_neighbor);
+
+          *sharp_flux_at_face += coeff_dof*solution_p[idx_dof];
+          if(signs_of_phi_are_different(sgn_flux, sgn_dof))
+          {
 #ifdef CASL_THROWS
-          if(correction_function_for_quad.find(idx_dof) == correction_function_for_quad.end())
-            throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_sharp_flux_component_local couldn't find the correction function for quad " + std::to_string(idx_dof)
-                                     + ", required for the calculation of flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
-                                     + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
-                                     + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
+            if(correction_function_for_quad.find(idx_dof) == correction_function_for_quad.end())
+              throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::local_projection_for_face couldn't find the correction function for quad " + std::to_string(idx_dof)
+                                       + ", required for the calculation of a one-sided flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
+                                       + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
+                                       + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
 #endif
-          const correction_function_t& correction_function_dof = correction_function_for_quad.at(idx_dof);
-          sharp_flux_component += coeff_dof*(sgn_face > 0 ? +1.0 : -1.0)*correction_function_dof(solution_p);
+            const correction_function_t& correction_function_dof = correction_function_for_quad.at(idx_dof);
+            *sharp_flux_at_face += coeff_dof*(sgn_flux > 0 ? +1.0 : -1.0)*correction_function_dof(solution_p);
+          }
         }
       }
     }
   }
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
 
-  return sharp_flux_component;
+
+  if(sharp_flux_component_p[dim] != NULL)
+  {
+    sharp_flux_component_p[dim][f_idx] = (sgn_face < 0 ? sharp_flux_component_minus : sharp_flux_component_plus);
+    P4EST_ASSERT(!ISNAN(sharp_flux_component_p[dim][f_idx]));
+  }
+
+  if(face_velocity_plus_p[dim] != NULL && face_velocity_minus_p[dim] != NULL)
+  {
+    if(sgn_face < 0 || is_face_crossed)
+    {
+      P4EST_ASSERT(!ISNAN(sharp_flux_component_minus));
+      face_velocity_minus_p[dim][f_idx] -= sharp_flux_component_minus;
+      if(!is_face_crossed)
+        face_velocity_plus_p[dim][f_idx] = DBL_MAX;
+    }
+    if(sgn_face > 0 || is_face_crossed)
+    {
+      P4EST_ASSERT(!ISNAN(sharp_flux_component_plus));
+      face_velocity_plus_p[dim][f_idx] -= sharp_flux_component_plus;
+      if(!is_face_crossed)
+        face_velocity_minus_p[dim][f_idx] = DBL_MAX;
+    }
+  }
+
+  return;
 }
 
 void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type)
@@ -762,7 +795,7 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
   // make sure the problem is fully defined
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
-  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (user_vstar_minus != NULL && user_vstar_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
+  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
 
   // build required finite volumes and correction functions
   if(!are_required_finite_volumes_and_correction_functions_known)
@@ -775,5 +808,4 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
-
 }
