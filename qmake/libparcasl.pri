@@ -204,7 +204,7 @@ HEADERS += \
 #  $$PARCASL/src/my_p8est_scft.h \
   $$PARCASL/src/my_p8est_semi_lagrangian.h \
   $$PARCASL/src/my_p8est_solve_lsqr.h \
-  $$PARCASL/src/my_p4est_surfactant.h \
+  $$PARCASL/src/my_p8est_surfactant.h \
   $$PARCASL/src/my_p8est_shs_channel.h \
   $$PARCASL/src/my_p8est_trajectory_of_point.h \
   $$PARCASL/src/my_p8est_utils.h \
