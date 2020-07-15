@@ -267,14 +267,17 @@ const xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads
   interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface_point);
   interface_manager->normal_vector_at_point(xyz_interface_point, normal);
 
-  to_insert_in_map.jump_field                 = (*interp_jump_u)(xyz_interface_point);
-  to_insert_in_map.known_jump_flux_component  = (*interp_jump_normal_flux)(xyz_interface_point)*normal[oriented_dir/2];
+  to_insert_in_map.jump_field                 = (interp_jump_u != NULL            ? (*interp_jump_u)(xyz_interface_point) : 0.0);
+  to_insert_in_map.known_jump_flux_component  = (interp_jump_normal_flux != NULL  ? (*interp_jump_normal_flux)(xyz_interface_point)*normal[oriented_dir/2] : 0.0);
   if(activate_xGFM)
   {
-    double local_grad_jump[P4EST_DIM];
-    (*interp_grad_jump)(xyz_interface_point, local_grad_jump);
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      to_insert_in_map.known_jump_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dim == oriented_dir/2 ? 1.0 : 0.0) - normal[oriented_dir/2]*normal[dim])*local_grad_jump[dim];
+    if(interp_grad_jump != NULL)
+    {
+      double local_grad_jump[P4EST_DIM];
+      (*interp_grad_jump)(xyz_interface_point, local_grad_jump);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        to_insert_in_map.known_jump_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dim == oriented_dir/2 ? 1.0 : 0.0) - normal[oriented_dir/2]*normal[dim])*local_grad_jump[dim];
+    }
 
     if(!mus_are_equal())
       to_insert_in_map.xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_interface_point, normal, quad_idx, neighbor_quad_idx, oriented_dir/2);
@@ -313,7 +316,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::solve_for_sharp_solution(const KSPType&
   // make sure the problem is fully defined
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
-  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
+  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL))); // rhs fully determined
 
   PetscBool saved_ksp_original_guess_flag;
   ierr = KSPGetInitialGuessNonzero(ksp, &saved_ksp_original_guess_flag); // we'll change that one to true internally, but we want to set it back to whatever it originally was
@@ -388,7 +391,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_extension_of_interface_values(Ve
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values, 0, 0, 0, 0); CHKERRXX(ierr);
-  P4EST_ASSERT(interface_is_set() && jumps_have_been_set() && threshold > EPS && niter_max > 0);
+  P4EST_ASSERT(interface_is_set() && threshold > EPS && niter_max > 0);
 
   const double *solution_p;
   const double *current_extension_p = NULL; // --> this feeds the jump conditions that were used to define "solution" so it's required to determine the interface-defined values
@@ -570,7 +573,7 @@ double my_p4est_poisson_jump_cells_xgfm_t::set_solver_state_minimizing_L2_norm_o
 
 void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension(Vec cell_sampled_extension)
 {
-  P4EST_ASSERT(interface_is_set() && jumps_have_been_set());
+  P4EST_ASSERT(interface_is_set());
   PetscErrorCode ierr;
   P4EST_ASSERT(cell_sampled_extension != NULL && VecIsSetForCells(cell_sampled_extension, p4est, ghost, 1));
 
@@ -613,9 +616,9 @@ void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension_local(const p4est_
   // build the educated initial guess : we extend u^{-}_{interface} if mu_m is larger, u^{+}_{interface} otherwise
   extension_p[quad_idx] = solution_p[quad_idx];
   if(extend_negative_interface_values() && phi_q > 0.0)
-    extension_p[quad_idx] -= (*interp_jump_u)(xyz_quad);
+    extension_p[quad_idx] -= (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0);
   else if(!extend_negative_interface_values() && phi_q <= 0.0)
-    extension_p[quad_idx] += (*interp_jump_u)(xyz_quad);
+    extension_p[quad_idx] += (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0);
 
   return;
 }
@@ -753,18 +756,20 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
         sharp_flux_across = (sgn_face > 0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
 
         // evaluate the jump in flux component as defined consistently with the logic for regular interface point
-        const double jump_normal_flux = (*interp_jump_normal_flux)(xyz_face);
+        const double jump_normal_flux = (interp_jump_normal_flux != NULL ? (*interp_jump_normal_flux)(xyz_face) : 0.0);
         double normal[P4EST_DIM];
         interface_manager->normal_vector_at_point(xyz_face, normal);
 
         double jump_in_flux_component = jump_normal_flux*normal[dim];
         if(activate_xGFM)
         {
-          double local_grad_jump[P4EST_DIM];
-          (*interp_grad_jump)(xyz_face, local_grad_jump);
-
-          for (u_char dd = 0; dd < P4EST_DIM; ++dd)
-            jump_in_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dd == dim ? 1.0 : 0.0) - normal[dim]*normal[dd])*local_grad_jump[dd];
+          if(interp_grad_jump != NULL)
+          {
+            double local_grad_jump[P4EST_DIM];
+            (*interp_grad_jump)(xyz_face, local_grad_jump);
+            for (u_char dd = 0; dd < P4EST_DIM; ++dd)
+              jump_in_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dd == dim ? 1.0 : 0.0) - normal[dim]*normal[dd])*local_grad_jump[dd];
+          }
 
           if(!mus_are_equal() && extension_p != NULL)
           {

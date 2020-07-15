@@ -222,14 +222,28 @@ public:
 
     if(activate_xGFM)
     {
-      const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
-      if(grad_jump == NULL){
-        PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &grad_jump); CHKERRXX(ierr); }
-      interface_capturing_ngbd_n.first_derivatives_central(jump_u, grad_jump);
-      if(interp_grad_jump == NULL)
-        interp_grad_jump = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
+      if(jump_u != NULL)
+      {
+        const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
+        if(grad_jump == NULL){
+          PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &grad_jump); CHKERRXX(ierr); }
+        interface_capturing_ngbd_n.first_derivatives_central(jump_u, grad_jump);
+        if(interp_grad_jump == NULL)
+          interp_grad_jump = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
 
-      interp_grad_jump->set_input(grad_jump, linear, P4EST_DIM);
+        interp_grad_jump->set_input(grad_jump, linear, P4EST_DIM);
+      }
+      else
+      {
+        if(grad_jump != NULL){
+          PetscErrorCode ierr = VecDestroy(grad_jump); CHKERRXX(ierr);
+          grad_jump = NULL;
+        }
+        if(interp_grad_jump != NULL){
+          delete interp_grad_jump;
+          interp_grad_jump = NULL;
+        }
+      }
     }
   }
 
@@ -267,7 +281,8 @@ public:
         double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
         // crude estimate but whatever, it's mostly to get closer to what we expect...
         sharp_integral_solution += sol_p[quad_idx]*(negative_volume + positive_volume);
-        sharp_integral_solution += (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? positive_volume : -negative_volume)*(*interp_jump_u)(xyz_quad);
+        if(interp_jump_u != NULL)
+          sharp_integral_solution += (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? positive_volume : -negative_volume)*(*interp_jump_u)(xyz_quad);
       }
     }
     ierr = VecRestoreArray(solution, &sol_p); CHKERRXX(ierr);

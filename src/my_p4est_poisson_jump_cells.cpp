@@ -99,25 +99,35 @@ void my_p4est_poisson_jump_cells_t::set_interface(my_p4est_interface_manager_t* 
 
 void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
 {
-  P4EST_ASSERT(jump_u_ != NULL && jump_normal_flux_u_ != NULL);
-  if(!interface_is_set())
+  if((jump_u_ == NULL && jump_normal_flux_u_ == NULL) || !interface_is_set())
     throw std::runtime_error("my_p4est_poisson_jump_cells_t::set_jumps(): the interface manager must be set before the jumps");
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
 #ifdef P4EST_DEBUG
-  P4EST_ASSERT(VecIsSetForNodes(jump_u_,              interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, 1));
-  P4EST_ASSERT(VecIsSetForNodes(jump_normal_flux_u_,  interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, 1));
+  P4EST_ASSERT(jump_u_              == NULL || VecIsSetForNodes(jump_u_,              interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, 1));
+  P4EST_ASSERT(jump_normal_flux_u_  == NULL || VecIsSetForNodes(jump_normal_flux_u_,  interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, 1));
 #endif
 
   jump_u              = jump_u_;
   jump_normal_flux_u  = jump_normal_flux_u_;
 
-  if(interp_jump_u == NULL)
+  if(interp_jump_u != NULL && jump_u == NULL){
+    delete interp_jump_u;
+    interp_jump_u = NULL;
+  }
+  if(interp_jump_u == NULL && jump_u != NULL)
     interp_jump_u = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
-  interp_jump_u->set_input(jump_u, linear);
+  if(jump_u != NULL)
+    interp_jump_u->set_input(jump_u, linear);
 
-  if(interp_jump_normal_flux == NULL)
+  if(interp_jump_normal_flux != NULL && jump_normal_flux_u == NULL){
+    delete interp_jump_normal_flux;
+    interp_jump_normal_flux = NULL;
+  }
+  if(interp_jump_normal_flux == NULL && jump_normal_flux_u != NULL)
     interp_jump_normal_flux = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
-  interp_jump_normal_flux->set_input(jump_normal_flux_u, linear);
+
+  if(jump_normal_flux_u != NULL)
+    interp_jump_normal_flux->set_input(jump_normal_flux_u, linear);
 
   rhs_is_set = false;
   return;
@@ -284,7 +294,7 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   // register for logging purpose
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_setup_linear_system, A, 0, 0, 0); CHKERRXX(ierr);
 
-  P4EST_ASSERT(interface_is_set() && jumps_have_been_set()); // otherwise, well, it's going to be hard...
+  P4EST_ASSERT(interface_is_set()); // otherwise, well, it's going to be hard...
 
   if(!rhs_is_set)
   {

@@ -222,8 +222,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
 
   clip_in_domain(xyz_quad_projected, xyz_min, xyz_max, periodicity); // --> clip it back in domain (periodic wrapping if periodicity allows it)
 
-  const double jump_field       = (*interp_jump_u)(xyz_quad_projected);
-  const double jump_normal_flux = (*interp_jump_normal_flux)(xyz_quad_projected);
+  const double jump_field       = (interp_jump_u != NULL           ? (*interp_jump_u)(xyz_quad_projected)           : 0.0);
+  const double jump_normal_flux = (interp_jump_normal_flux != NULL ? (*interp_jump_normal_flux)(xyz_quad_projected) : 0.0);
   const double &mu_fast         = (mu_minus > mu_plus ? mu_minus  : mu_plus);
   const double &mu_slow         = (mu_minus > mu_plus ? mu_plus   : mu_minus);
   double mu_across_normal_derivative = mu_fast;
@@ -478,7 +478,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       for (size_t k = 0; k < finite_volume_of_quad->interfaces.size(); ++k)
       {
         const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + finite_volume_of_quad->interfaces[k].centroid[0], xyz_quad[1] + finite_volume_of_quad->interfaces[k].centroid[1], xyz_quad[2] + finite_volume_of_quad->interfaces[k].centroid[2])};
-        rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
+        if(interp_jump_normal_flux != NULL)
+          rhs_p[quad_idx] -= finite_volume_of_quad->interfaces[k].area*(*interp_jump_normal_flux)(xyz_interface_quadrature);
         if(interp_jump_normal_velocity != NULL) // --> 0.0 if not given
           rhs_p[quad_idx] += finite_volume_of_quad->interfaces[k].area*((*interp_jump_normal_velocity)(xyz_interface_quadrature));
       }
@@ -795,7 +796,7 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
   // make sure the problem is fully defined
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
-  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)) && jumps_have_been_set()); // rhs fully determined
+  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL))); // rhs fully determined
 
   // build required finite volumes and correction functions
   if(!are_required_finite_volumes_and_correction_functions_known)

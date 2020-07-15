@@ -42,7 +42,6 @@ protected:
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
-  inline bool jumps_have_been_set() const { return jump_u != NULL && jump_normal_flux_u != NULL; }
   Vec user_initial_guess;
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec solution;   // cell-sampled, sharp
