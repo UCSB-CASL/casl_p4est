@@ -67,16 +67,6 @@ private:
                             Vec vorticity_magnitude_np1_on_computational_nodes_plus);
   };
 
-
-  class wall_bc_value_hodge_t : public CF_DIM {
-  private:
-    my_p4est_two_phase_flows_t* _parent;
-  public:
-    wall_bc_value_hodge_t(my_p4est_two_phase_flows_t* obj) : _parent(obj) {}
-    inline double operator()(DIM(double x, double y, double z)) const { return _parent->bc_pressure->wallValue(DIM(x,y,z)) * _parent->dt_n / (_parent->BDF_alpha()); }
-    double operator()(const double *xyz) const {return this->operator()(DIM(xyz[0], xyz[1], xyz[2]));}
-  };
-
   my_p4est_brick_t          *brick;
   p4est_connectivity_t      *conn;
 
@@ -118,9 +108,6 @@ private:
 
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
-  BoundaryConditionsDIM bc_hodge;
-
-  wall_bc_value_hodge_t wall_bc_value_hodge;
 
   CF_DIM *external_forces[P4EST_DIM];
 
@@ -129,7 +116,8 @@ private:
   // -------------------------------------------------------------------
   // scalar fields
   Vec phi;
-  Vec mass_flux; // mass_flux <-> jump in velocity
+  Vec mass_flux;        // mass_flux <-> jump in velocity
+  Vec pressure_jump;
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_xxyyzz, interface_stress;
   // -----------------------------------------------------------------------
@@ -592,8 +580,6 @@ public:
   {
     bc_velocity = bc_v;
     bc_pressure = bc_p;
-    bc_hodge.setWallTypes(bc_pressure->getWallType());
-    bc_hodge.setWallValues(wall_bc_value_hodge);
   }
 
   inline void set_external_forces(CF_DIM *external_forces_[P4EST_DIM])
@@ -688,7 +674,7 @@ public:
   void solve_viscosity();
   void solve_viscosity_explicit();
 
-
+  void compute_pressure_jump();
   void solve_projection()
   {
     my_p4est_poisson_jump_cells_fv_t* cell_poisson_jump_solver = NULL;
