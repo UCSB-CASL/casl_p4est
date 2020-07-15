@@ -150,8 +150,8 @@ private:
   // The value of the dir velocity component at the points at time n and nm1 backtraced from the face of orientation dir and local index f_idx are
   // backtraced_vn_faces[dir][f_idx] and backtraced_vnm1_faces[dir][f_idx].
   bool semi_lagrangian_backtrace_is_done;
-  std::vector<double> backtraced_vn_faces[P4EST_DIM];
-  std::vector<double> backtraced_vnm1_faces[P4EST_DIM];
+  std::vector<double> backtraced_vn_faces_minus[P4EST_DIM], backtraced_vn_faces_plus[P4EST_DIM];
+  std::vector<double> backtraced_vnm1_faces_minus[P4EST_DIM], backtraced_vnm1_faces_plus[P4EST_DIM]; // used only if sl_order == 2
 
   // viscosity solver
   bool voronoi_on_the_fly;
@@ -538,7 +538,7 @@ public:
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 private:
 
-  void get_backtraced_velocities(std::vector<double> backtraced_velocity_n[P4EST_DIM], std::vector<double> backtraced_velocity_nm1[P4EST_DIM]);
+  void compute_backtraced_velocities();
 
   void get_interface_velocity(Vec interface_velocity);
   void advect_interface(p4est_t *fine_p4est_np1, p4est_nodes_t *fine_nodes_np1, Vec fine_phi_np1,
@@ -548,8 +548,6 @@ private:
   void set_interface_velocity();
 
   void extend_vector_field_from_interface_to_whole_domain();
-
-  void do_semi_lagrangian_backtracing_from_faces_if_needed();
 
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
 

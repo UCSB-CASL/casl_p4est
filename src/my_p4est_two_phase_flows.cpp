@@ -255,8 +255,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   // clear backtraced values of velocity components and computational-to-fine-grid maps
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    backtraced_vn_faces[dir].clear();
-    backtraced_vnm1_faces[dir].clear();
+    backtraced_vn_faces_minus[dir].clear();   backtraced_vn_faces_plus[dir].clear();
+    backtraced_vnm1_faces_minus[dir].clear(); backtraced_vnm1_faces_plus[dir].clear();
     voro_cell[dir].resize(faces_n->num_local[dir]);
   }
   semi_lagrangian_backtrace_is_done = false;
@@ -3058,10 +3058,10 @@ void my_p4est_two_phase_flows_t::save_vtk(const char* name, const bool& export_f
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
 }
 
-void my_p4est_two_phase_flows_t::get_backtraced_velocities(std::vector<double> backtraced_velocity_n[P4EST_DIM], std::vector<double> backtraced_velocity_nm1[P4EST_DIM])
+void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
 {
-  PetscErrorCode ierr;
-
+  if(semi_lagrangian_backtrace_is_done)
+    return;
   P4EST_ASSERT((vnm1_nodes_minus_xxyyzz == NULL && vnm1_nodes_plus_xxyyzz == NULL && vn_nodes_minus_xxyyzz == NULL && vn_nodes_plus_xxyyzz == NULL) ||
                (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL));
 
@@ -3071,8 +3071,9 @@ void my_p4est_two_phase_flows_t::get_backtraced_velocities(std::vector<double> b
   p4est_locidx_t serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     serialized_offset += faces_n->num_local[dir];
-  vector<double> xyz_np1;         xyz_np1.resize(P4EST_DIM*serialized_offset);
-  vector<double> vnp1;            vnp1.resize(P4EST_DIM*serialized_offset);
+  vector<double> xyz_np1;     xyz_np1.resize(P4EST_DIM*serialized_offset);    // coordinates of the origin point, i.e. face centers --> same for minus and plus...
+  vector<double> vnp1_minus;  vnp1_minus.resize(P4EST_DIM*serialized_offset);
+  vector<double> vnp1_plus;   vnp1_plus.resize(P4EST_DIM*serialized_offset);
   serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
@@ -3081,8 +3082,8 @@ void my_p4est_two_phase_flows_t::get_backtraced_velocities(std::vector<double> b
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
         xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] = xyz_face[comp];
 
-      my_p4est_interpolation_nodes_t& interpolator_to_consider = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? interp_np1_minus : interp_np1_plus);
-      interpolator_to_consider.add_point(serialized_offset + f_idx, xyz_face);
+      interp_np1_minus.add_point(serialized_offset + f_idx, xyz_face);
+      interp_np1_plus.add_point(serialized_offset + f_idx, xyz_face);;
     }
     serialized_offset += faces_n->num_local[dir];
   }
@@ -3097,33 +3098,38 @@ void my_p4est_two_phase_flows_t::get_backtraced_velocities(std::vector<double> b
     interp_np1_minus.set_input(vn_nodes_minus,  quadratic, P4EST_DIM);
     interp_np1_plus.set_input(vn_nodes_plus,    quadratic, P4EST_DIM);
   }
-  interp_np1_minus.interpolate(vnp1.data());
-  interp_np1_plus.interpolate(vnp1.data());
+  interp_np1_minus.interpolate(vnp1_minus.data());
+  interp_np1_plus.interpolate(vnp1_plus.data());
 
   /* find xyz_star */
   my_p4est_interpolation_nodes_t interp_nm1_minus(ngbd_nm1), interp_nm1_plus(ngbd_nm1);
   my_p4est_interpolation_nodes_t interp_n_minus  (ngbd_n  ), interp_n_plus  (ngbd_n  );
   serialized_offset = 0;
-  double xyz_star[P4EST_DIM];
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
+      double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
-        xyz_star[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*dt_n*vnp1[P4EST_DIM*(serialized_offset + f_idx) + comp];
-      clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
+      {
+        xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*dt_n*vnp1_minus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+        xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*dt_n*vnp1_plus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+      }
+      clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
+      clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
 
-      const bool is_origin_minus = (interface_manager->phi_at_point(xyz_np1.data() + P4EST_DIM*(serialized_offset + f_idx)) <= 0.0);
-      my_p4est_interpolation_nodes_t& interpolator_nm1_to_consider  = (is_origin_minus ? interp_nm1_minus : interp_nm1_plus);
-      my_p4est_interpolation_nodes_t& interpolator_n_to_consider    = (is_origin_minus ? interp_n_minus   : interp_n_plus);
+      interp_nm1_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
+      interp_nm1_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
 
-      interpolator_nm1_to_consider.add_point(serialized_offset + f_idx, xyz_star);
-      interpolator_n_to_consider.add_point(serialized_offset + f_idx, xyz_star);
+      interp_n_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
+      interp_n_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
     }
     serialized_offset += faces_n->num_local[dir];
   }
 
   /* compute the velocities at the intermediate point */
-  std::vector<double> vn_star;    vn_star.resize(P4EST_DIM*serialized_offset);
-  std::vector<double> vnm1_star;  vnm1_star.resize(P4EST_DIM*serialized_offset);
+  std::vector<double> vn_star_minus;    vn_star_minus.resize(P4EST_DIM*serialized_offset);
+  std::vector<double> vn_star_plus;     vn_star_plus.resize(P4EST_DIM*serialized_offset);
+  std::vector<double> vnm1_star_minus;  vnm1_star_minus.resize(P4EST_DIM*serialized_offset);
+  std::vector<double> vnm1_star_plus;   vnm1_star_plus.resize(P4EST_DIM*serialized_offset);
   if(use_second_derivatives)
   {
     interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  quadratic, P4EST_DIM);
@@ -3138,78 +3144,91 @@ void my_p4est_two_phase_flows_t::get_backtraced_velocities(std::vector<double> b
     interp_n_minus.set_input  (vn_nodes_minus,    quadratic, P4EST_DIM);
     interp_n_plus.set_input   (vn_nodes_plus,     quadratic, P4EST_DIM);
   }
-  interp_nm1_minus.interpolate(vnm1_star.data()); interp_nm1_minus.clear();
-  interp_nm1_plus.interpolate(vnm1_star.data());  interp_nm1_plus.clear();
-  interp_n_minus.interpolate(vn_star.data());     interp_n_minus.clear();
-  interp_n_plus.interpolate(vn_star.data());      interp_n_plus.clear();
+  interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
+  interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
+  interp_n_minus.interpolate(vn_star_minus.data());     interp_n_minus.clear();
+  interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
 
   /* now find the departure point at time n and interpolate the appropriate velocity component there */
   serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    backtraced_velocity_n[dir].resize(faces_n->num_local[dir]);
+    backtraced_vn_faces_minus[dir].resize(faces_n->num_local[dir]);
+    backtraced_vn_faces_plus[dir].resize(faces_n->num_local[dir]);
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
-      double xyz_backtraced_n[P4EST_DIM];
+      double xyz_backtraced_n_minus[P4EST_DIM], xyz_backtraced_n_plus[P4EST_DIM];
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
-        xyz_backtraced_n[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star[P4EST_DIM*(serialized_offset + f_idx) + comp]);
-      clip_in_domain(xyz_backtraced_n, xyz_min, xyz_max, periodicity);
-
-      const bool is_origin_minus = (interface_manager->phi_at_point(xyz_np1.data() + P4EST_DIM*(serialized_offset + f_idx)) <= 0.0);
-      my_p4est_interpolation_nodes_t& interpolator_n_to_consider = (is_origin_minus ? interp_n_minus : interp_n_plus);
-      interpolator_n_to_consider.add_point(f_idx, xyz_backtraced_n);
+      {
+        xyz_backtraced_n_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
+            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+        xyz_backtraced_n_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
+            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+      }
+      clip_in_domain(xyz_backtraced_n_minus, xyz_min, xyz_max, periodicity);
+      clip_in_domain(xyz_backtraced_n_plus, xyz_min, xyz_max, periodicity);
+      interp_n_minus.add_point(f_idx, xyz_backtraced_n_minus);
+      interp_n_plus.add_point(f_idx, xyz_backtraced_n_plus);
     }
-    interp_n_minus.interpolate(backtraced_velocity_n[dir].data(), dir); interp_n_minus.clear();
-    interp_n_plus.interpolate(backtraced_velocity_n[dir].data(), dir);  interp_n_plus.clear();
+    interp_n_minus.interpolate(backtraced_vn_faces_minus[dir].data(), dir); interp_n_minus.clear();
+    interp_n_plus.interpolate(backtraced_vn_faces_plus[dir].data(),  dir);  interp_n_plus.clear();
     serialized_offset += faces_n->num_local[dir];
   }
 
   // EXTRA STUFF FOR FINDING xyz_nm1 ONLY (for second-order bdf advection terms, for instance)
-  if(backtraced_velocity_nm1 != NULL)
+  if(sl_order == 2)
   {
     /* proceed similarly for the departure point at time nm1 */
     serialized_offset = 0;
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
       for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
+        double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
         for (u_char comp = 0; comp < P4EST_DIM; ++comp)
-          xyz_star[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1[P4EST_DIM*(serialized_offset + f_idx) + comp];
-        clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
+        {
+          xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_minus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+          xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_plus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+        }
+        clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
+        clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
 
-        const bool is_origin_minus = (interface_manager->phi_at_point(xyz_np1.data() + P4EST_DIM*(serialized_offset + f_idx)) <= 0.0);
-        my_p4est_interpolation_nodes_t& interpolator_nm1_to_consider  = (is_origin_minus ? interp_nm1_minus : interp_nm1_plus);
-        my_p4est_interpolation_nodes_t& interpolator_n_to_consider    = (is_origin_minus ? interp_n_minus   : interp_n_plus);
-
-        interpolator_nm1_to_consider.add_point(serialized_offset + f_idx, xyz_star);
-        interpolator_n_to_consider.add_point(serialized_offset + f_idx, xyz_star);
+        interp_nm1_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
+        interp_nm1_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
+        interp_n_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
+        interp_n_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
       }
       serialized_offset += faces_n->num_local[dir];
     }
 
     /* compute the velocities at the intermediate point */
-    interp_nm1_minus.interpolate(vnm1_star.data()); interp_nm1_minus.clear();
-    interp_nm1_plus.interpolate(vnm1_star.data());  interp_nm1_plus.clear();
-    interp_n_minus.interpolate(vn_star.data());     interp_n_minus.clear();
-    interp_n_plus.interpolate(vn_star.data());      interp_n_plus.clear();
+    interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
+    interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
+    interp_n_minus.interpolate(vn_star_minus.data());     interp_n_minus.clear();
+    interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
 
     /* now find the departure point at time nm1 and interpolate the appropriate velocity component there */
     serialized_offset = 0;
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      backtraced_velocity_nm1[dir].resize(faces_n->num_local[dir]);
+      backtraced_vnm1_faces_minus[dir].resize(faces_n->num_local[dir]);
+      backtraced_vnm1_faces_plus[dir].resize(faces_n->num_local[dir]);
       for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
-        double xyz_backtraced_nm1[P4EST_DIM];
+        double xyz_backtraced_nm1_minus[P4EST_DIM], xyz_backtraced_nm1_plus[P4EST_DIM];
         for (u_char comp = 0; comp < P4EST_DIM; ++comp)
-          xyz_backtraced_nm1[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star[P4EST_DIM*(serialized_offset + f_idx) + comp]);
-        clip_in_domain(xyz_backtraced_nm1, xyz_min, xyz_max, periodicity);
+        {
+          xyz_backtraced_nm1_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
+              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+          xyz_backtraced_nm1_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
+              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+        }
+        clip_in_domain(xyz_backtraced_nm1_minus, xyz_min, xyz_max, periodicity);
+        clip_in_domain(xyz_backtraced_nm1_plus, xyz_min, xyz_max, periodicity);
 
-        const bool is_origin_minus = (interface_manager->phi_at_point(xyz_np1.data() + P4EST_DIM*(serialized_offset + f_idx)) <= 0.0);
-        my_p4est_interpolation_nodes_t& interpolator_nm1_to_consider = (is_origin_minus ? interp_nm1_minus : interp_nm1_plus);
-        interpolator_nm1_to_consider.add_point(f_idx, xyz_backtraced_nm1);
+        interp_nm1_minus.add_point(f_idx, xyz_backtraced_nm1_minus);
+        interp_nm1_plus.add_point(f_idx, xyz_backtraced_nm1_plus);
       }
-      interp_nm1_minus.interpolate(backtraced_velocity_nm1[dir].data(), dir); interp_nm1_minus.clear();
-      interp_nm1_plus.interpolate(backtraced_velocity_nm1[dir].data(), dir);  interp_nm1_plus.clear();
+      interp_nm1_minus.interpolate(backtraced_vnm1_faces_minus[dir].data(), dir); interp_nm1_minus.clear();
+      interp_nm1_plus.interpolate(backtraced_vnm1_faces_plus[dir].data(), dir);   interp_nm1_plus.clear();
       serialized_offset += faces_n->num_local[dir];
     }
   }
+  semi_lagrangian_backtrace_is_done = true;
   return;
 }
 
