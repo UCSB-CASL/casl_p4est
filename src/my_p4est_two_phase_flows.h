@@ -538,15 +538,7 @@ public:
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 private:
 
-  void trajectory_from_all_faces_two_phases(my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n,
-                                            const double *fine_phi_p,
-                                            Vec vnm1_nodes_m, Vec vnm1_nodes_m_xxyyzz,
-                                            Vec vnm1_nodes_p, Vec vnm1_nodes_p_xxyyzz,
-                                            Vec vn_nodes_m, Vec vn_nodes_m_xxyyzz,
-                                            Vec vn_nodes_p, Vec vn_nodes_p_xxyyzz,
-                                            double dt_nm1, double dt_n,
-                                            std::vector<double> xyz_n[P4EST_DIM],
-                                            std::vector<double> xyz_nm1[P4EST_DIM]);
+  void get_backtraced_velocities(std::vector<double> backtraced_velocity_n[P4EST_DIM], std::vector<double> backtraced_velocity_nm1[P4EST_DIM]);
 
   void get_interface_velocity(Vec interface_velocity);
   void advect_interface(p4est_t *fine_p4est_np1, p4est_nodes_t *fine_nodes_np1, Vec fine_phi_np1,
