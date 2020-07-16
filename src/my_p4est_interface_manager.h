@@ -13,13 +13,6 @@
 #include <map>
 #endif
 
-typedef struct {
-  double jump_field;
-  double known_jump_flux_component;
-  linear_combination_of_dof_t xgfm_jump_flux_component_correction;
-  inline double jump_flux_component(const double* extension_p = NULL) const { return known_jump_flux_component + (extension_p != NULL  ? xgfm_jump_flux_component_correction(extension_p) : 0.0); }
-} xgfm_jump;
-
 struct couple_of_dofs
 {
   p4est_locidx_t local_dof_idx;
@@ -145,10 +138,8 @@ struct hash_functor{
   }
 };
 typedef std::unordered_map<couple_of_dofs, FD_interface_neighbor, hash_functor> map_of_interface_neighbors_t;
-typedef std::unordered_map<couple_of_dofs, xgfm_jump, hash_functor> map_of_xgfm_jumps_t;
 #else
 typedef std::map<couple_of_dofs, FD_interface_neighbor> map_of_interface_neighbors_t;
-typedef std::map<couple_of_dofs, xgfm_jump> map_of_xgfm_jumps_t;
 #endif
 
 class my_p4est_interface_manager_t
@@ -194,6 +185,8 @@ class my_p4est_interface_manager_t
 
   void detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                     bool &intersection_found, bool which_face_is_intersected[P4EST_FACES] = NULL, const u_char& check_only_this_face = UCHAR_MAX) const;
+
+  double find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir) const;
 
 public:
   /*!
@@ -337,11 +330,24 @@ public:
    * \param [in] quad_idx:          local index of the cell of interest (cumulative over the local trees) [must be a local quadrant]
    * \param [in] neighbor_quad_idx: local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
    * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
-   * \return the FD_interface_neighbor structure, as seen from the qadrant of interest, i.e., as seen from the quadrant of local index quad_idx
+   * \return the FD_interface_neighbor structure, as seen from the quadrant of interest, i.e., as seen from the quadrant of local index quad_idx
    * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
    * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
    */
   const FD_interface_neighbor& get_cell_FD_interface_neighbor_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
+
+  /*!
+   * \brief get_face_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two faces
+   * \param [in] face_idx:          local index of the face of interest [must be a local face]
+   * \param [in] neighbor_face_idx: local index of its neighbor face across the interface [may be a ghost cell]
+   * \param [in] dim:               dir::x, dir::y or dir::z --> orientation of the faces of interest
+   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor face is, as seen from the cell of interest
+   * \return the FD_interface_neighbor structure, as seen from the face of interest, i.e., as seen from the face of local index face_idx and of
+   * orientation dim.
+   * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
+   * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
+   */
+  const FD_interface_neighbor& get_face_FD_interface_neighbor_for(const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& dim, const u_char& oriented_dir) const;
 
   void get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const;
 
@@ -356,6 +362,20 @@ public:
       throw std::runtime_error("my_p4est_interface_manager_t::get_cell_FD_interface_neighbors() called but the corresponding data is not stored...");
 #endif
     return *cell_FD_interface_neighbors;
+  }
+
+  /*!
+   * \brief get_face_FD_interface_neighbors self-explanatory
+   * \return
+   */
+  inline const map_of_interface_neighbors_t& get_face_FD_interface_neighbors(const u_char& dim) const
+  {
+    P4EST_ASSERT(dim < P4EST_DIM);
+#ifdef CASL_THROWS
+    if(face_FD_interface_neighbors[dim] == NULL)
+      throw std::runtime_error("my_p4est_interface_manager_t::get_face_FD_interface_neighbors() called but the corresponding data is not stored...");
+#endif
+    return *face_FD_interface_neighbors[dim];
   }
 
   /*!
@@ -522,9 +542,9 @@ public:
 
   inline const my_p4est_faces_t* get_faces() const { return faces; }
 
-  inline PetscErrorCode create_vector_on_interface_capturing_nodes(Vec &vv) const
+  inline PetscErrorCode create_vector_on_interface_capturing_nodes(Vec &vv, const PetscInt block_size = 1) const
   {
-    PetscErrorCode ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &vv); CHKERRQ(ierr);
+    PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), block_size, &vv); CHKERRQ(ierr);
     return ierr;
   }
 

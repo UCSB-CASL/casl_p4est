@@ -9,6 +9,20 @@
 
 const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
 
+
+typedef struct {
+  double jump_field;
+  double known_jump_flux_component;
+  linear_combination_of_dof_t xgfm_jump_flux_component_correction;
+  inline double jump_flux_component(const double* extension_p = NULL) const { return known_jump_flux_component + (extension_p != NULL  ? xgfm_jump_flux_component_correction(extension_p) : 0.0); }
+} xgfm_jump;
+
+#if __cplusplus >= 201103L
+typedef std::unordered_map<couple_of_dofs, xgfm_jump, hash_functor> map_of_xgfm_jumps_t;
+#else
+typedef std::map<couple_of_dofs, xgfm_jump> map_of_xgfm_jumps_t;
+#endif
+
 class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
 {
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
