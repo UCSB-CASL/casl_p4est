@@ -186,7 +186,7 @@ class my_p4est_interface_manager_t
   void detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                     bool &intersection_found, bool which_face_is_intersected[P4EST_FACES] = NULL, const u_char& check_only_this_face = UCHAR_MAX) const;
 
-  double find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir) const;
+  double find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir, const bool& is_neighbor_wall) const;
 
 public:
   /*!
@@ -328,24 +328,30 @@ public:
   /*!
    * \brief get_cell_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two quadrants
    * \param [in] quad_idx:          local index of the cell of interest (cumulative over the local trees) [must be a local quadrant]
-   * \param [in] neighbor_quad_idx: local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell]
-   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
+   * \param [in] neighbor_quad_idx: local index of its neighbor cell across the interface (cumulative over the local trees) [may be a ghost cell OR a wall index, i.e. -1, ..., -6]]
+   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor cell/wall is, as seen from the cell of interest
    * \return the FD_interface_neighbor structure, as seen from the quadrant of interest, i.e., as seen from the quadrant of local index quad_idx
-   * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
+   * [NOTE 1:] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
    * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
+   * [NOTE 2:] the intrinsical value of "theta" is nondimensional (in [0, 1]) and relative to the smallest grid-scale of the computational grid, i.e.
+   * relative to dxyz_min[oriented_dir/2] in all regular cases (i.e. cases that do not involve wall neighbor). If a wall neighbor is involved, theta is
+   * relative to 0.5*dxyz_min[oriented_dir/2].
    */
   const FD_interface_neighbor& get_cell_FD_interface_neighbor_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const;
 
   /*!
    * \brief get_face_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two faces
    * \param [in] face_idx:          local index of the face of interest [must be a local face]
-   * \param [in] neighbor_face_idx: local index of its neighbor face across the interface [may be a ghost cell]
+   * \param [in] neighbor_face_idx: local index of its neighbor face across the interface [may be a ghost face OR a TRANVERSE wall index, i.e. -1, ..., -6 except -2*dim - 1 and -2*dim - 2]
    * \param [in] dim:               dir::x, dir::y or dir::z --> orientation of the faces of interest
-   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor face is, as seen from the cell of interest
+   * \param [in] oriented_dir:      oriented cartesian direction in which the neighbor face/wall is, as seen from the face of interest
    * \return the FD_interface_neighbor structure, as seen from the face of interest, i.e., as seen from the face of local index face_idx and of
    * orientation dim.
-   * [NOTE :] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
+   * [NOTE 1:] This routine will fetch the data from its appropriate map, if using it and if found in there. Otherwise, the interface data will be
    * built on-the-fly. If the object is storing such data in maps, it will be added to it to accelerate access thereafter
+   * [NOTE 2:] the intrinsical value of "theta" is nondimensional (in [0, 1]) and relative to the smallest grid-scale of the computational grid, i.e.
+   * relative to dxyz_min[oriented_dir/2] in all regular cases (i.e. cases that do not involve wall neighbor). If a wall neighbor is involved, theta
+   * is relative to 0.5*dxyz_min[oriented_dir/2].
    */
   const FD_interface_neighbor& get_face_FD_interface_neighbor_for(const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& dim, const u_char& oriented_dir) const;
 

@@ -221,18 +221,19 @@ void my_p4est_interface_manager_t::set_curvature(Vec curvature_in)
   return;
 }
 
-double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir) const
+double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir, const bool& is_neighbor_wall) const
 {
   // compute the finite-difference infamous theta
   double xyz_this_side[P4EST_DIM] = {DIM(xyz_dof[0], xyz_dof[1], xyz_dof[2])};
-  double xyz_across[P4EST_DIM]    = {DIM(xyz_dof[0], xyz_dof[1], xyz_dof[2])}; xyz_across[oriented_dir/2] += (oriented_dir%2 == 1 ? +1.0 : -1.0)*dxyz_min[oriented_dir/2]; // no need to worry about periodicity, the interpolation object will
+  const double hh = (is_neighbor_wall ? 0.5 : 1.0)*dxyz_min[oriented_dir/2]; // distance between the dof of interest and the neighbor across the interface
+  double xyz_across[P4EST_DIM]    = {DIM(xyz_dof[0], xyz_dof[1], xyz_dof[2])}; xyz_across[oriented_dir/2] += (oriented_dir%2 == 1 ? +1.0 : -1.0)*hh; // no need to worry about periodicity, the interpolation object will
   double phi_this_side  = interp_phi(xyz_this_side);
   double phi_across     = interp_phi(xyz_across);
   P4EST_ASSERT(signs_of_phi_are_different(phi_this_side, phi_across));
   double theta = 0.0; // initialize
   double rel_scale = 1.0;
   double xyz_M[P4EST_DIM] = {DIM(xyz_this_side[0], xyz_this_side[1], xyz_this_side[2])};
-  for (int k = 0; k < max_level_interpolation_p4est - max_level_p4est; ++k)
+  for (int k = 0; k < max_level_interpolation_p4est - max_level_p4est - (is_neighbor_wall ? 1 : 0); ++k)
   {
     // if using subcell resolution, check intermediate points to have the accurate description
     // The following is equivalent to a dichotomy search, it is reliable so long as we do not several sign changes
@@ -243,7 +244,7 @@ double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direct
     // ----------------------------------------------------------++++++++++++++++++++++++++++++++++++++++++++++     --> this is handled correctly
     // -----------------------------------------------+++++++++++++++----------+++++++++++---------------------     --> this is less safe (but your computational grid might be under-resolved as well in such a case)
     rel_scale /= 2.0;
-    xyz_M[oriented_dir/2] = xyz_this_side[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*rel_scale*dxyz_min[oriented_dir/2]; // no need to worry about periodicity, the interpolation object will
+    xyz_M[oriented_dir/2] = xyz_this_side[oriented_dir/2] + (oriented_dir%2 == 1 ? +1.0 : -1.0)*rel_scale*hh; // no need to worry about periodicity, the interpolation object will
     const double phi_M = interp_phi(xyz_M);
     if(!signs_of_phi_are_different(phi_this_side, phi_M))
     {
@@ -262,10 +263,10 @@ double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direct
   {
     const double phi_dd_Q = (*interp_phi_xxyyzz)(xyz_this_side, oriented_dir/2);
     const double phi_dd_N = (*interp_phi_xxyyzz)(xyz_across,    oriented_dir/2);
-    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_this_side, phi_across, phi_dd_Q, phi_dd_N, rel_scale*dxyz_min[oriented_dir/2]);
+    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_this_side, phi_across, phi_dd_Q, phi_dd_N, rel_scale*hh);
   }
   else
-    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain(phi_this_side, phi_across, rel_scale*dxyz_min[oriented_dir/2], rel_scale*dxyz_min[oriented_dir/2]);
+    subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain(phi_this_side, phi_across, rel_scale*hh, rel_scale*hh);
   theta += rel_scale*(phi_this_side > 0.0 ? 1.0 - subscale_theta_negative : subscale_theta_negative);
   return MAX(0.0, MIN(1.0, theta));
 }
@@ -273,7 +274,7 @@ double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direct
 const FD_interface_neighbor& my_p4est_interface_manager_t::get_cell_FD_interface_neighbor_for(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir) const
 {
   P4EST_ASSERT(0 <= quad_idx && quad_idx < p4est->local_num_quadrants && // must be a local quadrant
-               0 <= neighbor_quad_idx && neighbor_quad_idx < p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count); // must be a known quadrant
+               -P4EST_FACES <= neighbor_quad_idx && neighbor_quad_idx < p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count); // must be a known quadrant or a wall
 
   if(cell_FD_interface_neighbors != NULL) // check in map if storing them, first
   {
@@ -291,16 +292,21 @@ const FD_interface_neighbor& my_p4est_interface_manager_t::get_cell_FD_interface
 
   const p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
 #ifdef P4EST_DEBUG
-  const p4est_topidx_t neighbor_tree_idx = tree_index_of_quad(neighbor_quad_idx, p4est, ghost);
-  // check that they're both as fine as it gets :
   const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
-  const p4est_quadrant_t* neighbor_quad = fetch_quad(neighbor_quad_idx, neighbor_tree_idx, p4est, ghost);
-  P4EST_ASSERT(quad->level == neighbor_quad->level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
+  if(neighbor_quad_idx >= 0)
+  {
+    const p4est_topidx_t neighbor_tree_idx = tree_index_of_quad(neighbor_quad_idx, p4est, ghost);
+    // check that they're both as fine as it gets :
+    const p4est_quadrant_t* neighbor_quad = fetch_quad(neighbor_quad_idx, neighbor_tree_idx, p4est, ghost);
+    P4EST_ASSERT(quad->level == neighbor_quad->level && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
+  }
+  else
+    P4EST_ASSERT(is_quad_Wall(p4est, tree_idx, quad, oriented_dir) && quad->level == (int8_t) ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // it is indeed a wall cell and it is indeed as fine as it gets
 #endif
 
   // compute the finite-difference infamous theta
   double xyz_Q[P4EST_DIM];  quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_Q);
-  tmp_FD_interface_neighbor->theta = find_FD_interface_theta_in_cartesian_direction(xyz_Q, oriented_dir);
+  tmp_FD_interface_neighbor->theta = find_FD_interface_theta_in_cartesian_direction(xyz_Q, oriented_dir, (neighbor_quad_idx < 0));
   tmp_FD_interface_neighbor->swapped = false;
 
   if(cell_FD_interface_neighbors != NULL)
@@ -317,7 +323,8 @@ const FD_interface_neighbor& my_p4est_interface_manager_t::get_cell_FD_interface
 const FD_interface_neighbor& my_p4est_interface_manager_t::get_face_FD_interface_neighbor_for(const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& dim, const u_char& oriented_dir) const
 {
   P4EST_ASSERT(0 <= face_idx && face_idx < faces->num_local[dim] && // must be a local face
-               0 <= neighbor_face_idx && neighbor_face_idx < faces->num_local[dim] + faces->num_ghost[dim]); // must be a known face
+               -P4EST_FACES <= neighbor_face_idx && neighbor_face_idx < faces->num_local[dim] + faces->num_ghost[dim]); // must be a known face or a wall
+  P4EST_ASSERT(neighbor_face_idx >= 0 || (-1 - neighbor_face_idx)/2 != dim); // if it is a wall, it must be a tranverse wall
 
   if(face_FD_interface_neighbors[dim] != NULL) // check in map if storing them, first
   {
@@ -336,26 +343,35 @@ const FD_interface_neighbor& my_p4est_interface_manager_t::get_face_FD_interface
   // compute the finite-difference infamous theta
   double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
 #ifdef P4EST_DEBUG
-  // check that the neighbor is indeed dxyz_min[oriented_dir/2] away in the expected direction:
-  double xyz_neighbor_face[P4EST_DIM]; faces->xyz_fr_f(neighbor_face_idx, dim, xyz_neighbor_face);
+  double xyz_neighbor[P4EST_DIM];
   const double* xyz_max = faces->get_xyz_max();
   const double* xyz_min = faces->get_xyz_min();
+  // check that the neighbor is indeed dxyz_min[oriented_dir/2] (or half of that if wall) away in the expected direction:
+  if(neighbor_face_idx >= 0)
+    faces->xyz_fr_f(neighbor_face_idx, dim, xyz_neighbor);
+  else
+  {
+    const int wall_orientation = (-1 - neighbor_face_idx); P4EST_ASSERT(0 <= wall_orientation && wall_orientation < P4EST_FACES);
+    for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+      xyz_neighbor[comp] = xyz_face[comp];
+    xyz_neighbor[oriented_dir/2] = (wall_orientation%2 == 1 ? xyz_max[oriented_dir/2] : xyz_min[oriented_dir/2]);
+  }
   bool check = true;
   for (u_char comp = 0; comp < P4EST_DIM; ++comp)
   {
-    double diff = xyz_neighbor_face[comp] - xyz_face[comp];
+    double diff = xyz_neighbor[comp] - xyz_face[comp];
     if(comp == oriented_dir/2 && faces->periodicity(oriented_dir/2))
       diff -= round(diff/(xyz_max[oriented_dir/2] - xyz_min[oriented_dir/2]))*(xyz_max[oriented_dir/2] - xyz_min[oriented_dir/2]);
 
     if(comp != oriented_dir)
       check = check && (fabs(diff) < 0.001*dxyz_min[comp]); // should be "0.0" but using floating-point comparison with threshold
     else
-      check = check && (fabs(fabs(diff) - dxyz_min[oriented_dir/2]) < 0.001*dxyz_min[comp]); // should be "0.0" but using floating-point comparison with threshold
+      check = check && (fabs(fabs(diff) - (neighbor_face_idx < 0 ? 0.5 : 1.0)*dxyz_min[oriented_dir/2]) < 0.001*dxyz_min[comp]); // should be "0.0" but using floating-point comparison with threshold
   }
   P4EST_ASSERT(check);
 #endif
 
-  tmp_FD_interface_neighbor->theta = find_FD_interface_theta_in_cartesian_direction(xyz_face, oriented_dir);
+  tmp_FD_interface_neighbor->theta = find_FD_interface_theta_in_cartesian_direction(xyz_face, oriented_dir, (neighbor_face_idx < 0));
   tmp_FD_interface_neighbor->swapped = false;
 
   if(face_FD_interface_neighbors[dim] != NULL)
