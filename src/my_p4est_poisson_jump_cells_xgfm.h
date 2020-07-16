@@ -129,7 +129,7 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
           const xgfm_jump& jump_info = solver.get_xgfm_jump_between_quads(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
           const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
           increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, extending_positive_values,
-                                                                                           solution_p[quad_idx], solution_p[interface_terms[k].neighbor_quad_idx_across], jump_info.jump_field, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min);
+                                                                                           solution_p[quad_idx], solution_p[interface_terms[k].neighbor_quad_idx_across], jump_info.jump_field, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
         }
       }
       if(in_band)

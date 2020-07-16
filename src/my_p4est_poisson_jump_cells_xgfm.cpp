@@ -224,7 +224,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4e
       {
         const xgfm_jump& jump_info = get_xgfm_jump_between_quads(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
         rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*cell_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, (sgn_quad > 0),
-                                                                                                                                   jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min);
+                                                                                                                                   jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
       }
     }
   }
@@ -801,7 +801,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
 
       double& flux_quad_side = (sgn_q < 0 ? sharp_flux_component_minus : sharp_flux_component_plus);
       flux_quad_side = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
-          jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min);
+          jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
 
       if(sgn_q < 0)
         sharp_flux_component_plus   = sharp_flux_component_minus  + jump_info.jump_flux_component(extension_p);

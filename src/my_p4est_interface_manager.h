@@ -72,17 +72,17 @@ struct FD_interface_neighbor
    * \param [in] in_positive_domain   flag indicating if the dof of interest is in the positive domain (true) or in the negative domain (false)
    * \param [in] jump                 jump on the field of interest at the interface point
    * \param [in] jump_flux_component  jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
-   * \param [in] dxyz                 array of P4EST_DIM local grid size in cartesian directions
+   * \param [in] hh                   grid spacing between the two dofs of interest
    * \return the value of jump_terms such that the relevant flux component between the dof of interest and its neighbor dof (therefore along
    *          the cartesian direction oriented_dir/2), as seen from the dof of interest (not across the interface) can be evaluated as
-   *  flux component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(\hat{mu}*(value on neighbor dof - value on dof of interest)/dxyz_min[oriented_dir/2] + jump_terms)
+   *  flux component = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(\hat{mu}*(value on neighbor dof - value on dof of interest)/hh + jump_terms)
    * --> relevant for adding to RHS when assembling linear systems...
    */
   inline double GFM_jump_terms_for_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
-                                                  const double& jump, const double jump_flux_component, const double* dxyz) const
+                                                  const double& jump, const double& jump_flux_component, const double& hh) const
   {
     return GFM_mu_jump(mu_this_side, mu_across)*(in_positive_domain ? +1.0 : -1.0)*
-        (jump_flux_component*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump/dxyz[oriented_dir/2]);
+        (jump_flux_component*(1 - theta)/mu_across + (oriented_dir%2 == 1 ? +1.0 : -1.0)*jump/hh);
   }
 
   /*!
@@ -95,14 +95,14 @@ struct FD_interface_neighbor
    * \param [in] solution_across      value of the solution at the neighbor dof across the interface
    * \param [in] jump                 jump on the field of interest at the interface point
    * \param [in] jump_flux_component  jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
-   * \param [in] dxyz                 array of P4EST_DIM local grid size in cartesian directions
+   * \param [in] hh                   grid spacing between the two dofs of interest
    * \return the desired, one-sided, flux component, as seen from the cell of interest!
    */
   inline double GFM_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
-                                   const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double* dxyz) const
+                                   const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double& hh) const
   {
-    return (oriented_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/dxyz[oriented_dir/2]
-        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump, jump_flux_component, dxyz);
+    return (oriented_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/hh
+        + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump, jump_flux_component, hh);
   }
 
   /*!
@@ -116,16 +116,16 @@ struct FD_interface_neighbor
    * \param [in] solution_across              value of the solution at the neighbor dof across the interface
    * \param [in] jump                         jump on the field of interest at the interface point
    * \param [in] jump_flux_component          jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
-   * \param [in] dxyz                         array of P4EST_DIM local grid size in cartesian directions
+   * \param [in] hh                           grid spacing between the two dofs of interest
    * \return the desired interface-defined value
    * --> essential, key concept for xGFM strategy
    */
   inline double GFM_interface_value(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain, const bool& get_positive_interface_value,
-                                    const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double* dxyz) const
+                                    const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double& hh) const
   {
     return ((1.0 - theta)*mu_this_side*(solution_this_side  + (in_positive_domain != get_positive_interface_value ? (in_positive_domain ? -1.0 : +1.0)*jump : 0.0))
             +      theta *mu_across   *(solution_across     + (in_positive_domain == get_positive_interface_value ? (in_positive_domain ? +1.0 : -1.0)*jump : 0.0))
-            + (in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*dxyz[oriented_dir/2]*jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
+            + (in_positive_domain ? +1.0 : -1.0)*(oriented_dir%2 == 1 ? +1.0 : -1.0)*theta*(1.0 - theta)*hh*jump_flux_component)/GFM_mu_tilde(mu_this_side, mu_across);
   }
 };
 
