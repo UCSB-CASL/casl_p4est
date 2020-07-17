@@ -211,9 +211,11 @@ double theta_cyl;
 
 // For solidifying ice problem:
 double r_cyl; // non dim
-double T_cyl; // dimensional
-double d_cyl; // dimensional
+//double T_cyl; // dimensional
+//double d_cyl; // dimensional
 
+DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
+DEFINE_PARAMETER(pl,double,T_cyl,260.,"Temperature of cooled cylinder in K (default : 260)");
 // For tracking allowable temperature values:
 double T_max_allowable;
 double T_max_allowable_err = 1.0e-7;
@@ -291,8 +293,8 @@ void set_geometry(){
 
       // Boundary condition info:
       Twall = 276.;    // Physical wall temp [K]
-      Tinterface = 273.0; // Physical interface temp [K]
-      T_cyl = 260.;   // Physical cylinder temp [K]
+      Tinterface = 273.15; // Physical interface temp [K]
+//      T_cyl = 260.;   // Physical cylinder temp [K]
 
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
 
