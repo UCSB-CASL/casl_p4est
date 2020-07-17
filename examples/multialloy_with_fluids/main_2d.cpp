@@ -167,7 +167,9 @@ DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution 
 DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error convergence (default:1.e-3)");
 
 
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
+DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
+
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
@@ -267,12 +269,12 @@ void set_geometry(){
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
 
       // Domain size:
-      xmin = 0.0; xmax = 20.0;/*32.0;*/
-      ymin = 0.0; ymax = 10.0;/*16.0;*/
+      xmin = 0.0; xmax = 30.0;//20.0;/*32.0;*/
+      ymin = 0.0; ymax = 15.0;//10.0;/*16.0;*/
 
       // Number of trees:
-      nx =8;/*8;*/
-      ny =4;/*4;*/
+      nx =10.0;//8;/*8;*/
+      ny =5.0;//4;/*4;*/
 
       // Periodicity:
       px = 0;
@@ -280,6 +282,7 @@ void set_geometry(){
 
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder
+      //r_cyl=1.0;
       /*r0 = r_cyl*1.17;*/ // Computational radius of initial ice height // should set r0 = r_cyl*1.0572 to get height_init = 1mm, matching the experiments (or at least matching the Okada model)
       //r0 = r_cyl*1.0572;
       r0 = r_cyl*1.10;
@@ -2588,6 +2591,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   std::vector<compare_option_t> compare_opn;
   std::vector<compare_diagonal_option_t> diag_opn;
   std::vector<double> criteria;
+  std::vector<int> custom_lmax;
 
   PetscInt num_fields = 0;
   if(solve_navier_stokes) num_fields+=1;// for vorticity
@@ -2630,6 +2634,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     diag_opn.push_back(DIVIDE_BY);
     criteria.push_back(threshold*NS_norm);
 
+    custom_lmax.push_back(lmax - 2);
+
     if(refine_by_d2T){
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est,dxyz_smallest);
@@ -2644,6 +2650,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       compare_opn.push_back(SIGN_CHANGE);
       diag_opn.push_back(DIVIDE_BY);
       criteria.push_back(dTheta*gradT_threshold);
+      custom_lmax.push_back(lmax - 2);
+
 
       // Coarsening instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
@@ -2653,7 +2661,9 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       // Refining instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(dTheta*gradT_threshold); // doesnt get used
+      criteria.push_back(dTheta*gradT_threshold);
+      custom_lmax.push_back(lmax - 2);
+
       }
     } // end of "if solve navier stokes and num_fields!=0"
 
@@ -2679,7 +2689,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
                   num_fields ,use_block ,true,
                   uniform_band,uniform_band*(1.5),
                   fields_ ,NULL,
-                  criteria,compare_opn,diag_opn,
+                  criteria,compare_opn,diag_opn,custom_lmax,
                   expand_ghost_layer);
 
   if(print_checkpoints) PetscPrintf(mpi_comm,"Grid update completed \n");
@@ -2714,7 +2724,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       bool last_grid_balance = false;
       while(is_grid_changing){
           if(!last_grid_balance){
-              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_new_,NULL,criteria,compare_opn,diag_opn);
+              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_new_,NULL,criteria,compare_opn,diag_opn,custom_lmax);
 
               if(no_grid_changes>0 && !is_grid_changing){
                   last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid
@@ -2793,6 +2803,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
   compare_opn.clear(); diag_opn.clear(); criteria.clear();
   compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
+  custom_lmax.clear();custom_lmax.shrink_to_fit();
 
 };
 
@@ -2977,7 +2988,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
   PetscPrintf(mpi_comm,"\n Max NS velocity norm: \n"
-                         " - Computational value: %0.3e  "
+                         " - Computational value: %0.4f  "
                          " - Physical value: %0.3e [m/s]  "
                          " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
 
@@ -3012,8 +3023,8 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
   ns->set_dt(dt_nm1,dt);
   ns->set_velocities(v_nm1_NS,v_n_NS);
 
-  PetscPrintf(p4est_np1->mpicomm,"CFL: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl,rho_l,mu_l);
-  ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl);
+  PetscPrintf(p4est_np1->mpicomm,"CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
+  ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
 
 
 }
@@ -4754,14 +4765,15 @@ int main(int argc, char** argv) {
         extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
         extension_band_check_  = (6.)*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
-        if((tstep ==0) && example_ == ICE_AROUND_CYLINDER && solve_coupled){
-            double delta_r = r0 - r_cyl;
-            PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
-  //            if(delta_r<4.*dxyz_close_to_interface ){
-  //                PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,4.*dxyz_close_to_interface);
-  //                SC_ABORT("Your initial delta_r is too small \n");
-  //              }
-          }
+//        if((tstep ==0) && example_ == ICE_AROUND_CYLINDER && solve_coupled){
+//            double delta_r = r0 - r_cyl;
+//            PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
+//              if(delta_r<4.*dxyz_close_to_interface ){
+//                  PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n"
+//                                         "Conversely, dxyz_min is %0.3e, it must be less than %e \n",delta_r,6.*dxyz_close_to_interface,dxyz_close_to_interface,delta_r/6.0);
+//                  SC_ABORT("Your initial delta_r is too small \n");
+//                }
+//          }
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning field extension \n");
         // -------------------------------
         // Create all fields for this procedure:
@@ -5091,7 +5103,7 @@ int main(int argc, char** argv) {
       // Take NS timestep into account if relevant:
       if(solve_navier_stokes && tstep>0){
         // Compute the corresponding timestep:
-        ns->compute_dt();
+        ns->compute_dt(/*NS_norm*/);
         dt_NS = ns->get_dt();
 
 

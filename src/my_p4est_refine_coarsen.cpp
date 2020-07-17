@@ -530,7 +530,13 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
 
 // ELYCE TRYING SOMETHING --------:
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes,
+                                            const double* phi_p, const int num_fields,
+                                            bool use_block, bool enforce_uniform_band,
+                                            double refine_band,double coarsen_band,
+                                            const double** fields,const double* fields_block,
+                                            std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,
+                                            std::vector<int> lmax_custom){
 
   // WARNING: This function has not yet been validated in 3d
 
@@ -573,9 +579,6 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       const double dlvl = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // dlvl -- the size of the current quad (as a fraction of root length)
       const double dx = (tree_xmax-tree_xmin) * dlvl;
       const double dy = (tree_ymax-tree_ymin) * dlvl;
-
-
-
 
   #ifdef P4_TO_P8
       double dz = (tree_zmax-tree_zmin) * dlvl;
@@ -783,6 +786,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
          *
          * */
         refine = false;
+
         // Initialize holder for node index in question
         p4est_locidx_t node_idx;
 
@@ -895,6 +899,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
                             goto end_of_function;
                         }
+                        // Check if we are allowed to refine for this specific field,
+                        //according to the user-specified custom lmax:
+                        bool field_refine_allowed = true; // assume refinement is allowed for each field, then check condition
+                        field_refine_allowed = (quad->level < lmax_custom[n]);
 
                         // Get field val and criteria (same as in coarsen case)
                         if(use_block){
@@ -915,11 +923,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                             case GREATER_THAN:{
                                 //                                    if((fabs(field_val) > criteria_refine/d) && n==0){
                                 //                                        printf("Refined at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
-                                refine = refine || (fabs(field_val) > criteria_refine/max_quad_size);
+                                refine = refine || ((fabs(field_val) > criteria_refine/max_quad_size) && field_refine_allowed);
                                 break;
                             }
                             case LESS_THAN:{
-                                refine = refine || (fabs(field_val) < criteria_refine/max_quad_size);
+                                refine = refine || ((fabs(field_val) < criteria_refine/max_quad_size) && field_refine_allowed);
                                 break;
                             }
                             case SIGN_CHANGE:{
@@ -941,11 +949,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         case MULTIPLY_BY:{
                             switch(compare_opn[2*n + 1]){
                             case GREATER_THAN:{
-                                refine = refine || (fabs(field_val) > criteria_refine*max_quad_size);
+                                refine = refine || ((fabs(field_val) > criteria_refine*max_quad_size) && field_refine_allowed);
                                 break;
                             }
                             case LESS_THAN:{
-                                refine = refine || (fabs(field_val) < criteria_refine*max_quad_size);
+                                refine = refine || ((fabs(field_val) < criteria_refine*max_quad_size) && field_refine_allowed);
                                 break;
                             }
                             case SIGN_CHANGE:{
@@ -967,11 +975,11 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         case ABSOLUTE:{
                             switch(compare_opn[2*n + 1]){
                             case GREATER_THAN:{
-                                refine = refine || (fabs(field_val) > criteria_refine);
+                                refine = refine || ((fabs(field_val) > criteria_refine) && field_refine_allowed);
                                 break;
                             }
                             case LESS_THAN:{
-                                refine = refine || (fabs(field_val) < criteria_refine);
+                                refine = refine || ((fabs(field_val) < criteria_refine) && field_refine_allowed);
                                 break;
                             }
                             case SIGN_CHANGE:{
@@ -1008,11 +1016,14 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
         // If we had a sign change, check if that happened:
         if(checking_sign_change){
 //            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE REFINE CASE: \n");
-            for(int n=0;n<num_fields;n++){
-                bool sign_change = !field_all_pos[n] && !field_all_neg[n];
+            for(unsigned short n=0;n<num_fields;n++){
+                bool field_refine_allowed = true; // assume refinement is allowed for each field, then check condition
+                field_refine_allowed = (quad->level < lmax_custom[n]);
+
+                bool sign_change = (!field_all_pos[n] && !field_all_neg[n]) && field_refine_allowed;
 
                 if(sign_change && we_had_neighbor_point && above_threshold[n]){
-                    refine = refine || sign_change;
+                    refine = (refine || sign_change) ;
                 }
             }
         } // end of checking sign change
@@ -1134,7 +1145,12 @@ function_end:
 
 // ELYCE TRYING SOMETHING -------:
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const unsigned int num_fields, bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
+                                                  const unsigned int num_fields, bool use_block, bool enforce_uniform_band,
+                                                  double refine_band,double coarsen_band,
+                                                  Vec *fields,Vec fields_block,
+                                                  std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                                                  std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom){
   PetscErrorCode ierr;
   bool is_grid_changed;
 
@@ -1162,7 +1178,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
 
 
   // Call inner function which uses the pointers:
-  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_p,fields_block_p,criteria,compare_opn,diag_opn);
+  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_p,fields_block_p,criteria,compare_opn,diag_opn,lmax_custom);
 
 
   // Restore appropriate arrays:
@@ -1178,7 +1194,12 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
   return is_grid_changed;
 }
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const unsigned int num_fields, bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes,
+                                                  const double *phi_p, const unsigned int num_fields,
+                                                  bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band,
+                                                  const double** fields,const double* fields_block,
+                                                  std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                                                  std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom){
   // WARNING: This function has not yet been validated in 3d
 
   // Option lists are provided in the following format:
@@ -1216,7 +1237,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants,q);
       p4est_locidx_t quad_idx = q + tree->quadrants_offset;
 
-      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,use_block,enforce_uniform_band, refine_band,coarsen_band,fields,fields_block,criteria,compare_opn,diag_opn);
+      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,use_block,enforce_uniform_band, refine_band,coarsen_band,fields,fields_block,criteria,compare_opn,diag_opn,lmax_custom);
     }
   }
 

@@ -149,7 +149,7 @@ protected:
    */
 
 
-  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn);
+  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
 
   bool refine_only_inside;
 public:
@@ -166,7 +166,12 @@ public:
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
   // ELYCE TRYING SOMETHING:
 
-  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const unsigned int num_fields, bool use_block,bool enforce_uniform_band,double refine_band, double coarsen_band, Vec* fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
+                          const unsigned int num_fields, bool use_block,bool enforce_uniform_band,
+                          double refine_band, double coarsen_band,
+                          Vec* fields,Vec fields_block,
+                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
   /*!
    * \brief refine_and_coarsen
    * \param p4est           [inout] the grid you want to refine and coarsen
@@ -223,8 +228,12 @@ public:
    * \return
    */
   bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p,
-                          const unsigned int num_fields, bool use_block,bool enforce_uniform_band,double refine_band, double coarsen_band, const double** fields, const double* fields_block, std::vector<double> criteria,
-                          std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
+                          const unsigned int num_fields, bool use_block,
+                          bool enforce_uniform_band,
+                          double refine_band, double coarsen_band,
+                          const double** fields, const double* fields_block,
+                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
 
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
