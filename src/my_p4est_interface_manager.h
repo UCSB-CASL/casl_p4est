@@ -515,6 +515,15 @@ public:
   }
 
   /*!
+   * \brief get_interp_phi self-explanatory
+   * \return the interpolator of the node-sampled values of phi, sampled on the nodes of the interface-capturing grid
+   */
+  inline my_p4est_interpolation_nodes_t& get_interp_phi()
+  {
+    return interp_phi;
+  }
+
+  /*!
    * \brief get_phi_on_computational_nodes
    * \return the vector of node-sampled values of phi, sampled on the nodes of the computational grid (if available, returning NULL, otherwise)
    */
@@ -522,9 +531,6 @@ public:
   {
     if(phi_on_computational_nodes != NULL)
       return phi_on_computational_nodes;
-#ifdef CASL_THROWS
-    std::cerr << "my_p4est_interface_manager_t::get_phi_on_computational_nodes() called but phi is not available on the computational nodes, returning NULL..." << std::endl;
-#endif
     return NULL;
   }
 

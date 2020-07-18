@@ -136,6 +136,15 @@ public:
 
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  inline bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, Vec phi, bool finest_in_negative_flag = false)
+  {
+    const double *phi_p;
+    PetscErrorCode ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    const bool to_return = refine(p4est, nodes, phi_p, finest_in_negative_flag);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    return to_return;
+  }
+
   // ELYCE TRYING SOMETHING:
 
   bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const unsigned int num_fields, bool use_block,bool enforce_uniform_band,double refine_band, double coarsen_band, Vec* fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
