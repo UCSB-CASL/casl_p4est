@@ -85,6 +85,8 @@ private:
   my_p4est_faces_t          *faces_n;
   my_p4est_interface_manager_t  *interface_manager;
 
+  my_p4est_poisson_jump_cells_fv_t* poisson_jump_cell_solver;
+
   const double *xyz_min, *xyz_max;
   double tree_dimension[P4EST_DIM];
   double dxyz_smallest_quad[P4EST_DIM];
@@ -101,6 +103,7 @@ private:
   double threshold_split_cell;
   double cfl;
   bool   dt_updated;
+  interpolation_method levelset_interpolation_method;
 
   int sl_order;
 
@@ -476,15 +479,11 @@ private:
 //                                                      const double *normal_derivative_of_vnp1_m_p[P4EST_DIM], const double *normal_derivative_of_vnp1_p_p[P4EST_DIM],
 //                                                      double *vnp1_m_p[P4EST_DIM], double *vnp1_p_p[P4EST_DIM]);
 
-public:
-  void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
-private:
-
   void compute_backtraced_velocities();
 
   void get_interface_velocity(Vec interface_velocity);
-  void advect_interface(p4est_t *fine_p4est_np1, p4est_nodes_t *fine_nodes_np1, Vec fine_phi_np1,
-                        p4est_nodes_t *known_nodes, Vec known_phi_np1 = NULL);
+  void advect_interface(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1,
+                        const p4est_nodes_t *known_nodes, Vec known_phi_np1 = NULL);
   void compute_vorticities();
 
   void set_interface_velocity();
@@ -537,7 +536,7 @@ public:
     rho_plus  = rho_p_;
   }
 
-  void set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method = linear);
+  void set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_on_computational_nodes_ = NULL);
   void set_node_velocities(CF_DIM* vnm1_m_[P4EST_DIM], CF_DIM* vn_m_[P4EST_DIM], CF_DIM* vnm1_p_[P4EST_DIM], CF_DIM* vn_p_[P4EST_DIM]);
   void set_face_velocities_np1(CF_DIM* vnp1_m_[P4EST_DIM], CF_DIM* vnp1_p_[P4EST_DIM]);
   void set_jump_mu_grad_v(CF_DIM* jump_mu_grad_v_op[P4EST_DIM][P4EST_DIM]);
@@ -605,17 +604,11 @@ public:
   void solve_viscosity_explicit();
 
   void compute_pressure_jump();
-  void solve_projection()
-  {
-    my_p4est_poisson_jump_cells_fv_t* cell_poisson_jump_solver = NULL;
-    solve_projection(cell_poisson_jump_solver);
-    delete cell_poisson_jump_solver;
-  }
-  void solve_projection(my_p4est_poisson_jump_cells_fv_t* &cell_poisson_jump_solver, const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
+  void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
 
 //  void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const u_int& n_iteration = 10, const u_char& extrapolation_degree = 1);
   void compute_velocity_at_nodes();
-  void save_vtk(const char* name, const bool& export_fine_grid = false, const char* name_fine = NULL);
+  void save_vtk(const std::string& vtk_directory, const int& index) const;
   void update_from_tn_to_tnp1();
 
   inline double get_max_velocity() const        { return MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus); }

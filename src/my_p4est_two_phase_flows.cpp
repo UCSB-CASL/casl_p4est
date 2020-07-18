@@ -274,32 +274,32 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
 {
   PetscErrorCode ierr;
   // node-sampled fields on the interface-capturing grid
-  if(phi != NULL)                           { ierr = delete_and_nullify_vector(phi);                            CHKERRXX(ierr); }
-  if(pressure_jump != NULL)                 { ierr = delete_and_nullify_vector(pressure_jump);                  CHKERRXX(ierr); }
-  if(mass_flux != NULL)                     { ierr = delete_and_nullify_vector(mass_flux);                      CHKERRXX(ierr); }
-  if(phi_xxyyzz != NULL)                    { ierr = delete_and_nullify_vector(phi_xxyyzz);                     CHKERRXX(ierr); }
-  if(interface_stress != NULL)              { ierr = delete_and_nullify_vector(interface_stress);               CHKERRXX(ierr); }
+  ierr = delete_and_nullify_vector(phi);                            CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(pressure_jump);                  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(mass_flux);                      CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(phi_xxyyzz);                     CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_stress);               CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
-  if(phi_on_computational_nodes != NULL)    { ierr = delete_and_nullify_vector(phi_on_computational_nodes);     CHKERRXX(ierr); }
-  if(vorticity_magnitude_minus != NULL)     { ierr = delete_and_nullify_vector(vorticity_magnitude_minus);      CHKERRXX(ierr); }
-  if(vorticity_magnitude_plus != NULL)      { ierr = delete_and_nullify_vector(vorticity_magnitude_plus);       CHKERRXX(ierr); }
-  if(vnp1_nodes_minus !=  NULL)             { ierr = delete_and_nullify_vector(vnp1_nodes_minus);               CHKERRXX(ierr); }
-  if(vnp1_nodes_plus != NULL)               { ierr = delete_and_nullify_vector(vnp1_nodes_plus);                CHKERRXX(ierr); }
-  if(vn_nodes_minus != NULL)                { ierr = delete_and_nullify_vector(vn_nodes_minus);                 CHKERRXX(ierr); }
-  if(vn_nodes_plus != NULL)                 { ierr = delete_and_nullify_vector(vn_nodes_plus);                  CHKERRXX(ierr); }
-  if(interface_velocity_np1 != NULL)        { ierr = delete_and_nullify_vector(interface_velocity_np1);         CHKERRXX(ierr); }
-  if(vn_nodes_minus_xxyyzz != NULL)         { ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);          CHKERRXX(ierr); }
-  if(vn_nodes_plus_xxyyzz != NULL)          { ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);           CHKERRXX(ierr); }
-  if(interface_velocity_np1_xxyyzz != NULL) { ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);  CHKERRXX(ierr); }
+  ierr = delete_and_nullify_vector(phi_on_computational_nodes);     CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_minus);      CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_plus);       CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_nodes_minus);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_nodes_plus);                CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_minus);                 CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_plus);                  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_np1);         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);          CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);           CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);  CHKERRXX(ierr);
   // node-sampled fields on the computational grids nm1
-  if(vnm1_nodes_minus != NULL)              { ierr = delete_and_nullify_vector(vnm1_nodes_minus);               CHKERRXX(ierr); }
-  if(vnm1_nodes_plus != NULL)               { ierr = delete_and_nullify_vector(vnm1_nodes_plus);                CHKERRXX(ierr); }
-  if(vnm1_nodes_minus_xxyyzz != NULL)       { ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);        CHKERRXX(ierr); }
-  if(vnm1_nodes_plus_xxyyzz != NULL)        { ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);         CHKERRXX(ierr); }
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus);                CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);        CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);         CHKERRXX(ierr);
   // face-sampled fields, computational grid n
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    if(vnp1_face_minus[dir] != NULL)        { ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);           CHKERRXX(ierr); }
-    if(vnp1_face_plus[dir] != NULL)         { ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);            CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);         CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);          CHKERRXX(ierr);
   }
 
   if(interface_manager != NULL)
@@ -342,30 +342,46 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete ngbd_c;
 }
 
-void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method)
+void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method, Vec phi_on_computational_nodes_)
 {
   PetscErrorCode ierr;
   P4EST_ASSERT(phi_on_interface_capturing_nodes != NULL);
   if(phi != phi_on_interface_capturing_nodes)
   {
-    if(phi != NULL){
-      ierr = delete_and_nullify_vector(phi); CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(phi); CHKERRXX(ierr);
     phi = phi_on_interface_capturing_nodes;
-    if(phi_xxyyzz != NULL){
-      ierr = delete_and_nullify_vector(phi_xxyyzz); CHKERRXX(ierr); }// no longer valid
+    ierr = delete_and_nullify_vector(phi_xxyyzz); CHKERRXX(ierr);// no longer valid
   }
   else
   {
-    if(method == linear && phi_xxyyzz != NULL){
+    if(method == linear){
       ierr = delete_and_nullify_vector(phi_xxyyzz); CHKERRXX(ierr);
     }
   }
 
-  if(method != linear && phi_xxyyzz == NULL){
+  levelset_interpolation_method = method;
+
+  if(levelset_interpolation_method != linear && phi_xxyyzz == NULL){
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(phi_xxyyzz, P4EST_DIM); CHKERRXX(ierr);
     interface_manager->get_interface_capturing_ngbd_n().second_derivatives_central(phi, phi_xxyyzz);
   }
-  interface_manager->set_levelset(phi, method, phi_xxyyzz, true, true);
+  interface_manager->set_levelset(phi, levelset_interpolation_method, phi_xxyyzz, true, true);
+
+#ifdef CASL_THROWS
+  if(interface_manager->subcell_resolution() == 0 && phi_on_computational_nodes_ != NULL && phi_on_computational_nodes_ != phi_on_interface_capturing_nodes)
+    throw std::invalid_argument("my_p4est_two_phase_flows_t::set_phi() : if not using subcell-resolution for your levelset, this object requires phi_on_interface_capturing_nodes == phi_on_computational_nodes_ or phi_on_computational_nodes_ == NULL");
+#endif
+  if(phi_on_computational_nodes != phi_on_computational_nodes_)
+    delete_and_nullify_vector(phi_on_computational_nodes);
+
+  if(interface_manager->subcell_resolution() == 0)
+    phi_on_computational_nodes = phi_on_interface_capturing_nodes; // the interface-manager figures it out for itself, like a big boy!
+  else if(phi_on_computational_nodes_ != NULL)
+  {
+    phi_on_computational_nodes = phi_on_computational_nodes_;
+    interface_manager->set_under_resolved_levelset(phi_on_computational_nodes);
+  }
+
   return;
 }
 
@@ -487,8 +503,8 @@ void my_p4est_two_phase_flows_t::compute_second_derivatives_of_nm1_velocities()
 void my_p4est_two_phase_flows_t::compute_pressure_jump()
 {
   PetscErrorCode ierr;
-  if(pressure_jump == NULL){
-    interface_manager->create_vector_on_interface_capturing_nodes(pressure_jump); CHKERRXX(ierr); }
+  if(pressure_jump == NULL)
+    interface_manager->create_vector_on_interface_capturing_nodes(pressure_jump);
 
   // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density + [2\mu n \cdot E \cdot n]
   // and we use [2\mu n\cdot E\cdot n] = 2*[\mu] n_cdot_grad_u_minus_or_plus_cdot_n + 2*mu_plus_or_minus*(-curvature*mass_flux*jump_of_inverse_mass_density)
@@ -630,10 +646,8 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
   if(curvature_p != NULL){
     ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr); }
 
-  if(n_cdot_grad_u_minus_cdot_n != NULL){
-    ierr = VecDestroy(n_cdot_grad_u_minus_cdot_n); CHKERRXX(ierr); }
-  if(n_cdot_grad_u_plus_cdot_n != NULL){
-    ierr = VecDestroy(n_cdot_grad_u_plus_cdot_n); CHKERRXX(ierr); }
+  ierr = delete_and_nullify_vector(n_cdot_grad_u_minus_cdot_n); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(n_cdot_grad_u_plus_cdot_n); CHKERRXX(ierr);
   if(interp_n_cdot_grad_u_minus_cdot_n != NULL)
     delete interp_n_cdot_grad_u_minus_cdot_n;
   if(interp_n_cdot_grad_u_plus_cdot_n != NULL)
@@ -646,25 +660,26 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
  * jump_p = - surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density() + [2*mu*(<n | E | n>)]
  * jump_normal_flux_hodge = 0.0! --> because we assume the normal jump in u_star has been correctly captured so far...
  */
-void my_p4est_two_phase_flows_t::solve_projection(my_p4est_poisson_jump_cells_fv_t* &cell_poisson_jump_solver, const KSPType ksp, const PCType pc)
+void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCType pc)
 {
   /* Make the two-phase velocity field divergence free : */
   compute_pressure_jump();
-  if(cell_poisson_jump_solver == NULL)
-    cell_poisson_jump_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
 
-  cell_poisson_jump_solver->set_interface(interface_manager);
-  cell_poisson_jump_solver->set_diagonals(0.0, 0.0);
-  cell_poisson_jump_solver->set_mus(dt_n/(BDF_alpha()*rho_minus), dt_n/(BDF_alpha()*rho_plus));
-  cell_poisson_jump_solver->set_bc(*bc_pressure);
-  cell_poisson_jump_solver->set_jumps(pressure_jump, NULL);
+  if(poisson_jump_cell_solver == NULL)
+    poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+
+  poisson_jump_cell_solver->set_interface(interface_manager);
+  poisson_jump_cell_solver->set_diagonals(0.0, 0.0);
+  poisson_jump_cell_solver->set_mus(dt_n/(BDF_alpha()*rho_minus), dt_n/(BDF_alpha()*rho_plus));
+  poisson_jump_cell_solver->set_bc(*bc_pressure);
+  poisson_jump_cell_solver->set_jumps(pressure_jump, NULL);
 
   if(mass_flux != NULL)
     throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection : you have more work to do here when considering a nonzero mass flux");
-  cell_poisson_jump_solver->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL);
-  cell_poisson_jump_solver->solve(ksp, pc);
+  poisson_jump_cell_solver->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL /* something proportional to mass_flux */);
+  poisson_jump_cell_solver->solve(ksp, pc);
 
-  cell_poisson_jump_solver->project_face_velocities(faces_n);
+  poisson_jump_cell_solver->project_face_velocities(faces_n);
 
   return;
 }
@@ -2452,88 +2467,104 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
 //  }
 //}
 
-void my_p4est_two_phase_flows_t::save_vtk(const char* name, const bool& export_fine_grid, const char* name_fine)
+void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index) const
 {
   PetscErrorCode ierr;
-  Vec phi_coarse = NULL;
-  interpolate_linearly_from_fine_nodes_to_coarse_nodes(fine_phi, phi_coarse);
-  const double* phi_coarse_p = NULL;
-  const double* hodge_p, *v_nodes_p_p, *v_nodes_m_p;
-  ierr = VecGetArrayRead(hodge, &hodge_p);                  CHKERRXX(ierr);
-  ierr = VecGetArrayRead(phi_coarse, &phi_coarse_p);        CHKERRXX(ierr);
-  ierr = VecGetArrayRead(vnp1_nodes_m, &v_nodes_m_p);       CHKERRXX(ierr);
-  ierr = VecGetArrayRead(vnp1_nodes_p, &v_nodes_p_p);       CHKERRXX(ierr);
-
-  my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-                                 P4EST_TRUE, P4EST_TRUE,
-                                 1, /* number of VTK_POINT_DATA */
-                                 0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-                                 2, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-                                 1, /* number of VTK_CELL_DATA */
-                                 0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-                                 0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-                                 name,
-                                 VTK_NODE_SCALAR, "phi", phi_coarse_p,
-                                 VTK_NODE_VECTOR_BLOCK, "vn_plus" , v_nodes_p_p,
-                                 VTK_NODE_VECTOR_BLOCK, "vn_minus", v_nodes_m_p,
-                                 VTK_CELL_DATA, "hodge", hodge_p);
-  ierr = VecRestoreArrayRead(hodge, &hodge_p);              CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(phi_coarse, &phi_coarse_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(vnp1_nodes_m, &v_nodes_m_p);   CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(vnp1_nodes_p, &v_nodes_p_p);   CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(phi_coarse);             CHKERRXX(ierr);
-
-  if(export_fine_grid)
-  {
-    P4EST_ASSERT(name_fine != NULL);
-    Vec fine_jump_mu_grad_v_comp[P4EST_DIM];
-    double *fine_jump_mu_grad_v_comp_p[P4EST_DIM];
-    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      fine_jump_mu_grad_v_comp[dir] = NULL;
-      ierr = create_node_vector_if_needed(fine_jump_mu_grad_v_comp[dir], fine_p4est_n, fine_nodes_n, P4EST_DIM);  CHKERRXX(ierr);
-      ierr = VecGetArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);                        CHKERRXX(ierr);
-    }
-    const double *fine_jump_mu_grad_v_p;
-    ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);  CHKERRXX(ierr);
-    for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k)
-      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-        for (u_char der = 0; der < P4EST_DIM; ++der)
-          fine_jump_mu_grad_v_comp_p[dir][P4EST_DIM*k + der] = fine_jump_mu_grad_v_p[SQR_P4EST_DIM*k + P4EST_DIM*dir + der];
-
-    ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
-
-    const double* fine_phi_p, *fine_curvature_p, *fine_normal_p;
-    ierr = VecGetArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
-    ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
-    ierr = VecGetArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
-    my_p4est_vtk_write_all_general(fine_p4est_n, fine_nodes_n, fine_ghost_n,
-                                   P4EST_TRUE, P4EST_FALSE,
-                                   2, /* number of VTK_POINT_DATA */
-                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-                                   1+P4EST_DIM, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-                                   0, /* number of VTK_CELL_DATA */
-                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-                                   name_fine,
-                                   VTK_NODE_SCALAR, "phi", fine_phi_p,
-                                   VTK_NODE_SCALAR, "curvature", fine_curvature_p,
-                                   VTK_NODE_VECTOR_BLOCK, "normal", fine_normal_p,
-                                   VTK_NODE_VECTOR_BLOCK, "jump mu grad u", fine_jump_mu_grad_v_comp_p[0],
-        VTK_NODE_VECTOR_BLOCK, "jump mu grad v", fine_jump_mu_grad_v_comp_p[1]
-    #ifdef P4_TO_P8
-        , VTK_NODE_VECTOR_BLOCK, "jump mu grad w", fine_jump_mu_grad_v_comp_p[2]
-    #endif
-        );
-    ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
-    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecRestoreArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);  CHKERRXX(ierr);
-      ierr = delete_and_nullify_vector(fine_jump_mu_grad_v_comp[dir]);                          CHKERRXX(ierr);
-      fine_jump_mu_grad_v_comp[dir] = NULL;
-    }
+  std::vector<const double*> node_scalar_data;        std::vector<std::string> node_scalar_names;
+  std::vector<const double*> node_vector_block_data;  std::vector<std::string> node_vector_block_names;
+  std::vector<const double*> cell_scalar_data;        std::vector<std::string> cell_scalar_names;
+  const double *phi_on_computational_nodes_p, *projection_variable_p, *vnp1_nodes_plus_p, *vnp1_nodes_minus_p;
+  Vec phi_on_computational_nodes = interface_manager->get_phi_on_computational_nodes();
+  Vec projection_variable = poisson_jump_cell_solver->get_solution();
+  if(phi_on_computational_nodes != NULL){
+    ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
+    node_scalar_data.push_back(phi_on_computational_nodes_p);
+    node_scalar_names.push_back("phi");
   }
-  ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
+  if(projection_variable != NULL){
+    ierr = VecGetArrayRead(projection_variable, &projection_variable_p); CHKERRXX(ierr);
+    cell_scalar_data.push_back(projection_variable_p);
+    cell_scalar_names.push_back("projection variable");
+  }
+  if(vnp1_nodes_minus != NULL){
+    ierr = VecGetArrayRead(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
+    node_vector_block_data.push_back(vnp1_nodes_minus_p);
+    node_vector_block_names.push_back("vnp1 minus");
+  }
+  if(vnp1_nodes_plus != NULL){
+    ierr = VecGetArrayRead(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
+    node_vector_block_data.push_back(vnp1_nodes_plus_p);
+    node_vector_block_names.push_back("vnp1 plus");
+  }
+  my_p4est_vtk_write_all_general_lists(p4est_n, nodes_n, ghost_n,
+                                       P4EST_TRUE, P4EST_TRUE,
+                                       (vtk_directory + "/snapshot_" + std::to_string(index)).c_str(),
+                                       &node_scalar_data, &node_scalar_names,
+                                       NULL, NULL,
+                                       &node_vector_block_data, &node_vector_block_names,
+                                       &cell_scalar_data, &cell_scalar_names,
+                                       NULL, NULL,
+                                       NULL, NULL);
+  if(vnp1_nodes_plus != NULL){
+    ierr = VecRestoreArrayRead(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr); }
+  if(vnp1_nodes_minus != NULL){
+    ierr = VecRestoreArrayRead(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr); }
+  if(projection_variable != NULL){
+    ierr = VecRestoreArrayRead(projection_variable, &projection_variable_p); CHKERRXX(ierr); }
+  if(phi_on_computational_nodes != NULL){
+    ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
+
+//  if(interface_manager->subcell_resolution() > 0)
+//  {
+//    P4EST_ASSERT(name_fine != NULL);
+//    Vec fine_jump_mu_grad_v_comp[P4EST_DIM];
+//    double *fine_jump_mu_grad_v_comp_p[P4EST_DIM];
+//    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+//      fine_jump_mu_grad_v_comp[dir] = NULL;
+//      ierr = create_node_vector_if_needed(fine_jump_mu_grad_v_comp[dir], fine_p4est_n, fine_nodes_n, P4EST_DIM);  CHKERRXX(ierr);
+//      ierr = VecGetArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);                        CHKERRXX(ierr);
+//    }
+//    const double *fine_jump_mu_grad_v_p;
+//    ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);  CHKERRXX(ierr);
+//    for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k)
+//      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+//        for (u_char der = 0; der < P4EST_DIM; ++der)
+//          fine_jump_mu_grad_v_comp_p[dir][P4EST_DIM*k + der] = fine_jump_mu_grad_v_p[SQR_P4EST_DIM*k + P4EST_DIM*dir + der];
+
+//    ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
+
+//    const double* fine_phi_p, *fine_curvature_p, *fine_normal_p;
+//    ierr = VecGetArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
+//    my_p4est_vtk_write_all_general(fine_p4est_n, fine_nodes_n, fine_ghost_n,
+//                                   P4EST_TRUE, P4EST_FALSE,
+//                                   2, /* number of VTK_POINT_DATA */
+//                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                   1+P4EST_DIM, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                   0, /* number of VTK_CELL_DATA */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                   name_fine,
+//                                   VTK_NODE_SCALAR, "phi", fine_phi_p,
+//                                   VTK_NODE_SCALAR, "curvature", fine_curvature_p,
+//                                   VTK_NODE_VECTOR_BLOCK, "normal", fine_normal_p,
+//                                   VTK_NODE_VECTOR_BLOCK, "jump mu grad u", fine_jump_mu_grad_v_comp_p[0],
+//        VTK_NODE_VECTOR_BLOCK, "jump mu grad v", fine_jump_mu_grad_v_comp_p[1]
+//    #ifdef P4_TO_P8
+//        , VTK_NODE_VECTOR_BLOCK, "jump mu grad w", fine_jump_mu_grad_v_comp_p[2]
+//    #endif
+//        );
+//    ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
+//    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+//      ierr = VecRestoreArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);  CHKERRXX(ierr);
+//      ierr = delete_and_nullify_vector(fine_jump_mu_grad_v_comp[dir]);                          CHKERRXX(ierr);
+//      fine_jump_mu_grad_v_comp[dir] = NULL;
+//    }
+//  }
+  ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", vtk_directory.c_str()); CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
@@ -2713,224 +2744,136 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
 void my_p4est_two_phase_flows_t::set_interface_velocity()
 {
   PetscErrorCode ierr;
-  ierr = create_node_vector_if_needed(interface_velocity_np1, p4est_n, nodes_n, P4EST_DIM); CHKERRXX(ierr);
-  double *interface_velocity_np1_p  = NULL;
-  const double *fluid_velocity_m_p  = NULL;
-  const double *fluid_velocity_p_p  = NULL;
-  const double *fine_mass_flux_p    = NULL;
-  const double *fine_normal_p       = NULL;
-  ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
-  ierr = VecGetArrayRead(vnp1_nodes_p, &fluid_velocity_p_p);              CHKERRXX(ierr);
-  ierr = VecGetArrayRead(vnp1_nodes_m, &fluid_velocity_m_p);              CHKERRXX(ierr);
-  if(fine_mass_flux != NULL){
-    ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p);            CHKERRXX(ierr);
-    ierr = VecGetArrayRead(fine_normal, &fine_normal_p);                  CHKERRXX(ierr);
+  if(interface_velocity_np1 == NULL){
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &interface_velocity_np1); CHKERRXX(ierr);
   }
-  double xyz_node[P4EST_DIM];
+
+  double *interface_velocity_np1_p  = NULL;
+  my_p4est_interpolation_nodes_t *interp_mass_flux = NULL;
+  if(mass_flux != NULL)
+  {
+    interp_mass_flux = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
+    interp_mass_flux->set_input(mass_flux, linear);
+  }
+  const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
+  ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  double xyz_node[P4EST_DIM], local_normal_vector[P4EST_DIM];
   for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
-    p4est_locidx_t n = ngbd_n->get_layer_node(k);
-    node_xyz_fr_n(n, p4est_n, nodes_n, xyz_node);
-    domain_side side_to_choose = ((*interp_phi)(xyz_node) <= 0.0 ? OMEGA_MINUS : OMEGA_PLUS);
-    p4est_locidx_t fine_node_idx;
-    size_t position = P4EST_DIM*n;
+    const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+    node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+    const double local_mass_flux = (interp_mass_flux != NULL ? (*interp_mass_flux)(xyz_node) : 0.0);
+    if(interp_mass_flux != NULL)
+      interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[position + dir] = (side_to_choose == OMEGA_MINUS ? fluid_velocity_m_p[position + dir] : fluid_velocity_p_p[position + dir]);
-    if(fine_mass_flux != NULL && get_fine_node_idx_node(n, fine_node_idx))
-    {
-      size_t fine_position = P4EST_DIM*fine_node_idx;
-      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-        interface_velocity_np1_p[position + dir] -= (fine_mass_flux_p[fine_position + dir]*fine_normal_p[fine_position + dir]/(side_to_choose == OMEGA_MINUS ? rho_m : rho_p));
-    }
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
   }
   ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
-    p4est_locidx_t n = ngbd_n->get_local_node(k);
-    node_xyz_fr_n(n, p4est_n, nodes_n, xyz_node);
-    domain_side side_to_choose = ((*interp_phi)(xyz_node) <= 0.0 ? OMEGA_MINUS : OMEGA_PLUS);
-    p4est_locidx_t fine_node_idx;
-    size_t position = P4EST_DIM*n;
+    const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+    node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+    const double local_mass_flux = (interp_mass_flux != NULL ? (*interp_mass_flux)(xyz_node) : 0.0);
+    if(interp_mass_flux != NULL)
+      interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[position + dir] = (side_to_choose == OMEGA_MINUS ? fluid_velocity_m_p[position + dir] : fluid_velocity_p_p[position + dir]);
-    if(fine_mass_flux != NULL && get_fine_node_idx_node(n, fine_node_idx))
-    {
-      size_t fine_position = P4EST_DIM*fine_node_idx;
-      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-        interface_velocity_np1_p[position + dir] -= (fine_mass_flux_p[fine_position + dir]*fine_normal_p[fine_position + dir]/(side_to_choose == OMEGA_MINUS ? rho_m : rho_p));
-    }
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
   }
-//  if(!node_to_fine_node_map_is_set)
-//    node_to_fine_node_map_is_set = true;
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = create_node_vector_if_needed(interface_velocity_np1_xxyyzz, p4est_n, nodes_n, SQR_P4EST_DIM); CHKERRXX(ierr);
+  if(interface_velocity_np1_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
+  }
   ngbd_n->second_derivatives_central(interface_velocity_np1, interface_velocity_np1_xxyyzz, P4EST_DIM);
 
-  if(fine_mass_flux != NULL){
-    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);                  CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(fine_mass_flux, &fine_mass_flux_p);            CHKERRXX(ierr);
-  }
-  ierr = VecRestoreArrayRead(vnp1_nodes_p, &fluid_velocity_p_p);              CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(vnp1_nodes_m, &fluid_velocity_m_p);              CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
+  if(interp_mass_flux != NULL)
+    delete interp_mass_flux;
+
+  // now extend from interface to flatten that?
+
+  return;
 }
 
-void my_p4est_two_phase_flows_t::advect_interface(p4est_t *fine_p4est_np1, p4est_nodes_t *fine_nodes_np1, Vec fine_phi_np1,
-                                                  p4est_nodes_t *known_nodes, Vec known_phi_np1)
+void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1,
+                                                  const p4est_nodes_t *known_nodes, Vec known_phi_np1)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_two_phase_advect_interface, 0, 0, 0, 0); CHKERRXX(ierr);
-  P4EST_ASSERT(known_nodes != NULL);
-
-  my_p4est_interpolation_nodes_t interp_n(ngbd_nm1); // yes, it's normal: we are in the process of advancing time...
   my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time...
+  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
 
-  std::vector<double> v_tmp_n;
-  std::vector<double> v_tmp_np1;
   std::vector<size_t> already_known(0);
   p4est_locidx_t origin_local_idx;
   const p4est_quadrant_t *node = NULL;
   const double *known_phi_np1_p = NULL;
-  double *fine_phi_np1_p = NULL;
+  double *phi_np1_p = NULL;
   if(known_phi_np1 != NULL)
   {
     ierr = VecGetArrayRead(known_phi_np1, &known_phi_np1_p);  CHKERRXX(ierr);
-    ierr = VecGetArray(fine_phi_np1, &fine_phi_np1_p);        CHKERRXX(ierr);
+    ierr = VecGetArray(phi_np1, &phi_np1_p);        CHKERRXX(ierr);
   }
-
-  //  size_t n_to_show = -1;
 
   /* find the velocity field at time np1 */
   size_t to_compute = 0;
-  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
   {
-    if(known_phi_np1 != NULL)
+    if(known_phi_np1_p != NULL)
     {
-      node = (const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n);
-      P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
+      node = (const p4est_quadrant_t*) sc_const_array_index(&nodes_np1->indep_nodes, node_idx);
+      if(index_of_node(node, known_nodes, origin_local_idx))
+      {
+        phi_np1_p[node_idx] = known_phi_np1_p[origin_local_idx];
+        already_known.push_back(node_idx);
+        continue;
+      }
     }
-    if((node != NULL) && index_of_node(node, known_nodes, origin_local_idx))
-    {
-      fine_phi_np1_p[n] = known_phi_np1_p[origin_local_idx];
-      already_known.push_back(n);
-    }
-    else
-    {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz);
-      //      n_to_show = (fabs(xyz[0]-0.6660156407137385) < 0.0001 && fabs(xyz[1]-0.2617187329960994) < 0.0001)? to_compute: n_to_show;
-      interp_np1.add_point(to_compute++, xyz);
-    }
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz);
+    interp_np1.add_point(to_compute++, xyz);
   }
-  P4EST_ASSERT(to_compute+already_known.size() == fine_nodes_np1->indep_nodes.elem_count);
+  P4EST_ASSERT(to_compute + already_known.size() == (size_t) nodes_np1->num_owned_indeps);
 
-  v_tmp_np1.resize(P4EST_DIM*to_compute);
-  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
-  interp_np1.interpolate(v_tmp_np1.data());
-  interp_np1.clear();
+  std::vector<double> interface_velocity_np1_buffer(P4EST_DIM*to_compute);
+  interp_np1.interpolate(interface_velocity_np1_buffer.data()); interp_np1.clear();
 
-  /* now find x_star */
+  /* now backtrace the points to backtrace and interpolate phi there to define phi_np1*/
+  my_p4est_interpolation_nodes_t& interp_phi_n = interface_manager->get_interp_phi(); interp_phi_n.clear(); // clear the buffers, if not empty
   size_t known_idx = 0;
   to_compute = 0;
-  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
+  for (size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
   {
-    if((known_phi_np1 != NULL) && (n == already_known[known_idx]))
+    if(known_phi_np1_p != NULL && node_idx == already_known[known_idx])
     {
       known_idx++;
       continue;
     }
-    double xyz_star[P4EST_DIM];
-    node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz_star);
-    size_t position = P4EST_DIM*to_compute;
+    double xyz_d[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_d);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-    {
-      xyz_star[dir] -= .5*dt_n*v_tmp_np1[position + dir];
-      //      if(to_compute==n_to_show)
-      //      {
-      //        std::cout << "vstar[" << (int) dir << "] = " << v_tmp_np1[position + dir] << std::endl;
-      //        std::cout << "xyzstar[" << (int) dir << "] = " << xyz_star[dir] << std::endl;
-      //      }
-    }
-    clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
+      xyz_d[dir] -= dt_n*interface_velocity_np1_buffer[P4EST_DIM*to_compute + dir];
+    clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
 
-    interp_np1. add_point(to_compute, xyz_star);
-    interp_n.   add_point(to_compute, xyz_star);
+    interp_phi_n.add_point(node_idx, xyz_d);
     to_compute++;
   }
-  P4EST_ASSERT(to_compute+known_idx == fine_nodes_np1->indep_nodes.elem_count);
+  P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->num_owned_indeps);
+  interp_phi_n.interpolate(phi_np1); interp_phi_n.clear();
 
-  /* interpolate vnm1 */
-  v_tmp_n.resize(P4EST_DIM*to_compute);
-  interp_n.set_input(interface_velocity_n, interface_velocity_n_xxyyzz, quadratic, P4EST_DIM);
-  interp_n.interpolate(v_tmp_n.data());
-  interp_n.clear();
-  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
-  interp_np1.interpolate(v_tmp_np1.data());
-  interp_np1.clear();
-
-  /* finally, find the backtracing value */
-  /* find the departure node via backtracing */
-  double v_star[P4EST_DIM];
-  known_idx = 0;
-  to_compute = 0;
-  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
-  {
-    if((known_phi_np1 != NULL) && (n == already_known[known_idx]))
-    {
-      known_idx++;
-      continue;
-    }
-    size_t position = P4EST_DIM*to_compute;
-    double xyz_d[P4EST_DIM]; node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz_d);
-    for (u_char dir = 0; dir < P4EST_DIM; ++dir){
-      v_star[dir] = (1.0 + 0.5*dt_n/dt_nm1)*v_tmp_np1[position + dir] - 0.5*dt_n/dt_nm1*v_tmp_n[position + dir];
-      xyz_d[dir] -= dt_n*v_star[dir];
-      //      if(to_compute==n_to_show)
-      //      {
-      //        std::cout << "vd[" << (int) dir << "] = " << v_star[position + dir] << std::endl;
-      //        std::cout << "xyz_d[" << (int) dir << "] = " << xyz_d[dir] << std::endl;
-      //      }
-    }
-
-    clip_in_domain(xyz_d, xyz_min, xyz_max, periodic);
-
-    interp_phi->add_point(n, xyz_d);
-    to_compute++;
-  }
-  P4EST_ASSERT(to_compute+known_idx == fine_nodes_np1->indep_nodes.elem_count);
-
-  interp_phi->interpolate(fine_phi_np1);
-  interp_phi->clear(); // to clear the buffers
-  // reset inputs
-  if(fine_phi_xxyyzz != NULL)
-    interp_phi->set_input(fine_phi, fine_phi_xxyyzz, quadratic_non_oscillatory);
-  else
-    interp_phi->set_input(fine_phi, linear);
-
-  ierr = PetscLogEventEnd(log_my_p4est_two_phase_advect_interface, 0, 0, 0, 0); CHKERRXX(ierr);
+  return;
 }
+
 
 void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nnn*/)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_two_phase_advect_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
   if(!dt_updated)
     compute_dt();
   dt_updated = false;
 
   set_interface_velocity();
-  if(interface_velocity_n == NULL && interface_velocity_n_xxyyzz == NULL)
-  {
-    ierr = create_node_vector_if_needed(interface_velocity_n, p4est_nm1, nodes_nm1, P4EST_DIM);
-    ierr = create_node_vector_if_needed(interface_velocity_n_xxyyzz, p4est_nm1, nodes_nm1, SQR_P4EST_DIM);
-    Vec loc_interface_velocity_n, loc_interface_velocity_n_xxyyzz;
-    ierr = VecGhostGetLocalForm(interface_velocity_n, &loc_interface_velocity_n);                   CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(interface_velocity_n_xxyyzz, &loc_interface_velocity_n_xxyyzz);     CHKERRXX(ierr);
-    ierr = VecSet(loc_interface_velocity_n, 0.0);                                                   CHKERRXX(ierr);
-    ierr = VecSet(loc_interface_velocity_n_xxyyzz, 0.0);                                            CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(interface_velocity_n_xxyyzz, &loc_interface_velocity_n_xxyyzz); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(interface_velocity_n, &loc_interface_velocity_n);               CHKERRXX(ierr);
-  }
 
   //  {
   //    PetscErrorCode ierr;
@@ -2953,28 +2896,27 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
 
   // find the np1 computational grid
   splitting_criteria_computational_grid_two_phase_t criterion_computational_grid(this);
-  // if max_lvl==min_lvl, the computational grid is uniform and we don't have to worry about adapting it, so define
-  bool iterative_grid_update_converged = (criterion_computational_grid.max_lvl == criterion_computational_grid.min_lvl);
+  // if max_lvl == min_lvl, the computational grid is uniform and we don't have to worry about adapting it, so define
+  const bool uniform_grid = criterion_computational_grid.max_lvl == criterion_computational_grid.min_lvl;
   /* initialize the new forest */
-  p4est_t *p4est_np1                  = (iterative_grid_update_converged ? p4est_n : p4est_copy(p4est_n, P4EST_FALSE)); // no need to copy if no need to refine/coarsen, otherwise very efficient copy
-  p4est_np1->connectivity             = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
-  p4est_nodes_t *nodes_np1            = nodes_n;
-  p4est_ghost_t *ghost_np1            = ghost_n;
-  my_p4est_hierarchy_t *hierarchy_np1 = hierarchy_n;
-  my_p4est_node_neighbors_t *ngbd_np1 = ngbd_n;
-  Vec vorticities_np1                 = vorticities;
-  Vec phi_np1                         = NULL; // we don't know it yet, we'll need to advect it
+  p4est_t *p4est_np1 = (uniform_grid ? p4est_n : p4est_copy(p4est_n, P4EST_FALSE)); // no need to copy if no need to refine/coarsen, otherwise very efficient copy
+  p4est_nodes_t *nodes_np1 = nodes_n; // no change, yet
+  Vec phi_on_computational_nodes_np1 = NULL; // unknown yet, we need to advect it!
+  Vec vorticity_magnitude_np1_minus = vorticity_magnitude_minus;
+  Vec vorticity_magnitude_np1_plus  = vorticity_magnitude_minus;
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
-  unsigned int iter=0;
+  u_int iter = 0;
+  bool iterative_grid_update_converged = false;
   while(!iterative_grid_update_converged)
   {
     p4est_nodes_t *previous_nodes_np1 = nodes_np1;
-    Vec previous_phi_np1              = phi_np1;
-    Vec previous_vorticities_np1      = vorticities_np1;
+    Vec previous_phi_on_computational_nodes_np1 = phi_on_computational_nodes_np1;
+    Vec previous_vorticity_magnitude_np1_minus = vorticity_magnitude_np1_minus;
+    Vec previous_vorticity_magnitude_np1_plus  = vorticity_magnitude_np1_plus;
     /* ---   FIND THE NEXT ADAPTIVE GRID   --- */
     /* For the very first iteration of the grid-update procedure, p4est_np1 is a
-   * simple pure copy of p4est_n, so no node creation nor data interpolation is
-   * required. Hence the "if(iter>0)..." statements */
+     * simple pure copy of p4est_n, so no node creation nor data interpolation is
+     * required. Hence the "if(iter > 0)..." statements */
 
     if(iter > 0)
     {
@@ -2983,46 +2925,53 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       // get nodes_np1
       nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
     }
-    // reset phi_np1
-    phi_np1 = NULL;
-    ierr = create_node_vector_if_needed(phi_np1, p4est_np1, nodes_np1); CHKERRXX(ierr);
-    P4EST_ASSERT((iter > 0 && previous_phi_np1 != NULL)  || (iter == 0 && previous_phi_np1 == NULL));
+    // reset phi_on_computational_nodes_np1
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_on_computational_nodes_np1); CHKERRXX(ierr);
+    P4EST_ASSERT((iter > 0 && previous_phi_on_computational_nodes_np1 != NULL)  || (iter == 0 && previous_phi_on_computational_nodes_np1 == NULL));
 
     // advect phi
-    advect_interface(p4est_np1, nodes_np1, phi_np1,
-                     previous_nodes_np1, previous_phi_np1); // limit the workload: use what you already know if you know it!
+    advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1,
+                     previous_nodes_np1, previous_phi_on_computational_nodes_np1); // limit the workload: use what you already know if you know it!
 
     // get vorticity_np1
     if(iter > 0){
       // reset vorticity_np1 if needed
-      vorticities_np1 = NULL;
-      ierr = create_node_vector_if_needed(vorticities_np1, p4est_np1, nodes_np1, 2);  CHKERRXX(ierr);
-      const double *previous_vorticities_np1_p;
-      double *vorticities_np1_p;
-      ierr = VecGetArrayRead(previous_vorticities_np1, &previous_vorticities_np1_p);  CHKERRXX(ierr);
-      ierr = VecGetArray(vorticities_np1, &vorticities_np1_p);                        CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity_magnitude_np1_minus);  CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity_magnitude_np1_plus);   CHKERRXX(ierr);
+      const double *previous_vorticity_magnitude_np1_minus_p, *previous_vorticity_magnitude_np1_plus_p;
+      double *vorticity_magnitude_np1_minus_p, *vorticity_magnitude_np1_plus_p;
+      ierr = VecGetArrayRead(previous_vorticity_magnitude_np1_minus, &previous_vorticity_magnitude_np1_minus_p);  CHKERRXX(ierr);
+      ierr = VecGetArrayRead(previous_vorticity_magnitude_np1_plus,  &previous_vorticity_magnitude_np1_plus_p);   CHKERRXX(ierr);
+      ierr = VecGetArray(vorticity_magnitude_np1_minus, &vorticity_magnitude_np1_minus_p);  CHKERRXX(ierr);
+      ierr = VecGetArray(vorticity_magnitude_np1_plus,  &vorticity_magnitude_np1_plus_p);   CHKERRXX(ierr);
 
       interp_nodes.clear();
-      for(size_t n=0; n < nodes_np1->indep_nodes.elem_count; ++n)
+      for(size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
       {
-        const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_array_index(&nodes_np1->indep_nodes, n);
+        const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_const_array_index(&nodes_np1->indep_nodes, node_idx);
         P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
         p4est_locidx_t origin_idx;
         if(index_of_node(node, previous_nodes_np1, origin_idx))
-          for (u_char k = 0; k < 2; ++k)
-            vorticities_np1_p[2*n+k] = previous_vorticities_np1_p[2*origin_idx+k];
+        {
+          vorticity_magnitude_np1_minus_p[node_idx] = previous_vorticity_magnitude_np1_minus_p[origin_idx];
+          vorticity_magnitude_np1_plus_p[node_idx]  = previous_vorticity_magnitude_np1_plus_p[origin_idx];
+        }
         else
         {
           double xyz[P4EST_DIM];
-          node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-          interp_nodes.add_point(n, xyz);
+          node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz);
+          interp_nodes.add_point(node_idx, xyz);
         }
       }
-      interp_nodes.set_input(vorticities, linear, 2);
-      interp_nodes.interpolate(vorticities_np1);
+      Vec inputs[2]   = {vorticity_magnitude_minus, vorticity_magnitude_plus};
+      Vec outputs[2]  = {vorticity_magnitude_np1_minus, vorticity_magnitude_np1_plus};
+      interp_nodes.set_input(inputs, linear, 2);
+      interp_nodes.interpolate(outputs);
 
-      ierr = VecRestoreArrayRead(previous_vorticities_np1, &previous_vorticities_np1_p);  CHKERRXX(ierr);
-      ierr = VecRestoreArray(vorticities_np1, &vorticities_np1_p);                        CHKERRXX(ierr);
+      ierr = VecRestoreArray(vorticity_magnitude_np1_plus,  &vorticity_magnitude_np1_plus_p);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(vorticity_magnitude_np1_minus, &vorticity_magnitude_np1_minus_p);  CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(previous_vorticity_magnitude_np1_plus,  &previous_vorticity_magnitude_np1_plus_p);   CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(previous_vorticity_magnitude_np1_minus, &previous_vorticity_magnitude_np1_minus_p);  CHKERRXX(ierr);
     }
 
 
@@ -3049,35 +2998,40 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     //    }
 
     // update the grid
-    iterative_grid_update_converged = !criterion_computational_grid.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1, vorticities_np1);
+    if(!uniform_grid)
+      iterative_grid_update_converged = !criterion_computational_grid.refine_and_coarsen(p4est_np1, nodes_np1, phi_on_computational_nodes_np1, vorticity_magnitude_np1_minus, vorticity_magnitude_np1_plus);
+    else
+      iterative_grid_update_converged = true;
 
     iter++;
 
-    if(previous_phi_np1 != NULL){
-      ierr = delete_and_nullify_vector(previous_phi_np1);         CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(previous_phi_on_computational_nodes_np1); CHKERRXX(ierr);
     if(previous_nodes_np1 != nodes_n)
       p4est_nodes_destroy(previous_nodes_np1);
-    if(previous_vorticities_np1 != vorticities){
-      ierr = delete_and_nullify_vector(previous_vorticities_np1); CHKERRXX(ierr); }
+    if(previous_vorticity_magnitude_np1_minus != vorticity_magnitude_minus){
+      ierr = delete_and_nullify_vector(previous_vorticity_magnitude_np1_minus); CHKERRXX(ierr); }
+    if(previous_vorticity_magnitude_np1_plus != vorticity_magnitude_plus){
+      ierr = delete_and_nullify_vector(previous_vorticity_magnitude_np1_plus); CHKERRXX(ierr); }
 
-    if(iter > ((unsigned int) 2+criterion_computational_grid.max_lvl-criterion_computational_grid.min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
+    if(iter > ((unsigned int) 2 + criterion_computational_grid.max_lvl - criterion_computational_grid.min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
     {
       ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge\n"); CHKERRXX(ierr);
       break;
     }
   }
 
-  if(vorticities_np1 != vorticities){
-    ierr = delete_and_nullify_vector(vorticities_np1); CHKERRXX(ierr); }
+  if(vorticity_magnitude_np1_minus != vorticity_magnitude_minus){
+    ierr = delete_and_nullify_vector(vorticity_magnitude_np1_minus); CHKERRXX(ierr); }
+  if(vorticity_magnitude_np1_plus != vorticity_magnitude_plus){
+    ierr = delete_and_nullify_vector(vorticity_magnitude_np1_plus); CHKERRXX(ierr); }
   // we do not need the vorticities anymore
-  ierr = delete_and_nullify_vector(vorticities); CHKERRXX(ierr);
-
-  // Save what we already know from the advection of the levelset (in case we know anything) in
-  // order to limit workload later on, regarding the adaptation for the interface-capturing grid
-  p4est_nodes_t *fine_nodes_np1 = nodes_np1;
-  Vec fine_phi_np1              = phi_np1; phi_np1 = NULL;
+  ierr = delete_and_nullify_vector(vorticity_magnitude_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_plus); CHKERRXX(ierr);
 
   // Finalize the computational grid np1 (if needed):
+  p4est_ghost_t *ghost_np1 = ghost_n;
+  my_p4est_hierarchy_t *hierarchy_np1 = hierarchy_n;
+  my_p4est_node_neighbors_t *ngbd_np1 = ngbd_n;
   if(p4est_np1 != p4est_n)
   {
     // Balance the grid and repartition
@@ -3086,162 +3040,257 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     /* Get the ghost cells at time np1, */
     ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_np1, ghost_np1);
+    // save the currently known nodes and phi_np1 to alleviate workload of the advection
+    p4est_nodes_t *known_nodes_np1 = nodes_np1;
+    Vec known_phi_on_computational_nodes_np1 = phi_on_computational_nodes_np1;
+    // get the final computational nodes np1
     nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
     hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
     ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
     ngbd_np1->init_neighbors();
+
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_on_computational_nodes_np1); CHKERRXX(ierr);
+    advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1, known_nodes_np1, known_phi_on_computational_nodes_np1);
+    // destroy what you saved
+    p4est_nodes_destroy(known_nodes_np1);
+    ierr = delete_and_nullify_vector(known_phi_on_computational_nodes_np1); CHKERRXX(ierr);
   }
-  // we are done with the computational grid
 
-  // now, find the np1 interface-capturing grid
-  splitting_criteria_t* data_fine = (splitting_criteria_t*) fine_p4est_n->user_pointer;
-  splitting_criteria_tag_t criterion_fine_grid(data_fine);
-  P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_computational_grid.max_lvl);
-  P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_fine_grid.min_lvl);
-  /* initialize the new forest */
-  // if p4est_np1 has changed, we start the procedure from p4est_np1, we'll coarsen as much as possible and refine as needed but we keep always things local
-  // if not, fine_p4est_n is still valid and is a better initial guess
-  p4est_t *fine_p4est_np1                   = (p4est_np1 != p4est_n ? p4est_copy(p4est_np1, P4EST_FALSE) : p4est_copy(fine_p4est_n, P4EST_FALSE));
-  fine_p4est_np1->connectivity              = fine_p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
-  fine_p4est_np1->user_pointer              = data_fine;
-  // fine_nodes_np1 and fine_phi_np1 have been initialized here above (to shortcut workload in advection in the following loop, if possible)
-  iter = 0;
-  iterative_grid_update_converged = false;
-  while(!iterative_grid_update_converged)
+  // we are done with the computational grid np1
+  p4est_t *fine_p4est_np1 = NULL;
+  p4est_ghost_t *fine_ghost_np1 = NULL;
+  p4est_nodes_t *fine_nodes_np1 = NULL;
+  my_p4est_hierarchy_t *fine_hierarchy_np1 = NULL;
+  my_p4est_node_neighbors_t *fine_ngbd_np1 = NULL;
+  Vec phi_on_fine_nodes_np1 = NULL;
+  if(interface_manager->subcell_resolution() > 0)
   {
-    p4est_nodes_t *previous_fine_nodes_np1  = fine_nodes_np1;
-    Vec previous_fine_phi_np1               = fine_phi_np1;
+    // now, find the np1 interface-capturing grid
+    splitting_criteria_t* data_fine = (splitting_criteria_t*) fine_p4est_n->user_pointer;
+    splitting_criteria_tag_t criterion_fine_grid(data_fine);
+    P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_computational_grid.max_lvl);
+    P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_fine_grid.min_lvl);
+    /* initialize the new sub-resolving forest */
+    fine_p4est_np1 = p4est_copy(p4est_np1, P4EST_FALSE);
+    fine_p4est_np1->user_pointer = data_fine;
+
+    // initialization
+    fine_nodes_np1 = nodes_np1;
+    phi_on_fine_nodes_np1 = phi_on_computational_nodes_np1;
+
+    iter = 0;
+    iterative_grid_update_converged = criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
     /* ---   FIND THE NEXT ADAPTIVE GRID   --- */
-    /* For the very first iteration of the grid-update procedure, fine_p4est_np1 is a
-   * simple pure copy of p4est_n_np1, so no node creation nor data interpolation is
-   * required. Hence the "if(iter>0)..." statements */
-    // We never partition this one, to make ensure locality of interface-capturing data...
-    // get fine_nodes_np1
-    // reset fine_nodes_np1 if needed
-    fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, NULL);
-    // reset fine_phi_np1
-    fine_phi_np1 = NULL;
-    create_node_vector_if_needed(fine_phi_np1, fine_p4est_np1, fine_nodes_np1);
-    advect_interface(fine_p4est_np1, fine_nodes_np1, fine_phi_np1,
-                     previous_fine_nodes_np1, previous_fine_phi_np1); // limit the workload: use what you already know!
-    const double *fine_phi_np1_read_p=NULL;
+    // We never partition this one, to ensure locality of interface-capturing data...
+    // We also do not coarsen the grid in any ways (not really parallel-friendly...)
+    while(!iterative_grid_update_converged)
+    {
+      iter++;
+      p4est_nodes_t *previous_fine_nodes_np1 = fine_nodes_np1;
+      Vec previous_phi_on_fine_nodes_np1 = phi_on_fine_nodes_np1;
+      // advect more fine_phi_np1
+      fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, NULL);
+      ierr = VecCreateGhostNodes(fine_p4est_np1, fine_nodes_np1, &phi_on_fine_nodes_np1); CHKERRXX(ierr);
+      advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
+                       previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
 
-    ierr = VecGetArrayRead(fine_phi_np1, &fine_phi_np1_read_p); CHKERRXX(ierr);
-    //    if(iter==293)
-    //    {
-    //      my_p4est_vtk_write_all_general(fine_p4est_np1, fine_nodes_np1, NULL,
-    //                                     P4EST_FALSE, P4EST_FALSE,
-    //                                     1, /* number of VTK_POINT_DATA */
-    //                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-    //                                     0, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-    //                                     0, /* number of VTK_CELL_DATA */
-    //                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-    //                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-    //                                     ("/home/regan/workspace/projects/two_phase_flow/before_fine_update" + std::to_string(iter)).c_str(),
-    //                                     VTK_NODE_SCALAR, "phi_np1" , fine_phi_np1_read_p);
-    //    }
-    // update the grid
-    iterative_grid_update_converged = !criterion_fine_grid.refine_and_coarsen(fine_p4est_np1, fine_nodes_np1, fine_phi_np1_read_p);
-    ierr = VecRestoreArrayRead(fine_phi_np1, &fine_phi_np1_read_p); CHKERRXX(ierr);
-    iter++;
+      //    if(iter==293)
+      //    {
+      //      my_p4est_vtk_write_all_general(fine_p4est_np1, fine_nodes_np1, NULL,
+      //                                     P4EST_FALSE, P4EST_FALSE,
+      //                                     1, /* number of VTK_POINT_DATA */
+      //                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+      //                                     0, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+      //                                     0, /* number of VTK_CELL_DATA */
+      //                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+      //                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+      //                                     ("/home/regan/workspace/projects/two_phase_flow/before_fine_update" + std::to_string(iter)).c_str(),
+      //                                     VTK_NODE_SCALAR, "phi_np1" , fine_phi_np1_read_p);
+      //    }
+      // update the grid
 
-    ierr = delete_and_nullify_vector(previous_fine_phi_np1); CHKERRXX(ierr);
-    if(previous_fine_nodes_np1 != nodes_n)
+      if(previous_phi_on_fine_nodes_np1 != phi_on_computational_nodes_np1){
+        ierr = delete_and_nullify_vector(previous_phi_on_fine_nodes_np1); CHKERRXX(ierr); }
+      if(previous_fine_nodes_np1 != nodes_np1)
+        p4est_nodes_destroy(previous_fine_nodes_np1);
+
+      iterative_grid_update_converged = criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
+
+      if(iter > (u_int) 1 + interface_manager->subcell_resolution())
+      {
+        ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge for the subresolving grid\n"); CHKERRXX(ierr);
+        break;
+      }
+    }
+    P4EST_ASSERT(iter > 0); // must have gone through the loop at least once!
+
+    fine_ghost_np1 = my_p4est_ghost_new(fine_p4est_np1, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(fine_p4est_np1, fine_ghost_np1);
+    // finalize fine_phi_np1
+    // save what you know (without the ghost)
+    p4est_nodes_t *previous_fine_nodes_np1 = fine_nodes_np1;
+    Vec previous_phi_on_fine_nodes_np1 = phi_on_fine_nodes_np1;
+    // create the final guys
+    fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, fine_ghost_np1);
+    ierr = VecCreateGhostNodes(fine_p4est_np1, fine_nodes_np1, &phi_on_fine_nodes_np1); CHKERRXX(ierr);
+
+    fine_hierarchy_np1 = new my_p4est_hierarchy_t(fine_p4est_np1, fine_ghost_np1, brick);
+    fine_ngbd_np1 = new my_p4est_node_neighbors_t(fine_hierarchy_np1, fine_nodes_np1);
+    fine_ngbd_np1->init_neighbors();
+
+    if(!iterative_grid_update_converged)
+    {
+      // this should never happen, but in case it does, we need to advect once more
+      // to ensure that every node's levelset value is well-defined...
+      // that every final local node is known already, so here we are
+      advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
+                       previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
+    }
+    else
+    {
+      const double *previous_phi_on_fine_nodes_np1_p;
+      double *phi_on_fine_nodes_np1_p;
+      ierr = VecGetArrayRead(previous_phi_on_fine_nodes_np1, &previous_phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_on_fine_nodes_np1, &phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
+      for (size_t k = 0; k < fine_ngbd_np1->get_layer_size(); ++k) {
+        const p4est_locidx_t fine_node_idx = fine_ngbd_np1->get_layer_node(k);
+#ifdef P4EST_DEBUG
+        // hard check your assumption
+        const p4est_quadrant_t *fine_node = (const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, fine_node_idx);
+        P4EST_ASSERT (p4est_quadrant_is_node (fine_node, 1));
+        p4est_locidx_t origin_idx;
+        P4EST_ASSERT(index_of_node(fine_node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+        P4EST_ASSERT(origin_idx == fine_node_idx);
+#endif
+        phi_on_fine_nodes_np1_p[fine_node_idx] = previous_phi_on_fine_nodes_np1_p[fine_node_idx];
+      }
+      ierr = VecGhostUpdateBegin(phi_on_fine_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      for (size_t k = 0; k < fine_ngbd_np1->get_local_size(); ++k) {
+        const p4est_locidx_t fine_node_idx = fine_ngbd_np1->get_local_node(k);
+#ifdef P4EST_DEBUG
+        // hard check your assumption
+        const p4est_quadrant_t *fine_node = (const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, fine_node_idx);
+        P4EST_ASSERT (p4est_quadrant_is_node (fine_node, 1));
+        p4est_locidx_t origin_idx;
+        P4EST_ASSERT(index_of_node(fine_node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+        P4EST_ASSERT(origin_idx == fine_node_idx);
+#endif
+        phi_on_fine_nodes_np1_p[fine_node_idx] = previous_phi_on_fine_nodes_np1_p[fine_node_idx];
+      }
+      ierr = VecGhostUpdateEnd(phi_on_fine_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_on_fine_nodes_np1, &phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(previous_phi_on_fine_nodes_np1, &previous_phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
+    }
+    if(previous_fine_nodes_np1 != nodes_np1)
       p4est_nodes_destroy(previous_fine_nodes_np1);
 
-    if(iter > ((unsigned int) 2+criterion_fine_grid.max_lvl-criterion_fine_grid.min_lvl))
-    {
-      ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge for the fine grid\n"); CHKERRXX(ierr);
-      break;
-    }
+    if(previous_phi_on_fine_nodes_np1 != phi_on_computational_nodes_np1){
+      ierr = delete_and_nullify_vector(previous_phi_on_fine_nodes_np1); CHKERRXX(ierr); }
+
+    P4EST_ASSERT(fine_p4est_np1 != NULL && fine_ghost_np1 != NULL && fine_nodes_np1 != NULL && fine_nodes_np1 != nodes_np1 && fine_hierarchy_np1 != NULL && fine_ngbd_np1 != NULL && phi_on_fine_nodes_np1 != NULL && phi_on_fine_nodes_np1 != phi_on_computational_nodes_np1);
   }
 
-  p4est_nodes_t *previous_fine_nodes_np1  = fine_nodes_np1;
-  Vec previous_fine_phi_np1               = fine_phi_np1;
-  p4est_ghost_t *fine_ghost_np1 = my_p4est_ghost_new(fine_p4est_np1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(fine_p4est_np1, fine_ghost_np1);
-  fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, fine_ghost_np1);
-  // reset fine_phi_np1
-  fine_phi_np1 = NULL;
-  create_node_vector_if_needed(fine_phi_np1, fine_p4est_np1, fine_nodes_np1);
-  my_p4est_hierarchy_t* fine_hierarchy_np1 = new my_p4est_hierarchy_t(fine_p4est_np1, fine_ghost_np1, brick);
-  my_p4est_node_neighbors_t *fine_ngbd_np1 = new my_p4est_node_neighbors_t(fine_hierarchy_np1, fine_nodes_np1);
-  fine_ngbd_np1->init_neighbors();
-
-  if(!iterative_grid_update_converged)
+  const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
+  Vec& interface_resolving_phi_np1 = (fine_ngbd_np1 != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1);
+  my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
+  ls.reinitialize_2nd_order(interface_resolving_phi_np1);
+  if(interface_manager->subcell_resolution() > 0)
   {
-    // this should never happen, but in case it does, we need to advect once more
-    // to ensure that every node's levelset value is well-defined...
-    // that every final local node is known already, so here we are
-    advect_interface(fine_p4est_np1, fine_nodes_np1, fine_phi_np1,
-                     previous_fine_nodes_np1, previous_fine_phi_np1); // limit the workload: use what you already know!
-  }
-  else
-  {
-    const double *previous_fine_phi_np1_p;
-    double *fine_phi_np1_p;
-    ierr = VecGetArrayRead(previous_fine_phi_np1, &previous_fine_phi_np1_p); CHKERRXX(ierr);
-    ierr = VecGetArray(fine_phi_np1, &fine_phi_np1_p); CHKERRXX(ierr);
-    for (size_t k = 0; k < fine_ngbd_np1->get_layer_size(); ++k) {
-      p4est_locidx_t n = fine_ngbd_np1->get_layer_node(k);
-#ifdef DEBUG
-      const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n);
+    // transfer reinitialized levelset values from the fine grid data to the computational grid
+    double *phi_on_computational_nodes_np1_p;
+    const double *phi_on_fine_nodes_np1_p;
+    ierr = VecGetArrayRead(phi_on_fine_nodes_np1, &phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_on_computational_nodes_np1, &phi_on_computational_nodes_np1_p); CHKERRXX(ierr);
+    for (size_t k = 0; k < ngbd_np1->get_layer_size(); ++k) {
+      const p4est_locidx_t node_idx = ngbd_np1->get_layer_node(k);
+      // hard check your assumption
+      const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_array_index(&nodes_np1->indep_nodes, node_idx);
       P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
-      p4est_locidx_t origin_idx;
-      P4EST_ASSERT(index_of_node(node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
-      P4EST_ASSERT(origin_idx == n);
-#endif
-      fine_phi_np1_p[n] = previous_fine_phi_np1_p[n];
+      p4est_locidx_t corresponding_fine_node_idx;
+      const bool node_found = index_of_node(node, fine_nodes_np1, corresponding_fine_node_idx); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+      P4EST_ASSERT(node_found);
+      phi_on_computational_nodes_np1_p[node_idx] = phi_on_fine_nodes_np1_p[corresponding_fine_node_idx];
     }
-    ierr = VecGhostUpdateBegin(fine_phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    for (size_t k = 0; k < fine_ngbd_np1->get_local_size(); ++k) {
-      p4est_locidx_t n = fine_ngbd_np1->get_local_node(k);
-#ifdef DEBUG
-      const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n);
+    ierr = VecGhostUpdateBegin(phi_on_computational_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (size_t k = 0; k < ngbd_np1->get_local_size(); ++k) {
+      const p4est_locidx_t node_idx = ngbd_np1->get_local_node(k);
+      // hard check your assumption
+      const p4est_quadrant_t *node = (const p4est_quadrant_t*) sc_array_index(&nodes_np1->indep_nodes, node_idx);
       P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
-      p4est_locidx_t origin_idx;
-      P4EST_ASSERT(index_of_node(node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
-      P4EST_ASSERT(origin_idx == n);
-#endif
-      fine_phi_np1_p[n] = previous_fine_phi_np1_p[n];
+      p4est_locidx_t corresponding_fine_node_idx;
+      const bool node_found = index_of_node(node, fine_nodes_np1, corresponding_fine_node_idx); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+      P4EST_ASSERT(node_found);
+      phi_on_computational_nodes_np1_p[node_idx] = phi_on_fine_nodes_np1_p[corresponding_fine_node_idx];
     }
-    ierr = VecGhostUpdateEnd(fine_phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecRestoreArray(fine_phi_np1, &fine_phi_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(previous_fine_phi_np1, &previous_fine_phi_np1_p); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi_on_computational_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_on_computational_nodes_np1, &phi_on_computational_nodes_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi_on_fine_nodes_np1, &phi_on_fine_nodes_np1_p); CHKERRXX(ierr);
   }
-  my_p4est_level_set_t ls(fine_ngbd_np1);
-  ls.reinitialize_2nd_order(fine_phi_np1, 20);
-  // Now, you for sure no longer need the "previous_*"
-  if(previous_fine_nodes_np1 != nodes_n)
-    p4est_nodes_destroy(previous_fine_nodes_np1);
-  ierr = delete_and_nullify_vector(previous_fine_phi_np1); CHKERRXX(ierr);
-  // you have your new grids, now transfer your data!
-
+  // you have your new grids and the new levelset function, now transfer your data!
 
   /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
- * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
- * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
-  // we can finally slide phi, current phi is no longer needed (IF different than phi_np1)...
-  p4est_destroy(fine_p4est_n);        fine_p4est_n      = fine_p4est_np1;
-  p4est_ghost_destroy(fine_ghost_n);  fine_ghost_n      = fine_ghost_np1;
-  p4est_nodes_destroy(fine_nodes_n);  fine_nodes_n      = fine_nodes_np1;
-  delete  fine_hierarchy_n;           fine_hierarchy_n  = fine_hierarchy_np1;
-  delete  fine_ngbd_n;                fine_ngbd_n       = fine_ngbd_np1;
-  ierr = delete_and_nullify_vector(fine_phi);                         CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(fine_curvature);                   CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(fine_normal);                      CHKERRXX(ierr);
-  const bool set_second_derivatives = (fine_phi_xxyyzz != NULL);
-  if(set_second_derivatives){
-    ierr = delete_and_nullify_vector(fine_phi_xxyyzz);                CHKERRXX(ierr); }
-  set_phi(fine_phi_np1, set_second_derivatives);
-  ierr = delete_and_nullify_vector(fine_jump_hodge);                  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(fine_jump_normal_flux_hodge);      CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(fine_jump_mu_grad_v);              CHKERRXX(ierr);
-  if(fine_mass_flux != NULL){
-    ierr = delete_and_nullify_vector(fine_mass_flux);                 CHKERRXX(ierr); }
-  if(fine_variable_surface_tension != NULL){
-    ierr = delete_and_nullify_vector(fine_variable_surface_tension);  CHKERRXX(ierr); }
+   * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
+   * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
+
+  ierr = delete_and_nullify_vector(mass_flux); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(pressure_jump);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_stress); CHKERRXX(ierr);
   // on computational grid at time nm1, just "slide" fields and grids in discrete time
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);   CHKERRXX(ierr);
+  vnm1_nodes_minus  = vn_nodes_minus;
+  vnm1_nodes_plus   = vn_nodes_plus;
+  vnm1_nodes_minus_xxyyzz = vn_nodes_minus_xxyyzz;
+  vnm1_nodes_plus_xxyyzz  = vn_nodes_plus_xxyyzz;
+  // no longer need the interface velocity
+  ierr = delete_and_nullify_vector(interface_velocity_np1); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
+  // on computational grid at time n, we will need to interpolate things...
+  // we will need to interpolate for vnp1 to vn (and then we'll take their derivatives)
+  if(p4est_np1 != p4est_n)
+  {
+    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vn_nodes_minus); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vn_nodes_plus); CHKERRXX(ierr);
+    interp_nodes.clear();
+    for (size_t k = 0; k < nodes_np1->indep_nodes.elem_count; ++k) {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(k, p4est_np1, nodes_np1, xyz);
+      interp_nodes.add_point(k, xyz);
+    }
+    Vec inputs[2]   = {vnp1_nodes_minus, vnp1_nodes_plus};
+    Vec outputs[2]  = {vn_nodes_minus, vn_nodes_plus};
+    interp_nodes.set_input(inputs, quadratic, 2, P4EST_DIM);
+    interp_nodes.interpolate(outputs);
+    // clear those
+    ierr = delete_and_nullify_vector(vnp1_nodes_minus); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_nodes_plus);  CHKERRXX(ierr);
+  }
+  else{
+    vn_nodes_minus  = vnp1_nodes_minus;
+    vn_nodes_plus   = vnp1_nodes_plus;
+    vnp1_nodes_minus  = NULL; // to avoid overwriting thereafter
+    vnp1_nodes_plus   = NULL; // to avoid overwriting thereafter
+  }
+  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vn_nodes_minus_xxyyzz); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vn_nodes_plus_xxyyzz);  CHKERRXX(ierr);
+  Vec inputs[2]         = {vn_nodes_minus, vn_nodes_plus};
+  Vec outputs_xxyyzz[2] = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
+  ngbd_np1->second_derivatives_central(inputs, outputs_xxyyzz, 2, P4EST_DIM);
+
+
+  if(interface_manager->subcell_resolution() > 0)
+  {
+    p4est_destroy(fine_p4est_n);        fine_p4est_n      = fine_p4est_np1;
+    p4est_ghost_destroy(fine_ghost_n);  fine_ghost_n      = fine_ghost_np1;
+    p4est_nodes_destroy(fine_nodes_n);  fine_nodes_n      = fine_nodes_np1;
+    delete  fine_hierarchy_n;           fine_hierarchy_n  = fine_hierarchy_np1;
+    delete  fine_ngbd_n;                fine_ngbd_n       = fine_ngbd_np1;
+  }
+  else
+    P4EST_ASSERT(fine_p4est_n == NULL && fine_p4est_np1 == NULL && fine_ghost_n == NULL && fine_ghost_np1 == NULL &&  fine_nodes_n == NULL && fine_nodes_np1 == NULL &&
+                 fine_hierarchy_n == NULL && fine_hierarchy_np1 == NULL && fine_ngbd_n == NULL && fine_ngbd_np1 == NULL);
   if(p4est_nm1 != p4est_n)
     p4est_destroy(p4est_nm1);
   if(ghost_nm1 != ghost_n)
@@ -3257,93 +3306,61 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   nodes_nm1     = nodes_n;
   hierarchy_nm1 = hierarchy_n;
   ngbd_nm1      = ngbd_n;
-  ierr = delete_and_nullify_vector(vnm1_nodes_m);                     CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_p);                     CHKERRXX(ierr);
-  if(vnm1_nodes_m_xxyyzz != NULL){
-    ierr = delete_and_nullify_vector(vnm1_nodes_m_xxyyzz);            CHKERRXX(ierr); }
-  if(vnm1_nodes_p_xxyyzz != NULL){
-    ierr = delete_and_nullify_vector(vnm1_nodes_p_xxyyzz);            CHKERRXX(ierr); }
-  if(interface_velocity_n != NULL){
-    ierr = delete_and_nullify_vector(interface_velocity_n);           CHKERRXX(ierr); }
-  if(interface_velocity_n_xxyyzz != NULL){
-    ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);    CHKERRXX(ierr); }
-  vnm1_nodes_m        = vn_nodes_m;
-  vnm1_nodes_p        = vn_nodes_p;
-  vnm1_nodes_m_xxyyzz = vn_nodes_m_xxyyzz;
-  vnm1_nodes_p_xxyyzz = vn_nodes_p_xxyyzz;
-  interface_velocity_n        = interface_velocity_np1;
-  interface_velocity_n_xxyyzz = interface_velocity_np1_xxyyzz;
-  // on computational grid at time n, we will need to interpolate things...
-  // we will need to interpolate for vnp1 to vn (and then we'll take their derivatives)
-  vn_nodes_m        = NULL; vn_nodes_p         = NULL;
-  vn_nodes_m_xxyyzz = NULL; vn_nodes_p_xxyyzz  = NULL;
-  ierr = create_node_vector_if_needed(vn_nodes_m, p4est_np1, nodes_np1, P4EST_DIM);
-  ierr = create_node_vector_if_needed(vn_nodes_p, p4est_np1, nodes_np1, P4EST_DIM);
-  ierr = create_node_vector_if_needed(vn_nodes_m_xxyyzz, p4est_np1, nodes_np1, SQR_P4EST_DIM);
-  ierr = create_node_vector_if_needed(vn_nodes_p_xxyyzz, p4est_np1, nodes_np1, SQR_P4EST_DIM);
-  interp_nodes.clear();
-  for (size_t k = 0; k < nodes_np1->indep_nodes.elem_count; ++k) {
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(k, p4est_np1,nodes_np1, xyz);
-    interp_nodes.add_point(k, xyz);
-  }
-  Vec inputs[2] = {vnp1_nodes_m, vnp1_nodes_p};
-  Vec outputs[2] = {vn_nodes_m, vn_nodes_p};
-  Vec outputs_xxyyzz[2] = {vn_nodes_m_xxyyzz, vn_nodes_p_xxyyzz};
-  interp_nodes.set_input(inputs, linear, 2, P4EST_DIM);
-  interp_nodes.interpolate(outputs);
-  ngbd_np1->second_derivatives_central(outputs, outputs_xxyyzz, 2, P4EST_DIM);
-  ierr = delete_and_nullify_vector(vnp1_nodes_m);                     CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnp1_nodes_p);                     CHKERRXX(ierr);
-  interface_velocity_np1        = NULL;
-  interface_velocity_np1_xxyyzz = NULL;
-
-  ierr = delete_and_nullify_vector(hodge);                            CHKERRXX(ierr);
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(dxyz_hodge[dir]);                CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vstar[dir]);                     CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_m[dir]);                    CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_p[dir]);                    CHKERRXX(ierr);
-  }
   if(p4est_np1 != p4est_n || ghost_np1 != ghost_n || hierarchy_np1 != hierarchy_n){
     if(hierarchy_np1 != hierarchy_n)
     {
-      delete  ngbd_c;
+      delete ngbd_c;
       ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
-      cell_to_fine_node.clear(); cell_to_fine_node_map_is_set = false;
     }
     delete  faces_n;
     faces_n = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c, true);
+
   }
   p4est_n     = p4est_np1;
   ghost_n     = ghost_np1;
   nodes_n     = nodes_np1;
   hierarchy_n = hierarchy_np1;
   ngbd_n      = ngbd_np1;
+
+  delete interface_manager;
+  interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_np1);
+  set_phi((fine_ngbd_n != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1), levelset_interpolation_method, phi_on_computational_nodes_np1); // memory handled therein!
+
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);  CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir],  dir); CHKERRXX(ierr);
+  }
+
   viscosity_solver.reset();
+  if(poisson_jump_cell_solver != NULL)
+  {
+    delete poisson_jump_cell_solver;
+    poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+  }
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
   semi_lagrangian_backtrace_is_done = false;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    backtraced_vn_faces[dir].clear();
-    backtraced_vnm1_faces[dir].clear();
-    face_to_fine_node[dir].clear();
-    face_to_fine_node_maps_are_set[dir] = false;
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir],       dir); CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &dxyz_hodge[dir],  dir); CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_m[dir],  dir);     CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_p[dir],   dir);    CHKERRXX(ierr);
+    backtraced_vn_faces_minus[dir].resize(faces_n->num_local[dir]);
+    backtraced_vn_faces_plus[dir].resize(faces_n->num_local[dir]);
+    if(sl_order == 2)
+    {
+      backtraced_vnm1_faces_minus[dir].resize(faces_n->num_local[dir]);
+      backtraced_vnm1_faces_plus[dir].resize(faces_n->num_local[dir]);
+    }
+    else
+    {
+      backtraced_vnm1_faces_minus[dir].clear();
+      backtraced_vnm1_faces_plus[dir].clear();
+    }
     if(!voronoi_on_the_fly)
     {
       voro_cell[dir].clear();
       voro_cell[dir].resize(faces_n->num_local[dir]);
     }
   }
-  ierr = VecCreateGhostCells(p4est_n, ghost_n, &hodge);                   CHKERRXX(ierr);
-  cell_to_fine_node.clear(); cell_to_fine_node_map_is_set = false;
-  node_to_fine_node.clear(); node_to_fine_node_map_is_set = false;
-
-  ierr = PetscLogEventEnd(log_my_p4est_two_phase_advect_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
 
   //  {
