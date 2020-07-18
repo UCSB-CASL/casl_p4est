@@ -27,7 +27,7 @@
 #include <src/my_p8est_hierarchy.h>
 #include <src/my_p8est_fast_sweeping.h>
 #include <src/my_p8est_nodes_along_interface.h>
-//#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
@@ -35,11 +35,12 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_hierarchy.h>
-#include <src/my_p4est_fast_sweeping.h>
+//#include <src/my_p4est_fast_sweeping.h>
 #include <src/my_p4est_nodes_along_interface.h>
-//#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
+#include <src/casl_geometry.h>
 #include <src/petsc_compatibility.h>
 #include <string>
 #include <algorithm>
@@ -47,40 +48,8 @@
 #include <iterator>
 #include <fstream>
 #include <unordered_map>
+#include "local_utils.h"
 
-/**
- * Generate the column headers following the truth-table order with x changing slowly, then y changing faster than x,
- * and finally z changing faster than y.  Each dimension has three states: m, 0, and p (minus, center, plus).  For
- * example, in 2D, the columns that are generated are:
- * 	   Acronym      Meaning
- *		"mm"  =>  (i-1, j-1)
- *		"m0"  =>  (i-1, j  )
- *		"mp"  =>  (i-1, j+1)
- *		"0m"  =>  (  i, j-1)
- *		"00"  =>  (  i,   j)
- *		"0p"  =>  (  i, j+1)
- *		"pm"  =>  (i+1, j-1)
- *		"p0"  =>  (i+1,   j)
- *		"pp"  =>  (i+1, j+1)
- *		"hk"  =>  h * \kappa
- * @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
- */
-void generateColumnHeaders( std::string header[] )
-{
-	const int STEPS = 3;
-	std::string states[] = {"m", "0", "p"};			// States for x, y, and z directions.
-	int i = 0;
-	for( int x = 0; x < STEPS; x++ )
-		for( int y = 0; y < STEPS; y++ )
-#ifdef P4_TO_P8
-			for( int z = 0; z < STEPS; z++ )
-#endif
-		{
-			i = SUMD( x * (int)pow( STEPS, P4EST_DIM - 1 ), y * (int)pow( STEPS, P4EST_DIM - 2 ), z );
-			header[i] = SUMD( states[x], states[y], states[z] );
-		}
-	header[i+1] = "hk";								// Don't forget the h*\kappa column!
-}
 
 int main ( int argc, char* argv[] )
 {
@@ -96,8 +65,8 @@ int main ( int argc, char* argv[] )
 	const double MIN_RADIUS = 1.5 * H;			// Ensures at least 4 nodes inside smallest circle.
 	const double MAX_RADIUS = HALF_D - 2 * H;	// Prevents sampling interface nodes with invalid full uniform stencils.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/";			// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;	// Number of columns in resulting dataset.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/";			// Destination folder.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
@@ -227,16 +196,35 @@ int main ( int argc, char* argv[] )
 				ierr = VecDuplicate( sdfPhi, &rlsPhi );
 				CHKERRXX( ierr );
 
+				Vec curvature, normal[P4EST_DIM];
+				ierr = VecDuplicate( rlsPhi, &curvature );
+				CHKERRXX( ierr );
+				for( auto& dim : normal )
+				{
+					VecCreateGhostNodes( p4est, nodes, &dim );
+					CHKERRXX( ierr );
+				}
+
 				// Calculate the level-set function values for all independent nodes.
 				sample_cf_on_nodes( p4est, nodes, sphere, sdfPhi );
 				sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
 
 				// Reinitialize level-set function using the fast sweeping method.
-				FastSweeping fsm;
-				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-				fsm.reinitializeLevelSetFunction( &rlsPhi, 8 );
-//				my_p4est_level_set_t ls( &nodeNeighbors );
-//				ls.reinitialize_2nd_order( phi, 5 );
+//				FastSweeping fsm;
+//				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//				fsm.reinitializeLevelSetFunction( &rlsPhi, 8 );
+
+				// Reinitialize level-set function using PDE equation.
+				my_p4est_level_set_t ls( &nodeNeighbors );
+				ls.reinitialize_2nd_order( rlsPhi, 10 );
+
+				// Compute curvature with reinitialized data, which will be interpolated at the interface.
+				compute_normals( nodeNeighbors, rlsPhi, normal );
+				compute_mean_curvature( nodeNeighbors, rlsPhi, normal, curvature );
+
+				// Prepare interpolation.
+				my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
+				interpolation.set_input( curvature, linear );
 
 				// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these
 				// are the points we'll use to create our sample files and compare with the signed distance function.
@@ -281,12 +269,34 @@ int main ( int argc, char* argv[] )
 								maxRE = MAX( maxRE, error );
 							}
 
-							// Appending the target h*\kappa.
+							// Appending the target h*kappa.
 							sdfDataPve.push_back( +H_KAPPA );
 							sdfDataNve.push_back( -H_KAPPA );
 
 							rlsDataPve.push_back( +H_KAPPA );
 							rlsDataNve.push_back( -H_KAPPA );
+
+							// Appending the interpolated h*kappa.
+							double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
+							node_xyz_fr_n( n, p4est, nodes, xyz );
+							double dir[P4EST_DIM] = { DIM( xyz[0] - C[0], xyz[1] - C[1], xyz[2] - C[2] ) };
+							double curRadius = sqrt( SUMD( SQR( dir[0] ), SQR( dir[1] ), SQR( dir[2] ) ) );		// Radius at current node.
+							double diff = R - curRadius;			// We'll project onto interface in this direction.
+							for( auto& dim : dir )
+							{
+								dim /= curRadius;					// Scale direction vector.
+								dim *= diff;
+							}
+
+							for( int i = 0; i < P4EST_DIM; i++ )	// Translation: this is the location where
+								xyz[i] += dir[i];					// we need to interpolate numerical curvature.
+
+							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
+							rlsDataPve.push_back( +iHKappa );		// Attach interpolated h*kappa to reinit. data only.
+							rlsDataNve.push_back( -iHKappa );
+
+							sdfDataPve.push_back( 0 );				// For signed distance function data, add dummy 0's.
+							sdfDataNve.push_back( 0 );
 
 							// Accumulating samples.
 							sdfSamples.push_back( sdfDataPve );
@@ -320,6 +330,15 @@ int main ( int argc, char* argv[] )
 
 				ierr = VecDestroy( rlsPhi );
 				CHKERRXX( ierr );
+
+				ierr = VecDestroy( curvature );
+				CHKERRXX( ierr );
+
+				for( auto& dim : normal )
+				{
+					ierr = VecDestroy( dim );
+					CHKERRXX( ierr );
+				}
 
 				// Destroy the p4est and its connectivity structure.
 				p4est_nodes_destroy( nodes );

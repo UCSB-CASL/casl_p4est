@@ -56,45 +56,12 @@
 #include <iterator>
 #include <fstream>
 #include <unordered_map>
-#include <sys/stat.h>
+#include "local_utils.h"
+
 
 /**
- * Generate the column headers following the truth-table order with x changing slowly, then y changing faster than x,
- * and finally z changing faster than y.  Each dimension has three states: m, 0, and p (minus, center, plus).  For
- * example, in 2D, the columns that are generated are:
- * 	   Acronym      Meaning
- *		"mm"  =>  (i-1, j-1)
- *		"m0"  =>  (i-1, j  )
- *		"mp"  =>  (i-1, j+1)
- *		"0m"  =>  (  i, j-1)
- *		"00"  =>  (  i,   j)
- *		"0p"  =>  (  i, j+1)
- *		"pm"  =>  (i+1, j-1)
- *		"p0"  =>  (i+1,   j)
- *		"pp"  =>  (i+1, j+1)
- *		"hk"  =>  h * \kappa
- * @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
- */
-void generateColumnHeaders( std::string header[] )
-{
-	const int STEPS = 3;
-	std::string states[] = {"m", "0", "p"};			// States for x, y, and z directions.
-	int i = 0;
-	for( int x = 0; x < STEPS; x++ )
-		for( int y = 0; y < STEPS; y++ )
-#ifdef P4_TO_P8
-			for( int z = 0; z < STEPS; z++ )
-#endif
-		{
-			i = SUMD( x * (int)pow( STEPS, P4EST_DIM - 1 ), y * (int)pow( STEPS, P4EST_DIM - 2 ), z );
-			header[i] = SUMD( states[x], states[y], states[z] );
-		}
-	header[i+1] = "hk";								// Don't forget the h*\kappa column!
-}
-
-/**
- * Generate the sample row of level-set function values and target h\kappa for a node that has been found next to the
- * star interface.  We assume that this query node is effectively adjacent to \Gamma.
+ * Generate the sample row of level-set function values and target h*kappa for a node that has been found next to the
+ * star interface.  We assume that this query node is effectively adjacent to Gamma.
  * @param [in] nodeIdx Query node adjancent or on the interface.
  * @param [in] NUM_COLUMNS Number of columns in output file.
  * @param [in] H Spacing (smallest quad/oct side-length).
@@ -106,9 +73,11 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] star The level-set function with a star-shaped interface.
  * @param [in] gen Random-number generator device.
  * @param [in] uniformDistribution A uniform random-variable distribution.
- * @param [in/out] pointsFile Reference to file object where to write coordinates of nodes adjacent to \Gamma.
- * @param [in/out] anglesFile Reference to file object where to write angles of normal projected points on \Gamma.
+ * @param [in/out] pointsFile Reference to file object where to write coordinates of nodes adjacent to Gamma.
+ * @param [in/out] anglesFile Reference to file object where to write angles of normal projected points on Gamma.
  * @param [out] distances A vector of "true" distances from all of 9 stencil points to the star-shaped level-set.
+ * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
+ * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
  * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
  * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
  * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
@@ -117,9 +86,9 @@ void generateColumnHeaders( std::string header[] )
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
 	std::normal_distribution<double>& normalDistribution,
-	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances )
+	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances, double& xOnGamma, double& yOnGamma )
 {
-	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	std::vector<double> sample( NUM_COLUMNS, 0 );		// Level-set function values and target h*kappa.
 	distances.clear();
 	distances.reserve( NUM_COLUMNS );					// True distances and target h/kappa as well.
 
@@ -159,7 +128,7 @@ void generateColumnHeaders( std::string header[] )
 //					  << ", 'mo');" << std::endl;
 //		}
 
-		// Compute current distance to \Gamma using the improved point on interface.
+		// Compute current distance to Gamma using the improved point on interface.
 		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
@@ -169,14 +138,14 @@ void generateColumnHeaders( std::string header[] )
 		theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
 			valOfDerivative, newDistance );
 
-//		if( s == 4 )
-//		{
-//			r = star.r( theta );						// Recalculating closest point on interface.
-//			pOnInterfaceX = r * cos( theta );
-//			pOnInterfaceY = r * sin( theta );
+		if( s == 4 )
+		{
+			r = star.r( theta );						// Recalculating closest point on interface.
+			xOnGamma = r * cos( theta );
+			yOnGamma = r * sin( theta );
 //			std::cout << std::setprecision( 15 )
-//					  << "plot(" << pOnInterfaceX << ", " << pOnInterfaceY << ", 'ko');" << std::endl;
-//		}
+//					  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
+		}
 
 		if( newDistance - distances[s] > EPS )			// Verify that new point is closest than previous approximmation.
 		{
@@ -196,7 +165,7 @@ void generateColumnHeaders( std::string header[] )
 			centerTheta = theta;
 	}
 
-	sample[s] = H * star.curvature( centerTheta );		// Last column holds h\kappa.
+	sample[s] = H * star.curvature( centerTheta );		// Last column holds h*kappa.
 	distances.push_back( sample[s] );
 
 	// Write center sample node index and coordinates.
@@ -209,22 +178,6 @@ void generateColumnHeaders( std::string header[] )
 	return sample;
 }
 
-/**
- * Verify if a directory exists.  If not, create it.
- * @param [in] path Directory valid path.
- * @throws Runtime error if directory can't be created or if the path exists and is not a directory.
- */
-void checkOrCreateDirectory( const std::string& path )
-{
-	struct stat info{};
-	if( stat( path.c_str(), &info ) != 0 )							// Directory doesn't exist?
-	{
-		if( mkdir( path.c_str(), 0777 ) == -1 )						// Try to create it.
-			throw std::runtime_error( "Cannot create " + path + " directory: " + strerror(errno) + "!" );
-	}
-	else if( !( info.st_mode & (unsigned)S_IFDIR ) )
-		throw std::runtime_error( path + " is not a directory!" );
-}
 
 int main ( int argc, char* argv[] )
 {
@@ -236,7 +189,7 @@ int main ( int argc, char* argv[] )
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 
 	std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;					// Number of columns in resulting dataset.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
@@ -362,10 +315,8 @@ int main ( int argc, char* argv[] )
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
-		parStopWatch watch;
 		printf( ">> Began to generate datasets for a star-shaped interface with maximum refinement level of %i and H = %f\n",
 			MAX_REFINEMENT_LEVEL, H );
-		watch.start();
 
 		// Domain information.
 		int n_xyz[] = {1, 1, 1};									// One tree per dimension.
@@ -418,6 +369,15 @@ int main ( int argc, char* argv[] )
 		ierr = VecDuplicate( phi, &interfaceFlag );
 		CHKERRXX( ierr );
 
+		Vec curvature, normal[P4EST_DIM];
+		ierr = VecDuplicate( phi, &curvature );
+		CHKERRXX( ierr );
+		for( auto& dim : normal )
+		{
+			VecCreateGhostNodes( p4est, nodes, &dim );
+			CHKERRXX( ierr );
+		}
+
 		double *interfaceFlagPtr;
 		ierr = VecGetArray( interfaceFlag, &interfaceFlagPtr );
 		CHKERRXX( ierr );
@@ -432,6 +392,9 @@ int main ( int argc, char* argv[] )
 		reinitPhiReadPtrs.reserve( 4 );
 		for( const auto& key : phiKeys )
 		{
+			parStopWatch watch;
+			watch.start();
+
 			std::cout << "   :: Collecting samples for [" << key << "]" << std::endl;
 			reinitPhis[key] = Vec{};		// Save reinitialized level-set function values for each scheme separately.
 			ierr = VecDuplicate( phi, &reinitPhis[key] );
@@ -452,6 +415,14 @@ int main ( int argc, char* argv[] )
 				ls.reinitialize_2nd_order( reinitPhis[key], std::stoi( key.substr( 4 ) ) );		// 5, 10, 15 iterations.
 			}
 
+			// Compute curvature with reinitialized data, which will be interpolated at the interface.
+			compute_normals( nodeNeighbors, reinitPhis[key], normal );
+			compute_mean_curvature( nodeNeighbors, reinitPhis[key], normal, curvature );
+
+			// Prepare interpolation.
+			my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
+			interpolation.set_input( curvature, linear );
+
 			// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are the
 			// points we'll use to create our sample files.  We repeatedly do this for each reinitialization scheme
 			// because the interface could move for the pde-based method.
@@ -463,7 +434,7 @@ int main ( int argc, char* argv[] )
 			ierr = VecGetArrayRead( reinitPhis[key], &reinitPhiReadPtrs[key] );
 			CHKERRXX( ierr );
 
-			// Now, collect samples with reinitialized and exact signed-distance level-set function values and target h\kappa.
+			// Now, collect samples with reinitialized and exact signed-distance level-set function values and target h*kappa.
 			int nSamples = 0;
 			std::vector<std::vector<double>> samples;
 			std::vector<std::vector<double>> sdfSamples;
@@ -474,10 +445,13 @@ int main ( int argc, char* argv[] )
 				{
 					if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 					{
+						double xOnGamma, yOnGamma;
 						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
 							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, normalDistribution,
-							pointsFilesMap[key], anglesFilesMap[key], distances );
+							pointsFilesMap[key], anglesFilesMap[key], distances, xOnGamma, yOnGamma );
+						sample[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
+						distances.push_back( 0 );											// Dummy column.
 						samples.push_back( sample );
 						sdfSamples.push_back( distances );
 						nSamples++;
@@ -486,7 +460,7 @@ int main ( int argc, char* argv[] )
 							interfaceFlagPtr[n] = 1;
 
 						// Also, check error for each reinitialization method using the "true" distances from above.
-						for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+						for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 						{
 							double error = ( distances[i] - sample[i] ) / H;
 							maxREMap[key] = MAX( maxREMap[key], ABS( error ) );
@@ -517,9 +491,10 @@ int main ( int argc, char* argv[] )
 
 			std::cout << "   Generated " << nSamples << " samples for reinitialization " << key << std::endl;
 			std::cout << "   Max (relative) absolute error for " << key << " was " << maxREMap[key] << std::endl;
+			std::cout << "   Timing: " << watch.get_duration_current() << std::endl;
+			watch.stop();
 		}
 		std::cout << "<< Done!" << std::endl;
-		watch.stop();
 
 		// Write paraview file to visualize the star interface and nodes following it along.
 		std::ostringstream oss;
@@ -550,6 +525,15 @@ int main ( int argc, char* argv[] )
 
 		ierr = VecDestroy( interfaceFlag );
 		CHKERRXX( ierr );
+
+		ierr = VecDestroy( curvature );
+		CHKERRXX( ierr );
+
+		for( auto& dim : normal )
+		{
+			ierr = VecDestroy( dim );
+			CHKERRXX( ierr );
+		}
 
 		for( const auto& key : phiKeys )
 		{

@@ -34,9 +34,9 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_hierarchy.h>
-#include <src/my_p4est_fast_sweeping.h>
+//#include <src/my_p4est_fast_sweeping.h>
 #include <src/my_p4est_nodes_along_interface.h>
-//#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -46,40 +46,7 @@
 #include <iterator>
 #include <fstream>
 #include "arclength_parameterized_sine_2d.h"
-
-/**
- * Generate the column headers following the truth-table order with x changing slowly, then y changing faster than x,
- * and finally z changing faster than y.  Each dimension has three states: m, 0, and p (minus, center, plus).  For
- * example, in 2D, the columns that are generated are:
- * 	   Acronym      Meaning
- *		"mm"  =>  (i-1, j-1)
- *		"m0"  =>  (i-1, j  )
- *		"mp"  =>  (i-1, j+1)
- *		"0m"  =>  (  i, j-1)
- *		"00"  =>  (  i,   j)
- *		"0p"  =>  (  i, j+1)
- *		"pm"  =>  (i+1, j-1)
- *		"p0"  =>  (i+1,   j)
- *		"pp"  =>  (i+1, j+1)
- *		"hk"  =>  h * \kappa
- * @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
- */
-void generateColumnHeaders( std::string header[] )
-{
-	const int STEPS = 3;
-	std::string states[] = {"m", "0", "p"};			// States for x, y, and z directions.
-	int i = 0;
-	for( int x = 0; x < STEPS; x++ )
-		for( int y = 0; y < STEPS; y++ )
-#ifdef P4_TO_P8
-			for( int z = 0; z < STEPS; z++ )
-#endif
-		{
-			i = SUMD( x * (int)pow( STEPS, P4EST_DIM - 1 ), y * (int)pow( STEPS, P4EST_DIM - 2 ), z );
-			header[i] = SUMD( states[x], states[y], states[z] );
-		}
-	header[i+1] = "hk";								// Don't forget the h*\kappa column!
-}
+#include "local_utils.h"
 
 
 /**
@@ -97,13 +64,16 @@ void generateColumnHeaders( std::string header[] )
  * @param [in] gen Random number generator.
  * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
+ * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
+ * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
  * @return Vector with sampled phi values and target dimensionless curvature.
  * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
-	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances )
+	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances,
+	double& xOnGamma, double& yOnGamma )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
 	distances.clear();
@@ -115,7 +85,7 @@ void generateColumnHeaders( std::string header[] )
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, valOfDerivative, centerU;
+	double u, v, valOfDerivative, centerU;
 	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
@@ -144,7 +114,14 @@ void generateColumnHeaders( std::string header[] )
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
 		valOfDerivative = 1;
 		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
-//		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+
+		if( s == 4 )
+		{
+			v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+			xOnGamma = u;
+			yOnGamma = v;
+			sine.toWorldCoordinates( xOnGamma, yOnGamma );
+		}
 
 		if( newDistance - distances[s] > EPS )
 		{
@@ -175,7 +152,7 @@ void generateColumnHeaders( std::string header[] )
  * Rotate the level-set function values in a sample vector by 90 degrees counter-clockwise.
  * This is used to augment data sets.  Input samples are modified in place.  Dimensionless curvature remains the same.
  * @param [in|out] sample The sample vector with level-set function values in the standard order (e.g. mm, m0, mp, ...)
- * @param [in] NUM_COLUMNS Number of columns in sample.  Last column holds the target h\kappa value and stays unchanged.
+ * @param [in] NUM_COLUMNS Number of columns in full sample.
  */
 void rotatePhiValues90( std::vector<double>& sample, const int NUM_COLUMNS )
 {
@@ -183,7 +160,7 @@ void rotatePhiValues90( std::vector<double>& sample, const int NUM_COLUMNS )
 		sample[2], sample[5], sample[8], sample[1], sample[4], sample[7], sample[0], sample[3], sample[6]
 	};
 
-	for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+	for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 		sample[i] = phiVals[i];
 }
 
@@ -211,8 +188,8 @@ int main ( int argc, char* argv[] )
 	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4.
 	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/";			// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;	// Number of columns in resulting dataset.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/";			// Destination folder.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
@@ -355,15 +332,32 @@ int main ( int argc, char* argv[] )
 					ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 					CHKERRXX( ierr );
 
+					Vec curvature, normal[P4EST_DIM];
+					ierr = VecDuplicate( phi, &curvature );
+					CHKERRXX( ierr );
+					for( auto& dim : normal )
+					{
+						VecCreateGhostNodes( p4est, nodes, &dim );
+						CHKERRXX( ierr );
+					}
+
 					// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
 					sample_cf_on_nodes( p4est, nodes, sine, phi );
 
 					// Reinitialize level-set function using the fast sweeping method.
-					FastSweeping fsm;
-					fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-					fsm.reinitializeLevelSetFunction( &phi, 8 );
-//					my_p4est_level_set_t ls( &nodeNeighbors );
-//					ls.reinitialize_2nd_order( phi, 5 );
+//					FastSweeping fsm;
+//					fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//					fsm.reinitializeLevelSetFunction( &phi, 8 );
+					my_p4est_level_set_t ls( &nodeNeighbors );
+					ls.reinitialize_2nd_order( phi, 10 );
+
+					// Compute curvature with reinitialized data, which will be interpolated at the interface.
+					compute_normals( nodeNeighbors, phi, normal );
+					compute_mean_curvature( nodeNeighbors, normal, curvature );
+
+					// Prepare interpolation.
+					my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
+					interpolation.set_input( curvature, linear );
 
 					// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface;
 					// these are the points we'll use to create our sample files.
@@ -391,9 +385,11 @@ int main ( int argc, char* argv[] )
 						{
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
+								double xOnGamma, yOnGamma;
 								std::vector<double> distances;		// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
-									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances );
+									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
+									xOnGamma, yOnGamma );
 
 								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
 								// h\kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
@@ -402,6 +398,9 @@ int main ( int argc, char* argv[] )
 									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
 									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.95 / 2  )
 								{
+									data[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
+									distances.push_back( 0 );											// Dummy column.
+
 									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
 									{								// three times.
 										rlsSamples.push_back( data );
@@ -412,7 +411,7 @@ int main ( int argc, char* argv[] )
 									}
 
 									// Error metric for validation.
-									for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+									for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 									{
 										double error = ( distances[i] - data[i] ) / H;
 										maxRE = MAX( maxRE, ABS( error ) );
@@ -434,6 +433,15 @@ int main ( int argc, char* argv[] )
 					ierr = VecDestroy( phi );
 					CHKERRXX( ierr );
 
+					ierr = VecDestroy( curvature );
+					CHKERRXX( ierr );
+
+					for( auto& dim : normal )
+					{
+						ierr = VecDestroy( dim );
+						CHKERRXX( ierr );
+					}
+
 					// Destroy the p4est and its connectivity structure.
 					p4est_nodes_destroy( nodes );
 					p4est_ghost_destroy( ghost );
@@ -445,15 +453,17 @@ int main ( int argc, char* argv[] )
 				// randomized origin and for all rotations of main axis.
 				for( const auto& row : rlsSamples )
 				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
-					rlsFile << std::setprecision( 8 ) << row.back() << std::setprecision( 15 ) << std::endl;
+					std::copy( row.begin(), row.end() - 2, std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
+					rlsFile << std::setprecision( 8 ) << row[NUM_COLUMNS - 2] << "," << row.back()
+							<< std::setprecision( 15 ) << std::endl;
 				}
 
 				// Same for signed distance function.
 				for( const auto& row : sdfSamples )
 				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );		// Inner elements.
-					sdfFile << std::setprecision( 8 ) << row.back() << std::setprecision( 15 ) << std::endl;
+					std::copy( row.begin(), row.end() - 2, std::ostream_iterator<double>( sdfFile, "," ) );		// Inner elements.
+					sdfFile << std::setprecision( 8 ) << row[NUM_COLUMNS - 2] << "," << row.back()
+							<< std::setprecision( 15 ) << std::endl;
 				}
 
 				nSamples += rlsSamples.size();
