@@ -428,15 +428,8 @@ public:
     }
     p4est_locidx_t quad_idx;
     p4est_topidx_t tree_idx;
-    const p4est_quadrant_t* quad;
     f2q(local_face_idx, dir, quad_idx, tree_idx);
-    if(quad_idx < p4est->local_num_quadrants)
-    {
-      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
-    }
-    else
-      quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
     return found_finest_face_neighbor(quad, quad_idx, tree_idx, local_face_idx, dir, oriented_dir, neighbor_face_idx);
   }
 
