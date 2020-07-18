@@ -86,23 +86,31 @@ struct FD_interface_neighbor
   }
 
   /*!
-   * \brief GFM_flux_component evaluates the appropriate, one-sided flux component as seen from the cell of interest
-   * \param [in] mu_this_side         value of the diffusion coefficient as seen from the cell of interest
-   * \param [in] mu_across            value of the diffusion coefficient as seen from the neighbor cell acoss the interface
-   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor cell is, as seen from the cell of interest
+   * \brief GFM_flux_component evaluates the appropriate, one-sided flux component as seen from the dof of interest
+   * \param [in] mu_this_side         value of the diffusion coefficient as seen from the dof of interest
+   * \param [in] mu_across            value of the diffusion coefficient as seen from the neighbor dof acoss the interface
+   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor cell is, as seen from the dof of interest
    * \param [in] in_positive_domain   flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
    * \param [in] solution_this_side   value of the solution at the dof of interest
    * \param [in] solution_across      value of the solution at the neighbor dof across the interface
    * \param [in] jump                 jump on the field of interest at the interface point
    * \param [in] jump_flux_component  jump in the relevant flux component (i.e. component oriented_dir/2), at the interface point
    * \param [in] hh                   grid spacing between the two dofs of interest
-   * \return the desired, one-sided, flux component, as seen from the cell of interest!
+   * \return the desired, one-sided, flux component, as seen from the dof of interest!
    */
   inline double GFM_flux_component(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
                                    const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double& hh) const
   {
     return (oriented_dir%2 == 1 ? +1.0 : -1.0)*GFM_mu_jump(mu_this_side, mu_across)*(solution_across - solution_this_side)/hh
         + GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, jump, jump_flux_component, hh);
+  }
+
+  inline double GFM_ghost_value_here(const double& mu_this_side, const double& mu_across, const u_char& oriented_dir, const bool &in_positive_domain,
+                                     const double& solution_this_side, const double& solution_across, const double& jump, const double& jump_flux_component, const double& hh) const
+  {
+    const double flux_component_this_side = GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_this_side, solution_across, jump, jump_flux_component, hh);
+    const double derivative_across = (flux_component_this_side + (in_positive_domain ? -1.0 : +1.0)*jump_flux_component)/mu_across;
+    return solution_across + (oriented_dir%2 == 1 ? -1.0 : +1.0)*derivative_across;
   }
 
   /*!
