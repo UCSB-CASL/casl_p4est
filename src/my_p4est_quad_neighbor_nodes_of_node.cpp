@@ -1,5 +1,11 @@
-#include "my_p4est_quad_neighbor_nodes_of_node.h"
+#ifdef P4_TO_P8
+#include <src/my_p8est_node_neighbors.h>
+#include "my_p8est_quad_neighbor_nodes_of_node.h"
+#else
 #include <src/my_p4est_node_neighbors.h>
+#include "my_p4est_quad_neighbor_nodes_of_node.h"
+#endif
+
 #include <petsclog.h>
 
 #ifndef CASL_LOG_TINY_EVENTS

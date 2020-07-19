@@ -1,13 +1,14 @@
 #ifdef P4_TO_P8
+#include <src/my_p8est_solve_lsqr.h>
 #include "my_p8est_interpolation_cells.h"
 #else
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_interpolation_cells.h"
 #endif
 
 #include <algorithm>
 
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
 void my_p4est_interpolation_cells_t::set_input(Vec* F, const Vec phi_, const BoundaryConditionsDIM *bc_, const size_t &n_vecs_)
 {

@@ -1,5 +1,3 @@
-#include "my_p4est_navier_stokes.h"
-
 #ifdef P4_TO_P8
 #include <src/my_p8est_poisson_cells.h>
 #include <src/my_p8est_poisson_faces.h>
@@ -11,6 +9,7 @@
 #include <src/my_p8est_macros.h>
 #include <p8est_extended.h>
 #include <p8est_algorithms.h>
+#include "my_p8est_navier_stokes.h"
 #else
 #include <src/my_p4est_poisson_cells.h>
 #include <src/my_p4est_poisson_faces.h>
@@ -22,6 +21,7 @@
 #include <src/my_p4est_macros.h>
 #include <p4est_extended.h>
 #include <p4est_algorithms.h>
+#include "my_p4est_navier_stokes.h"
 #endif
 
 #include <algorithm>

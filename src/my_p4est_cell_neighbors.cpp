@@ -1,11 +1,11 @@
 #ifdef P4_TO_P8
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_solve_lsqr.h>
 #include "my_p8est_cell_neighbors.h"
-#include "my_p8est_node_neighbors.h"
-#include "my_p8est_solve_lsqr.h"
 #else
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_cell_neighbors.h"
-#include "my_p4est_node_neighbors.h"
-#include "my_p4est_solve_lsqr.h"
 #endif
 
 /*

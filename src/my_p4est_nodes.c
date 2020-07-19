@@ -25,16 +25,17 @@
 #include <p4est_algorithms.h>
 #include <p4est_bits.h>
 #include <p4est_communication.h>
+#include <src/my_p4est_log_wrappers.h>
 #include "my_p4est_nodes.h"
 #else
 #include <p8est_algorithms.h>
 #include <p8est_bits.h>
 #include <p8est_communication.h>
+#include <src/my_p8est_log_wrappers.h>
 #include "my_p8est_nodes.h"
 #endif
 #include <sc_notify.h>
 #include <petsclog.h>
-#include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
 // logging variable -- defined in src/petsc_logging.cpp

@@ -1,19 +1,20 @@
 #ifdef P4_TO_P8
-#include "my_p8est_general_poisson_nodes_mls_solver.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_solve_lsqr.h>
+#include "my_p8est_general_poisson_nodes_mls_solver.h"
 #else
-#include "my_p4est_general_poisson_nodes_mls_solver.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_solve_lsqr.h>
+#include "my_p4est_general_poisson_nodes_mls_solver.h"
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin

@@ -2,16 +2,17 @@
 #include "my_p8est_poisson_nodes_mls.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_macros.h>
+#include <src/my_p8est_solve_lsqr.h>
 #else
 #include "my_p4est_poisson_nodes_mls.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_solve_lsqr.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -48,8 +49,6 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling;
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
-
-
 
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd)
   : p4est_(ngbd->p4est),

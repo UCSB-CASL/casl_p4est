@@ -1,4 +1,3 @@
-
 #ifdef P4_TO_P8
 #include "my_p8est_biomolecules.h"
 #include <p8est_bits.h>

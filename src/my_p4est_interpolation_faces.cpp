@@ -1,12 +1,13 @@
 #ifdef P4_TO_P8
+#include <src/my_p8est_solve_lsqr.h>
 #include "my_p8est_interpolation_faces.h"
 #else
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_interpolation_faces.h"
 #endif
 
 #include <algorithm>
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
 void my_p4est_interpolation_faces_t::set_input(const Vec *F, const u_char& dir_, const size_t &n_vecs_, const u_char& degree_, Vec face_is_well_defined_dir_, BoundaryConditionsDIM *bc_array_)
 {

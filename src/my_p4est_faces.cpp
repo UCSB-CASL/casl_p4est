@@ -1,19 +1,18 @@
-#include "my_p4est_faces.h"
-
-#include <algorithm>
-#include <src/matrix.h>
-
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_solve_lsqr.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/cube2.h>
+#include "my_p8est_faces.h"
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_solve_lsqr.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include "my_p4est_faces.h"
 #endif
 
+#include <algorithm>
+#include <src/matrix.h>
 #include <sc_notify.h>
 
 #ifndef CASL_LOG_EVENTS
@@ -30,7 +29,6 @@ extern PetscLogEvent log_my_p4est_faces_compute_voronoi_cell_t;
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
-
 
 my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est_, p4est_ghost_t *ghost_, const my_p4est_brick_t *myb_, my_p4est_cell_neighbors_t *ngbd_c_, bool initialize_neighborhoods_of_fine_faces)
   : max_p4est_lvl(((splitting_criteria_t*) p4est_->user_pointer)->max_lvl),

@@ -1,11 +1,11 @@
 #ifdef P4_TO_P8
-#include "my_p8est_hierarchy.h"
 #include <p8est_communication.h>
 #include <src/point3.h>
+#include "my_p8est_hierarchy.h"
 #else
-#include "my_p4est_hierarchy.h"
 #include <p4est_communication.h>
 #include <src/point2.h>
+#include "my_p4est_hierarchy.h"
 #endif
 #include "petsc_compatibility.h"
 

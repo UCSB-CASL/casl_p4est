@@ -4,7 +4,6 @@
 #include "my_p4est_interface_manager.h"
 #endif
 
-
 my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
   : faces(faces_), c_ngbd(faces_->get_ngbd_c()), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()),
     nodes(nodes_), dxyz_min(faces_->get_smallest_dxyz()),
