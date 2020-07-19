@@ -161,7 +161,7 @@ bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> 
     for (size_t k = 0; k < n_vectors; ++k)
       x[k][i] /= Lf[tri_ii];
 
-    delete Y[i];
+    delete[] Y[i];
   }
 
   if(Linv != NULL)
