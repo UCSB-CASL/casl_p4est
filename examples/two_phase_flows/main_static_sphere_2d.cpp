@@ -157,7 +157,7 @@ struct initial_velocity_wn_t : CF_3{
 } initial_velocity_wn;
 #endif
 
-struct external_force_u_t : CF_DIM
+struct external_force_per_unit_mass_u_t : CF_DIM
 {
   double operator()(DIM(double, double, double)) const
   {
@@ -165,7 +165,7 @@ struct external_force_u_t : CF_DIM
   }
 };
 
-struct external_force_v_t : CF_DIM
+struct external_force_per_unit_mass_v_t : CF_DIM
 {
   double operator()(DIM(double, double, double)) const
   {
@@ -173,7 +173,7 @@ struct external_force_v_t : CF_DIM
   }
 };
 
-struct external_force_w_t : CF_DIM
+struct external_force_per_unit_mass_w_t : CF_DIM
 {
   double operator()(DIM(double, double, double)) const
   {
@@ -249,12 +249,12 @@ int main (int argc, char* argv[])
 #endif
   bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
 
-  external_force_u_t external_force_u;
-  external_force_v_t external_force_v;
+  external_force_per_unit_mass_u_t external_force_u;
+  external_force_per_unit_mass_v_t external_force_v;
 #ifdef P4_TO_P8
-  external_force_w_t external_force_w;
+  external_force_per_unit_mass_w_t external_force_w;
 #endif
-  CF_DIM *external_forces[P4EST_DIM] = { DIM(&external_force_u, &external_force_v, &external_force_w) };
+  CF_DIM *external_force_per_unit_mass[P4EST_DIM] = { DIM(&external_force_u, &external_force_v, &external_force_w) };
 
   lmin                    = cmd.get<int>("lmin", 5);
   lmax                    = cmd.get<int>("lmax", 8);
@@ -274,9 +274,10 @@ int main (int argc, char* argv[])
   sl_order                = cmd.get<int>("sl_order", 1);
   cfl                     = cmd.get<double>("cfl", 0.5);
 
-  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "d/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
-  const bool save_vtk                   = true;
-  double vtk_dt                         = -1.0;
+  const string export_dir = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "d/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
+  const string vtk_dir    = export_dir + "/vtu";
+  const bool save_vtk     = true;
+  double vtk_dt           = -1.0;
   if(save_vtk)
   {
     vtk_dt = cmd.get<double>("vtk_dt", +1.0);
@@ -357,7 +358,7 @@ int main (int argc, char* argv[])
 
   two_phase_flow_solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces_n, ngbd_n_fine);
   bool second_order_phi = true;
-  two_phase_flow_solver->set_phi(fine_phi, second_order_phi);
+  two_phase_flow_solver->set_phi(fine_phi, linear);
   two_phase_flow_solver->set_dynamic_viscosities(mu_m, mu_p);
   two_phase_flow_solver->set_densities(rho_m, rho_p);
   two_phase_flow_solver->set_surface_tension(surface_tension);
@@ -375,26 +376,22 @@ int main (int argc, char* argv[])
     dt = MIN(dt, vtk_dt);
   two_phase_flow_solver->set_dt(dt, dt);
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
-  two_phase_flow_solver->set_external_forces(external_forces);
+  two_phase_flow_solver->set_external_forces_per_unit_mass(external_force_per_unit_mass);
 
-  if(save_vtk && create_directory(export_dir.c_str(), mpi.rank(), mpi.comm()))
+  if(save_vtk && create_directory(vtk_dir.c_str(), mpi.rank(), mpi.comm()))
   {
     char error_msg[1024];
-#ifdef P4_TO_P8
-    sprintf(error_msg, "main_two_phase_flow_3d: could not create exportation directory %s", export_dir.c_str());
-#else
-    sprintf(error_msg, "main_two_phase_flow_2d: could not create exportation directory %s", export_dir.c_str());
-#endif
+    sprintf(error_msg, "main_two_phase_flow_%dd: could not create exportation directory %s", P4EST_DIM, export_dir.c_str());
     throw std::runtime_error(error_msg);
   }
 
   int iter = 0, iter_vtk = -1;
   double tn = tstart;
 
-  CF_DIM *zero_jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
-  for (int dd = 0; dd < P4EST_DIM; ++dd)
-    for (int kk = 0; kk < P4EST_DIM; ++kk)
-      zero_jump_mu_grad_v[dd][kk] = &zero_cf;
+//  CF_DIM *zero_jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
+//  for (int dd = 0; dd < P4EST_DIM; ++dd)
+//    for (int kk = 0; kk < P4EST_DIM; ++kk)
+//      zero_jump_mu_grad_v[dd][kk] = &zero_cf;
 
   double max_velocity = 0.0;
 
@@ -407,35 +404,34 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->update_from_tn_to_tnp1();
     }
 
-    two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
+//    two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
 //    two_phase_flow_solver->compute_jump_mu_grad_v();
-    two_phase_flow_solver->compute_jumps_hodge();
+//    two_phase_flow_solver->compute_jumps_hodge();
 //    two_phase_flow_solver->solve_viscosity_explicit();
     two_phase_flow_solver->solve_viscosity();
-    two_phase_flow_solver->solve_projection(false);
+    two_phase_flow_solver->solve_projection();
 
-    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 40);
-//    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
-    two_phase_flow_solver->compute_velocity_at_nodes();
+    two_phase_flow_solver->compute_velocities_at_nodes();
+
 
     if((int) floor((tn+dt)/vtk_dt) != iter_vtk)
     {
-      iter_vtk = (int) floor((tn+dt)/vtk_dt);
-      two_phase_flow_solver->save_vtk((export_dir+"/illustration_"+std::to_string(iter_vtk)).c_str(), true, (export_dir+"/fine_illustration_"+std::to_string(iter_vtk)).c_str());
+      iter_vtk = (int) floor((tn + dt)/vtk_dt);
+      two_phase_flow_solver->save_vtk(vtk_dir, iter_vtk);
     }
 
     tn += dt;
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
-                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
     max_velocity = MAX(max_velocity, two_phase_flow_solver->get_max_velocity());
 
     iter++;
+    break;
   }
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_velocity);
 
-
-
   delete two_phase_flow_solver;
+  my_p4est_brick_destroy(connectivity, brick); delete brick;
   delete data;
   delete data_fine;
 

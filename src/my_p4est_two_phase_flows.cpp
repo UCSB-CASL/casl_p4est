@@ -268,6 +268,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     faces_n->set_finest_face_neighborhoods();
 
   viscosity_solver.set_environment(this);
+  poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
 }
 
 my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
@@ -340,6 +341,8 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete faces_n;
   if(ngbd_c != NULL)
     delete ngbd_c;
+  if(poisson_jump_cell_solver != NULL)
+    delete poisson_jump_cell_solver;
 }
 
 void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method, Vec phi_on_computational_nodes_)
@@ -716,6 +719,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
     ierr = VecGhostUpdateBegin(vn_faces, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(vn_faces, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
 
+    create_vnp1_face_vectors_if_needed();
     double *vstar_minus_p, *vstar_plus_p;
     ierr = VecGetArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
     ierr = VecGetArray(vnp1_face_plus[dir], &vstar_plus_p);   CHKERRXX(ierr);
@@ -1002,10 +1006,12 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
 
 void my_p4est_two_phase_flows_t::solve_viscosity()
 {
+  create_vnp1_face_vectors_if_needed();
   compute_backtraced_velocities();
   viscosity_solver.set_diagonals(BDF_alpha()*rho_minus/dt_n, BDF_alpha()*rho_plus/dt_n);
   viscosity_solver.solve();
   viscosity_solver.extrapolate_face_velocities_across_interface(vnp1_face_minus, vnp1_face_plus);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::jump_face_solver::solve(const PetscBool &use_nonzero_initial_guess, const KSPType &ksp_type, const PCType &pc_type)

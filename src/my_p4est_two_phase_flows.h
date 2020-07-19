@@ -439,6 +439,18 @@ private:
 
   void set_interface_velocity();
 
+  inline void create_vnp1_face_vectors_if_needed()
+  {
+    PetscErrorCode ierr;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      if(vnp1_face_minus[dim] == NULL){
+        ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dim], dim); CHKERRXX(ierr); }
+      if(vnp1_face_plus[dim] == NULL){
+        ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dim], dim); CHKERRXX(ierr); }
+    }
+    return;
+  }
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
