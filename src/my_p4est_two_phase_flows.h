@@ -426,8 +426,10 @@ private:
   inline double jump_inverse_mass_density() const { return (1.0/rho_plus - 1.0/rho_minus); }
   inline double jump_viscosity() const { return (mu_plus - mu_minus); }
 
-  void interpolate_velocity_at_node(const p4est_locidx_t &node_idx, double *vnp1_nodes_minus_p, double *vnp1_nodes_plus_p,
-                                    const double *vnp1_face_minus_p[P4EST_DIM], const double *vnp1_face_plus_p[P4EST_DIM]);
+  void interpolate_velocities_at_node(const p4est_locidx_t &node_idx, double *vnp1_nodes_minus_p, double *vnp1_nodes_plus_p,
+                                      const double *vnp1_face_minus_p[P4EST_DIM], const double *vnp1_face_plus_p[P4EST_DIM]);
+
+  void TVD_extrapolation_of_np1_node_velocities(const u_int& niterations = 20, const u_char& order = 2);
 
   void compute_backtraced_velocities();
 
@@ -551,7 +553,7 @@ public:
   void compute_pressure_jump();
   void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
 
-  void compute_velocity_at_nodes();
+  void compute_velocities_at_nodes();
   void save_vtk(const std::string& vtk_directory, const int& index) const;
   void update_from_tn_to_tnp1();
 
