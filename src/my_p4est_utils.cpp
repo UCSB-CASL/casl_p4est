@@ -2442,40 +2442,26 @@ double quadrant_interp_t::operator()(DIM(double x, double y, double z)) const
 
 void copy_ghosted_vec(Vec input, Vec output)
 {
-  PetscErrorCode ierr;
-  Vec src, out;
-  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  PetscErrorCode ierr = VecCopyGhost(input, output); CHKERRXX(ierr);
+  return;
 }
 
 void set_ghosted_vec(Vec vec, double scalar)
 {
-  PetscErrorCode ierr;
-  Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  PetscErrorCode ierr = VecSetGhost(vec, scalar); CHKERRXX(ierr);
+  return;
 }
 
 void shift_ghosted_vec(Vec vec, double scalar)
 {
-  PetscErrorCode ierr;
-  Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  PetscErrorCode ierr = VecShiftGhost(vec, scalar); CHKERRXX(ierr);
+  return;
 }
 
 void scale_ghosted_vec(Vec vec, double scalar)
 {
-  PetscErrorCode ierr;
-  Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  PetscErrorCode ierr = VecScaleGhost(vec, scalar); CHKERRXX(ierr);
+  return;
 }
 
 PetscErrorCode VecCopyGhost(Vec input, Vec output)
