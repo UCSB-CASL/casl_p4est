@@ -4,7 +4,6 @@
 #include "my_p4est_poisson_jump_cells_fv.h"
 #endif
 
-
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
 #undef PetscLogEventBegin

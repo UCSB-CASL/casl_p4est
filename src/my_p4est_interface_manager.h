@@ -170,6 +170,7 @@ class my_p4est_interface_manager_t
   const int                       max_level_p4est;
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
+  bool                            throw_if_ill_defined_grad;
 
   FD_interface_neighbor *tmp_FD_interface_neighbor; // unique element to be used at first construction/pass through map or if maps are not used at all (pointer so that I can keep most methods const hereunder);
   map_of_interface_neighbors_t *cell_FD_interface_neighbors;
@@ -458,8 +459,10 @@ public:
   {
     grad_phi_at_point(xyz, normal);
     const double mag_grad_phi = sqrt(SUMD(SQR(normal[0]), SQR(normal[1]), SQR(normal[2])));
-    if(mag_grad_phi < EPS)
+#ifdef CASL_THROWS
+    if(throw_if_ill_defined_grad && mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the normal vector for a point where the gradient of phi is ill-defined");
+#endif
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       normal[dim] = (mag_grad_phi > EPS ? magnitude*normal[dim]/mag_grad_phi : 0.0);
     return;
@@ -469,8 +472,10 @@ public:
   {
     double grad_phi[P4EST_DIM]; grad_phi_at_point(xyz, grad_phi);
     const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi[0]), SQR(grad_phi[1]), SQR(grad_phi[2])));
-    if(mag_grad_phi < EPS)
+#ifdef CASL_THROWS
+    if(throw_if_ill_defined_grad && mag_grad_phi < EPS)
       throw std::runtime_error("my_p4est_interface_manager(): you are trying to find the projection onto the interface for a point where the gradient of phi is ill-defined");
+#endif
 
     const double signed_distance = phi_at_point(xyz)/mag_grad_phi;
 

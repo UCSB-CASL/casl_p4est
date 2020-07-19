@@ -1,11 +1,15 @@
+#ifdef P4_TO_P8
+#include "my_p8est_poisson_jump_cells.h"
+#else
 #include "my_p4est_poisson_jump_cells.h"
+#endif
 
 my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t* nodes_)
   : cell_ngbd(ngbd_c), p4est(ngbd_c->get_p4est()), ghost(ngbd_c->get_ghost()), nodes(nodes_),
     xyz_min(ngbd_c->get_p4est()->connectivity->vertices + 3*ngbd_c->get_p4est()->connectivity->tree_to_vertex[0]),
     xyz_max(ngbd_c->get_p4est()->connectivity->vertices + 3*ngbd_c->get_p4est()->connectivity->tree_to_vertex[P4EST_CHILDREN*(ngbd_c->get_p4est()->trees->elem_count - 1) + P4EST_CHILDREN - 1]),
     tree_dimensions(ngbd_c->get_tree_dimensions()),
-    periodicity(ngbd_c->get_hierarchy()->get_periodicity())
+    periodicity(ngbd_c->get_hierarchy()->get_periodicity()), interface_manager(NULL)
 {
   // set up the KSP solver
   PetscErrorCode ierr;

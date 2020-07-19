@@ -1,4 +1,9 @@
+#ifdef P4_TO_P8
+#include "my_p8est_interface_manager.h"
+#else
 #include "my_p4est_interface_manager.h"
+#endif
+
 
 my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
   : faces(faces_), c_ngbd(faces_->get_ngbd_c()), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()),
@@ -25,6 +30,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
   curvature_local             = NULL;
   phi_on_computational_nodes  = NULL;
   use_second_derivative_when_computing_FD_theta = true;
+  throw_if_ill_defined_grad = false; // <-- set this one to true if you want to know when real interface shit is going on
 }
 
 my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
@@ -363,7 +369,7 @@ const FD_interface_neighbor& my_p4est_interface_manager_t::get_face_FD_interface
     if(comp == oriented_dir/2 && faces->periodicity(oriented_dir/2))
       diff -= round(diff/(xyz_max[oriented_dir/2] - xyz_min[oriented_dir/2]))*(xyz_max[oriented_dir/2] - xyz_min[oriented_dir/2]);
 
-    if(comp != oriented_dir)
+    if(comp != oriented_dir/2)
       check = check && (fabs(diff) < 0.001*dxyz_min[comp]); // should be "0.0" but using floating-point comparison with threshold
     else
       check = check && (fabs(fabs(diff) - (neighbor_face_idx < 0 ? 0.5 : 1.0)*dxyz_min[oriented_dir/2]) < 0.001*dxyz_min[comp]); // should be "0.0" but using floating-point comparison with threshold
