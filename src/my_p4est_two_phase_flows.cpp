@@ -2174,6 +2174,20 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
     }
   }
 
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    if(ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]))
+    {
+      P4EST_ASSERT(!ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]));
+      vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] - 0.0;
+    }
+    else if(ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]))
+    {
+      P4EST_ASSERT(!ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]));
+      vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] + 0.0;
+    }
+  }
+
+
   if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) < 2.0*cfl*MAX(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])))
     max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
   if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) > -2.0*cfl*MAX(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])))
