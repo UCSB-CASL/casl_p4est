@@ -391,9 +391,9 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   P4EST_ASSERT((user_rhs_minus == NULL && user_rhs_plus == NULL) || (user_rhs_minus != NULL && user_rhs_plus != NULL));                     // can't have one provided but not the other...
   P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)); // can't have one provided but not the other...
   const bool with_cell_sampled_rhs  = user_rhs_minus != NULL && user_rhs_plus != NULL;
-  const bool is_projecting_vstar    = face_velocity_minus != NULL && face_velocity_plus != NULL;
+  const bool is_projecting_vstar = face_velocity_minus != NULL && face_velocity_plus != NULL;
 #ifdef CASL_THROWS
-  if(with_cell_sampled_rhs & is_projecting_vstar)
+  if(with_cell_sampled_rhs && is_projecting_vstar)
     std::cerr << "my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(): [WARNING] the solver is configured with both cell-sampled rhs's and face-sampled velocity fields..." << std::endl;
 #endif
   linear_combination_of_dof_t vstar_on_face;
@@ -502,7 +502,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       if(!rhs_is_set && is_projecting_vstar)
       {
         const p4est_locidx_t f_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
-        const double* &vstar_to_consider  (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
+        const double* &vstar_to_consider = (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
         rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*full_face_area*vstar_to_consider[f_idx];
       }
 

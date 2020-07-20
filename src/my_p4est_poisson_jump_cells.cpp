@@ -103,7 +103,7 @@ void my_p4est_poisson_jump_cells_t::set_interface(my_p4est_interface_manager_t* 
 
 void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_u_)
 {
-  if((jump_u_ == NULL && jump_normal_flux_u_ == NULL) || !interface_is_set())
+  if(!interface_is_set())
     throw std::runtime_error("my_p4est_poisson_jump_cells_t::set_jumps(): the interface manager must be set before the jumps");
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
 #ifdef P4EST_DEBUG
