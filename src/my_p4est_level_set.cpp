@@ -500,6 +500,8 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
       ierr = VecDestroy(phi_0_xxyyzz[dim]);       CHKERRXX(ierr);
       ierr = VecDestroy(current_phi_xxyyzz[dim]); CHKERRXX(ierr);
     }
+    delete [] phi_0_xxyyzz;       delete [] phi_0_xxyyzz_read_p;
+    delete [] current_phi_xxyyzz; delete [] current_phi_xxyyzz_read_p;
   }
   free(phi_0_p);
 
