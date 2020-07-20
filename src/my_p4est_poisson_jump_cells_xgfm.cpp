@@ -827,7 +827,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
     else
       face_velocity_minus_p[dim][f_idx] -= sharp_flux_component_minus;
 
-    if(!ISNAN(sharp_flux_component_plus))
+    if(ISNAN(sharp_flux_component_plus))
       face_velocity_plus_p[dim][f_idx] = DBL_MAX;
     else
       face_velocity_plus_p[dim][f_idx] -= sharp_flux_component_plus;
