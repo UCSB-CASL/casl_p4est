@@ -758,7 +758,9 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
+#ifdef P4EST_DEBUG
   const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, p4est_n, ghost_n);
+#endif
 
   const u_char face_touch = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
   P4EST_ASSERT(faces_n->q2f(quad_idx, face_touch) == face_idx);
@@ -1187,7 +1189,9 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
     p4est_locidx_t quad_idx;
     p4est_topidx_t tree_idx;
     env->faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
+#ifdef P4EST_DEBUG
     const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, env->p4est_n, env->ghost_n);
+#endif
 
     const u_char face_touch = (env->faces_n->q2f(quad_idx, 2*dir) == f_idx ? 2*dir : 2*dir + 1);
     P4EST_ASSERT(env->faces_n->q2f(quad_idx, face_touch) == f_idx);
@@ -2344,7 +2348,7 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
       vorticity_magnitude_p[node_idx] = 0.0;
       vorticity_magnitude_p[node_idx] = sqrt(SQR(velocity_gradient[P4EST_DIM*dir::y + dir::x] - velocity_gradient[P4EST_DIM*dir::x + dir::y])
           + SQR(velocity_gradient[P4EST_DIM*dir::x + dir::z] - velocity_gradient[P4EST_DIM*dir::z + dir::x])
-          + SQR(velocity_gradient[P4EST_DIM*dir::z + dir::y] - velocity_gradient[P4EST_DIM*dir::y + dir::z]))
+          + SQR(velocity_gradient[P4EST_DIM*dir::z + dir::y] - velocity_gradient[P4EST_DIM*dir::y + dir::z]));
 #else
       vorticity_magnitude_p[node_idx] = velocity_gradient[P4EST_DIM*dir::y + dir::x] - velocity_gradient[P4EST_DIM*dir::x + dir::y];
 #endif
@@ -2368,7 +2372,7 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
       vorticity_magnitude_p[node_idx] = 0.0;
       vorticity_magnitude_p[node_idx] = sqrt(SQR(velocity_gradient[P4EST_DIM*dir::y + dir::x] - velocity_gradient[P4EST_DIM*dir::x + dir::y])
           + SQR(velocity_gradient[P4EST_DIM*dir::x + dir::z] - velocity_gradient[P4EST_DIM*dir::z + dir::x])
-          + SQR(velocity_gradient[P4EST_DIM*dir::z + dir::y] - velocity_gradient[P4EST_DIM*dir::y + dir::z]))
+          + SQR(velocity_gradient[P4EST_DIM*dir::z + dir::y] - velocity_gradient[P4EST_DIM*dir::y + dir::z]));
 #else
       vorticity_magnitude_p[node_idx] = velocity_gradient[P4EST_DIM*dir::y + dir::x] - velocity_gradient[P4EST_DIM*dir::x + dir::y];
 #endif
@@ -3123,7 +3127,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
       p4est_locidx_t corresponding_fine_node_idx;
       const bool node_found = index_of_node(node, fine_nodes_np1, corresponding_fine_node_idx); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
-      P4EST_ASSERT(node_found);
+      P4EST_ASSERT(node_found); (void) node_found;
       phi_on_computational_nodes_np1_p[node_idx] = phi_on_fine_nodes_np1_p[corresponding_fine_node_idx];
     }
     ierr = VecGhostUpdateBegin(phi_on_computational_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -3134,7 +3138,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
       p4est_locidx_t corresponding_fine_node_idx;
       const bool node_found = index_of_node(node, fine_nodes_np1, corresponding_fine_node_idx); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
-      P4EST_ASSERT(node_found);
+      P4EST_ASSERT(node_found); (void) node_found;
       phi_on_computational_nodes_np1_p[node_idx] = phi_on_fine_nodes_np1_p[corresponding_fine_node_idx];
     }
     ierr = VecGhostUpdateEnd(phi_on_computational_nodes_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
