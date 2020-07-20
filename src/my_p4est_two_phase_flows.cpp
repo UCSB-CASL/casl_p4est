@@ -2739,7 +2739,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time...
   interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
 
-  std::vector<size_t> already_known(0);
+  std::vector<size_t> already_known;
   p4est_locidx_t origin_local_idx;
   const p4est_quadrant_t *node = NULL;
   const double *known_phi_np1_p = NULL;
@@ -2747,7 +2747,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   if(known_phi_np1 != NULL)
   {
     ierr = VecGetArrayRead(known_phi_np1, &known_phi_np1_p);  CHKERRXX(ierr);
-    ierr = VecGetArray(phi_np1, &phi_np1_p);        CHKERRXX(ierr);
+    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
   }
 
   /* find the velocity field at time np1 */
@@ -2768,7 +2768,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
     node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz);
     interp_np1.add_point(to_compute++, xyz);
   }
-  P4EST_ASSERT(to_compute + already_known.size() == (size_t) nodes_np1->num_owned_indeps);
+  P4EST_ASSERT(to_compute + already_known.size() == (size_t) nodes_np1->indep_nodes.elem_count);
 
   std::vector<double> interface_velocity_np1_buffer(P4EST_DIM*to_compute);
   interp_np1.interpolate(interface_velocity_np1_buffer.data()); interp_np1.clear();
@@ -2779,7 +2779,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   to_compute = 0;
   for (size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
   {
-    if(known_phi_np1_p != NULL && node_idx == already_known[known_idx])
+    if(known_phi_np1_p != NULL && known_idx < already_known.size() && node_idx == already_known[known_idx])
     {
       known_idx++;
       continue;
@@ -2793,7 +2793,14 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
     interp_phi_n.add_point(node_idx, xyz_d);
     to_compute++;
   }
-  P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->num_owned_indeps);
+  P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->indep_nodes.elem_count);
+
+  if(known_phi_np1 != NULL)
+  {
+    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(known_phi_np1, &known_phi_np1_p);  CHKERRXX(ierr);
+  }
+
   interp_phi_n.interpolate(phi_np1); interp_phi_n.clear();
 
   return;
