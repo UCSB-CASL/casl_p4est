@@ -2219,11 +2219,12 @@ void my_p4est_two_phase_flows_t::TVD_extrapolation_of_np1_node_velocities(const 
     }
     if(node_idx < (size_t) nodes_n->num_owned_indeps)
     {
-      if(interface_manager->subcell_resolution()  > 0)
+      if(interface_manager->subcell_resolution() > 0)
       {
-        P4EST_ASSERT(phi_on_computational_nodes_p != NULL && grad_phi_p == NULL);
+        P4EST_ASSERT(grad_phi_p == NULL);
         node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-        phi_on_computational_nodes_p[node_idx] = interface_manager->phi_at_point(xyz_node);
+        if(phi_on_computational_nodes_p != NULL)
+          phi_on_computational_nodes_p[node_idx] = interface_manager->phi_at_point(xyz_node);
         double local_normal[P4EST_DIM];
         interface_manager->normal_vector_at_point(xyz_node, local_normal);
         for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -2664,7 +2665,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
 {
   PetscErrorCode ierr;
   if(interface_velocity_np1 == NULL){
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &interface_velocity_np1); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &interface_velocity_np1); CHKERRXX(ierr);
   }
 
   double *interface_velocity_np1_p  = NULL;
@@ -2678,7 +2679,8 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
   ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
   ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
-  double xyz_node[P4EST_DIM], local_normal_vector[P4EST_DIM];
+  double xyz_node[P4EST_DIM];
+  double local_normal_vector[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)}; // initialize it so that there is no weird shit going on in case mass_flux == NULL
   for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
     node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
@@ -2822,7 +2824,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   p4est_nodes_t *nodes_np1 = nodes_n; // no change, yet
   Vec phi_on_computational_nodes_np1 = NULL; // unknown yet, we need to advect it!
   Vec vorticity_magnitude_np1_minus = vorticity_magnitude_minus;
-  Vec vorticity_magnitude_np1_plus  = vorticity_magnitude_minus;
+  Vec vorticity_magnitude_np1_plus  = vorticity_magnitude_plus;
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
   u_int iter = 0;
   bool iterative_grid_update_converged = false;
@@ -2998,7 +3000,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     phi_on_fine_nodes_np1 = phi_on_computational_nodes_np1;
 
     iter = 0;
-    iterative_grid_update_converged = criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
+    iterative_grid_update_converged = !criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
     /* ---   FIND THE NEXT ADAPTIVE GRID   --- */
     // We never partition this one, to ensure locality of interface-capturing data...
     // We also do not coarsen the grid in any ways (not really parallel-friendly...)
@@ -3033,7 +3035,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       if(previous_fine_nodes_np1 != nodes_np1)
         p4est_nodes_destroy(previous_fine_nodes_np1);
 
-      iterative_grid_update_converged = criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
+      iterative_grid_update_converged = !criterion_fine_grid.refine(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
 
       if(iter > (u_int) 1 + interface_manager->subcell_resolution())
       {
