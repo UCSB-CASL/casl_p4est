@@ -2475,57 +2475,31 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   if(phi_on_computational_nodes != NULL){
     ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
 
-//  if(interface_manager->subcell_resolution() > 0)
-//  {
-//    P4EST_ASSERT(name_fine != NULL);
-//    Vec fine_jump_mu_grad_v_comp[P4EST_DIM];
-//    double *fine_jump_mu_grad_v_comp_p[P4EST_DIM];
-//    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//      fine_jump_mu_grad_v_comp[dir] = NULL;
-//      ierr = create_node_vector_if_needed(fine_jump_mu_grad_v_comp[dir], fine_p4est_n, fine_nodes_n, P4EST_DIM);  CHKERRXX(ierr);
-//      ierr = VecGetArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);                        CHKERRXX(ierr);
-//    }
-//    const double *fine_jump_mu_grad_v_p;
-//    ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);  CHKERRXX(ierr);
-//    for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k)
-//      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-//        for (u_char der = 0; der < P4EST_DIM; ++der)
-//          fine_jump_mu_grad_v_comp_p[dir][P4EST_DIM*k + der] = fine_jump_mu_grad_v_p[SQR_P4EST_DIM*k + P4EST_DIM*dir + der];
+  if(interface_manager->subcell_resolution() > 0)
+  {
+    node_scalar_data.clear(); node_scalar_names.clear();
+    node_vector_block_data.clear(); node_vector_block_names.clear();
+    const double *phi_on_fine_nodes_p, *curvature_on_fine_nodes_p, *grad_phi_on_fine_nodes_p;
+    ierr = VecGetArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
+    node_scalar_data.push_back(phi_on_fine_nodes_p);
+    node_scalar_names.push_back("phi");
+    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_on_fine_nodes_p); CHKERRXX(ierr);
+    node_scalar_data.push_back(curvature_on_fine_nodes_p);
+    node_scalar_names.push_back("curvature");
+    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_on_fine_nodes_p); CHKERRXX(ierr);
+    node_vector_block_data.push_back(grad_phi_on_fine_nodes_p);
+    node_vector_block_names.push_back("grad_phi");
+    my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
+                                         P4EST_TRUE, P4EST_TRUE,
+                                         (vtk_directory + "/subresolved_snapshot_" + std::to_string(index)).c_str(),
+                                         &node_scalar_data, &node_scalar_names, NULL, NULL, &node_vector_block_data, &node_vector_block_names,
+                                         NULL, NULL, NULL, NULL, NULL, NULL);
+    ierr = VecRestoreArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_on_fine_nodes_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_on_fine_nodes_p); CHKERRXX(ierr);
+  }
 
-//    ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
-
-//    const double* fine_phi_p, *fine_curvature_p, *fine_normal_p;
-//    ierr = VecGetArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
-//    my_p4est_vtk_write_all_general(fine_p4est_n, fine_nodes_n, fine_ghost_n,
-//                                   P4EST_TRUE, P4EST_FALSE,
-//                                   2, /* number of VTK_POINT_DATA */
-//                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-//                                   1+P4EST_DIM, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-//                                   0, /* number of VTK_CELL_DATA */
-//                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-//                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-//                                   name_fine,
-//                                   VTK_NODE_SCALAR, "phi", fine_phi_p,
-//                                   VTK_NODE_SCALAR, "curvature", fine_curvature_p,
-//                                   VTK_NODE_VECTOR_BLOCK, "normal", fine_normal_p,
-//                                   VTK_NODE_VECTOR_BLOCK, "jump mu grad u", fine_jump_mu_grad_v_comp_p[0],
-//        VTK_NODE_VECTOR_BLOCK, "jump mu grad v", fine_jump_mu_grad_v_comp_p[1]
-//    #ifdef P4_TO_P8
-//        , VTK_NODE_VECTOR_BLOCK, "jump mu grad w", fine_jump_mu_grad_v_comp_p[2]
-//    #endif
-//        );
-//    ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);  CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);        CHKERRXX(ierr);
-//    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//      ierr = VecRestoreArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]);  CHKERRXX(ierr);
-//      ierr = delete_and_nullify_vector(fine_jump_mu_grad_v_comp[dir]);                          CHKERRXX(ierr);
-//      fine_jump_mu_grad_v_comp[dir] = NULL;
-//    }
-//  }
-  ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", vtk_directory.c_str()); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
