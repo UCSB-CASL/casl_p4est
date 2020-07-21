@@ -1866,7 +1866,8 @@ void my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation
   double *vnp1_dir_this_side_p                        = (sgn_face < 0 ? vnp1_face_minus_p[dir]  : vnp1_face_plus_p[dir]);
   double *vnp1_dir_other_side_p                       = (sgn_face < 0 ? vnp1_face_plus_p[dir]   : vnp1_face_minus_p[dir]);
   double oriented_normal[P4EST_DIM];
-  env->interface_manager->normal_vector_at_point(xyz_face, oriented_normal, (double)sgn_face);
+  if(degree > 0)
+    env->interface_manager->normal_vector_at_point(xyz_face, oriented_normal, (sgn_face < 0 ? +1.0 : -1.0));
   const uniform_face_ngbd* face_ngbd;
   if(env->faces_n->found_uniform_face_neighborhood(f_idx, dir, face_ngbd))
   {
@@ -2011,15 +2012,15 @@ void my_p4est_two_phase_flows_t::jump_face_solver::face_velocity_extrapolation_l
       const double solution_across = (neighbor_face_idx >= 0 ? sharp_solution_p[dir][neighbor_face_idx] : env->bc_velocity[dir].wallValue(xyz_wall_neighbor));
       // fetch the interface-defined value (!!! on the OTHER side --> you are extrapolation, here !!!!)
       const double interface_value = face_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, local_oriented_der, is_in_positive_domain, !is_in_positive_domain, sharp_solution_p[dir][f_idx], solution_across, 0.0, 0.0, (neighbor_face_idx >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[der]);
-      if(face_interface_neighbor.theta < pow(2.0, -env->interface_manager->get_max_level_computational_grid()))
+      if(face_interface_neighbor.theta < 0.1*pow(2.0, -env->interface_manager->get_max_level_computational_grid()))
       {
         field_p[f_idx] = interface_value;
         too_close_flag = true;
       }
       else
       {
-        n_dot_grad_field += fabs(oriented_normal[der])*(field_p[f_idx] - interface_value)/(face_interface_neighbor.theta*env->dxyz_smallest_quad[der]);
-        dtau = MIN(dtau, face_interface_neighbor.theta*env->dxyz_smallest_quad[der]);
+        n_dot_grad_field += fabs(oriented_normal[der])*(field_p[f_idx] - interface_value)/(face_interface_neighbor.theta*(neighbor_face_idx >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[der]);
+        dtau = MIN(dtau, face_interface_neighbor.theta*(neighbor_face_idx >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[der]);
       }
     }
     else
@@ -2030,9 +2031,8 @@ void my_p4est_two_phase_flows_t::jump_face_solver::face_velocity_extrapolation_l
   }
   if(!too_close_flag)
   {
-
     dtau /= ((double) P4EST_DIM);
-    field_p[f_idx] += dtau*(n_dot_grad_field - normal_derivative_of_field_p[f_idx]);
+    field_p[f_idx] -= dtau*(n_dot_grad_field - (normal_derivative_of_field_p != NULL ? normal_derivative_of_field_p[f_idx] : 0.0));
   }
   return;
 }
