@@ -292,10 +292,10 @@ private:
     }
 
 //    void get_vstar_velocities(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM]);
-    void extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iteration = 10);
+    void extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iteration = 10, const u_char& degree = 1);
     void initialize_face_extrapolation(const p4est_locidx_t &f_idx, const u_char &dir, const double* sharp_solution_p[P4EST_DIM],
                                        double *vnp1_face_minus_p[P4EST_DIM], double *vnp1_face_plus_p[P4EST_DIM],
-                                       double *normal_derivative_of_vnp1_face_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_face_plus_p[P4EST_DIM]);
+                                       double *normal_derivative_of_vnp1_face_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_face_plus_p[P4EST_DIM], const u_char& degree);
     void extrapolate_normal_derivatives_of_face_velocity_local(const p4est_locidx_t &f_idx, const u_char &dir,
                                                                double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
