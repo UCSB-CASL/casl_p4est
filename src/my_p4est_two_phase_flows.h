@@ -78,7 +78,8 @@ private:
   my_p4est_faces_t          *faces_n;
   my_p4est_interface_manager_t  *interface_manager;
 
-  my_p4est_poisson_jump_cells_fv_t* poisson_jump_cell_solver;
+  my_p4est_poisson_jump_cells_t* poisson_jump_cell_solver;
+  bool use_xgfm_cell_solver;
 
   const double *xyz_min, *xyz_max;
   double tree_dimension[P4EST_DIM];
@@ -565,6 +566,7 @@ public:
 
   void compute_pressure_jump();
   void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
+  void use_xgfm_projection() { use_xgfm_cell_solver = true; }
 
   void compute_velocities_at_nodes();
   void save_vtk(const std::string& vtk_directory, const int& index) const;

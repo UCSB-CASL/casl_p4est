@@ -268,7 +268,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     faces_n->set_finest_face_neighborhoods();
 
   viscosity_solver.set_environment(this);
-  poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+  poisson_jump_cell_solver = NULL;
+  use_xgfm_cell_solver = false;
 }
 
 my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
@@ -669,7 +670,12 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   compute_pressure_jump();
 
   if(poisson_jump_cell_solver == NULL)
-    poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+  {
+    if(use_xgfm_cell_solver)
+      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+    else
+      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+  }
 
   poisson_jump_cell_solver->set_interface(interface_manager);
   poisson_jump_cell_solver->set_diagonals(0.0, 0.0);
@@ -3278,7 +3284,10 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   if(poisson_jump_cell_solver != NULL)
   {
     delete poisson_jump_cell_solver;
-    poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+    if(use_xgfm_cell_solver)
+      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+    else
+      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
   }
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
