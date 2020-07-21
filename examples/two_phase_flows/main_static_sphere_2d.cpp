@@ -234,10 +234,10 @@ int main (int argc, char* argv[])
   const double mu_m   = 1.0/12000.0;
   const double mu_p   = 1.0/12000.0;
   const double surface_tension = 1.0/12000.0;
-  const double xyz_min [P4EST_DIM]  = { DIM(xmin, ymin, zmin) };
-  const double xyz_max [P4EST_DIM]  = { DIM(xmax, ymax, zmax) };
-  const double duration             = cmd.get<double>("duration", 250);
-  const int periodic[P4EST_DIM]     = { DIM(0, 0, 0) };
+  const double xyz_min [P4EST_DIM] = { DIM(xmin, ymin, zmin) };
+  const double xyz_max [P4EST_DIM] = { DIM(xmax, ymax, zmax) };
+  const double duration = cmd.get<double>("duration", 250);
+  const int periodic[P4EST_DIM] = { DIM(0, 0, 0) };
 
   BoundaryConditionsDIM bc_v[P4EST_DIM];
   BoundaryConditionsDIM bc_p;
@@ -256,8 +256,8 @@ int main (int argc, char* argv[])
 #endif
   CF_DIM *external_force_per_unit_mass[P4EST_DIM] = { DIM(&external_force_u, &external_force_v, &external_force_w) };
 
-  lmin                    = cmd.get<int>("lmin", 5);
-  lmax                    = cmd.get<int>("lmax", 8);
+  lmin                    = cmd.get<int>("lmin", 4);
+  lmax                    = cmd.get<int>("lmax", 4);
   threshold_split_cell    = cmd.get<double>("thresh", 1000000000000000000.00);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
@@ -395,6 +395,8 @@ int main (int argc, char* argv[])
 
   double max_velocity = 0.0;
 
+//  two_phase_flow_solver->use_xgfm_projection();
+
   while(tn + 0.01*dt < tstart + duration)
   {
     if(iter > 0)
@@ -404,17 +406,13 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->update_from_tn_to_tnp1();
     }
 
-//    two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
-//    two_phase_flow_solver->compute_jump_mu_grad_v();
-//    two_phase_flow_solver->compute_jumps_hodge();
-//    two_phase_flow_solver->solve_viscosity_explicit();
     two_phase_flow_solver->solve_viscosity();
     two_phase_flow_solver->solve_projection();
 
     two_phase_flow_solver->compute_velocities_at_nodes();
 
 
-    if((int) floor((tn+dt)/vtk_dt) != iter_vtk)
+    if((int) floor((tn + dt)/vtk_dt) != iter_vtk)
     {
       iter_vtk = (int) floor((tn + dt)/vtk_dt);
       two_phase_flow_solver->save_vtk(vtk_dir, iter_vtk);
@@ -422,11 +420,10 @@ int main (int argc, char* argv[])
 
     tn += dt;
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
-                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
+                       iter, tn, 100*(tn - tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
     max_velocity = MAX(max_velocity, two_phase_flow_solver->get_max_velocity());
 
     iter++;
-    break;
   }
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_velocity);
 
