@@ -387,8 +387,9 @@ int is_Zero(double x);
 
 /**
  * Compute L^1 norm of a vector of n elements.
- * @param v Array of values.
- * @param n Positive number of elements.
+ * @tparam T Data type.
+ * @param [in] v Array of values.
+ * @param [in] n Positive number of elements.
  * @return Sum of v's absolute element values.
  */
 template<typename T>
@@ -398,6 +399,22 @@ inline T compute_L1_norm( const T v[], unsigned int n )
 	for( int i = 0; i < n; i++ )
 		sum += ABS( v[i] );
 	return sum;
+}
+
+/**
+ * Compute the L^2 norm of a vector of n elements.
+ * @tparam T Data type.
+ * @param [in] v Array of values.
+ * @param [in] n Number of elements in array.
+ * @return Square root of the sum of squared v values.
+ */
+template<typename T>
+inline T compute_L2_norm( const T v[], unsigned int n )
+{
+	T sum = 0;
+	for( int i = 0; i < n; i++ )
+		sum += SQR( v[i] );
+	return sqrt( sum );
 }
 
 

@@ -1127,6 +1127,43 @@ private:
     return;
   }
 
+  /**
+   * Compute the gradient at the center of the quad neighborhood using central differences AND no naive correction of
+   * the first derivative.  The primarily use of this raw gradient is to serve as indicator of the distance function
+   * regularity and smoothness.
+   * @param [in] f Array of read-only pointers to PETSc backed functions to compute the gradient on.
+   * @param [out] fx Array of output derivatives of f with respect to x.
+   * @param [out] fy Array of output derivatives of f with respect to y.
+   * @param [out] fz Array of output dericatives of f with respect to z.
+   * @param [in] n_arrays Number of arrays for which we desire to compute the gradient of.
+   */
+  inline void gradient_without_correction( const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays ) const
+  {
+#ifdef CASL_LOG_TINY_EVENTS
+	  PetscErrorCode ierr_log_event = PetscLogEventBegin( log_quad_neighbor_nodes_of_node_t_gradient_without_correction, 0, 0, 0, 0 );
+	  CHKERRXX( ierr_log_event );
+#endif
+
+	  double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays],
+	  		 f_0m0[n_arrays], f_0p0[n_arrays]
+	  		 ONLY3D( COMMA f_00m[n_arrays] COMMA f_00p[n_arrays] );
+	  linearly_interpolated_neighbors( f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D( COMMA f_00m COMMA f_00p ), n_arrays );
+
+	  for( unsigned int k = 0; k < n_arrays; k++ )
+	  {
+		  fx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
+		  fy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
+#ifdef P4_TO_P8
+		  fz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
+#endif
+	  }
+
+#ifdef CASL_LOG_TINY_EVENTS
+	  ierr_log_event = PetscLogEventEnd( log_quad_neighbor_nodes_of_node_t_gradient_without_correction, 0, 0, 0, 0 );
+	  CHKERRXX( ierr_log_event );
+#endif
+  }
+
   void dx_central_internal(const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
   inline void dx_central_all_components (const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs) const                           { dx_central_internal(f, fx, n_arrays, bs, bs);    }
   inline void dx_central_component      (const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const { dx_central_internal(f, fx, n_arrays, bs, comp);  }
@@ -1772,6 +1809,19 @@ public:
     gradient(&f, DIM(&fxyx[0], &fxyx[1], &fxyx[2]),  1);
     return;
   }
+
+  /**
+   * Compute the gradient of a scalar function at the center node of the quad neighborhood without correcting the naive
+   * approximation to the first derivatives.  The primarily use for this function is to serve as indicator for level-set
+   * regularity and smoothness.
+   * @param [in] f Read-only pointer backed by a PETSc array containing the function we need the gradient of.
+   * @param [out] fxyz Output array to store the (central-differences based) first derivatives.
+   */
+  inline void gradient_without_correction( const double *f, double fxyz[P4EST_DIM] ) const
+  {
+  	gradient_without_correction( &f, DIM( &fxyz[0], &fxyz[1], &fxyz[2] ), 1 );
+  }
+
   inline void gradient(const double **f, double **fxyz, const unsigned int &n_vecs) const
   {
     double DIM(fx_serial[n_vecs], fy_serial[n_vecs], fz_serial[n_vecs]);

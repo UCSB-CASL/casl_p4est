@@ -1,14 +1,15 @@
 /**
  * Generate star-shaped interface data sets for evaluating our feedforward neural network, which was trained on
- * circular and sinusoidal interfaces using samples from a reinitialized level-set function with fast sweeping method.
- * Also, collect samples from PDE reinitialization using 5, 10, and 20 iterations for accuracy comparison.
- * For each reinitialization scheme, generate files with level-set function values, point coordinates, and projections
- * angles of nodes detected along the interface.  We do this because some reinitialization schemes are not always
- * successful at finding the exact distances from stencils to the star-shaped interface when using Newton-Raphson's root
- * finding.
+ * circular and sinusoidal interfaces using samples from a reinitialized level-set function.
+ * Collect samples from PDE reinitialization using 5, 10, and 20 iterations for accuracy comparison, and from FSM.
+ * For each reinitialization scheme, generate files with reinitialized level-set function values, exact distances, point
+ * coordinates, projections angles of nodes detected along the interface, and the gradient error (i.e. |1 - |grad(n)||).
+ * The exact distances are obtained by first using bisection for bracketing, and then Newton-Raphson's method to refine
+ * the zero of the derivative of the minimum distance function betwen a point (i.e. nodes along Gamma) and the
+ * star-shaped interface.
  *
  * Seek the [CHANGE] label to locate where to set the parameters for distinct star-shape level-set function
- * configurations.
+ * configurations: arm's amplitude and base circumference.
  *
  * The output files generated are placed in the data/star_L/a_X.XXX/b_Y.YYY, where L is the maximum level of refinement,
  * X.XXX is the star arm amplitude, and Y.YYY is the star base radius.  At least the data/star_L directory must exist.
@@ -16,10 +17,12 @@
  * a) params.csv Star parameters.
  * b) [R]_angles.csv Angles of normal-projected points of center nodes of stencils onto the interface.
  * c) [R]_points.csv Cartesian coordinates of center nodes of stencils sampled along the interface.
- * d) [R]_phi.csv Actual level-set function values of the 9-point stencils along the interface.
+ * d) [R]_phi.csv Reinitialized level-set function values of the 9-point stencils along the interface.
+ * e) [R]_phi_sdf.csv Exact distances from the 9-point stencils along the interface to Gamma.
+ * f) [R]_grad_errors.csv The gradient error with respect to unity.
  *
  * Developer: Luis Ángel.
- * Date: June 6, 2020.
+ * Date: July 22, 2020.
  */
 
 // System.
@@ -219,7 +222,7 @@ int main ( int argc, char* argv[] )
 		//////////////////////////////////// Star-shaped interface parameter setup /////////////////////////////////////
 
 		// [CHANGE] Change these values to modify the shape of star interface.
-		// Using a=0.075 and b=0.35 for smooth star, and a=0.12 and b=0.305 for sharp star.
+		// Using a=0.075 and b=0.350 for smooth star, and a=0.120 and b=0.305 for sharp star.
 		const double A = 0.075;
 		const double B = 0.350;
 		const int P = 5;
@@ -291,7 +294,7 @@ int main ( int argc, char* argv[] )
 		}
 
 		// Prepare files where to write the angle parameters for corresponding points on interface.
-		std::unordered_map<std::string, std::ofstream>anglesFilesMap;
+		std::unordered_map<std::string, std::ofstream> anglesFilesMap;
 		anglesFilesMap.reserve( 4 );
 		for( const auto& key : phiKeys )
 		{
@@ -303,6 +306,20 @@ int main ( int argc, char* argv[] )
 
 			anglesFilesMap[key].precision( 15 );
 			anglesFilesMap[key] << R"("theta")" << std::endl;			// Write header: the theta polar coord.
+		}
+
+		std::unordered_map<std::string, std::ofstream> gradErrorFilesMap;
+		gradErrorFilesMap.reserve( 4 );
+		for( const auto& key : phiKeys )
+		{
+			gradErrorFilesMap[key] = std::ofstream();
+			std::string gradErrorFileName = DATA_PATH + key + "_grad_errors.csv";
+			gradErrorFilesMap[key].open( gradErrorFileName, std::ofstream::trunc );
+			if( !gradErrorFilesMap[key].is_open() )
+				throw std::runtime_error( "Grad error file " + gradErrorFileName + " couldn't be opened!" );
+
+			gradErrorFilesMap[key].precision( 15 );
+			gradErrorFilesMap[key] << R"("error")" << std::endl;		// Write header: "error".
 		}
 
 		// Prepare file where to write the params.
@@ -375,6 +392,10 @@ int main ( int argc, char* argv[] )
 		ierr = VecDuplicate( phi, &interfaceFlag );
 		CHKERRXX( ierr );
 
+		Vec gradIndicator;
+		ierr = VecDuplicate( phi, &gradIndicator );
+		CHKERRXX( ierr );
+
 		Vec curvature, normal[P4EST_DIM];
 		ierr = VecDuplicate( phi, &curvature );
 		CHKERRXX( ierr );
@@ -384,11 +405,16 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( ierr );
 		}
 
-		double *interfaceFlagPtr;
+		double *interfaceFlagPtr, *gradIndicatorPtr;
 		ierr = VecGetArray( interfaceFlag, &interfaceFlagPtr );
 		CHKERRXX( ierr );
+		ierr = VecGetArray( gradIndicator, &gradIndicatorPtr );
+		CHKERRXX( ierr );
 		for( p4est_locidx_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
+		{
 			interfaceFlagPtr[i] = 0;		// Init to zero and set flag of (valid) nodes along interface to 1.
+			gradIndicatorPtr[i] = 0;		// Init to zero and then store the absolute difference between 1 and grad(f).
+		}
 
 		// Reinitialize level-set function (using the fast sweeping method and the pde-based equation with 5, 10, and 20
 		// iterations).  We go through the hash map of output files to write the corresponding samples.
@@ -444,6 +470,9 @@ int main ( int argc, char* argv[] )
 			int nSamples = 0;
 			std::vector<std::vector<double>> samples;
 			std::vector<std::vector<double>> sdfSamples;
+			const quad_neighbor_nodes_of_node_t *qnnnPtr;
+			double grad[P4EST_DIM];
+			double gradError;
 			for( auto n : indices )
 			{
 				std::vector<p4est_locidx_t> stencil;	// Contains 9 nodal indices in 2D.
@@ -462,8 +491,16 @@ int main ( int argc, char* argv[] )
 						sdfSamples.push_back( distances );
 						nSamples++;
 
-						if( key == "fsm" )				// Set valid node-along-interface indicator (just once, in fsm).
+						nodeNeighbors.get_neighbors( n, qnnnPtr );		// Write the grad error to a file.
+						qnnnPtr->gradient_without_correction( reinitPhiReadPtrs[key], grad );
+						gradError = ABS( compute_L2_norm( grad, P4EST_DIM ) - 1.0 );
+						gradErrorFilesMap[key] << gradError << std::endl;
+
+						if( key == "iter10" )			// Set valid node-along-interface and grad indicators just in iter10.
+						{
 							interfaceFlagPtr[n] = 1;
+							gradIndicatorPtr[n] = gradError;
+						}
 
 						// Also, check error for each reinitialization method using the "true" distances from above.
 						for( int i = 0; i < NUM_COLUMNS - 2; i++ )
@@ -504,15 +541,16 @@ int main ( int argc, char* argv[] )
 
 		// Write paraview file to visualize the star interface and nodes following it along.
 		std::ostringstream oss;
-		oss << "star_" << mpi.size() << "_" << P4EST_DIM;
+		oss << "star_a_" << std::string( auxA ) << "_b_" << std::string( auxB );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								5, 0, oss.str().c_str(),
+								6, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "fsm_phi", reinitPhiReadPtrs["fsm"],
 								VTK_POINT_DATA, "iter5_phi", reinitPhiReadPtrs["iter5"],
 								VTK_POINT_DATA, "iter10_phi", reinitPhiReadPtrs["iter10"],
 								VTK_POINT_DATA, "iter20_phi", reinitPhiReadPtrs["iter20"],
-								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr );
+								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
+								VTK_POINT_DATA, "gradIndicator", gradIndicatorPtr );
 		my_p4est_vtk_write_ghost_layer( p4est, ghost );
 
 		// Cleaning up.
@@ -525,11 +563,17 @@ int main ( int argc, char* argv[] )
 		ierr = VecRestoreArray( interfaceFlag, &interfaceFlagPtr );
 		CHKERRXX( ierr );
 
+		ierr = VecRestoreArray( gradIndicator, &gradIndicatorPtr );
+		CHKERRXX( ierr );
+
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		ierr = VecDestroy( phi );
 		CHKERRXX( ierr );
 
 		ierr = VecDestroy( interfaceFlag );
+		CHKERRXX( ierr );
+
+		ierr = VecDestroy( gradIndicator );
 		CHKERRXX( ierr );
 
 		ierr = VecDestroy( curvature );
@@ -553,12 +597,14 @@ int main ( int argc, char* argv[] )
 		p4est_destroy( p4est );
 		p4est_connectivity_destroy( connectivity );
 
-		// Closing file objects that were open for phi values, points, and angles.
+		// Closing file objects that were open for phi values, points, angles, and grad errors.
 		for( const auto& key : phiKeys )
 		{
 			phiFilesMap[key].close();
 			pointsFilesMap[key].close();
 			anglesFilesMap[key].close();
+			gradErrorFilesMap[key].close();
+			sdfPhiFilesMap[key].close();
 		}
 		paramsFile.close();
 	}
