@@ -474,8 +474,6 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 		throw std::runtime_error( "Node " + std::to_string( n ) + ":  Unable to find pairs of U values with derivative "
 								  "values of distinct sign!" );
 	}
-
-	return PETSC_MAX_REAL;
 }
 
 #endif //FAST_SWEEPING_ARCLENGTH_PARAMETERIZED_SINE_2D_H

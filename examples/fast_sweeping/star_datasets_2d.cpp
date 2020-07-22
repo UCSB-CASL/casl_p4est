@@ -114,6 +114,12 @@
 		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
 		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
 
+		if( s == 4 )	// Rough estimation of point on interface, where curvature will be interpolated.
+		{
+			xOnGamma = pOnInterfaceX;
+			yOnGamma = pOnInterfaceY;
+		}
+
 		// Get initial angle for polar approximation to point on star interface.
 		theta = atan2( pOnInterfaceY, pOnInterfaceX );
 		theta = ( theta < 0 )? theta + 2 * M_PI : theta;
@@ -138,14 +144,14 @@
 		theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
 			valOfDerivative, newDistance );
 
-		if( s == 4 )
-		{
-			r = star.r( theta );						// Recalculating closest point on interface.
-			xOnGamma = r * cos( theta );
-			yOnGamma = r * sin( theta );
+//		if( s == 4 )
+//		{
+//			r = star.r( theta );						// Recalculating closest point on interface.
+//			xOnGamma = r * cos( theta );
+//			yOnGamma = r * sin( theta );
 //			std::cout << std::setprecision( 15 )
 //					  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
-		}
+//		}
 
 		if( newDistance - distances[s] > EPS )			// Verify that new point is closest than previous approximmation.
 		{
@@ -188,7 +194,7 @@ int main ( int argc, char* argv[] )
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 
-	std::string DATA_PATH = "/Volumes/YoungMinEXT/fsm/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );

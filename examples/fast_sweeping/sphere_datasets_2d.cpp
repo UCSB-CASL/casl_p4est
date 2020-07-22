@@ -60,8 +60,8 @@ int main ( int argc, char* argv[] )
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-	const int NUM_CIRCLES = (int)pow( 2, MAX_REFINEMENT_LEVEL ) - 5;		// Number of circles is proportional to finest resolution.
-																			// and ensures at least 2 circles per finest quad/oct.
+	const int NUM_CIRCLES = (int)( 2 * (pow( 2, MAX_REFINEMENT_LEVEL ) - 5) );	// Number of circles is proportional to finest resolution.
+																				// and ensures at least 4 circles per finest quad/oct.
 	const double MIN_RADIUS = 1.5 * H;			// Ensures at least 4 nodes inside smallest circle.
 	const double MAX_RADIUS = HALF_D - 2 * H;	// Prevents sampling interface nodes with invalid full uniform stencils.
 
@@ -279,17 +279,14 @@ int main ( int argc, char* argv[] )
 							// Appending the interpolated h*kappa.
 							double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
-							double dir[P4EST_DIM] = { DIM( xyz[0] - C[0], xyz[1] - C[1], xyz[2] - C[2] ) };
-							double curRadius = sqrt( SUMD( SQR( dir[0] ), SQR( dir[1] ), SQR( dir[2] ) ) );		// Radius at current node.
-							double diff = R - curRadius;			// We'll project onto interface in this direction.
-							for( auto& dim : dir )
-							{
-								dim /= curRadius;					// Scale direction vector.
-								dim *= diff;
-							}
+							double grad[P4EST_DIM];					// Getting its gradient (i.e. normal).
+							const quad_neighbor_nodes_of_node_t *qnnnPtr;
+							nodeNeighbors.get_neighbors( n, qnnnPtr );
+							qnnnPtr->gradient( rlsPhiReadPtr, grad );
+							double gradNorm = sqrt( SUMD( SQR( grad[0] ), SQR( grad[1] ), SQR( grad[2] ) ) );	// Get the unit gradient.
 
-							for( int i = 0; i < P4EST_DIM; i++ )	// Translation: this is the location where
-								xyz[i] += dir[i];					// we need to interpolate numerical curvature.
+							for( int i = 0; i < P4EST_DIM; i++ )					// Translation: this is the location where
+								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// we need to interpolate numerical curvature.
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
 							rlsDataPve.push_back( +iHKappa );		// Attach interpolated h*kappa to reinit. data only.

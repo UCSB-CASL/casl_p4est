@@ -85,7 +85,7 @@
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, v, valOfDerivative, centerU;
+	double u, valOfDerivative, centerU;
 	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
@@ -101,6 +101,12 @@
 		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
 		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
 
+		if( s == 4 )	// Rough estimation of point on interface, where curvature will be interpolated.
+		{
+			xOnGamma = pOnInterfaceX;
+			yOnGamma = pOnInterfaceY;
+		}
+
 		// Transform point on interface to sine-wave canonical coordinates.
 		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
 		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
@@ -115,13 +121,10 @@
 		valOfDerivative = 1;
 		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
 
-		if( s == 4 )
-		{
-			v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
-			xOnGamma = u;
-			yOnGamma = v;
-			sine.toWorldCoordinates( xOnGamma, yOnGamma );
-		}
+//		if( s == 4 )
+//		{
+//			double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
+//		}
 
 		if( newDistance - distances[s] > EPS )
 		{
@@ -394,8 +397,8 @@ int main ( int argc, char* argv[] )
 								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
 								// h\kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
 								// where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.05.
-								if( ABS( data[NUM_COLUMNS - 1] ) > MAX_HKAPPA_MIDPOINT ||
-									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 1] )
+								if( ABS( data[NUM_COLUMNS - 2] ) > MAX_HKAPPA_MIDPOINT ||
+									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 2] )
 									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.95 / 2  )
 								{
 									data[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
