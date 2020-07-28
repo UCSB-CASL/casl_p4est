@@ -2753,7 +2753,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
 
   /* find the velocity field at time np1 */
   size_t to_compute = 0;
-  for (size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
+  for (size_t node_idx = 0; node_idx < nodes_np1->num_owned_indeps; ++node_idx)
   {
     if(known_phi_np1_p != NULL)
     {
@@ -2769,7 +2769,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
     node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz);
     interp_np1.add_point(to_compute++, xyz);
   }
-  P4EST_ASSERT(to_compute + already_known.size() == (size_t) nodes_np1->indep_nodes.elem_count);
+  P4EST_ASSERT(to_compute + already_known.size() == (size_t) nodes_np1->num_owned_indeps);
 
   std::vector<double> interface_velocity_np1_buffer(P4EST_DIM*to_compute);
   interp_np1.interpolate(interface_velocity_np1_buffer.data()); interp_np1.clear();
@@ -2778,7 +2778,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   my_p4est_interpolation_nodes_t& interp_phi_n = interface_manager->get_interp_phi(); interp_phi_n.clear(); // clear the buffers, if not empty
   size_t known_idx = 0;
   to_compute = 0;
-  for (size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
+  for (size_t node_idx = 0; node_idx < nodes_np1->num_owned_indeps; ++node_idx)
   {
     if(known_phi_np1_p != NULL && known_idx < already_known.size() && node_idx == already_known[known_idx])
     {
@@ -2794,7 +2794,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
     interp_phi_n.add_point(node_idx, xyz_d);
     to_compute++;
   }
-  P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->indep_nodes.elem_count);
+  P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->num_owned_indeps);
 
   if(known_phi_np1 != NULL)
   {
@@ -2803,6 +2803,8 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   }
 
   interp_phi_n.interpolate(phi_np1); interp_phi_n.clear();
+  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   return;
 }
