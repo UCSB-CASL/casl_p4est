@@ -293,7 +293,7 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
 {
   PetscErrorCode ierr;
   if(order_space == 0 || order_space > 2 || order_pseudotime == 0 || order_pseudotime > 2)
-    throw std::invalid_argument("my_p4est_level_set_t::reinitialize_within_range_of_phi_0: valid orders of orders of accuracy for space and pseudotime are 1 and 2 only!");
+    throw std::invalid_argument("my_p4est_level_set_t::reinitialize_within_range_of_phi_0: valid orders of accuracy for space and pseudotime are 1 and 2 only!");
 #ifdef CASL_LOG_EVENTS
   if(order_pseudotime == 1 && order_space == 1){
     ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi, 0, 0, 0); CHKERRXX(ierr); }

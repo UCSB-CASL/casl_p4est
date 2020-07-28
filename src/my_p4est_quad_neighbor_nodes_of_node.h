@@ -2024,9 +2024,9 @@ public:
     double mag_of_grad = 0.0;
     const double dx = grad_phi_p[P4EST_DIM*node_000 + 0]; mag_of_grad += SQR(dx);
     const double dy = grad_phi_p[P4EST_DIM*node_000 + 1]; mag_of_grad += SQR(dy);
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     const double dz = grad_phi_p[P4EST_DIM*node_000 + 2]; mag_of_grad += SQR(dz);
-  #endif
+#endif
     mag_of_grad = sqrt(mag_of_grad);
 
     if(mag_of_grad > EPS)
