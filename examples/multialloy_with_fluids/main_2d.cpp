@@ -224,7 +224,8 @@ double T_max_allowable_err = 1.0e-7;
 double T_l_max, T_l_min, T_s_max, T_s_min;
 
 // For surface tension: (used to apply some interfacial BC's in temperature)
-double sigma;
+//double sigma;
+DEFINE_PARAMETER(pl,double,sigma,2.10e-10,"Interfacial tension [m] between ice and water, default: 2.10e-10");
 
 // For the coupled test case where we have to swtich sign:
 double coupled_test_sign;
@@ -289,7 +290,7 @@ void set_geometry(){
       //r0 = r_cyl*1.0572;
       r0 = r_cyl*1.10;
 //      r0 = r_cyl*1.7;
-      d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
+      //d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
 
       // Boundary condition info:
       Twall = 276.;    // Physical wall temp [K]
@@ -4915,9 +4916,6 @@ int main(int argc, char** argv) {
                                hierarchy_np1,&brick,
                                phi.vec,v_n_NS.vec,v_nm1_NS.vec,
                                faces_np1,ngbd_c_np1);
-
-          PetscPrintf(mpi.comm(),"Initialized \n");
-
         }
         else{
           ns->update_from_tn_to_tnp1_grid_external(phi.vec,
@@ -5214,7 +5212,7 @@ int main(int argc, char** argv) {
 
         //      my_p4est_level_set_t ls_new(ngbd_np1);
         ls.update(ngbd_np1);
-        if(solve_stefan)ls.reinitialize_1st_order_time_2nd_order_space(phi.vec);
+        if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30);/*ls.reinitialize_1st_order_time_2nd_order_space(phi.vec);*/
         if(solve_navier_stokes && !solve_stefan){
           // If only solving Navier-Stokes, only need to do this once, not every single timestep
           if(tstep==0){ls.reinitialize_1st_order_time_2nd_order_space(phi.vec);
