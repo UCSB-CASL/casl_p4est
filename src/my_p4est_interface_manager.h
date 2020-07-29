@@ -166,7 +166,7 @@ class my_p4est_interface_manager_t
   my_p4est_interpolation_nodes_t  *interp_grad_phi;
   my_p4est_interpolation_nodes_t  *interp_curvature;
   my_p4est_interpolation_nodes_t  *interp_phi_xxyyzz;
-  Vec                             grad_phi_local, curvature_local;
+  Vec                             grad_phi_local, phi_xxyyzz_local, curvature_local;
   const int                       max_level_p4est;
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
@@ -186,6 +186,7 @@ class my_p4est_interface_manager_t
   }
 
   void build_grad_phi_locally();
+  void build_phi_xxyyzz_locally();
   void build_curvature_locally();
 
   // disallow copy ctr and copy assignment
@@ -274,6 +275,9 @@ public:
   void set_grad_phi(Vec grad_phi_in = NULL);
   inline bool is_grad_phi_set() const { return interp_grad_phi != NULL; }
 
+  void set_phi_xxyyzz(Vec phi_xxyyzz_in = NULL);
+  inline bool is_phi_xxyyzz_set() const { return interp_phi_xxyyzz != NULL; }
+
   /*!
    * \brief set_curvature sets the vector of node-sampled curvature values of the interface-capturing levelset function.
    * If provided by the user, this object doesn't take ownership, otherwise, it will build it and compute it internally.
@@ -328,11 +332,24 @@ public:
   inline bool is_storing_face_FD_interface_neighbors() const { return ANDD(face_FD_interface_neighbors[0] != NULL, face_FD_interface_neighbors[1] != NULL, face_FD_interface_neighbors[2] != NULL); }
 
   /*!
-   * \brief evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available self-explanatory
+   * \brief evaluate_FD_theta_with_quadratics self-explanatory
    * \param [in] flag: the user's choice
-   * NOTE: (default flag value is set to true internally if this function is never called)
+   * NOTE: (default flag value is set to false internally if this function is never called)
    */
-  inline void evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available(const bool& flag) { use_second_derivative_when_computing_FD_theta = flag; }
+  inline void evaluate_FD_theta_with_quadratics(const bool& flag) {
+    use_second_derivative_when_computing_FD_theta = flag;
+    if(use_second_derivative_when_computing_FD_theta && interp_phi_xxyyzz == NULL && interp_phi.get_input_fields().size() > 0) // levelset is already set but not its second derivatives
+    {
+      set_phi_xxyyzz(); // build the second derivatives locally since we'll need them
+      if(interp_phi.get_interpolation_method() != linear)
+      {
+        Vec phi = interp_phi.get_input_fields()[0];
+        interpolation_method method = interp_phi.get_interpolation_method();
+        interp_phi.set_input(phi, phi_xxyyzz_local, method); // faster levelset-sampling if the second derivatives are pre-computed
+      }
+    }
+    return;
+  }
 
   /*!
    * \brief get_cell_FD_interface_neighbor_for builds the finite-difference interface neighbor to be found between two quadrants

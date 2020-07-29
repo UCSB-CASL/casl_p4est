@@ -26,9 +26,10 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
     clear_face_FD_interface_neighbors(dim);
   }
   grad_phi_local              = NULL;
+  phi_xxyyzz_local            = NULL;
   curvature_local             = NULL;
   phi_on_computational_nodes  = NULL;
-  use_second_derivative_when_computing_FD_theta = true;
+  use_second_derivative_when_computing_FD_theta = false;
   throw_if_ill_defined_grad = false; // <-- set this one to true if you want to know when real interface shit is going on
 }
 
@@ -50,6 +51,8 @@ my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
     delete interp_phi_xxyyzz;
   if(grad_phi_local != NULL){
     PetscErrorCode ierr = VecDestroy(grad_phi_local); CHKERRXX(ierr); }
+  if(phi_xxyyzz_local != NULL){
+    PetscErrorCode ierr = VecDestroy(phi_xxyyzz_local); CHKERRXX(ierr); }
   if(curvature_local != NULL){
     PetscErrorCode ierr = VecDestroy(curvature_local); CHKERRXX(ierr); }
 }
@@ -70,7 +73,6 @@ void my_p4est_interface_manager_t::do_not_store_face_FD_interface_neighbors()
       delete face_FD_interface_neighbors[dim];
       face_FD_interface_neighbors[dim] = NULL;
     }
-
   return;
 }
 
@@ -98,6 +100,13 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
   }
   else
     interp_phi.set_input(phi, method_interp_phi);
+
+  if((method_interp_phi != linear || use_second_derivative_when_computing_FD_theta) && interp_phi_xxyyzz == NULL)
+  {
+    set_phi_xxyyzz(); // build the second derivatives locally if they were not given but would be eventually needed
+    if(method_interp_phi != linear)
+      interp_phi.set_input(phi, phi_xxyyzz_local, method_interp_phi); // faster sampling if the second derivatives are pre-computed
+  }
 
   if(nodes == interpolation_node_ngbd->get_nodes())
     phi_on_computational_nodes = phi;
@@ -134,6 +143,20 @@ void my_p4est_interface_manager_t::build_grad_phi_locally()
   if(grad_phi_local == NULL){
     PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), P4EST_DIM, &grad_phi_local); CHKERRXX(ierr); }
   interpolation_node_ngbd->first_derivatives_central(interp_phi.get_input_fields()[0], grad_phi_local);
+
+  return;
+}
+
+void my_p4est_interface_manager_t::build_phi_xxyyzz_locally()
+{
+#ifdef CASL_THROWS
+  if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_input_fields() != 1)
+    throw std::runtime_error("my_p4est_interface_manager_t::build_phi_xxyyzz_locally(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
+#endif
+
+  if(phi_xxyyzz_local == NULL){
+    PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), P4EST_DIM, &phi_xxyyzz_local); CHKERRXX(ierr); }
+  interpolation_node_ngbd->second_derivatives_central(interp_phi.get_input_fields()[0], phi_xxyyzz_local);
 
   return;
 }
@@ -203,10 +226,25 @@ void my_p4est_interface_manager_t::set_grad_phi(Vec grad_phi_in)
     build_grad_phi_locally();
     grad_phi = grad_phi_local;
   }
-  P4EST_ASSERT(grad_phi != NULL && VecIsSetForNodes(grad_phi, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, P4EST_DIM, 1));
+  P4EST_ASSERT(grad_phi != NULL && VecIsSetForNodes(grad_phi, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, P4EST_DIM, true));
   if(interp_grad_phi == NULL)
     interp_grad_phi = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
   interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
+  return;
+}
+
+void my_p4est_interface_manager_t::set_phi_xxyyzz(Vec phi_xxyyzz_in)
+{
+  Vec phi_xxyyzz = phi_xxyyzz_in;
+  if(phi_xxyyzz == NULL)
+  {
+    build_phi_xxyyzz_locally();
+    phi_xxyyzz = phi_xxyyzz_local;
+  }
+  P4EST_ASSERT(phi_xxyyzz != NULL && VecIsSetForNodes(phi_xxyyzz, interpolation_node_ngbd->get_nodes(), p4est->mpicomm, P4EST_DIM, true));
+  if(interp_phi_xxyyzz == NULL)
+    interp_phi_xxyyzz = new my_p4est_interpolation_nodes_t(interpolation_node_ngbd);
+  interp_phi_xxyyzz->set_input(phi_xxyyzz, linear, P4EST_DIM);
   return;
 }
 
@@ -264,8 +302,9 @@ double my_p4est_interface_manager_t::find_FD_interface_theta_in_cartesian_direct
     }
   }
   double subscale_theta_negative;
-  if(interp_phi_xxyyzz != NULL && use_second_derivative_when_computing_FD_theta)
+  if(use_second_derivative_when_computing_FD_theta)
   {
+    P4EST_ASSERT(interp_phi_xxyyzz != NULL);
     const double phi_dd_Q = (*interp_phi_xxyyzz)(xyz_this_side, oriented_dir/2);
     const double phi_dd_N = (*interp_phi_xxyyzz)(xyz_across,    oriented_dir/2);
     subscale_theta_negative = fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_this_side, phi_across, phi_dd_Q, phi_dd_N, rel_scale*hh);

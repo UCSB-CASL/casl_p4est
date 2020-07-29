@@ -53,32 +53,7 @@ const string default_work_folder = "/scratch/regan/poisson_jump_cells";
 const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_cells";
 #endif
 
-
-enum solver_tag {
-  GFM   = 0, // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
-  xGFM  = 1, // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
-  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
-};
-
-std::string convert_to_string(const solver_tag& tag)
-{
-  switch(tag){
-  case GFM:
-    return std::string("GFM");
-    break;
-  case xGFM:
-    return std::string("xGFM");
-    break;
-  case FV:
-    return std::string("FV");
-    break;
-  default:
-    return std::string("unknown type of solver");
-    break;
-  }
-}
-
-std::istream& operator>> (std::istream& is, std::vector<solver_tag>& solvers_to_test)
+std::istream& operator>> (std::istream& is, std::vector<poisson_jump_cell_solver_tag>& solvers_to_test)
 {
   std::string str;
   is >> str;
@@ -105,7 +80,7 @@ std::istream& operator>> (std::istream& is, std::vector<solver_tag>& solvers_to_
 
 struct convergence_analyzer_for_jump_cell_solver_t {
   my_p4est_poisson_jump_cells_t* jump_cell_solver;
-  const solver_tag tag;
+  const poisson_jump_cell_solver_tag tag;
   std::vector<double> errors_in_solution;
   std::vector<double> errors_in_flux_component[P4EST_DIM];
   std::vector<double> errors_in_derivative_component[P4EST_DIM];
@@ -119,7 +94,7 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     }
   }
 
-  convergence_analyzer_for_jump_cell_solver_t(const solver_tag& tag_) : tag(tag_), cell_sampled_error(NULL) { }
+  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : tag(tag_), cell_sampled_error(NULL) { }
 
   void measure_errors(const my_p4est_faces_t* faces, const test_case_for_scalar_jump_problem_t *test_problem)
   {
@@ -832,7 +807,7 @@ int main (int argc, char* argv[])
   cmd.add_option("solver",          "solver(s) to be tested, possible choices are 'GFM', 'xGFM', 'FV' or any combination thereof (separated with comma(s), and no space characters) [default is all of them].");
   oss.str("");
   oss << default_interp_method_phi;
-  cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function (relevant only if not using subrefinement). Default is " + oss.str());
+  cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function. Default is " + oss.str());
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
@@ -850,8 +825,8 @@ int main (int argc, char* argv[])
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
 
-  std::vector<solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
-  const std::vector<solver_tag> solvers_to_test = cmd.get<std::vector<solver_tag> >("solver", default_solvers_to_test);
+  std::vector<poisson_jump_cell_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
+  const std::vector<poisson_jump_cell_solver_tag> solvers_to_test = cmd.get<std::vector<poisson_jump_cell_solver_tag> >("solver", default_solvers_to_test);
   if(solvers_to_test.size() > 3)
     throw std::invalid_argument("main for testing my_p4est_poisson_jump_cells : do not duplicate the solvers to test, that is not allowed...");
   std::vector<convergence_analyzer_for_jump_cell_solver_t> solver_analyses;
@@ -921,7 +896,7 @@ int main (int argc, char* argv[])
       ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n->get_p4est(), interface_capturing_ngbd_n->get_nodes(), P4EST_DIM, &interface_capturing_phi_xxyyzz); CHKERRXX(ierr);
       interface_capturing_ngbd_n->second_derivatives_central(interface_capturing_phi, interface_capturing_phi_xxyyzz);
     }
-    interface_manager->evaluate_FD_theta_with_quadratics_if_second_derivatives_are_available(use_second_order_theta);
+    interface_manager->evaluate_FD_theta_with_quadratics(use_second_order_theta);
     interface_manager->set_levelset(interface_capturing_phi, (use_subrefinement ? linear : phi_interp), interface_capturing_phi_xxyyzz, true); // last argument set to true cause we'll need the gradient of phi
     if(use_subrefinement)
       interface_manager->set_under_resolved_levelset(phi);
