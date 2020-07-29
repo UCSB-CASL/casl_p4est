@@ -728,7 +728,7 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
 //  ierr = VecPointwiseMult(mu_m, mu_m, mask); CHKERRXX(ierr);
 }
 
-void my_p4est_scft_t::save_VTK(int compt)
+void my_p4est_scft_t::save_VTK(int compt, const char* absolute_path_to_folder)
 {
   ierr = VecGhostUpdateBegin(mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -751,8 +751,12 @@ void my_p4est_scft_t::save_VTK(int compt)
 //  ls.extend_Over_Interface_TVD(phi_smooth, mu_m);
 
   // name of output file
-  char *out_dir;
-  out_dir = getenv("OUT_DIR");
+  const char *out_dir;
+  if (absolute_path_to_folder == NULL) {
+    out_dir = getenv("OUT_DIR");
+  } else {
+    out_dir = absolute_path_to_folder;
+  }
 
   std::ostringstream oss;
 
@@ -1725,7 +1729,7 @@ void my_p4est_scft_t::dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, d
 {
   // only fully implicit scheme at the moment (!)
   ierr = VecCopy(sol_nm1, rhs); CHKERRXX(ierr);
-  ierr = VecPointwiseMult(rhs, rhs, exp_w); CHKERRXX(ierr);
+//  ierr = VecPointwiseMult(rhs, rhs, exp_w); CHKERRXX(ierr);
 
   ierr = VecPointwiseMult(q_tmp, q, nu); CHKERRXX(ierr);
 
@@ -1734,9 +1738,9 @@ void my_p4est_scft_t::dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, d
   solver->set_rhs(rhs);
 
   // Solve linear system
-  solver->solve(sol, true);
+  solver->solve(sol, false, false);
 
-  ierr = VecPointwiseMult(sol, sol, exp_w); CHKERRXX(ierr);
+//  ierr = VecPointwiseMult(sol, sol, exp_w); CHKERRXX(ierr);
 }
 
 void my_p4est_scft_t::dsa_compute_densities()
@@ -1770,11 +1774,20 @@ void my_p4est_scft_t::dsa_compute_densities()
   {
     if (mask_ptr[n] < 0)
     {
-      for (int is = 0; is < ns; is++)
-        time_integrand[is] = qf_ptr[is][n]*zb_ptr[is][n] + zf_ptr[is][n]*qb_ptr[is][n];
+//      for (int is = 0; is < ns; is++)
+//        time_integrand[is] = qf_ptr[is][n]*zb_ptr[is][n] + zf_ptr[is][n]*qb_ptr[is][n];
 
-      rho_a_ptr[n] = compute_rho_a(time_integrand.data());
-      rho_b_ptr[n] = compute_rho_b(time_integrand.data());
+//      rho_a_ptr[n] = compute_rho_a(time_integrand.data());
+//      rho_b_ptr[n] = compute_rho_b(time_integrand.data());
+
+      rho_a_ptr[n] = 0;
+      rho_b_ptr[n] = 0;
+
+      for (int is = 1;   is <= fns-1; is++) rho_a_ptr[n] += qf_ptr[is][n]*zb_ptr[is-1][n] + zf_ptr[is][n]*qb_ptr[is-1][n];
+      for (int is = fns; is <= ns-1;  is++) rho_b_ptr[n] += qf_ptr[is][n]*zb_ptr[is-1][n] + zf_ptr[is][n]*qb_ptr[is-1][n];
+
+      rho_a_ptr[n] *= ds_a;
+      rho_b_ptr[n] *= ds_b;
     } else {
       rho_a_ptr[n] = 0.0;
       rho_b_ptr[n] = 0.0;
@@ -1795,6 +1808,8 @@ void my_p4est_scft_t::dsa_compute_densities()
 
   ierr = VecScale(psi_a, 1.0/Q); CHKERRXX(ierr);
   ierr = VecScale(psi_b, 1.0/Q); CHKERRXX(ierr);
+
+  psi_avg = (integrate_over_domain_fast(psi_a) + integrate_over_domain_fast(psi_b))/volume;
 
   cost_function = dsa_compute_cost_function();
 }
@@ -1835,14 +1850,11 @@ void my_p4est_scft_t::dsa_update_potentials()
   {
     if (mask_ptr[n] < 0)
     {
-      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n];
+      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n] - psi_avg;
       force_m_ptr[n] = 2.0*(mu_m_ptr[n] - mu_t_ptr[n])/XN + 2.0*nu_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
-
-      nu_p_ptr[n] += 2.0*lambda*force_p_ptr[n];
-      nu_m_ptr[n] -= 2.0*lambda*force_m_ptr[n];
     } else {
-      nu_p_ptr[n] = 0;
-      nu_m_ptr[n] = 0;
+      force_p_ptr[n] = -nu_p_ptr[n]/lambda;
+      force_m_ptr[n] =  nu_m_ptr[n]/lambda;
     }
   }
 
@@ -1859,6 +1871,9 @@ void my_p4est_scft_t::dsa_update_potentials()
   ierr = VecRestoreArray(nu_m, &nu_m_ptr); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  ierr = VecAXPBYGhost(nu_m, -lambda, 1., force_nu_m); CHKERRXX(ierr);
+  ierr = VecAXPBYGhost(nu_p,  lambda, 1., force_nu_p); CHKERRXX(ierr);
 
   force_nu_p_avg = sqrt(integrate_over_domain_fast_squared(force_nu_p)/volume);
   force_nu_m_avg = sqrt(integrate_over_domain_fast_squared(force_nu_m)/volume);
@@ -1918,11 +1933,13 @@ void my_p4est_scft_t::dsa_compute_shape_gradient(int phi_idx, Vec velo)
 
 //  double kappa_cr = 1.0/(5.0*dxyz_min);
 
-  foreach_local_node(n, nodes)
+  foreach_node(n, nodes)
   {
     density_shape_grad_ptr[n] = SQR(mu_m_ptr[n] - mu_t_ptr[n])/XN
         - 0.5*(zf_ptr[n] + zb_ptr[n])/Q
         - (nu_p_ptr[n] + nu_0 - 2.0*mu_m_ptr[n]*nu_m_ptr[n]/XN);
+
+    density_shape_grad_ptr[n] /= pow(scaling, P4EST_DIM);
 
 //    double kappa_abs = fabs(kappa_ptr[n]);
 
@@ -1940,12 +1957,14 @@ void my_p4est_scft_t::dsa_compute_shape_gradient(int phi_idx, Vec velo)
 //  ierr = VecRestoreArray(kappa[phi_idx], &kappa_ptr); CHKERRXX(ierr);
 
   // sync the derivative among procs
-  ierr = VecGhostUpdateBegin(density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd  (density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // extrapolate from moving moving interface
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, density_shape_grad_tmp, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_from_interface_to_whole_domain_TVD(phi[phi_idx], density_shape_grad_tmp, velo);
+//  ls.extend_Over_Interface_TVD_Full(phi_smooth, density_shape_grad_tmp, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi[phi_idx], density_shape_grad_tmp, velo);
+
+  VecCopyGhost(density_shape_grad_tmp, velo);
 
   ierr = VecDestroy(density_shape_grad_tmp); CHKERRXX(ierr);
 }

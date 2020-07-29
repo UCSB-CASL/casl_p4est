@@ -143,7 +143,7 @@ public:
   void   update_potentials(bool update_mu_m=true, bool update_mu_p=true);
   void   smooth_singularity_in_pressure_field();
 
-  void save_VTK(int compt);
+  void save_VTK(int compt, const char *absolute_path_to_folder=NULL);
 
   double get_energy() { return energy;}
   double get_pressure_force() { return force_p_avg; }
@@ -203,6 +203,7 @@ public:
 
   Vec psi_a;
   Vec psi_b;
+  double psi_avg;
 
   void   dsa_initialize();
   void   dsa_initialize_fields();

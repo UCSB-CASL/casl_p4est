@@ -62,7 +62,7 @@ param_t<bool> track_memory_usage (pl, 1, "track_memory_usage", "");
 // computational domain parameters
 //-------------------------------------
 param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 1, "ny", "Number of trees in the y-direction");
+param_t<int>    ny   (pl, 8, "ny", "Number of trees in the y-direction");
 param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
@@ -70,7 +70,7 @@ param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
 param_t<double> xmax (pl, 1, "xmax", "Box xmax");
-param_t<double> ymax (pl, 1, "ymax", "Box ymax");
+param_t<double> ymax (pl, 8, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
 param_t<double> xc   (pl, .51, "xc", "Centering point x");
@@ -84,8 +84,8 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 7, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -104,8 +104,8 @@ param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 usi
 param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.8,   "cfl_number",      "");
-param_t<double> base_cfl        (pl, 0.5,   "base_cfl",      "");
+param_t<double> cfl_number      (pl, 0.4,   "cfl_number",      "");
+param_t<double> base_cfl        (pl, 0.2,   "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
@@ -117,7 +117,7 @@ param_t<double> proximity_smoothing       (pl, 1.1, "proximity_smoothing",      
 //-------------------------------------
 param_t<bool>   save_characteristics (pl, 1, "save_characteristics", "");
 param_t<bool>   save_dendrites       (pl, 0, "save_dendrites", "");
-param_t<bool>   save_accuracy        (pl, 1, "save_accuracy", "");
+param_t<bool>   save_accuracy        (pl, 0, "save_accuracy", "");
 param_t<bool>   save_timings         (pl, 0, "save_timings", "");
 param_t<bool>   save_params          (pl, 1, "save_params", "");
 param_t<bool>   save_vtk             (pl, 1, "save_vtk", "");
@@ -125,9 +125,9 @@ param_t<bool>   save_vtk_solid       (pl, 1, "save_vtk_solid", "");
 param_t<bool>   save_vtk_analytical  (pl, 0, "save_vtk_analytical", "");
 param_t<bool>   save_p4est           (pl, 1, "save_p4est", "");
 param_t<bool>   save_p4est_solid     (pl, 1, "save_p4est_solid", "");
-param_t<bool>   save_step_convergence(pl, 1, "save_step_convergence", "");
+param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
 
-param_t<int>    save_every_dn (pl, 1, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -150,8 +150,8 @@ param_t<double> thermal_cond_s (pl, 6.07e-1, "thermal_cond_s", "Thermal conducti
 
 param_t<double> latent_heat  (pl, 2350, "latent_heat",  "Latent heat of fusion (pl, J.cm-3");
 
-param_t<bool>   linearized_liquidus (pl, 0, "linearized_liquidus", "Use linearized liquidus surface or true one");
-param_t<bool>   const_part_coeff    (pl, 0, "const_part_coeff",    "Use averaged partition coefficients or true ones");
+param_t<bool>   linearized_liquidus (pl, 1, "linearized_liquidus", "Use linearized liquidus surface or true one");
+param_t<bool>   const_part_coeff    (pl, 1, "const_part_coeff",    "Use averaged partition coefficients or true ones");
 
 param_t<int>    num_comps (pl, 1, "num_comps", "Number of solutes");
 
@@ -203,7 +203,7 @@ double* part_coeff_all[] = { &part_coeff_0.val,
                              &part_coeff_2.val,
                              &part_coeff_3.val };
 
-param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
+param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -216,9 +216,9 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity        (pl, 0.01,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity        (pl, 0.1,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient           (pl, 5000, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
@@ -230,8 +230,8 @@ param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRIC
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 //param_t<int>    step_limit           (pl, 300, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
-param_t<double> growth_limit         (pl, 2, "growth_limit", "");
-param_t<double> init_perturb         (pl, 0.e-10,  "init_perturb",         "");
+param_t<double> growth_limit         (pl, 8, "growth_limit", "");
+param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.1,     "front_location",         "");
@@ -244,12 +244,12 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.02, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.007, "box_size", "Physical width (in x) of the box in cm");
 
-param_t<int>    geometry (pl, -2, "geometry", "-3 - analytical spherical solidification,"
+param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
                                               "-1 - analytical planar solidification,"
-                                             " 0 - directional solidification,"
+                                              " 0 - directional solidification,"
                                               " 1 - growth of a spherical seed in a spherical container,"
                                               " 2 - growth of a spherical film in a spherical container,"
                                               " 3 - radial directional solidification in,"
@@ -321,13 +321,13 @@ void set_alloy_parameters()
       break;
 
     case 2: // Co - 10.7at%W - 9.4at%Al (more realistic since D_W < D_Al)
-      density_l.val       = 9.2392e-3; // kg.cm-3
-      density_s.val       = 9.2392e-3; // kg.cm-3
+      density_l.val       = 9.24e-3; // kg.cm-3
+      density_s.val       = 9.24e-3; // kg.cm-3
       heat_capacity_l.val = 356;       // J.kg-1.K-1
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2588.7;    // J.cm-3
+      latent_heat.val     = 2600;    // J.cm-3
 
       num_comps.val = 2;
 
@@ -336,8 +336,8 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 0*1.0e-5;
-      eps_v.val = 0*5e-2;
+      eps_c.val = 1.0e-5;
+      eps_v.val = 2.e-2;
       eps_a.val = 0*0.05;
       symmetry.val = 4;
 
@@ -357,23 +357,23 @@ void set_alloy_parameters()
       break;
 
     case 3: // Co - 9.4at%Al - 10.7at%W
-      density_l.val       = 9.2392e-3; // kg.cm-3
-      density_s.val       = 9.2392e-3; // kg.cm-3
+      density_l.val       = 9.24e-3; // kg.cm-3
+      density_s.val       = 9.24e-3; // kg.cm-3
       heat_capacity_l.val = 356;       // J.kg-1.K-1
       heat_capacity_s.val = 356;       // J.kg-1.K-1
       thermal_cond_l.val  = 1.3;       // W.cm-1.K-1
       thermal_cond_s.val  = 1.3;       // W.cm-1.K-1
-      latent_heat.val     = 2588.7;    // J.cm-3
+      latent_heat.val     = 2600;    // J.cm-3
 
       num_comps.val = 2;
 
-      solute_diff_0.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
-      solute_diff_1.val    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_0.val    = 2e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1.val    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
       initial_conc_0.val   = 0.094;    // at frac.
       initial_conc_1.val   = 0.107;    // at frac.
 
-      eps_c.val = 0*2.7207e-5;
-      eps_v.val = 0*2.27e-2;
+      eps_c.val = 1.0e-5;
+      eps_v.val = 0*2.e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
 
@@ -977,7 +977,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return -(y - front_location());
+      case 0: return -(y - front_location()) + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.25))  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));

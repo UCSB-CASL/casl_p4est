@@ -604,11 +604,11 @@ void my_p4est_multialloy_t::update_grid()
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 //  sl.set_velo_interpolation(linear);
 
-//  if (num_time_layers_ == 2) {
+  if (num_time_layers_ == 2) {
     sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
-//  } else {
-//    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
-//  }
+  } else {
+    sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+  }
 
   /* interpolate the quantities onto the new grid */
   // also shifts n+1 -> n
@@ -1885,9 +1885,35 @@ void my_p4est_multialloy_t::regularize_front()
     front_phi_cur.restore_array();
     front_phi_tmp.restore_array();
     front_phi_tmp.destroy();
-
-    ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(ierr);
   }
+
+  if (proximity_smoothing_ != 0) {
+    // shift level-set upwards and reinitialize
+    my_p4est_level_set_t ls(ngbd_cur);
+    vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
+    double shift = -0.1*dxyz_min_*proximity_smoothing_;
+    VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
+    VecShiftGhost(front_phi_tmp.vec, shift);
+
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+    VecShiftGhost(front_phi_tmp.vec, -shift);
+
+    // "solidify" nodes that changed sign
+    front_phi_cur.get_array();
+    front_phi_tmp.get_array();
+
+    foreach_node(n, nodes_) {
+      if (front_phi_cur.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
+        front_phi_cur.ptr[n] = front_phi_tmp.ptr[n];
+        num_nodes_smoothed++;
+      }
+    }
+
+    front_phi_cur.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+  }
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(ierr);
 
   vec_and_ptr_t front_phi_tmp;
   front_phi_tmp.set(front_phi_cur.vec);

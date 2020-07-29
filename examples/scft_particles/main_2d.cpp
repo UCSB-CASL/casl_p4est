@@ -97,13 +97,15 @@ param_t<int> nz (pl, 1, "nz", "number of trees in z-dimension");
 param_t<int> lmin (pl, 7, "lmin", "min level of trees");
 param_t<int> lmax (pl, 7, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 7, "lmin", "min level of trees");
-param_t<int> lmax (pl, 7, "lmax", "max level of trees");
+param_t<int> lmin (pl, 5, "lmin", "min level of trees");
+param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #endif
-param_t<double> lip (pl, 1.1, "lip", "Lipschitz constant");
+param_t<double> lip (pl, 1.2, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
 param_t<bool>   refine_only_inside (pl, 1, "refine_only_inside", "Refine only inside");
 
+//param_t<double> resolution (pl, 0.1, "resolution", "desired mesh size in Rg");
+//param_t<int>    ladd (pl, 0, "lmax", "max level of trees");
 
 // advection parameters
 param_t<double> cfl                     (pl, 1.0,    "cfl", "CFL number");
@@ -125,10 +127,10 @@ param_t<double> scft_tol            (pl, 1.e-4, "scft_tol", "Tolerance for SCFT"
 param_t<double> scft_bc_tol         (pl, 1.e-3, "scft_bc_tol", "Tolerance for adjusting BC");
 
 // polymer
-param_t<double> box_size (pl, 2.34, "box_size", "Box size in units of Rg");
+param_t<double> box_size (pl, 4.9, "box_size", "Box size in units of Rg");
 param_t<double> f        (pl, .5, "f", "Fraction of polymer A");
-param_t<double> XN       (pl, 20, "XN", "Flory-Higgins interaction parameter");
-param_t<int>    ns       (pl, 40, "ns", "Discretization of polymer chain");
+param_t<double> XN       (pl, 30, "XN", "Flory-Higgins interaction parameter");
+param_t<int>    ns       (pl, 60, "ns", "Discretization of polymer chain");
 
 // output parameters
 param_t<bool> save_vtk        (pl, 1, "save_vtk", "");
@@ -138,35 +140,35 @@ param_t<int>  save_every_dn   (pl, 1, "save_every_dn", ""); // for vtk
 
 // problem setting
 
-param_t<int>    geometry_ptcl (pl, 2, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
-param_t<int>    geometry_free (pl, 0, "geometry_free", "Initial polymer shape: 0 - drop (pl, 1 - film (pl, 2 - combination");
+param_t<int>    geometry_ptcl (pl, 4, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    geometry_free (pl, 1, "geometry_free", "Initial polymer shape: 0 - drop, 1 - film, 2 - combination");
 param_t<int>    geometry_wall (pl, 0, "geometry_wall", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
 
-param_t<bool>   minimize (pl, 0, "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    velocity (pl, 3, "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    rotation (pl, 1, "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<bool>   minimize  (pl, 1, "minimize", "Turn on/off energy minimization (0/1)");
+param_t<int>    ptcl_velo (pl, 3, "ptcl_velo", "Predifined velocity field for particles in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    ptcl_rotn (pl, 1, "ptcl_rotn", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    free_velo (pl, 1, "free_velo", "Predifined velocity field for free surface in case of minimize=0: 0 - nothing, 1 - oscillations");
 
 param_t<int>    wall_pattern (pl, 0, "wall_pattern", "Wall chemical pattern: 0 - no pattern");
-param_t<int>    n_seed       (pl, 2, "n_seed", "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots");
+param_t<int>    n_seed       (pl, 1, "n_seed", "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots");
 param_t<int>    n_example    (pl, 0, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
-param_t<double> pairwise_potential_mag   (pl, 1.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
+param_t<double> pairwise_potential_mag   (pl, 2.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
 param_t<double> pairwise_potential_width (pl, 5, "pairwise_potential_width", "Width of pairwise potential");
 
 // surface energies
-param_t<double> gamma_a  (pl, 0, "gamma_a" , "Surface tension of A block");
-param_t<double> gamma_b  (pl, 2, "gamma_b" , "Surface tension of B block");
-
 param_t<int> wall_energy_type (pl, 1, "wall_energy_type", "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) (pl, 1 - through contact angles (i.e. convert angles to XN)");
 
-param_t<double> XN_air_avg (pl, 2.0, "XN_air_avg", "Polymer-air surface energy strength: average");
-param_t<double> XN_air_del (pl, 0.5, "XN_air_del", "Polymer-air surface energy strength: difference");
+param_t<double> XN_free_avg     (pl, 5.0, "XN_free_avg", "Polymer-air surface energy strength: average");
+param_t<double> XN_free_dif     (pl, 0.5, "XN_free_dif", "Polymer-air surface energy strength: difference");
+param_t<double> XN_ptcl_dif_max (pl, 5.0, "XN_ptcl_dif_max", "Polymer-particle surface energy strength: difference");
+param_t<double> XN_ptcl_dif_min (pl,-5.0, "XN_ptcl_dif_min", "Polymer-particle surface energy strength: difference");
 
-param_t<double> angle_A_min (pl, 90, "angle_A_min", "Minimum contact angle for A-block");
-param_t<double> angle_A_max (pl, 90, "angle_A_max", "Maximum contact angle for A-block");
-param_t<double> angle_B_min (pl, 90, "angle_B_min", "Minimum contact angle for B-block");
-param_t<double> angle_B_max (pl, 90, "angle_B_max", "Maximum contact angle for B-block");
+param_t<double> angle_A_min (pl, 170, "angle_A_min", "Minimum contact angle for A-block");
+param_t<double> angle_A_max (pl, 170, "angle_A_max", "Maximum contact angle for A-block");
+param_t<double> angle_B_min (pl, 170, "angle_B_min", "Minimum contact angle for B-block");
+param_t<double> angle_B_max (pl, 170, "angle_B_max", "Maximum contact angle for B-block");
 
 param_t<double> XN_wall_A_min (pl, 5, "XN_wall_A_min", "Minimum Polymer-wall interaction strength for A-block");
 param_t<double> XN_wall_A_max (pl, 5, "XN_wall_A_max", "Maximum Polymer-wall interaction strength for A-block");
@@ -174,7 +176,7 @@ param_t<double> XN_wall_B_min (pl, 8, "XN_wall_B_min", "Minimum Polymer-wall int
 param_t<double> XN_wall_B_max (pl, 8, "XN_wall_B_max", "Maximum Polymer-wall interaction strength for B-block");
 
 // geometry parameters
-param_t<double> drop_r      (pl, 0.611,  "drop_r", "");
+param_t<double> drop_r      (pl, 3.05111,  "drop_r", "");
 param_t<double> drop_x      (pl, .0079,  "drop_x", "");
 param_t<double> drop_y      (pl, -.013,  "drop_y", "");
 param_t<double> drop_z      (pl, .0,     "drop_z", "");
@@ -196,7 +198,7 @@ param_t<double> wall_nx  (pl, -0,   "wall_nx", "");
 param_t<double> wall_ny  (pl, -1,   "wall_ny", "");
 param_t<double> wall_nz  (pl, -0,   "wall_nz", "");
 param_t<double> wall_x   (pl, .0,   "wall_x", "");
-param_t<double> wall_y   (pl, -.3,  "wall_y", "");
+param_t<double> wall_y   (pl, -.0003,  "wall_y", "");
 param_t<double> wall_z   (pl, .0,   "wall_z", "");
 param_t<double> wall_r   (pl, 2.5,   "wall_r", "");
 
@@ -206,23 +208,35 @@ param_t<double> well_h (pl, .50,    "well_h", "Well geometry: depth");
 param_t<double> well_w (pl, 0.77,   "well_w", "Well geometry: width");
 param_t<double> well_r (pl, 0.10,   "well_r", "Well geometry: corner smoothing");
 
+param_t<int> num_ptcl_x (pl, 5, "num_ptcl_x", "");
+param_t<int> num_ptcl_y (pl, 5, "num_ptcl_y", "");
+param_t<double> initial_rotation (pl, 0.25*PI, "initial_rotation", "");
+param_t<double> rod_radius (pl, 0.2, "rod_radius", "");
+param_t<double> rod_length (pl, 0.0, "rod_length", "");
+
+inline double lam_bulk_period()
+{
+  return 4.*pow(8.*XN()/3./pow(PI,4.),1./6.);
+//  return 4.*pow(8.*XN()/3./pow(PI,4.),1./6.)/box_size();
+}
+
 void set_wall_surface_energies()
 {
   switch (wall_energy_type()) {
     case 0:
 
-      angle_A_min.val = 180.*acos( SIGN(XN_wall_A_max.val) * sqrt(XN_wall_A_max.val / (XN_air_avg.val+XN_air_del.val)) )/PI;
-      angle_A_max.val = 180.*acos( SIGN(XN_wall_A_min.val) * sqrt(XN_wall_A_min.val / (XN_air_avg.val+XN_air_del.val)) )/PI;
-      angle_B_min.val = 180.*acos( SIGN(XN_wall_B_max.val) * sqrt(XN_wall_B_max.val / (XN_air_avg.val-XN_air_del.val)) )/PI;
-      angle_B_max.val = 180.*acos( SIGN(XN_wall_B_min.val) * sqrt(XN_wall_B_min.val / (XN_air_avg.val-XN_air_del.val)) )/PI;
+      angle_A_min.val = 180.*acos( SIGN(XN_wall_A_max.val) * sqrt(XN_wall_A_max.val / (XN_free_avg.val+XN_free_dif.val)) )/PI;
+      angle_A_max.val = 180.*acos( SIGN(XN_wall_A_min.val) * sqrt(XN_wall_A_min.val / (XN_free_avg.val+XN_free_dif.val)) )/PI;
+      angle_B_min.val = 180.*acos( SIGN(XN_wall_B_max.val) * sqrt(XN_wall_B_max.val / (XN_free_avg.val-XN_free_dif.val)) )/PI;
+      angle_B_max.val = 180.*acos( SIGN(XN_wall_B_min.val) * sqrt(XN_wall_B_min.val / (XN_free_avg.val-XN_free_dif.val)) )/PI;
 
       break;
     case 1:
 
-      XN_wall_A_max.val = (XN_air_avg.val+XN_air_del.val)*SIGN(cos(angle_A_min.val*PI/180.))*SQR(cos(angle_A_min.val*PI/180.));
-      XN_wall_A_min.val = (XN_air_avg.val+XN_air_del.val)*SIGN(cos(angle_A_max.val*PI/180.))*SQR(cos(angle_A_max.val*PI/180.));
-      XN_wall_B_max.val = (XN_air_avg.val-XN_air_del.val)*SIGN(cos(angle_B_min.val*PI/180.))*SQR(cos(angle_B_min.val*PI/180.));
-      XN_wall_B_min.val = (XN_air_avg.val-XN_air_del.val)*SIGN(cos(angle_B_max.val*PI/180.))*SQR(cos(angle_B_max.val*PI/180.));
+      XN_wall_A_max.val = (XN_free_avg.val+XN_free_dif.val)*SIGN(cos(angle_A_min.val*PI/180.))*SQR(cos(angle_A_min.val*PI/180.));
+      XN_wall_A_min.val = (XN_free_avg.val+XN_free_dif.val)*SIGN(cos(angle_A_max.val*PI/180.))*SQR(cos(angle_A_max.val*PI/180.));
+      XN_wall_B_max.val = (XN_free_avg.val-XN_free_dif.val)*SIGN(cos(angle_B_min.val*PI/180.))*SQR(cos(angle_B_min.val*PI/180.));
+      XN_wall_B_min.val = (XN_free_avg.val-XN_free_dif.val)*SIGN(cos(angle_B_max.val*PI/180.))*SQR(cos(angle_B_max.val*PI/180.));
 
       break;
     default:
@@ -246,7 +260,7 @@ class gamma_Aa_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_air_avg()+XN_air_del());
+    return sqrt(XN_free_avg()+.5*XN_free_dif());
   }
 } gamma_Aa_cf;
 
@@ -255,7 +269,7 @@ class gamma_Ba_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_air_avg()-XN_air_del());
+    return sqrt(XN_free_avg()-.5*XN_free_dif());
   }
 } gamma_Ba_cf;
 
@@ -284,6 +298,11 @@ public:
     }
   }
 } gamma_Bw_cf;
+
+double gamma_Ap_max() { return sqrt( MAX(0.0,  XN_ptcl_dif_max()) ); }
+double gamma_Ap_min() { return sqrt( MAX(0.0,  XN_ptcl_dif_min()) ); }
+double gamma_Bp_max() { return sqrt( MAX(0.0, -XN_ptcl_dif_max()) ); }
+double gamma_Bp_min() { return sqrt( MAX(0.0, -XN_ptcl_dif_min()) ); }
 
 class gamma_aw_cf_t : public CF_DIM
 {
@@ -352,15 +371,16 @@ public:
                       (z-film_z())*film_eps() - film_nz() / norm)  + 1. )
              + film_perturb()*cos(PI*x*(lmax()-2));
       }
+      case 3: return MAX( cos((angle_A_max()-90)*PI/180)*(x-drop_x()) + sin((angle_A_max()-90)*PI/180)*(y-drop_y()-drop_r()),
+                         -cos((angle_A_max()-90)*PI/180)*(x-drop_x()) + sin((angle_A_max()-90)*PI/180)*(y-drop_y()-drop_r()));
+      case 4: return MIN( (y-wall_y()-.5*lam_bulk_period()),
+                          MAX((y-wall_y()-1.*lam_bulk_period()), fabs(x-.5*(xmax()+xmin())) - .25*(xmax()-xmin())),
+                          MAX((y-wall_y()-1.5*lam_bulk_period()), fabs(x-.5*(xmax()+xmin())) - .125*(xmax()-xmin())));
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
 } phi_free_cf;
 
-inline double lam_bulk_period()
-{
-  return 2.*pow(8.*XN()/3./pow(PI,4.),1./6.)/box_size();
-}
 
 class mu_cf_t : public CF_DIM
 {
@@ -377,7 +397,7 @@ public:
       }
       case 3: {
         double ny = (ymax()-ymin())/lam_bulk_period(); if (py() == 1) ny = round(ny);
-        return .5*XN()*cos(2.*PI*y/(ymax()-ymin())*ny);
+        return .5*XN()*sin(2.*PI*y/(ymax()-ymin())*ny);
       }
       case 4: {
         double nx = .5*(xmax()-xmin())/lam_bulk_period(); if (px() == 1) nx = round(nx);
@@ -638,68 +658,6 @@ double pairwise_force(double r)
   }
 }
 
-class penalization_cf_t : public CF_DIM
-{
-private:
-  std::vector<particle_t> *particles;
-
-public:
-
-  penalization_cf_t(std::vector<particle_t> &particles)
-    : particles(&particles) {}
-
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    int np = particles->size();
-    vector<double> phi_ptcl(np);
-
-    int i_min = 0, i_max = 0;
-    int j_min = 0, j_max = 0;
-    int k_min = 0, k_max = 0;
-
-    for (int n = 0; n < np; ++n)
-    {
-      phi_ptcl[n] = -100;
-      XCODE( if (px()) { x < particles->at(n).xyz[0] ? i_max = 1 : i_min = -1; } );
-      YCODE( if (py()) { y < particles->at(n).xyz[1] ? j_max = 1 : j_min = -1; } );
-      ZCODE( if (pz()) { z < particles->at(n).xyz[2] ? k_max = 1 : k_min = -1; } );
-
-      for (int k = k_min; k <= k_max; ++k)
-        for (int j = j_min; j <= j_max; ++j)
-          for (int i = i_min; i <= i_max; ++i)
-          {
-            phi_ptcl[n] = MAX(phi_ptcl[n],
-                                   particles->at(n).phi(DIM(x+double(i)*(xmax()-xmin()),
-                                                            y+double(j)*(ymax()-ymin()),
-                                                            z+double(k)*(zmax()-zmin()))));
-          }
-    }
-
-    int particle_num = 0;
-    for (int n = 1; n < np; n++)
-    {
-      if (phi_ptcl[particle_num] < phi_ptcl[n])
-      {
-        particle_num = n;
-      }
-    }
-
-    double sum = 0;
-
-
-    for (int n = 0; n < np; n++)
-    {
-      if (n != particle_num)
-      {
-        sum += pairwise_potential(fabs(phi_ptcl[n])-pairwise_potential_width());
-      }
-    }
-
-    return sum;
-  }
-};
-
-
 class radial_gamma_cf_t : public CF_DIM
 {
   double gamma_max;
@@ -751,8 +709,8 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       static radial_shaped_domain_t domain(0.2, DIM(0,0,0), -1, 3, 0.0, 0.0);
 //      static capsule_domain_t domain(0.2, DIM(0,0,0), 0.0, -1);
 
-      static radial_gamma_t gA(gamma_a(), gamma_a(), 1);
-      static radial_gamma_t gB(gamma_b(), gamma_b(), 1);
+      static radial_gamma_t gA(gamma_Ap_min(), gamma_Ap_max(), 0);
+      static radial_gamma_t gB(gamma_Bp_min(), gamma_Bp_max(), 0);
 
       p.phi_cf   = &domain.phi;
       p.phix_cf  = &domain.phi_x;
@@ -777,14 +735,14 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       static radial_shaped_domain_t star(0.2, DIM(0,0,0), -1, 3, 0.3, 0.0);
       static capsule_domain_t capsule(0.1, DIM(0,0,0), 0.3, -1);
 
-      static radial_gamma_t sphere_gA(0, gamma_a(), 1);
-      static radial_gamma_t sphere_gB(-gamma_b(), gamma_b(), 1);
+      static radial_gamma_t sphere_gA(gamma_Ap_min(), gamma_Ap_max(), 1);
+      static radial_gamma_t sphere_gB(gamma_Bp_min(), gamma_Bp_max(), 1);
 
-      static radial_gamma_t capsule_gA(0, gamma_a(), 0);
-      static radial_gamma_t capsule_gB(-gamma_b(), gamma_b(), 0);
+      static radial_gamma_t capsule_gA(gamma_Ap_min(), gamma_Ap_max(), 0);
+      static radial_gamma_t capsule_gB(gamma_Bp_min(), gamma_Bp_max(), 0);
 
-      static radial_gamma_t star_gA(0, gamma_a(), 3);
-      static radial_gamma_t star_gB(-gamma_b(), gamma_b(), 3);
+      static radial_gamma_t star_gA(gamma_Ap_min(), gamma_Ap_max(), 3);
+      static radial_gamma_t star_gB(gamma_Bp_min(), gamma_Bp_max(), 3);
 
       p.phi_cf   = &sphere.phi;   p.gA_cf  = &sphere_gA.val; p.gB_cf  = &sphere_gB.val;
       p.phix_cf  = &sphere.phi_x; p.gAx_cf = &sphere_gA.ddx; p.gBx_cf = &sphere_gB.ddx;
@@ -809,10 +767,10 @@ void initalize_ptcl(std::vector<particle_t> &particles)
     case 3: // perturbed grid of spheres
     {
       static radial_shaped_domain_t sphere(0.05, DIM(0,0,0), -1, 0, 0.0, 0.0);
-      static radial_gamma_t gA(0, gamma_a(), 1);
-      static radial_gamma_t gB(0, gamma_b(), 1);
-      int n = 10;
-      int m = 10;
+      static radial_gamma_t gA(gamma_Ap_min(), gamma_Ap_max(), 1);
+      static radial_gamma_t gB(gamma_Bp_min(), gamma_Bp_max(), 1);
+      int n = num_ptcl_x.val;
+      int m = num_ptcl_y.val;
 
       p.phi_cf   = &sphere.phi;
       p.phix_cf  = &sphere.phi_x;
@@ -837,16 +795,51 @@ void initalize_ptcl(std::vector<particle_t> &particles)
     }
     break;
 
+    case 4: // perturbed grid of capsules
+    {
+      static capsule_domain_t capsule(rod_radius.val, DIM(0,0,0), rod_length.val, -1);
+      static radial_gamma_t gA(gamma_Ap_min(), gamma_Ap_max(), 1);
+      static radial_gamma_t gB(gamma_Bp_min(), gamma_Bp_max(), 1);
+      int n = num_ptcl_x.val;
+      int m = num_ptcl_y.val;
+
+      p.phi_cf   = &capsule.phi;
+      p.phix_cf  = &capsule.phi_x;
+      p.phiy_cf  = &capsule.phi_y;
+      p.kappa_cf = &capsule.phi_c;
+
+      p.gA_cf  = &gA.val;
+      p.gAx_cf = &gA.ddx;
+      p.gAy_cf = &gA.ddy;
+
+      p.gB_cf  = &gB.val;
+      p.gBx_cf = &gB.ddx;
+      p.gBy_cf = &gB.ddy;
+
+      double space_x = (nx.val == 1 ? (xmax()-xmin())/double(n) : (xmax()-xmin())/double(n))*0.4;
+      double space_y = (ny.val == 1 ? (xmax()-xmin())/double(m) : (xmax()-xmin())/double(m))*0.4;
+
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < m; ++j)
+        {
+          p.xyz[0] = .5*(xmin()+xmax()) + double(i-n/2)*space_x + double(1-n%2)*.5*space_x;
+          p.xyz[1] = .5*(ymin()+ymax()) + double(j-m/2)*space_y + double(1-m%2)*.5*space_y;
+          p.rot = initial_rotation.val;
+          particles.push_back(p);
+        }
+    }
+    break;
+
     default: throw;
   }
 }
 
-class vx_cf_t : public CF_DIM
+class ptcl_vx_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (velocity())
+    switch (ptcl_velo())
     {
       case -1: return 0;
       case 0: return 1;
@@ -857,14 +850,14 @@ public:
         throw;
     }
   }
-} vx_cf;
+} ptcl_vx_cf;
 
-class vy_cf_t : public CF_DIM
+class ptcl_vy_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (velocity())
+    switch (ptcl_velo())
     {
       case -1: return 0;
       case 0: return 0;
@@ -875,14 +868,14 @@ public:
         throw;
     }
   }
-} vy_cf;
+} ptcl_vy_cf;
 
-class wz_cf_t : public CF_DIM
+class ptcl_wz_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (rotation())
+    switch (ptcl_rotn())
     {
       case 0: return  0;
       case 1: return  1;
@@ -892,14 +885,44 @@ public:
         throw;
     }
   }
-} wz_cf;
+} ptcl_wz_cf;
 
-class gamma_Aa_all_cf_t : public CF_DIM
+class free_vx_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (free_velo())
+    {
+      case 0: return 0;
+      case 1: return x*cos(5.*t);
+      default:
+        throw;
+    }
+  }
+} free_vx_cf;
+
+class free_vy_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (free_velo())
+    {
+      case 0: return 0;
+      case 1: return -y*cos(5.*t);
+      default:
+        throw;
+    }
+  }
+} free_vy_cf;
+
+class gamma_Ap_cf_t : public CF_DIM
 {
   std::vector<particle_t> *particles;
   CF_DIM *number;
 public:
-  gamma_Aa_all_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
+  gamma_Ap_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
     : particles(&particles), number(&number) {}
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -907,12 +930,12 @@ public:
   }
 };
 
-class gamma_Ba_all_cf_t : public CF_DIM
+class gamma_Bp_cf_t : public CF_DIM
 {
   std::vector<particle_t> *particles;
   CF_DIM *number;
 public:
-  gamma_Ba_all_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
+  gamma_Bp_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
     : particles(&particles), number(&number) {}
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -957,8 +980,15 @@ int main (int argc, char* argv[])
 
   set_wall_surface_energies();
 
-  double scaling = 1./box_size();
+  double scaling = 1.;
   pairwise_potential_width.val *= (xmax()-xmin())/pow(2.,lmax());
+  EXECD(xmin.val *= box_size(), ymin.val *= box_size(), zmin.val *= box_size());
+  EXECD(xmax.val *= box_size(), ymax.val *= box_size(), zmax.val *= box_size());
+
+  lmin.val = lmin.val +round(log(box_size())/log(2.));
+  lmax.val = lmax.val +round(log(box_size())/log(2.));
+
+//  std::cout<< .5*lam_bulk_period() << " "; throw;
 
   // ------------------------------------------------------------------------------------------------------------------
   // prepare output directories
@@ -1021,7 +1051,8 @@ int main (int argc, char* argv[])
   phi_ptcl_cf_t phi_ptcl_cf(particles);
   particles_number_cf_t particles_number_cf(particles);
 
-  phi_effe_cf_t phi_effe_cf(phi_ptcl_cf, phi_wall_cf, phi_free_cf);
+  gamma_Ap_cf_t gamma_Ap_cf(particles, particles_number_cf);
+  gamma_Bp_cf_t gamma_Bp_cf(particles, particles_number_cf);
 
   // ------------------------------------------------------------------------------------------------------------------
   // create initial grid
@@ -1035,6 +1066,7 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
   p4est_t              *p4est        = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
+  phi_effe_cf_t phi_effe_cf(phi_ptcl_cf, phi_wall_cf, phi_free_cf);
   splitting_criteria_cf_t data(lmin(), lmax(), &phi_effe_cf, lip(), band());
   data.set_refine_only_inside(true);
 
@@ -1146,16 +1178,14 @@ int main (int argc, char* argv[])
     }
   }
 
-  double energy_old = 0;
-  double rho_old    = 1;
-
-  vector< vector<double> > v_old(P4EST_DIM, vector<double> (np,0));
-  vector<double> w_old(np, 0);
-
-
   // ------------------------------------------------------------------------------------------------------------------
   // main loop
   // ------------------------------------------------------------------------------------------------------------------
+  double energy_old = 0;
+  double rho_old    = 1;
+  vector< vector<double> > v_old(P4EST_DIM, vector<double> (np,0));
+  vector<double> w_old(np, 0);
+
   int iteration = 0;
   while (iteration < max_iterations())
   {
@@ -1287,7 +1317,6 @@ int main (int argc, char* argv[])
       if (geometry_free() != 0) ls.reinitialize_2nd_order(phi_free);
       if (geometry_wall() != 0) ls.reinitialize_2nd_order(phi_wall);
     }
-    sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
 
     // ------------------------------------------------------------------------------------------------------------------
     // allocate fields
@@ -1299,7 +1328,7 @@ int main (int argc, char* argv[])
     double *normal_wall_ptr[P4EST_DIM];
 
     Vec     mu_m_grad    [P4EST_DIM];
-    double *mu_m_grad_ptr[P4EST_DIM];
+//    double *mu_m_grad_ptr[P4EST_DIM];
 
     Vec     kappa;
     double *kappa_ptr;
@@ -1311,16 +1340,16 @@ int main (int argc, char* argv[])
     double *shape_grad_ptcl_ptr;
 
     Vec     shape_grad_free_full;
-    double *shape_grad_free_full_ptr;
+//    double *shape_grad_free_full_ptr;
 
     Vec     tmp;
-    double *tmp_ptr;
+//    double *tmp_ptr;
 
     Vec     surf_tns;
     double *surf_tns_ptr;
 
     Vec     surf_tns_grad    [P4EST_DIM];
-    double *surf_tns_grad_ptr[P4EST_DIM];
+//    double *surf_tns_grad_ptr[P4EST_DIM];
 
     Vec     cos_angle;
     double *cos_angle_ptr;
@@ -1335,7 +1364,7 @@ int main (int argc, char* argv[])
     double *particles_number_ptr;
 
     Vec     integrand;
-    double *integrand_ptr;
+//    double *integrand_ptr;
 
     foreach_dimension(dim)
     {
@@ -1359,6 +1388,7 @@ int main (int argc, char* argv[])
     ierr = VecDuplicate(mu_m, &integrand);            CHKERRXX(ierr);
 
     sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
+    sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
 
     // ------------------------------------------------------------------------------------------------------------------
     // prepare integration tool
@@ -1449,12 +1479,9 @@ int main (int argc, char* argv[])
       my_p4est_scft_t scft(ngbd, ns());
 
       // set geometry
-      gamma_Aa_all_cf_t gamma_Aa_all(particles, particles_number_cf);
-      gamma_Ba_all_cf_t gamma_Ba_all(particles, particles_number_cf);
-
       scft.add_boundary(phi_free, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
       scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
-      scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Aa_all, gamma_Ba_all);
+      scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf);
 
       scft.set_scaling(scaling);
       scft.set_polymer(f(), XN());
@@ -1465,8 +1492,13 @@ int main (int argc, char* argv[])
       Vec mu_p_tmp = scft.get_mu_p();
 
       ierr = VecCopyGhost(mu_m, mu_m_tmp); CHKERRXX(ierr);
-//      ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
       ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+//      if (iteration % 1 == 0) {
+//        ierr = PetscPrintf(mpi.comm(), "Pressure is reset\n");
+//        ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+//      } else {
+//        ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
+//      }
 
       // initialize diffusion solvers for propagators
       scft.initialize_solvers();
@@ -1474,69 +1506,31 @@ int main (int argc, char* argv[])
 
       // main loop for solving SCFT equations
       int    scft_iteration = 0;
-      int    bc_iters       = 0;
       double scft_error     = 2.*scft_tol()+1.;
-      int    pressure_resets = 0;
-      smooth_pressure.val = true;
-      while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol()) ||
-             (scft_iteration < bc_adjust_min()+1))
-      {
-        for (int i=3;i--;) {
+      while (scft_iteration < max_scft_iterations() && scft_error > scft_tol()) {
+        for (int i=2;i--;) {
           scft.initialize_bc_smart(adaptive); adaptive = true;
           scft.solve_for_propogators();
           scft.calculate_densities();
-//          scft.save_VTK(scft_iteration++);
           ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
                              scft_iteration,
                              scft.get_energy(),
                              scft.get_pressure_force(),
                              scft.get_exchange_force()); CHKERRXX(ierr);
         }
+
         // do an SCFT step
-//        scft.solve_for_propogators();
-//        scft.calculate_densities();
         scft.update_potentials();
         scft.save_VTK(scft_iteration);
 
-//        if (scft.get_exchange_force() < scft_bc_tol() && bc_iters >= bc_adjust_min())
-//        {
-//          scft.initialize_bc_smart();
-////          if (smooth_pressure())
-////          {
-////            scft.smooth_singularity_in_pressure_field();
-////            smooth_pressure.val = false;
-////          }
-//          if (pressure_resets < 1)
-//          {
-//            scft.smooth_singularity_in_pressure_field();
-//            pressure_resets++;
-
-//            double pressure_force = scft.get_pressure_force();
-//            while (scft.get_pressure_force() >= pressure_force) {
-//              scft.solve_for_propogators();
-//              scft.calculate_densities();
-//              scft.update_potentials(false, true);
-
-//              ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
-//                                 scft_iteration,
-//                                 scft.get_energy(),
-//                                 scft.get_pressure_force(),
-//                                 scft.get_exchange_force()); CHKERRXX(ierr);
-//            }
-//          }
-//          bc_iters = 0;
-//        }
-
-        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e%s\n",
+        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
                            scft_iteration,
                            scft.get_energy(),
                            scft.get_pressure_force(),
-                           scft.get_exchange_force(),
-                           bc_iters == 0 ? " (bc)" : ""); CHKERRXX(ierr);
+                           scft.get_exchange_force()); CHKERRXX(ierr);
 
         scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
         scft_iteration++;
-        bc_iters++;
       }
 
       energy  = scft.get_energy();
@@ -1544,23 +1538,17 @@ int main (int argc, char* argv[])
       rho_old = rho_avg;
 
       scft.sync_and_extend();
-      if (geometry_free() != 0)
-      {
+      if (geometry_free() != 0) {
         scft.compute_energy_shape_derivative(0, shape_grad_free);
         ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, mu_m, 50, phi_wall);
-      }
-      else
-      {
+      } else {
         ierr = VecSetGhost(shape_grad_free, 0); CHKERRXX(ierr);
       }
 
-      if (geometry_ptcl() != 0)
-      {
+      if (geometry_ptcl() != 0) {
         scft.compute_energy_shape_derivative(2, shape_grad_ptcl);
         ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_ptcl, shape_grad_ptcl, mu_m, 50, phi_wall);
-      }
-      else
-      {
+      } else {
         ierr = VecSetGhost(shape_grad_ptcl, 0); CHKERRXX(ierr);
       }
 
@@ -1674,9 +1662,32 @@ int main (int argc, char* argv[])
       // ------------------------------------------------------------------------------------------------------------------
       // select free surface velocity
       // ------------------------------------------------------------------------------------------------------------------
-      VecCopyGhost(shape_grad_free,      velo_free);
-      VecCopyGhost(shape_grad_free_full, velo_free_full);
+      if (minimize()) {
+        VecCopyGhost(shape_grad_free,      velo_free);
+        VecCopyGhost(shape_grad_free_full, velo_free_full);
+      } else {
+        ierr = VecGetArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
+        foreach_dimension(dim) {
+          ierr = VecGetArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
+        }
 
+        foreach_node(n, nodes) {
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+          velo_free_ptr[n] = SUMD(normal_free_ptr[0][n]*free_vx_cf.value(xyz),
+              normal_free_ptr[1][n]*free_vy_cf.value(xyz),
+              normal_free_ptr[2][n]*free_vz_cf.value(xyz));
+        }
+
+        ierr = VecRestoreArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
+        foreach_dimension(dim) {
+          ierr = VecRestoreArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
+        }
+        ierr = VecCopyGhost(velo_free, velo_free_full); CHKERRXX(ierr);
+      }
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // make sure velocity is mass conserving
+      // ------------------------------------------------------------------------------------------------------------------
       double vn_avg = integration.integrate_over_interface(0, velo_free_full)/integration.measure_of_interface(0);
 
       VecShiftGhost(velo_free, -vn_avg);
@@ -2029,10 +2040,10 @@ int main (int argc, char* argv[])
       {
         for(int i = 0; i < np; i++)
         {
-          switch (1)
+          switch (0)
           {
             case 0:
-              v[0][i] = -g[0][i];
+              v[0][i] = -g[0][i]*0;
               v[1][i] = -g[1][i];
               w[i] = -gw[i];
             case 1:
@@ -2046,9 +2057,9 @@ int main (int argc, char* argv[])
       {
         for(int i = 0; i < np; i++)
         {
-          v[0][i] = vx_cf(particles[i].xyz[0], particles[i].xyz[1]);
-          v[1][i] = vy_cf(particles[i].xyz[0], particles[i].xyz[1]);
-          w[i]    = wz_cf(particles[i].xyz[0], particles[i].xyz[1]);
+          v[0][i] = ptcl_vx_cf(particles[i].xyz[0], particles[i].xyz[1]);
+          v[1][i] = ptcl_vy_cf(particles[i].xyz[0], particles[i].xyz[1]);
+          w[i]    = ptcl_wz_cf(particles[i].xyz[0], particles[i].xyz[1]);
         }
       }
       v_old = v;
@@ -2122,12 +2133,11 @@ int main (int argc, char* argv[])
       }
     }
 
-    //    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
-    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
-
     // ------------------------------------------------------------------------------------------------------------------
     // save data
     // ------------------------------------------------------------------------------------------------------------------
+    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
+
     if (save_data())
     {
       ierr = PetscFOpen  (mpi.comm(), file_conv_name, "a", &file_conv); CHKERRXX(ierr);
@@ -2397,7 +2407,13 @@ int main (int argc, char* argv[])
       int splits = 1;
       for (int i = 0; i < splits; ++i)
       {
-        ls.advect_in_normal_direction_with_contact_angle(velo_free, surf_tns, cos_angle, phi_wall, phi_free, dt_free/double(splits));
+        if (minimize()) {
+          ls.advect_in_normal_direction_with_contact_angle(velo_free, surf_tns, cos_angle, phi_wall, phi_free, dt_free/double(splits));
+        } else {
+          ls.advect_in_normal_direction(velo_free, phi_free, dt_free/double(splits));
+          free_vx_cf.t += dt_free/double(splits);
+          free_vy_cf.t += dt_free/double(splits);
+        }
 
         // cut off tails
         double *phi_wall_ptr;
