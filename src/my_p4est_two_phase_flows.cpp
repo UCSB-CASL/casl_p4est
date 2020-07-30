@@ -277,6 +277,9 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
 {
   PetscErrorCode ierr;
+  // if using subcell resolution, you'll want to take care of this separately
+  if(phi_on_computational_nodes != phi) {
+    ierr = delete_and_nullify_vector(phi_on_computational_nodes);     CHKERRXX(ierr); }
   // node-sampled fields on the interface-capturing grid
   ierr = delete_and_nullify_vector(phi);                            CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_jump);                  CHKERRXX(ierr);
@@ -284,7 +287,6 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(phi_xxyyzz);                     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_stress);               CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
-  ierr = delete_and_nullify_vector(phi_on_computational_nodes);     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);      CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);       CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_nodes_minus);               CHKERRXX(ierr);
@@ -2611,7 +2613,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
     if(interp_mass_flux != NULL)
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.0; // ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
   }
   ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
@@ -2621,7 +2623,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
     if(interp_mass_flux != NULL)
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.0; // ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
