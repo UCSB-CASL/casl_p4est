@@ -142,6 +142,7 @@ void my_p4est_interface_manager_t::build_grad_phi_locally()
 
   if(grad_phi_local == NULL){
     PetscErrorCode ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), P4EST_DIM, &grad_phi_local); CHKERRXX(ierr); }
+
   interpolation_node_ngbd->first_derivatives_central(interp_phi.get_input_fields()[0], grad_phi_local);
 
   return;

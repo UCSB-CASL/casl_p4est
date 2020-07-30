@@ -185,7 +185,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   rho_minus = rho_plus  =  1.0;
   uniform_band_minus = uniform_band_plus = 0.0;
   threshold_split_cell = 0.04;
-  cfl = 1.0;
+  cfl_advection = 1.0;
+  cfl_surface_tension = 0.5;
   dt_updated = false;
   max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
 
@@ -269,7 +270,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   viscosity_solver.set_environment(this);
   poisson_jump_cell_solver = NULL;
-  use_xgfm_cell_solver = false;
+  projection_solver_to_use = FV; // default is finite-volume solver for projection step
+  fetch_interface_FD_neighbors_with_second_order_accuracy = false;
 }
 
 my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
@@ -375,13 +377,13 @@ void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, c
   if(interface_manager->subcell_resolution() == 0 && phi_on_computational_nodes_ != NULL && phi_on_computational_nodes_ != phi_on_interface_capturing_nodes)
     throw std::invalid_argument("my_p4est_two_phase_flows_t::set_phi() : if not using subcell-resolution for your levelset, this object requires phi_on_interface_capturing_nodes == phi_on_computational_nodes_ or phi_on_computational_nodes_ == NULL");
 #endif
-  if(phi_on_computational_nodes != phi_on_computational_nodes_)
-    delete_and_nullify_vector(phi_on_computational_nodes);
 
   if(interface_manager->subcell_resolution() == 0)
     phi_on_computational_nodes = phi_on_interface_capturing_nodes; // the interface-manager figures it out for itself, like a big boy!
   else if(phi_on_computational_nodes_ != NULL)
   {
+    if(phi_on_computational_nodes != phi_on_computational_nodes_)
+      delete_and_nullify_vector(phi_on_computational_nodes);
     phi_on_computational_nodes = phi_on_computational_nodes_;
     interface_manager->set_under_resolved_levelset(phi_on_computational_nodes);
   }
@@ -671,8 +673,11 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
 
   if(poisson_jump_cell_solver == NULL)
   {
-    if(use_xgfm_cell_solver)
+    if(projection_solver_to_use == GFM || projection_solver_to_use == xGFM)
+    {
       poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(poisson_jump_cell_solver)->activate_xGFM_corrections(projection_solver_to_use == xGFM);
+    }
     else
       poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
   }
@@ -1609,125 +1614,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
   P4EST_ASSERT(current_diags_are_as_desired(dir));
 }
 
-//void my_p4est_two_phase_flows_t::jump_face_solver::get_vstar_velocities(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM])
-//{
-//  PetscErrorCode ierr;
-
-//  const double *solution_p[P4EST_DIM];
-//  double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    ierr = VecGetArrayRead(solution[dir], &solution_p[dir]);            CHKERRXX(ierr);
-//    ierr = VecGetArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
-//    ierr = VecGetArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]);  CHKERRXX(ierr);
-//  }
-
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    for (size_t k = 0; k < env->faces_n->get_layer_size(dir); ++k) {
-//      const p4est_locidx_t f_idx = env->faces_n->get_layer_face(dir, k);
-//      const char sgn_face = env->sgn_of_face(f_idx, dir);
-//      double *vnp1_face_sharp_p = (sgn_face < 0 ? vnp1_face_minus_p[dir]  : vnp1_face_plus_p[dir]);
-//      double *vnp1_face_sharp_ghost_p = (sgn_face < 0 ? vnp1_face_plus_p[dir]   : vnp1_face_minus_p[dir]);
-//      vnp1_face_sharp_p[f_idx] = solution_p[dir][f_idx];
-//      // define ghost value, too, if possible
-//      p4est_locidx_t m_neighbor_face_idx, p_neighbor_face_idx;
-//      const double& mu_this_side  = (sgn_face < 0 ? env->mu_minus : env->mu_plus);
-//      const double& mu_across     = (sgn_face < 0 ? env->mu_plus  : env->mu_minus);
-//      const bool is_in_positive_domain = (sgn_face > 0);
-//      const bool m_neighbor_found = env->faces_n->found_finest_face_neighbor(f_idx, dir, 2*dir,     m_neighbor_face_idx);
-//      const bool p_neighbor_found = env->faces_n->found_finest_face_neighbor(f_idx, dir, 2*dir + 1, p_neighbor_face_idx);
-//      const char sgn_m_neighbor_face = (m_neighbor_found && m_neighbor_face_idx >= 0 ? env->sgn_of_face(m_neighbor_face_idx, dir) : sgn_face);
-//      const char sgn_p_neighbor_face = (p_neighbor_found && p_neighbor_face_idx >= 0 ? env->sgn_of_face(p_neighbor_face_idx, dir) : sgn_face);
-//      double ghost_value_m, ghost_value_p;
-//      if(sgn_face != sgn_m_neighbor_face)
-//      {
-//        const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, m_neighbor_face_idx, dir, 2*dir);
-//        ghost_value_m = face_interface_neighbor.GFM_ghost_value_here(mu_this_side, mu_across, 2*dir, is_in_positive_domain, solution_p[dir][f_idx], solution_p[dir][m_neighbor_face_idx], 0.0, 0.0, env->dxyz_smallest_quad[dir]);
-//      }
-//      if(sgn_face != sgn_p_neighbor_face)
-//      {
-//        const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, p_neighbor_face_idx, dir, 2*dir + 1);
-//        ghost_value_p = face_interface_neighbor.GFM_ghost_value_here(mu_this_side, mu_across, 2*dir + 1, is_in_positive_domain, solution_p[dir][f_idx], solution_p[dir][p_neighbor_face_idx], 0.0, 0.0, env->dxyz_smallest_quad[dir]);
-//      }
-//      if(sgn_m_neighbor_face != sgn_face && sgn_p_neighbor_face != sgn_face) // they're both across, we have a potential conflict of interests, here
-//      {
-//        p4est_quadrant_t qm, qp;
-//        env->faces_n->find_quads_touching_face(f_idx, dir, qm, qp);
-//        double xyz_qm[P4EST_DIM], xyz_qp[P4EST_DIM];
-//        quad_xyz_fr_q(qm.p.piggy3.local_num, qm.p.piggy3.which_tree, env->p4est_n, env->ghost_n, xyz_qm);
-//        quad_xyz_fr_q(qp.p.piggy3.local_num, qp.p.piggy3.which_tree, env->p4est_n, env->ghost_n, xyz_qp);
-//        const char sgn_qm = (env->interface_manager->phi_at_point(xyz_qm));
-//        const char sgn_qp = (env->interface_manager->phi_at_point(xyz_qp));
-//        if((sgn_qm != sgn_face && sgn_qp != sgn_face) || (sgn_qm == sgn_face && sgn_qp == sgn_face)) // real conflict of interest --> average the ghost values
-//          vnp1_face_sharp_ghost_p[f_idx] = 0.5*(ghost_value_m  + ghost_value_p);
-//        else
-//          vnp1_face_sharp_ghost_p[f_idx] = (sgn_qm != sgn_face ? ghost_value_m : ghost_value_p); // resolve the conflict by prioritizing the value pertaining to the projection to come
-//      }
-//      else if (sgn_m_neighbor_face != sgn_face || sgn_p_neighbor_face != sgn_face)
-//        vnp1_face_sharp_ghost_p[f_idx] = (sgn_m_neighbor_face != sgn_face ? ghost_value_m : ghost_value_p);
-//      else
-//        vnp1_face_sharp_ghost_p[f_idx] = DBL_MAX;
-//    }
-//    ierr = VecGhostUpdateBegin(vnp1_face_minus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(vnp1_face_plus[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  }
-
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    for (size_t k = 0; k < env->faces_n->get_local_size(dir); ++k) {
-//      const p4est_locidx_t f_idx = env->faces_n->get_local_face(dir, k);
-//      const char sgn_face = env->sgn_of_face(f_idx, dir);
-//      double *vnp1_face_sharp_p = (sgn_face < 0 ? vnp1_face_minus_p[dir]  : vnp1_face_plus_p[dir]);
-//      double *vnp1_face_sharp_ghost_p = (sgn_face < 0 ? vnp1_face_plus_p[dir]   : vnp1_face_minus_p[dir]);
-//      vnp1_face_sharp_p[f_idx] = solution_p[dir][f_idx];
-//      // define ghost value, too, if possible
-//      p4est_locidx_t m_neighbor_face_idx, p_neighbor_face_idx;
-//      const double& mu_this_side  = (sgn_face < 0 ? env->mu_minus : env->mu_plus);
-//      const double& mu_across     = (sgn_face < 0 ? env->mu_plus  : env->mu_minus);
-//      const bool is_in_positive_domain = (sgn_face > 0);
-//      const bool m_neighbor_found = env->faces_n->found_finest_face_neighbor(f_idx, dir, 2*dir,     m_neighbor_face_idx);
-//      const bool p_neighbor_found = env->faces_n->found_finest_face_neighbor(f_idx, dir, 2*dir + 1, p_neighbor_face_idx);
-//      const char sgn_m_neighbor_face = (m_neighbor_found && m_neighbor_face_idx >= 0 ? env->sgn_of_face(m_neighbor_face_idx, dir) : sgn_face);
-//      const char sgn_p_neighbor_face = (p_neighbor_found && p_neighbor_face_idx >= 0 ? env->sgn_of_face(p_neighbor_face_idx, dir) : sgn_face);
-//      double ghost_value_m, ghost_value_p;
-//      if(sgn_face != sgn_m_neighbor_face)
-//      {
-//        const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, m_neighbor_face_idx, dir, 2*dir);
-//        ghost_value_m = face_interface_neighbor.GFM_ghost_value_here(mu_this_side, mu_across, 2*dir, is_in_positive_domain, solution_p[dir][f_idx], solution_p[dir][m_neighbor_face_idx], 0.0, 0.0, env->dxyz_smallest_quad[dir]);
-//      }
-//      if(sgn_face != sgn_p_neighbor_face)
-//      {
-//        const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, p_neighbor_face_idx, dir, 2*dir + 1);
-//        ghost_value_p = face_interface_neighbor.GFM_ghost_value_here(mu_this_side, mu_across, 2*dir + 1, is_in_positive_domain, solution_p[dir][f_idx], solution_p[dir][p_neighbor_face_idx], 0.0, 0.0, env->dxyz_smallest_quad[dir]);
-//      }
-//      if(sgn_m_neighbor_face != sgn_face && sgn_p_neighbor_face != sgn_face) // they're both across, we have a potential conflict of interests, here
-//      {
-//        p4est_quadrant_t qm, qp;
-//        env->faces_n->find_quads_touching_face(f_idx, dir, qm, qp);
-//        double xyz_qm[P4EST_DIM], xyz_qp[P4EST_DIM];
-//        quad_xyz_fr_q(qm.p.piggy3.local_num, qm.p.piggy3.which_tree, env->p4est_n, env->ghost_n, xyz_qm);
-//        quad_xyz_fr_q(qp.p.piggy3.local_num, qp.p.piggy3.which_tree, env->p4est_n, env->ghost_n, xyz_qp);
-//        const char sgn_qm = (env->interface_manager->phi_at_point(xyz_qm));
-//        const char sgn_qp = (env->interface_manager->phi_at_point(xyz_qp));
-//        if((sgn_qm != sgn_face && sgn_qp != sgn_face) || (sgn_qm == sgn_face && sgn_qp == sgn_face)) // real conflict of interest --> average the ghost values
-//          vnp1_face_sharp_ghost_p[f_idx] = 0.5*(ghost_value_m  + ghost_value_p);
-//        else
-//          vnp1_face_sharp_ghost_p[f_idx] = (sgn_qm != sgn_face ? ghost_value_m : ghost_value_p); // resolve the conflict by prioritizing the value pertaining to the projection to come
-//      }
-//      else if (sgn_m_neighbor_face != sgn_face || sgn_p_neighbor_face != sgn_face)
-//        vnp1_face_sharp_ghost_p[f_idx] = (sgn_m_neighbor_face != sgn_face ? ghost_value_m : ghost_value_p);
-//      else
-//        vnp1_face_sharp_ghost_p[f_idx] = DBL_MAX;
-//    }
-//    ierr = VecGhostUpdateEnd(vnp1_face_minus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd(vnp1_face_plus[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  }
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    ierr = VecRestoreArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]);  CHKERRXX(ierr);
-//    ierr = VecRestoreArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(solution[dir], &solution_p[dir]);            CHKERRXX(ierr);
-//  }
-//  return;
-//}
-
 void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iterations, const u_char& degree)
 {
   P4EST_ASSERT(n_iterations > 0);
@@ -1968,7 +1854,13 @@ void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_normal_derivative
     if(neighbor_face_idx >= 0.0) //
       n_dot_grad_normal_derivative_of_field += fabs(oriented_normal[der])*(normal_derivative_of_field_p[f_idx] - normal_derivative_of_field_p[neighbor_face_idx])/env->dxyz_smallest_quad[der];
     else
-      throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_normal_derivatives_of_face_velocity_local : wall neighbor of face, not handled yet, here");
+    {
+      std::ostringstream oss;
+      oss << "The face is located at (" << xyz_face[0] << ", " << xyz_face[1] ONLY3D(<< ", " << xyz_face[2] ) << "), ";
+      oss << "the oriented normal is (" << oriented_normal[0] << ", " << oriented_normal[1] ONLY3D(<< ", " << oriented_normal[2] ) << ", ";
+      oss << "and the problem occurs for component " << (int) der << std::endl;
+      throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_normal_derivatives_of_face_velocity_local : wall neighbor of face, not handled yet.\n" + oss.str());
+    }
   }
   const double dtau = MIN(DIM(env->dxyz_smallest_quad[0], env->dxyz_smallest_quad[1], env->dxyz_smallest_quad[2]))/((double) P4EST_DIM); // as in other extensions (at nodes)
   normal_derivative_of_field_p[f_idx] -= dtau*n_dot_grad_normal_derivative_of_field;
@@ -2215,9 +2107,9 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
   }
 
 
-  if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) < 2.0*cfl*MAX(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])))
+  if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) <= 0.0)
     max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
-  if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) > -2.0*cfl*MAX(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])))
+  if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) > 0.0)
     max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
   return;
 }
@@ -2436,6 +2328,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   std::vector<const double*> node_vector_block_data;  std::vector<std::string> node_vector_block_names;
   std::vector<const double*> cell_scalar_data;        std::vector<std::string> cell_scalar_names;
   const double *phi_on_computational_nodes_p, *projection_variable_p, *vnp1_nodes_plus_p, *vnp1_nodes_minus_p;
+  const double *phi_on_fine_nodes_p, *curvature_p, *grad_phi_p;
   Vec projection_variable = poisson_jump_cell_solver->get_solution();
   if(phi_on_computational_nodes != NULL){
     ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
@@ -2457,6 +2350,15 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     node_vector_block_data.push_back(vnp1_nodes_plus_p);
     node_vector_block_names.push_back("vnp1 plus");
   }
+  if(interface_manager->subcell_resolution() == 0)
+  {
+    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
+    node_scalar_data.push_back(curvature_p);
+    node_scalar_names.push_back("curvature");
+    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+    node_vector_block_data.push_back(grad_phi_p);
+    node_vector_block_names.push_back("grad_phi");
+  }
   my_p4est_vtk_write_all_general_lists(p4est_n, nodes_n, ghost_n,
                                        P4EST_TRUE, P4EST_TRUE,
                                        (vtk_directory + "/snapshot_" + std::to_string(index)).c_str(),
@@ -2475,19 +2377,24 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   if(phi_on_computational_nodes != NULL){
     ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
 
+  if(interface_manager->subcell_resolution() == 0)
+  {
+    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  }
+
   if(interface_manager->subcell_resolution() > 0)
   {
     node_scalar_data.clear(); node_scalar_names.clear();
     node_vector_block_data.clear(); node_vector_block_names.clear();
-    const double *phi_on_fine_nodes_p, *curvature_on_fine_nodes_p, *grad_phi_on_fine_nodes_p;
     ierr = VecGetArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
     node_scalar_data.push_back(phi_on_fine_nodes_p);
     node_scalar_names.push_back("phi");
-    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_on_fine_nodes_p); CHKERRXX(ierr);
-    node_scalar_data.push_back(curvature_on_fine_nodes_p);
+    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
+    node_scalar_data.push_back(curvature_p);
     node_scalar_names.push_back("curvature");
-    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_on_fine_nodes_p); CHKERRXX(ierr);
-    node_vector_block_data.push_back(grad_phi_on_fine_nodes_p);
+    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+    node_vector_block_data.push_back(grad_phi_p);
     node_vector_block_names.push_back("grad_phi");
     my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
                                          P4EST_TRUE, P4EST_TRUE,
@@ -2495,11 +2402,12 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
                                          &node_scalar_data, &node_scalar_names, NULL, NULL, &node_vector_block_data, &node_vector_block_names,
                                          NULL, NULL, NULL, NULL, NULL, NULL);
     ierr = VecRestoreArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_on_fine_nodes_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_on_fine_nodes_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
+  return;
 }
 
 void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
@@ -2753,7 +2661,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
 
   /* find the velocity field at time np1 */
   size_t to_compute = 0;
-  for (size_t node_idx = 0; node_idx < nodes_np1->num_owned_indeps; ++node_idx)
+  for (size_t node_idx = 0; node_idx < (size_t) nodes_np1->num_owned_indeps; ++node_idx)
   {
     if(known_phi_np1_p != NULL)
     {
@@ -2778,7 +2686,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   my_p4est_interpolation_nodes_t& interp_phi_n = interface_manager->get_interp_phi(); interp_phi_n.clear(); // clear the buffers, if not empty
   size_t known_idx = 0;
   to_compute = 0;
-  for (size_t node_idx = 0; node_idx < nodes_np1->num_owned_indeps; ++node_idx)
+  for (size_t node_idx = 0; node_idx < (size_t) nodes_np1->num_owned_indeps; ++node_idx)
   {
     if(known_phi_np1_p != NULL && known_idx < already_known.size() && node_idx == already_known[known_idx])
     {
@@ -2820,23 +2728,23 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
 
   set_interface_velocity();
 
-  //  {
-  //    PetscErrorCode ierr;
-  //    const double *interface_velocity_p;
-  //    ierr = VecGetArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
+//    {
+//      PetscErrorCode ierr;
+//      const double *interface_velocity_p;
+//      ierr = VecGetArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
 
-  //    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-  //                                   P4EST_TRUE, P4EST_TRUE,
-  //                                   0, /* number of VTK_POINT_DATA */
-  //                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-  //                                   1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-  //                                   0, /* number of VTK_CELL_DATA */
-  //                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-  //                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-  //                                   ("/home/regan/workspace/projects/two_phase_flow/sharp_advection/interface_velocity_" + std::to_string(nnn)).c_str(),
-  //                                   VTK_NODE_VECTOR_BLOCK, "interface_velocity" , interface_velocity_p);
-  //    ierr = VecRestoreArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
-  //  }
+//      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+//                                     P4EST_TRUE, P4EST_TRUE,
+//                                     0, /* number of VTK_POINT_DATA */
+//                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                     1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                     0, /* number of VTK_CELL_DATA */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                     ("/home/regan/workspace/projects/two_phase_flow/sharp_advection/interface_velocity_" + std::to_string(nnn)).c_str(),
+//                                     VTK_NODE_VECTOR_BLOCK, "interface_velocity" , interface_velocity_p);
+//      ierr = VecRestoreArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
+//    }
 
 
   // find the np1 computational grid
@@ -3224,7 +3132,6 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   Vec outputs_xxyyzz[2] = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
   ngbd_np1->second_derivatives_central(inputs, outputs_xxyyzz, 2, P4EST_DIM);
 
-
   if(interface_manager->subcell_resolution() > 0)
   {
     p4est_destroy(fine_p4est_n);        fine_p4est_n      = fine_p4est_np1;
@@ -3268,6 +3175,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
 
   delete interface_manager;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_np1);
+  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   set_phi((fine_ngbd_n != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1), levelset_interpolation_method, phi_on_computational_nodes_np1); // memory handled therein!
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -3281,8 +3189,12 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   if(poisson_jump_cell_solver != NULL)
   {
     delete poisson_jump_cell_solver;
-    if(use_xgfm_cell_solver)
+
+    if(projection_solver_to_use == GFM || projection_solver_to_use == xGFM)
+    {
       poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(poisson_jump_cell_solver)->activate_xGFM_corrections(projection_solver_to_use == xGFM);
+    }
     else
       poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
   }
@@ -3310,33 +3222,29 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   }
 
 
-  //  {
-  //    PetscErrorCode ierr;
-  //    Vec phi_coarse = NULL;
-  //    interpolate_linearly_from_fine_nodes_to_coarse_nodes(fine_phi, phi_coarse);
-  //    const double *phi_coarse_p = NULL;
-  //    const double *v_nodes_p_p, *v_nodes_m_p;
-  //    ierr = VecGetArrayRead(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
-  //    ierr = VecGetArrayRead(vn_nodes_m, &v_nodes_m_p); CHKERRXX(ierr);
-  //    ierr = VecGetArrayRead(vn_nodes_p, &v_nodes_p_p); CHKERRXX(ierr);
+//  save_vtk("/home/regan/workspace/projects/two_phase_flow/static_bubble_2D/inv_Oh_squared_12000/lmin_4_lmax_4/vtu", 999999999);
 
-  //    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-  //                                   P4EST_TRUE, P4EST_TRUE,
-  //                                   1, /* number of VTK_POINT_DATA */
-  //                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-  //                                   2, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-  //                                   0, /* number of VTK_CELL_DATA */
-  //                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-  //                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-  //                                   "/home/regan/workspace/projects/two_phase_flow/after_update",
-  //                                   VTK_NODE_VECTOR_BLOCK, "vn_plus" , v_nodes_p_p,
-  //                                   VTK_NODE_VECTOR_BLOCK, "vn_minus", v_nodes_m_p,
-  //                                   VTK_POINT_DATA, "phi", phi_coarse_p);
-  //    ierr = VecRestoreArrayRead(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
-  //    ierr = VecRestoreArrayRead(vn_nodes_m, &v_nodes_m_p); CHKERRXX(ierr);
-  //    ierr = VecRestoreArrayRead(vn_nodes_p, &v_nodes_p_p); CHKERRXX(ierr);
-  //    ierr = delete_and_nullify_vector(phi_coarse); CHKERRXX(ierr);
-  //  }
+//  {
+//    PetscErrorCode ierr;
+//    const double *phi_on_computational_nodes_p;
+//    const double *grad_phi_p;
+//    ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+
+//    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+//                                   P4EST_TRUE, P4EST_TRUE,
+//                                   1, /* number of VTK_POINT_DATA */
+//                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                   1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                   0, /* number of VTK_CELL_DATA */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                   "/home/regan/workspace/projects/two_phase_flow/static_bubble_2D/inv_Oh_squared_12000/lmin_4_lmax_4/vtu/check",
+//                                   VTK_NODE_VECTOR_BLOCK, "grad_phi" , grad_phi_p,
+//                                   VTK_POINT_DATA, "phi", phi_on_computational_nodes_p);
+//    ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+//  }
 
   return;
 }

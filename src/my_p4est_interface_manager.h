@@ -590,6 +590,12 @@ public:
     return ierr;
   }
 
+  inline double volume_in_negative_domain() const
+  {
+    return area_in_negative_domain(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), phi_on_computational_nodes);
+  }
+
+
 #ifdef DEBUG
   int cell_FD_map_is_consistent_across_procs();
 #endif

@@ -79,7 +79,8 @@ private:
   my_p4est_interface_manager_t  *interface_manager;
 
   my_p4est_poisson_jump_cells_t* poisson_jump_cell_solver;
-  bool use_xgfm_cell_solver;
+  poisson_jump_cell_solver_tag projection_solver_to_use;
+  bool fetch_interface_FD_neighbors_with_second_order_accuracy;
 
   const double *xyz_min, *xyz_max;
   double tree_dimension[P4EST_DIM];
@@ -95,7 +96,7 @@ private:
   double max_L2_norm_velocity_minus, max_L2_norm_velocity_plus;
   double uniform_band_minus, uniform_band_plus;
   double threshold_split_cell;
-  double cfl;
+  double cfl_advection, cfl_surface_tension;
   bool   dt_updated;
   interpolation_method levelset_interpolation_method;
 
@@ -461,8 +462,8 @@ public:
   {
     dt_nm1 = dt_n;
     const double max_L2_norm_u_overall = MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
-    dt_n = MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
-    dt_n = MIN(dt_n, sqrt((rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(4.0*M_PI*surface_tension)));
+    dt_n = MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
+    dt_n = MIN(dt_n, cfl_surface_tension*sqrt((rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(M_PI*surface_tension)));
 
     dt_updated = true;
   }
@@ -523,10 +524,12 @@ public:
     threshold_split_cell = thresh_;
   }
 
-  inline void set_cfl(double cfl_)
+  inline void set_cfls(const double& cfl_adv, const double& cfl_surf_tens)
   {
-    cfl = cfl_;
+    cfl_advection = cfl_adv;
+    cfl_surface_tension = cfl_surf_tens;
   }
+  inline void set_cfl(const double& cfl) { set_cfls(cfl, cfl); }
 
   inline void set_dt(double dt_nm1_, double dt_n_)
   {
@@ -566,7 +569,12 @@ public:
 
   void compute_pressure_jump();
   void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
-  void use_xgfm_projection() { use_xgfm_cell_solver = true; }
+
+  inline void set_projection_solver(const poisson_jump_cell_solver_tag& solver_to_use) { projection_solver_to_use = solver_to_use; }
+  inline void fetch_interface_points_with_second_order_accuracy() {
+    fetch_interface_FD_neighbors_with_second_order_accuracy = true;
+    interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
+  }
 
   void compute_velocities_at_nodes();
   void save_vtk(const std::string& vtk_directory, const int& index) const;
@@ -575,6 +583,11 @@ public:
   inline double get_max_velocity() const        { return MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus); }
   inline double get_max_velocity_minus() const  { return max_L2_norm_velocity_minus; }
   inline double get_max_velocity_plus() const   { return max_L2_norm_velocity_plus; }
+
+  inline double volume_in_negative_domain() const { return interface_manager->volume_in_negative_domain(); }
+
+  inline int get_rank() const { return p4est_n->mpirank; }
+
 
 };
 
