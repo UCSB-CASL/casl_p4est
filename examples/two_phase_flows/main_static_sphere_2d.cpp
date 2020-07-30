@@ -72,6 +72,8 @@ const int default_sl_order = 1;
 const double default_cfl_advection = 1.0;
 const double default_cfl_capillary = 0.5;
 const poisson_jump_cell_solver_tag default_projection = GFM;
+const int default_n_reinit = INT_MAX;
+const bool default_static_interface = true;
 const bool default_save_vtk = true;
 
 #if defined(STAMPEDE)
@@ -330,10 +332,10 @@ int main (int argc, char* argv[])
   cmd.add_option("ntree", "number of trees in the macromesh, in every cartesian direction. The default value is " + to_string(default_ntree));
   streamObj.str(""); streamObj << default_box_size;
   cmd.add_option("box_size", "side length of the computational domain. The default value is " + streamObj.str());
-  cmd.add_option("xperiodic", "activates periodicity along x, if present. Default is " + string(default_periodic[0] ? "" : "not") + " x-periodic.");
-  cmd.add_option("yperiodic", "activates periodicity along y, if present. Default is " + string(default_periodic[1] ? "" : "not") + " y-periodic.");
+  cmd.add_option("xperiodic", "flag activating periodicity along x, if set to true or 1, deactivating periodicity along x if set to false or 0. Default is " + string(default_periodic[0] ? "" : "not") + " x-periodic.");
+  cmd.add_option("yperiodic", "flag activating periodicity along y, if set to true or 1, deactivating periodicity along y if set to false or 0. Default is " + string(default_periodic[1] ? "" : "not") + " y-periodic.");
 #ifdef P4_TO_P8
-  cmd.add_option("zperiodic", "activates periodicity along z, if present. Default is " + string(default_periodic[2] ? "" : "not") + " z-periodic.");
+  cmd.add_option("zperiodic", "flag activating periodicity along z, if set to true or 1, deactivating periodicity along z if set to false or 0. Default is " + string(default_periodic[2] ? "" : "not") + " z-periodic.");
 #endif
   // physical parameters for the simulations
   streamObj.str(""); streamObj << default_bubble_radius;
@@ -347,15 +349,18 @@ int main (int argc, char* argv[])
   streamObj.str(""); streamObj << default_duration_nondimensional;
   cmd.add_option("duration", "The overall duration of the simulation in characteristic time units (D*mu/gamma). Default duration is " + streamObj.str());
   // method-related parameters
-  cmd.add_option("second_order_ls", "activate second order F-D interface fetching if present. Default is " + string(default_use_second_order_theta ? "true" : "false"));
+  cmd.add_option("second_order_ls", "flag activating second order F-D interface fetching if set to true or 1. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 or 2, default is " + to_string(default_sl_order));
   streamObj.str(""); streamObj << default_cfl_advection;
   cmd.add_option("cfl_advection", "desired advection CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_capillary;
   cmd.add_option("cfl_capillary", "desired capillary-wave CFL number, default is " + streamObj.str());
   cmd.add_option("projection", "cell-based solver to use for projection step, possible choices are 'GFM', 'xGFM' or 'FV'. Default is " + convert_to_string(default_projection));
+  streamObj.str(""); streamObj << default_n_reinit;
+  cmd.add_option("n_reinit", "number of solver iterations between two reinitializations of the levelset. Default is " + streamObj.str());
+  cmd.add_option("static_interface", "flag deactivating the advection of the interafce if set to true or 1, activating interface advection if set to false or 0. Default is " + string(default_static_interface ? "without" : "with") + " interface advection");
   // output-control parameters
-  cmd.add_option("save_vtk", "activates the exportatino of vtk visualization files if present. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
+  cmd.add_option("save_vtk", "flag activating  the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
   streamObj.str(""); streamObj << default_vtk_dt_nondimensional;
   cmd.add_option("vtk_dt", "vtk_dt = time step between two vtk exportation in characteristic time units (D*mu/gamma), default is " + streamObj.str());
   cmd.add_option("work_dir", "root exportation directory, subfolders will be created therein (read from input if not defined otherwise in the environment variable OUT_DIR). \n\tThis is required for vtk files and for data files. Default is " + default_work_folder);
@@ -366,33 +371,36 @@ int main (int argc, char* argv[])
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
-  const int lmin                        = cmd.get<int>    ("lmin",            default_lmin);
-  const int lmax                        = cmd.get<int>    ("lmax",            default_lmax);
-  const double vorticity_threshold      = cmd.get<double> ("thresh",          default_vorticity_threshold);
-  const int ntree                       = cmd.get<int>    ("ntree",           default_ntree);
+  const int lmin                        = cmd.get<int>    ("lmin",              default_lmin);
+  const int lmax                        = cmd.get<int>    ("lmax",              default_lmax);
+  const double vorticity_threshold      = cmd.get<double> ("thresh",            default_vorticity_threshold);
+  const int ntree                       = cmd.get<int>    ("ntree",             default_ntree);
   const int ntree_xyz[P4EST_DIM]        = {DIM(ntree, ntree, ntree)};
-  const double box_size                 = cmd.get<double> ("box_size",        default_box_size);
+  const double box_size                 = cmd.get<double> ("box_size",          default_box_size);
   const double xyz_min[P4EST_DIM]       = { DIM(-0.5*box_size, -0.5*box_size, -0.5*box_size) };
   const double xyz_max[P4EST_DIM]       = { DIM( 0.5*box_size,  0.5*box_size,  0.5*box_size) };
-  const int periodic[P4EST_DIM]         = { DIM((default_periodic[0] || cmd.contains("xperiodic") ? 1 : 0),
-                                            (default_periodic[1] || cmd.contains("yperiodic") ? 1 : 0),
-                                            (default_periodic[2] || cmd.contains("zperiodic") ? 1 : 0))};
+  const int periodic[P4EST_DIM]         = { DIM(cmd.get<bool>("xperiodic", default_periodic[0]),
+                                            cmd.get<bool>("yperiodic", default_periodic[1]),
+                                            cmd.get<bool>("zperiodic", default_periodic[2]))};
   const double dxmin                    = box_size/(((double) ntree)*((double) (1 << lmax)));
-  const double bubble_radius            = cmd.get<double> ("radius",          default_bubble_radius);
-  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",    default_uniform_band_to_radius*bubble_radius/dxmin);
-  const double mass_density             = cmd.get<double> ("mass_density",    default_mass_density);
-  const double viscosity                = cmd.get<double> ("viscosity",       default_viscosity);
-  const double surface_tension          = cmd.get<double> ("surface_tension", default_surface_tension);
+  const double bubble_radius            = cmd.get<double> ("radius",            default_bubble_radius);
+  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*bubble_radius/dxmin);
+  const double mass_density             = cmd.get<double> ("mass_density",      default_mass_density);
+  const double viscosity                = cmd.get<double> ("viscosity",         default_viscosity);
+  const double surface_tension          = cmd.get<double> ("surface_tension",   default_surface_tension);
   const double characteristic_time_unit = (2.0*bubble_radius*viscosity/surface_tension);
-  const double duration                 = cmd.get<double> ("duration",        default_duration_nondimensional)*characteristic_time_unit;
-  const bool use_second_order_theta     = default_use_second_order_theta || cmd.contains("second_order_ls");
-  const int sl_order                    = cmd.get<int>    ("sl_order",        default_sl_order);
-  const double cfl_advection            = cmd.get<double> ("cfl_advection",   default_cfl_advection);
-  const double cfl_capillary            = cmd.get<double> ("cfl_capillary",   default_cfl_capillary);
-  const bool save_vtk                   = default_save_vtk || cmd.contains("save_vtk");
-  const double vtk_dt                   = cmd.get<double> ("vtk_dt",          default_vtk_dt_nondimensional)*characteristic_time_unit;
+  const double duration                 = cmd.get<double> ("duration",          default_duration_nondimensional)*characteristic_time_unit;
+  const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
+  const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
+  const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
+  const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
+  const bool save_vtk                   = cmd.get<bool>   ("save_vtk",          default_save_vtk);
+  const double vtk_dt                   = cmd.get<double> ("vtk_dt",            default_vtk_dt_nondimensional)*characteristic_time_unit;
   const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
   const poisson_jump_cell_solver_tag projection_solver_to_use = cmd.get<poisson_jump_cell_solver_tag>("projection", default_projection);
+  const int niter_reinit                = cmd.get<int>    ("n_reinit",          default_n_reinit);
+  const bool static_interface           = cmd.get<bool>   ("static_interface",  default_static_interface);
+
 
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
@@ -502,7 +510,7 @@ int main (int argc, char* argv[])
     {
       two_phase_flow_solver->compute_dt();
       dt = two_phase_flow_solver->get_dt();
-      two_phase_flow_solver->update_from_tn_to_tnp1();
+      two_phase_flow_solver->update_from_tn_to_tnp1(iter%niter_reinit == 0, static_interface);
     }
 
     two_phase_flow_solver->solve_viscosity();

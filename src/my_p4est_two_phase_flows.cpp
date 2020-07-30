@@ -2613,7 +2613,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
     if(interp_mass_flux != NULL)
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.0; // ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_minus + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_plus)/(mu_minus + mu_plus);
   }
   ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
@@ -2623,7 +2623,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
     if(interp_mass_flux != NULL)
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.0; // ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_plus  + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_minus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_minus + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_plus)/(mu_minus + mu_plus);
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -2647,6 +2647,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
                                                   const p4est_nodes_t *known_nodes, Vec known_phi_np1)
 {
   PetscErrorCode ierr;
+
   my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time...
   interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
 
@@ -2719,8 +2720,28 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   return;
 }
 
+void my_p4est_two_phase_flows_t::sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1)
+{
+  PetscErrorCode ierr;
 
-void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nnn*/)
+  /* simply interpolate phi to the new nodes to define phi_np1*/
+  my_p4est_interpolation_nodes_t& interp_phi_n = interface_manager->get_interp_phi(); interp_phi_n.clear(); // clear the buffers, if not empty
+  for (size_t node_idx = 0; node_idx < (size_t) nodes_np1->num_owned_indeps; ++node_idx)
+  {
+    double xyz_node[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_node);
+    interp_phi_n.add_point(node_idx, xyz_node);
+  }
+
+  interp_phi_n.interpolate(phi_np1); interp_phi_n.clear();
+  ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  return;
+}
+
+
+void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset, const bool& static_interface)
 {
   PetscErrorCode ierr;
 
@@ -2728,26 +2749,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     compute_dt();
   dt_updated = false;
 
-  set_interface_velocity();
-
-//    {
-//      PetscErrorCode ierr;
-//      const double *interface_velocity_p;
-//      ierr = VecGetArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
-
-//      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-//                                     P4EST_TRUE, P4EST_TRUE,
-//                                     0, /* number of VTK_POINT_DATA */
-//                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-//                                     1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-//                                     0, /* number of VTK_CELL_DATA */
-//                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-//                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-//                                     ("/home/regan/workspace/projects/two_phase_flow/sharp_advection/interface_velocity_" + std::to_string(nnn)).c_str(),
-//                                     VTK_NODE_VECTOR_BLOCK, "interface_velocity" , interface_velocity_p);
-//      ierr = VecRestoreArrayRead(interface_velocity_np1, &interface_velocity_p); CHKERRXX(ierr);
-//    }
-
+  if(!static_interface)
+    set_interface_velocity();
 
   // find the np1 computational grid
   splitting_criteria_computational_grid_two_phase_t criterion_computational_grid(this);
@@ -2783,10 +2786,12 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     // reset phi_on_computational_nodes_np1
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_on_computational_nodes_np1); CHKERRXX(ierr);
     P4EST_ASSERT((iter > 0 && previous_phi_on_computational_nodes_np1 != NULL)  || (iter == 0 && previous_phi_on_computational_nodes_np1 == NULL));
+    if(!static_interface)
+      advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1,
+                       previous_nodes_np1, previous_phi_on_computational_nodes_np1); // limit the workload: use what you already know if you know it!
+    else
+      sample_static_levelset_on_nodes(p4est_np1, nodes_np1, phi_on_computational_nodes_np1);
 
-    // advect phi
-    advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1,
-                     previous_nodes_np1, previous_phi_on_computational_nodes_np1); // limit the workload: use what you already know if you know it!
 
     // get vorticity_np1
     if(iter > 0){
@@ -2828,29 +2833,6 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       ierr = VecRestoreArrayRead(previous_vorticity_magnitude_np1_plus,  &previous_vorticity_magnitude_np1_plus_p);   CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(previous_vorticity_magnitude_np1_minus, &previous_vorticity_magnitude_np1_minus_p);  CHKERRXX(ierr);
     }
-
-
-    //    {
-    //      PetscErrorCode ierr;
-    //      const double *phi_coarse_p = NULL;
-    //      const double *vorticities_p;
-    //      ierr = VecGetArrayRead(phi_np1, &phi_coarse_p); CHKERRXX(ierr);
-    //      ierr = VecGetArrayRead(vorticities_np1, &vorticities_p); CHKERRXX(ierr);
-
-    //      my_p4est_vtk_write_all_general(p4est_np1, nodes_np1, NULL,
-    //                                     P4EST_FALSE, P4EST_FALSE,
-    //                                     1, /* number of VTK_POINT_DATA */
-    //                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-    //                                     1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-    //                                     0, /* number of VTK_CELL_DATA */
-    //                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-    //                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-    //                                     ("/home/regan/workspace/projects/two_phase_flow/sharp_advection/before_update_" + std::to_string(iter)).c_str(),
-    //                                     VTK_NODE_SCALAR, "phi_np1" , phi_coarse_p,
-    //                                     VTK_NODE_VECTOR_BLOCK, "vorticities" , vorticities_p);
-    //      ierr = VecRestoreArrayRead(phi_np1, &phi_coarse_p); CHKERRXX(ierr);
-    //      ierr = VecRestoreArrayRead(vorticities_np1, &vorticities_p); CHKERRXX(ierr);
-    //    }
 
     // update the grid
     if(!uniform_grid)
@@ -2905,7 +2887,10 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
     ngbd_np1->init_neighbors();
 
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_on_computational_nodes_np1); CHKERRXX(ierr);
-    advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1, known_nodes_np1, known_phi_on_computational_nodes_np1);
+    if(!static_interface)
+      advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1, known_nodes_np1, known_phi_on_computational_nodes_np1);
+    else
+      sample_static_levelset_on_nodes(p4est_np1, nodes_np1, phi_on_computational_nodes_np1);
     // destroy what you saved
     p4est_nodes_destroy(known_nodes_np1);
     ierr = delete_and_nullify_vector(known_phi_on_computational_nodes_np1); CHKERRXX(ierr);
@@ -2946,23 +2931,11 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       // advect more fine_phi_np1
       fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, NULL);
       ierr = VecCreateGhostNodes(fine_p4est_np1, fine_nodes_np1, &phi_on_fine_nodes_np1); CHKERRXX(ierr);
-      advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
-                       previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
-
-      //    if(iter==293)
-      //    {
-      //      my_p4est_vtk_write_all_general(fine_p4est_np1, fine_nodes_np1, NULL,
-      //                                     P4EST_FALSE, P4EST_FALSE,
-      //                                     1, /* number of VTK_POINT_DATA */
-      //                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-      //                                     0, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-      //                                     0, /* number of VTK_CELL_DATA */
-      //                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-      //                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-      //                                     ("/home/regan/workspace/projects/two_phase_flow/before_fine_update" + std::to_string(iter)).c_str(),
-      //                                     VTK_NODE_SCALAR, "phi_np1" , fine_phi_np1_read_p);
-      //    }
-      // update the grid
+      if(!static_interface)
+        advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
+                         previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
+      else
+        sample_static_levelset_on_nodes(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1);
 
       if(previous_phi_on_fine_nodes_np1 != phi_on_computational_nodes_np1){
         ierr = delete_and_nullify_vector(previous_phi_on_fine_nodes_np1); CHKERRXX(ierr); }
@@ -2998,8 +2971,11 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       // this should never happen, but in case it does, we need to advect once more
       // to ensure that every node's levelset value is well-defined...
       // that every final local node is known already, so here we are
-      advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
-                       previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
+      if(!static_interface)
+        advect_interface(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1,
+                         previous_fine_nodes_np1, previous_phi_on_fine_nodes_np1); // limit the workload: use what you already know!
+      else
+        sample_static_levelset_on_nodes(fine_p4est_np1, fine_nodes_np1, phi_on_fine_nodes_np1); CHKERRXX(ierr);
     }
     else
     {
@@ -3046,9 +3022,13 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
   }
 
   const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
-  Vec& interface_resolving_phi_np1 = (fine_ngbd_np1 != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1);
-  my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
-  ls.reinitialize_2nd_order(interface_resolving_phi_np1);
+  if(reinitialize_levelset)
+  {
+    Vec& interface_resolving_phi_np1 = (fine_ngbd_np1 != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1);
+    my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
+    ls.reinitialize_2nd_order(interface_resolving_phi_np1);
+  }
+
   if(interface_manager->subcell_resolution() > 0)
   {
     // transfer reinitialized levelset values from the fine grid data to the computational grid
@@ -3222,31 +3202,6 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(/*const unsigned int &nn
       voro_cell[dir].resize(faces_n->num_local[dir]);
     }
   }
-
-
-//  save_vtk("/home/regan/workspace/projects/two_phase_flow/static_bubble_2D/inv_Oh_squared_12000/lmin_4_lmax_4/vtu", 999999999);
-
-//  {
-//    PetscErrorCode ierr;
-//    const double *phi_on_computational_nodes_p;
-//    const double *grad_phi_p;
-//    ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-
-//    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
-//                                   P4EST_TRUE, P4EST_TRUE,
-//                                   1, /* number of VTK_POINT_DATA */
-//                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-//                                   1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
-//                                   0, /* number of VTK_CELL_DATA */
-//                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
-//                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
-//                                   "/home/regan/workspace/projects/two_phase_flow/static_bubble_2D/inv_Oh_squared_12000/lmin_4_lmax_4/vtu/check",
-//                                   VTK_NODE_VECTOR_BLOCK, "grad_phi" , grad_phi_p,
-//                                   VTK_POINT_DATA, "phi", phi_on_computational_nodes_p);
-//    ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-//  }
 
   return;
 }

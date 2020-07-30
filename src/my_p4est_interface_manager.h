@@ -592,7 +592,7 @@ public:
 
   inline double volume_in_negative_domain() const
   {
-    return area_in_negative_domain(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), phi_on_computational_nodes);
+    return area_in_negative_domain(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), interp_phi.get_input_fields()[0]);
   }
 
 
