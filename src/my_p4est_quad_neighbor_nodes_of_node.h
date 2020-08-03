@@ -2007,25 +2007,32 @@ public:
 
   /*!
    * \brief get_curvature evaluates the local mean curvature as divergence of (nabla phi/(magnitude of nabla of phi)).
-   * The user MUST provide nabla of phi to enable local calculation
-   * \param [in] grad_phi_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
-   * \param [in] phi_p        : pointer to the data of a node-sampled vector storing the values of phi
-   * \param [in] phi_xxyyzz_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
-   *                            respect to the P4EST_DIM Cartesian directions x, y, z
-   * NOTE 1: if phi_xxyyzz_p is provided, the second derivatives of phi are read from it and phi_p is disregarded. If they are not provided, they are
-   * calculated from phi_p.
-   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned value is 0.0.
+   * The user MUST provide nabla of phi (either by component or block-structued) to enable local calculation!
+   * \param [in] phi_p              : pointer to the data of a node-sampled vector storing the values of phi
+   * \param [in] grad_phi_block_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
+   * \param [in] grad_phi_p         : pointer to an array of size P4EST_DIM for the components of the gradient of phi.
+   * \param [in] phi_xxyyzz_block_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * \param [in] phi_xxyyzz_p       : pointer to an array of size P4EST_DIM for the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * NOTE 1: if phi_xxyyzz_block_p or phi_xxyyzz_p is provided, the second derivatives of phi are read from that it and phi_p is disregarded.
+   * If they are not provided, they are calculated from phi_p.
+   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned
+   * value is set to 0.0, by default.
    * \return the value of the local mean curvature.
    */
-  inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p) const
+  inline double get_curvature(const double *phi_p,
+                              const double *grad_phi_block_p, const double *grad_phi_p[P4EST_DIM],
+                              const double *phi_xxyyzz_block_p, const double *phi_xxyyzz_p[P4EST_DIM]) const
   {
-    P4EST_ASSERT(grad_phi_p != NULL && (phi_p != NULL || phi_xxyyzz_p != NULL));
+    P4EST_ASSERT((grad_phi_block_p != NULL && grad_phi_p == NULL) || (grad_phi_block_p == NULL && grad_phi_p != NULL)); // must provide the gradient, one way or the other
+    P4EST_ASSERT(phi_p != NULL || phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL);
     // fetch first derivatives
     double mag_of_grad = 0.0;
-    const double dx = grad_phi_p[P4EST_DIM*node_000 + 0]; mag_of_grad += SQR(dx);
-    const double dy = grad_phi_p[P4EST_DIM*node_000 + 1]; mag_of_grad += SQR(dy);
+    const double dx = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 0] : grad_phi_p[0][node_000]); mag_of_grad += SQR(dx);
+    const double dy = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 1] : grad_phi_p[1][node_000]); mag_of_grad += SQR(dy);
 #ifdef P4_TO_P8
-    const double dz = grad_phi_p[P4EST_DIM*node_000 + 2]; mag_of_grad += SQR(dz);
+    const double dz = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 2] : grad_phi_p[2][node_000]); mag_of_grad += SQR(dz);
 #endif
     mag_of_grad = sqrt(mag_of_grad);
 
@@ -2033,27 +2040,47 @@ public:
     {
       // compute second derivatives
       double dxxyyzz[P4EST_DIM];
-      if(phi_xxyyzz_p != NULL){
+      if(phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL){
         for (u_char der = 0; der < P4EST_DIM; ++der)
-          dxxyyzz[der] = phi_xxyyzz_p[P4EST_DIM*node_000 + der];
+          dxxyyzz[der] = (phi_xxyyzz_block_p != NULL ? phi_xxyyzz_block_p[P4EST_DIM*node_000 + der] : phi_xxyyzz_p[der][node_000]);
       }
       else
         laplace(phi_p, dxxyyzz);
 
-      const double dxy = dy_central_component(grad_phi_p, P4EST_DIM, dir::x);
+      const double dxy = (grad_phi_block_p != NULL ? dy_central_component(grad_phi_block_p, P4EST_DIM, dir::x) : dy_central(grad_phi_p[0])); // d/dy{d/dx}
 #ifdef P4_TO_P8
-      const double dxz = dz_central_component(grad_phi_p, P4EST_DIM, dir::x); // d/dz{d/dx}
-      const double dyz = dz_central_component(grad_phi_p, P4EST_DIM, dir::y); // d/dz{d/dy}
-      return ((dxxyyzz[1] + dxxyyzz[2])*SQR(dx) + (dxxyyzz[0] + dxxyyzz[2])*SQR(dy) + (dxxyyzz[0] + dxxyyzz[1])*SQR(dz) -
-          2.0*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (mag_of_grad*mag_of_grad*mag_of_grad);
-#else
-      return (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2.0*dx*dy*dxy) / (mag_of_grad*mag_of_grad*mag_of_grad);
+      const double dxz = (grad_phi_block_p != NULL ? dz_central_component(grad_phi_block_p, P4EST_DIM, dir::x) : dz_central(grad_phi_p[0])); // d/dz{d/dx}
+      const double dyz = (grad_phi_block_p != NULL ? dz_central_component(grad_phi_block_p, P4EST_DIM, dir::y) : dz_central(grad_phi_p[1])); // d/dz{d/dy}
 #endif
+      return ((dxxyyzz[1] ONLY3D(+ dxxyyzz[2]))*SQR(dx) + (dxxyyzz[0] ONLY3D(+ dxxyyzz[2]))*SQR(dy) ONLY3D(+ (dxxyyzz[0] + dxxyyzz[1])*SQR(dz)) -
+          2.0*(dx*dy*dxy ONLY3D(+ dx*dz*dxz + dy*dz*dyz))) / (mag_of_grad*mag_of_grad*mag_of_grad);
     }
     else
       return 0.0; // nothing better to suggest for now, sorry
   }
 
+  inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p = NULL) const
+  {
+    return get_curvature(phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+  }
+
+  inline double get_curvature(const double *grad_phi_p[P4EST_DIM], const double *phi_p, const double *phi_xxyyzz_p[P4EST_DIM] = NULL) const
+  {
+    return get_curvature(phi_p, NULL, grad_phi_p, NULL, phi_xxyyzz_p);
+  }
+
+  /*!
+   * \brief get_curvature evaluates the local mean curvature as divergence of (normals). It is the user's responsibility
+   * to provide the ***normal vector*** (i.e. the normalized gradient, not the standard gradient)
+   * The user MUST provide the normal vectors (in a component by component) fashion to enable local calculation
+   * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
+   * \return mean curvature at a single point
+   */
+  inline double get_curvature(const double* normals_p[P4EST_DIM]) const
+  {
+    P4EST_ASSERT(normals_p != NULL);
+    return SUMD(dx_central(normals_p[0]), dy_central(normals_p[1]), dz_central(normals_p[2]));
+  }
 
   // biased-first-derivative-related procedures
   // based on linear-interpolation neighbors

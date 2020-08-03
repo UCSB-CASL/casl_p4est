@@ -1435,55 +1435,32 @@ double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec 
   return max_over_interface_global;
 }
 
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec grad_phi[P4EST_DIM], Vec grad_phi_block, Vec phi_xxyyzz[P4EST_DIM], Vec phi_xxyyzz_block, Vec kappa)
 {
 #ifdef CASL_THROWS
-  if(!phi_x)
-    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
+  if(grad_phi == NULL && grad_phi_block == NULL)
+    throw std::invalid_argument("compute_mean_curvature: grad phi must be provided (either by block or by component) when computing curvature.");
 #endif
 
-  // compute first derivatives
-  double dx = phi_x[0][qnnn.node_000];
-  double dy = phi_x[1][qnnn.node_000];
-#ifdef P4_TO_P8
-  double dz = phi_x[2][qnnn.node_000];
-#endif
-
-  // compute second derivatives
-  double dxx = qnnn.dxx_central(phi);
-  double dyy = qnnn.dyy_central(phi);
-  double dxy = qnnn.dy_central(phi_x[0]); // d/dy{d/dx}
-#ifdef P4_TO_P8
-  double dzz = qnnn.dzz_central(phi);
-  double dxz = qnnn.dz_central(phi_x[0]); // d/dz{d/dx}
-  double dyz = qnnn.dz_central(phi_x[1]); // d/dz{d/dy}
-#endif
-
-  double abs   = MAX(EPS, sqrt(SUMD(SQR(dx), SQR(dy), SQR(dz))));
-  return ((dyy ONLY3D(+ dzz))*SQR(dx) + (dxx ONLY3D(+ dzz))*SQR(dy) ONLY3D( + (dxx + dyy)*SQR(dz)) - 2*(dx*dy*dxy ONLY3D(+ dx*dz*dxz + dy*dz*dyz))) / abs/abs/abs;
-}
-
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *normals[])
-{
-#ifdef CASL_THROWS
-  if(!normals)
-    throw std::invalid_argument("normals cannot be NULL when computing curvature.");
-#endif
-
-  return SUMD(qnnn.dx_central(normals[0]), qnnn.dy_central(normals[1]), qnnn.dz_central(normals[2]));
-}
-
-void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[], Vec kappa)
-{
-#ifdef CASL_THROWS
-  if(!phi_x)
-    throw std::invalid_argument("phi_x cannot be NULL when computing curvature.");
-#endif
-
-  double *phi_p, *phi_x_p[P4EST_DIM], *kappa_p;
-  VecGetArray(phi, &phi_p);
-  VecGetArray(kappa, &kappa_p);
-  foreach_dimension(dim) VecGetArray(phi_x[dim], &phi_x_p[dim]);
+  PetscErrorCode ierr;
+  const double *phi_p;
+  const double *grad_phi_block_p = NULL;
+  const double *phi_xxyyzz_block_p = NULL;
+  const double **grad_phi_p   = (grad_phi == NULL   ? NULL : new const double* [P4EST_DIM]);
+  const double **phi_xxyyzz_p = (phi_xxyyzz == NULL ? NULL : new const double* [P4EST_DIM]);
+  double *kappa_p;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+  if(grad_phi_block != NULL){
+    ierr = VecGetArrayRead(grad_phi_block, &grad_phi_block_p); CHKERRXX(ierr); }
+  if(phi_xxyyzz_block != NULL){
+    ierr = VecGetArrayRead(phi_xxyyzz_block, &phi_xxyyzz_block_p); CHKERRXX(ierr); }
+  foreach_dimension(dim) {
+    if(grad_phi != NULL){
+      ierr = VecGetArrayRead(grad_phi[dim], &grad_phi_p[dim]); CHKERRXX(ierr); }
+    if(phi_xxyyzz != NULL){
+      ierr = VecGetArrayRead(phi_xxyyzz[dim], &phi_xxyyzz_p[dim]); CHKERRXX(ierr); }
+  }
 
   // compute kappa on layer nodes
   quad_neighbor_nodes_of_node_t qnnn;
@@ -1491,26 +1468,41 @@ void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi,
     p4est_locidx_t n = neighbors.get_layer_node(i);
     neighbors.get_neighbors(n, qnnn);
 
-    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+    kappa_p[n] = qnnn.get_curvature(phi_p, grad_phi_block_p, grad_phi_p, phi_xxyyzz_block_p, phi_xxyyzz_p);
   }
 
   // initiate communication
-  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // compute on local nodes
   for (size_t i=0; i<neighbors.get_local_size(); ++i) {
     p4est_locidx_t n = neighbors.get_local_node(i);
     neighbors.get_neighbors(n, qnnn);
 
-    kappa_p[n] = compute_mean_curvature(qnnn, phi_p, phi_x_p);
+    kappa_p[n] = qnnn.get_curvature(phi_p, grad_phi_block_p, grad_phi_p, phi_xxyyzz_block_p, phi_xxyyzz_p);
   }
 
   // finish communication
-  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  VecRestoreArray(phi, &phi_p);
-  VecRestoreArray(kappa, &kappa_p);
-  foreach_dimension(dim) VecRestoreArray(phi_x[dim], &phi_x_p[dim]);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
+  if(grad_phi_block != NULL){
+    ierr = VecRestoreArrayRead(grad_phi_block, &grad_phi_block_p); CHKERRXX(ierr); }
+  if(phi_xxyyzz_block != NULL){
+    ierr = VecRestoreArrayRead(phi_xxyyzz_block, &phi_xxyyzz_block_p); CHKERRXX(ierr); }
+  foreach_dimension(dim) {
+    if(grad_phi != NULL){
+      ierr = VecRestoreArrayRead(grad_phi[dim], &grad_phi_p[dim]); CHKERRXX(ierr); }
+    if(phi_xxyyzz != NULL){
+      ierr = VecRestoreArrayRead(phi_xxyyzz[dim], &phi_xxyyzz_p[dim]); CHKERRXX(ierr); }
+  }
+
+  if(grad_phi_p != NULL)
+    delete[] grad_phi_p;
+  if(phi_xxyyzz_p != NULL)
+    delete[]  phi_xxyyzz_p;
+  return;
 }
 
 void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec normals[], Vec kappa)
@@ -1520,9 +1512,11 @@ void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec norm
     throw std::invalid_argument("normals cannot be NULL when computing curvature.");
 #endif
 
-  double *normals_p[P4EST_DIM], *kappa_p;
-  VecGetArray(kappa, &kappa_p);
-  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+  const double *normals_p[P4EST_DIM];
+  double *kappa_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+  foreach_dimension(dim) {ierr = VecGetArrayRead(normals[dim], &normals_p[dim]); CHKERRXX(ierr); }
 
   // compute kappa on layer nodes
   quad_neighbor_nodes_of_node_t qnnn;
@@ -1530,25 +1524,25 @@ void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec norm
     p4est_locidx_t n = neighbors.get_layer_node(i);
     neighbors.get_neighbors(n, qnnn);
 
-    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+    kappa_p[n] = qnnn.get_curvature(normals_p);
   }
 
   // initiate communication
-  VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateBegin(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // compute on local nodes
   for (size_t i=0; i<neighbors.get_local_size(); ++i) {
     p4est_locidx_t n = neighbors.get_local_node(i);
     neighbors.get_neighbors(n, qnnn);
 
-    kappa_p[n] = compute_mean_curvature(qnnn, normals_p);
+    kappa_p[n] = qnnn.get_curvature(normals_p);
   }
 
   // finish communication
-  VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD);
+  ierr = VecGhostUpdateEnd(kappa, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  VecRestoreArray(kappa, &kappa_p);
-  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
+  ierr = VecRestoreArray(kappa, &kappa_p); CHKERRXX(ierr);
+  foreach_dimension(dim) { ierr = VecRestoreArrayRead(normals[dim], &normals_p[dim]); CHKERRXX(ierr); }
 }
 
 void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double normals[])

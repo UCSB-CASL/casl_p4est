@@ -1799,33 +1799,26 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
- * \param qnnn neighborhood information for the point
- * \param phi pointer to the level set function
- * \param phi_x pointer to an array of size P4EST_DIM for the first derivatives of levelset. CANNOT be NULL.
- * \return mean curvature at a single point
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = +div(n) using a compact stencil
+ * \param [in] neighbors the node neighborhood information
+ * \param [in] phi levelset function
+ * \param [in] grad_phi an array of size P4EST_DIM representing the first derivatives of the levelset in the entire domain, component by component.
+ * \param [in] grad_phi_block a P4EST_DIM-block structured vector representing the first derivatives of the levelset in the entire domain.
+ * \param [in] phi_xxyyzz an array of size P4EST_DIM representing the second derivative of the levelset in the entire domain, "component by component" [this parameter is optional].
+ * \param [in] phi_xxyyzz_block a P4EST_DIM-block structured vector representing the second derivatives of the levelset in the entire domain [this parameter is optional].
+ * \param [in] kappa curvature function in the entire domain
+ * NOTE 1 : the user MUST provide the first derivatives (in either way) for using this function, i.e. grad_phi or grad_phi_block CANNOT be NULL
+ * NOTE 2 : providing the second derivatives is optional for this routine. If they are provided in either way the values are used; if not provided they're calculated on-the-fly;
  */
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* phi, double* phi_x[P4EST_DIM]);
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec grad_phi[P4EST_DIM], Vec grad_phi_block, Vec phi_xxyyzz[P4EST_DIM], Vec phi_xxyyzz_block, Vec kappa);
+
+inline void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec grad_phi[P4EST_DIM], Vec kappa)
+{
+  compute_mean_curvature(neighbors, phi, grad_phi, NULL, NULL, NULL, kappa);
+}
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using divergence of normal k = -div(n)
- * \param qnnn neighborhood information for the point
- * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
- * \return mean curvature at a single point
- */
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* normals[P4EST_DIM]);
-
-/*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
- * \param neighbors the node neighborhood information
- * \param phi levelset function
- * \param phi_x an array of size P4EST_DIM representing the first derivative of levelset in the entire domain. CANNOT be NULL.
- * \param kappa curvature function in the entire domain
- */
-void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[P4EST_DIM], Vec kappa);
-
-/*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = +div(n)
  * \param neighbors the node neighborhood information
  * \param normals pointer to an array of size P4EST_DIM for the normals. CANNOT be NULL.
  * \param kappa curvature function in the entire domain
