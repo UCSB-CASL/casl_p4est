@@ -208,7 +208,7 @@ public:
   void   dsa_initialize();
   void   dsa_initialize_fields();
   void   dsa_solve_for_propogators();
-  void   dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &nu);
+  void   dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &nu, Vec &q, Vec &qm1);
   void   dsa_compute_densities();
   void   dsa_update_potentials();
   void   dsa_compute_shape_gradient(int phi_idx, Vec velo);

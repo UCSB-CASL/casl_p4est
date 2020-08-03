@@ -99,7 +99,7 @@ param_t<double> curvature_penalty (pl, 0.01*0, "curvature_penalty", "");
 
 // scft parameters
 param_t<int>    num_scft_subiters   (pl, 1, "num_scft_subiters",   "Maximum SCFT iterations");
-param_t<int>    max_scft_iterations (pl, 100, "max_scft_iterations",   "Maximum SCFT iterations");
+param_t<int>    max_scft_iterations (pl, 200, "max_scft_iterations",   "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 5, "bc_adjust_min",     "Minimun SCFT steps between adjusting BC");
 param_t<bool>   smooth_pressure     (pl, 1, "smooth_pressure",     "Smooth pressure after first BC adjustment 0/1");
 param_t<double> scft_tol            (pl, 1.e-3, "scft_tol", "Tolerance for SCFT");
@@ -139,7 +139,7 @@ param_t<int> design_check_iterations (pl, 200, "design_check_iterations", "");
 
 // geometry parameters
 param_t<double> r0               (pl, 1, "r0", "Radius of target wells");
-param_t<double> guess_margin     (pl, 1.2, "guess_margin", "");
+param_t<double> guess_margin     (pl, 2.5, "guess_margin", "");
 param_t<double> target_smoothing (pl, sqrt(XN.val), "target_smoothing", "");
 param_t<double> mask_smoothing   (pl, 0.2, "mask_smoothing", "");
 
