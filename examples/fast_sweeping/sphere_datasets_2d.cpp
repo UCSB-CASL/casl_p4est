@@ -60,12 +60,14 @@ int main ( int argc, char* argv[] )
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-	const int NUM_CIRCLES = (int)( 2 * (pow( 2, MAX_REFINEMENT_LEVEL ) - 5) );	// Number of circles is proportional to finest resolution.
-																				// and ensures at least 4 circles per finest quad/oct.
-	const double MIN_RADIUS = 1.5 * H;			// Ensures at least 4 nodes inside smallest circle.
-	const double MAX_RADIUS = HALF_D - 2 * H;	// Prevents sampling interface nodes with invalid full uniform stencils.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/";			// Destination folder.
+	const double FLAT_LIM_HK = 0.04;						// Flatness limit for dimensionless curvature.
+	const double MIN_RADIUS = 1.5 * H;									// Ensures at least 4 nodes inside smallest circle.
+	const double MAX_RADIUS = MIN( H / FLAT_LIM_HK, HALF_D - 2 * H );	// Prevents sampling interface nodes with invalid full uniform stencils.
+	const int NUM_CIRCLES = (int)( 2 * ((MAX_RADIUS - MIN_RADIUS) / H) + 1 );	// Number of circles is proportional to finest resolution.
+																				// Originally, 2 circles per finest quad/oct.
+
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-0.04/";		// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -135,7 +137,10 @@ int main ( int argc, char* argv[] )
 
 		int nSamples = 0;
 		int nc = 0;								// Keeps track of number of circles whose samples has been collected.
-		const double MAX_SAMPLES_PER_RADIUS = 7000;
+												// Number of samples per radius is approximated by 5 times 2 samples per
+												// h^2, which comes from the area difference of largest circle and second
+												// to largest circle.
+		const int MAX_SAMPLES_PER_RADIUS = (int)( 10 * M_PI / SQR( H ) * (SQR( MAX_RADIUS ) - SQR( MAX_RADIUS - H )) );
 		while( nc < NUM_CIRCLES )
 		{
 			const double KAPPA = 1 / MIN_RADIUS + linspace[nc] * kappaDistance;
@@ -242,13 +247,9 @@ int main ( int argc, char* argv[] )
 				for( auto n : indices )
 				{
 					std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
-					std::vector<double> sdfDataPve;			// Phi and h*kappa results in positive and negative form.
-					std::vector<double> sdfDataNve;
-					std::vector<double> rlsDataPve;
+					std::vector<double> sdfDataNve;			// Phi and h*kappa results in negative form only.
 					std::vector<double> rlsDataNve;
-					sdfDataPve.reserve( NUM_COLUMNS );		// Efficientize containers.
-					sdfDataNve.reserve( NUM_COLUMNS );
-					rlsDataPve.reserve( NUM_COLUMNS );
+					sdfDataNve.reserve( NUM_COLUMNS );		// Efficientize containers.
 					rlsDataNve.reserve( NUM_COLUMNS );
 					try
 					{
@@ -257,11 +258,9 @@ int main ( int argc, char* argv[] )
 							for( auto s : stencil )
 							{
 								// First the signed distance function.
-								sdfDataPve.push_back( +sdfPhiReadPtr[s] );		// Positive curvature phi values.
 								sdfDataNve.push_back( -sdfPhiReadPtr[s] );		// Negative curvature phi values.
 
 								// Then the reinitialized data.
-								rlsDataPve.push_back( +rlsPhiReadPtr[s] );
 								rlsDataNve.push_back( -rlsPhiReadPtr[s] );
 
 								// Error.
@@ -270,10 +269,7 @@ int main ( int argc, char* argv[] )
 							}
 
 							// Appending the target h*kappa.
-							sdfDataPve.push_back( +H_KAPPA );
 							sdfDataNve.push_back( -H_KAPPA );
-
-							rlsDataPve.push_back( +H_KAPPA );
 							rlsDataNve.push_back( -H_KAPPA );
 
 							// Appending the interpolated h*kappa.
@@ -289,21 +285,15 @@ int main ( int argc, char* argv[] )
 								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// we need to interpolate numerical curvature.
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
-							rlsDataPve.push_back( +iHKappa );		// Attach interpolated h*kappa to reinit. data only.
-							rlsDataNve.push_back( -iHKappa );
-
-							sdfDataPve.push_back( 0 );				// For signed distance function data, add dummy 0's.
-							sdfDataNve.push_back( 0 );
+							rlsDataNve.push_back( -iHKappa );		// Attach interpolated h*kappa to reinit. data only.
+							sdfDataNve.push_back( -0 );				// For signed distance function data, add dummy -0's.
 
 							// Accumulating samples.
-							sdfSamples.push_back( sdfDataPve );
 							sdfSamples.push_back( sdfDataNve );
-
-							rlsSamples.push_back( rlsDataPve );
 							rlsSamples.push_back( rlsDataNve );
 
 							// Counting samples.
-							nSamplesForSameRadius += 2;		// Positive and negative for a given interface node.
+							nSamplesForSameRadius++;				// Negatives only for a given interface node.
 							if( nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
 								break;
 						}

@@ -191,7 +191,7 @@ int main ( int argc, char* argv[] )
 	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4.
 	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/";			// Destination folder.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-0.04/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -394,6 +394,9 @@ int main ( int argc, char* argv[] )
 									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
 									xOnGamma, yOnGamma );
 
+								if( ABS( data[NUM_COLUMNS - 2] ) <= 0.04 )		// Skip flat surfaces.
+									continue;
+
 								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
 								// h\kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
 								// where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.05.
@@ -403,6 +406,15 @@ int main ( int argc, char* argv[] )
 								{
 									data[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
 									distances.push_back( 0 );											// Dummy column.
+
+									if( data[NUM_COLUMNS - 2] > 0 )	// Flip sign for positive samples.
+									{
+										for( int i = 0; i < NUM_COLUMNS; i++ )
+										{
+											data[i] *= -1.0;
+											distances[i] *= -1.0;
+										}
+									}
 
 									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
 									{								// three times.
