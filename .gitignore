@@ -10,6 +10,7 @@
 *.pro
 *.pro.user*
 *.creator.user*
+*examples/**/*.pri
 CMakeLists.txt.user
 *~
 *.vt[uks]
