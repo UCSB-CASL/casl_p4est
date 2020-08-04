@@ -352,12 +352,13 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   return;
 }
 
-void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *sharp_flux) const
+void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *flux_minus, Vec *flux_plus) const
 {
   P4EST_ASSERT(faces->get_p4est() == p4est); // the faces must be built from the same computational grid
   P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) ||
                (VecsAreSetForFaces(face_velocity_minus, faces, 1) && VecsAreSetForFaces(face_velocity_plus, faces, 1))); // the face-sampled velocities vstart and vnp1 vectors vectors must either be all defined or be all NULL.
-  P4EST_ASSERT(sharp_flux == NULL || VecsAreSetForFaces(sharp_flux, faces, 1));
+  P4EST_ASSERT(flux_minus == NULL || VecsAreSetForFaces(flux_minus, faces, 1));
+  P4EST_ASSERT(flux_plus == NULL || VecsAreSetForFaces(flux_plus, faces, 1));
 
 #ifdef CASL_THROWS
   if(solution == NULL)
@@ -365,13 +366,16 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
 #endif
 
   const bool velocities_provided            = (face_velocity_minus != NULL && face_velocity_plus != NULL);
-  double *sharp_flux_p[P4EST_DIM]           = {DIM(NULL, NULL, NULL)};
+  double *flux_minus_p[P4EST_DIM]           = {DIM(NULL, NULL, NULL)};
+  double *flux_plus_p[P4EST_DIM]            = {DIM(NULL, NULL, NULL)};
   double *face_velocity_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
   double *face_velocity_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
   PetscErrorCode ierr;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(sharp_flux != NULL){
-      ierr = VecGetArray(sharp_flux[dim], &sharp_flux_p[dim]); CHKERRXX(ierr); }
+    if(flux_minus != NULL){
+      ierr = VecGetArray(flux_minus[dim], &flux_minus_p[dim]); CHKERRXX(ierr); }
+    if(flux_plus != NULL){
+      ierr = VecGetArray(flux_plus[dim], &flux_plus_p[dim]); CHKERRXX(ierr); }
     if(velocities_provided)
     {
       ierr = VecGetArray(face_velocity_minus[dim],  &face_velocity_minus_p[dim]); CHKERRXX(ierr);
@@ -384,11 +388,13 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
     for (size_t k = 0; k < faces->get_layer_size(dim); ++k)
     {
       const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
-      local_projection_for_face(f_idx, dim, faces, sharp_flux_p, face_velocity_minus_p, face_velocity_plus_p);
+      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p);
     }
     // start the ghost updates
-    if(sharp_flux != NULL){
-      ierr = VecGhostUpdateBegin(sharp_flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    if(flux_minus != NULL){
+      ierr = VecGhostUpdateBegin(flux_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    if(flux_plus != NULL && flux_plus[dim] != flux_minus[dim]){
+      ierr = VecGhostUpdateBegin(flux_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
     if(velocities_provided){
       ierr = VecGhostUpdateBegin(face_velocity_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(face_velocity_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -399,11 +405,13 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
     for (size_t k = 0; k < faces->get_local_size(dim); ++k)
     {
       const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
-      local_projection_for_face(f_idx, dim, faces, sharp_flux_p, face_velocity_minus_p, face_velocity_plus_p);
+      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p);
     }
     // finish the ghost updates
-    if(sharp_flux != NULL){
-      ierr = VecGhostUpdateEnd(sharp_flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    if(flux_minus != NULL){
+      ierr = VecGhostUpdateEnd(flux_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    if(flux_plus != NULL && flux_plus[dim] != flux_minus[dim]){
+      ierr = VecGhostUpdateEnd(flux_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
     if(velocities_provided){
       ierr = VecGhostUpdateEnd(face_velocity_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(face_velocity_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -411,8 +419,10 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
   }
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(sharp_flux != NULL){
-      ierr = VecRestoreArray(sharp_flux[dim], &sharp_flux_p[dim]); CHKERRXX(ierr); }
+    if(flux_minus != NULL){
+      ierr = VecRestoreArray(flux_minus[dim], &flux_minus_p[dim]); CHKERRXX(ierr); }
+    if(flux_plus != NULL){
+      ierr = VecRestoreArray(flux_plus[dim], &flux_plus_p[dim]); CHKERRXX(ierr); }
     if(velocities_provided)
     {
       ierr = VecRestoreArray(face_velocity_minus[dim],  &face_velocity_minus_p[dim]); CHKERRXX(ierr);

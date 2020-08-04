@@ -121,7 +121,8 @@ protected:
 
 
   virtual void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
-                                         double* sharp_flux_component_p[P4EST_DIM], double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const = 0;
+                                         double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
+                                         double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const = 0;
 
 public:
 
@@ -212,10 +213,14 @@ public:
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
 
-  void project_face_velocities(const my_p4est_faces_t *faces, Vec* sharp_flux = NULL) const;
+  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL) const;
   inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces) const
   {
-    project_face_velocities(faces, flux);
+    project_face_velocities(faces, flux, flux);
+  }
+  inline void get_flux_components(Vec flux_minus[P4EST_DIM], Vec flux_plus[P4EST_DIM], const my_p4est_faces_t* faces) const
+  {
+    project_face_velocities(faces, flux_minus, flux_plus);
   }
 
   virtual double get_sharp_integral_solution() const = 0;

@@ -316,7 +316,6 @@ void my_p4est_poisson_jump_cells_xgfm_t::solve_for_sharp_solution(const KSPType&
   // make sure the problem is fully defined
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
-  P4EST_ASSERT(((user_rhs_minus != NULL && user_rhs_plus != NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL))); // rhs fully determined
 
   PetscBool saved_ksp_original_guess_flag;
   ierr = KSPGetInitialGuessNonzero(ksp, &saved_ksp_original_guess_flag); // we'll change that one to true internally, but we want to set it back to whatever it originally was
@@ -694,7 +693,8 @@ my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p
 }
 
 void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
-                                                                   double* sharp_flux_component_p[P4EST_DIM], double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const
+                                                                   double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
+                                                                   double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -718,10 +718,10 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
     ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr);
   }
 
-  double sharp_flux_component_minus, sharp_flux_component_plus;
-  sharp_flux_component_minus = sharp_flux_component_plus = NAN;
-  double &sharp_flux_at_face  = (sgn_face < 0 ? sharp_flux_component_minus : sharp_flux_component_plus);
-  double &sharp_flux_across   = (sgn_face < 0 ? sharp_flux_component_plus  : sharp_flux_component_minus);
+  double flux_component_minus, flux_component_plus;
+  flux_component_minus = flux_component_plus = NAN;
+  double &sharp_flux_at_face  = (sgn_face < 0 ? flux_component_minus : flux_component_plus);
+  double &sharp_flux_across   = (sgn_face < 0 ? flux_component_plus  : flux_component_minus);
 
   if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
   {
@@ -799,38 +799,45 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
 
       const xgfm_jump& jump_info = it->second;
 
-      double& flux_quad_side = (sgn_q < 0 ? sharp_flux_component_minus : sharp_flux_component_plus);
+      double& flux_quad_side = (sgn_q < 0 ? flux_component_minus : flux_component_plus);
       flux_quad_side = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
           jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
 
       if(sgn_q < 0)
-        sharp_flux_component_plus   = sharp_flux_component_minus  + jump_info.jump_flux_component(extension_p);
+        flux_component_plus   = flux_component_minus  + jump_info.jump_flux_component(extension_p);
       else
-        sharp_flux_component_minus  = sharp_flux_component_plus   - jump_info.jump_flux_component(extension_p);
+        flux_component_minus  = flux_component_plus   - jump_info.jump_flux_component(extension_p);
     }
   }
   ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
   if(extension_p != NULL){
     ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr); }
 
-
-  if(sharp_flux_component_p[dim] != NULL)
+  // If the user needs the flux components back, return them hereunder
+  // If the user needs the sharp flux components back (i.e., if flux_component_minus and flux_component_plus are pointing
+  // to the same vectors), return the component corresponding to the face of interest only.
+  if(flux_component_minus_p[dim] != NULL && (sgn_face < 0 || flux_component_minus_p[dim] != flux_component_plus_p[dim]))
   {
-    sharp_flux_component_p[dim][f_idx] = (sgn_face < 0 ? sharp_flux_component_minus : sharp_flux_component_plus);
-    P4EST_ASSERT(!ISNAN(sharp_flux_component_p[dim][f_idx]));
+    flux_component_minus_p[dim][f_idx] = flux_component_minus;
+    P4EST_ASSERT(sgn_face > 0 || !ISNAN(flux_component_minus_p[dim][f_idx]));
+  }
+  if(flux_component_plus_p[dim] != NULL && (sgn_face > 0 || flux_component_plus_p[dim] != flux_component_minus_p[dim]))
+  {
+    flux_component_plus_p[dim][f_idx] = flux_component_plus;
+    P4EST_ASSERT(sgn_face < 0 || !ISNAN(flux_component_plus_p[dim][f_idx]));
   }
 
   if(face_velocity_plus_p[dim] != NULL && face_velocity_minus_p[dim] != NULL)
   {
-    if(ISNAN(sharp_flux_component_minus))
+    if(ISNAN(flux_component_minus))
       face_velocity_minus_p[dim][f_idx] = DBL_MAX;
     else
-      face_velocity_minus_p[dim][f_idx] -= sharp_flux_component_minus;
+      face_velocity_minus_p[dim][f_idx] -= flux_component_minus;
 
-    if(ISNAN(sharp_flux_component_plus))
+    if(ISNAN(flux_component_plus))
       face_velocity_plus_p[dim][f_idx] = DBL_MAX;
     else
-      face_velocity_plus_p[dim][f_idx] -= sharp_flux_component_plus;
+      face_velocity_plus_p[dim][f_idx] -= flux_component_plus;
   }
 
   return;
