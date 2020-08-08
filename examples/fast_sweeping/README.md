@@ -1,4 +1,4 @@
-# Parallel Fast Sweeping Method using `p4est`
+# Parallel Fast Sweeping Method using `p4est` for Deep Learning
 
 ## References
 
@@ -26,3 +26,6 @@
 [6]  R. Parent.
      *Computer Animation: Algorithms and Techniques*.  Second Edition.  Morgan Kaufmann
      Publishers.  2008.
+     
+[7]  S. Osher and R. P. Fedkiw.
+     *Level Set Methods and Dynamic Implicit Surfaces*.  Springer-Verlag.  2003.
