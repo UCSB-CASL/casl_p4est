@@ -78,12 +78,12 @@ int main ( int argc, char* argv[] )
 
 		// Definining the level-set function to be reinitialized.
 		const double HALF_AXIS_LEN = 0.5;
-		const double TILT = -M_PI_4;
-		const double X1 = -( HALF_AXIS_LEN * cos( -TILT ) + T[0] );		// Center coordinates of reference circle.
-		const double Y1 = HALF_AXIS_LEN * sin( -TILT ) + T[1];
-		const double R1 = 0.4;											// Radii.
-		const double R2 = 0.4;
-		const double D = H;
+		const double TILT = -0.39269908169872414;
+		const double X1 = -( HALF_AXIS_LEN * cos( -TILT ) + -0.0037645302580557806 );		// Center coordinates of reference circle.
+		const double Y1 = HALF_AXIS_LEN * sin( -TILT ) + -0.0030244556919302671;
+		const double R1 = 0.48437500000000044;											// Radii.
+		const double R2 = 0.062724820143884932;
+		const double D = 0.54702488009592376;
 		TwoSpheres twoSpheres( X1, Y1, R1, R2, D, TILT );
 		splitting_criteria_cf_t levelSetSC( MIN_REFINEMENT_LEVEL, MAX_REFINEMENT_LEVEL, &twoSpheres );
 
@@ -252,7 +252,6 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( ierr );
 
 		// Now, collect samples with reinitialized level-set function values and target h\kappa.
-		// Avoid nodes that are close to physical domain boundary as they are less accurate.
 		for( auto n : indices )
 		{
 			double xyz[P4EST_DIM];					// Position of node at the center of the stencil.

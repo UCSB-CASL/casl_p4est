@@ -64,7 +64,7 @@ int main ( int argc, char* argv[] )
 	const double FLAT_LIM_HK = 0.04;						// Flatness limit for dimensionless curvature.
 	const double MIN_RADIUS = 1.5 * H;									// Ensures at least 4 nodes inside smallest circle.
 	const double MAX_RADIUS = MIN( H / FLAT_LIM_HK, HALF_D - 2 * H );	// Prevents sampling interface nodes with invalid full uniform stencils.
-	const int NUM_CIRCLES = (int)( 2 * ((MAX_RADIUS - MIN_RADIUS) / H) + 1 );	// Number of circles is proportional to finest resolution.
+	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to finest resolution.
 																				// Originally, 2 circles per finest quad/oct.
 
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-0.04/";		// Destination folder.

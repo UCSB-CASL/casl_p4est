@@ -91,4 +91,20 @@ double computeNumericalCurvature( const std::vector<double>& p, const double H )
 	return (SQR( phi_x ) * phi_yy - 2 * phi_x * phi_y * phi_xy + SQR( phi_y ) * phi_xx) / pow( SQR( phi_x ) + SQR( phi_y ), 1.5 );
 }
 
+/**
+ * Rotate the level-set function values in a sample vector by 90 degrees counter-clockwise.
+ * This is used to augment data sets.  Input samples are modified in place.  Dimensionless curvature remains the same.
+ * @param [in|out] sample The sample vector with level-set function values in the standard order (e.g. mm, m0, mp, ...)
+ * @param [in] NUM_COLUMNS Number of columns in full sample.
+ */
+void rotatePhiValues90( std::vector<double>& sample, const int NUM_COLUMNS )
+{
+	double phiVals[] = {
+		sample[2], sample[5], sample[8], sample[1], sample[4], sample[7], sample[0], sample[3], sample[6]
+	};
+
+	for( int i = 0; i < NUM_COLUMNS - 2; i++ )
+		sample[i] = phiVals[i];
+}
+
 #endif //FAST_SWEEPING_LOCAL_UTILS_H
