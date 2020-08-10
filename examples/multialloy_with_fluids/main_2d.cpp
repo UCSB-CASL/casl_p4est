@@ -61,7 +61,7 @@ parameter_list_t pl;
 enum{
   FRANK_SPHERE = 0,
   NS_GIBOU_EXAMPLE = 1,
-  NS_LLNL_EXAMPLE = 2,
+  COUPLED_TEST_2 = 2,
   COUPLED_PROBLEM_EXAMPLE = 3,
   ICE_AROUND_CYLINDER = 4,
   FLOW_PAST_CYLINDER = 5,
@@ -149,6 +149,7 @@ void select_solvers(){
       save_coupled_fields = false;
       break;
 
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
       save_stefan = false; solve_stefan = true;
       save_navier_stokes = false; solve_navier_stokes = true;
@@ -170,7 +171,7 @@ DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error c
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
 DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
 
-DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
+DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,true,"Force the interfacial velocity to zero? ");
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
@@ -340,6 +341,16 @@ void set_geometry(){
       uniform_band=4.;
 
       break;}
+    case COUPLED_TEST_2:{
+      // Domain size:
+      xmin = -1.0; xmax = 1.0;
+      ymin = -1.0; ymax = 1.0;
+      // Number of trees:
+      nx = 2; ny = 2;
+      px = 0; py = 0;
+
+      uniform_band = 4.;
+    }
     }
   // set number of interpolation fields:
   num_fields_interp = 0;
@@ -411,6 +422,7 @@ void set_physical_properties(){
       cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
       break;
 
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
       alpha_s = 1.0;
       alpha_l = 1.0;
@@ -478,6 +490,7 @@ void set_NS_info(){
       uniform_band = 4.;
       break;
 
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
       Re = 1.0;
       u0 = 1.0;
@@ -547,11 +560,15 @@ void simulation_time_info(){
       break;
 
     case COUPLED_PROBLEM_EXAMPLE:
-      tfinal = PI/2.;
+      tfinal = PI/3.;//PI/2.;
       dt_max_allowed = 1.0e-1;
       tstart = 0.0;
 //      dt = 1.e-3;
       break;
+    case COUPLED_TEST_2:
+      tfinal = PI;
+      dt_max_allowed=1.0e-1;
+      tstart=0.0;
 
     }
 //  dt_nm1 = dt;
@@ -560,7 +577,7 @@ void simulation_time_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-double v_int_max_allowed = 10.0;
+double v_int_max_allowed = 50.0;
 
 bool move_interface_with_v_external = false;
 
@@ -671,53 +688,209 @@ double frank_sphere_solution_t(double s){
 struct velocity_component: CF_DIM
 {
   const unsigned char dir;
-  const double k_NS=1.0;
+  const double k_NS=1.0; //1.0;
   velocity_component(const unsigned char& dir_) : dir(dir_){
     P4EST_ASSERT(dir<P4EST_DIM);
   }
 
   double v(DIM(double x, double y, double z)) const{ // gives vel components without the time component
-    switch(dir){
-    case dir::x:
-      return sin(x)*cos(y);
-    case dir::y:
-      return -1.0*cos(x)*sin(y);
-    default:
-      throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
+    switch(example_){
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dir){
+        case dir::x:
+          return sin(x)*cos(y);
+        case dir::y:
+          return -1.0*cos(x)*sin(y);
+        default:
+          throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
+        }
+      }
+      case COUPLED_TEST_2:{
+        switch(dir){
+        case dir::x:
+          return -cos(PI*(t - x))*(- 3.*SQR(y) + 2.*y);
+        case dir::y:
+          return PI*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+        default:
+          throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
+        }
+      }
+      default:{
+        throw std::runtime_error("analytical solution velocity: unknown example \n");
+      }
     }
   }
   double dv_d(const unsigned char& dirr,DIM(double x, double y, double z)) const{
-    switch(dir){
-    case dir::x:
-      switch(dirr){
-      case dir::x: //du_dx (without time component)
-        return cos(x)*cos(y);
-      case dir::y: // du_dy (without time component)
-        return -sin(x)*sin(y);
+    switch(example_){
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dir){
+        case dir::x:
+          switch(dirr){
+          case dir::x: //du_dx (without time component)
+            return cos(x)*cos(y);
+          case dir::y: // du_dy (without time component)
+            return -sin(x)*sin(y);
+          }
+        case dir::y:
+          switch(dirr){
+          case dir::x: // dv_dx ("")
+            return sin(x)*sin(y);
+          case dir::y: // dv_dy ("")
+            return -cos(x)*cos(y);
+          }
+        }
       }
-    case dir::y:
-      switch(dirr){
-      case dir::x: // dv_dx ("")
-        return sin(x)*sin(y);
-      case dir::y: // dv_dy ("")
-        return -cos(x)*cos(y);
-      }
+      case COUPLED_TEST_2:{
+        switch(dir){
+        case dir::x:
+          switch(dirr){
+          case dir::x: //du_dx (with time component)
+            return -1.*PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+          case dir::y: // du_dy (with time component)
+            return cos(PI*(t - x))*(6.*y - 2.);
+          }
+        case dir::y:
+          switch(dirr){
+          case dir::x: // dv_dx ("")
+            return -SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+          case dir::y: // dv_dy ("")
+            return PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+          }
+        }
+    }
     }
   }
 
   double operator()(DIM(double x, double y, double z)) const{ // Returns the velocity field
-    return cos(t*k_NS)*v(DIM(x,y,z));
+    switch (example_) {
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return cos(t*k_NS)*v(DIM(x,y,z));
+      }
+      case COUPLED_TEST_2:{
+        return v(DIM(x,y,z)); // time component included in vel expression for this example
+      }
+      default:{
+        throw std::runtime_error("analytical velocity : unknown example \n");
+      }
+    }
+
   }
   double _d(const unsigned char& dirr, DIM(double x, double y, double z)){ // Returns spatial derivatives of velocity field in given cartesian direction
-    return cos(t*k_NS)*dv_d(dirr,DIM(x,y,z));
+    switch (example_) {
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return cos(t*k_NS)*dv_d(dirr,DIM(x,y,z));
+      }
+      case COUPLED_TEST_2:{
+        return dv_d(dirr,DIM(x,y,z)); // put whole derivative in the expression for this particular example
+      }
+      default:{
+        throw std::runtime_error("analytical velocity : unknown example \n");
+      }
+    }
   }
   double laplace(DIM(double x, double y, double z)){
-    return -P4EST_DIM*cos(t*k_NS)*v(DIM(x,y,z));
+    switch (example_) {
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return -P4EST_DIM*cos(t*k_NS)*v(DIM(x,y,z));
+      }
+      case COUPLED_TEST_2:{
+        switch(dir){
+          case dir::x:{
+            return 6.*cos(PI*(t - x)) + SQR(PI)*cos(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+          }
+          case dir::y:{
+            return -1.*pow(PI,3.)*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y)) - PI*sin(PI*(t - x))*(6.*y - 2.);
+          }
+        default:{
+          throw std::runtime_error("analytical velocity: laplace: unknown cartesian direction \n");
+          }
+        }
+      }
+      default:{
+        throw std::runtime_error("analytical velocity : laplace: unknown example \n");
+      }
+    }
   }
   double dv_dt(DIM(double x, double y, double z)){
-    return -sin(k_NS*t)*v(DIM(x,y,z));
+    switch (example_) {
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return -sin(k_NS*t)*v(DIM(x,y,z));
+      }
+      case COUPLED_TEST_2:{
+        switch(dir){
+          case dir::x:{
+            return PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+          }
+          case dir::y:{
+            return SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+          }
+        default:{
+          throw std::runtime_error("analytical velocity: dv_dt: unknown cartesian direction \n");
+          }
+        }
+      }
+      default:{
+        throw std::runtime_error("analytical velocity:dv_dt : unknown example \n");
+      }
+    }
   }
 };
+
+struct pressure_field: CF_DIM{
+public:
+  double operator()(DIM(double x,double y, double z)) const {
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return 0.0;
+      }
+      case COUPLED_TEST_2:{
+        return 0.0;//return sin(2.*PI*x)*(3.*y + PI*cos(PI*t));
+      }
+      case NS_GIBOU_EXAMPLE:{
+        return 0.0;
+      }
+      default:{
+        throw std::invalid_argument("pressure_field: Unrecognized example \n");
+      }
+    }
+  }
+
+  double gradP(const unsigned char& dir,DIM(double x, double y, double z)){
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        return 0.0;
+      }
+      case COUPLED_TEST_2:{
+        switch(dir){
+          case dir::x:{
+            return 0.0; //return 2.*PI*cos(2.*PI*x)*(3.*y + PI*cos(PI*t));
+          }
+          case dir::y:{
+            return 0.0;//return 3.*sin(2.*PI*x);
+          }
+          default:{
+          throw std::invalid_argument("gradP: unrecognized direction \n");
+          }
+        }
+      }
+      case NS_GIBOU_EXAMPLE:{
+        return 0.0;
+      }
+      default:{
+        throw std::invalid_argument("pressure_field: Unrecognized example \n");
+      }
+    } // end of switch example
+  }
+}pressure_field_analytical;
+
+
+
 
 struct external_force_per_unit_volume_component : CF_DIM{
   const unsigned char dir;
@@ -726,11 +899,12 @@ struct external_force_per_unit_volume_component : CF_DIM{
     P4EST_ASSERT(dir<P4EST_DIM);
   }
   double operator()(DIM(double x, double y, double z)) const{ // returns the forcing term in a given direction
+    pressure_field_analytical.t = t;
     return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
         SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
         (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
         (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
-        velocity_field[dir]->laplace(DIM(x,y,z));
+        velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z));
   }
 };
 //------------------------------------------------------------------------
@@ -751,81 +925,144 @@ struct temperature_field: CF_DIM
   }
 
   double T(DIM(double x, double y, double z)) const{
-    switch(dom){
-    case LIQUID_DOMAIN:
-      return sin(x)*sin(y)*(x + cos(t)*cos(x)*cos(y));
-    case SOLID_DOMAIN:
-      return cos(x)*cos(y)*(cos(t)*sin(x)*sin(y) - 1.);
-
-    default:
-      throw std::runtime_error("analytical solution temperature: unknown domain \n");
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return sin(x)*sin(y)*(x + cos(t)*cos(x)*cos(y));
+        case SOLID_DOMAIN:
+          return cos(x)*cos(y)*(cos(t)*sin(x)*sin(y) - 1.);
+        default:
+          throw std::runtime_error("analytical solution temperature: unknown domain \n");
+        }
+      }
+      case COUPLED_TEST_2:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return 2.*y*PI*SQR(sin(PI*(t - x)));
+        case SOLID_DOMAIN:
+          return -3.*PI*cos(PI*(t - y))*sin(PI*(t - x));
+        default:
+          throw std::runtime_error("analytical solution temperature: unknown domain \n");
+        }
+      }
+      default:{
+        throw std::runtime_error("analytical solution temperature: unkown example \n");
+      }
     }
   }
   double operator()(DIM(double x, double y, double z)) const{ // Returns the velocity field
     return T(DIM(x,y,z));
     }
   double dT_d(const unsigned char& dir,DIM(double x, double y, double z)){
-    switch(dom){
-    case LIQUID_DOMAIN:
-      switch(dir){
-      case dir::x:
-        return cos(x)*sin(y)*(x + cos(t)*cos(x)*cos(y)) - sin(x)*sin(y)*(cos(t)*cos(y)*sin(x) - 1.);
-      case dir::y:
-        return cos(y)*sin(x)*(x + cos(t)*cos(x)*cos(y)) - cos(t)*cos(x)*sin(x)*SQR(sin(y));
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return cos(x)*sin(y)*(x + cos(t)*cos(x)*cos(y)) - sin(x)*sin(y)*(cos(t)*cos(y)*sin(x) - 1.);
+          case dir::y:
+            return cos(y)*sin(x)*(x + cos(t)*cos(x)*cos(y)) - cos(t)*cos(x)*sin(x)*SQR(sin(y));
 
-      default:
-        throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        case SOLID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return cos(t)*SQR(cos(x))*cos(y)*sin(y) - cos(y)*sin(x)*(cos(t)*sin(x)*sin(y) - 1.);
+          case dir::y:
+            return cos(t)*cos(x)*SQR(cos(y))*sin(x) - cos(x)*sin(y)*(cos(t)*sin(x)*sin(y) - 1.);
+
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        default:
+          throw std::runtime_error("dT_dd of analytical temperature field: unrecognized domain \n");
+        } // end of switch domain
+      } //end of coupled problem example
+      case COUPLED_TEST_2:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return -4.*y*SQR(PI)*cos(PI*(t - x))*sin(PI*(t - x));
+          case dir::y:
+            return 2.*PI*SQR(sin(PI*(t - x)));
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        case SOLID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return 3.*SQR(PI)*cos(PI*(t - x))*cos(PI*(t - y));
+          case dir::y:
+            return -3.*SQR(PI)*sin(PI*(t - x))*sin(PI*(t - y));
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        default:
+          throw std::runtime_error("dT_dd of analytical temperature field: unrecognized domain \n");
+        } // end of switch domain
+      } // end of coupled test 2
+      default:{
+        throw std::runtime_error("dT_dd of analytical temp field: unrecognized example \n");
       }
-    case SOLID_DOMAIN:
-      switch(dir){
-      case dir::x:
-        return cos(t)*SQR(cos(x))*cos(y)*sin(y) - cos(y)*sin(x)*(cos(t)*sin(x)*sin(y) - 1.);
-      case dir::y:
-        return cos(t)*cos(x)*SQR(cos(y))*sin(x) - cos(x)*sin(y)*(cos(t)*sin(x)*sin(y) - 1.);
-
-      default:
-        throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
-      }
-    default:
-      throw std::runtime_error("dT_dd of analytical temperature field: unrecognized domain \n");
-
     }
   }
 
   double dT_dt(DIM(double x, double y, double z)){
-    switch(dom){
-    case LIQUID_DOMAIN:
-      return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
-    case SOLID_DOMAIN:
-      return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
+        case SOLID_DOMAIN:
+          return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
 
-    default:
-      throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
-    }
+        default:
+          throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
+        }
+      } // end coupled problem example
+      case COUPLED_TEST_2:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return 4.*y*SQR(PI)*cos(PI*(t - x))*sin(PI*(t - x));
+        case SOLID_DOMAIN:
+          return 3.*SQR(PI)*sin(PI*(t - x))*sin(PI*(t - y)) - 3.*SQR(PI)*cos(PI*(t - x))*cos(PI*(t - y));
+        default:
+          throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
+        }
+      } // end coupled test 2
+      default:{
+        throw std::runtime_error("dT_dt in analytical temperature: unrecognized example \n");
+      }
+    } // end switch example
   }
 
   double laplace(DIM(double x, double y, double z)){
-    switch(dom){
-    case LIQUID_DOMAIN:
-      return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
-
-//      return -2.*SQR(n)*cos(n*x)*sin(n*y)*(m*cos(m*y)*sin(m*x)*cos(t) - 1.) -
-//          2.*pow(n,3.)*sin(n*x)*sin(n*y)*(x + cos(m*x)*cos(m*y)*cos(t)) -
-//          2.*m*SQR(n)*cos(m*x)*cos(n*y)*sin(m*y)*sin(n*x)*cos(t) -
-//          2.*SQR(m)*n*cos(m*x)*cos(m*y)*sin(n*x)*sin(n*y)*cos(t);
-
-
-//      return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
-    case SOLID_DOMAIN:
-
-//      return -1.0*2.*SQR(m)*n*cos(m*x)*cos(m*y)*(sin(n*x)*sin(n*y)*cos(t) - 1.) -
-//          2.*pow(n,3.)*cos(m*x)*cos(m*y)*sin(n*x)*sin(n*y)*cos(t) -
-//          2.*m*SQR(n)*cos(m*x)*cos(n*y)*sin(m*y)*sin(n*x)*cos(t) -
-//          2.*m*SQR(n)*cos(m*y)*cos(n*x)*sin(m*x)*sin(n*y)*cos(t);
-
-      return -2.*cos(x)*cos(y)*(4.*cos(t)*sin(x)*sin(y) - 1.);
-    default:
-      throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
+    switch(example_){
+      case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
+        case SOLID_DOMAIN:
+          return -2.*cos(x)*cos(y)*(4.*cos(t)*sin(x)*sin(y) - 1.);
+        default:
+          throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
+        }
+      }
+      case COUPLED_TEST_2:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return 4.*y*pow(PI,3.)*cos(2.*PI*(t - x));
+        case SOLID_DOMAIN:
+          return 6.*pow(PI,3.)*cos(PI*(t - y))*sin(PI*(t - x));
+        default:
+          throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
+        }
+      }
     }
   }
 };
@@ -833,17 +1070,13 @@ struct temperature_field: CF_DIM
 struct interfacial_velocity : CF_DIM{ // will yield analytical solution to interfacial velocity in a given cartesian direction (not including the multiplication by the normal, which will have to be done outside of this struct)
 
 public:
-
   const unsigned char dir;
   temperature_field** temperature_;
-
-
   interfacial_velocity(const unsigned char &dir_,temperature_field** analytical_soln):dir(dir_),temperature_(analytical_soln){
     P4EST_ASSERT(dir<P4EST_DIM);
   }
   double operator()(DIM(double x, double y, double z)) const{
     return (temperature_[SOLID_DOMAIN]->dT_d(dir,x,y) - temperature_[LIQUID_DOMAIN]->dT_d(dir,x,y))*coupled_test_sign;
-
   }
 };
 
@@ -868,7 +1101,6 @@ struct external_heat_source: CF_DIM{
     default:
       throw std::runtime_error("external heat source : advective term : unrecognized domain \n");
     }
-
     return temperature_[dom]->dT_dt(DIM(x,y,z)) + advective_term - temperature_[dom]->laplace(DIM(x,y,z));
   }
 };
@@ -893,6 +1125,12 @@ public:
         return r0 - sin(x)*sin(y);
       case COUPLED_PROBLEM_EXAMPLE:
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+      case COUPLED_TEST_2:{
+        return 0.5 - sqrt(SQR(x) + SQR(y));
+
+//        double rval = sqrt(SQR(x) + SQR(y));
+//        return rval - 0.25  - (pow(y,5.) + 5.*(pow(x,4.))*y - 10.*SQR(x)*pow(y,3.))/(3.*pow(rval,5.) + 1e-5);
+      }
       default: throw std::invalid_argument("You must choose an example type\n");
       }
   }
@@ -972,14 +1210,17 @@ public:
       case FRANK_SPHERE:{ // Frank sphere case, no surface tension
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
         }
-      case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+      case ICE_AROUND_CYLINDER: {
+        // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-            return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_cyl)*(*kappa_interp)(x,y)));
-          }
+          return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_cyl)*(*kappa_interp)(x,y)));
+        }
         else return theta_interface*(1. - (sigma/d_cyl)*(*kappa_interp)(x,y));
-
-      case COUPLED_PROBLEM_EXAMPLE:
-        return temperature_[dom]->T(DIM(x,y,z));
+      }
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return temperature_[dom]->T(DIM(x,y,z));
+    }
     default:
       throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
       }
@@ -1002,6 +1243,7 @@ public:
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
       case ICE_AROUND_CYLINDER: return 1.0;
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return 1.0;
       }
@@ -1097,16 +1339,27 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE: return DIRICHLET;
-      case ICE_AROUND_CYLINDER:
-          return temp_three_wall_dirichlet_type(DIM(x,y,z));
-      case COUPLED_PROBLEM_EXAMPLE:
+      case ICE_AROUND_CYLINDER:{
+        return temp_three_wall_dirichlet_type(DIM(x,y,z));
+      }
+      case COUPLED_PROBLEM_EXAMPLE:{
         if(xlower_wall(x,y) || xupper_wall(x,y)){
-            return DIRICHLET;
-          }
+          return DIRICHLET;
+        }
         else if(ylower_wall(x,y) || yupper_wall(x,y)){
-            return DIRICHLET;
-          }
+          return DIRICHLET;
+        }
         break;
+      }
+      case COUPLED_TEST_2:{
+        if(xlower_wall(x,y) || xupper_wall(x,y)){
+          return DIRICHLET;
+        }
+        else if(ylower_wall(x,y) || yupper_wall(x,y)){
+          return NEUMANN;
+        }
+        break;
+      }
       default:
         throw std::runtime_error("WALL BC TYPE TEMP: unrecognized example \n");
         }
@@ -1143,9 +1396,27 @@ public:
           return temp_three_wall_dirichlet_val(DIM(x,y,z));
         }
       case COUPLED_PROBLEM_EXAMPLE:{
-          if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
-              return temperature_[dom]->T(DIM(x,y,z));;
-            }
+//          if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
+//              return temperature_[dom]->T(DIM(x,y,z));;
+//            }
+          if(xlower_wall(x,y) || xupper_wall(x,y)){
+            return temperature_[dom]->T(DIM(x,y,z));
+          }
+          else if(ylower_wall(x,y) || yupper_wall(x,y)){
+            return temperature_[dom]->T(DIM(x,y,z));
+          }
+          break;
+        }
+      case COUPLED_TEST_2:{
+  //          if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
+  //              return temperature_[dom]->T(DIM(x,y,z));;
+  //            }
+          if(xlower_wall(x,y) || xupper_wall(x,y)){
+            return temperature_[dom]->T(DIM(x,y,z));
+          }
+          else if(ylower_wall(x,y) || yupper_wall(x,y)){
+            return temperature_[dom]->dT_d(dir::y,DIM(x,y,z));
+          }
           break;
         }
       default:
@@ -1191,6 +1462,7 @@ public:
           }
         }
       }
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:{
           return temperature_[dom]->T(DIM(x,y,z));
       }
@@ -1257,17 +1529,25 @@ public:
         return (*velocity_field[dir])(DIM(x,y,z));
         }
       case COUPLED_PROBLEM_EXAMPLE:{
-      if(xupper_wall(DIM(x,y,z))){
-        return velocity_field[dir]->_d(dir::x,DIM(x,y,z));
-      }
-      else if (yupper_wall(DIM(x,y,z))){
-        return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
-
-      }
-      else{
-        return (*velocity_field[dir])(DIM(x,y,z));
-      }
+        if(xupper_wall(DIM(x,y,z))){
+          return velocity_field[dir]->_d(dir::x,DIM(x,y,z));
         }
+        else if (yupper_wall(DIM(x,y,z))){
+          return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
+        }
+        else{
+          return (*velocity_field[dir])(DIM(x,y,z));
+        }
+      }
+      case COUPLED_TEST_2:{
+        if(xupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
+          return (*velocity_field[dir])(DIM(x,y,z));
+        }
+        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+          return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
+        }
+        break;
+      }
     default:
       throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
     }
@@ -1300,15 +1580,25 @@ public:
       case NS_GIBOU_EXAMPLE:
         return DIRICHLET;
       case COUPLED_PROBLEM_EXAMPLE:{
-      if(xupper_wall(DIM(x,y,z))){
-        return NEUMANN;
+        if(xupper_wall(DIM(x,y,z))){
+          return NEUMANN;
+        }
+        else if (yupper_wall(DIM(x,y,z))){
+          return NEUMANN;
+        }
+        else{
+          return DIRICHLET;
+        }
       }
-      else if (yupper_wall(DIM(x,y,z))){
-        return NEUMANN;
+      case COUPLED_TEST_2:{
+        if(xupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
+          return DIRICHLET;
+        }
+        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+          return NEUMANN;
+        }
+        break;
       }
-      else{
-        return DIRICHLET;
-      }        }
       default:
         throw std::runtime_error("WALL BC TYPE VELOCITY: unrecognized example \n");
       }
@@ -1330,6 +1620,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case NS_GIBOU_EXAMPLE:
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
@@ -1367,6 +1658,7 @@ public:
       }
       case NS_GIBOU_EXAMPLE:
         return (*velocity_field[dir])(x,y);
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return (*velocity_field[dir])(x,y);
     default:
@@ -1412,6 +1704,7 @@ struct INITIAL_VELOCITY : CF_DIM
             throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
           }
         }
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         switch(dir){
         case dir::x:
@@ -1460,17 +1753,25 @@ public:
             return NEUMANN;
         }
       case COUPLED_PROBLEM_EXAMPLE:{
-      if(xupper_wall(DIM(x,y,z))){
-        return DIRICHLET;
-      }
-      else if (yupper_wall(DIM(x,y,z))){
-        return DIRICHLET;
-
-      }
-      else{
-        return NEUMANN;
-      }
+        if(xupper_wall(DIM(x,y,z))){
+          return DIRICHLET;
         }
+        else if (yupper_wall(DIM(x,y,z))){
+          return DIRICHLET;
+        }
+        else{
+          return NEUMANN;
+        }
+      }
+      case COUPLED_TEST_2:{
+        if(xupper_wall(DIM(x,y,z)) ){
+          return NEUMANN;
+        }
+        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))|| xlower_wall(DIM(x,y,z))){
+          return DIRICHLET;
+        }
+        break;
+      }
       default:
         throw std::runtime_error("WALL BC TYPE PRESSURE: unrecognized example \n");
         }
@@ -1497,6 +1798,16 @@ public:
       case COUPLED_PROBLEM_EXAMPLE:{
             return 0.0; // Either homogeneous Dirichlet or homogeneous Neumann
         }
+      case COUPLED_TEST_2:{
+        pressure_field_analytical.t=t;
+        if(xupper_wall(DIM(x,y,z))){
+          return pressure_field_analytical.gradP(dir::x,DIM(x,y,z));
+        }
+        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
+          return pressure_field_analytical(DIM(x,y,z));
+        }
+        break;
+      }
       default:
         throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
         }
@@ -1516,6 +1827,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case NS_GIBOU_EXAMPLE:
       interface_bc_type_pressure = NEUMANN;
       break;
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
       interface_bc_type_pressure = NEUMANN;
 //    interface_bc_type_pressure = DIRICHLET;
@@ -1535,6 +1847,7 @@ public:
         return 0.0;
       case NS_GIBOU_EXAMPLE: // Benchmark NS
         return 0.0;
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return 0.0;
       default:
@@ -3353,6 +3666,8 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
     analytical_soln_velINT[d] = new interfacial_velocity(d,analytical_soln_temp);
   }
+
+  pressure_field_analytical.t=tn;
   CF_DIM *analytical_soln_velNS_cf[P4EST_DIM] = {DIM(analytical_soln_velNS[0],analytical_soln_velNS[1],analytical_soln_velNS[2])};
   CF_DIM *analytical_soln_velINT_cf[P4EST_DIM] = {DIM(analytical_soln_velINT[0],analytical_soln_velINT[1],analytical_soln_velINT[2])};
   CF_DIM *analytical_soln_temp_cf[2] = {analytical_soln_temp[LIQUID_DOMAIN],analytical_soln_temp[SOLID_DOMAIN]};
@@ -3363,7 +3678,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   }
   sample_cf_on_nodes(p4est,nodes,*analytical_soln_temp_cf[LIQUID_DOMAIN],Tl_analytical.vec);
   sample_cf_on_nodes(p4est,nodes,*analytical_soln_temp_cf[SOLID_DOMAIN],Ts_analytical.vec);
-  sample_cf_on_nodes(p4est,nodes,zero_cf,pn_analytical.vec);
+  sample_cf_on_nodes(p4est,nodes,pressure_field_analytical,pn_analytical.vec);
 
 
   // Get errors:
@@ -3563,12 +3878,12 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
           throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
         }
 
-     if(example_ !=COUPLED_PROBLEM_EXAMPLE){
+     if((example_ !=COUPLED_PROBLEM_EXAMPLE)&& (example_ != COUPLED_TEST_2)){
         // Create the cylinder just for visualization purposes, then destroy after saving
         phi_cylinder.create(p4est,nodes);
         sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
 
-        sprintf(output,"%s/snapshot_example_%d_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,example_,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+        sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
         save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
 
         phi_cylinder.destroy();
@@ -4248,7 +4563,7 @@ int main(int argc, char** argv) {
       if(solve_stefan){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
 
-        if(example_ == COUPLED_PROBLEM_EXAMPLE){
+        if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
           coupled_test_sign = 1.;
           vel_has_switched=false;
 
@@ -4300,7 +4615,7 @@ int main(int argc, char** argv) {
       if(solve_navier_stokes){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
 
-        if(example_ == NS_GIBOU_EXAMPLE || example_ == COUPLED_PROBLEM_EXAMPLE)
+        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2))
         {
           for(unsigned char d=0;d<P4EST_DIM;++d){
             analytical_soln[d] = new velocity_component(d);
@@ -4308,7 +4623,7 @@ int main(int argc, char** argv) {
           }
         }
         for(unsigned char d=0;d<P4EST_DIM;++d){
-          if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+          if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
             v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
             v_init_cf[d]->t = tstart;
           }
@@ -4331,7 +4646,7 @@ int main(int argc, char** argv) {
       }
 
       for(unsigned char d=0;d<P4EST_DIM;d++){
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           delete analytical_soln[d];
         }
         if(solve_navier_stokes) delete v_init_cf[d];
@@ -4346,7 +4661,7 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // For NS or coupled case:
     // Create analytical velocity field for each Cartesian direction if needed:
-    if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+    if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
       for(unsigned char d=0;d<P4EST_DIM;d++){
         analytical_soln_v[d] = new velocity_component(d);
         analytical_soln_v[d]->t = tn;
@@ -4357,14 +4672,14 @@ int main(int argc, char** argv) {
     if(solve_stefan){
       // Create analytical temperature field for each domain if needed:
       for(unsigned char d=0;d<2;++d){
-        if(example_ == COUPLED_PROBLEM_EXAMPLE){ // TO-DO: make all incrementing consistent
+        if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){ // TO-DO: make all incrementing consistent
           analytical_T[d] = new temperature_field(d);
           analytical_T[d]->t = tn;
         }
       }
       // Create necessary RHS forcing terms and BC's
       for(unsigned char d=0;d<2;++d){
-        if(example_ == COUPLED_PROBLEM_EXAMPLE){
+        if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
           external_heat_source_T[d]->t = tn;
           bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
@@ -4389,7 +4704,7 @@ int main(int argc, char** argv) {
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
 
         // Set the BC values (and potential forcing terms) depending on what we are running:
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           // Interface conditions values:
           bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
           bc_interface_value_velocity[d]->t = tn;
@@ -4411,6 +4726,7 @@ int main(int argc, char** argv) {
         }
       }
       interface_bc_pressure(); // sets the interfacial bc type for pressure
+      bc_wall_value_pressure.t = tn;
     }
 
 
@@ -4469,11 +4785,12 @@ int main(int argc, char** argv) {
 
           break;
         }
+      case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:{
           // Output file for coupled problem test case:
           const char* out_dir_err_coupled = getenv("OUT_DIR_ERR_coupled");
-          sprintf(name_coupled_errors,"%s/coupled_error_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
-                  out_dir_err_coupled,lmin+grid_res_iter,lmax + grid_res_iter,method_,advection_sl_order);
+          sprintf(name_coupled_errors,"%s/coupled_error_ex_%d_lmin_%d_lmax_%d_method_%d_advection_order_%d.dat",
+                  out_dir_err_coupled,example_,lmin+grid_res_iter,lmax + grid_res_iter,method_,advection_sl_order);
 
           ierr = PetscFOpen(mpi.comm(),name_coupled_errors,"w",&fich_coupled_errors); CHKERRXX(ierr);
           ierr = PetscFPrintf(mpi.comm(),fich_coupled_errors,"time " "timestep " "iteration "
@@ -4573,7 +4890,7 @@ int main(int argc, char** argv) {
         // Update BC objects for stefan problem:
         // -------------------------------
         if((tstep>0) &&solve_stefan){
-          if(example_ == COUPLED_PROBLEM_EXAMPLE){
+          if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
             for(unsigned char d=0;d<2;d++){
               analytical_T[d]->t = tn;
               bc_interface_val_temp[d]->t = tn;
@@ -4630,7 +4947,7 @@ int main(int argc, char** argv) {
         compute_curvature(phi,normal,curvature,ngbd_np1,ls_new_new); // TO-DO: don't need to do this for coupled problem example
 
         // Feed the curvature computed to the interfacial boundary condition:
-        if(example_ !=COUPLED_PROBLEM_EXAMPLE){
+        if((example_ !=COUPLED_PROBLEM_EXAMPLE) && (example_ != COUPLED_TEST_2)){
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
           }
@@ -4736,7 +5053,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed
         // -------------------------------
-        if(example_ != COUPLED_PROBLEM_EXAMPLE){
+        if((example_ != COUPLED_PROBLEM_EXAMPLE)&& (example_ != COUPLED_TEST_2)){
           for(unsigned char d=0;d<2;++d){
             bc_interface_val_temp[d]->clear();
           }
@@ -4892,10 +5209,11 @@ int main(int argc, char** argv) {
         bc_pressure.setWallValues(bc_wall_value_pressure);
 
         // Set external_forces if applicable
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           foreach_dimension(d){
             external_force_components[d]->t = tn;
           }
+          bc_wall_value_pressure.t=tn;
         }
 
         // -------------------------------
@@ -4943,7 +5261,7 @@ int main(int argc, char** argv) {
         ns->set_bc(bc_velocity,&bc_pressure);
 
         // Set the RHS:
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)){
+        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           CF_DIM *external_forces[P4EST_DIM]=
           {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
           ns->set_external_forces(external_forces);
@@ -5049,7 +5367,7 @@ int main(int argc, char** argv) {
 
           save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
         }
-      if(example_ == COUPLED_PROBLEM_EXAMPLE){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
         const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
 
         char output[1000];
@@ -5135,7 +5453,7 @@ int main(int argc, char** argv) {
         }
 
       // Clip time and switch vel direction for coupled problem example:
-      if(example_ == COUPLED_PROBLEM_EXAMPLE){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
         if((tn+dt>=tfinal/2.0) && !vel_has_switched){
           dt = (tfinal/2.0) - tn;
           coupled_test_switch_sign();
@@ -5308,7 +5626,7 @@ int main(int argc, char** argv) {
 
     // Destroy relevant BC and RHS info:
     for(unsigned char d=0;d<2;++d){
-      if(example_ == COUPLED_PROBLEM_EXAMPLE){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
         delete analytical_T[d];
         delete external_heat_source_T[d];
       }
@@ -5348,7 +5666,7 @@ int main(int argc, char** argv) {
     press_nodes.destroy();
 
     for(unsigned char d=0;d<P4EST_DIM;d++){
-      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
         delete analytical_soln_v[d];
         delete external_force_components[d];
       }
