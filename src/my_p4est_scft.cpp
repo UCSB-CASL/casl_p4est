@@ -108,16 +108,9 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   force_nu_p = NULL;
 
   /* determine the smallest cell size */
-  ::dxyz_min(p4est, dxyz);
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-  dxyz_max = MAX(dxyz[0], dxyz[1], dxyz[2]);
-  diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-  dxyz_max = MAX(dxyz[0], dxyz[1]);
-  diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
-#endif
+  get_dxyz_min(p4est, dxyz);
+  dxyz_min = MIN( DIM( dxyz[0],dxyz[1],dxyz[2] ) );
+  dxyz_max = MAX( DIM( dxyz[0],dxyz[1],dxyz[2] ) );
   dxyz_close_interface = 1.2*dxyz_max;
 }
 
@@ -141,10 +134,8 @@ my_p4est_scft_t::~my_p4est_scft_t()
   if (exp_w_a != NULL) { ierr = VecDestroy(exp_w_a); CHKERRXX(ierr); }
   if (exp_w_b != NULL) { ierr = VecDestroy(exp_w_b); CHKERRXX(ierr); }
 
-  for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++)
-  {
-    for (int dim = 0; dim < P4EST_DIM; dim++)
-    {
+  for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++) {
+    for (int dim = 0; dim < P4EST_DIM; dim++) {
       ierr = VecDestroy(normal[surf_idx][dim]); CHKERRXX(ierr);
     }
     delete[] normal[surf_idx];
@@ -204,33 +195,8 @@ void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A
 
 void my_p4est_scft_t::initialize_solvers()
 {
-//  for (int i = 0; i < bc_coeffs_a.size(); i++) { ierr = VecDestroy(bc_coeffs_a[i]); CHKERRXX(ierr); }
-//  for (int i = 0; i < bc_coeffs_b.size(); i++) { ierr = VecDestroy(bc_coeffs_b[i]); CHKERRXX(ierr); }
-
-//  bc_coeffs_a.resize(num_surfaces, NULL);
-//  bc_coeffs_b.resize(num_surfaces, NULL);
-
-//  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_a[i]); CHKERRXX(ierr); }
-//  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_b[i]); CHKERRXX(ierr); }
-
-//  for (short i = 0; i < bc_coeffs_a_cf.size(); ++i) { delete bc_coeffs_a_cf[i]; }
-//  for (short i = 0; i < bc_coeffs_b_cf.size(); ++i) { delete bc_coeffs_b_cf[i]; }
-
-//  bc_coeffs_a_cf.resize(num_surfaces, NULL);
-//  bc_coeffs_b_cf.resize(num_surfaces, NULL);
-
-//  for (short idx_surf = 0; idx_surf < num_surfaces; ++idx_surf)
-//  {
-//    bc_coeffs_a_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
-//    bc_coeffs_b_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
-
-//    ((my_p4est_interpolation_nodes_t *) bc_coeffs_a_cf[idx_surf])->set_input(bc_coeffs_a[idx_surf], linear);
-//    ((my_p4est_interpolation_nodes_t *) bc_coeffs_b_cf[idx_surf])->set_input(bc_coeffs_b[idx_surf], linear);
-//  }
-
   // chain propogator a
-  for (int i = 0; i < num_surfaces; ++i)
-  {
+  for (int i = 0; i < num_surfaces; ++i) {
     solver_a.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
@@ -246,8 +212,7 @@ void my_p4est_scft_t::initialize_solvers()
   solver_a.preassemble_linear_system();
 
   // chain propogator b
-  for (int i = 0; i < num_surfaces; ++i)
-  {
+  for (int i = 0; i < num_surfaces; ++i) {
     solver_b.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
@@ -445,72 +410,6 @@ void my_p4est_scft_t::solve_for_propogators()
   double *mu_p_ptr;
   double *mu_m_ptr;
   double *mask_ptr;
-
-//  ierr = VecGetArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_p,    &mu_p_ptr);    CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_m,    &mu_m_ptr);    CHKERRXX(ierr);
-//  ierr = VecGetArray(mask,    &mask_ptr);    CHKERRXX(ierr);
-
-//  for(p4est_locidx_t n=0; n < nodes->num_owned_indeps; ++n)
-//  {
-//    if (mask_ptr[n] < 0.)
-//    {
-//      exp_w_a_ptr[n] = exp(-0.5*(mu_p_ptr[n]-mu_m_ptr[n])*ds_a);
-//      exp_w_b_ptr[n] = exp(-0.5*(mu_p_ptr[n]+mu_m_ptr[n])*ds_b);
-//    } else {
-//      exp_w_a_ptr[n] = 1.0;
-//      exp_w_b_ptr[n] = 1.0;
-//    }
-//  }
-
-//  ierr = VecRestoreArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_p,    &mu_p_ptr);    CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_m,    &mu_m_ptr);    CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mask,    &mask_ptr);    CHKERRXX(ierr);
-
-//  // forward propagator
-//  for (int is = 1; is < fns; is++)
-//  {
-//    ierr = VecCopy(qf[is-1], q_tmp); CHKERRXX(ierr);
-//    ierr = VecPointwiseMult(q_tmp, q_tmp, exp_w_a); CHKERRXX(ierr);
-
-//    diffusion_step(solver_a, ds_a, qf[is], q_tmp);
-
-//    ierr = VecPointwiseMult(qf[is], qf[is], exp_w_a); CHKERRXX(ierr);
-//  }
-
-//  for (int is = fns; is < ns; is++)
-//  {
-//    ierr = VecCopy(qf[is-1], q_tmp); CHKERRXX(ierr);
-//    ierr = VecPointwiseMult(q_tmp, q_tmp, exp_w_b); CHKERRXX(ierr);
-
-//    diffusion_step(solver_b, ds_b, qf[is], q_tmp);
-
-//    ierr = VecPointwiseMult(qf[is], qf[is], exp_w_b); CHKERRXX(ierr);
-//  }
-
-//  // backward propagator
-//  for (int is = ns-2; is > fns-2; is--)
-//  {
-//    ierr = VecCopy(qb[is+1], q_tmp); CHKERRXX(ierr);
-//    ierr = VecPointwiseMult(q_tmp, q_tmp, exp_w_b); CHKERRXX(ierr);
-
-//    diffusion_step(solver_b, ds_b, qb[is], q_tmp);
-
-//    ierr = VecPointwiseMult(qb[is], qb[is], exp_w_b); CHKERRXX(ierr);
-//  }
-
-//  for (int is = fns-2; is > -1; is--)
-//  {
-//    ierr = VecCopy(qb[is+1], q_tmp); CHKERRXX(ierr);
-//    ierr = VecPointwiseMult(q_tmp, q_tmp, exp_w_a); CHKERRXX(ierr);
-
-//    diffusion_step(solver_a, ds_a, qb[is], q_tmp);
-
-//    ierr = VecPointwiseMult(qb[is], qb[is], exp_w_a); CHKERRXX(ierr);
-//  }
 
   ierr = VecGetArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);

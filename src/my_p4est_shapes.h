@@ -721,9 +721,9 @@ public:
   double xc, yc, zc;  // center
   double inside;  // exterior (-1) or interior (-1)
   int N;          // number of perturbations
-  double *n;         // mode
-  double *beta;   // degree of the deformation of the circle
-  double *theta;  // rotational angle and auxiliary variables
+  std::vector<double> n;      // mode
+  std::vector<double> beta;   // degree of the deformation of the circle
+  std::vector<double> theta;  // rotational angle and auxiliary variables
   cf_value_type_t what;
   double rot;
   double nx,ny,nz;
@@ -737,6 +737,14 @@ public:
     set_params(r0, xc, yc, zc, inside, N, n, beta, theta, nx, ny, nz, rot);
   }
 
+  radial_phi_t(cf_value_type_t what, double r0, double xc, double yc, double zc, double inside,
+               double n, double beta, double theta,
+               double nx=0, double ny=0, double nz=1, double rot=0)
+  {
+    this->what = what;
+    set_params(r0, xc, yc, zc, inside, n, beta, theta, nx, ny, nz, rot);
+  }
+
   void set_params(double r0 = 1, double xc = 0, double yc = 0, double zc = 0, double inside = 1,
                   int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL,
                   double nx_=0, double ny_=0, double nz_=1, double rot=0)
@@ -747,14 +755,51 @@ public:
     this->zc     = zc;
     this->inside = inside;
     this->N      = N;
-    this->n      = n;
-    this->beta   = beta;
-    this->theta  = theta;
+
+    this->n.resize(N);
+    this->beta.resize(N);
+    this->theta.resize(N);
+
+    for (int i = 0; i < N; ++i)
+    {
+      this->n[i]      = n[i];
+      this->beta[i]   = beta[i];
+      this->theta[i]  = theta[i];
+    }
 
     this->nx = nx_;
     this->ny = ny_;
     this->nz = nz_;
-    this->theta = theta;
+
+    double ct = cos(rot);
+    double st = sin(rot);
+    double norm = sqrt(nx*nx+ny*ny+nz*nz);
+    this->nx /= norm;
+    this->ny /= norm;
+    this->nz /= norm;
+    R[0] = ct+nx*nx*(1.-ct);    R[1] = nx*ny*(1.-ct)-nz*st;    R[2] = nx*nz*(1.-ct)+ny*st;
+    R[3] = ny*nx*(1.-ct)+nz*st; R[4] = ct+ny*ny*(1.-ct);       R[5] = ny*nz*(1.-ct)-nx*st;
+    R[6] = nz*nx*(1.-ct)-ny*st; R[7] = nz*ny*(1.-ct)+nx*st;    R[8] = ct+nz*nz*(1.-ct);
+  }
+
+  void set_params(double r0, double xc, double yc, double zc, double inside,
+                  double n, double beta, double theta,
+                  double nx_=0, double ny_=0, double nz_=1, double rot=0)
+  {
+    this->r0     = r0;
+    this->xc     = xc;
+    this->yc     = yc;
+    this->zc     = zc;
+    this->inside = inside;
+    this->N      = 1;
+
+    this->n.assign(1, n);
+    this->beta.assign(1, beta);
+    this->theta.assign(1, theta);
+
+    this->nx = nx_;
+    this->ny = ny_;
+    this->nz = nz_;
 
     double ct = cos(rot);
     double st = sin(rot);
@@ -905,6 +950,8 @@ public:
                 phi_y*phi_z*phi_yz - 2.*phi_y*phi_z*phi_yz + phi_y*phi_z*phi_yz +
                 phi_z*phi_x*phi_zx - 2.*phi_z*phi_x*phi_zx + phi_z*phi_x*phi_zx)/pow(phi_x*phi_x + phi_y*phi_y + phi_z*phi_z + EPS, 1.5);
       }
+      default:
+        throw;
     }
   }
 };
@@ -925,6 +972,13 @@ struct radial_shaped_domain_t
     this->set_params(r0, xc, yc, zc, inside, N, n, beta, theta, nx_, ny_, nz_, rot);
   }
 
+  radial_shaped_domain_t(double r0, double xc, double yc, double zc, double inside,
+                         double n, double beta, double theta,
+                         double nx_=0, double ny_=0, double nz_=1, double rot=0)
+    : phi(VAL), phi_x(DDX), phi_y(DDY), phi_z(DDZ), phi_c(CUR)
+  {
+    this->set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
+  }
 
   inline void set_params(double r0 = 1, double xc = 0, double yc = 0, double zc = 0, double inside = 1,
                          int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL,
@@ -935,6 +989,17 @@ struct radial_shaped_domain_t
     phi_y.set_params(r0, xc, yc, zc, inside, N, n, beta, theta, nx_, ny_, nz_, rot);
     phi_z.set_params(r0, xc, yc, zc, inside, N, n, beta, theta, nx_, ny_, nz_, rot);
     phi_c.set_params(r0, xc, yc, zc, inside, N, n, beta, theta, nx_, ny_, nz_, rot);
+  }
+
+  inline void set_params(double r0, double xc, double yc, double zc, double inside,
+                         double n, double beta, double theta,
+                         double nx_=0, double ny_=0, double nz_=1, double rot=0)
+  {
+    phi  .set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
+    phi_x.set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
+    phi_y.set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
+    phi_z.set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
+    phi_c.set_params(r0, xc, yc, zc, inside, n, beta, theta, nx_, ny_, nz_, rot);
   }
 };
 #else
@@ -950,7 +1015,8 @@ public:
   std::vector<double> theta;  // rotational angle and auxiliary variables
   cf_value_type_t what;
 
-  radial_phi_t(cf_value_type_t what, double r0 = 1, double xc = 0, double yc = 0, double inside = 1, int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL)
+  radial_phi_t(cf_value_type_t what, double r0 = 1, double xc = 0, double yc = 0, double inside = 1,
+               int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL)
   {
     this->what = what;
     set_params(r0, xc, yc, inside, N, n, beta, theta);
@@ -1068,8 +1134,8 @@ public:
 
         return (phi_x*phi_x*phi_yy - 2.*phi_x*phi_y*phi_xy + phi_y*phi_y*phi_xx)/pow(phi_x*phi_x + phi_y*phi_y + EPS, 1.5);
       }
-
-
+      default:
+        throw;
     }
   }
 };
@@ -1109,41 +1175,43 @@ struct radial_shaped_domain_t
     phi_c.set_params(r0, xc, yc, inside, n, beta, theta);
   }
 };
+#endif
 
-class capsule_phi_t : public CF_2
+
+class capsule_phi_t : public CF_DIM
 {
 public:
   double r0;      // radius
-  double xc, yc;  // center
+  double DIM(xc, yc, zc);  // center
   double l;       // length
   double inside;  // exterior (-1) or interior (-1)
-  double theta;   // rotational angle and auxiliary variables
+  double theta;   // rotational angle (around z) and auxiliary variables
   cf_value_type_t what;
 
-  capsule_phi_t(cf_value_type_t what, double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
+  capsule_phi_t(cf_value_type_t what, double r0 = 1, DIM(double xc = 0, double yc = 0, double zc = 0), double l = 0, double inside = 1, double theta = 0)
   {
     this->what = what;
-    set_params(r0, xc, yc, l, inside, theta);
+    set_params(r0, DIM(xc, yc, zc), l, inside, theta);
   }
 
-  void set_params(double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
+  void set_params(double r0 = 1, DIM(double xc = 0, double yc = 0, double zc = 0), double l = 0, double inside = 1, double theta = 0)
   {
     this->r0     = r0;
-    this->xc     = xc;
-    this->yc     = yc;
+    EXECD( this->xc = xc, this->yc = yc, this->zc = zc);
     this->inside = inside;
     this->l      = l;
     this->theta  = theta;
   }
 
-  double operator()(double x, double y) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    double X = (x-xc)*cos(theta)-(y-yc)*sin(theta);
-    double Y = (x-xc)*sin(theta)+(y-yc)*cos(theta);
+    double DIM( X = (x-xc)*cos(theta)-(y-yc)*sin(theta),
+                Y = (x-xc)*sin(theta)+(y-yc)*cos(theta),
+                Z = z);
 
     double X0 = MAX(-.5*l, MIN(.5*l, X));
 
-    double r = sqrt(SQR(X-X0)+SQR(Y));
+    double r = ABSD(X-X0, Y, Z);
 
     if (r < 1.0E-9) r = 1.0E-9; // to avoid division by zero
 
@@ -1151,38 +1219,37 @@ public:
       case VAL: return inside*(r-r0);
       case DDX: return inside*(X-X0)/r;
       case DDY: return inside*Y/r;
+#ifdef P4_TO_P8
+      case DDZ: return inside*Z/r;
+#endif
       case CUR:
       {
         if (X > -.5*l && X < .5*l) return 0;
         else return inside*1./r;
       }
-
-
+      default: throw;
     }
   }
 };
 
 struct capsule_domain_t
 {
-  capsule_phi_t phi;
-  capsule_phi_t phi_x;
-  capsule_phi_t phi_y;
-  capsule_phi_t phi_c;
+  capsule_phi_t phi, phi_c, DIM( phi_x, phi_y, phi_z );
 
-  capsule_domain_t(double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
-    : phi(VAL), phi_x(DDX), phi_y(DDY), phi_c(CUR)
+  capsule_domain_t(double r0 = 1, DIM(double xc = 0, double yc = 0, double zc = 0), double l = 0, double inside = 1, double theta = 0)
+    : phi(VAL), phi_c(CUR), DIM(phi_x(DDX), phi_y(DDY), phi_z(DDZ))
   {
-    this->set_params(r0, xc, yc, l, inside, theta);
+    this->set_params(r0, DIM(xc, yc, zc), l, inside, theta);
   }
 
-  void set_params(double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
+  void set_params(double r0 = 1, DIM(double xc = 0, double yc = 0, double zc = 0), double l = 0, double inside = 1, double theta = 0)
   {
-    phi  .set_params(r0, xc, yc, l, inside, theta);
-    phi_x.set_params(r0, xc, yc, l, inside, theta);
-    phi_y.set_params(r0, xc, yc, l, inside, theta);
-    phi_c.set_params(r0, xc, yc, l, inside, theta);
+    phi  .set_params(r0, DIM(xc, yc, zc), l, inside, theta);
+    phi_c.set_params(r0, DIM(xc, yc, zc), l, inside, theta);
+    EXECD( phi_x.set_params(r0, DIM(xc, yc, zc), l, inside, theta),
+           phi_y.set_params(r0, DIM(xc, yc, zc), l, inside, theta),
+           phi_z.set_params(r0, DIM(xc, yc, zc), l, inside, theta) );
   }
 };
-#endif
 
 #endif // SHAPES_H

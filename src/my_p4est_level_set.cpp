@@ -6223,9 +6223,7 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
 //        if(qz_00m>0) qz_00m = 0;
 //#endif
 
-        double dot_product = nx[n]*qx + ny[n]*qy;
-
-//        dot_product = cos_angle_p[n];
+        double dot_product = SUMD( nx[n]*qx,ny[n]*qy,nz[n]*qz );
 
         if(cos_angle_p[n]<0) {
           if(qx_p00>0) qx_p00 = 0;
@@ -6247,12 +6245,9 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
   #endif
         }
 
-        double abs_grad_q = sqrt( MAX(qx_p00*qx_p00 , qx_m00*qx_m00) +
-                                  MAX(qy_0p0*qy_0p0 , qy_0m0*qy_0m0) );
-
-        //                double abs_grad_q = sqrt( SQR(qx) + SQR(qy) );
-
-        //                abs_grad_q = 1;
+        double abs_grad_q = sqrt( SUMD( MAX( qx_p00*qx_p00, qx_m00*qx_m00 ),
+                                        MAX( qy_0p0*qy_0p0, qy_0m0*qy_0m0 ),
+                                        MAX( qz_00p*qz_00p, qz_00m*qz_00m ) ) );
 
         tmp_p[n] = q_p[n] - dt*(dot_product - cos_angle_p[n]*abs_grad_q);
       }
@@ -6353,9 +6348,7 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
 //        if(qz_00p<0) qz_00p = 0;
 //        if(qz_00m>0) qz_00m = 0;
 //#endif
-        double dot_product = nx[n]*qx + ny[n]*qy;
-
-//        dot_product = cos_angle_p[n];
+        double dot_product = SUMD( nx[n]*qx,ny[n]*qy,nz[n]*qz );
 
         if(cos_angle_p[n]<0) {
           if(qx_p00>0) qx_p00 = 0;
@@ -6377,12 +6370,9 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
   #endif
         }
 
-        double abs_grad_q = sqrt( MAX(qx_p00*qx_p00 , qx_m00*qx_m00) +
-                                  MAX(qy_0p0*qy_0p0 , qy_0m0*qy_0m0) );
-
-//        double abs_grad_q = sqrt( SQR(qx) + SQR(qy) );
-
-//        abs_grad_q = 1;
+        double abs_grad_q = sqrt( SUMD( MAX( qx_p00*qx_p00, qx_m00*qx_m00 ),
+                                        MAX( qy_0p0*qy_0p0, qy_0m0*qy_0m0 ),
+                                        MAX( qz_00p*qz_00p, qz_00m*qz_00m ) ) );
 
         tmp_p[n] = q_p[n] - dt*(dot_product - cos_angle_p[n]*abs_grad_q);
       }
@@ -7279,7 +7269,7 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
-double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt)
+void my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
@@ -7331,12 +7321,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
 
   double dxyz[P4EST_DIM];
   dxyz_min(p4est, dxyz);
-
-#ifdef P4_TO_P8
-  double dx = MIN(dxyz[0], dxyz[1], dxyz[2]);
-#else
-  double dx = MIN(dxyz[0], dxyz[1]);
-#endif
+  double dx = MIN( DIM( dxyz[0], dxyz[1], dxyz[2] ) );
 
   // extend into wall
   if (phi_wall != NULL && cos_angle != NULL)
