@@ -406,6 +406,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_extension_of_interface_values(Ve
     initialize_extension(extension_n);
 
   const double control_band = 3.0*diag_min();
+  const bool extend_positive_interface_values = !extend_negative_interface_values();
   double max_increment_in_band = 10.0*threshold;
   uint iter = 0;
   while (max_increment_in_band > threshold && iter < niter_max)
@@ -419,14 +420,14 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_extension_of_interface_values(Ve
       const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
       const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k), control_band);
       extension_np1_p[quad_idx] = extension_n_p[quad_idx]
-          + extension_increment(extension_n_p, solution_p, current_extension_p, *this, max_increment_in_band);
+          + extension_increment(extension_n_p, solution_p, current_extension_p, *this, extend_positive_interface_values, max_increment_in_band);
     }
     ierr = VecGhostUpdateBegin(extension_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
       const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
       const extension_increment_operator& extension_increment = get_extension_increment_operator_for(quad_idx, cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k), control_band);
       extension_np1_p[quad_idx] = extension_n_p[quad_idx]
-          + extension_increment(extension_n_p, solution_p, current_extension_p, *this, max_increment_in_band);
+          + extension_increment(extension_n_p, solution_p, current_extension_p, *this, extend_positive_interface_values, max_increment_in_band);
     }
     if(!extension_operators_are_stored_and_set)
       extension_operators_are_stored_and_set = true;
@@ -649,7 +650,7 @@ my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p
   {
     const u_char oriented_dir = 2*dim + (signed_normal[dim] > 0.0 ? 0 : 1);
     if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
-      continue; // homogeneous Neumann boundary condition on walls (for now, at least, if you have a better idea, go ahead!)
+      continue; // homogeneous Neumann boundary condition on walls (for now, at least, if you have a better idea, go ahead, be my guest!)
 
     set_of_neighboring_quadrants neighbor_cells;
     bool derivative_is_one_side;
@@ -675,6 +676,7 @@ my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p
       {
         pseudo_time_step_operator.regular_terms.clear();
         pseudo_time_step_operator.regular_terms.add_term(quad_idx, -1.0);
+        pseudo_time_step_operator.dtau = 0.0; // we force the interface value if too close --> normal derivatives are irrelevant in that case
         pseudo_time_step_operator.interface_terms.clear();
         pseudo_time_step_operator.interface_terms.push_back({+1.0, neighbor_cells.begin()->p.piggy3.local_num, oriented_dir});
         return pseudo_time_step_operator;
@@ -689,6 +691,7 @@ my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p
   pseudo_time_step_operator.regular_terms *= dtau;
   for (size_t k = 0; k < pseudo_time_step_operator.interface_terms.size(); ++k)
     pseudo_time_step_operator.interface_terms[k].weight *= dtau;
+  pseudo_time_step_operator.dtau = dtau;
   return pseudo_time_step_operator;
 }
 
@@ -842,4 +845,210 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
 
   return;
 }
+
+
+void my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                                                        double* extrapolation_minus_p, double* extrapolation_plus_p,
+                                                                        double* normal_derivative_of_solution_minus_p, double* normal_derivative_of_solution_plus_p, const u_char& degree)
+{
+  const p4est_quadrant_t* quad;
+  const double *xyz_tree_min, *xyz_tree_max;
+  double xyz_quad[P4EST_DIM], dxyz_quad[P4EST_DIM];
+  fetch_quad_and_tree_coordinates(quad, xyz_tree_min, xyz_tree_max, quad_idx, tree_idx, p4est, ghost);
+  xyz_of_quad_center(quad, xyz_tree_min, xyz_tree_max, xyz_quad, dxyz_quad);
+  const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
+
+  if(sgn_quad < 0)
+  {
+    extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx];
+    extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
+  }
+  else
+  {
+    extrapolation_plus_p[quad_idx] = sharp_solution_p[quad_idx];
+    extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
+  }
+
+  double oriented_normal[P4EST_DIM]; // to calculate the normal derivative of the solution (in the local subdomain) --> the opposite of that vector is required when extrapolating the solution from across the interface
+  interface_manager->normal_vector_at_point(xyz_quad, oriented_normal, (sgn_quad < 0 ? +1.0 : -1.0));
+
+  double diagonal_coeff_for_n_dot_grad_this_side = 0.0, diagonal_coeff_for_n_dot_grad_across = 0.0;
+  extrapolation_operator_t extrapolation_operator_across, extrapolation_operator_this_side; // ("_this_side" may not be required)
+
+  double n_dot_grad_u = 0.0; // let's evaluate this term on the side of quad, set the corresponding value across to 0.0
+
+  PetscErrorCode ierr;
+  const double *extension_p = NULL;
+  if(extension != NULL){
+    ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr);
+  }
+
+  bool un_is_well_defined = true;
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    double sharp_derivative_m, sharp_derivative_p;
+    double dist_m = dxyz_quad[dim], dist_p = dxyz_quad[dim]; // relevant only if fetching some interface neighbor/dirichlet wall BC (i.e., to handle subcell resolution)
+    for (u_char orientation = 0; orientation < 2; ++orientation) {
+      double &oriented_sharp_derivative = (orientation == 1 ? sharp_derivative_p  : sharp_derivative_m);
+      double &oriented_dist             = (orientation == 1 ? dist_p              : dist_m);
+      if(is_quad_Wall(p4est, tree_idx, quad, 2*dim + orientation))
+      {
+        double xyz_wall[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_wall[dim] += (orientation == 1 ? +0.5 : -0.5)*dxyz_quad[dim];
+#ifdef CASL_THROWS
+        const char sgn_wall = (interface_manager->phi_at_point(xyz_wall) <= 0.0 ? -1 : +1);
+        if(signs_of_phi_are_different(sgn_quad, sgn_wall))
+          throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(): a wall-cell is crossed by the interface, this is not handled yet...");
+#endif
+        switch(bc->wallType(xyz_wall))
+        {
+        case DIRICHLET:
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*(bc->wallValue(xyz_wall) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
+          oriented_dist             = 0.5*dxyz_quad[dim];
+          break;
+        case NEUMANN:
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*bc->wallValue(xyz_wall);
+          break;
+        default:
+          throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(): unknown boundary condition on a wall.");
+        }
+        // no term in the operator(s) <--> "Neumann condition" for extrapolation purposes (for now, at least, if you have a better idea, go ahead, be my guest!)
+      }
+      else
+      {
+        set_of_neighboring_quadrants direct_neighbors;
+        bool one_sided;
+        linear_combination_of_dof_t stable_projection_derivative = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, 2*dim + orientation, direct_neighbors, one_sided);
+
+        if(one_sided)
+          oriented_sharp_derivative   = stable_projection_derivative(sharp_solution_p);
+        else
+        {
+          if(!activate_xGFM)
+            un_is_well_defined = false; // interface-fetched values are not accurate in this case --> not reliable to use subcell resolution for initializing n_dot_grad_u
+
+          const double &mu_this_side    = (sgn_quad < 0 ? mu_minus  : mu_plus);
+          const double &mu_across       = (sgn_quad < 0 ? mu_plus   : mu_minus);
+          const bool in_positive_domain = (sgn_quad > 0);
+          P4EST_ASSERT(direct_neighbors.size() == 1);
+          const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
+
+          const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, 2*dim + orientation);
+          const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
+          map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+          if(it == xgfm_jump_between_quads.end())
+            throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
+
+          const xgfm_jump& jump_info = it->second;
+
+          oriented_sharp_derivative = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, 2*dim + orientation, in_positive_domain, sharp_solution_p[quad_idx], sharp_solution_p[neighbor_quad.p.piggy3.local_num],
+              jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[dim])/mu_this_side; // actually equal to fetching the interface value and using subcell resolution
+          oriented_dist = interface_neighbor.theta*dxyz_min[dim];
+        }
+
+
+        // add the (regular, i.e. without interface-fetching) derivative term(s) to the relevant extrapolation operator (for extrapolating normal derivatives, for instance)
+        double discretization_distance = 0.0;
+        const bool derivative_is_relevant_for_extrapolation_of_this_side = (oriented_normal[dim] <= 0.0 && orientation == 1) || (oriented_normal[dim] > 0.0 && orientation == 0);
+        const double relevant_normal_component = (derivative_is_relevant_for_extrapolation_of_this_side ? +1.0 : -1.0)*oriented_normal[dim];
+        extrapolation_operator_t& relevant_operator = (derivative_is_relevant_for_extrapolation_of_this_side ? extrapolation_operator_this_side : extrapolation_operator_across);
+        double& relevant_diagonal_term = (derivative_is_relevant_for_extrapolation_of_this_side ? diagonal_coeff_for_n_dot_grad_this_side : diagonal_coeff_for_n_dot_grad_across);
+
+        for (size_t k = 0; k < stable_projection_derivative.size(); ++k) {
+          const dof_weighted_term& derivative_term = stable_projection_derivative[k];
+          if(derivative_term.dof_idx == quad_idx)
+            relevant_diagonal_term += derivative_term.weight*relevant_normal_component;
+          else
+            relevant_operator.n_dot_grad.add_term(derivative_term.dof_idx, relevant_normal_component*derivative_term.weight);
+          discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+        }
+
+        relevant_operator.dtau = MIN(relevant_operator.dtau, discretization_distance/(double) P4EST_DIM);
+      }
+    }
+
+    // the following is equivalent to FD evaluation using the interface-fetched point(s)
+    double sharp_derivative_quad_center = (dist_p*sharp_derivative_m + dist_m*sharp_derivative_p)/(dist_p + dist_m);
+    if(dist_m + dist_p < 0.1*pow(2.0, -interface_manager->get_max_level_computational_grid())*dxyz_min[dim]) // "0.1" <--> minimum for coarse grid.
+      sharp_derivative_quad_center = 0.5*(sharp_derivative_m + sharp_derivative_p); // it was an underresolved case, the above operation is too risky...
+
+    n_dot_grad_u += oriented_normal[dim]*sharp_derivative_quad_center;
+  }
+
+  // complete the extrapolation operators
+  extrapolation_operator_across.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_across);
+  extrapolation_operator_this_side.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_this_side);
+
+  if(degree > 0)
+  {
+    if(sgn_quad < 0)
+    {
+      normal_derivative_of_solution_minus_p[quad_idx] = (un_is_well_defined ? n_dot_grad_u : 0.0); // if not well-defined, will be estimated via extrapolation
+      normal_derivative_of_solution_plus_p[quad_idx]  = 0.0; // to be calculated later on in actual extrapolation
+    }
+    else
+    {
+      normal_derivative_of_solution_minus_p[quad_idx] = 0.0; // to be calculated later on in actual extrapolation
+      normal_derivative_of_solution_plus_p[quad_idx]  = (un_is_well_defined ? n_dot_grad_u : 0.0); // if not well-defined, will be estimated via extrapolation
+    }
+  }
+
+  if(sgn_quad < 0)
+    extrapolation_operator_plus[quad_idx] = extrapolation_operator_across;
+  else
+    extrapolation_operator_minus[quad_idx] = extrapolation_operator_across;
+  if(!un_is_well_defined)
+  {
+    if(sgn_quad < 0)
+      extrapolation_operator_minus[quad_idx] = extrapolation_operator_this_side;
+    else
+      extrapolation_operator_plus[quad_idx] = extrapolation_operator_this_side;
+  }
+
+  if(extension != NULL){
+    ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr);
+  }
+
+  return;
+}
+
+void my_p4est_poisson_jump_cells_xgfm_t::extrapolate_solution_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                                                    double* tmp_minus_p, double* tmp_plus_p,
+                                                                    const double* extrapolation_minus_p, const double* extrapolation_plus_p,
+                                                                    const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p)
+{
+  tmp_minus_p[quad_idx] = extrapolation_minus_p[quad_idx];
+  tmp_plus_p[quad_idx] = extrapolation_plus_p[quad_idx];
+
+  double xyz_quad[P4EST_DIM];
+  quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
+  const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
+
+  double* extrapolation_np1_p       = (sgn_quad < 0 ? tmp_plus_p : tmp_minus_p);
+  const double* extrapolation_n_p   = (sgn_quad < 0 ? extrapolation_plus_p : extrapolation_minus_p);
+  const double* normal_derivative_p = (sgn_quad < 0 ? normal_derivative_of_solution_plus_p : normal_derivative_of_solution_minus_p);
+
+  if(activate_xGFM)
+  {
+    const extension_increment_operator& xgfm_extension_operator = get_extension_increment_operator_for(quad_idx, tree_idx, DBL_MAX);
+    const bool fetch_positive_interface_values = (sgn_quad < 0);
+    const double *extension_p = NULL;
+    PetscErrorCode ierr;
+    if(extension != NULL){
+      ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr); }
+    double dummy;
+
+    extrapolation_np1_p[quad_idx] = extrapolation_n_p[quad_idx] + xgfm_extension_operator(extrapolation_n_p, sharp_solution_p, extension_p, *this, fetch_positive_interface_values, dummy, normal_derivative_p);
+
+    if(extension != NULL){
+      ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr); }
+  }
+  else
+  {
+    const extrapolation_operator_t& extrapolation_operator = (sgn_quad < 0 ? extrapolation_operator_plus.at(quad_idx) : extrapolation_operator_minus.at(quad_idx));
+    extrapolation_np1_p[quad_idx] -= extrapolation_operator.dtau*(extrapolation_operator.n_dot_grad(extrapolation_n_p) - (normal_derivative_p != NULL ? normal_derivative_p[quad_idx] : 0.0));
+  }
+
+  return;
+}
+
 

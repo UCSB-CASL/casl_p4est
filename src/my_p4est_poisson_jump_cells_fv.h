@@ -60,6 +60,16 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
                                  double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
                                  double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const;
 
+  void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                      double* extrapolation_minus_p, double* extrapolation_plus_p,
+                                      double* normal_derivative_of_solution_minus_p, double* normal_derivative_of_solution_plus_p, const u_char& degree);
+
+  void extrapolate_solution_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* /*dummy argument for this solver*/,
+                                  double* tmp_minus_p, double* tmp_plus_p,
+                                  const double* extrapolation_minus_p, const double* extrapolation_plus_p,
+                                  const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p);
+
+
 public:
   my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   ~my_p4est_poisson_jump_cells_fv_t() {}; // no extra data allocated dynamically

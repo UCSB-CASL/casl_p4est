@@ -41,6 +41,7 @@ const bool default_use_second_order_theta = false;
 const bool default_get_integral   = false;
 const bool default_print_summary  = false;
 const bool default_subrefinement  = true;
+const bool default_extrapolation  = false;
 const int default_test_number = 3;
 
 const bool track_xgfm_residuals_and_corrections = false;
@@ -84,17 +85,20 @@ struct convergence_analyzer_for_jump_cell_solver_t {
   std::vector<double> errors_in_solution;
   std::vector<double> errors_in_flux_component[P4EST_DIM];
   std::vector<double> errors_in_derivative_component[P4EST_DIM];
-  Vec cell_sampled_error;
+  std::vector<double> errors_in_extrapolated_solution_minus;
+  std::vector<double> errors_in_extrapolated_solution_plus;
+  Vec cell_sampled_error, cell_sampled_extrapolation_error_minus, cell_sampled_extrapolation_error_plus;
 
   void delete_and_nullify_cell_sampled_errors_if_needed()
   {
-    if(cell_sampled_error != NULL){
-      PetscErrorCode ierr = VecDestroy(cell_sampled_error); CHKERRXX(ierr);
-      cell_sampled_error = NULL;
-    }
+    PetscErrorCode ierr;
+    ierr = delete_and_nullify_vector(cell_sampled_error); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_minus); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
   }
 
-  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : tag(tag_), cell_sampled_error(NULL) { }
+  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : tag(tag_), cell_sampled_error(NULL),
+    cell_sampled_extrapolation_error_minus(NULL), cell_sampled_extrapolation_error_plus(NULL) { }
 
   void measure_errors(const my_p4est_faces_t* faces, const test_case_for_scalar_jump_problem_t *test_problem)
   {
@@ -103,6 +107,8 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     const p4est_ghost_t* ghost            = jump_cell_solver->get_ghost();
     const my_p4est_hierarchy_t* hierarchy = jump_cell_solver->get_hierarchy();
     const my_p4est_interface_manager_t* interface_manager = jump_cell_solver->get_interface_manager();
+    const double band_to_diag = 3.0;
+    const double band = band_to_diag*sqrt(SUMD(SQR(jump_cell_solver->get_smallest_dxyz()[0]), SQR(jump_cell_solver->get_smallest_dxyz()[1]), SQR(jump_cell_solver->get_smallest_dxyz()[2])));
     Vec sharp_flux[P4EST_DIM];
     for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecCreateGhostFaces(p4est, faces, &sharp_flux[dim], dim); CHKERRXX(ierr); }
@@ -113,36 +119,97 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecGetArrayRead(sharp_flux[dim], &sharp_flux_components_p[dim]); CHKERRXX(ierr);}
 
+    const double *extrapolated_solution_minus_p = NULL;
+    const double *extrapolated_solution_plus_p = NULL;
+    if(jump_cell_solver->get_extrapolated_solution_minus() != NULL){
+      ierr = VecGetArrayRead(jump_cell_solver->get_extrapolated_solution_minus(), &extrapolated_solution_minus_p); CHKERRXX(ierr); }
+    if(jump_cell_solver->get_extrapolated_solution_plus() != NULL){
+      ierr = VecGetArrayRead(jump_cell_solver->get_extrapolated_solution_plus(), &extrapolated_solution_plus_p); CHKERRXX(ierr); }
+
     delete_and_nullify_cell_sampled_errors_if_needed();
     ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_error); CHKERRXX(ierr);
     double *cell_sampled_error_p;
     ierr = VecGetArray(cell_sampled_error, &cell_sampled_error_p); CHKERRXX(ierr);
+    double *cell_sampled_extrapolation_error_minus_p = NULL, *cell_sampled_extrapolation_error_plus_p = NULL;
+    if(jump_cell_solver->get_extrapolated_solution_minus() != NULL && jump_cell_solver->get_extrapolated_solution_plus() != NULL)
+    {
+      ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_extrapolation_error_minus); CHKERRXX(ierr);
+      ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
+      ierr = VecGetArray(cell_sampled_extrapolation_error_minus, &cell_sampled_extrapolation_error_minus_p); CHKERRXX(ierr);
+      ierr = VecGetArray(cell_sampled_extrapolation_error_plus, &cell_sampled_extrapolation_error_plus_p); CHKERRXX(ierr);
+    }
 
-    double err_n = 0.0;
+    double err_n = 0.0, err_extrapolation_minus = 0.0, err_extrapolation_plus = 0.0;
     for(size_t k = 0; k < hierarchy->get_layer_size(); ++k)
     {
       const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_layer_quadrant(k);
       const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_layer_quadrant(k);
       double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      if(interface_manager->phi_at_point(xyz_quad) > 0.0)
+      const double phi_quad = interface_manager->phi_at_point(xyz_quad);
+      if(phi_quad > 0.0)
         cell_sampled_error_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
       else
         cell_sampled_error_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
       err_n = MAX(err_n, cell_sampled_error_p[q_idx]);
+      if(cell_sampled_extrapolation_error_minus_p != NULL && cell_sampled_extrapolation_error_plus_p != NULL)
+      {
+        cell_sampled_extrapolation_error_minus_p[q_idx] = cell_sampled_extrapolation_error_plus_p[q_idx] = 0.0;
+        if(fabs(phi_quad) < band)
+        {
+          if(phi_quad <= 0.0)
+          {
+            cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+            err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
+          }
+          else
+          {
+            cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+            err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
+          }
+        }
+      }
     }
     ierr = VecGhostUpdateBegin(cell_sampled_error, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(cell_sampled_extrapolation_error_minus != NULL && cell_sampled_extrapolation_error_plus != NULL)
+    {
+      ierr = VecGhostUpdateBegin(cell_sampled_extrapolation_error_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(cell_sampled_extrapolation_error_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
     for(size_t k = 0; k < hierarchy->get_inner_size(); ++k)
     {
       const p4est_topidx_t tree_idx = hierarchy->get_tree_index_of_inner_quadrant(k);
       const p4est_locidx_t q_idx    = hierarchy->get_local_index_of_inner_quadrant(k);
       double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      if(interface_manager->phi_at_point(xyz_quad) > 0.0)
+      const double phi_quad = interface_manager->phi_at_point(xyz_quad);
+      if(phi_quad > 0.0)
         cell_sampled_error_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
       else
         cell_sampled_error_p[q_idx] = fabs(sol_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
       err_n = MAX(err_n, cell_sampled_error_p[q_idx]);
+      if(cell_sampled_extrapolation_error_minus_p != NULL && cell_sampled_extrapolation_error_plus_p != NULL)
+      {
+        cell_sampled_extrapolation_error_minus_p[q_idx] = cell_sampled_extrapolation_error_plus_p[q_idx] = 0.0;
+        if(fabs(phi_quad) < band)
+        {
+          if(phi_quad <= 0.0)
+          {
+            cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+            err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
+          }
+          else
+          {
+            cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+            err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
+          }
+        }
+      }
     }
     ierr = VecGhostUpdateEnd  (cell_sampled_error, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(cell_sampled_extrapolation_error_minus != NULL && cell_sampled_extrapolation_error_plus != NULL)
+    {
+      ierr = VecGhostUpdateEnd(cell_sampled_extrapolation_error_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(cell_sampled_extrapolation_error_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
 
     double err_flux_components[P4EST_DIM];
     double err_derivatives_components[P4EST_DIM];
@@ -167,6 +234,12 @@ struct convergence_analyzer_for_jump_cell_solver_t {
       }
     }
 
+
+    if(jump_cell_solver->get_extrapolated_solution_plus() != NULL){
+      ierr = VecRestoreArrayRead(jump_cell_solver->get_extrapolated_solution_plus(), &extrapolated_solution_plus_p); CHKERRXX(ierr); }
+    if(jump_cell_solver->get_extrapolated_solution_minus() != NULL){
+      ierr = VecRestoreArrayRead(jump_cell_solver->get_extrapolated_solution_minus(), &extrapolated_solution_minus_p); CHKERRXX(ierr); }
+
     ierr = VecRestoreArrayRead(jump_cell_solver->get_solution(), &sol_p); CHKERRXX(ierr);
     for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecRestoreArrayRead(sharp_flux[dim], &sharp_flux_components_p[dim]); CHKERRXX(ierr);
@@ -174,10 +247,21 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     }
 
     ierr = VecRestoreArray(cell_sampled_error, &cell_sampled_error_p); CHKERRXX(ierr);
+    if(cell_sampled_extrapolation_error_minus_p != NULL && cell_sampled_extrapolation_error_plus_p != NULL)
+    {
+      ierr = VecRestoreArray(cell_sampled_extrapolation_error_minus, &cell_sampled_extrapolation_error_minus_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(cell_sampled_extrapolation_error_plus, &cell_sampled_extrapolation_error_plus_p); CHKERRXX(ierr);
+    }
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_flux_components[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_derivatives_components[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    if(jump_cell_solver->get_extrapolated_solution_plus() != NULL && jump_cell_solver->get_extrapolated_solution_minus() != NULL){
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_extrapolation_minus, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_extrapolation_plus, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      errors_in_extrapolated_solution_minus.push_back(err_extrapolation_minus);
+      errors_in_extrapolated_solution_plus.push_back(err_extrapolation_plus);
+    }
 
     errors_in_solution.push_back(err_n);
     for(u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -204,6 +288,15 @@ struct convergence_analyzer_for_jump_cell_solver_t {
         sprintf(convergence_order_info, ", order = %g", -log(errors_in_derivative_component[dim][iter_idx]/errors_in_derivative_component[dim][iter_idx - 1])/log(2.0));
       ierr = PetscPrintf(p4est->mpicomm, "Error on derivative-%s:\t%.5e%s\n", (dim == dir::x ? "x" : ONLY3D( OPEN_PARENTHESIS dim == dir::y ?) "y" ONLY3D(: "z" CLOSE_PARENTHESIS)),
                          errors_in_derivative_component[dim].back(), convergence_order_info); CHKERRXX(ierr);
+    }
+
+    if(jump_cell_solver->get_extrapolated_solution_plus() != NULL && jump_cell_solver->get_extrapolated_solution_minus() != NULL){
+      if(iter_idx > 0)
+        sprintf(convergence_order_info, ", order = %g", -log(errors_in_extrapolated_solution_minus[iter_idx]/errors_in_extrapolated_solution_minus[iter_idx - 1])/log(2.0));
+      ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for minus solution (within %.2g*diag, on cells):\t%.5e%s \n", band_to_diag, errors_in_extrapolated_solution_minus.back(), convergence_order_info); CHKERRXX(ierr);
+      if(iter_idx > 0)
+        sprintf(convergence_order_info, ", order = %g", -log(errors_in_extrapolated_solution_plus[iter_idx]/errors_in_extrapolated_solution_plus[iter_idx - 1])/log(2.0));
+      ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for plus solution (within %.2g*diag, on cells):\t%.5e%s \n", band_to_diag, errors_in_extrapolated_solution_plus.back(), convergence_order_info); CHKERRXX(ierr);
     }
   }
 
@@ -380,8 +473,24 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_error, "error" + name_extension));
     add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
     if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections()){
+      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
+      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+    }
 
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension_xGFM"));
+    Vec extrapolated_solution_minus = jump_solver->get_extrapolated_solution_minus();
+    if(extrapolated_solution_minus != NULL)
+    {
+      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(extrapolated_solution_minus, "extrapolated_solution_minus" + name_extension));
+      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_minus, "extrapolation_error_minus" + name_extension));
+      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+    }
+    Vec extrapolated_solution_plus  = jump_solver->get_extrapolated_solution_plus();
+    if(extrapolated_solution_plus != NULL)
+    {
+      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
+      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
       add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
     }
   }
@@ -805,6 +914,7 @@ int main (int argc, char* argv[])
   cmd.add_option("summary",         "Prints a summary of the convergence results in a file on disk if present. Default is " + string(default_print_summary ? "true" : "false"));
   cmd.add_option("subrefinement",   "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
   cmd.add_option("solver",          "solver(s) to be tested, possible choices are 'GFM', 'xGFM', 'FV' or any combination thereof (separated with comma(s), and no space characters) [default is all of them].");
+  cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation");
   oss.str("");
   oss << default_interp_method_phi;
   cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function. Default is " + oss.str());
@@ -824,6 +934,7 @@ int main (int argc, char* argv[])
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
+  const bool extrapolate_solution       = cmd.get<bool>("extrapolate", default_extrapolation);
 
   std::vector<poisson_jump_cell_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
   const std::vector<poisson_jump_cell_solver_tag> solvers_to_test = cmd.get<std::vector<poisson_jump_cell_solver_tag> >("solver", default_solvers_to_test);
@@ -954,6 +1065,9 @@ int main (int argc, char* argv[])
       /* if null space, shift solution */
       if(jump_solver.get_matrix_has_nullspace())
         shift_solution_to_match_exact_integral(jump_solver, test_problem);
+
+      if(extrapolate_solution)
+        jump_solver.extrapolate_solution_from_either_side_to_the_other(50, 1);
     }
 
     /* measure the error(s) */

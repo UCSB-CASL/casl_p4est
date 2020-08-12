@@ -816,3 +816,184 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
 
   return;
 }
+
+void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                                                      double* extrapolation_minus_p, double* extrapolation_plus_p,
+                                                                      double* normal_derivative_of_solution_minus_p, double* normal_derivative_of_solution_plus_p, const u_char& degree)
+{
+  const p4est_quadrant_t* quad;
+  const double *xyz_tree_min, *xyz_tree_max;
+  double xyz_quad[P4EST_DIM], dxyz_quad[P4EST_DIM];
+  fetch_quad_and_tree_coordinates(quad, xyz_tree_min, xyz_tree_max, quad_idx, tree_idx, p4est, ghost);
+  xyz_of_quad_center(quad, xyz_tree_min, xyz_tree_max, xyz_quad, dxyz_quad);
+  const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
+
+  map_of_correction_functions_t::const_iterator it = correction_function_for_quad.find(quad_idx);
+  const correction_function_t* corr_fun = (it != correction_function_for_quad.end() ? &it->second : NULL);
+
+  if(sgn_quad < 0)
+  {
+    extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx];
+    if(corr_fun != NULL)
+      extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (*corr_fun)(sharp_solution_p);
+    else
+      extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
+  }
+  else
+  {
+    extrapolation_plus_p[quad_idx] = sharp_solution_p[quad_idx];
+    if(corr_fun != NULL)
+      extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (*corr_fun)(sharp_solution_p);
+    else
+      extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
+  }
+
+  double oriented_normal[P4EST_DIM]; // to calculate the normal derivative of the solution (in the local subdomain) --> the opposite of that vector is required when extrapolating the solution from across the interface
+  interface_manager->normal_vector_at_point(xyz_quad, oriented_normal, (sgn_quad < 0 ? +1.0 : -1.0));
+
+  double diagonal_coeff_for_n_dot_grad_this_side = 0.0, diagonal_coeff_for_n_dot_grad_across = 0.0;
+  extrapolation_operator_t extrapolation_operator_across, extrapolation_operator_this_side; // ("_this_side" may not be required)
+
+  double n_dot_grad_u = 0.0; // let's evaluate this term on the side of quad, set the corresponding value across to 0.0
+
+  bool un_is_well_defined = true;
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    double sharp_derivative_m, sharp_derivative_p;
+    double dist_m = dxyz_quad[dim], dist_p = dxyz_quad[dim]; // relevant only in case of dirichlet wall BC
+    for (u_char orientation = 0; orientation < 2; ++orientation) {
+      double &oriented_sharp_derivative = (orientation == 1 ? sharp_derivative_p  : sharp_derivative_m);
+      double &oriented_dist             = (orientation == 1 ? dist_p              : dist_m);
+      if(is_quad_Wall(p4est, tree_idx, quad, 2*dim + orientation))
+      {
+        double xyz_wall[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_wall[dim] += (orientation == 1 ? +0.5 : -0.5)*dxyz_quad[dim];
+#ifdef CASL_THROWS
+        const char sgn_wall = (interface_manager->phi_at_point(xyz_wall) <= 0.0 ? -1 : +1);
+        if(signs_of_phi_are_different(sgn_quad, sgn_wall))
+          throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(): a wall-cell is crossed by the interface, this is not handled yet...");
+#endif
+        switch(bc->wallType(xyz_wall))
+        {
+        case DIRICHLET:
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*(bc->wallValue(xyz_wall) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
+          oriented_dist             = 0.5*dxyz_quad[dim];
+          break;
+        case NEUMANN:
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*bc->wallValue(xyz_wall);
+          break;
+        default:
+          throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(): unknown boundary condition on a wall.");
+        }
+        // no term in the operator(s) <--> "Neumann condition" for extrapolation purposes (for now, at least, if you have a better idea, go ahead, be my guest!)
+      }
+      else
+      {
+        set_of_neighboring_quadrants direct_neighbors;
+        bool one_sided;
+        linear_combination_of_dof_t stable_projection_derivative = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, 2*dim + orientation, direct_neighbors, one_sided);
+
+        if(one_sided)
+          oriented_sharp_derivative   = stable_projection_derivative(sharp_solution_p);
+        else
+        {
+          P4EST_ASSERT(direct_neighbors.size() == 1);
+          const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
+          P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
+
+          map_of_correction_functions_t::const_iterator it_neighbor = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
+          if(it_neighbor != correction_function_for_quad.end())
+            oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(sharp_solution_p[direct_neighbor.p.piggy3.local_num] + (sgn_quad > 0 ? +1.0 : -1.0)*it_neighbor->second(sharp_solution_p) - sharp_solution_p[quad_idx])/dxyz_min[dim];
+          else
+            un_is_well_defined = false;
+        }
+
+
+        // add the (regular, i.e. without interface-fetching) derivative term(s) to the relevant extrapolation operator (for extrapolating normal derivatives, for instance)
+        double discretization_distance = 0.0;
+        const bool derivative_is_relevant_for_extrapolation_of_this_side = (oriented_normal[dim] <= 0.0 && orientation == 1) || (oriented_normal[dim] > 0.0 && orientation == 0);
+        const double relevant_normal_component = (derivative_is_relevant_for_extrapolation_of_this_side ? +1.0 : -1.0)*oriented_normal[dim];
+        extrapolation_operator_t& relevant_operator = (derivative_is_relevant_for_extrapolation_of_this_side ? extrapolation_operator_this_side : extrapolation_operator_across);
+        double& relevant_diagonal_term = (derivative_is_relevant_for_extrapolation_of_this_side ? diagonal_coeff_for_n_dot_grad_this_side : diagonal_coeff_for_n_dot_grad_across);
+
+        for (size_t k = 0; k < stable_projection_derivative.size(); ++k) {
+          const dof_weighted_term& derivative_term = stable_projection_derivative[k];
+          if(derivative_term.dof_idx == quad_idx)
+            relevant_diagonal_term += derivative_term.weight*relevant_normal_component;
+          else
+            relevant_operator.n_dot_grad.add_term(derivative_term.dof_idx, relevant_normal_component*derivative_term.weight);
+          discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+        }
+
+        relevant_operator.dtau = MIN(relevant_operator.dtau, 0.9*discretization_distance/(double) P4EST_DIM);
+      }
+    }
+
+    // the following is equivalent to FD evaluation using the interface-fetched point(s)
+    double sharp_derivative_quad_center = (dist_p*sharp_derivative_m + dist_m*sharp_derivative_p)/(dist_p + dist_m);
+    if(dist_m + dist_p < 0.1*pow(2.0, -interface_manager->get_max_level_computational_grid())*dxyz_min[dim]) // "0.1" <--> minimum for coarse grid.
+      sharp_derivative_quad_center = 0.5*(sharp_derivative_m + sharp_derivative_p); // it was an underresolved case, the above operation is too risky...
+
+    n_dot_grad_u += oriented_normal[dim]*sharp_derivative_quad_center;
+  }
+
+  // complete the extrapolation operators
+  extrapolation_operator_across.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_across);
+  extrapolation_operator_this_side.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_this_side);
+
+  if(degree > 0)
+  {
+    if(sgn_quad < 0)
+    {
+      normal_derivative_of_solution_minus_p[quad_idx] = (un_is_well_defined ? n_dot_grad_u : 0.0); // if not well-defined, will be estimated via extrapolation
+      normal_derivative_of_solution_plus_p[quad_idx]  = 0.0; // to be calculated later on in actual extrapolation
+    }
+    else
+    {
+      normal_derivative_of_solution_minus_p[quad_idx] = 0.0; // to be calculated later on in actual extrapolation
+      normal_derivative_of_solution_plus_p[quad_idx]  = (un_is_well_defined ? n_dot_grad_u : 0.0); // if not well-defined, will be estimated via extrapolation
+    }
+  }
+
+  if(sgn_quad < 0)
+    extrapolation_operator_plus[quad_idx] = extrapolation_operator_across;
+  else
+    extrapolation_operator_minus[quad_idx] = extrapolation_operator_across;
+  if(!un_is_well_defined)
+  {
+    if(sgn_quad < 0)
+      extrapolation_operator_minus[quad_idx] = extrapolation_operator_this_side;
+    else
+      extrapolation_operator_plus[quad_idx] = extrapolation_operator_this_side;
+  }
+
+  return;
+}
+
+
+void my_p4est_poisson_jump_cells_fv_t::extrapolate_solution_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double*,
+                                                                  double* tmp_minus_p, double* tmp_plus_p,
+                                                                  const double* extrapolation_minus_p, const double* extrapolation_plus_p,
+                                                                  const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p)
+{
+  tmp_minus_p[quad_idx] = extrapolation_minus_p[quad_idx];
+  tmp_plus_p[quad_idx] = extrapolation_plus_p[quad_idx];
+
+  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end())
+    return;
+
+  // no correction function was defined, extrapolation is required
+  double xyz_quad[P4EST_DIM];
+  quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
+  const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
+
+  double* extrapolation_np1_p       = (sgn_quad < 0 ? tmp_plus_p : tmp_minus_p);
+  const double* extrapolation_n_p   = (sgn_quad < 0 ? extrapolation_plus_p : extrapolation_minus_p);
+  const double* normal_derivative_p = (sgn_quad < 0 ? normal_derivative_of_solution_plus_p : normal_derivative_of_solution_minus_p);
+  const extrapolation_operator_t& extrapolation_operator = (sgn_quad < 0 ? extrapolation_operator_plus.at(quad_idx) : extrapolation_operator_minus.at(quad_idx));
+  extrapolation_np1_p[quad_idx] -= extrapolation_operator.dtau*(extrapolation_operator.n_dot_grad(extrapolation_n_p) - (normal_derivative_p != NULL ? normal_derivative_p[quad_idx] : 0.0));
+
+  return;
+}
+
+
+

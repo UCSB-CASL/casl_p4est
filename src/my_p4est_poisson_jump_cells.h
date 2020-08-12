@@ -31,14 +31,22 @@ inline std::string convert_to_string(const poisson_jump_cell_solver_tag& tag)
   }
 }
 
+struct extrapolation_operator_t{
+  linear_combination_of_dof_t n_dot_grad;
+  double dtau;
+  extrapolation_operator_t() {
+    dtau = DBL_MAX; // initialize to a large value, the user needs to set it appropriately a construction
+  }
+};
+
 class my_p4est_poisson_jump_cells_t
 {
 protected:
   // data related to the computational grid
   const my_p4est_cell_neighbors_t *cell_ngbd;
-  const p4est_t                   *p4est;
-  const p4est_ghost_t             *ghost;
-  const p4est_nodes_t             *nodes;
+  const p4est_t       *p4est;
+  const p4est_ghost_t *ghost;
+  const p4est_nodes_t *nodes;
   // computational domain parameters (fetched from the above objects at construction)
   const double *const xyz_min;
   const double *const xyz_max;
@@ -69,7 +77,19 @@ protected:
   Vec user_initial_guess;
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec solution;   // cell-sampled, sharp
-  Vec rhs;        // cell-sampled, discretized rhs of the linear system to invert
+  Vec extrapolation_minus, extrapolation_plus;  // cell-sampled, self-explanatory
+  /*!
+   * \brief extrapolation_operator_minus and extrapolation_operator_plus store the (upwind) operators
+   * for evaluating the relevant "n_dot_grad" (along with the pseudo-time step dtau), pertaining to
+   * the (appropriate) discretization of the pseudo-time PDE-based extrapolations.
+   * For the quadrant of local index quad_idx, if the quad center is in the negative domain,
+   * extrapolation_operator_plus will always be defined and
+   * stored therein; extrapolation_step_for_normal_derivative_minus may or may not be --> it may be defined for
+   * quadrants close to the interface without enough well-defined cartesian neighbors)
+   * (defined and constructed in the "initialization" stage of the abstract extrapolation procedure!)
+   */
+  std::map<p4est_locidx_t, extrapolation_operator_t> extrapolation_operator_minus, extrapolation_operator_plus;
+  Vec rhs; // cell-sampled, discretized rhs of the linear system to invert
   /* ---- other PETSc objects ---- */
   Mat A;
   MatNullSpace A_null_space;
@@ -123,6 +143,19 @@ protected:
   virtual void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                          double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
                                          double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const = 0;
+
+  virtual void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                              double* extrapolation_minus_p, double* extrapolation_plus_p,
+                                              double* normal_derivative_of_solution_minus_p, double* normal_derivative_of_solution_plus_p, const u_char& degree) = 0;
+
+  void extrapolate_normal_derivatives_local(const p4est_locidx_t& quad_idx,
+                                            double* tmp_minus_p, double* tmp_plus_p,
+                                            const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p) const;
+
+  virtual void extrapolate_solution_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                          double* tmp_minus_p, double* tmp_plus_p,
+                                          const double* extrapolation_minus_p, const double* extrapolation_plus_p,
+                                          const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p) = 0;
 
 public:
 
@@ -212,6 +245,8 @@ public:
   inline Vec get_jump()                                         const { return jump_u;                      }
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
+  inline Vec get_extrapolated_solution_minus()                  const { return extrapolation_minus;         }
+  inline Vec get_extrapolated_solution_plus()                   const { return extrapolation_plus;          }
 
   void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL) const;
   inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces) const
@@ -222,6 +257,8 @@ public:
   {
     project_face_velocities(faces, flux_minus, flux_plus);
   }
+
+  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations = 10, const u_char& degree = 1);
 
   virtual double get_sharp_integral_solution() const = 0;
 

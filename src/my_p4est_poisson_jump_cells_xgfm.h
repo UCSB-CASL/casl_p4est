@@ -107,6 +107,7 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
     p4est_locidx_t quad_idx;
     linear_combination_of_dof_t               regular_terms;
     std::vector<interface_extension_neighbor> interface_terms;
+    double dtau;
     bool in_band, in_positive_domain;
     inline void clear()
     {
@@ -116,22 +117,26 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
 
     inline double operator()(const double* extension_n_p, // input for regular neighbor terms (same side of the interface)
                              const double* solution_p, const double* current_extension_p, my_p4est_poisson_jump_cells_xgfm_t& solver, // input for evaluating interface-defined values
-                             double& max_correction_in_band) const // inout control parameter
+                             const bool& fetch_positive_interface_values, double& max_correction_in_band, // inout control parameter
+                             const double *normal_derivative_p = NULL) const  // for 1st-degree extrapolation
     {
       double increment = regular_terms(extension_n_p);
       if(interface_terms.size() > 0)
       {
         const double& mu_this_side  = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
         const double& mu_across     = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
-        const bool extending_positive_values = !solver.extend_negative_interface_values();
         for (size_t k = 0; k < interface_terms.size(); ++k)
         {
           const xgfm_jump& jump_info = solver.get_xgfm_jump_between_quads(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
           const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
-          increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, extending_positive_values,
+          increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, fetch_positive_interface_values,
                                                                                            solution_p[quad_idx], solution_p[interface_terms[k].neighbor_quad_idx_across], jump_info.jump_field, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
         }
       }
+
+      if(normal_derivative_p != NULL)
+        increment += dtau*normal_derivative_p[quad_idx];
+
       if(in_band)
         max_correction_in_band = MAX(fabs(increment), max_correction_in_band);
 
@@ -226,6 +231,15 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
   void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                  double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
                                  double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const;
+
+  void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                      double* extrapolation_minus_p, double* extrapolation_plus_p,
+                                      double* normal_derivative_of_solution_minus_p, double* normal_derivative_of_solution_plus_p, const u_char& degree);
+
+  void extrapolate_solution_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
+                                  double* tmp_minus_p, double* tmp_plus_p,
+                                  const double* extrapolation_minus_p, const double* extrapolation_plus_p,
+                                  const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p);
 
 public:
   my_p4est_poisson_jump_cells_xgfm_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);

@@ -23,6 +23,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   jump_u = jump_normal_flux_u = NULL;
   user_initial_guess = NULL;
   solution = rhs = NULL;
+  extrapolation_minus = extrapolation_plus = NULL;
   interp_jump_u           = NULL;
   interp_jump_normal_flux = NULL;
 
@@ -45,6 +46,8 @@ my_p4est_poisson_jump_cells_t::~my_p4est_poisson_jump_cells_t()
   if (A_null_space            != NULL)  { ierr = MatNullSpaceDestroy (A_null_space);  CHKERRXX(ierr); }
   if (ksp                     != NULL)  { ierr = KSPDestroy(ksp);                     CHKERRXX(ierr); }
   if (solution                != NULL)  { ierr = VecDestroy(solution);                CHKERRXX(ierr); }
+  if (extrapolation_minus     != NULL)  { ierr = VecDestroy(extrapolation_minus);     CHKERRXX(ierr); }
+  if (extrapolation_plus      != NULL)  { ierr = VecDestroy(extrapolation_plus);      CHKERRXX(ierr); }
   if (rhs                     != NULL)  { ierr = VecDestroy(rhs);                     CHKERRXX(ierr); }
   if (interp_jump_u           != NULL)  { delete interp_jump_u;                                       }
   if (interp_jump_normal_flux != NULL)  { delete interp_jump_normal_flux;                             }
@@ -432,3 +435,181 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
 
   return;
 }
+
+void my_p4est_poisson_jump_cells_t::extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree)
+{
+  P4EST_ASSERT(n_pseudo_time_iterations > 0);
+  P4EST_ASSERT(solution != NULL);
+
+  PetscErrorCode ierr;
+  const double *sharp_solution_p;
+  double *extrapolation_minus_p, *extrapolation_plus_p;
+  Vec tmp_plus, tmp_minus;
+  double *tmp_plus_p, *tmp_minus_p;
+  ierr = VecCreateGhostCells(p4est, ghost, &tmp_plus); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est, ghost, &tmp_minus); CHKERRXX(ierr);
+  if(extrapolation_minus == NULL){
+    ierr = VecCreateGhostCells(p4est, ghost, &extrapolation_minus); CHKERRXX(ierr); }
+  if(extrapolation_plus == NULL){
+    ierr = VecCreateGhostCells(p4est, ghost, &extrapolation_plus); CHKERRXX(ierr); }
+  ierr = VecGetArrayRead(solution, &sharp_solution_p); CHKERRXX(ierr);
+  ierr = VecGetArray(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+  // normal derivatives of the solution (required if degree >= 1)
+  Vec normal_derivative_of_solution_minus = NULL;
+  Vec normal_derivative_of_solution_plus  = NULL;
+  double *normal_derivative_of_solution_minus_p = NULL;
+  double *normal_derivative_of_solution_plus_p  = NULL;
+
+  // get pointers, initialize normal derivatives of the fields, etc.
+  if(degree >= 1)
+  {
+    ierr = VecCreateGhostCells(p4est, ghost, &normal_derivative_of_solution_minus); CHKERRXX(ierr);
+    ierr = VecCreateGhostCells(p4est, ghost, &normal_derivative_of_solution_plus); CHKERRXX(ierr);
+    ierr = VecGetArray(normal_derivative_of_solution_minus, &normal_derivative_of_solution_minus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(normal_derivative_of_solution_plus, &normal_derivative_of_solution_plus_p); CHKERRXX(ierr);
+    extrapolation_operator_minus.clear();
+    extrapolation_operator_plus.clear();
+  }
+  // INITIALIZE extrapolation
+  // local layer cells first
+  for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k)
+    initialize_extrapolation_local(cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k), cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k),
+                                   sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree);
+  // start updates
+  ierr = VecGhostUpdateBegin(extrapolation_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(extrapolation_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(degree >= 1)
+  {
+    ierr = VecGhostUpdateBegin(normal_derivative_of_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(normal_derivative_of_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+  // local inner cells
+  for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k)
+    initialize_extrapolation_local(cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k), cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k),
+                                   sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree);
+  // finish updates
+  ierr = VecGhostUpdateEnd(extrapolation_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(extrapolation_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if(degree >= 1)
+  {
+    ierr = VecGhostUpdateEnd(normal_derivative_of_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(normal_derivative_of_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  /* EXTRAPOLATE normal derivatives of solution */
+  if(degree >= 1)
+  {
+    for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) {
+      // local layer cells first
+      for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k)
+        extrapolate_normal_derivatives_local(cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k),
+                                             tmp_minus_p, tmp_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p);
+      // start updates
+      ierr = VecGhostUpdateBegin(tmp_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(tmp_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      // local inner cells
+      for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k)
+        extrapolate_normal_derivatives_local(cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k),
+                                             tmp_minus_p, tmp_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p);
+      // complete updates
+      ierr = VecGhostUpdateEnd(tmp_minus, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(tmp_plus, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+
+      // swap (n) and (n + 1) pseudo time iterates (more efficient to swap pointers than copying large chunks of data)
+      ierr = VecRestoreArray(normal_derivative_of_solution_minus, &normal_derivative_of_solution_minus_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_derivative_of_solution_plus, &normal_derivative_of_solution_plus_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+      std::swap(tmp_minus, normal_derivative_of_solution_minus);
+      std::swap(tmp_plus, normal_derivative_of_solution_plus);
+      ierr = VecGetArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+      ierr = VecGetArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+      ierr = VecGetArray(normal_derivative_of_solution_plus, &normal_derivative_of_solution_plus_p); CHKERRXX(ierr);
+      ierr = VecGetArray(normal_derivative_of_solution_minus, &normal_derivative_of_solution_minus_p); CHKERRXX(ierr);
+    }
+  }
+
+
+
+  /* EXTRAPOLATE the solution */
+  for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) {
+    // local layer cells first
+    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k)
+      extrapolate_solution_local(cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k), cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k), sharp_solution_p,
+                                 tmp_minus_p, tmp_plus_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p);
+    // start updates
+    ierr = VecGhostUpdateBegin(tmp_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(tmp_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // local inner cells
+    for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k)
+      extrapolate_solution_local(cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k), cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k), sharp_solution_p,
+                                 tmp_minus_p, tmp_plus_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p);
+    // start updates
+    ierr = VecGhostUpdateEnd(tmp_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(tmp_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // swap (n) and (n + 1) pseudo time iterates (more efficient to swap pointers than copying large chunks of data)
+    ierr = VecRestoreArray(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+    std::swap(tmp_minus, extrapolation_minus);
+    std::swap(tmp_plus, extrapolation_plus);
+    ierr = VecGetArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+  }
+
+  // restore data pointers and delete locally created vectors
+  if(degree >= 1)
+  {
+    ierr = VecRestoreArray(normal_derivative_of_solution_minus, &normal_derivative_of_solution_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(normal_derivative_of_solution_plus, &normal_derivative_of_solution_plus_p); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(normal_derivative_of_solution_minus);  CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(normal_derivative_of_solution_plus); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArray(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tmp_minus, &tmp_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(tmp_plus, &tmp_plus_p); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(tmp_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(tmp_plus); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(solution, &sharp_solution_p); CHKERRXX(ierr);
+
+  return;
+}
+
+void my_p4est_poisson_jump_cells_t::extrapolate_normal_derivatives_local(const p4est_locidx_t& quad_idx,
+                                                                         double* tmp_minus_p, double* tmp_plus_p,
+                                                                         const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p) const
+{
+  tmp_minus_p[quad_idx] = normal_derivative_of_solution_minus_p[quad_idx];
+  std::map<p4est_locidx_t, extrapolation_operator_t>::const_iterator it = extrapolation_operator_minus.find(quad_idx);
+#ifdef P4EST_DEBUG
+  bool found_one = false;
+#endif
+  if(it != extrapolation_operator_minus.end())
+  {
+    tmp_minus_p[quad_idx] -= it->second.n_dot_grad(normal_derivative_of_solution_minus_p)*it->second.dtau;
+#ifdef P4EST_DEBUG
+    found_one = true;
+#endif
+  }
+
+  tmp_plus_p[quad_idx] = normal_derivative_of_solution_plus_p[quad_idx];
+  it = extrapolation_operator_plus.find(quad_idx);
+  if(it != extrapolation_operator_plus.end())
+  {
+    tmp_plus_p[quad_idx] -= it->second.n_dot_grad(normal_derivative_of_solution_plus_p)*it->second.dtau;
+#ifdef P4EST_DEBUG
+    found_one = true;
+#endif
+  }
+  P4EST_ASSERT(found_one);
+  return;
+}
+
