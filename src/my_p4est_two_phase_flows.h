@@ -78,8 +78,10 @@ private:
   my_p4est_faces_t          *faces_n;
   my_p4est_interface_manager_t  *interface_manager;
 
-  my_p4est_poisson_jump_cells_t* poisson_jump_cell_solver;
-  poisson_jump_cell_solver_tag projection_solver_to_use;
+  my_p4est_poisson_jump_cells_t* pressure_guess_solver;
+  bool pressure_guess_is_set;
+  my_p4est_poisson_jump_cells_t* divergence_free_projector;
+  poisson_jump_cell_solver_tag cell_jump_solver_to_use;
   bool fetch_interface_FD_neighbors_with_second_order_accuracy;
 
   const double *xyz_min, *xyz_max;
@@ -135,6 +137,7 @@ private:
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
+  Vec grad_p_guess_over_rho_minus[P4EST_DIM], grad_p_guess_over_rho_plus[P4EST_DIM];
   Vec vnp1_face_minus[P4EST_DIM], vnp1_face_plus[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
@@ -569,9 +572,10 @@ public:
   void solve_viscosity_explicit();
 
   void compute_pressure_jump();
+  void solve_for_pressure_guess(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
   void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
 
-  inline void set_projection_solver(const poisson_jump_cell_solver_tag& solver_to_use) { projection_solver_to_use = solver_to_use; }
+  inline void set_projection_solver(const poisson_jump_cell_solver_tag& solver_to_use) { cell_jump_solver_to_use = solver_to_use; }
   inline void fetch_interface_points_with_second_order_accuracy() {
     fetch_interface_FD_neighbors_with_second_order_accuracy = true;
     interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);

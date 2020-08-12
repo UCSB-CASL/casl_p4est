@@ -241,6 +241,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // ------------------------------------------------------------------------------
   // vector fields
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    grad_p_guess_over_rho_minus[dir]  = NULL;
+    grad_p_guess_over_rho_plus[dir]   = NULL;
     vnp1_face_minus[dir]  = NULL;
     vnp1_face_plus[dir]   = NULL;
   }
@@ -269,8 +271,10 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     faces_n->set_finest_face_neighborhoods();
 
   viscosity_solver.set_environment(this);
-  poisson_jump_cell_solver = NULL;
-  projection_solver_to_use = FV; // default is finite-volume solver for projection step
+  pressure_guess_solver = NULL;
+  pressure_guess_is_set = false;
+  divergence_free_projector = NULL;
+  cell_jump_solver_to_use = FV; // default is finite-volume solver for projection step
   fetch_interface_FD_neighbors_with_second_order_accuracy = false;
 }
 
@@ -304,8 +308,10 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);         CHKERRXX(ierr);
   // face-sampled fields, computational grid n
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);         CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);          CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);             CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);              CHKERRXX(ierr);
   }
 
   if(interface_manager != NULL)
@@ -346,8 +352,10 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete faces_n;
   if(ngbd_c != NULL)
     delete ngbd_c;
-  if(poisson_jump_cell_solver != NULL)
-    delete poisson_jump_cell_solver;
+  if(pressure_guess_solver != NULL)
+    delete pressure_guess_solver;
+  if(divergence_free_projector != NULL)
+    delete divergence_free_projector;
 }
 
 void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method, Vec phi_on_computational_nodes_)
@@ -663,39 +671,130 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
   return;
 }
 
-/* solve the projection step, we consider (dt_n/(alpha*rho))*p to be the HODGE variable, and we solve for p right away
- * -div((dt_n/(alpha*rho))*grad(p)) = -div(vstar)
- * jump_p = - surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density() + [2*mu*(<n | E | n>)]
- * jump_normal_flux_hodge = 0.0! --> because we assume the normal jump in u_star has been correctly captured so far...
+/* solve the pressure guess equation:
+ * -div((1.0/rho)*grad(p_guess)) = 0.0
+ * jump_p = -surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density()
+ * jump_normal_flux = 0.0
+ */
+void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, const PCType pc)
+{
+  if(pressure_guess_is_set)
+    return;
+  /* Make the two-phase velocity field divergence free : */
+  compute_pressure_jump();
+
+  if(pressure_guess_solver == NULL)
+  {
+    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
+    {
+      pressure_guess_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(pressure_guess_solver)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
+    }
+    else
+      pressure_guess_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+  }
+
+  pressure_guess_solver->set_interface(interface_manager);
+  pressure_guess_solver->set_diagonals(0.0, 0.0);
+  pressure_guess_solver->set_mus(1.0/rho_minus, 1.0/rho_plus);
+  pressure_guess_solver->set_bc(*bc_pressure);
+  pressure_guess_solver->set_jumps(pressure_jump, NULL);
+  pressure_guess_solver->solve(ksp, pc);
+
+  PetscErrorCode ierr;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    if(grad_p_guess_over_rho_minus[dim] == NULL){
+      ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dim], dim); CHKERRXX(ierr); }
+    if(grad_p_guess_over_rho_plus[dim] == NULL){
+      ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_plus[dim], dim); CHKERRXX(ierr); }
+  }
+
+  pressure_guess_solver->get_flux_components(grad_p_guess_over_rho_minus, grad_p_guess_over_rho_plus, faces_n);
+
+  pressure_guess_is_set = true;
+  return;
+}
+
+
+/* solve the projection step, we consider (PHI/rho) to be the HODGE variable, define the divergence-free projection as
+ * v^{n + 1} = v^{\star} - (1.0/rho) grad PHI, and we solve for PHI as the solution of
+ * -div((1.0/rho)*grad(PHI)) = -div(vstar)
+ * jump_PHI = 0.0
+ * jump_normal_flux = 0.0! --> because we assume the normal jump in u_star has been correctly captured earlier on...
  */
 void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCType pc)
 {
   /* Make the two-phase velocity field divergence free : */
-  compute_pressure_jump();
-
-  if(poisson_jump_cell_solver == NULL)
+  if(divergence_free_projector == NULL)
   {
-    if(projection_solver_to_use == GFM || projection_solver_to_use == xGFM)
+    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
     {
-      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(poisson_jump_cell_solver)->activate_xGFM_corrections(projection_solver_to_use == xGFM);
+      divergence_free_projector = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(divergence_free_projector)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
     }
     else
-      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+      divergence_free_projector = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
   }
 
-  poisson_jump_cell_solver->set_interface(interface_manager);
-  poisson_jump_cell_solver->set_diagonals(0.0, 0.0);
-  poisson_jump_cell_solver->set_mus(dt_n/(BDF_alpha()*rho_minus), dt_n/(BDF_alpha()*rho_plus));
-  poisson_jump_cell_solver->set_bc(*bc_pressure);
-  poisson_jump_cell_solver->set_jumps(pressure_jump, NULL);
+  divergence_free_projector->set_interface(interface_manager);
+  divergence_free_projector->set_diagonals(0.0, 0.0);
+  divergence_free_projector->set_mus(1.0/rho_minus, 1.0/rho_plus);
+  struct wall_type_hodge_t : WallBCDIM{
+    BoundaryConditionType operator()(DIM(double, double, double)) const { return NEUMANN; }
+  } wall_type_hodge;
+  BoundaryConditionsDIM bc_hodge;
+  bc_hodge.setWallTypes(wall_type_hodge); bc_hodge.setWallValues(zero_cf);
+  divergence_free_projector->set_bc(bc_hodge);
+  divergence_free_projector->set_jumps(NULL, NULL);
 
   if(mass_flux != NULL)
     throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection : you have more work to do here when considering a nonzero mass flux");
-  poisson_jump_cell_solver->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL /* something proportional to mass_flux */);
-  poisson_jump_cell_solver->solve(ksp, pc);
+  divergence_free_projector->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL /* mass_flux times jump of inverse mass density */);
+  divergence_free_projector->solve(ksp, pc);
 
-  poisson_jump_cell_solver->project_face_velocities(faces_n);
+  divergence_free_projector->project_face_velocities(faces_n);
+
+  PetscErrorCode ierr;
+  double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecGetArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
+    ierr = VecGetArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]); CHKERRXX(ierr);
+  }
+
+  // layer faces, first
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
+    for (size_t k = 0; k < faces_n->get_layer_size(dim); ++k)
+    {
+      const p4est_locidx_t f_idx = faces_n->get_layer_face(dim, k);
+      const char sgn_face = sgn_of_face(f_idx, dim);
+      double *vface_this_side = (sgn_face < 0 ? vnp1_face_minus_p[dim]  : vnp1_face_plus_p[dim]);
+      double *vface_across    = (sgn_face < 0 ? vnp1_face_plus_p[dim]   : vnp1_face_minus_p[dim]);
+      P4EST_ASSERT(fabs(vface_this_side[f_idx]) < threshold_dbl_max);
+      vface_across[f_idx] = vface_this_side[f_idx];
+    }
+    // start the ghost updates
+    ierr = VecGhostUpdateBegin(vnp1_face_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(vnp1_face_plus[dim], INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+  }
+  // inner faces, second
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
+    for (size_t k = 0; k < faces_n->get_local_size(dim); ++k)
+    {
+      const p4est_locidx_t f_idx = faces_n->get_local_face(dim, k);
+      const char sgn_face = sgn_of_face(f_idx, dim);
+      double *vface_this_side = (sgn_face < 0 ? vnp1_face_minus_p[dim]  : vnp1_face_plus_p[dim]);
+      double *vface_across    = (sgn_face < 0 ? vnp1_face_plus_p[dim]   : vnp1_face_minus_p[dim]);
+      P4EST_ASSERT(fabs(vface_this_side[f_idx]) < threshold_dbl_max);
+      vface_across[f_idx] = vface_this_side[f_idx];
+    }
+    // start the ghost updates
+    ierr = VecGhostUpdateEnd(vnp1_face_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vnp1_face_plus[dim], INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+  }
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecRestoreArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]); CHKERRXX(ierr);
+  }
 
   return;
 }
@@ -1021,6 +1120,8 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
 
 void my_p4est_two_phase_flows_t::solve_viscosity()
 {
+  if(!pressure_guess_is_set)
+    solve_for_pressure_guess((cell_jump_solver_to_use == FV ? KSPBCGS : KSPCG), PCHYPRE);
   create_vnp1_face_vectors_if_needed();
   compute_backtraced_velocities();
   viscosity_solver.set_diagonals(BDF_alpha()*rho_minus/dt_n, BDF_alpha()*rho_plus/dt_n);
@@ -1190,10 +1291,13 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
   matrix_has_nullspace[dir] = true;
 
   double *rhs_p;
+  const double *grad_p_guess_over_rho_minus_dir_p, *grad_p_guess_over_rho_plus_dir_p;
   if(rhs[dir] == NULL){
     ierr = VecCreateNoGhostFaces(env->p4est_n, env->faces_n, &rhs[dir], dir); CHKERRXX(ierr);
   }
   ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(env->grad_p_guess_over_rho_minus[dir], &grad_p_guess_over_rho_minus_dir_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(env->grad_p_guess_over_rho_plus[dir], &grad_p_guess_over_rho_plus_dir_p); CHKERRXX(ierr);
 
   for(p4est_locidx_t f_idx = 0; f_idx < env->faces_n->num_local[dir]; ++f_idx)
   {
@@ -1276,6 +1380,8 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
 
     if (env->force_per_unit_mass[dir] != NULL)
       rhs_p[f_idx] += rho*(*env->force_per_unit_mass[dir])(xyz_face);
+
+    rhs_p[f_idx] -= rho*(sgn_face < 0 ? grad_p_guess_over_rho_minus_dir_p[f_idx] : grad_p_guess_over_rho_plus_dir_p[f_idx]);
     // multiply by volume and here starts the fun, now!
     rhs_p[f_idx] *= volume;
 
@@ -1579,6 +1685,8 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
   }
 
   ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(env->grad_p_guess_over_rho_minus[dir], &grad_p_guess_over_rho_minus_dir_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(env->grad_p_guess_over_rho_plus[dir], &grad_p_guess_over_rho_plus_dir_p); CHKERRXX(ierr);
 
   if(!matrix_is_ready[dir])
   {
@@ -1618,6 +1726,11 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
 
 void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iterations, const u_char& degree)
 {
+//  PetscErrorCode ierr;
+//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+//    ierr = VecCopyGhost(solution[dir], vnp1_face_minus[dir]); CHKERRXX(ierr);
+//    ierr = VecCopyGhost(solution[dir], vnp1_face_plus[dir]); CHKERRXX(ierr);
+//  }
   P4EST_ASSERT(n_iterations > 0);
   PetscErrorCode ierr;
   // normal derivatives of velocity components
@@ -1971,7 +2084,7 @@ void my_p4est_two_phase_flows_t::compute_velocities_at_nodes()
     ierr = VecRestoreArrayRead(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]);  CHKERRXX(ierr);
   }
 
-  TVD_extrapolation_of_np1_node_velocities();
+//  TVD_extrapolation_of_np1_node_velocities();
   compute_vorticities();
 }
 
@@ -2331,7 +2444,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   std::vector<const double*> cell_scalar_data;        std::vector<std::string> cell_scalar_names;
   const double *phi_on_computational_nodes_p, *projection_variable_p, *vnp1_nodes_plus_p, *vnp1_nodes_minus_p;
   const double *phi_on_fine_nodes_p, *curvature_p, *grad_phi_p;
-  Vec projection_variable = poisson_jump_cell_solver->get_solution();
+  Vec projection_variable = divergence_free_projector->get_solution();
   if(phi_on_computational_nodes != NULL){
     ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
     node_scalar_data.push_back(phi_on_computational_nodes_p);
@@ -3161,24 +3274,28 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   set_phi((fine_ngbd_n != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1), levelset_interpolation_method, phi_on_computational_nodes_np1); // memory handled therein!
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);  CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir],  dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dir], dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_plus[dir],  dir); CHKERRXX(ierr);
   }
 
   viscosity_solver.reset();
-  if(poisson_jump_cell_solver != NULL)
+  if(divergence_free_projector != NULL)
   {
-    delete poisson_jump_cell_solver;
+    delete divergence_free_projector;
 
-    if(projection_solver_to_use == GFM || projection_solver_to_use == xGFM)
+    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
     {
-      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(poisson_jump_cell_solver)->activate_xGFM_corrections(projection_solver_to_use == xGFM);
+      divergence_free_projector = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(divergence_free_projector)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
     }
     else
-      poisson_jump_cell_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+      divergence_free_projector = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
   }
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
