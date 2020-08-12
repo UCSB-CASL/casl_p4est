@@ -89,8 +89,8 @@ struct FD_interface_neighbor
    * \brief GFM_flux_component evaluates the appropriate, one-sided flux component as seen from the dof of interest
    * \param [in] mu_this_side         value of the diffusion coefficient as seen from the dof of interest
    * \param [in] mu_across            value of the diffusion coefficient as seen from the neighbor dof acoss the interface
-   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor cell is, as seen from the dof of interest
-   * \param [in] in_positive_domain   flag indicating if the cell of interest is in the positive domain (true) or in the negative domain (false)
+   * \param [in] oriented_dir         oriented cartesian direction in which the neighbor dof is, as seen from the dof of interest
+   * \param [in] in_positive_domain   flag indicating if the dof of interest is in the positive domain (true) or in the negative domain (false)
    * \param [in] solution_this_side   value of the solution at the dof of interest
    * \param [in] solution_across      value of the solution at the neighbor dof across the interface
    * \param [in] jump                 jump on the field of interest at the interface point
@@ -118,7 +118,7 @@ struct FD_interface_neighbor
    * \param [in] mu_this_side                 value of the diffusion coefficient as seen from the dof of interest
    * \param [in] mu_across                    value of the diffusion coefficient as seen from the neighbor dof acoss the interface
    * \param [in] oriented_dir                 oriented cartesian direction in which the neighbor dof is, as seen from the dof of interest
-   * \param [in] in_positive_domain           flag indicating if the of of interest is in the positive domain (true) or in the negative domain (false)
+   * \param [in] in_positive_domain           flag indicating if the dof of interest is in the positive domain (true) or in the negative domain (false)
    * \param [in] get_positive_interface_value flag indicating if the user wants the positive (true) or negative (false) interface-defined value
    * \param [in] solution_this_side           value of the solution at the dof of interest
    * \param [in] solution_across              value of the solution at the neighbor dof across the interface
