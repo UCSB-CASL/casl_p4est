@@ -406,7 +406,7 @@ void truncate_exportation_file_up_to_tstart(const double &tstart, const std::str
   double time;
   while ((len_read = getline(&read_line, &len, fp)) != -1) {
     sscanf(read_line, "%lg %*[^\n]", &time);
-    if (time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
+    if (time <= tstart - (1.0e-12)*pow(10.0, ceil(log10(tstart)))) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
       size_to_keep += (long) len_read;
     else
       break;
