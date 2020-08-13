@@ -277,7 +277,7 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.1"); CHKERRQ(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0"); CHKERRQ(ierr);
 
     // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
     if (A_null_space != NULL){
