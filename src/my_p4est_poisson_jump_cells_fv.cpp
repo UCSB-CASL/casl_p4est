@@ -211,13 +211,6 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
   const char sgn_quad = (signed_distance <= 0.0 ? -1  :+1);
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     xyz_quad_projected[dim] = MAX(xyz_quad[dim] - 1.5*dxyz_min[dim], MIN(xyz_quad[dim] + 1.5*dxyz_min[dim], xyz_quad_projected[dim])); // we need to be able to process this locally...
-//    if(fabs(xyz_quad[dim] - xyz_quad_projected[dim]) > 1.5*dxyz_min[dim]) // this is considered an essential runtime error --> throw even if CASL_THROWS is not defined...
-//    {
-//      double grad_phi_local[P4EST_DIM]; interface_manager->grad_phi_at_point(xyz_quad, grad_phi_local);
-//      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() : the projection of a quad center onto the interface lies out of a 3 by 3 (by 3) surrounding box, quad center located at ("
-//                               + std::to_string(xyz_quad[0]) + ", " + std::to_string(xyz_quad[1]) ONLY3D(+ ", " + std::to_string(xyz_quad[2])) + "), projection located at ("
-//        + std::to_string(xyz_quad_projected[0]) + ", " + std::to_string(xyz_quad_projected[1]) ONLY3D(+ ", " + std::to_string(xyz_quad_projected[2])) + ") and norm of grad phi is " + std::to_string(sqrt(SUMD(SQR(grad_phi_local[0]), SQR(grad_phi_local[1]), SQR(grad_phi_local[2])))));
-//    }
 
   clip_in_domain(xyz_quad_projected, xyz_min, xyz_max, periodicity); // --> clip it back in domain (periodic wrapping if periodicity allows it)
 
