@@ -262,10 +262,23 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
    * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
    */
   if (!strcmp(pc_type, PCHYPRE)){
-    // a large value for this factor was found to be more robust for the jump problems (especially with Daniil's FV solver)
-    // should be in )0, 1(, HYPRE manual suggests 0.25 for 2D problems, 0.5 for 3D,
-    // (arbitrarily) set to 0.7 because it seemed to work for all test cases
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.7"); CHKERRQ(ierr);
+    // One can find more details about the following parameters in "Parallel Algebraic Multigrid Methods - High
+    // Performance Preconditioners", Yang, Ulrike Meier, Numerical solution of partial differential equations
+    // on parallel computers. Springer, Berlin, Heidelberg, 2006. 209-236.
+    // --> https://computing.llnl.gov/projects/hypre-scalable-linear-solvers-multigrid-methods/yang1.pdf
+
+    // A large value for the following one was found to be more robust for the jump problems, in particular
+    // when using Daniil's FV solver with large ratios of diffusion coefficients.
+    // The value of this parameter should be in )0, 1( and HYPRE manual suggests 0.25 for 2D problems, 0.5
+    // for 3D. I believe those values are implicitly understood as "when considering the standard discretization
+    // of the Laplace operators on uniform grids", though.
+    // I chose to set a value of 0.9 because it seemd to work for all my test cases, even the most extreme ones.
+    // It's basically a threshold determining whether or not offdiagonal terms are to be considered during coarsening
+    // steps in the Algebraic MultiGrid (AMG) methods : it translates into an (algebraic) criterion excluding points
+    // that are "not sufficiently strongly connected" to each other when coarsening.
+    // --> For jump problems with large coefficient ratios, you may actually need to exclude points belonging to the
+    // other subdomain when coarsening your solution for best results...
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.9"); CHKERRQ(ierr);
 
     /* 2- Coarsening type
      * Available Options:
