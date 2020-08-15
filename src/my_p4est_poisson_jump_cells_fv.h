@@ -16,6 +16,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     size_t          n_solution_dependent_terms;
     p4est_gloidx_t  solution_dependent_term_global_index;
     double          solution_dependent_term_weight;
+    bool            using_fast_side;
   };
 
   // arbitrary-defined tag used to label the communications between processes related to correction function data
@@ -28,7 +29,11 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     {
       return jump_dependent_terms + solution_dependent_terms(sharp_solution_p);
     }
-    correction_function_t() { solution_dependent_terms.clear(); }
+    bool use_fast_side;
+    correction_function_t() {
+      solution_dependent_terms.clear();
+      use_fast_side = false;
+    }
   };
 
 

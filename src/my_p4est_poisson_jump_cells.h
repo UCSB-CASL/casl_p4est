@@ -258,7 +258,7 @@ public:
     project_face_velocities(faces, flux_minus, flux_plus);
   }
 
-  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations = 10, const u_char& degree = 1);
+  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1);
 
   virtual double get_sharp_integral_solution() const = 0;
 

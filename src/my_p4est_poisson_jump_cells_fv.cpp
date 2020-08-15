@@ -106,6 +106,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           data_to_send.solution_dependent_term_weight       = correction_function.solution_dependent_terms[k].weight;
           serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
         }
+        data_to_send.using_fast_side = correction_function.use_fast_side; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
       }
     }
   }
@@ -169,6 +170,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           const double weight_for_term = received_serialized_global_correction_functions[running_idx++].solution_dependent_term_weight;
           correction_function_for_ghost_quad.solution_dependent_terms.add_term(local_idx_of_term, weight_for_term);
         }
+        correction_function_for_ghost_quad.use_fast_side = received_serialized_global_correction_functions[running_idx++].using_fast_side;
         correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(local_quad_idx, correction_function_for_ghost_quad));
       }
       // remove the source from the set of expected messengers
@@ -224,6 +226,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
                                 // otherwise, inverse of (1.0 +/- signed_distance*mu_jump*(weight of the normal_derivative_at_projected_point operator, for the quad of interest)/mu_across_normal_derivative)
 
   linear_combination_of_dof_t* one_sided_normal_derivative_at_projected_point = (mus_are_equal() ? NULL : new linear_combination_of_dof_t); // we need that only if there is a nonzero jump in mu
+  correction_function_t correction_function_to_build;
 
   if (!mus_are_equal())
   {
@@ -257,8 +260,10 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_slow_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point);
     } catch (std::exception e) { // it couldn't be done on the slow side
       use_slow_side = false;
+      correction_function_to_build.use_fast_side = true;
       get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point); // this should work if the other didn't (hopefully, otherwise, we're screwed)
     }
+
 
     mu_across_normal_derivative = (use_slow_side ? mu_fast : mu_slow);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -267,15 +272,15 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
 
     if(use_slow_side != is_point_in_slow_side(sgn_quad))
     {
-      double* quad_weight_for_normal_derivative_on_slow_side_at_projected_point = NULL;
+      const double* quad_weight_for_normal_derivative_at_projected_point = NULL;
       for (size_t k = 0; k < one_sided_normal_derivative_at_projected_point->size(); ++k)
         if((*one_sided_normal_derivative_at_projected_point)[k].dof_idx == quad_idx)
         {
-          quad_weight_for_normal_derivative_on_slow_side_at_projected_point = &(*one_sided_normal_derivative_at_projected_point)[k].weight;
+          quad_weight_for_normal_derivative_at_projected_point = &(*one_sided_normal_derivative_at_projected_point)[k].weight;
           break;
         }
-      P4EST_ASSERT(quad_weight_for_normal_derivative_on_slow_side_at_projected_point != NULL);
-      const double lhs_coeff = (1.0 + (sgn_quad <= 0 ? +1.0 : -1.0)*signed_distance*get_jump_in_mu()*(*quad_weight_for_normal_derivative_on_slow_side_at_projected_point)/mu_across_normal_derivative);
+      P4EST_ASSERT(quad_weight_for_normal_derivative_at_projected_point != NULL);
+      const double lhs_coeff = (1.0 + (sgn_quad <= 0 ? +1.0 : -1.0)*signed_distance*get_jump_in_mu()*(*quad_weight_for_normal_derivative_at_projected_point)/mu_across_normal_derivative);
 #ifdef CASL_THROWS
       if(fabs(lhs_coeff) < EPS)
         throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() : the denominator is ill-defined in the definition of on correction function");
@@ -284,7 +289,6 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
     }
   }
 
-  correction_function_t correction_function_to_build;
   correction_function_to_build.jump_dependent_terms = scaling_factor*(jump_field + signed_distance*jump_normal_flux/mu_across_normal_derivative);
   if(one_sided_normal_derivative_at_projected_point != NULL)
     for (size_t k = 0; k < one_sided_normal_derivative_at_projected_point->size(); ++k)
@@ -827,7 +831,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
   if(sgn_quad < 0)
   {
     extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx];
-    if(corr_fun != NULL)
+    if(corr_fun != NULL && !corr_fun->use_fast_side)
       extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (*corr_fun)(sharp_solution_p);
     else
       extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
@@ -835,7 +839,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
   else
   {
     extrapolation_plus_p[quad_idx] = sharp_solution_p[quad_idx];
-    if(corr_fun != NULL)
+    if(corr_fun != NULL && !corr_fun->use_fast_side)
       extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (*corr_fun)(sharp_solution_p);
     else
       extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
@@ -894,7 +898,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
           P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
 
           map_of_correction_functions_t::const_iterator it_neighbor = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
-          if(it_neighbor != correction_function_for_quad.end())
+          if(it_neighbor != correction_function_for_quad.end() && !it_neighbor->second.use_fast_side)
             oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(sharp_solution_p[direct_neighbor.p.piggy3.local_num] + (sgn_quad > 0 ? +1.0 : -1.0)*it_neighbor->second(sharp_solution_p) - sharp_solution_p[quad_idx])/dxyz_min[dim];
           else
             un_is_well_defined = false;
@@ -971,10 +975,10 @@ void my_p4est_poisson_jump_cells_fv_t::extrapolate_solution_local(const p4est_lo
   tmp_minus_p[quad_idx] = extrapolation_minus_p[quad_idx];
   tmp_plus_p[quad_idx] = extrapolation_plus_p[quad_idx];
 
-  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end())
-    return;
+  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() && !correction_function_for_quad[quad_idx].use_fast_side)
+    return; // the ghost value is safely defined intrinsically, no need to solve for the pseudo-time step equation here
 
-  // no correction function was defined, extrapolation is required
+  // no (safe to use) correction function was defined, extrapolation is required
   double xyz_quad[P4EST_DIM];
   quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
   const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
