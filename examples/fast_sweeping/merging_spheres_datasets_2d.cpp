@@ -1,5 +1,5 @@
 /**
- * Generate datasets for training a feedforward neural network on mergin spherical interfaces using samples from a
+ * Generate datasets for training a feedforward neural network on merging spherical interfaces using samples from a
  * signed distance function and from a reinitialized level-set function using the PDE equation with 10 iterations.
  *
  * The samples collected for signed and reinitialized level-set functions have one-to-one correlation.  That is, the nth
@@ -10,7 +10,7 @@
  * function and reinitialized level-set, respectively, and [Y] is the highest level of tree resolution.
  *
  * Developer: Luis Ángel.
- * Date: August 9, 2020.
+ * Date: August 14, 2020.
  */
 
 // System.
@@ -178,7 +178,7 @@ int main ( int argc, char* argv[] )
 					const double R2 = 1 / KAPPA2;
 
 					// Now that we have both circle's, it remains to vary their distance from |R1 - R2| + H
-					// to R1 + R2 + 3H, in steps of H/3.
+					// to R1 + R2 + 3H, in steps of 3H/2.
 					const double MIN_DIST = ABS( R1 - R2 ) + H;
 					const double MAX_DIST = R1 + R2 + 3 * H;
 					const int NUM_DIST_STEPS = (int)floor( (MAX_DIST - MIN_DIST) / (1.5 * H) ) + 1;
@@ -300,9 +300,6 @@ int main ( int argc, char* argv[] )
 						// Now, collect samples with reinitialized level-set function values and target h*kappa.
 						for( auto n : indices )
 						{
-							if( whoPtr[n] == 0 )					// Skip center nodes that lie in discontinuities.
-								continue;
-
 							double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
 
@@ -314,10 +311,10 @@ int main ( int argc, char* argv[] )
 									std::vector<double> sdfData;	// Signed-distance function values.
 									std::vector<double> rlsData;	// Reinitialized level-set function values.
 
-									// A troubling node is one that owns at least one of
-									// its 9-point stencil neighbors lying on a discontinuity or with a phi value
+									// A troubling node is one that lies in a discontinuity region or owns at least one
+									// of its 9-point stencil neighbors lying on a discontinuity or with a phi value
 									// that is due to a circle different to n's.
-									bool troublingFlag = false;
+									bool troublingFlag = whoPtr[n] == 0;
 									double sampleError = 0;
 									for( auto s : stencil )
 									{

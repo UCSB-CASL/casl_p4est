@@ -1,6 +1,6 @@
 /**
  * Generate datasets for training a feedforward neural network on spherical interfaces using samples from a signed
- * distance function and from a reinitialized level-set function using the fast sweeping method.
+ * distance function and from a reinitialized level-set function.
  * NOTE: This hasn't been tested on 3D, but the code is prepared for the 3D scenario.
  *
  * The samples collected for signed and reinitialized level-set functions have one-to-one correlation.  That is, the nth
@@ -25,7 +25,6 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_hierarchy.h>
-#include <src/my_p8est_fast_sweeping.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #include <src/my_p8est_level_set.h>
 #else
@@ -35,7 +34,6 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_hierarchy.h>
-//#include <src/my_p4est_fast_sweeping.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #include <src/my_p4est_level_set.h>
 #endif
@@ -63,11 +61,12 @@ int main ( int argc, char* argv[] )
 
 	const double FLAT_LIM_HK = 0.04;						// Flatness limit for dimensionless curvature.
 	const double MIN_RADIUS = 1.5 * H;									// Ensures at least 4 nodes inside smallest circle.
-	const double MAX_RADIUS = MIN( H / FLAT_LIM_HK, HALF_D - 2 * H );	// Prevents sampling interface nodes with invalid full uniform stencils.
+//	const double MAX_RADIUS = MIN( H / FLAT_LIM_HK, HALF_D - 2 * H );	// Prevents sampling interface nodes with invalid full uniform stencils.
+	const double MAX_RADIUS = HALF_D - 2 * H;
 	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to finest resolution.
 																				// Originally, 2 circles per finest quad/oct.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-0.04/";		// Destination folder.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/";		// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -89,7 +88,7 @@ int main ( int argc, char* argv[] )
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
-		// Collect samples from signed distance function and from reinitialized level-set using fast sweeping method.
+		// Collect samples from signed distance function and from reinitialized level-set.
 		std::cout << "Collecting samples from level-set function with spherical interface..." << std::endl;
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
@@ -213,11 +212,6 @@ int main ( int argc, char* argv[] )
 				// Calculate the level-set function values for all independent nodes.
 				sample_cf_on_nodes( p4est, nodes, sphere, sdfPhi );
 				sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
-
-				// Reinitialize level-set function using the fast sweeping method.
-//				FastSweeping fsm;
-//				fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-//				fsm.reinitializeLevelSetFunction( &rlsPhi, 8 );
 
 				// Reinitialize level-set function using PDE equation.
 				my_p4est_level_set_t ls( &nodeNeighbors );

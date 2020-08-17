@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC merging_spheres_datasets_2d.cpp two_spheres_levelset_2d.h)
+	list( APPEND SRC merging_spheres_datasets_2d.cpp)
 endif()
 
 #if( DIMENSION MATCHES 3d )
