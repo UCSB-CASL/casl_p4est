@@ -2,16 +2,17 @@
 #include "my_p8est_poisson_nodes_mls.h"
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_macros.h>
+#include <src/my_p8est_solve_lsqr.h>
 #else
 #include "my_p4est_poisson_nodes_mls.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_solve_lsqr.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -52,11 +53,11 @@ extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling;
 
 
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd)
-  : ngbd_(ngbd),
-    p4est_(ngbd->p4est),
+  : p4est_(ngbd->p4est),
     nodes_(ngbd->nodes),
     ghost_(ngbd->ghost),
     brick_(ngbd->myb),
+    ngbd_(ngbd),
     bdry_(ngbd_, ngbd->p4est, ngbd->nodes),
     infc_(ngbd_, ngbd->p4est, ngbd->nodes),
     mu_m_interp_(ngbd),
@@ -903,9 +904,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           }
         }
 
-        if (is_ngbd_crossed_neumann  && is_ngbd_crossed_dirichlet ||
-            is_ngbd_crossed_neumann  && is_ngbd_crossed_immersed  ||
-            is_ngbd_crossed_immersed && is_ngbd_crossed_dirichlet ) {
+        if ((is_ngbd_crossed_neumann  && is_ngbd_crossed_dirichlet) ||
+            (is_ngbd_crossed_neumann  && is_ngbd_crossed_immersed)  ||
+            (is_ngbd_crossed_immersed && is_ngbd_crossed_dirichlet)) {
           throw std::domain_error("[CASL_ERROR]: No crossing of Dirichlet, Neumann and/or jump at the moment");
         }
         else if (is_ngbd_crossed_dirichlet) { scheme = BOUNDARY_DIRICHLET; }
@@ -968,6 +969,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             infc_fvs_->push_back(fv);
             infc_node_to_fv_[n] = infc_fvs_->size()-1;
           break;
+        default:
+#ifdef CASL_THROWS
+          throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: unknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+#endif
+          break;
         }
       }
 
@@ -988,7 +994,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       foreach_local_node(n, nodes_)
       {
-        double bdry_phi_eff_000 = (bdry_.num_phi == 0) ? -1 : bdry_.phi_eff_ptr[n];
         double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
 
         switch (node_scheme_[n])
@@ -1041,15 +1046,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             areas_p_ptr[n] = face_area_max_p/face_area_scalling_;
           }
           break;
-//          default:
-//          {
-//#ifdef CASL_THROWS
-//        throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: uknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.")
-
-//#endif
-//          }
-//          break;
-
+        default:
+#ifdef CASL_THROWS
+          throw std::runtime_error("my_p4est_poisson_nodes_mls_t::setup_linear_system: unknown node scheme, only NO_DISCRETIZATION, WALL_DIRICHLET, WALL_NEUMANN, FINITE_DIFFERENCE, FINITE_VOLUME, IMMERSED_INTERFACE implemented.");
+#endif
+          break;
         }
       }
 
@@ -1465,7 +1466,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                 d_elems.insert(cur);
             }
 
-            for (size_t i = ia[n]; i < ia[n+1]; ++i)
+            for (PetscInt i = ia[n]; i < ia[n+1]; ++i)
             {
               // add element from mat_product to submat_main
               if (fabs(data[i]) > EPS)
@@ -1563,7 +1564,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
               o_elems.clear();
 
               //
-              for (int i = 0; i < entries_main[n].size(); ++i)
+              for (size_t i = 0; i < entries_main[n].size(); ++i)
               {
                 cur = entries_main[n][i].n;
 
@@ -1631,7 +1632,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             d_elems.clear();
             o_elems.clear();
 
-            for (int i = 0; i < entries_main[n].size(); ++i)
+            for (size_t i = 0; i < entries_main[n].size(); ++i)
             {
               cur = entries_main[n][i].n;
 
@@ -1641,7 +1642,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                 d_elems.insert(cur);
             }
 
-            for (int i = 0; i < entries_robin_sc[n].size(); ++i)
+            for (size_t i = 0; i < entries_robin_sc[n].size(); ++i)
             {
               ent.n = entries_robin_sc[n][i].n;
               entries_main[n].push_back(ent);
@@ -2150,23 +2151,23 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 
   if (a > .5 || b > .5) std::cout << "Warning: face's centroid falls outside the face!\n";
 
-  double mask_specific = -1;
+//  double mask_specific = -1;
 
   int num_good_neighbors = 0;
 
   for (int i = 0; i < 9; ++i)
     if (neighbor_exists_face[i]) num_good_neighbors++;
 
-  bool same_line = (num_good_neighbors == 3 &&
-                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
-                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
-                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
-                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
+//  bool same_line = (num_good_neighbors == 3 &&
+//                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
+//                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
+//                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
+//                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
 
   if (a < theta && b < theta)
   {
     map_face[nnf_00] = true;  weights_face[nnf_00] = 1;
-    mask_specific = -2;
+//    mask_specific = -2;
   }
 
 
@@ -2179,7 +2180,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B <= 0 && B >= A &&
@@ -2189,7 +2190,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B <= -A &&
@@ -2199,7 +2200,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B >= -A &&
@@ -2209,7 +2210,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B <= -A &&
@@ -2219,7 +2220,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B >= -A &&
@@ -2229,7 +2230,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B <= A &&
@@ -2239,7 +2240,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B >= A &&
@@ -2249,7 +2250,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
 
@@ -2344,7 +2345,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -11;
+//    mask_specific = -11;
   }
   else if (A >= 0 && B <= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2353,7 +2354,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -12;
+//    mask_specific = -12;
   }
   else if (A <= 0 && B >= 0 &&
            neighbor_exists_face[nnf_m0] &&
@@ -2362,7 +2363,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -13;
+//    mask_specific = -13;
   }
   else if (A >= 0 && B >= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2371,7 +2372,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -14;
+//    mask_specific = -14;
   }
 
 
@@ -2515,7 +2516,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B+A;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -A;
-    mask_specific = -15;
+//    mask_specific = -15;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2524,7 +2525,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A+B;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -B;
-    mask_specific = -16;
+//    mask_specific = -16;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0m] &&
@@ -2533,7 +2534,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B-A;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = A;
-    mask_specific = -17;
+//    mask_specific = -17;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2542,7 +2543,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A+B;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = -B;
-    mask_specific = -18;
+//    mask_specific = -18;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2551,7 +2552,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A-B;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = B;
-    mask_specific = -19;
+//    mask_specific = -19;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2560,7 +2561,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B+A;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = -A;
-    mask_specific = -20;
+//    mask_specific = -20;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2569,7 +2570,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A-B;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = B;
-    mask_specific = -21;
+//    mask_specific = -21;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2578,7 +2579,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B-A;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = A;
-    mask_specific = -22;
+//    mask_specific = -22;
     semi_fallback = true;
   }
 
@@ -2588,7 +2589,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A+B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -23;
+//    mask_specific = -23;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2597,7 +2598,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A+B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -24;
+//    mask_specific = -24;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2606,7 +2607,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A-B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -25;
+//    mask_specific = -25;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2615,7 +2616,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A-B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -26;
+//    mask_specific = -26;
     semi_fallback = true;
   }
 
@@ -2650,7 +2651,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 //    std::cout << "!!!!!! Fallback flux between cells!\n";
 
     int num_good_neighbors = 0;
-    mask_specific = 50;
+//    mask_specific = 50;
 
     for (int i = 0; i < 9; ++i)
       if (neighbor_exists_face[i]) num_good_neighbors++;
@@ -2767,29 +2768,29 @@ void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locid
                                                         std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
 {
   double  mu;
-  double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
+  double *mue_ptr; // , *mue_dd_ptr[P4EST_DIM];
   double  diag_add;
-  double *mask_ptr;
+//  double *mask_ptr;
   double *rhs_loc_ptr;
 
   // determine on which side from immersed interface
   if (infc_phi_eff_000 < 0) {
     mu          = mu_m_;
     mue_ptr     = mue_m_ptr;
-    XCODE( mue_dd_ptr[0] = mue_m_xx_ptr );
-    YCODE( mue_dd_ptr[1] = mue_m_yy_ptr );
-    ZCODE( mue_dd_ptr[2] = mue_m_zz_ptr );
+//    XCODE( mue_dd_ptr[0] = mue_m_xx_ptr );
+//    YCODE( mue_dd_ptr[1] = mue_m_yy_ptr );
+//    ZCODE( mue_dd_ptr[2] = mue_m_zz_ptr );
     diag_add    = var_diag_ ? diag_m_ptr[n] : diag_m_scalar_;
-    mask_ptr    = mask_m_ptr;
+//    mask_ptr    = mask_m_ptr;
     rhs_loc_ptr = rhs_m_ptr;
   } else {
     mu          = mu_p_;
     mue_ptr     = mue_p_ptr;
-    XCODE( mue_dd_ptr[0] = mue_p_xx_ptr );
-    YCODE( mue_dd_ptr[1] = mue_p_yy_ptr );
-    ZCODE( mue_dd_ptr[2] = mue_p_zz_ptr );
+//    XCODE( mue_dd_ptr[0] = mue_p_xx_ptr );
+//    YCODE( mue_dd_ptr[1] = mue_p_yy_ptr );
+//    ZCODE( mue_dd_ptr[2] = mue_p_zz_ptr );
     diag_add    = var_diag_ ? diag_p_ptr[n] : diag_p_scalar_;
-    mask_ptr    = mask_p_ptr;
+//    mask_ptr    = mask_p_ptr;
     rhs_loc_ptr = rhs_p_ptr;
   }
 
@@ -3531,7 +3532,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
                                                            std::vector<mat_entry_t> *row_gf_ghost, PetscInt &d_nnz_gf_ghost, PetscInt &o_nnz_gf_ghost)
 {
   double  mu;
-  double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
+  double *mue_ptr; // , *mue_dd_ptr[P4EST_DIM];
   double  diag_add;
   double *mask_ptr;
   double *rhs_loc_ptr;
@@ -3539,18 +3540,18 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_gf(bool setup_rhs, p4est
   if (infc_phi_eff_000 < 0) {
     mu          = mu_m_;
     mue_ptr     = mue_m_ptr;
-    XCODE( mue_dd_ptr[0] = mue_m_xx_ptr );
-    YCODE( mue_dd_ptr[1] = mue_m_yy_ptr );
-    ZCODE( mue_dd_ptr[2] = mue_m_zz_ptr );
+//    XCODE( mue_dd_ptr[0] = mue_m_xx_ptr );
+//    YCODE( mue_dd_ptr[1] = mue_m_yy_ptr );
+//    ZCODE( mue_dd_ptr[2] = mue_m_zz_ptr );
     diag_add    = var_diag_ ? diag_m_ptr[n] : diag_m_scalar_;
     mask_ptr    = mask_m_ptr;
     rhs_loc_ptr = rhs_m_ptr;
   } else {
     mu          = mu_p_;
     mue_ptr     = mue_p_ptr;
-    XCODE( mue_dd_ptr[0] = mue_p_xx_ptr );
-    YCODE( mue_dd_ptr[1] = mue_p_yy_ptr );
-    ZCODE( mue_dd_ptr[2] = mue_p_zz_ptr );
+//    XCODE( mue_dd_ptr[0] = mue_p_xx_ptr );
+//    YCODE( mue_dd_ptr[1] = mue_p_yy_ptr );
+//    ZCODE( mue_dd_ptr[2] = mue_p_zz_ptr );
     diag_add    = var_diag_ ? diag_p_ptr[n] : diag_p_scalar_;
     mask_ptr    = mask_p_ptr;
     rhs_loc_ptr = rhs_p_ptr;
@@ -3918,7 +3919,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                                                     std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc)
 {
   double  mu;
-  double *mue_ptr;
+//  double *mue_ptr;
   double  diag_add;
   double *mask_ptr;
   double *rhs_loc_ptr;
@@ -3931,7 +3932,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
   if (infc_phi_eff_000 < 0)
   {
     mu          = mu_m_;
-    mue_ptr     = mue_m_ptr;
+//    mue_ptr     = mue_m_ptr;
     diag_add    = var_diag_ ? diag_m_ptr[n] : diag_m_scalar_;
     rhs_loc_ptr = rhs_m_ptr;
     mask_ptr    = mask_m_ptr;
@@ -3942,7 +3943,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
   else
   {
     mu          = mu_p_;
-    mue_ptr     = mue_p_ptr;
+//    mue_ptr     = mue_p_ptr;
     diag_add    = var_diag_ ? diag_p_ptr[n] : diag_p_scalar_;
     rhs_loc_ptr = rhs_p_ptr;
     mask_ptr    = mask_p_ptr;
@@ -4205,7 +4206,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
           rhs_ptr[n] += bdry_area[i] * (bc_[bdry_id[i]].pointwise ? bc_[bdry_id[i]].get_value_pw(n,0) : bc_[bdry_id[i]].get_value_cf(bdry_xyz[i].xyz));
         }
 
-        for (int i=0; i<wall_area.size(); ++i)
+        for (size_t i=0; i<wall_area.size(); ++i)
         {
           rhs_ptr[n] += wall_area[i] * (*wc_value_).value(wall_xyz[i].xyz);
         }
@@ -4864,22 +4865,22 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     std::vector<double> w_m(num_neighbors_cube, 0);
     std::vector<double> w_p(num_neighbors_cube, 0);
 
-    bool   neighbors_exist_face[num_neighbors_face];
-    bool   map_face            [num_neighbors_face];
-    double weights_face        [num_neighbors_face];
+//    bool   neighbors_exist_face[num_neighbors_face];
+//    bool   map_face            [num_neighbors_face];
+//    double weights_face        [num_neighbors_face];
 
-    double theta = EPS;
+//    double theta = EPS;
 
     for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
     {
-      if (dom == 0 && face_m_area_max <= interface_rel_thresh_ ||
-          dom == 1 && face_p_area_max <= interface_rel_thresh_)
+      if ((dom == 0 && face_m_area_max <= interface_rel_thresh_) ||
+          (dom == 1 && face_p_area_max <= interface_rel_thresh_))
         continue;
 
       double *w               = (dom == 0 ? w_m.data()        : w_p.data()        );
       double  mu              = (dom == 0 ? mu_m_             : mu_p_             );
       CF_DIM *mu_interp       = (dom == 0 ? &mu_m_interp_     : &mu_p_interp_     );
-      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     );
+//      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     );
 
       my_p4est_finite_volume_t &fv = (dom == 0 ? fv_m : fv_p);
 
@@ -5177,7 +5178,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         for (char j = 0; j < 3; ++j)
           for (char i = 0; i < 3; ++i)
           {
-            char idx = i + 3*j CODE3D( + 9*k );
+            u_char idx = i + 3*j CODE3D( + 9*k );
 
             XCODE( col_x[idx] = ((double) (i-1)) * dxyz_m_[0] );
             YCODE( col_y[idx] = ((double) (j-1)) * dxyz_m_[1] );
@@ -5387,7 +5388,7 @@ void my_p4est_poisson_nodes_mls_t::save_bdry_data(p4est_locidx_t n, vector<int> 
     throw std::invalid_argument("Vectors of different sizes\n");
 #endif
 
-  for (int i=0; i<bdry_ids.size(); ++i)
+  for (size_t i=0; i<bdry_ids.size(); ++i)
   {
     bc_[bdry_ids[i]].add_fv_pt(n, bdry_areas[i], bdry_value_pts[i], bdry_robin_pts[i]);
   }
@@ -5400,7 +5401,7 @@ void my_p4est_poisson_nodes_mls_t::load_bdry_data(p4est_locidx_t n, vector<int> 
   bdry_value_pts.clear();
   bdry_robin_pts.clear();
 
-  for (int i=0; i<bc_.size(); ++i)
+  for (size_t i=0; i<bc_.size(); ++i)
   {
     boundary_conditions_t *bc = &bc_[i];
     if ((bc->type == ROBIN || bc->type == NEUMANN) && bc->is_boundary_node(n))
@@ -5450,7 +5451,7 @@ void my_p4est_poisson_nodes_mls_t::load_cart_points(p4est_locidx_t n, vector<boo
   is_interface.assign(P4EST_FACES, false);
   weights     .assign(P4EST_FACES, 0);
 
-  for (int i = 0; i < bc_.size(); ++i)
+  for (size_t i = 0; i < bc_.size(); ++i)
   {
     boundary_conditions_t *bc = &bc_[i];
 
@@ -5529,7 +5530,7 @@ void my_p4est_poisson_nodes_mls_t::load_wall_data(p4est_locidx_t n, vector<int> 
   wall_xyz .clear();
   wall_area.clear();
 
-  for (size_t i=0; i<wall_pieces_map.size[n]; ++i)
+  for (int i=0; i<wall_pieces_map.size[n]; ++i)
   {
     int idx = wall_pieces_map.get_idx(n,i);
     wall_id  .push_back(wall_pieces_id      [idx]);

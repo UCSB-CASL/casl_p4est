@@ -28,8 +28,8 @@ protected:
   const int phi_idx_wall_shift_ = 10;
   struct mat_entry_t
   {
-    double val;
     PetscInt n;
+    double val;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
   PetscErrorCode ierr;
@@ -284,8 +284,8 @@ protected:
   std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
   std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
 
-  std::vector<CF_DIM *> bdry_phi_cf_;
-  std::vector<CF_DIM *> infc_phi_cf_;
+  std::vector<const CF_DIM *> bdry_phi_cf_;
+  std::vector<const CF_DIM *> infc_phi_cf_;
 
   void interpolators_initialize();
   void interpolators_prepare(p4est_locidx_t n);
@@ -366,7 +366,7 @@ public:
   inline int  pw_bc_idx_value_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_value_pt(n, k); }
   inline int  pw_bc_idx_robin_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_robin_pt(n, k); }
 
-  inline int  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
+  inline void  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
 
   inline int  pw_jc_num_integr_pts(int phi_idx) { return jc_[phi_idx].num_integr_pts(); }
   inline int  pw_jc_num_taylor_pts(int phi_idx) { return jc_[phi_idx].num_taylor_pts(); }
@@ -399,11 +399,11 @@ public:
       case NEUMANN:   there_is_neumann_   = true; break;
       case ROBIN:     there_is_robin_     = true; break;
       case DIRICHLET: there_is_dirichlet_ = true; break;
-//      default:
-//#ifdef CASL_THROWS
-//      throw std::run_time_error("my_p4est_poisson_nodes_mls_t:add_boundary:unknown boundary");
-//#endif
-//      break;
+      default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("my_p4est_poisson_nodes_mls_t:add_boundary: unknown boundary condition type, only DIRICHLET, NEUMANN and ROBIN implemented.");
+#endif
+      break;
     }
   }
 
