@@ -629,7 +629,7 @@ public:
   inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
 
-//  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+  inline bool get_matrix_has_nullspace() { return (nullspace_main_ && nullspace_diag_ && nullspace_robin_); }
 
   inline Mat get_matrix() { return A_; }
 
@@ -678,6 +678,76 @@ public:
   inline void set_gf_order         (int    val) { gf_order_         = val; }
   inline void set_gf_stabilized    (int    val) { gf_stabilized_    = val; }
   inline void set_gf_thresh        (double val) { gf_thresh_        = val; }
+
+
+  inline const p4est_t* get_p4est() const { return p4est_; }
+  inline const p4est_nodes_t* get_nodes() const { return nodes_; }
+  inline const my_p4est_node_neighbors_t* get_ngbd() const { return ngbd_; }
+  inline const p4est_ghost_t* get_ghost() const { return ghost_; }
+
+
+  inline void get_ghosted_solutions(Vec sharp_solution, Vec ghosted_solution_minus, Vec ghosted_solution_plus)
+  {
+    PetscErrorCode ierr;
+    Vec sol_ghost;
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &sol_ghost); CHKERRXX(ierr);
+    if (there_is_jump_mu_)
+    {
+      ierr = MatMultAdd(submat_jump_ghost_, sharp_solution, sharp_solution, sol_ghost); CHKERRXX(ierr);
+    }
+    else
+    {
+      ierr = VecCopyGhost(sharp_solution, sol_ghost); CHKERRXX(ierr);
+    }
+
+    ierr = VecAXPY(sol_ghost, -1.0, rhs_jump_); CHKERRXX(ierr);
+    const double *sharp_solution_ptr, *ghost_solution_ptr;
+    double *ghosted_solution_minus_ptr, *ghosted_solution_plus_ptr;
+
+    ierr = VecGetArrayRead(sharp_solution, &sharp_solution_ptr); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(sol_ghost, &ghost_solution_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(ghosted_solution_minus, &ghosted_solution_minus_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(ghosted_solution_plus, &ghosted_solution_plus_ptr); CHKERRXX(ierr);
+    infc_.get_arrays();
+    foreach_local_node(n, nodes_)
+    {
+      double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
+      if(infc_phi_eff_000 < 0.0)
+      {
+        ghosted_solution_minus_ptr[n] = sharp_solution_ptr[n];
+        ghosted_solution_plus_ptr[n] = NAN;
+      }
+      else
+      {
+        ghosted_solution_minus_ptr[n] = NAN;
+        ghosted_solution_plus_ptr[n] = sharp_solution_ptr[n];
+      }
+
+      if(node_scheme_[n] == IMMERSED_INTERFACE)
+      {
+        const my_p4est_finite_volume_t& fv_m = infc_fvs_->at(infc_node_to_fv_[n]);
+
+        if(fv_m.volume_in_negative_domain() > 0.001*fv_m.full_cell_volume && fv_m.volume_in_positive_domain() > 0.001*fv_m.full_cell_volume)
+        {
+          if(infc_phi_eff_000 < 0.0)
+            ghosted_solution_plus_ptr[n] = ghost_solution_ptr[n];
+          else
+            ghosted_solution_minus_ptr[n] = ghost_solution_ptr[n];
+        }
+      }
+    }
+    infc_.restore_arrays();
+    ierr = VecGhostUpdateBegin(ghosted_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(ghosted_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(ghosted_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(ghosted_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(ghosted_solution_plus, &ghosted_solution_plus_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(ghosted_solution_minus, &ghosted_solution_minus_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol_ghost, &ghost_solution_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sharp_solution, &sharp_solution_ptr); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_ghost); CHKERRXX(ierr);
+  }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H
