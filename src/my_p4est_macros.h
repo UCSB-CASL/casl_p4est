@@ -41,6 +41,8 @@
 #define MULTD(a,b,c) ( (a) *  (b) *  (c) )
 #define  ANDD(a,b,c) ( (a) && (b) && (c) )
 #define   ORD(a,b,c) ( (a) || (b) || (c) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
 
 #define CODEDIM(a,b) b
 
@@ -70,6 +72,8 @@ class Point3;
 #define MULTD(a,b,c) ( (a) *  (b) )
 #define  ANDD(a,b,c) ( (a) && (b) )
 #define   ORD(a,b,c) ( (a) || (b) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b)) )
 
 #define CODEDIM(a,b) a
 

@@ -20,21 +20,18 @@
 #include <src/mls_integration/cube3_mls.h>
 #include <src/mls_integration/cube2_mls.h>
 
-#define DO_NOT_PREALLOCATE
-
 using std::vector;
 
 class my_p4est_poisson_nodes_mls_t
 {
+protected:
   const int phi_idx_wall_shift_ = 10;
- protected:
   struct mat_entry_t
   {
-    PetscInt n;
     double val;
+    PetscInt n;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-protected:
   PetscErrorCode ierr;
 
   // p4est objects
@@ -42,11 +39,9 @@ protected:
   p4est_nodes_t    *nodes_;
   p4est_ghost_t    *ghost_;
   my_p4est_brick_t *brick_;
-public:
   const my_p4est_node_neighbors_t *ngbd_;
 
   // grid variables
-public:
   double lip_;
   double d_min_;
   double diag_min_;
@@ -61,17 +56,25 @@ public:
   Vec     rhs_jump_;
   double *rhs_jump_ptr;
 
+  Vec     rhs_gf_;
+  double *rhs_gf_ptr;
+
   // subcomponents of linear system
   Mat     submat_main_;
   Vec     submat_diag_;
   double *submat_diag_ptr;
   Vec     submat_diag_ghost_;
   double *submat_diag_ghost_ptr;
-  Mat     submat_jump_;
-  Mat     submat_jump_ghost_;
+  Mat     submat_jump_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_jump_ghost_; // expresses ghost values through real values
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
+  std::vector< std::vector<mat_entry_t> > entries_robin_sc;
+
+  // for imposing dirichlet using ghost fluid method
+  Mat     submat_gf_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_gf_ghost_; // expresses ghost values through real values
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -92,14 +95,19 @@ public:
   PetscInt    itmax_;
   PetscScalar rtol_, atol_, dtol_;
 
+  // Tolerances for solving nonlinear equations
+  double nonlinear_change_tol_, nonlinear_pde_residual_tol_;
+  double nonlinear_itmax_;
+  int    nonlinear_method_;
+
   // local to global node number mapping
   std::vector<PetscInt> global_node_offset_;
   std::vector<PetscInt> petsc_gloidx_;
 
-  // pinning point (for ill-defined all-neumann case)
-  bool           matrix_has_nullspace_;
-  p4est_gloidx_t fixed_value_idx_g_;
-  p4est_gloidx_t fixed_value_idx_l_;
+  // tracking nullspace
+  bool nullspace_main_;
+  bool nullspace_diag_;
+  bool nullspace_robin_;
 
   // geometry
   class geometry_t
@@ -135,12 +143,12 @@ public:
     void get_arrays();
     void restore_arrays();
     void calculate_phi_eff();
+    Vec  return_phi_eff();
     void add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz));
     inline double phi_eff_value(p4est_locidx_t n) { return (num_phi == 0) ? -1 : phi_eff_ptr[n]; }
   };
 
   geometry_t bdry_;
-public:
   geometry_t infc_;
 
   // forces
@@ -169,6 +177,19 @@ public:
 
   double *mue_m_ptr, DIM(*mue_m_xx_ptr, *mue_m_yy_ptr, *mue_m_zz_ptr);
   double *mue_p_ptr, DIM(*mue_p_xx_ptr, *mue_p_yy_ptr, *mue_p_zz_ptr);
+
+  // nonlinear term
+  CF_1   *nonlinear_term_m_;
+  CF_1   *nonlinear_term_p_;
+  CF_1   *nonlinear_term_m_prime_;
+  CF_1   *nonlinear_term_p_prime_;
+  Vec     nonlinear_term_m_coeff_;
+  Vec     nonlinear_term_p_coeff_;
+  double *nonlinear_term_m_coeff_ptr;
+  double *nonlinear_term_p_coeff_ptr;
+  double  nonlinear_term_m_coeff_scalar_;
+  double  nonlinear_term_p_coeff_scalar_;
+  bool    var_nonlinear_term_coeff_;
 
   // wall conditions
   points_around_node_map_t       wall_pieces_map;
@@ -199,9 +220,12 @@ public:
   int    integration_order_;
   int    cube_refinement_;
   int    jump_scheme_;
-  int    jump_sub_scheme_;
+  int    fv_scheme_;
+  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid
+  int    gf_order_;
+  int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
 
-  bool   use_sc_scheme_;
+
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
   bool   neumann_wall_first_order_;
@@ -211,6 +235,7 @@ public:
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
+  double gf_thresh_;
 
   interpolation_method interp_method_;
 
@@ -233,24 +258,23 @@ public:
   bool finite_volumes_initialized_;
   bool finite_volumes_owned_;
   std::vector<int> bdry_node_to_fv_;
-public:
   std::vector<int> infc_node_to_fv_;
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
-public:
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
   // discretization type
   enum discretization_scheme_t
   {
     UNDEFINED,
-    NO_DISCRETIZATION,
+    DOMAIN_OUTSIDE,
+    DOMAIN_INSIDE,
     WALL_DIRICHLET,
     WALL_NEUMANN,
-    FINITE_DIFFERENCE,
-    FINITE_VOLUME,
+    BOUNDARY_DIRICHLET,
+    BOUNDARY_NEUMANN,
     IMMERSED_INTERFACE,
   };
-public :
+
   std::vector<discretization_scheme_t> node_scheme_;
 
   // interpolators
@@ -260,8 +284,8 @@ public :
   std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
   std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
 
-  std::vector<const CF_DIM *> bdry_phi_cf_;
-  std::vector<const CF_DIM *> infc_phi_cf_;
+  std::vector<CF_DIM *> bdry_phi_cf_;
+  std::vector<CF_DIM *> infc_phi_cf_;
 
   void interpolators_initialize();
   void interpolators_prepare(p4est_locidx_t n);
@@ -270,20 +294,33 @@ public :
   // discretization
   void setup_linear_system (bool setup_rhs);
 
-  void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
+  void discretize_inside      (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
 
-  void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
-                            std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc);
+  void discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
 
-  void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
-                            std::vector<mat_entry_t> *row_jump, PetscInt &d_nnz_jump, PetscInt &o_nnz_jump,
-                            std::vector<mat_entry_t> *row_jump_aux, PetscInt &d_nnz_jump_aux, PetscInt &o_nnz_jump_aux);
+  void discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               vector<int> &gf_map, vector<double> &gf_nodes, vector<double> &gf_phi,
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_gf, PetscInt &d_nnz_gf, PetscInt &o_nnz_gf,
+                               std::vector<mat_entry_t> *row_gf_ghost, PetscInt &d_nnz_gf_ghost, PetscInt &o_nnz_gf_ghost);
+
+
+
+  void discretize_robin       (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc);
+
+  void discretize_jump        (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_jump, PetscInt &d_nnz_jump, PetscInt &o_nnz_jump,
+                               std::vector<mat_entry_t> *row_jump_ghost, PetscInt &d_nnz_jump_ghost, PetscInt &o_nnz_jump_ghost);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
@@ -301,6 +338,13 @@ public :
   void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
   void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
   void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix);
+
+  inline int gf_stencil_size() {
+    return gf_stabilized_ == 0 ? gf_order_ + 1 : gf_order_ + 2;
+  }
+
+  bool gf_is_ghost(const quad_neighbor_nodes_of_node_t &qnnn);
+  void gf_direction(const quad_neighbor_nodes_of_node_t &qnnn, const p4est_locidx_t neighbors[], int &dir, double del_xyz[]);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -322,7 +366,7 @@ public:
   inline int  pw_bc_idx_value_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_value_pt(n, k); }
   inline int  pw_bc_idx_robin_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_robin_pt(n, k); }
 
-  inline void  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
+  inline int  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
 
   inline int  pw_jc_num_integr_pts(int phi_idx) { return jc_[phi_idx].num_integr_pts(); }
   inline int  pw_jc_num_taylor_pts(int phi_idx) { return jc_[phi_idx].num_taylor_pts(); }
@@ -352,14 +396,14 @@ public:
 
     switch (bc_type)
     {
-    case NEUMANN:   there_is_neumann_   = true; break;
-    case ROBIN:     there_is_robin_     = true; break;
-    case DIRICHLET: there_is_dirichlet_ = true; break;
-    default:
-#ifdef CASL_THROWS
-      throw std::runtime_error("my_p4est_poisson_nodes_mls_t::add_boundary: unknonw boundary condition type, only NEUMANN, ROBIN and DIRICHLET are implemented so far.");
-#endif
-      break;
+      case NEUMANN:   there_is_neumann_   = true; break;
+      case ROBIN:     there_is_robin_     = true; break;
+      case DIRICHLET: there_is_dirichlet_ = true; break;
+//      default:
+//#ifdef CASL_THROWS
+//      throw std::run_time_error("my_p4est_poisson_nodes_mls_t:add_boundary:unknown boundary");
+//#endif
+//      break;
     }
   }
 
@@ -396,6 +440,19 @@ public:
   inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;
+    this->wc_value_ = &wc_value;
+
+    new_submat_main_  = new_submat_main;
+  }
+
+  inline void set_wc(BoundaryConditionType wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
+  {
+    switch (wc_type) {
+      case DIRICHLET: this->wc_type_ = &dirichlet_cf; break;
+      case NEUMANN:   this->wc_type_ = &neumann_cf;   break;
+      default: throw;
+    }
+
     this->wc_value_ = &wc_value;
 
     new_submat_main_  = new_submat_main;
@@ -492,14 +549,51 @@ public:
     this->itmax_ = itmax;
   }
 
+  // set nonlinear term
+
+  inline void set_nonlinear_term(double nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 double nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_      = false;
+    nonlinear_term_m_              =&nonlinear_m_term;
+    nonlinear_term_p_              =&nonlinear_p_term;
+    nonlinear_term_m_prime_        =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_        =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_scalar_ = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_scalar_ = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 Vec nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_ = true;
+    nonlinear_term_m_         =&nonlinear_m_term;
+    nonlinear_term_p_         =&nonlinear_p_term;
+    nonlinear_term_m_prime_   =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_   =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_   = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_   = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(double nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
 
   // solver options
   inline void set_integration_order(int value) { integration_order_ = value; }
   inline void set_cube_refinement  (int value) { cube_refinement_   = value; }
   inline void set_jump_scheme      (int value) { jump_scheme_       = value; }
-  inline void set_jump_sub_scheme  (int value) { jump_sub_scheme_   = value; }
+  inline void set_fv_scheme        (int value) { fv_scheme_         = value; }
 
-  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_            = value; }
   inline void set_use_taylor_correction   (bool value) { use_taylor_correction_    = value; }
   inline void set_kink_treatment          (bool value) { kink_special_treatment_   = value; }
   inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_ = value; }
@@ -513,13 +607,16 @@ public:
 
   inline void set_interpolation_method(interpolation_method value) { interp_method_ = value; }
 
+  inline void set_use_sc_scheme           (bool value) { if (value) fv_scheme_ = 1; else fv_scheme_ = 0; } // deprecated
+
   // some override capabilities just in case
   inline void set_new_submat_main (bool value) { new_submat_main_  = value; }
   inline void set_new_submat_diag (bool value) { new_submat_diag_  = value; }
   inline void set_new_submat_robin(bool value) { new_submat_robin_ = value; }
 
   void preassemble_linear_system();
-  void solve(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void solve          (Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  int  solve_nonlinear(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
   inline Vec get_mask()   { return mask_m_; }
   inline Vec get_mask_m() { return mask_m_; }
@@ -532,7 +629,7 @@ public:
   inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
 
-  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+//  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
 
   inline Mat get_matrix() { return A_; }
 
@@ -568,6 +665,19 @@ public:
   }
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
+
+  inline void set_solve_nonlinear_parameters(int method=1, double itmax=10, double change_tol=1.e-10, double pde_residual_tol=0)
+  {
+    nonlinear_method_           = method;
+    nonlinear_itmax_            = itmax;
+    nonlinear_change_tol_       = change_tol;
+    nonlinear_pde_residual_tol_ = pde_residual_tol;
+  }
+
+  inline void set_dirichlet_scheme (int    val) { dirichlet_scheme_ = val; }
+  inline void set_gf_order         (int    val) { gf_order_         = val; }
+  inline void set_gf_stabilized    (int    val) { gf_stabilized_    = val; }
+  inline void set_gf_thresh        (double val) { gf_thresh_        = val; }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

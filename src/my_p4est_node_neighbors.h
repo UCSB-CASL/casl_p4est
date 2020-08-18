@@ -60,7 +60,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_extended_t;
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
-  friend class my_p4est_poisson_nodes_mls_sc_t;
   friend class my_p4est_poisson_nodes_mls_t;
   friend class my_p4est_poisson_nodes_multialloy_t;
   friend class my_p4est_poisson_nodes_t;
@@ -597,6 +596,7 @@ public:
 
   // Daniil would have to commment on this one
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const;
 
   /*!
    * \brief memory_estimate estimates the memory required to store this my-p4est_node_neighbors_t object in number of bytes

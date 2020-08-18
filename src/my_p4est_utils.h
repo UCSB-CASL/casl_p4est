@@ -91,6 +91,30 @@ enum {
 };
 }
 
+inline int  cube_nei(DIM(int i, int j, int k)) { return SUMD((i+1), 3*(j+1), 9*(k+1)); }
+inline int  cube_nei(int ijk[]) { return cube_nei(DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, DIM(int &i, int &j, int &k))
+{
+  ONLY3D( k = n / 9 - 1; n = n % 9; );
+  j = n / 3 - 1;
+  i = n % 3 - 1;
+}
+inline void cube_nei_dir(int n, int    ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, double ijk[]) {
+  int ijk_int[P4EST_DIM];
+  cube_nei_dir(n, ijk_int);
+  EXECD(ijk[0] = double(ijk_int[0]),
+        ijk[1] = double(ijk_int[1]),
+        ijk[2] = double(ijk_int[2]));
+}
+
+inline int  cube_nei_op(int n)
+{
+  int ijk[P4EST_DIM];
+  cube_nei_dir(n, ijk);
+  return cube_nei(DIM(-ijk[0], -ijk[1], -ijk[2]));
+}
+
 enum node_neighbor_cube_t
 {
 #ifdef P4_TO_P8
