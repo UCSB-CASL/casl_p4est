@@ -58,14 +58,14 @@ parameter_list_t pl;
 // Examples to run:
 // ---------------------------------------
 // Define the numeric label for each type of example to make implementation a bit more clear
-enum{
+enum:int {
   FRANK_SPHERE = 0,
   NS_GIBOU_EXAMPLE = 1,
   COUPLED_TEST_2 = 2,
   COUPLED_PROBLEM_EXAMPLE = 3,
   ICE_AROUND_CYLINDER = 4,
   FLOW_PAST_CYLINDER = 5,
-
+  DENDRITE_TEST = 6
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -155,6 +155,8 @@ void select_solvers(){
       save_navier_stokes = false; solve_navier_stokes = true;
       save_coupled_fields = true;
       break;
+    case DENDRITE_TEST: // will need to select solvers manually
+      break;
 
     }
   if(save_using_dt && save_using_iter){
@@ -171,7 +173,7 @@ DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error c
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
 DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
 
-DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,true,"Force the interfacial velocity to zero? ");
+DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
@@ -214,7 +216,7 @@ double theta_cyl;
 double r_cyl; // non dim
 //double T_cyl; // dimensional
 //double d_cyl; // dimensional
-
+double d_seed; // for dendrite test
 DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
 DEFINE_PARAMETER(pl,double,T_cyl,260.,"Temperature of cooled cylinder in K (default : 260)");
 // For tracking allowable temperature values:
@@ -240,33 +242,33 @@ unsigned int num_fields_interp = 0;
 
 void set_geometry(){
   switch(example_){
-  case FRANK_SPHERE: {
-    // Frank sphere
-    // Grid size
-    xmin = -5.0; xmax = 5.0; //5.0;
-    ymin = -5.0; ymax = 5.0;
+    case FRANK_SPHERE: {
+      // Frank sphere
+      // Grid size
+      xmin = -5.0; xmax = 5.0; //5.0;
+      ymin = -5.0; ymax = 5.0;
 
-    // Number of trees
-    nx = 2;
-    ny = 2;
+      // Number of trees
+      nx = 2;
+      ny = 2;
 
-    // Periodicity
-    px = 0; py = 0;
+      // Periodicity
+      px = 0; py = 0;
 
-    // Uniform band
-    uniform_band=4.;
+      // Uniform band
+      uniform_band=4.;
 
-    // Problem geometry:
-    s0 = 0.628649269043202;
-    r0 = s0; // for consistency, and for setting up NS problem (if wanted)
+      // Problem geometry:
+      s0 = 0.628649269043202;
+      r0 = s0; // for consistency, and for setting up NS problem (if wanted)
 
-    // Necessary boundary condition info:
-    Twall = -0.2;    T_inf = Twall;
+      // Necessary boundary condition info:
+      Twall = -0.2;    T_inf = Twall;
 
-    Tinterface = 0.0;
+      Tinterface = 0.0;
 
-    break;
-    }
+      break;
+      }
 
     case FLOW_PAST_CYLINDER: // intentionally waterfalls into same settings as ice around cylinder
 
@@ -292,23 +294,7 @@ void set_geometry(){
       r0 = r_cyl*1.10;
 //      r0 = r_cyl*1.7;
       //d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
-
-      // Boundary condition info:
-      Twall = 276.;    // Physical wall temp [K]
-      Tinterface = 273.15; // Physical interface temp [K]
-//      T_cyl = 260.;   // Physical cylinder temp [K]
-
-      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
-
-      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
-
-      theta_wall = 1.0; // Non dim temp at wall
-      theta_cyl = 0.0; // Non dim temp at cylinder
-
-      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
-
-      T_max_allowable=Twall; // Max allowable value for T
-
+      // d_cyl gets set by the user (default is 35 e-3)
       break;}
 
     case NS_GIBOU_EXAMPLE: {// Navier Stokes Validation case from Gibou 2015
@@ -322,25 +308,28 @@ void set_geometry(){
 
       // Radius of the level set function:
       r0 = 0.20;
-      break;}
+      break;
+    }
 
     case COUPLED_PROBLEM_EXAMPLE:{
       // Domain size:
-      xmin = -PI/2.; xmax = 3.*PI/2.;
-      ymin = -PI; ymax = PI;
+      xmin = -PI/*-PI/2.*/; xmax = PI/*3.*PI/2.*/;
+      ymin = -PI; ymax = PI/*PI*/;
 
-      x0_lsf = PI/2; y0_lsf = PI/4.;
+      x0_lsf = 0./*PI/2*/; y0_lsf = 0.;/*PI/4.;*/
 
       // Number of trees:
       nx = 2; ny = 2;
       px = 0; py = 0;
 
       // Radius of the level set function:
-      r0 = PI/3.;
+      //r0 = PI/3.;
 
+      r0 = PI/2.;
       uniform_band=4.;
 
-      break;}
+      break;
+    }
     case COUPLED_TEST_2:{
       // Domain size:
       xmin = -1.0; xmax = 1.0;
@@ -350,8 +339,27 @@ void set_geometry(){
       px = 0; py = 0;
 
       uniform_band = 4.;
+      break;
     }
+    case DENDRITE_TEST:{
+      // Domain size:
+      xmin = 0.; xmax = 1.;
+      ymin = 0.; ymax = 1.;
+
+      // Number of trees and periodicity:
+      nx = 1; ny = 1;
+      px = 0; py = 0;
+
+      // band:
+      uniform_band = 4.;
+
+      // level set size (initial seed size)
+      r0 = 0.1;
+      d_seed = 3.48e-6; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+      // physical property paper ""
+      break;
     }
+  }
   // set number of interpolation fields:
   num_fields_interp = 0;
   if(solve_stefan){
@@ -368,6 +376,7 @@ double v_interface_max_norm; // For keeping track of the interfacial velocity ma
 // Grid refinement:
 // ---------------------------------------
 DEFINE_PARAMETER(pl,int,lmin,3,"Minimum level of refinement");
+DEFINE_PARAMETER(pl,int,lint,0,"Intermediate level of refinement (default: 0, won't be used unless set)");
 DEFINE_PARAMETER(pl,int,lmax,8,"Maximum level of refinement");
 DEFINE_PARAMETER(pl,double,lip,1.75,"Lipschitz coefficient");
 DEFINE_PARAMETER(pl,int,method_,1,"Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
@@ -420,6 +429,23 @@ void set_physical_properties(){
       rho_s = 920.; //[kg/m^3]
       mu_l = 1.7106e-3;//1.793e-3;  // Viscosity of water , [Pa s]
       cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+
+      // Boundary condition info:
+      Twall = 276.;    // Physical wall temp [K]
+      Tinterface = 273.15; // Physical interface temp [K]
+//      T_cyl = 260.;   // Physical cylinder temp [K]
+
+      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
+
+      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
+
+      theta_wall = 1.0; // Non dim temp at wall
+      theta_cyl = 0.0; // Non dim temp at cylinder
+
+      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
+
+      T_max_allowable=Twall; // Max allowable value for T
+
       break;
 
     case COUPLED_TEST_2:
@@ -433,10 +459,42 @@ void set_physical_properties(){
       rho_s = 1.0;
       mu_l = 1.0;
       break;
-  case NS_GIBOU_EXAMPLE:
+    case NS_GIBOU_EXAMPLE:
       rho_l = 1.0;
       mu_l = 1.0;
       Re = 1.0;
+      break;
+    case DENDRITE_TEST:
+      cp_s = 1913.; // Specific heat of solid, [J/kg]
+
+      alpha_l = 1.16e-7;
+      alpha_s = 1.12e-7;
+
+      k_l = 0.223; // [W /(m K)]
+      k_s = 0.225;
+
+      L = 4.7e4; // [J/kg]
+
+      rho_l = 988.; // [kg/m^3]
+      rho_s = k_s/alpha_s/cp_s; // [kg/m^3]
+
+      double nu = 2.6e-6;
+      mu_l = nu*rho_l; // [Pa s]
+
+      double gamma_sl = 8.9e-3; //[J/m^2]
+      sigma = gamma_sl/rho_l/L; // relation from alban email [m]
+
+      // BC info:
+      double delta = -0.55;
+      Tinterface = 331.23;
+      Twall = delta*(L/cp_s) + Tinterface;
+      deltaT = Twall-Tinterface;
+
+      theta_wall=0.;
+      theta_interface = 1.;
+
+      break;
+
     }
 }
 
@@ -487,7 +545,6 @@ void set_NS_info(){
       v0 = 1.0;
 
       u_inf=1.0;
-      uniform_band = 4.;
       break;
 
     case COUPLED_TEST_2:
@@ -495,8 +552,11 @@ void set_NS_info(){
       Re = 1.0;
       u0 = 1.0;
       v0 = 1.0;
-      uniform_band = 4.;
       break;
+    case DENDRITE_TEST:
+      Re = 1.;
+      u0 = 0.;
+      v0 = 1.;
     }
 
   outflow_u = 0.0;
@@ -506,9 +566,11 @@ void set_NS_info(){
 }
 
 void set_nondimensional_groups(){
-    if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER)){
+    if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER) || (example_ == DENDRITE_TEST)){
         if(Re_overwrite>0.) Re = Re_overwrite;
-        u_inf=Re*mu_l/rho_l/d_cyl;
+
+        if(example_==DENDRITE_TEST){ u_inf=Re*mu_l/rho_l/d_seed;}
+        else{u_inf=Re*mu_l/rho_l/d_cyl;}
         Pr = mu_l/(alpha_l*rho_l);
         Pe = Re*Pr;
         St = cp_s*deltaT/L;
@@ -532,6 +594,7 @@ double tstart;
 double dt = 1.e-5;
 double dt_nm1 = 1.e-5;
 int tstep;
+double dt_min_allowed = 1.e-5;
 
 DEFINE_PARAMETER(pl,double,t_ramp,0.25,"Time at which NS boundary conditions are ramped up to the freestream value \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,true,"Boolean option to ramp the BC's for the ice over cylinder case \n");
@@ -566,9 +629,14 @@ void simulation_time_info(){
 //      dt = 1.e-3;
       break;
     case COUPLED_TEST_2:
-      tfinal = PI;
-      dt_max_allowed=1.0e-1;
+      tfinal = 0.5;//1.;
+      dt_max_allowed=1.0e-2;
       tstart=0.0;
+      break;
+    case DENDRITE_TEST:
+      tfinal =(10.*60.)*(u_inf/d_seed); // 10 minutes
+      tfinal = 1.0;
+      break;
 
     }
 //  dt_nm1 = dt;
@@ -578,6 +646,7 @@ void simulation_time_info(){
 // Other parameters:
 // ---------------------------------------
 double v_int_max_allowed = 50.0;
+double vint_max_test2 = 4.5;
 
 bool move_interface_with_v_external = false;
 
@@ -709,9 +778,9 @@ struct velocity_component: CF_DIM
       case COUPLED_TEST_2:{
         switch(dir){
         case dir::x:
-          return -cos(PI*(t - x))*(- 3.*SQR(y) + 2.*y);
+          return (pow(x,3.)*(y - 1))/16. - (x*sin(2.*PI*(t - y)))/2.;//-cos(PI*(t - x))*(- 3.*SQR(y) + 2.*y);
         case dir::y:
-          return PI*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+          return (3.*SQR(x)*(- SQR(y)/2. + y))/16. + cos(2.*PI*(t - y))/(4.*PI); //PI*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
         default:
           throw std::runtime_error("analytical solution velocity: unknown cartesian direction \n");
         }
@@ -747,16 +816,16 @@ struct velocity_component: CF_DIM
         case dir::x:
           switch(dirr){
           case dir::x: //du_dx (with time component)
-            return -1.*PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+            return (3.*SQR(x)*(y - 1.))/16. - sin(2.*PI*(t - y))/2.; // -1.*PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
           case dir::y: // du_dy (with time component)
-            return cos(PI*(t - x))*(6.*y - 2.);
+            return pow(x,3.)/16. + PI*cos(2.*PI*(t - y))*x; // cos(PI*(t - x))*(6.*y - 2.);
           }
         case dir::y:
           switch(dirr){
           case dir::x: // dv_dx ("")
-            return -SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+            return (3.*x*(-1.*SQR(y)/2. + y))/8.; //-SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
           case dir::y: // dv_dy ("")
-            return PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+            return sin(2.*PI*(t - y))/2. - (3.*SQR(x)*(y - 1.))/16.; //PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
           }
         }
     }
@@ -801,10 +870,10 @@ struct velocity_component: CF_DIM
       case COUPLED_TEST_2:{
         switch(dir){
           case dir::x:{
-            return 6.*cos(PI*(t - x)) + SQR(PI)*cos(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+            return (3.*x*(y - 1.))/8. + 2.*x*SQR(PI)*sin(2.*PI*(t - y));//cos(PI*(t - x))*(-3.*SQR(PI)*SQR(y) + 2.*SQR(PI)*y + 6.);
           }
           case dir::y:{
-            return -1.*pow(PI,3.)*sin(PI*(t - x))*(-1.*pow(y,3.) + SQR(y)) - PI*sin(PI*(t - x))*(6.*y - 2.);
+            return (3.*y)/8. - PI*cos(2.*PI*(t - y)) - (3.*SQR(x))/16. - (3.*SQR(y))/16.; //-1.*PI*sin(PI*(t - x))*(-1.*SQR(PI)*pow(y,3.) + SQR(PI)*SQR(y) + 6.*y - 2.);
           }
         default:{
           throw std::runtime_error("analytical velocity: laplace: unknown cartesian direction \n");
@@ -825,10 +894,10 @@ struct velocity_component: CF_DIM
       case COUPLED_TEST_2:{
         switch(dir){
           case dir::x:{
-            return PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
+            return -1.*x*PI*cos(2.*PI*(t - y)); // PI*sin(PI*(t - x))*(-3.*SQR(y) + 2.*y);
           }
           case dir::y:{
-            return SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
+            return -1.*sin(2.*PI*(t - y))/2.; //SQR(PI)*cos(PI*(t - x))*(-1.*pow(y,3.) + SQR(y));
           }
         default:{
           throw std::runtime_error("analytical velocity: dv_dt: unknown cartesian direction \n");
@@ -912,14 +981,9 @@ struct external_force_per_unit_volume_component : CF_DIM{
 // -----------------------------------------------------------------------
 struct temperature_field: CF_DIM
 {
+  const double factor = 3.;
+  const double N = 1.;
   const unsigned char dom; //dom signifies which domain--> domain liq = 0, domain solid =1
-  const double k_NS=1.0;
-
-  const double n = 1.0;
-  const double m = 2.0;
-  const double x0 = PI/4;
-  const double y0 = 0.;
-
   temperature_field(const unsigned char& dom_) : dom(dom_){
     P4EST_ASSERT(dom>=0 && dom<=1);
   }
@@ -939,9 +1003,9 @@ struct temperature_field: CF_DIM
       case COUPLED_TEST_2:{
         switch(dom){
         case LIQUID_DOMAIN:
-          return 2.*y*PI*SQR(sin(PI*(t - x)));
+          return ((x-1.)*(y+1.)/factor + cos(N*PI*x*y*t));//sin(2.*SQR(t)*PI)*SQR(x*y) + ((x-1.)*(y+1.))/factor;// cos(PI*x*y*t);
         case SOLID_DOMAIN:
-          return -3.*PI*cos(PI*(t - y))*sin(PI*(t - x));
+          return (-1.*(x-1.)*(y-1.)/factor + cos(N*PI*x*y*t));//sin(2.*SQR(t)*PI)*SQR(x*y) - ((x-1.)*(y-1.))/factor; // sin(PI*x*y*t);//
         default:
           throw std::runtime_error("analytical solution temperature: unknown domain \n");
         }
@@ -984,24 +1048,25 @@ struct temperature_field: CF_DIM
       } //end of coupled problem example
       case COUPLED_TEST_2:{
         switch(dom){
-        case LIQUID_DOMAIN:
-          switch(dir){
-          case dir::x:
-            return -4.*y*SQR(PI)*cos(PI*(t - x))*sin(PI*(t - x));
-          case dir::y:
-            return 2.*PI*SQR(sin(PI*(t - x)));
-          default:
-            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
-          }
-        case SOLID_DOMAIN:
-          switch(dir){
-          case dir::x:
-            return 3.*SQR(PI)*cos(PI*(t - x))*cos(PI*(t - y));
-          case dir::y:
-            return -3.*SQR(PI)*sin(PI*(t - x))*sin(PI*(t - y));
-          default:
-            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
-          }
+          case LIQUID_DOMAIN:
+            switch(dir){
+            case dir::x:
+              return (y + 1.)/factor - N*t*y*PI*sin(N*PI*t*x*y); //2.*x*sin(2.*SQR(t)*PI)*SQR(y) + (y + 1.)/factor;
+            case dir::y:
+              return (x - 1.)/factor - N*t*x*PI*sin(N*PI*t*x*y); //2.*y*sin(2.*SQR(t)*PI)*SQR(x) + (x - 1.)/factor;
+            default:
+              throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+            }
+          case SOLID_DOMAIN:
+            switch(dir){
+            case dir::x:
+              return -1.*(y - 1.)/factor - N*t*y*PI*sin(N*PI*t*x*y);
+            case dir::y:
+              return -1.*(x - 1.)/factor - N*t*x*PI*sin(N*PI*t*x*y);
+
+            default:
+              throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+            }
         default:
           throw std::runtime_error("dT_dd of analytical temperature field: unrecognized domain \n");
         } // end of switch domain
@@ -1020,7 +1085,6 @@ struct temperature_field: CF_DIM
           return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
         case SOLID_DOMAIN:
           return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
-
         default:
           throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
         }
@@ -1028,9 +1092,9 @@ struct temperature_field: CF_DIM
       case COUPLED_TEST_2:{
         switch(dom){
         case LIQUID_DOMAIN:
-          return 4.*y*SQR(PI)*cos(PI*(t - x))*sin(PI*(t - x));
+          return -N*x*y*PI*sin(N*PI*t*x*y);//4.*t*SQR(x)*SQR(y)*PI*cos(2.*PI*SQR(t));
         case SOLID_DOMAIN:
-          return 3.*SQR(PI)*sin(PI*(t - x))*sin(PI*(t - y)) - 3.*SQR(PI)*cos(PI*(t - x))*cos(PI*(t - y));
+          return -N*x*y*PI*sin(N*PI*t*x*y);//4.*t*SQR(x)*SQR(y)*PI*cos(2.*PI*SQR(t)); // x*y*PI*cos(PI*t*x*y);//
         default:
           throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
         }
@@ -1056,9 +1120,10 @@ struct temperature_field: CF_DIM
       case COUPLED_TEST_2:{
         switch(dom){
         case LIQUID_DOMAIN:
-          return 4.*y*pow(PI,3.)*cos(2.*PI*(t - x));
+          return -1.*SQR(t*PI*N)*cos(N*PI*t*x*y)*(SQR(x) + SQR(y));
         case SOLID_DOMAIN:
-          return 6.*pow(PI,3.)*cos(PI*(t - y))*sin(PI*(t - x));
+          return -1.*SQR(t*PI*N)*cos(N*PI*t*x*y)*(SQR(x) + SQR(y));
+
         default:
           throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
         }
@@ -1126,13 +1191,17 @@ public:
       case COUPLED_PROBLEM_EXAMPLE:
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
       case COUPLED_TEST_2:{
-        return 0.5 - sqrt(SQR(x) + SQR(y));
-
-//        double rval = sqrt(SQR(x) + SQR(y));
-//        return rval - 0.25  - (pow(y,5.) + 5.*(pow(x,4.))*y - 10.*SQR(x)*pow(y,3.))/(3.*pow(rval,5.) + 1e-5);
+        double x0 = 0.;//1./6.;
+        double y0 = -1./4.;
+        double R = 1./3.;//1./4.;
+        double rval = sqrt(SQR(x-x0) + SQR(y-y0));
+        return -1.*(rval - (R)  - (pow(y - y0,5.) + 5.*(pow(x-x0,4.))*(y-y0) - 10.*SQR(x-x0)*pow(y-y0,3.))/(3.*pow(rval,5.) + 1e-5));
       }
-      default: throw std::invalid_argument("You must choose an example type\n");
+      case DENDRITE_TEST:{
+        return r0 - sqrt(SQR(x - xmax/2.) + SQR(y - ymax/2.));
       }
+    default: throw std::invalid_argument("You must choose an example type\n");
+    }
   }
 } level_set;
 
@@ -1169,19 +1238,28 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
     case FRANK_SPHERE:
       interface_bc_type_temp = DIRICHLET;
       break;
+    case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_temp = DIRICHLET; 
       break;
+    case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
       interface_bc_type_temp = DIRICHLET;
+      break;
     }
 }
 
 BoundaryConditionType inner_interface_bc_type_temp;
 void inner_interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
-    case FRANK_SPHERE: throw std::invalid_argument("This option may not be used for the particular example being called");
+    case FLOW_PAST_CYLINDER:
+    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_TEST_2:
+    case DENDRITE_TEST:
+    case FRANK_SPHERE:{
+        throw std::invalid_argument("This option may not be used for the particular example being called");
+    }
     case ICE_AROUND_CYLINDER:
       inner_interface_bc_type_temp = DIRICHLET;
       break;
@@ -1210,6 +1288,7 @@ public:
       case FRANK_SPHERE:{ // Frank sphere case, no surface tension
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
         }
+      case DENDRITE_TEST:
       case ICE_AROUND_CYLINDER: {
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
@@ -1242,6 +1321,7 @@ public:
   double operator()(double x, double y) const
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
+      case DENDRITE_TEST:
       case ICE_AROUND_CYLINDER: return 1.0;
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -1285,84 +1365,88 @@ bool xlower_wall(DIM(double x, double y, doublze z)){
 bool xupper_wall(DIM(double x, double y, double z)){
   // back x wall, excluding the top and bottom corner points in y
   return ((fabs(x - xmax) <= EPS) && (fabs(y - ymin)>EPS) && (fabs(y - ymax)>EPS));
-
-}
-
+};
 bool ylower_wall(DIM(double x, double y, double z)){
   return (fabs(y - ymin) <= EPS);
 }
 bool yupper_wall(DIM(double x, double y, double z)){
   return (fabs(y - ymax) <= EPS);
+};
 
-}
+bool is_x_wall(DIM(double x, double y, double z)){
+  return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+};
+bool is_y_wall(DIM(double x, double y, double z)){
+  return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+};
+bool test_2_two_walls_temp(DIM(double x, double y, double z)){
+  return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+};
 
+double sign_neumann_wall(DIM(double x,double y,double z)){
+  if (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+    return -1.0;
+  }
+  else{
+    return 1.0;
+  }
+};
+
+bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
+  switch(example_){
+    case FRANK_SPHERE:{
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+     }
+    case DENDRITE_TEST:
+    case ICE_AROUND_CYLINDER:{
+      return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+    }
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
+    }
+    case COUPLED_TEST_2:{
+      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+  }
+};
+
+bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
+  switch(example_){
+    case DENDRITE_TEST:{
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+    case FLOW_PAST_CYLINDER:
+    case ICE_AROUND_CYLINDER:{
+      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+    case NS_GIBOU_EXAMPLE:{
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) ||ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+    case COUPLED_PROBLEM_EXAMPLE:{
+      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+    }
+    case COUPLED_TEST_2:{
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+    }
+    case FRANK_SPHERE:{
+      throw std::runtime_error("dirichlet velocity walls: invalid example: frank sphere");
+    }
+  }
+};
 // --------------------------------------------------------------------------------------------------------------
 // WALL TEMPERATURE BOUNDARY CONDITION
 // --------------------------------------------------------------------------------------------------------------
-double temp_three_wall_dirichlet_val(DIM(double x, double y, double z)){
-  if (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-        return theta_wall;
-      }
-  else {
-      return back_wall_temp_flux;
-    }
-}
-
-double temp_three_wall_neumann_val(DIM(double x, double y, double z)){
-  if (xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-      return back_wall_temp_flux;}
-  else {
-      return theta_wall;
-    }
-}
-
-BoundaryConditionType temp_three_wall_dirichlet_type(DIM(double x, double y, double z)){
-  if (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-      return DIRICHLET;}
-  else {
-      return NEUMANN;
-    }
-}
-
-BoundaryConditionType temp_three_wall_neumann_type(DIM(double x, double y, double z)){
-  if (xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-      return NEUMANN;}
-  else {
-      return DIRICHLET;
-    }
-}
-
 class BC_WALL_TYPE_TEMP: public WallBCDIM
 {
 public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
-    switch(example_){
-      case FRANK_SPHERE: return DIRICHLET;
-      case ICE_AROUND_CYLINDER:{
-        return temp_three_wall_dirichlet_type(DIM(x,y,z));
-      }
-      case COUPLED_PROBLEM_EXAMPLE:{
-        if(xlower_wall(x,y) || xupper_wall(x,y)){
-          return DIRICHLET;
-        }
-        else if(ylower_wall(x,y) || yupper_wall(x,y)){
-          return DIRICHLET;
-        }
-        break;
-      }
-      case COUPLED_TEST_2:{
-        if(xlower_wall(x,y) || xupper_wall(x,y)){
-          return DIRICHLET;
-        }
-        else if(ylower_wall(x,y) || yupper_wall(x,y)){
-          return NEUMANN;
-        }
-        break;
-      }
-      default:
-        throw std::runtime_error("WALL BC TYPE TEMP: unrecognized example \n");
-        }
+    if(dirichlet_temperature_walls(DIM(x,y,z))){
+      return DIRICHLET;
+    }
+    else{
+      return NEUMANN;
+    }
   }
 }bc_wall_type_temp;
 
@@ -1379,46 +1463,37 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE:{
-        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))){
-            if (level_set(DIM(x,y,z)) < EPS){
-                double r;
-                double sval;
-                r = sqrt(SQR(x) + SQR(y));
-                sval = r/sqrt(tn + dt);
-                return frank_sphere_solution_t(sval);
-              }
-            else{
-                return Tinterface;
-              }
-          }
-        break;       }
+        if (dirichlet_temperature_walls(DIM(x,y,z))){
+          double r= sqrt(SQR(x) + SQR(y));;
+          double sval = r/sqrt(tn + dt);
+          return frank_sphere_solution_t(sval);
+        }
+        break;
+      }
+      case DENDRITE_TEST:
       case ICE_AROUND_CYLINDER:{
-          return temp_three_wall_dirichlet_val(DIM(x,y,z));
+        if(dirichlet_temperature_walls(DIM(x,y,z))){
+          return theta_wall;
         }
-      case COUPLED_PROBLEM_EXAMPLE:{
-//          if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
-//              return temperature_[dom]->T(DIM(x,y,z));;
-//            }
-          if(xlower_wall(x,y) || xupper_wall(x,y)){
-            return temperature_[dom]->T(DIM(x,y,z));
-          }
-          else if(ylower_wall(x,y) || yupper_wall(x,y)){
-            return temperature_[dom]->T(DIM(x,y,z));
-          }
-          break;
+        else{
+          return back_wall_temp_flux;
         }
+      }
+      case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
-  //          if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
-  //              return temperature_[dom]->T(DIM(x,y,z));;
-  //            }
-          if(xlower_wall(x,y) || xupper_wall(x,y)){
-            return temperature_[dom]->T(DIM(x,y,z));
+        if (dirichlet_temperature_walls(DIM(x,y,z))){ // dirichlet case
+          return temperature_[dom]->T(DIM(x,y,z));
+        }
+        else{ // neumann case
+          if(is_x_wall(DIM(x,y,z))){
+            return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::x,DIM(x,y,z));
           }
-          else if(ylower_wall(x,y) || yupper_wall(x,y)){
-            return temperature_[dom]->dT_d(dir::y,DIM(x,y,z));
+          if(is_y_wall(DIM(x,y,z))){
+             return sign_neumann_wall(DIM(x,y,z))*temperature_[dom]->dT_d(dir::y,DIM(x,y,z));
           }
           break;
         }
+      }
       default:
         throw std::runtime_error("WALL BC TYPE TEMP: unrecognized example \n");
       }
@@ -1436,14 +1511,13 @@ public:
   INITIAL_TEMP(const unsigned char &dom_,temperature_field** analytical_T=NULL):dom(dom_),temperature_(analytical_T){}
   double operator() (DIM(double x, double y, double z)) const
   {
-    double r;
-    double sval;
     switch(example_){
       case FRANK_SPHERE:{
-        r = sqrt(SQR(x) + SQR(y));
-        sval = s(r,t);
+        double r = sqrt(SQR(x) + SQR(y));
+        double sval = s(r,t);
         return frank_sphere_solution_t(sval); // Initial distribution is the analytical solution of Frank Sphere problem at t = tstart
       }
+      case DENDRITE_TEST:
       case ICE_AROUND_CYLINDER:{
         switch(dom){
           case LIQUID_DOMAIN:{
@@ -1473,6 +1547,25 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // VELOCITY BOUNDARY CONDITION -- for velocity vector = (u,v,w)
 // --------------------------------------------------------------------------------------------------------------
+class BC_WALL_TYPE_VELOCITY: public WallBCDIM
+{
+public:
+  const unsigned char dir;
+  BC_WALL_TYPE_VELOCITY(const unsigned char& dir_):dir(dir_){
+    P4EST_ASSERT(dir<P4EST_DIM);
+  }
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    if(dirichlet_velocity_walls(DIM(x,y,z))){
+       return DIRICHLET;
+    }
+    else{
+     return NEUMANN;
+    }
+  }
+};
+
+
 class BC_WALL_VALUE_VELOCITY: public CF_DIM
 {
 public:
@@ -1486,12 +1579,13 @@ public:
   {
     switch(example_){
       //------------------------------------------------------------------
-      case FRANK_SPHERE:
+      case FRANK_SPHERE:{
         throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
-
+      }
+      case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:{
-        if (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+        if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
             if(ramp_bcs){
               switch(dir){
               case dir::x:
@@ -1513,7 +1607,7 @@ public:
               }
             }
           }
-        else if(xupper_wall(DIM(x,y,z))){ // Neumann condition on back wall
+        else { // Neumann case
           switch(dir){
           case dir::x:
             return outflow_u;
@@ -1522,86 +1616,27 @@ public:
           default:
             throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
           }
-          }
-        break;
-        }
-      case NS_GIBOU_EXAMPLE:{
-        return (*velocity_field[dir])(DIM(x,y,z));
-        }
-      case COUPLED_PROBLEM_EXAMPLE:{
-        if(xupper_wall(DIM(x,y,z))){
-          return velocity_field[dir]->_d(dir::x,DIM(x,y,z));
-        }
-        else if (yupper_wall(DIM(x,y,z))){
-          return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
-        }
-        else{
-          return (*velocity_field[dir])(DIM(x,y,z));
         }
       }
-      case COUPLED_TEST_2:{
-        if(xupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
-          return (*velocity_field[dir])(DIM(x,y,z));
-        }
-        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-          return velocity_field[dir]->_d(dir::y,DIM(x,y,z));
-        }
-        break;
-      }
-    default:
-      throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
-    }
-  }
-};
-
-class BC_WALL_TYPE_VELOCITY: public WallBCDIM
-{
-public:
-  const unsigned char dir;
-  BC_WALL_TYPE_VELOCITY(const unsigned char& dir_):dir(dir_){
-    P4EST_ASSERT(dir<P4EST_DIM);
-  }
-
-  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
-  {
-    switch(example_){
-      case FRANK_SPHERE:
-        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
-      case FLOW_PAST_CYLINDER:
-      case ICE_AROUND_CYLINDER:{
-        if (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-            return DIRICHLET; // free stream
-          }
-        else if (xupper_wall(DIM(x,y,z))){
-            return NEUMANN; // presribed outflow
-          }
-        break;
-        }
       case NS_GIBOU_EXAMPLE:
-        return DIRICHLET;
-      case COUPLED_PROBLEM_EXAMPLE:{
-        if(xupper_wall(DIM(x,y,z))){
-          return NEUMANN;
-        }
-        else if (yupper_wall(DIM(x,y,z))){
-          return NEUMANN;
-        }
-        else{
-          return DIRICHLET;
-        }
-      }
+      case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
-        if(xupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
-          return DIRICHLET;
+        if(dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
+          return (*velocity_field[dir])(DIM(x,y,z));
         }
-        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-          return NEUMANN;
+        else{ // neumann case
+          if(is_x_wall(DIM(x,y,z))){
+            return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z));
+          }
+          if(is_y_wall(DIM(x,y,z))){
+            return sign_neumann_wall(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z));
+          }
         }
         break;
       }
       default:
-        throw std::runtime_error("WALL BC TYPE VELOCITY: unrecognized example \n");
-      }
+        throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
+    }
   }
 };
 
@@ -1614,6 +1649,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
   switch(example_){
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
     case FLOW_PAST_CYLINDER:
+    case DENDRITE_TEST:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
@@ -1650,14 +1686,14 @@ public:
     switch(example_){
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case FLOW_PAST_CYLINDER:
+      case DENDRITE_TEST:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
-          if(!solve_stefan) return 0.;
-          else{
-            return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface
-          }
+        if(!solve_stefan) return 0.;
+        else{
+          return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface
+        }
       }
       case NS_GIBOU_EXAMPLE:
-        return (*velocity_field[dir])(x,y);
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return (*velocity_field[dir])(x,y);
@@ -1691,6 +1727,7 @@ struct INITIAL_VELOCITY : CF_DIM
 
   double operator() (DIM(double x, double y,double z)) const{
     switch(example_){
+      case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs) return 0.;
@@ -1704,17 +1741,9 @@ struct INITIAL_VELOCITY : CF_DIM
             throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
           }
         }
+      case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
-        switch(dir){
-        case dir::x:
-          return (*velocity_field[0])(x,y);
-        case dir::y:
-          return (*velocity_field[1])(x,y);
-        default:
-          throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
-        }
-      case NS_GIBOU_EXAMPLE:
         switch(dir){
         case dir::x:
           return (*velocity_field[0])(x,y);
@@ -1737,46 +1766,14 @@ class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
-    switch(example_){
-      case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes solution is not "
-                                                     "compatible with this example, please choose another \n");
-      case FLOW_PAST_CYLINDER:
-      case ICE_AROUND_CYLINDER:{
-          if(fabs(x - xmax)<EPS){
-              return DIRICHLET;
-            }
-          else{
-              return NEUMANN;
-            }
-        }
-      case NS_GIBOU_EXAMPLE: {
-            return NEUMANN;
-        }
-      case COUPLED_PROBLEM_EXAMPLE:{
-        if(xupper_wall(DIM(x,y,z))){
-          return DIRICHLET;
-        }
-        else if (yupper_wall(DIM(x,y,z))){
-          return DIRICHLET;
-        }
-        else{
-          return NEUMANN;
-        }
+    if(!dirichlet_velocity_walls(DIM(x,y,z))){ // pressure is dirichlet where vel is neumann
+        return DIRICHLET;
       }
-      case COUPLED_TEST_2:{
-        if(xupper_wall(DIM(x,y,z)) ){
-          return NEUMANN;
-        }
-        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))|| xlower_wall(DIM(x,y,z))){
-          return DIRICHLET;
-        }
-        break;
+    else{
+        return NEUMANN;
       }
-      default:
-        throw std::runtime_error("WALL BC TYPE PRESSURE: unrecognized example \n");
-        }
   }
-}/*bc_wall_type_pressure*/;
+};
 
 class BC_WALL_VALUE_PRESSURE: public CF_DIM
 {
@@ -1787,51 +1784,45 @@ public:
       case FRANK_SPHERE:
         throw std::invalid_argument("Navier Stokes solution is not "
                                     "compatible with this example, please choose another \n");
+      case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
-
       case ICE_AROUND_CYLINDER:{ // coupled problem
-        return 0.0;}
+        return 0.0;
+      }
 
-      case NS_GIBOU_EXAMPLE: {// benchmark NS case
-        return 0.0;}
-
-      case COUPLED_PROBLEM_EXAMPLE:{
-            return 0.0; // Either homogeneous Dirichlet or homogeneous Neumann
-        }
+      case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
-        pressure_field_analytical.t=t;
-        if(xupper_wall(DIM(x,y,z))){
-          return pressure_field_analytical.gradP(dir::x,DIM(x,y,z));
-        }
-        else if (yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z))){
+        pressure_field_analytical.t= this->t;
+        if(!dirichlet_velocity_walls(DIM(x,y,z))){
           return pressure_field_analytical(DIM(x,y,z));
         }
-        break;
+        else {
+          if(is_x_wall(DIM(x,y,z))){
+            return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::x,DIM(x,y,z));
+          }
+          if(is_y_wall(DIM(x,y,z))){
+            return sign_neumann_wall(DIM(x,y,z))*pressure_field_analytical.gradP(dir::y,DIM(x,y,z));
+          }
+        }
       }
       default:
         throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
-        }
+    }
   }
-
-} /*bc_wall_value_pressure*/;
+};
 
 static BoundaryConditionType interface_bc_type_pressure;
 void interface_bc_pressure(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
-
+    case NS_GIBOU_EXAMPLE:
+    case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_EXAMPLE:
+    case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
-      break;
-    case NS_GIBOU_EXAMPLE:
-      interface_bc_type_pressure = NEUMANN;
-      break;
-    case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_EXAMPLE:
-      interface_bc_type_pressure = NEUMANN;
-//    interface_bc_type_pressure = DIRICHLET;
-
       break;
     }
 }
@@ -1842,11 +1833,12 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
+
       case NS_GIBOU_EXAMPLE: // Benchmark NS
-        return 0.0;
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return 0.0;
@@ -1854,7 +1846,7 @@ public:
         throw std::runtime_error("INTERFACE BC VAL PRESSURE: unrecognized example \n");
       }
   }
-} /*bc_interface_value_pressure*/;
+};
 
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
@@ -2348,7 +2340,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   vec_and_ptr_t forcing_term_liquid;
   vec_and_ptr_t forcing_term_solid;
 
-  if(example_ == COUPLED_PROBLEM_EXAMPLE){
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
     forcing_term_liquid.create(p4est,nodes);
     forcing_term_solid.create(p4est,nodes);
 
@@ -2391,7 +2383,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_l.get_array();
     }
 
-  if(example_ == COUPLED_PROBLEM_EXAMPLE){
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
     forcing_term_liquid.get_array();
     forcing_term_solid.get_array();
   }
@@ -2423,7 +2415,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
         rhs_Tl.ptr[n] = T_l.ptr[n]/dt;
         }
       }
-    if(example_ == COUPLED_PROBLEM_EXAMPLE){
+    if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
       // Add forcing terms:
       rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
       rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
@@ -2454,7 +2446,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
         }
     }
 
-  if(example_ == COUPLED_PROBLEM_EXAMPLE){
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
     forcing_term_liquid.restore_array();
     forcing_term_solid.restore_array();
 
@@ -2487,7 +2479,6 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,
 
   my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_nm1);/* = NULL;*/
 //  SL_backtrace_interp_nm1 = new my_p4est_interpolation_nodes_t(ngbd_nm1);
-
   // Get the relevant second derivatives
   T_l_dd.create(p4est,nodes);
   ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec);
@@ -2656,7 +2647,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                                   vec_and_ptr_dim_t jump, vec_and_ptr_dim_t &v_interface,
                                   vec_and_ptr_t phi,
                                   p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t *ngbd,
-                                  double dxyz_close_to_interface){
+                                  double extension_band){
 
   if(!force_interfacial_velocity_to_zero){
     // Get the first derivatives to compute the jump
@@ -2677,7 +2668,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       for(size_t i=0; i<ngbd->get_layer_size();i++){
         p4est_locidx_t n = ngbd->get_layer_node(i);
 
-        if(fabs(phi.ptr[n])<2.*uniform_band*dxyz_close_to_interface/*true*/){
+        if(fabs(phi.ptr[n])<extension_band){
             foreach_dimension(d){
                 if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
                     jump.ptr[d][n] = (St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]);
@@ -2697,7 +2688,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Compute the jump in the local nodes:
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
-          if(fabs(phi.ptr[n])<2.*uniform_band*dxyz_close_to_interface){
+          if(fabs(phi.ptr[n])<extension_band){
 
               foreach_dimension(d){
                   if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
@@ -2727,7 +2718,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       }
 
       // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
-      if(example_ == COUPLED_PROBLEM_EXAMPLE){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
         foreach_dimension(d){
          VecScaleGhost(v_interface.vec[d],coupled_test_sign);
         }
@@ -2752,6 +2743,9 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
 
   if(example_ == COUPLED_PROBLEM_EXAMPLE){
     global_max_vnorm = PI; // known analytically
+  }
+  else if (example_ == COUPLED_TEST_2){
+    global_max_vnorm = 1.5;
   }
   else {
     // Check the values of v_interface locally:
@@ -2950,8 +2944,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     diag_opn.push_back(DIVIDE_BY);
     criteria.push_back(threshold*NS_norm);
 
-    custom_lmax.push_back(lmax - 2);
-
+    if(lint>0){custom_lmax.push_back(lint);}
+    else{custom_lmax.push_back(sp.max_lvl);}
     if(refine_by_d2T){
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est,dxyz_smallest);
@@ -2966,8 +2960,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       compare_opn.push_back(SIGN_CHANGE);
       diag_opn.push_back(DIVIDE_BY);
       criteria.push_back(dTheta*gradT_threshold);
-      custom_lmax.push_back(lmax - 2);
-
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(sp.max_lvl);}
 
       // Coarsening instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
@@ -2978,8 +2972,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       compare_opn.push_back(SIGN_CHANGE);
       diag_opn.push_back(DIVIDE_BY);
       criteria.push_back(dTheta*gradT_threshold);
-      custom_lmax.push_back(lmax - 2);
-
+      if(lint>0){custom_lmax.push_back(lint);}
+      else{custom_lmax.push_back(sp.max_lvl);}
       }
     } // end of "if solve navier stokes and num_fields!=0"
 
@@ -3665,6 +3659,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     analytical_soln_velNS[d]->t = tn;
 
     analytical_soln_velINT[d] = new interfacial_velocity(d,analytical_soln_temp);
+    analytical_soln_velINT[d]->t = tn;
   }
 
   pressure_field_analytical.t=tn;
@@ -3858,6 +3853,15 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     phi_analytical.destroy();
   }
 
+  // Delete the objects created:
+  for(unsigned char d=0;d<2;++d){
+    delete analytical_soln_temp[d];
+  }
+  for(unsigned char d=0;d<P4EST_DIM;++d){
+    delete analytical_soln_velNS[d];
+    delete analytical_soln_velINT[d];
+  }
+
 
 }
 
@@ -3869,7 +3873,6 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
                        vec_and_ptr_dim_t v_interface,
                        vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity){
   int mpi_comm = p4est->mpicomm;
-  PetscPrintf(mpi_comm,"Saving to vtk... \n");
 
   char output[1000];
   if(save_coupled_fields){
@@ -3879,6 +3882,8 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
         }
 
      if((example_ !=COUPLED_PROBLEM_EXAMPLE)&& (example_ != COUPLED_TEST_2)){
+        PetscPrintf(mpi_comm,"Saving to vtk...\n");
+
         // Create the cylinder just for visualization purposes, then destroy after saving
         phi_cylinder.create(p4est,nodes);
         sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
@@ -4244,9 +4249,11 @@ int main(int argc, char** argv) {
 
   pl.initialize_parser(cmd);
   cmd.parse(argc,argv);
+  PetscPrintf(mpi.comm(),"Just parsed, example %d \n",example_);
 
   pl.get_all(cmd);
   select_solvers();
+
   solve_coupled = solve_navier_stokes && solve_stefan;
 
 
@@ -4312,16 +4319,11 @@ int main(int argc, char** argv) {
   // Vectors to hold first derivatives of T
   vec_and_ptr_dim_t T_l_d;
   vec_and_ptr_dim_t T_s_d;
-
   vec_and_ptr_dim_t T_l_dd;
+
   // Stefan problem:------------------------------------
-
-
   vec_and_ptr_dim_t v_interface;;
   vec_and_ptr_dim_t jump;
-
-
-
 
   // Navier-Stokes problem:-----------------------------
   my_p4est_navier_stokes_t* ns = NULL;
@@ -4398,6 +4400,8 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // domain size information
     set_geometry();
+    PetscPrintf(mpi.comm(),"B example %d \n",example_);
+
     const int n_xyz[]      = { nx,  ny,  0};
     const double xyz_min[] = {xmin, ymin, 0};
     const double xyz_max[] = {xmax,  ymax,  0};
@@ -4405,12 +4409,14 @@ int main(int argc, char** argv) {
 
     // Set physical properties:
     set_physical_properties();
+
     // -----------------------------------------------
     // Set properties for the Navier - Stokes problem (if applicable):
     // -----------------------------------------------
     if(solve_navier_stokes){
         set_NS_info();
         set_nondimensional_groups();
+
         PetscPrintf(mpi.comm(),"\n Nondim groups are: \n"
                                "Re = %f \n"
                                "Pr = %f \n"
@@ -4418,13 +4424,14 @@ int main(int argc, char** argv) {
                                "St = %f \n"
                                "And we have: \n"
                                "u_inf = %0.3e [m/s]\n", Re, Pr, Pe, St,u_inf);
+        PetscPrintf(mpi.comm(),"Example number: %d \n ",example_);
 
       }
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
     if(solve_navier_stokes)PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*d_cyl/(60.*u_inf),tfinal);
-
+    PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n",uniform_band);
     // -----------------------------------------------
     // Create the grid:
     // -----------------------------------------------
@@ -4556,6 +4563,7 @@ int main(int argc, char** argv) {
       if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
       phi.create(p4est,nodes);
       sample_cf_on_nodes(p4est,nodes,level_set,phi.vec);
+      if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
       // Temperature fields:
       INITIAL_TEMP *T_init_cf[2];
@@ -4599,7 +4607,7 @@ int main(int argc, char** argv) {
           sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[d]);
         }
 
-        if(example_ == COUPLED_PROBLEM_EXAMPLE){
+        if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
           for(unsigned char d=0;d<2;++d){
             delete analytical_temp[d];
             delete T_init_cf[d];
@@ -4876,7 +4884,7 @@ int main(int argc, char** argv) {
       // -------------------------------
       if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up appropriate boundary conditions... \n");
 
-      if((tstep>0) && example_ == COUPLED_PROBLEM_EXAMPLE){
+      if((tstep>0) && ((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2))){
         for(unsigned char d=0;d<P4EST_DIM;d++){
           analytical_soln_v[d]->t = tn;
         }
@@ -5173,11 +5181,12 @@ int main(int argc, char** argv) {
         v_interface.destroy();
         v_interface.create(p4est_np1,nodes_np1);
 
+
         compute_interfacial_velocity(T_l_n,T_s_n,
                                      T_l_d,T_s_d,
                                      jump,v_interface,
                                      phi,
-                                     p4est_np1,nodes_np1,ngbd_np1,dxyz_close_to_interface);
+                                     p4est_np1,nodes_np1,ngbd_np1,extension_band_extend_);
 
 
         }
@@ -5283,7 +5292,7 @@ int main(int argc, char** argv) {
 
         bool compute_pressure_to_save = false;
         compute_pressure_to_save = are_we_saving_vtk(tstep,tn, false,out_idx,false);
-        compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == NS_GIBOU_EXAMPLE);
+        compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)|| (example_ == NS_GIBOU_EXAMPLE);
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
         navier_stokes_step(ns,p4est_np1,nodes_np1,
@@ -5444,20 +5453,31 @@ int main(int argc, char** argv) {
                              "\n \n",solve_stefan?stefan_timestep:"",
                             dt,dt_NS,
                             dxyz_close_to_interface);
+
       // Clip the timestep if we are near the end of our simulation, to get the proper end time:
-      if((tn + dt >= tfinal) && (last_tstep<0)){
-          dt = tfinal - tn;
-          // we will do just one more timestep now
-          last_tstep = tstep+1;
+      if((tn + dt > tfinal) && (last_tstep<0)){
+
+          dt = max(tfinal - tn,dt_min_allowed);
+
+          // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
+          if(fabs(tfinal-tn)>dt_min_allowed){
+            last_tstep = tstep+1;
+          }
+          else{
+            last_tstep = tstep;
+          }
           PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
         }
 
       // Clip time and switch vel direction for coupled problem example:
       if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
-        if((tn+dt>=tfinal/2.0) && !vel_has_switched){
-          dt = (tfinal/2.0) - tn;
+        if((tn+dt > tfinal/2.0) && !vel_has_switched){
+          dt = max((tfinal/2.0) - tn,dt_min_allowed);
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n",coupled_test_sign);
           coupled_test_switch_sign();
           vel_has_switched=true;
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n",coupled_test_sign);
+
         }
       }
 
