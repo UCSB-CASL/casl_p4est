@@ -20,7 +20,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   };
 
   // arbitrary-defined tag used to label the communications between processes related to correction function data
-  const int correction_function_communication_tag = 1493; // Don't go with crazy large values (except if you want to spend days figuring out why it fails on several nodes...)
+  const int correction_function_communication_tag = 1493; // Don't go with crazy large values (except if you want to spend days figuring out why it fails when using several computer nodes...)
 
   struct correction_function_t {
     double                      jump_dependent_terms;
@@ -48,6 +48,8 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   map_of_correction_functions_t correction_function_for_quad; //
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
   bool                          are_required_finite_volumes_and_correction_functions_known;
+  double                        interface_relative_threshold;
+  double                        reference_face_area;
 
   void build_finite_volumes_and_correction_functions();
 
@@ -126,6 +128,16 @@ public:
     if(p4est->mpirank == 0)
       std::cout << "The solver converged after a total of " << nksp_iterations << " iterations." << std::endl;
   }
+
+  /*!
+   * \brief set_interface_relative_threshold sets a new threshold value for considering that the face area
+   * connecting two (actual or ghost) degrees of freedom is not zero: the face-connection is disregarded if
+   * the corresponding face area connecting the degrees of freedom is smaller than
+   *                       interface_relative_threshold*pow(diag_min, P4EST_DIM - 1).
+   * The default value for interface_relative_threshold is 1.0e-11.
+   * \param threshold_value [in] new value to be set for interface_relative_threshold.
+   */
+  inline void set_interface_relative_threshold(const double& threshold_value) { P4EST_ASSERT(threshold_value >= 0.0); interface_relative_threshold = threshold_value; }
 
 };
 

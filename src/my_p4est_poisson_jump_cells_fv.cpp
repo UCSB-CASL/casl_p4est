@@ -21,6 +21,8 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   correction_function_for_quad.clear();
   finite_volume_data_for_quad.clear();
   are_required_finite_volumes_and_correction_functions_known = false;
+  interface_relative_threshold = +1.0e-11;
+  reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
@@ -304,7 +306,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
 }
 
 void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                                                                        PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const
+                                                                                          PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const
 {
   const p4est_quadrant_t *quad;
   const double *tree_xyz_min, *tree_xyz_max;
@@ -317,16 +319,24 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
   local_quad_indices_involved.insert(quad_idx); // this quad goes in, for sure
   bool is_face_crossed[P4EST_FACES];
   const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
+  const my_p4est_finite_volume_t* fv_quad = (is_quad_crossed ? &finite_volume_data_for_quad.at(quad_idx) : NULL);
+
   if(is_quad_crossed)
   {
 #ifdef CASL_THROWS
-    if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function for local quad "
+    if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end() || fv_quad == NULL)
+      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function or the finite-volume info for local quad "
                                + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank) + ", located at (" + std::to_string(xyz_quad[0]) + ", " + std::to_string(xyz_quad[1]) ONLY3D(+ ", " + std::to_string(xyz_quad[1])) + ")");
 #endif
     const correction_function_t& correction_function = correction_function_for_quad.at(quad_idx);
-    for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k)
-      local_quad_indices_involved.insert(correction_function.solution_dependent_terms[k].dof_idx);
+
+    double max_relevant_face_for_ghost = 0.0;
+    for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
+      max_relevant_face_for_ghost = MAX(max_relevant_face_for_ghost, (sgn_quad < 0 ? fv_quad->face_area_in_positive_domain(oriented_dir) : fv_quad->face_area_in_negative_domain(oriented_dir)));
+
+    if(max_relevant_face_for_ghost >= interface_relative_threshold*reference_face_area)
+      for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k)
+        local_quad_indices_involved.insert(correction_function.solution_dependent_terms[k].dof_idx);
   }
 
   for(u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
@@ -354,8 +364,10 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
 
       local_quad_indices_involved.insert(direct_neighbor.p.piggy3.local_num);
       const correction_function_t& correction_function_of_direct_neighbor = correction_function_for_quad.at(direct_neighbor.p.piggy3.local_num);
-      for (size_t k = 0; k < correction_function_of_direct_neighbor.solution_dependent_terms.size(); ++k)
-        local_quad_indices_involved.insert(correction_function_of_direct_neighbor.solution_dependent_terms[k].dof_idx);
+      const char sgn_ghost_value_in_neighbor_cell = (are_all_cell_centers_on_same_side ? -sgn_quad : +sgn_quad);
+      if(!is_face_crossed[oriented_dir] || (sgn_ghost_value_in_neighbor_cell < 0 ? fv_quad->face_area_in_negative_domain(oriented_dir) : fv_quad->face_area_in_positive_domain(oriented_dir)) >= interface_relative_threshold*reference_face_area)
+        for (size_t k = 0; k < correction_function_of_direct_neighbor.solution_dependent_terms.size(); ++k)
+          local_quad_indices_involved.insert(correction_function_of_direct_neighbor.solution_dependent_terms[k].dof_idx);
     }
     else
       for (size_t k = 0; k < stable_projection_derivative_operator.size(); ++k)
@@ -597,6 +609,9 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       const p4est_locidx_t face_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
       for (char sgn_eqn = (is_face_crossed[oriented_dir] ? -1 : sgn_face); sgn_eqn < (is_face_crossed[oriented_dir] ? 1 : sgn_face) + 1; sgn_eqn += 2) { // sum up all nontrivial equation terms
         const double face_area = (is_face_crossed[oriented_dir] ? (sgn_eqn < 0 ? finite_volume_of_quad->face_area_in_negative_domain(oriented_dir) : finite_volume_of_quad->face_area_in_positive_domain(oriented_dir)) : full_face_area);
+
+        if(face_area < interface_relative_threshold*reference_face_area)
+          continue;
 
         if(!rhs_is_set && is_projecting_vstar)
         {

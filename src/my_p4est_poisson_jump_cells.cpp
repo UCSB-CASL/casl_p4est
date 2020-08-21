@@ -351,10 +351,10 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   }
   /* [Raphael (05/17/2020) :
    * removing the null space from the rhs seems redundant with PetSc operations done under the
-   * hood in KSPSolve (see the source code of KSPSolve_Private in /src/kscp/ksp/interface/itfunc.c
-   * for more details). --> So long as MatSetNullSpace() was called appropriately on the matrix
-   * operator, this operation will be executed in the pre-steps of KSPSolve on a COPY of the provided
-   * RHS vector]
+   * hood in KSPSolve (see the source code of KSPSolve_Private in /src/ksp/ksp/interface/itfunc.c
+   * for more details). --> So long as MatSetTransposeNullSpace() was called appropriately on the
+   * matrix of interest, this operation will be executed in the pre-steps of KSPSolve on a COPY of
+   * the provided RHS vector]
    * --> this is what we want : we need the _unmodified_ RHS thereafter, i.e. as we have built it, and
    * we let PetSc do its magic under the hood every time we call KSPSolve, otherwise iteratively
    * correcting and updating the RHS would becomes very complex and require extra info coming from those
