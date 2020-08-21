@@ -278,7 +278,7 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
     // that are "not sufficiently strongly connected" to each other when coarsening.
     // --> For jump problems with large coefficient ratios, you may actually need to exclude points belonging to the
     // other subdomain when coarsening your solution for best results...
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.9"); CHKERRQ(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.1"); CHKERRQ(ierr);
 
     /* 2- Coarsening type
      * Available Options:
