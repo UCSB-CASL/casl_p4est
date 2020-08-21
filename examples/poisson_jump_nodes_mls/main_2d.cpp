@@ -44,6 +44,15 @@ const string default_work_folder = "/scratch/regan/poisson_jump_nodes_mls";
 const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_nodes_mls";
 #endif
 
+struct fake_wall_t : CF_DIM
+{
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return MAX(DIM(MAX(-1.0 + 2.0/64.0 - x, -1.0 + 2.0/64.0 + x), MAX(-1.0 + 2.0/64.0 - y, -1.0 + 2.0/64.0 + y), MAX(-1.0 + 2.0/64.0 - z, - 1.0 + 2.0/64.0 + z)));
+  }
+} fake_wall;
+
+
 struct convergence_analyzer_for_jump_node_solver_t {
   my_p4est_poisson_nodes_mls_t* jump_solver;
   std::vector<double> errors_in_solution;
@@ -68,11 +77,13 @@ struct convergence_analyzer_for_jump_node_solver_t {
     const p4est_t* p4est        = jump_solver->get_p4est();
     const p4est_nodes_t* nodes  = jump_solver->get_nodes();
     Vec phi = jump_solver->get_interface_phi_eff();
+    Vec phi_boundary = jump_solver->get_boundary_phi_eff();
 
-    const double *ghosted_solution_minus_p, *ghosted_solution_plus_p, *phi_p;
+    const double *ghosted_solution_minus_p, *ghosted_solution_plus_p, *phi_p, *phi_boundary_p;
     ierr = VecGetArrayRead(ghosted_solution_minus, &ghosted_solution_minus_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(ghosted_solution_plus, &ghosted_solution_plus_p); CHKERRXX(ierr);
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(phi_boundary, &phi_boundary_p); CHKERRXX(ierr);
 
     delete_and_nullify_node_sampled_errors_if_needed();
     ierr = VecCreateGhostNodes(p4est, nodes, &node_sampled_error); CHKERRXX(ierr);
@@ -87,6 +98,11 @@ struct convergence_analyzer_for_jump_node_solver_t {
     for(size_t k = 0; k < jump_solver->get_ngbd()->get_layer_size(); ++k)
     {
       const p4est_locidx_t node_idx  = jump_solver->get_ngbd()->get_layer_node(k);
+      if(phi_boundary_p[node_idx] >= 0.0)
+      {
+        node_sampled_ghost_error_minus_p[node_idx] = node_sampled_ghost_error_plus_p[node_idx] = node_sampled_error_p[node_idx] = 0.0;
+        continue;
+      }
       double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
       const double phi_node = phi_p[node_idx];
       node_sampled_ghost_error_minus_p[node_idx] = node_sampled_ghost_error_plus_p[node_idx] = 0.0;
@@ -106,6 +122,11 @@ struct convergence_analyzer_for_jump_node_solver_t {
     for(size_t k = 0; k < jump_solver->get_ngbd()->get_local_size(); ++k)
     {
       const p4est_locidx_t node_idx  = jump_solver->get_ngbd()->get_local_node(k);
+      if(phi_boundary_p[node_idx] >= 0.0)
+      {
+        node_sampled_ghost_error_minus_p[node_idx] = node_sampled_ghost_error_plus_p[node_idx] = node_sampled_error_p[node_idx] = 0.0;
+        continue;
+      }
       double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
       const double phi_node = phi_p[node_idx];
       node_sampled_ghost_error_minus_p[node_idx] = node_sampled_ghost_error_plus_p[node_idx] = 0.0;
@@ -127,6 +148,7 @@ struct convergence_analyzer_for_jump_node_solver_t {
     ierr = VecRestoreArrayRead(ghosted_solution_minus, &ghosted_solution_minus_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(ghosted_solution_plus, &ghosted_solution_plus_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(phi_boundary, &phi_boundary_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(node_sampled_error, &node_sampled_error_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(node_sampled_ghost_error_minus, &node_sampled_ghost_error_minus_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(node_sampled_ghost_error_plus, &node_sampled_ghost_error_plus_p); CHKERRXX(ierr);
@@ -261,7 +283,7 @@ void add_vtk_export_to_list(const Vec_for_vtk_export_t& to_export, std::vector<c
 }
 
 void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, Vec exact_solution_plus,
-              Vec phi, Vec sharp_solution, Vec ghosted_solution_minus, Vec ghosted_solution_plus,
+              Vec phi, Vec phi_boundary, Vec sharp_solution, Vec ghosted_solution_minus, Vec ghosted_solution_plus,
               const convergence_analyzer_for_jump_node_solver_t& convergence_analyzer, const my_p4est_brick_t *brick)
 {
   splitting_criteria_t* data = (splitting_criteria_t*) convergence_analyzer.jump_solver->get_p4est()->user_pointer;
@@ -292,6 +314,8 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(exact_solution_plus, "exact_solution_plus"));
   add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
   list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(phi, "phi"));
+  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
+  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(phi_boundary, "phi_boundary"));
   add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
   list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(sharp_solution, "solution"));
   add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
@@ -582,6 +606,7 @@ int main (int argc, char* argv[])
   BoundaryConditionsDIM bc;
   BCWALLTYPE bc_wall_type(bc_wtype); bc.setWallTypes(bc_wall_type);
   BCWALLVAL bc_wall_val(test_problem, &bc_wall_type); bc.setWallValues(bc_wall_val);
+  cf_const_t one_cf(1.0);
 
   const string out_folder = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR"))) + "/" + test_problem->get_name();
   const string vtk_out = out_folder + "/vtu";
@@ -594,6 +619,7 @@ int main (int argc, char* argv[])
   my_p4est_hierarchy_t          *hierarchy  = NULL;
   my_p4est_node_neighbors_t     *ngbd_n     = NULL;
   Vec                            phi        = NULL;
+  Vec                            phi_boundary = NULL;
   Vec                            phi_xxyyzz[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
   Vec                            grad_phi   = NULL;
   my_p4est_interpolation_nodes_t *interp_grad_phi = NULL;
@@ -618,6 +644,9 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &grad_phi); CHKERRXX(ierr);
     ngbd_n->first_derivatives_central(phi, grad_phi);
     ngbd_n->second_derivatives_central(phi, phi_xxyyzz);
+
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_boundary); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, fake_wall, phi_boundary);
 
 
     if(interp_grad_phi != NULL)
@@ -644,7 +673,10 @@ int main (int argc, char* argv[])
     solver->set_lip(2.0);
     solver->set_wc(bc_wall_type, bc_wall_val);
 
+    solver->add_boundary(MLS_INTERSECTION, phi_boundary, DIM(NULL, NULL, NULL), bc_wtype, bc_wall_val, one_cf);
+//    solver->set_dirichlet_scheme(1);
     solver->add_interface(MLS_INTERSECTION, phi, DIM(phi_xxyyzz[0], phi_xxyyzz[1],phi_xxyyzz[2]), jump_solution, jump_normal_flux);
+    solver->set_enfornce_diag_scaling(false);
     solver->set_mu(test_problem->get_mu_minus(), test_problem->get_mu_plus());
 
     solver->set_rhs(sharp_rhs_minus, sharp_rhs_plus);
@@ -675,13 +707,14 @@ int main (int argc, char* argv[])
       get_sampled_exact_solution(exact_solution_minus, exact_solution_plus, p4est, nodes, test_problem);
 
       if(save_vtk)
-        save_VTK(vtk_out, iter, exact_solution_minus, exact_solution_plus, phi, sharp_solution, ghosted_solution_minus, ghosted_solution_plus, analysis, &brick);
+        save_VTK(vtk_out, iter, exact_solution_minus, exact_solution_plus, phi, phi_boundary, sharp_solution, ghosted_solution_minus, ghosted_solution_plus, analysis, &brick);
       ierr = VecDestroy(exact_solution_minus); CHKERRXX(ierr);
       ierr = VecDestroy(exact_solution_plus); CHKERRXX(ierr);
     }
 
     // destroy data created for this iteration
     ierr = VecDestroy(phi);       CHKERRXX(ierr); phi = NULL;
+    ierr = VecDestroy(phi_boundary);       CHKERRXX(ierr); phi_boundary = NULL;
     ierr = VecDestroy(grad_phi);  CHKERRXX(ierr); grad_phi = NULL;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecDestroy(phi_xxyyzz[dim]); CHKERRXX(ierr); phi_xxyyzz[dim] = NULL;
