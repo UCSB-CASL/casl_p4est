@@ -455,6 +455,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     correction_function_of_quad = &correction_function_for_quad.at(quad_idx);
     finite_volume_of_quad       = &finite_volume_data_for_quad.at(quad_idx);
   }
+  P4EST_ASSERT(!is_quad_crossed || (correction_function_of_quad != NULL && finite_volume_of_quad != NULL)); // if the quadrant is crossed, we *MUST* have access to those
 
   /* First add the diagonal terms */
   const bool nonzero_diag_term = (is_quad_crossed ? MAX(fabs(add_diag_minus), fabs(add_diag_plus)) : (sgn_quad > 0 ? fabs(add_diag_plus) : fabs(add_diag_minus))) > EPS;
@@ -462,13 +463,20 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   {
     if(is_quad_crossed){
       ierr = MatSetValue(A, quad_gloidx, quad_gloidx,
-                         finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus + finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus, ADD_VALUES); CHKERRXX(ierr); }
+                         finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus + finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus, ADD_VALUES); CHKERRXX(ierr);
+      P4EST_ASSERT(correction_function_of_quad != NULL);
+      for (size_t k = 0; k < correction_function_of_quad->solution_dependent_terms.size(); ++k) {
+        ierr = MatSetValue(A, quad_gloidx, compute_global_index(correction_function_of_quad->solution_dependent_terms[k].dof_idx),
+                           (sgn_quad > 0 ? -finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus : +finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus)*correction_function_of_quad->solution_dependent_terms[k].weight, ADD_VALUES); CHKERRXX(ierr); }
+    }
     else {
       ierr = MatSetValue(A, quad_gloidx, quad_gloidx,
                          cell_volume*(sgn_quad > 0 ? add_diag_plus : add_diag_minus), ADD_VALUES); CHKERRXX(ierr); }
     if(nullspace_contains_constant_vector != NULL)
       *nullspace_contains_constant_vector = 0;
   }
+  if(!rhs_is_set && nonzero_diag_term && is_quad_crossed)
+    rhs_p[quad_idx] -= (sgn_quad > 0 ? -finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus : +finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus)*correction_function_of_quad->jump_dependent_terms;
 
   // bulk terms (volumetric terms and integral of fluxes across the interface) coming into the discretized rhs
   if(!rhs_is_set)
