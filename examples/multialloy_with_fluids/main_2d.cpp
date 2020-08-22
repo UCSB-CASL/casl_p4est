@@ -222,7 +222,7 @@ double T_l_max, T_l_min, T_s_max, T_s_min;
 
 // For surface tension: (used to apply some interfacial BC's in temperature)
 //double sigma;
-DEFINE_PARAMETER(pl,double,sigma,2.10e-10,"Interfacial tension [m] between ice and water, default: 2.10e-10");
+DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
 
 // For the coupled test case where we have to swtich sign:
 double coupled_test_sign;
