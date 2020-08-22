@@ -13,6 +13,9 @@ enum poisson_jump_cell_solver_tag {
   FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
 };
 
+const static int multiply_by_sqrt_D = 153;
+const static int divide_by_sqrt_D = 154;
+
 inline std::string convert_to_string(const poisson_jump_cell_solver_tag& tag)
 {
   switch(tag){
@@ -92,12 +95,15 @@ protected:
   Vec rhs; // cell-sampled, discretized rhs of the linear system to invert
   /* ---- other PETSc objects ---- */
   Mat A;
+  Vec sqrt_reciprocal_diagonal;
+  Vec my_own_nullspace_vector;
   MatNullSpace A_null_space;
   KSP ksp;
   /* ---- Pointer to boundary condition (wall only) ---- */
   const BoundaryConditionsDIM *bc;
   /* ---- Control flags ---- */
   bool matrix_is_set, rhs_is_set;
+  bool scale_system_by_diagonals;
 
   inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
@@ -156,6 +162,8 @@ protected:
                                           double* tmp_minus_p, double* tmp_plus_p,
                                           const double* extrapolation_minus_p, const double* extrapolation_plus_p,
                                           const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p) = 0;
+
+  void pointwise_operation_with_sqrt_of_diag(size_t num_vectors, ...) const;
 
 public:
 
@@ -263,6 +271,20 @@ public:
   virtual double get_sharp_integral_solution() const = 0;
 
   virtual void print_solve_info() const = 0;
+
+  /*!
+   * \brief set_scale_by_diagonal sets the internal flag for controlling the (symmetric) scaling of the linear
+   * system by the diagonal. If set to true, the solver does not call the KSP solver on
+   *                                        A*x           = b,
+   * but on
+   *                    (D^{-1/2}*A*D^{-1/2})*(D^{1/2}*x) = (D^{-1/2}*b)
+   * instead (every diagonal element in D^{-1/2}*A*D^{-1/2} is 1).
+   * [NOTE:] we do not use the built-in Petsc function KSPSetDiagonalScale which does the very same job on paper
+   * because that would not allow us to easily get the original rhs back (b instead of (D^{-1/2}*b)) without
+   * using KSPSetDiagonalScaleFix which also "unscales" (D^{-1/2}*A*D^{-1/2}) back to A (costly operation)/
+   * \param do_the_scaling [in] action desired by the user;
+   */
+  void set_scale_by_diagonal(const bool& do_the_scaling) { scale_system_by_diagonals = do_the_scaling; }
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_H

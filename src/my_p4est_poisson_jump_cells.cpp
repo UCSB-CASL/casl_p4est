@@ -28,7 +28,9 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   interp_jump_normal_flux = NULL;
 
   A = NULL;
+  sqrt_reciprocal_diagonal = my_own_nullspace_vector = NULL;
   A_null_space = NULL;
+  scale_system_by_diagonals = true;
   bc = NULL;
   matrix_is_set = rhs_is_set = false;
 
@@ -42,15 +44,17 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
 my_p4est_poisson_jump_cells_t::~my_p4est_poisson_jump_cells_t()
 {
   PetscErrorCode ierr;
-  if (A                       != NULL)  { ierr = MatDestroy(A);                       CHKERRXX(ierr); }
-  if (A_null_space            != NULL)  { ierr = MatNullSpaceDestroy (A_null_space);  CHKERRXX(ierr); }
-  if (ksp                     != NULL)  { ierr = KSPDestroy(ksp);                     CHKERRXX(ierr); }
-  if (solution                != NULL)  { ierr = VecDestroy(solution);                CHKERRXX(ierr); }
-  if (extrapolation_minus     != NULL)  { ierr = VecDestroy(extrapolation_minus);     CHKERRXX(ierr); }
-  if (extrapolation_plus      != NULL)  { ierr = VecDestroy(extrapolation_plus);      CHKERRXX(ierr); }
-  if (rhs                     != NULL)  { ierr = VecDestroy(rhs);                     CHKERRXX(ierr); }
-  if (interp_jump_u           != NULL)  { delete interp_jump_u;                                       }
-  if (interp_jump_normal_flux != NULL)  { delete interp_jump_normal_flux;                             }
+  if (A                         != NULL)  { ierr = MatDestroy(A);                         CHKERRXX(ierr); }
+  if (sqrt_reciprocal_diagonal  != NULL)  { ierr = VecDestroy(sqrt_reciprocal_diagonal);  CHKERRXX(ierr); }
+  if (my_own_nullspace_vector   != NULL)  { ierr = VecDestroy(my_own_nullspace_vector);   CHKERRXX(ierr); }
+  if (A_null_space              != NULL)  { ierr = MatNullSpaceDestroy (A_null_space);    CHKERRXX(ierr); }
+  if (ksp                       != NULL)  { ierr = KSPDestroy(ksp);                       CHKERRXX(ierr); }
+  if (solution                  != NULL)  { ierr = VecDestroy(solution);                  CHKERRXX(ierr); }
+  if (extrapolation_minus       != NULL)  { ierr = VecDestroy(extrapolation_minus);       CHKERRXX(ierr); }
+  if (extrapolation_plus        != NULL)  { ierr = VecDestroy(extrapolation_plus);        CHKERRXX(ierr); }
+  if (rhs                       != NULL)  { ierr = VecDestroy(rhs);                       CHKERRXX(ierr); }
+  if (interp_jump_u             != NULL)  { delete interp_jump_u;                                         }
+  if (interp_jump_normal_flux   != NULL)  { delete interp_jump_normal_flux;                               }
 }
 
 void my_p4est_poisson_jump_cells_t::preallocate_matrix()
@@ -209,25 +213,110 @@ my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(con
   return local_derivative_operator;
 }
 
+void my_p4est_poisson_jump_cells_t::pointwise_operation_with_sqrt_of_diag(size_t num_vectors, ...) const
+{
+  P4EST_ASSERT(sqrt_reciprocal_diagonal != NULL);
+  PetscErrorCode ierr;
+  va_list ap;
+  va_start(ap, num_vectors);
+  Vec vectors[num_vectors];
+  int operation[num_vectors];
+  bool is_ghosted[num_vectors];
+  double *vectors_p[num_vectors];
+  const double *sqrt_reciprocal_diagonal_p;
+  ierr = VecGetArrayRead(sqrt_reciprocal_diagonal, &sqrt_reciprocal_diagonal_p); CHKERRXX(ierr);
+  for (size_t k = 0; k < num_vectors; ++k){
+    // get what we need
+    vectors[k]    = va_arg(ap, Vec);
+    operation[k]  = va_arg(ap, int);
+#ifdef CASL_THROWS
+    switch (operation[k]) { // --> check the validity of that input only at initialization and only in DEBUG
+    case multiply_by_sqrt_D:
+    case divide_by_sqrt_D:
+      break;
+    default:
+      throw std::invalid_argument("my_p4est_poisson_jump_cells::pointwise_operation_with_sqrt_of_diag : unknown operation");
+      break;
+    }
+#endif
+    ierr = VecGetArray(vectors[k], &vectors_p[k]); CHKERRXX(ierr);
+    // check if it's ghosted
+    Vec tmp;
+    ierr = VecGhostGetLocalForm(vectors[k], &tmp); CHKERRXX(ierr);
+    is_ghosted[k] = (tmp != NULL);
+    ierr = VecGhostRestoreLocalForm(vectors[k], &tmp); CHKERRXX(ierr);
+  }
+  // do the desired task(s) now
+  for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_layer_size(); ++k)
+  {
+    const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
+    for (size_t nn = 0; nn < num_vectors; ++nn)
+    {
+      if(operation[nn] == multiply_by_sqrt_D)
+        vectors_p[nn][quad_idx] /= sqrt_reciprocal_diagonal_p[quad_idx];
+      else
+        vectors_p[nn][quad_idx] *= sqrt_reciprocal_diagonal_p[quad_idx];
+    }
+  }
+  for (size_t nn = 0; nn < num_vectors; ++nn)
+    if(is_ghosted[nn]){
+      ierr = VecGhostUpdateBegin(vectors[nn], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+  for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k)
+  {
+    const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
+    for (size_t nn = 0; nn < num_vectors; ++nn)
+    {
+      if(operation[nn] == multiply_by_sqrt_D)
+        vectors_p[nn][quad_idx] /= sqrt_reciprocal_diagonal_p[quad_idx];
+      else
+        vectors_p[nn][quad_idx] *= sqrt_reciprocal_diagonal_p[quad_idx];
+    }
+  }
+  for (size_t nn = 0; nn < num_vectors; ++nn){
+    if(is_ghosted[nn]){
+      ierr = VecGhostUpdateEnd(vectors[nn], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    ierr = VecRestoreArray(vectors[nn], &vectors_p[nn]); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArrayRead(sqrt_reciprocal_diagonal, &sqrt_reciprocal_diagonal_p); CHKERRXX(ierr);
+
+  va_end(ap);
+  return;
+}
+
 void my_p4est_poisson_jump_cells_t::solve_linear_system()
 {
   PetscErrorCode ierr;
 
+  bool sensible_guess = (solution != NULL);
   if (solution == NULL) {
     ierr = VecCreateGhostCells(p4est, ghost, &solution); CHKERRXX(ierr);
     if(user_initial_guess != NULL){
       ierr = KSPSetInitialGuessNonzero(ksp, PETSC_TRUE); CHKERRXX(ierr);
       ierr = VecCopyGhost(user_initial_guess, solution); CHKERRXX(ierr);
+      sensible_guess = true;
     }
   }
 
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
+  if(scale_system_by_diagonals)
+  {
+    if(sensible_guess) // scale the initial guess as well in that case...
+      pointwise_operation_with_sqrt_of_diag(2, solution, multiply_by_sqrt_D, rhs, divide_by_sqrt_D);
+    else
+      pointwise_operation_with_sqrt_of_diag(1, rhs, divide_by_sqrt_D); // you need to scale the rhs
+  }
+  // solve the system
   ierr = KSPSolve(ksp, rhs, solution); CHKERRXX(ierr);
+  // finalize :
+  if(scale_system_by_diagonals) // get the true solution and scale the rhs back to its original state (critical in case of iterative method playing with the rhs) scale the initial guess as well in that case...
+    pointwise_operation_with_sqrt_of_diag(2, solution, divide_by_sqrt_D, rhs, multiply_by_sqrt_D); // ghost updates done therein...
+  else
+  {
+    // we need update ghost values of the solution for accurate calculation of the extended interface values in xGFM
+    ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
-
-  // we need update ghost values of the solution for accurate calculation of the extended interface values
-  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   KSPConvergedReason termination_reason;
@@ -322,12 +411,12 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
       ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr); }
     P4EST_ASSERT(VecIsSetForCells(rhs, p4est, ghost, 1, false));
   }
-  int nullspace_contains_constant_vector = !matrix_is_set; // converted to integer because of required MPI collective determination thereafter + we don't care about that if the matrix is already set
+  int original_nullspace_contains_constant_vector = !matrix_is_set; // converted to integer because of required MPI collective determination thereafter + we don't care about that if the matrix is already set
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
     const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
-      build_discretization_for_quad(q + tree->quadrants_offset, tree_idx, &nullspace_contains_constant_vector);
+      build_discretization_for_quad(q + tree->quadrants_offset, tree_idx, &original_nullspace_contains_constant_vector);
   }
 
   if(!matrix_is_set)
@@ -336,29 +425,87 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
     ierr = MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
     ierr = MatAssemblyEnd  (A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
-    // check for null space
+    // reset null space and check if we need to build one
     if(A_null_space != NULL){
       ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
       A_null_space = NULL;
     }
-    ierr = MPI_Allreduce(MPI_IN_PLACE, &nullspace_contains_constant_vector, 1, MPI_INT, MPI_LAND, p4est->mpicomm); CHKERRXX(ierr);
-    if (nullspace_contains_constant_vector)
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &original_nullspace_contains_constant_vector, 1, MPI_INT, MPI_LAND, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    if(scale_system_by_diagonals)
     {
+      ierr = delete_and_nullify_vector(sqrt_reciprocal_diagonal); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(my_own_nullspace_vector); CHKERRXX(ierr);
+      double L2_norm_my_own_nullspace_vector = 0.0;
+      ierr = VecCreateNoGhostCells(p4est, &sqrt_reciprocal_diagonal); CHKERRXX(ierr);
+      if(original_nullspace_contains_constant_vector) {
+        ierr = VecCreateNoGhostCells(p4est, &my_own_nullspace_vector); CHKERRXX(ierr); }
+
+      ierr = MatGetDiagonal(A, sqrt_reciprocal_diagonal); CHKERRXX(ierr);
+      double *sqrt_reciprocal_diagonal_p;
+      double *my_own_nullspace_p = NULL;
+      ierr = VecGetArray(sqrt_reciprocal_diagonal, &sqrt_reciprocal_diagonal_p); CHKERRXX(ierr);
+      if(my_own_nullspace_vector != NULL){
+        ierr = VecGetArray(my_own_nullspace_vector, &my_own_nullspace_p); CHKERRXX(ierr); }
+      for (p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx) {
+        if(fabs(sqrt_reciprocal_diagonal_p[quad_idx]) < EPS)
+        {
+          if(my_own_nullspace_p != NULL)
+            my_own_nullspace_p[quad_idx] = 1.0;
+          sqrt_reciprocal_diagonal_p[quad_idx] = 1.0; // not touching that one, too risky...
+        }
+        else
+        {
+          if(my_own_nullspace_p != NULL)
+            my_own_nullspace_p[quad_idx] = sqrt(fabs(sqrt_reciprocal_diagonal_p[quad_idx]));
+          sqrt_reciprocal_diagonal_p[quad_idx] = 1.0/sqrt(fabs(sqrt_reciprocal_diagonal_p[quad_idx]));
+        }
+        if(my_own_nullspace_p != NULL)
+          L2_norm_my_own_nullspace_vector += SQR(my_own_nullspace_p[quad_idx]);
+      }
+      if(my_own_nullspace_vector != NULL){
+        ierr = VecRestoreArray(my_own_nullspace_vector, &my_own_nullspace_p); CHKERRXX(ierr); }
+      ierr = VecRestoreArray(sqrt_reciprocal_diagonal, &sqrt_reciprocal_diagonal_p); CHKERRXX(ierr);
+
+      // scale the matrix in a symmetric fashion! (we do need to scale the rhs too, but that operation
+      // is done right before calling KSPSolve and undone right after since we need to iteratively
+      // update it in the xGFM strategy)
+      ierr = MatDiagonalScale(A, sqrt_reciprocal_diagonal, sqrt_reciprocal_diagonal); CHKERRXX(ierr);
+      if(original_nullspace_contains_constant_vector){
+        mpiret = MPI_Allreduce(MPI_IN_PLACE, &L2_norm_my_own_nullspace_vector, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+        L2_norm_my_own_nullspace_vector = sqrt(L2_norm_my_own_nullspace_vector);
+        ierr = VecScale(my_own_nullspace_vector, 1.0/L2_norm_my_own_nullspace_vector);
+        ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &my_own_nullspace_vector, &A_null_space); CHKERRXX(ierr);
+      }
+    }
+    else if(original_nullspace_contains_constant_vector){
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_TRUE, 0, NULL, &A_null_space); CHKERRXX(ierr);
+    }
+
+    if(A_null_space != NULL)
+    {
       ierr = MatSetNullSpace(A, A_null_space); CHKERRXX(ierr);
-      ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr);
+      ierr = MatSetTransposeNullSpace(A, A_null_space); CHKERRXX(ierr); // --> required to handle the rhs right under the hood (see note "about removing nullspaces from RHS" here under)
+      /*
+       * - In case of xGFM, if the constant vector is in the right nullspace, it's also in the left nullspace
+       * since the discretization creates an SPD matrix
+       * - In case of the FV approach, if the constant vector is in the right null space, it is also in the left,
+       * by construction. Indeed, whichever nonsymmetric, correction-function-related contribution entering the
+       * discretized equation for quadrant (A) neighbor with (B) also enters the discretized equation for quadrant
+       * (B) neighbor with (A) but with an opposite sign (balance of fluxes).
+       * */
     }
   }
-  /* [Raphael (05/17/2020) :
+  /* [Raphael (05/17/2020) : "about removing nullspaces from RHS"
    * removing the null space from the rhs seems redundant with PetSc operations done under the
    * hood in KSPSolve (see the source code of KSPSolve_Private in /src/ksp/ksp/interface/itfunc.c
    * for more details). --> So long as MatSetTransposeNullSpace() was called appropriately on the
    * matrix of interest, this operation will be executed in the pre-steps of KSPSolve on a COPY of
    * the provided RHS vector]
-   * --> this is what we want : we need the _unmodified_ RHS thereafter, i.e. as we have built it, and
-   * we let PetSc do its magic under the hood every time we call KSPSolve, otherwise iteratively
-   * correcting and updating the RHS would becomes very complex and require extra info coming from those
-   * possibly non-empty nullspace contributions...
+   * --> this is precisely what we want : we need the _unmodified_ RHS thereafter, i.e. as we have
+   * built it, and we let PetSc do its magic under the hood every time we call KSPSolve, otherwise
+   * iteratively correcting and updating the RHS would becomes very complex and require extra info
+   * coming from those possibly non-empty nullspace contributions...
    * */
 
   matrix_is_set = rhs_is_set = true;
