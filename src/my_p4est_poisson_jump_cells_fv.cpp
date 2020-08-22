@@ -23,6 +23,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   are_required_finite_volumes_and_correction_functions_known = false;
   interface_relative_threshold = +1.0e-11;
   reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
+  pin_normal_derivative_for_correction_functions = false;
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
@@ -233,7 +234,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
   if (!mus_are_equal())
   {
     P4EST_ASSERT(one_sided_normal_derivative_at_projected_point != NULL);
-    interface_manager->normal_vector_at_point(xyz_quad_projected, normal_at_projected_point);
+    const double *xyz_for_normal_derivative = (pin_normal_derivative_for_correction_functions ? xyz_quad : xyz_quad_projected);
+    interface_manager->normal_vector_at_point(xyz_for_normal_derivative, normal_at_projected_point);
     // fetch relevant neighbors to build slow-diffusion-sided derivatives
     p4est_quadrant_t quad_with_piggy3 = *quad;
     quad_with_piggy3.p.piggy3.local_num = quad_idx; quad_with_piggy3.p.piggy3.which_tree = tree_idx;
@@ -259,18 +261,16 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
     const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
     linear_combination_of_dof_t lsqr_cell_grad_operator_on_slow_side_at_projected_point[P4EST_DIM];
     try {
-      get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_slow_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point);
+      get_lsqr_cell_gradient_operator_at_point(xyz_for_normal_derivative, cell_ngbd, first_degree_neighbors_in_slow_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point, pin_normal_derivative_for_correction_functions, quad_idx);
     } catch (std::exception e) { // it couldn't be done on the slow side
       use_slow_side = false;
       correction_function_to_build.use_fast_side = true;
-      get_lsqr_cell_gradient_operator_at_point(xyz_quad_projected, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point); // this should work if the other didn't (hopefully, otherwise, we're screwed)
+      get_lsqr_cell_gradient_operator_at_point(xyz_for_normal_derivative, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point, pin_normal_derivative_for_correction_functions, quad_idx); // this should work if the other didn't (hopefully, otherwise, we're screwed)
     }
-
 
     mu_across_normal_derivative = (use_slow_side ? mu_fast : mu_slow);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       one_sided_normal_derivative_at_projected_point->add_operator_on_same_dofs(lsqr_cell_grad_operator_on_slow_side_at_projected_point[dim], normal_at_projected_point[dim]);
-
 
     if(use_slow_side != is_point_in_slow_side(sgn_quad))
     {

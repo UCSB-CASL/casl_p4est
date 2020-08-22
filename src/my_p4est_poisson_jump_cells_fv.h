@@ -50,6 +50,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   bool                          are_required_finite_volumes_and_correction_functions_known;
   double                        interface_relative_threshold;
   double                        reference_face_area;
+  bool                          pin_normal_derivative_for_correction_functions;
 
   void build_finite_volumes_and_correction_functions();
 
@@ -138,6 +139,13 @@ public:
    * \param threshold_value [in] new value to be set for interface_relative_threshold.
    */
   inline void set_interface_relative_threshold(const double& threshold_value) { P4EST_ASSERT(threshold_value >= 0.0); interface_relative_threshold = threshold_value; }
+
+  /*!
+   * \brief set_pinning_for_normal_derivatives_in_correction_functions sets the internal flag controlling the use of
+   * quad-center pinning when building the normal derivatives required for the correction functions
+   * \param do_the_pinning [in] action desired by the user;
+   */
+  inline void set_pinning_for_normal_derivatives_in_correction_functions(const bool& do_the_pinning) { pin_normal_derivative_for_correction_functions = do_the_pinning;}
 
 };
 
