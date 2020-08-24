@@ -38,11 +38,13 @@ const BoundaryConditionType default_bc_wtype = DIRICHLET; // NEUMANN;
 const interpolation_method default_interp_method_phi = linear;
 const bool default_use_second_order_theta = false;
 //const bool default_use_second_order_theta = true;
-const bool default_get_integral   = false;
-const bool default_print_summary  = false;
-const bool default_subrefinement  = true;
-const bool default_extrapolation  = false;
-const int default_test_number = 3;
+const bool default_quad_pinning     = false;
+const bool default_diagonal_scaling = false;
+const bool default_get_integral     = false;
+const bool default_print_summary    = false;
+const bool default_subrefinement    = true;
+const bool default_extrapolation    = false;
+const int default_test_number       = 3;
 
 const bool track_xgfm_residuals_and_corrections = false;
 
@@ -81,6 +83,7 @@ std::istream& operator>> (std::istream& is, std::vector<poisson_jump_cell_solver
 
 struct convergence_analyzer_for_jump_cell_solver_t {
   my_p4est_poisson_jump_cells_t* jump_cell_solver;
+  double total_solve_time;
   const poisson_jump_cell_solver_tag tag;
   std::vector<double> errors_in_solution;
   std::vector<double> errors_in_flux_component[P4EST_DIM];
@@ -97,8 +100,12 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
   }
 
-  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : tag(tag_), cell_sampled_error(NULL),
+  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : total_solve_time(0.0), tag(tag_), cell_sampled_error(NULL),
     cell_sampled_extrapolation_error_minus(NULL), cell_sampled_extrapolation_error_plus(NULL) { }
+
+  void add_solve_time(const double& exec_time) { total_solve_time += exec_time; }
+
+  double get_total_solve_time() const { return total_solve_time; }
 
   void measure_errors(const my_p4est_faces_t* faces, const test_case_for_scalar_jump_problem_t *test_problem)
   {
@@ -912,9 +919,11 @@ int main (int argc, char* argv[])
   cmd.add_option("test",            "Test problem to choose. Available choices are (default test number is " + to_string(default_test_number) +"): \n" + list_of_test_problems_for_scalar_jump_problems.get_description_of_tests() + "\n");
   cmd.add_option("get_integral",    "Calculates the integral of the solution if present. Default is " + string(default_get_integral ? "true" : "false"));
   cmd.add_option("summary",         "Prints a summary of the convergence results in a file on disk if present. Default is " + string(default_print_summary ? "true" : "false"));
-  cmd.add_option("subrefinement",   "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
+  cmd.add_option("subrefinement",   "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement.");
   cmd.add_option("solver",          "solver(s) to be tested, possible choices are 'GFM', 'xGFM', 'FV' or any combination thereof (separated with comma(s), and no space characters) [default is all of them].");
-  cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation");
+  cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation.");
+  cmd.add_option("quad_pinning",    "activates the use of quad-center pinning for the least-square normal derivative to construct in the FV solver if set to true or 1. Default is " + string(default_quad_pinning ? "with" : "without") + " pinning.");
+  cmd.add_option("diag_scaling",    "activates the (symmetric) scaling of the linear system(s) of interest by their diagonal if set to true or 1. Default is " + string(default_diagonal_scaling ? "with" : "without") + " diagonal scaling.");
   oss.str("");
   oss << default_interp_method_phi;
   cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function. Default is " + oss.str());
@@ -935,6 +944,8 @@ int main (int argc, char* argv[])
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
   const bool extrapolate_solution       = cmd.get<bool>("extrapolate", default_extrapolation);
+  const bool scale_by_diagonal          = cmd.get<bool>("diag_scaling", default_diagonal_scaling);
+  const bool pin_normal_derivatives     = cmd.get<bool>("quad_pinning", default_quad_pinning);
 
   std::vector<poisson_jump_cell_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
   const std::vector<poisson_jump_cell_solver_tag> solvers_to_test = cmd.get<std::vector<poisson_jump_cell_solver_tag> >("solver", default_solvers_to_test);
@@ -1039,6 +1050,7 @@ int main (int argc, char* argv[])
       case FV:
       {
         my_p4est_poisson_jump_cells_fv_t *solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes);
+        solver->set_pinning_for_normal_derivatives_in_correction_functions(pin_normal_derivatives);
         solver_analyses[k].jump_cell_solver = solver;
       }
         break;
@@ -1048,6 +1060,7 @@ int main (int argc, char* argv[])
       }
 
       my_p4est_poisson_jump_cells_t& jump_solver = *solver_analyses[k].jump_cell_solver;
+      jump_solver.set_scale_by_diagonal(scale_by_diagonal);
       jump_solver.set_interface(interface_manager);
       jump_solver.set_mus(test_problem->get_mu_minus(), test_problem->get_mu_plus());
       jump_solver.set_jumps(jump_u, jump_normal_flux);
@@ -1055,10 +1068,11 @@ int main (int argc, char* argv[])
       jump_solver.set_bc(bc);
       jump_solver.set_rhs(sharp_rhs_minus, sharp_rhs_plus);
 
-      watch.start("Total time:");
+      watch.start("");
       KSPType ksp_solver = (dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(&jump_solver) != NULL ? KSPCG : KSPBCGS);
       jump_solver.solve_for_sharp_solution(ksp_solver, PCHYPRE);
-      watch.stop(); watch.read_duration();
+      watch.stop();
+      solver_analyses[k].add_solve_time(watch.get_duration());
 
       jump_solver.print_solve_info();
 
@@ -1128,6 +1142,10 @@ int main (int argc, char* argv[])
   }
 
   my_p4est_brick_destroy(connectivity, &brick);
+
+  for (size_t k = 0; k < solver_analyses.size(); ++k) {
+    ierr = PetscPrintf(mpi.comm(), "Total solve time for %s solver: %.5e s \n", (convert_to_string(solver_analyses[k].tag)).c_str(), solver_analyses[k].get_total_solve_time()); CHKERRXX(ierr);
+  }
 
   watch_global.stop(); watch_global.read_duration();
 

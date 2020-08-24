@@ -90,6 +90,10 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
 {
   P4EST_ASSERT(phi != NULL);
   P4EST_ASSERT(VecIsSetForNodes(phi, interpolation_node_ngbd->get_nodes(), interpolation_node_ngbd->get_p4est()->mpicomm, 1));
+#ifdef CASL_THROWS
+  if(method_interp_phi == quadratic_non_oscillatory)
+    std::cerr << "my_p4est_interface_manager_t::set_levelset() : using quadratic_non_oscillatory for the levelset interpolation may lead to erratic behavior for some solvers (especially with finite-volume approaches) because of the inherent discontinuities in the interpolation scheme. Use at your own risk!" << std::endl;
+#endif
   if(phi_xxyyzz != NULL)
   {
     P4EST_ASSERT(VecIsSetForNodes(phi_xxyyzz, interpolation_node_ngbd->get_nodes(), interpolation_node_ngbd->get_p4est()->mpicomm, P4EST_DIM));
