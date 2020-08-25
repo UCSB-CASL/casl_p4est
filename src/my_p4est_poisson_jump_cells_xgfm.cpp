@@ -513,7 +513,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_rhs_and_residual(Vec &former_rhs
   ierr = VecAXPBY(residual, -1.0, 0.0, rhs); CHKERRXX(ierr);
   ierr = MatMultAdd(A, solution, residual, residual); CHKERRXX(ierr);
   if(scale_system_by_diagonals)
-    pointwise_operation_with_sqrt_of_diag(3, solution, divide_by_sqrt_D, rhs, multiply_by_sqrt_D, residual, multiply_by_sqrt_D);
+    pointwise_operation_with_sqrt_of_diag(2, solution, divide_by_sqrt_D, rhs, multiply_by_sqrt_D);
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
 
