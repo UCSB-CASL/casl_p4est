@@ -342,7 +342,7 @@ void set_geometry(){
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
-      px = 0; py = 0;
+      px = 1; py = 0;
 
       // band:
       uniform_band = 4.;
@@ -419,7 +419,7 @@ void set_physical_properties(){
       k_l = 0.608; // W/[m*K]
       L = 334.e3;  // J/kg
       rho_l = 1000.0;// kg/m^3
-      sigma = (2.10e-10); // [m]
+      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
       rho_s = 920.; //[kg/m^3]
       mu_l = 1.7106e-3;//1.793e-3;  // Viscosity of water , [Pa s]
       cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
@@ -427,12 +427,10 @@ void set_physical_properties(){
       // Boundary condition info:
       Twall = 276.;    // Physical wall temp [K]
       Tinterface = 273.15; // Physical interface temp [K]
-//      T_cyl = 260.;   // Physical cylinder temp [K]
 
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
 
       deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
-
       theta_wall = 1.0; // Non dim temp at wall
       theta_cyl = 0.0; // Non dim temp at cylinder
 
@@ -476,7 +474,7 @@ void set_physical_properties(){
       mu_l = nu*rho_l; // [Pa s]
 
       double gamma_sl = 8.9e-3; //[J/m^2]
-      sigma = gamma_sl/rho_l/L; // relation from alban email [m]
+      sigma = 2.*gamma_sl/rho_l/L; // relation from alban email [m], modified using relation from Dantzig book
 
       // BC info:
       double delta = -0.55;
@@ -548,7 +546,7 @@ void set_NS_info(){
       v0 = 1.0;
       break;
     case DENDRITE_TEST:
-      Re = 1.;
+      Re = 0.22;
       u0 = 0.;
       v0 = -1.;
       break;
@@ -560,21 +558,63 @@ void set_NS_info(){
   hodge_percentage_of_max_u = 1.e-3;
 }
 
-void set_nondimensional_groups(){
-    if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER) || (example_ == DENDRITE_TEST)){
-        if(Re_overwrite>0.) Re = Re_overwrite;
 
-        if(example_==DENDRITE_TEST){ u_inf=Re*mu_l/rho_l/d_seed;}
-        else{u_inf=Re*mu_l/rho_l/d_cyl;}
-        Pr = mu_l/(alpha_l*rho_l);
-        Pe = Re*Pr;
-        St = cp_s*fabs(deltaT)/L;
+enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL};
+int stefan_condition_type;
+int select_stefan_formulation(){
+  switch(example_){
+  case FRANK_SPHERE:
+    return NONDIM_NO_FLUID;
+  case DENDRITE_TEST:
+    if(solve_navier_stokes){
+      return NONDIM_YES_FLUID;
     }
     else{
-      Pe = 1.;
-      St = 1.;
-      Pr = 1.;
+      return NONDIM_NO_FLUID;
     }
+  case NS_GIBOU_EXAMPLE:
+  case FLOW_PAST_CYLINDER:
+    break; // no stefan here
+
+  case COUPLED_PROBLEM_EXAMPLE:
+  case COUPLED_TEST_2:
+  case ICE_AROUND_CYLINDER:
+    return NONDIM_YES_FLUID;
+  }
+};
+
+double time_nondim_to_dim;
+double vel_nondim_to_dim;
+void set_nondimensional_groups(){
+   if(stefan_condition_type==NONDIM_YES_FLUID){
+     if(Re_overwrite>0.) Re = Re_overwrite;
+
+     Pr = mu_l/(alpha_l*rho_l);
+     Pe = Re*Pr;
+     St = cp_s*fabs(deltaT)/L;
+
+     if(example_==DENDRITE_TEST){
+       u_inf=Re*mu_l/rho_l/d_seed;
+       vel_nondim_to_dim = u_inf;
+       time_nondim_to_dim=d_seed/u_inf;
+     }
+     else{
+       u_inf=Re*mu_l/rho_l/d_cyl;
+       vel_nondim_to_dim = u_inf;
+       time_nondim_to_dim = d_cyl/u_inf;
+     }
+   }
+   else if(stefan_condition_type==NONDIM_NO_FLUID){
+     Pr = mu_l/(alpha_l*rho_l);
+     St = cp_s*fabs(deltaT)/L;
+     Re = 0.; Pe = 0.;
+
+     time_nondim_to_dim = SQR(d_seed/2.)/alpha_s;
+     vel_nondim_to_dim = (alpha_s)/(d_seed/2.);
+   }
+   else{
+     time_nondim_to_dim = 1.;
+   };
 }
 
 // ---------------------------------------
@@ -603,8 +643,7 @@ void simulation_time_info(){
       break;
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
-      tfinal = (40.*60.)*(u_inf/d_cyl); // 40 minutes
-      if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)*(u_inf/d_cyl);
+      tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
       dt_max_allowed = save_every_dt;
       tstart = 0.0;
 //      dt = 1.e-5;
@@ -629,15 +668,17 @@ void simulation_time_info(){
       tstart=0.0;
       break;
     case DENDRITE_TEST:
-      //tfinal =(10.*60.)*(u_inf/d_seed); // 10 minutes
-      tfinal = 10000.;
+      tfinal =(0.5*60.)/(time_nondim_to_dim); // half a minute
+
       //tfinal = 1.0;
       tstart=0.;
-      dt_max_allowed = 10.;
+      dt_max_allowed = 1.e-2;
 
       break;
 
     }
+  if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)/(time_nondim_to_dim);
+
 //  dt_nm1 = dt;
 }
 
@@ -957,9 +998,6 @@ public:
   }
 }pressure_field_analytical;
 
-
-
-
 struct external_force_per_unit_volume_component : CF_DIM{
   const unsigned char dir;
   velocity_component** velocity_field;
@@ -1169,9 +1207,6 @@ struct external_heat_source: CF_DIM{
   }
 };
 
-
-
-
 // --------------------------------------------------------------------------------------------------------------
 // Level set functions:
 // --------------------------------------------------------------------------------------------------------------
@@ -1283,6 +1318,9 @@ public:
   }
   double operator()(DIM(double x, double y, double z)) const
   {
+    double d_val = 1.;
+    if(example_ == ICE_AROUND_CYLINDER)d_val = d_cyl;
+    if(example_ == DENDRITE_TEST)d_val = d_seed/2.;
     switch(example_){
       case FRANK_SPHERE:{ // Frank sphere case, no surface tension
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
@@ -1291,9 +1329,9 @@ public:
       case ICE_AROUND_CYLINDER: {
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-          return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_cyl)*(*kappa_interp)(x,y)));
+          return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y)));
         }
-        else return theta_interface*(1. - (sigma/d_cyl)*(*kappa_interp)(x,y));
+        else return theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y));
       }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
@@ -2676,9 +2714,12 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
 
         if(fabs(phi.ptr[n])<extension_band){ // TO-DO: should be nondim for ALL cases
             foreach_dimension(d){
-                if((example_ == ICE_AROUND_CYLINDER) || (example_ == DENDRITE_TEST)){ // for this example, we solve nondimensionalized problem
+                if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
                     jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
                     //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
+                }
+                else if (stefan_condition_type == NONDIM_NO_FLUID){
+                  jump.ptr[d][n] = (St)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
                 }
                 else{
                     jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
@@ -2696,14 +2737,17 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
           if(fabs(phi.ptr[n])<extension_band){
-
               foreach_dimension(d){
-                  if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
-                      jump.ptr[d][n] = (St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]);
-                  }
-                  else {
-                      jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
-                  }
+                if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
+                    jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
+                    //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
+                }
+                else if (stefan_condition_type == NONDIM_NO_FLUID){
+                  jump.ptr[d][n] = (St)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
+                }
+                else{
+                    jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
+                }
               } // end over loop on dimensions
           }
         }
@@ -3184,13 +3228,21 @@ void poisson_step(Vec phi, Vec phi_solid,
       solver_Ts->set_diag(1./dt);
     }
 
-  if(solve_navier_stokes) solver_Tl->set_mu(1./Pe);
-  else solver_Tl->set_mu(alpha_l);
+  if(stefan_condition_type == NONDIM_YES_FLUID){
+    solver_Tl->set_mu(1./Pe);
+    solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
+  }
+  else if(stefan_condition_type== NONDIM_NO_FLUID){
+    solver_Tl->set_mu(alpha_l/alpha_s);
+    solver_Ts->set_mu(1.);
+  }
+  else{
+    solver_Tl->set_mu(alpha_l);
+    solver_Ts->set_mu(alpha_s);
+  }
+
 
   solver_Tl->set_rhs(rhs_Tl);
-
-  if(solve_navier_stokes) solver_Ts->set_mu(1./Pe);
-  else solver_Ts->set_mu(alpha_s);
   solver_Ts->set_rhs(rhs_Ts);
 
   // Set some other solver properties:
@@ -3310,7 +3362,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   PetscPrintf(mpi_comm,"\n Max NS velocity norm: \n"
                          " - Computational value: %0.4f  "
                          " - Physical value: %0.3e [m/s]  "
-                         " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
+                         " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
 
   // Stop simulation if things are blowing up
   if(NS_norm>100.0){
@@ -3367,6 +3419,198 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   }
   return out;
 }
+// FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
+// adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
+
+void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neighbors_t* ngbd_, vec_and_ptr_t front_phi_)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+  // remove problem geometries
+  PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
+
+  vec_and_ptr_t front_phi_cur;
+
+  front_phi_cur.set(front_phi_.vec);
+
+  vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
+
+  p4est_locidx_t nei_n[num_neighbors_cube];
+  bool           nei_e[num_neighbors_cube];
+
+  double dxyz_[P4EST_DIM];
+  dxyz_min(p4est_,dxyz_);
+
+  double diag_ = sqrt(SUMD(SQR(dxyz_[0]),SQR(dxyz_[1]),SQR(dxyz_[2])));
+  double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dyxz_[2]));
+
+  double band = 2.*diag_;
+
+  front_phi_tmp.get_array();
+  front_phi_cur.get_array();
+
+  // first pass: smooth out extremely curved regions
+  // TODO: make it iterative
+  bool is_changed = false;
+  foreach_local_node(n, nodes_)
+  {
+    if (fabs(front_phi_cur.ptr[n]) < band)
+    {
+      ngbd_->get_all_neighbors(n, nei_n, nei_e);
+
+      unsigned short num_neg = 0;
+      unsigned short num_pos = 0;
+
+      for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
+      {
+        if (front_phi_cur.ptr[nei_n[nn]] <= 0) num_neg++;
+        if (front_phi_cur.ptr[nei_n[nn]] >= 0) num_pos++;
+      }
+
+      if ( (front_phi_cur.ptr[n] <= 0 && num_neg < 3) ||
+           (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
+      {
+//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+        if (num_neg < 3) front_phi_cur.ptr[n] =  0.01*diag_;
+        if (num_pos < 3) front_phi_cur.ptr[n] = -0.01*diag_;
+
+        // check if node is a layer node (= a ghost node for another process)
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+        if (ni->pad8 != 0) is_changed = true;
+//        throw;
+      }
+    }
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  if (is_changed)
+  {
+    ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
+
+  // second pass: bridge narrow gaps
+  // TODO: develop a more general approach that works in 3D as well
+  double new_phi_val = .5*dxyz_min_*pow(2., 0); // set second argument to zero bc we exclude front smoothing option (for now : TO-DO)
+  is_changed = false;
+  bool is_ghost_changed = false;
+  foreach_local_node(n, nodes_)
+  {
+    if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
+    {
+      ngbd_->get_all_neighbors(n, nei_n, nei_e);
+
+      bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
+                   front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
+          front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
+          front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
+          || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
+          || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
+          (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
+
+      if (merge)
+      {
+        front_phi_tmp.ptr[n] = new_phi_val;
+        // check if node is a layer node (= a ghost node for another process)
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+        if (ni->pad8 != 0) is_ghost_changed = true;
+        is_changed = true;
+      }
+    }
+  }
+
+  front_phi_tmp.restore_array();
+  front_phi_cur.restore_array();
+
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  if (is_ghost_changed)
+  {
+    ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  // third pass: look for isolated pools of liquid and remove them
+  if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+  {
+    int num_islands = 0;
+    vec_and_ptr_t island_number(front_phi_cur.vec);
+
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+    compute_islands_numbers(*ngbd_, front_phi_tmp.vec, num_islands, island_number.vec);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+
+    if (num_islands > 1)
+    {
+      island_number.get_array();
+      front_phi_tmp.get_array();
+
+      // compute liquid pools areas
+      // TODO: make it real area instead of number of points
+      std::vector<double> island_area(num_islands, 0);
+
+      foreach_local_node(n, nodes_)
+      {
+        if (island_number.ptr[n] >= 0)
+        {
+          ++island_area[ (int) island_number.ptr[n] ];
+        }
+      }
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+      // find the biggest liquid pool
+      int main_island = 0;
+      int island_area_max = island_area[0];
+
+      for (int i = 1; i < num_islands; ++i)
+      {
+        if (island_area[i] > island_area_max)
+        {
+          main_island     = i;
+          island_area_max = island_area[i];
+        }
+      }
+
+      if (main_island < 0) throw;
+
+      // solidify all but the biggest pool
+      foreach_node(n, nodes_)
+      {
+        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island)
+        {
+          front_phi_tmp.ptr[n] = new_phi_val;
+        }
+      }
+
+      island_number.restore_array();
+      front_phi_tmp.restore_array();
+
+      // TODO: make the decision whether to solidify a liquid pool or not independently
+      // for each pool based on its size and shape
+    }
+
+    island_number.destroy();
+  }
+
+//  front_phi_cur.destroy();
+//  front_phi_cur.set(front_phi_tmp.vec);
+  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
+  front_phi_tmp.destroy();
+  front_phi_.set(front_phi_cur.vec);
+
+
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SAVING TO VTK:
 // --------------------------------------------------------------------------------------------------------------
@@ -4195,14 +4439,13 @@ int main(int argc, char** argv) {
 
   pl.initialize_parser(cmd);
   cmd.parse(argc,argv);
-  PetscPrintf(mpi.comm(),"Just parsed, example %d \n",example_);
 
   pl.get_all(cmd);
   select_solvers();
 
   solve_coupled = solve_navier_stokes && solve_stefan;
 
-
+  stefan_condition_type = select_stefan_formulation(); // select the form of the stefan condition we will use
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
   PetscPrintf(mpi.comm(),"Number of mpi tasks: %d \n",mpi.size());
   PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
@@ -4360,20 +4603,21 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     if(solve_navier_stokes){
         set_NS_info();
-        set_nondimensional_groups();
-
-        PetscPrintf(mpi.comm(),"\n Nondim groups are: \n"
-                               "Re = %f \n"
-                               "Pr = %f \n"
-                               "Pe = %f \n"
-                               "St = %f \n"
-                               "And we have: \n"
-                               "u_inf = %0.3e [m/s]\n", Re, Pr, Pe, St,u_inf);
       }
+    set_nondimensional_groups();
+
+    PetscPrintf(mpi.comm(),"\n Nondim groups are: \n"
+                           "Re = %f \n"
+                           "Pr = %f \n"
+                           "Pe = %f \n"
+                           "St = %f \n"
+                           "And we have: \n"
+                           "u_inf = %0.3e [m/s]\n", Re, Pr, Pe, St,u_inf);
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
-    if(solve_navier_stokes)PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*d_cyl/(60.*u_inf),tfinal);
+    PetscPrintf(mpi.comm(),"Example number %d \n",example_);
+    PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
     PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n",uniform_band);
     // -----------------------------------------------
     // Create the grid:
@@ -4780,7 +5024,7 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
 //    for (tn=tstart;tn<tfinal; tn+=dt, tstep++){
 
-    tstep=0;
+    if(!loading_from_previous_state)tstep=0;
     tn = tstart;
     int last_tstep=-1;
     while(tn<=tfinal){ // trying something
@@ -4792,8 +5036,8 @@ int main(int argc, char** argv) {
                                     " Timestep: %0.3e [nondim] = %0.1g [sec],"
                                     " Percent Done : %0.2f %"
                                     " \n ------------------------------------------- \n",
-                                    tstep,tn,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,
-                                    dt, dt*(d_cyl/u_inf),
+                                    tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+                                    dt, dt*(time_nondim_to_dim),
                                     ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
 
       if(tstep%timing_every_n == 0) {
@@ -5349,10 +5593,10 @@ int main(int argc, char** argv) {
         sprintf(stefan_timestep,"Computed interfacial velocity: \n"
                                 " - Computational : %0.3e  "
                                 "- Physical : %0.3e [m/s]  "
-                                "- Physical : %0.3e  [mm/s] \n",
+                                "- Physical : %0.3f  [mm/s] \n",
                 v_interface_max_norm,
-                v_interface_max_norm*u_inf,
-                v_interface_max_norm*u_inf*1000.);
+                v_interface_max_norm*vel_nondim_to_dim,
+                v_interface_max_norm*vel_nondim_to_dim*1000.);
       }
 
       // Take NS timestep into account if relevant:
@@ -5484,6 +5728,11 @@ int main(int argc, char** argv) {
           }
         }
 
+        if(example_ == DENDRITE_TEST){
+          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi);
+//          ls.perturb_level_set_function(phi.vec,EPS);
+        }
+
         // --------------------------------------------------------------------------------------------------------------
         // Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
@@ -5536,7 +5785,7 @@ int main(int argc, char** argv) {
         // Output file for NS test case errors:
         const char* out_dir_mem = getenv("OUT_DIR_FILES");
         if(!out_dir_mem){
-            throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save fluid forces");
+            throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save memory usage info");
           }
         FILE* fich_mem;
         char name_mem[1000];
