@@ -74,6 +74,7 @@ namespace geom
 		double _a;			// Perturbation (petal extension).
 		double _b;			// Base circle radius.
 		int _p;				// Number of arms.
+		double _d;			// Angle phase.
 
 	public:
 		/**
@@ -81,9 +82,10 @@ namespace geom
 		 * @param [in] a Perturbation amplitude.
 		 * @param [in] b Base circle radius.
 		 * @param [in] p Number of arms.
+		 * @param [in] d Angular phase.
 		 */
-		explicit Star( double a = -1.0, double b = 3.0, int p = 8 )
-			: _a( a ), _b( b ), _p( p ){}
+		explicit Star( double a = -1.0, double b = 3.0, int p = 8, double d = 0 )
+			: _a( a ), _b( b ), _p( p ), _d( d ) {}
 
 		/**
 		 * Level set evaluation at a given point.
@@ -93,7 +95,7 @@ namespace geom
 		 */
 		double operator()( double x, double y ) const override
 		{
-			return -_a * cos( _p * atan2( y, x ) ) + sqrt( SQR( x ) + SQR( y ) ) - _b;
+			return -_a * cos( _p * atan2( y, x ) - _d ) + sqrt( SQR( x ) + SQR( y ) ) - _b;
 		}
 
 		/**
@@ -103,7 +105,7 @@ namespace geom
 		 */
 		[[nodiscard]] double r( double theta ) const
 		{
-			return _a * cos( _p * theta ) + _b;
+			return _a * cos( _p * theta - _d ) + _b;
 		}
 
 		/**
@@ -113,7 +115,7 @@ namespace geom
 		 */
 		[[nodiscard]] double rPrime( double theta ) const
 		{
-			return -_a * _p * sin( _p * theta );
+			return -_a * _p * sin( _p * theta - _d );
 		}
 
 		/**
@@ -123,7 +125,7 @@ namespace geom
 		 */
 		[[nodiscard]] double rPrimePrime( double theta ) const
 		{
-			return -_a * SQR( _p ) * cos( _p * theta );
+			return -_a * SQR( _p ) * cos( _p * theta - _d );
 		}
 
 		/**
@@ -174,6 +176,15 @@ namespace geom
 		[[nodiscard]] int getP() const
 		{
 			return _p;
+		}
+
+		/**
+		 * Get the angular phase.
+		 * @return star.d.
+		 */
+		[[nodiscard]] double getD() const
+		{
+			return _d;
 		}
 	};
 
