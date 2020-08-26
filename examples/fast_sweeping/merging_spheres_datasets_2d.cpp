@@ -61,11 +61,12 @@ int main ( int argc, char* argv[] )
 
 	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
 	const double MAX_RADIUS = HALF_D - 2 * H;				// Prevents falling off the domain.
-	const int NUM_CIRCLES = (int)( ((MAX_RADIUS - MIN_RADIUS) / (2 * H) + 1));	// Number of circles is proportional to finest resolution.
+	const int NUM_CIRCLES = (int)ceil( (MAX_RADIUS - MIN_RADIUS) / H + 1 );	// Number of circles is proportional to finest resolution.
 
-	const double MIN_THETA = -M_PI_4 / 2;					// We vary the rotation of the circles' axis with respect to
-	const double MAX_THETA = -MIN_THETA;					// the world +x-axis from -pi/8 to +pi/8.
-	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 4 ) + 1;
+	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 5 ) + 1;
+	const double DELTA_THETA = M_PI_2 / NUM_THETAS;			// Angular step.
+	const double MIN_THETA = DELTA_THETA - M_PI_2;			// We vary the rotation of the circles' axis with respect to
+	const double MAX_THETA = 0;								// the world +x-axis so that we cover the whole space.
 
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/";		// Destination folder.
 	const int NUM_COLUMNS = STENCIL_SIZE + 2;	// Number of columns in resulting dataset.
@@ -73,8 +74,7 @@ int main ( int argc, char* argv[] )
 	generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::mt19937 gen( 5489u ); 					// Standard mersenne_twister_engine with (default) constant seed.
 	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
 
 	try
@@ -145,7 +145,7 @@ int main ( int argc, char* argv[] )
 		int periodic[] = {0, 0, 0};							// Non-periodic domain.
 
 		// Printing header for log.
-		std::cout << "Theta Val, Circle 1, Max Rel Error, Num Samples, Time" << std::endl;
+		std::cout << "Theta Val, Circle 1, Max Rel Error, Num Samples/Evaluated, Time" << std::endl;
 
 		// Varying the tilt of the merging circle's main axis.
 		int nSamples = 0;
@@ -159,6 +159,7 @@ int main ( int argc, char* argv[] )
 				const double KAPPA1 = 1 / MIN_RADIUS + linspace[nc1] * kappaDistance;
 				const double R1 = 1 / KAPPA1;				// Circle radius to be evaluated.
 				double maxRE = 0;							// Maximum absolute error, relative to H.
+				int totalInclusiveSamples = 0;				// A debugging var to check how many total samples are evaluated.
 
 				std::vector<std::vector<double>> rlsSamples;
 				std::vector<std::vector<double>> sdfSamples;
@@ -310,6 +311,7 @@ int main ( int argc, char* argv[] )
 								{
 									std::vector<double> sdfData;	// Signed-distance function values.
 									std::vector<double> rlsData;	// Reinitialized level-set function values.
+									totalInclusiveSamples++;
 
 									// A troubling node is one that lies in a discontinuity region or owns at least one
 									// of its 9-point stencil neighbors lying on a discontinuity or with a phi value
@@ -430,7 +432,8 @@ int main ( int argc, char* argv[] )
 				nSamples += rlsSamples.size();
 
 				// Log output.
-				std::cout << nt + 1 << ", " << nc1 + 1 << ", " << maxRE << ", " << rlsSamples.size() << ", "
+				std::cout << nt + 1 << ", " << nc1 + 1 << ", " << maxRE << ", " << rlsSamples.size() << "/"
+						  << totalInclusiveSamples * 4 << ", "					// The 4 is for the number of rotations per collected sample.
 				 		  << watch.get_duration_current() << ";" << std::endl;
 			}
 		}
