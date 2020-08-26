@@ -1543,7 +1543,7 @@ public:
     description =
         std::string("* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n")
         + std::string("* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n")
-        + std::string("r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n")
+        + std::string("r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n")
         + std::string("negative inside, positive outside \n")
         + std::string("* mu_m = 1.0; \n")
         + std::string("* mu_p = 1250.0; \n")
