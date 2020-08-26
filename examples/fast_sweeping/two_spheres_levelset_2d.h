@@ -169,7 +169,7 @@ public:
 				who = +1;
 				return phi2;
 			}
-			hk = 1;						// Indicates a discontinuity in the level-set function as the point is equally
+			hk = -1;					// Indicates a discontinuity in the level-set function as the point is equally
 			who = 0;					// distant from both C1's and C2's interfaces.
 			return phi1;
 		}
@@ -221,7 +221,7 @@ public:
 				who = +1;
 				return phi2;
 			}
-			hk = 1;												// Closest point on compound interface is (xi, ±yi).
+			hk = -1;											// Closest point on compound interface is (xi, ±yi).
 			who = 0;
 			return -minDPQ;										// theta2 in range of asymmetric quad.  Note the - sign.
 		}
@@ -233,7 +233,7 @@ public:
 				who = -1;
 				return phi1;
 			}
-			hk = 1;												// Closest point on compound interface is (xi, ±yi).
+			hk = -1;											// Closest point on compound interface is (xi, ±yi).
 			who = 0;
 			return -minDPQ;										// theta1 in range of asymmetric quad.
 		}
@@ -261,7 +261,7 @@ public:
 		if( phi <= -PETSC_MAX_REAL )							// Point lies inside intersection quad?
 		{
 			phi = -minDPQ;
-			hk = 1;												// Discontinuity in the level-set function.
+			hk = -1;											// Discontinuity in the level-set function.
 			who = 0;
 		}
 		return phi;
