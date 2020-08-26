@@ -39,7 +39,6 @@ const interpolation_method default_interp_method_phi = linear;
 const bool default_use_second_order_theta = false;
 //const bool default_use_second_order_theta = true;
 const bool default_quad_pinning     = false;
-const bool default_diagonal_scaling = false;
 const bool default_get_integral     = false;
 const bool default_print_summary    = false;
 const bool default_subrefinement    = true;
@@ -923,7 +922,7 @@ int main (int argc, char* argv[])
   cmd.add_option("solver",          "solver(s) to be tested, possible choices are 'GFM', 'xGFM', 'FV' or any combination thereof (separated with comma(s), and no space characters) [default is all of them].");
   cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation.");
   cmd.add_option("quad_pinning",    "activates the use of quad-center pinning for the least-square normal derivative to construct in the FV solver if set to true or 1. Default is " + string(default_quad_pinning ? "with" : "without") + " pinning.");
-  cmd.add_option("diag_scaling",    "activates the (symmetric) scaling of the linear system(s) of interest by their diagonal if set to true or 1. Default is " + string(default_diagonal_scaling ? "with" : "without") + " diagonal scaling.");
+  cmd.add_option("diag_scaling",    "activates the (symmetric) scaling of the linear system(s) of interest by their diagonal if set to true or 1, deactivates it if set to false or 0.\n\t\t The default behavior (if disregarded) is without scaling for (x)GFM solver(s) and with scaling for FV solver.");
   oss.str("");
   oss << default_interp_method_phi;
   cmd.add_option("phi_interp",      "interpolation method for the node-sampled levelset function. Default is " + oss.str());
@@ -944,7 +943,6 @@ int main (int argc, char* argv[])
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
   const bool extrapolate_solution       = cmd.get<bool>("extrapolate", default_extrapolation);
-  const bool scale_by_diagonal          = cmd.get<bool>("diag_scaling", default_diagonal_scaling);
   const bool pin_normal_derivatives     = cmd.get<bool>("quad_pinning", default_quad_pinning);
 
   std::vector<poisson_jump_cell_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
@@ -1060,7 +1058,9 @@ int main (int argc, char* argv[])
       }
 
       my_p4est_poisson_jump_cells_t& jump_solver = *solver_analyses[k].jump_cell_solver;
-      jump_solver.set_scale_by_diagonal(scale_by_diagonal);
+      if(cmd.contains("diag_scaling"))
+        jump_solver.set_scale_by_diagonal(cmd.get<bool>("diag_scaling")); // set the desired scaling if not using default...
+
       jump_solver.set_interface(interface_manager);
       jump_solver.set_mus(test_problem->get_mu_minus(), test_problem->get_mu_plus());
       jump_solver.set_jumps(jump_u, jump_normal_flux);

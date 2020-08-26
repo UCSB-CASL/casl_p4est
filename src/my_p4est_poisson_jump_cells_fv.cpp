@@ -24,6 +24,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   interface_relative_threshold = +1.0e-11;
   reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
   pin_normal_derivative_for_correction_functions = false;
+  scale_system_by_diagonals = true;
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()

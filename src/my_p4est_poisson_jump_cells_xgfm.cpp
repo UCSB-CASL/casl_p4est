@@ -29,6 +29,7 @@ my_p4est_poisson_jump_cells_xgfm_t::my_p4est_poisson_jump_cells_xgfm_t(const my_
   xgfm_jump_between_quads.clear();
   solver_monitor.clear();
   print_residuals_and_corrections_with_solve_info = false;
+  scale_system_by_diagonals = false;
 }
 
 my_p4est_poisson_jump_cells_xgfm_t::~my_p4est_poisson_jump_cells_xgfm_t()
