@@ -337,19 +337,19 @@ void set_geometry(){
     }
     case DENDRITE_TEST:{
       // Domain size:
-      xmin = 0.; xmax = 1.;
-      ymin = 0.; ymax = 1.;
+      xmin = 0.; xmax = 2.;
+      ymin = 0.; ymax = 2.;
 
       // Number of trees and periodicity:
-      nx = 2; ny = 2;
+      nx = 4; ny = 4;
       px = 1; py = 0;
 
       // band:
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.05;
-      d_seed = 3.48e-6; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+      r0 = 0.10;
+      d_seed = (3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
       // physical property paper ""
       break;
     }
@@ -476,11 +476,14 @@ void set_physical_properties(){
       double gamma_sl = 8.9e-3; //[J/m^2]
       sigma = 2.*gamma_sl/rho_l/L; // relation from alban email [m], modified using relation from Dantzig book
 
+//      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma/2.);
       // BC info:
-      double delta = -0.55;
+      double delta = -0.04;//-0.55;
       Tinterface = 331.23;
       Twall = delta*(L/cp_s) + Tinterface;
       deltaT = Twall-Tinterface;
+
+      printf("deltaT is %0.2f \n",deltaT);
 
       theta_wall=0.;
       theta_interface = 1.;
@@ -594,7 +597,7 @@ void set_nondimensional_groups(){
      St = cp_s*fabs(deltaT)/L;
 
      if(example_==DENDRITE_TEST){
-       u_inf=Re*mu_l/rho_l/d_seed;
+       u_inf=Re*mu_l/rho_l/(d_seed/2.);
        vel_nondim_to_dim = u_inf;
        time_nondim_to_dim=d_seed/u_inf;
      }
@@ -668,7 +671,7 @@ void simulation_time_info(){
       tstart=0.0;
       break;
     case DENDRITE_TEST:
-      tfinal =(0.5*60.)/(time_nondim_to_dim); // half a minute
+      tfinal =(1.0e-4/*0.5*60.*/)/(time_nondim_to_dim); // half a minute(commented), one millisecond -- active
 
       //tfinal = 1.0;
       tstart=0.;
@@ -1308,6 +1311,14 @@ private:
   temperature_field** temperature_;
   unsigned const char dom;
 
+  // For normals (in dendritic case)
+  my_p4est_interpolation_nodes_t* nx_interp;
+  my_p4est_interpolation_nodes_t* ny_interp;
+
+
+  std::vector<double> theta0 = {0., PI/2.,-PI,-PI/2.};
+  double eps4 = 0.0055;
+
 public:
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
   {
@@ -1325,7 +1336,28 @@ public:
       case FRANK_SPHERE:{ // Frank sphere case, no surface tension
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
         }
-      case DENDRITE_TEST:
+      case DENDRITE_TEST:{
+        double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
+        double min_theta = 2*PI;
+        int min_idx = -1;
+        for(int i=0;i<4;i++){
+          min_theta = min(min_theta,fabs(theta-theta0[i]));
+
+          if(min_theta == fabs(theta - theta0[i])){
+            min_idx = i; // grab the index of whatever is the closest theta val
+          }
+        }
+
+//        printf("min theta = %0.2f , min idx = %d \n"
+//               "nx = %0.2f, ny = %0.2f \n",min_theta,min_idx,(*nx_interp)(x,y),(*ny_interp)(x,y));
+
+        // need to use angle between normal dir and principle growth direction -- in our case
+        // that is the four axial directions, so use angle bw normal and closest axis (either
+
+        P4EST_ASSERT(min_idx>-1 && min_idx<4);
+        double sigma_new = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
+        return theta_interface*(1. - (sigma_new/d_val)*(*kappa_interp)(x,y));
+      }
       case ICE_AROUND_CYLINDER: {
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
@@ -1350,6 +1382,20 @@ public:
       kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
       kappa_interp->set_input(kappa,linear);
     }
+  }
+  void set_normals(my_p4est_node_neighbors_t *ngbd_,Vec nx, Vec ny){
+    if(ngbd_!=NULL){
+      ngbd = ngbd_;
+      nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      nx_interp->set_input(nx,linear);
+
+      ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      ny_interp->set_input(ny,linear);
+    }
+  }
+  void clear_normals(){
+    nx_interp->clear();
+    ny_interp->clear();
   }
 };
 
@@ -3346,7 +3392,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   ns->copy_vorticity(vorticity);
 
   // Compute forces (if we are doing that)
-  if(save_fluid_forces){
+  if(save_fluid_forces && compute_pressure_){
     double forces[P4EST_DIM];
     ns->compute_forces(forces);
     PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g \n",tn+dt,forces[0],forces[1]);
@@ -3422,134 +3468,211 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
 // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
 // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
 
-void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neighbors_t* ngbd_, vec_and_ptr_t front_phi_)
+void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd,vec_and_ptr_t phi)
 {
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
-  // remove problem geometries
-  PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
-
-  vec_and_ptr_t front_phi_cur;
-
-  front_phi_cur.set(front_phi_.vec);
-
-  vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
-
-  p4est_locidx_t nei_n[num_neighbors_cube];
-  bool           nei_e[num_neighbors_cube];
+  // TO-DO: can make these settings variable
+  int front_smoothing_ = 0;
+  double proximity_smoothing_ = 1.1;
 
   double dxyz_[P4EST_DIM];
-  dxyz_min(p4est_,dxyz_);
+  dxyz_min(p4est,dxyz_);
 
-  double diag_ = sqrt(SUMD(SQR(dxyz_[0]),SQR(dxyz_[1]),SQR(dxyz_[2])));
-  double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dyxz_[2]));
+//  double diag = sqrt(SUMD(SQR(dxyz_[0]),SQR(dxyz_[1]),SQR(dxyz_[2])));
+  double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dxyz_[2]));
+  double new_phi_val = .5*dxyz_min_*pow(2., front_smoothing_);
 
-  double band = 2.*diag_;
 
-  front_phi_tmp.get_array();
-  front_phi_cur.get_array();
+  PetscErrorCode ierr;
+  int mpi_comm = p4est->mpicomm;
 
-  // first pass: smooth out extremely curved regions
-  // TODO: make it iterative
-  bool is_changed = false;
-  foreach_local_node(n, nodes_)
-  {
-    if (fabs(front_phi_cur.ptr[n]) < band)
-    {
-      ngbd_->get_all_neighbors(n, nei_n, nei_e);
+  ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
 
-      unsigned short num_neg = 0;
-      unsigned short num_pos = 0;
+  // auxiliary pointers (in case a corser grid is used further)
+//  vec_and_ptr_t front_phi_cur;
+//  front_phi_cur.set(front_phi_.vec);
+//  p4est_t       *p4est_cur = p4est_;
+//  p4est_nodes_t *nodes_cur = nodes_;
+//  p4est_ghost_t *ghost_cur = ghost_;
+//  my_p4est_node_neighbors_t *ngbd_cur = ngbd_;
+//  my_p4est_hierarchy_t *hierarchy_cur = hierarchy_;
 
-      for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
-      {
-        if (front_phi_cur.ptr[nei_n[nn]] <= 0) num_neg++;
-        if (front_phi_cur.ptr[nei_n[nn]] >= 0) num_pos++;
-      }
 
-      if ( (front_phi_cur.ptr[n] <= 0 && num_neg < 3) ||
-           (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
-      {
-//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
-//        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
-        if (num_neg < 3) front_phi_cur.ptr[n] =  0.01*diag_;
-        if (num_pos < 3) front_phi_cur.ptr[n] = -0.01*diag_;
+  // interpolate level-set function onto a coarses grid (not really used)
+//  if (front_smoothing_ != 0)
+//  {
+//    p4est_cur = p4est_copy(p4est_, P4EST_FALSE);
+//    ghost_cur = my_p4est_ghost_new(p4est_cur, P4EST_CONNECT_FULL);
+//    nodes_cur = my_p4est_nodes_new(p4est_cur, ghost_cur);
 
-        // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-        if (ni->pad8 != 0) is_changed = true;
-//        throw;
-      }
-    }
+//    front_phi_cur.create(front_phi_.vec);
+//    VecCopyGhost(front_phi_.vec, front_phi_cur.vec);
+
+//    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
+//    bool is_grid_changing = true;
+//    while (is_grid_changing)
+//    {
+//      front_phi_cur.get_array();
+//      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl-front_smoothing_, sp_old->lip, sp_old->band);
+//      is_grid_changing = sp.refine_and_coarsen(p4est_cur, nodes_cur, front_phi_cur.ptr);
+//      front_phi_cur.restore_array();
+
+//      if (is_grid_changing)
+//      {
+//        my_p4est_partition(p4est_cur, P4EST_TRUE, NULL);
+
+//        // reset nodes, ghost, and phi
+//        p4est_ghost_destroy(ghost_cur); ghost_cur = my_p4est_ghost_new(p4est_cur, P4EST_CONNECT_FULL);
+//        p4est_nodes_destroy(nodes_cur); nodes_cur = my_p4est_nodes_new(p4est_cur, ghost_cur);
+
+//        front_phi_cur.destroy();
+//        front_phi_cur.create(p4est_cur, nodes_cur);
+
+//        my_p4est_interpolation_nodes_t interp(ngbd_);
+
+//        double xyz[P4EST_DIM];
+//        foreach_node(n, nodes_cur)
+//        {
+//          node_xyz_fr_n(n, p4est_cur, nodes_cur, xyz);
+//          interp.add_point(n, xyz);
+//        }
+
+//        interp.set_input(front_phi_.vec, linear); // we know that it is not really an interpolation, rather just a transfer, so therefore linear
+//        interp.interpolate(front_phi_cur.vec);
+//      }
+//    }
+
+//    hierarchy_cur = new my_p4est_hierarchy_t(p4est_cur, ghost_cur, &brick_);
+//    ngbd_cur = new my_p4est_node_neighbors_t(hierarchy_cur, nodes_cur);
+//    ngbd_cur->init_neighbors();
+//  }
+
+  // old "by-hand" procedure to remove sharp corner and narrow necks
+  if (0) {
+//    vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
+
+//    p4est_locidx_t nei_n[num_neighbors_cube];
+//    bool           nei_e[num_neighbors_cube];
+
+//    double band = 2.*diag_;
+
+//    front_phi_tmp.get_array();
+//    front_phi_cur.get_array();
+
+//    // first pass: smooth out extremely curved regions
+//    // TODO: make it iterative
+//    bool is_changed = false;
+//    foreach_local_node(n, nodes_cur)
+//    {
+//      if (fabs(front_phi_cur.ptr[n]) < band)
+//      {
+//        ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
+
+//        unsigned short num_neg = 0;
+//        unsigned short num_pos = 0;
+
+//        for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
+//        {
+//          if (front_phi_cur.ptr[nei_n[nn]] <= 0) num_neg++;
+//          if (front_phi_cur.ptr[nei_n[nn]] >= 0) num_pos++;
+//        }
+
+//        if ( (front_phi_cur.ptr[n] <= 0 && num_neg < 3) ||
+//             (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
+//        {
+//          //        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+//          //        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] < 0 ? 10.*EPS : -10.*EPS;
+//          if (num_neg < 3) front_phi_cur.ptr[n] =  0.01*diag_;
+//          if (num_pos < 3) front_phi_cur.ptr[n] = -0.01*diag_;
+
+//          // check if node is a layer node (= a ghost node for another process)
+//          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
+//          if (ni->pad8 != 0) is_changed = true;
+//          //        throw;
+//        }
+//      }
+//    }
+
+//    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+//    if (is_changed)
+//    {
+//      ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//      ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    }
+
+//    VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
+
+//    // second pass: bridge narrow gaps
+//    // TODO: develop a more general approach that works in 3D as well
+
+//    is_changed = false;
+//    bool is_ghost_changed = false;
+//    // this needs fixing for 3D
+//    foreach_local_node(n, nodes_cur)
+//    {
+//      if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
+//      {
+//        ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
+
+//        bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
+//                     front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
+//            front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
+//            front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
+//            || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
+//            || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
+//            (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
+
+//        if (merge)
+//        {
+//          front_phi_tmp.ptr[n] = new_phi_val;
+
+//          // check if node is a layer node (= a ghost node for another process)
+//          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
+//          if (ni->pad8 != 0) is_ghost_changed = true;
+
+//          is_changed = true;
+//        }
+
+//      }
+//    }
+
+//    front_phi_tmp.restore_array();
+//    front_phi_cur.restore_array();
+
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_C_BOOL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+//    if (is_ghost_changed)
+//    {
+//      ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//      ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    }
   }
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+//  bool is_changed = false;
+  int num_nodes_smoothed = 0;
+  if (proximity_smoothing_ > 0) { // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
+    // shift level-set upwards and reinitialize
+    my_p4est_level_set_t ls(ngbd);
+    vec_and_ptr_t front_phi_tmp(phi.vec);
+    double shift = dxyz_min_*proximity_smoothing_;
+    VecCopyGhost(phi.vec, front_phi_tmp.vec);
+    VecShiftGhost(front_phi_tmp.vec, shift);
 
-  if (is_changed)
-  {
-    ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
-
-  // second pass: bridge narrow gaps
-  // TODO: develop a more general approach that works in 3D as well
-  double new_phi_val = .5*dxyz_min_*pow(2., 0); // set second argument to zero bc we exclude front smoothing option (for now : TO-DO)
-  is_changed = false;
-  bool is_ghost_changed = false;
-  foreach_local_node(n, nodes_)
-  {
-    if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
-    {
-      ngbd_->get_all_neighbors(n, nei_n, nei_e);
-
-      bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
-                   front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
-          front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
-          front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
-          || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
-          || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
-          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
-          (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
-
-      if (merge)
-      {
-        front_phi_tmp.ptr[n] = new_phi_val;
-        // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-        if (ni->pad8 != 0) is_ghost_changed = true;
-        is_changed = true;
-      }
-    }
-  }
-
-  front_phi_tmp.restore_array();
-  front_phi_cur.restore_array();
-
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed,       1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_ghost_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
-  if (is_ghost_changed)
-  {
-    ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  // third pass: look for isolated pools of liquid and remove them
-  if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
-  {
     int num_islands = 0;
-    vec_and_ptr_t island_number(front_phi_cur.vec);
+    vec_and_ptr_t island_number(phi.vec);
 
     VecScaleGhost(front_phi_tmp.vec, -1.);
-    compute_islands_numbers(*ngbd_, front_phi_tmp.vec, num_islands, island_number.vec);
+    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
     VecScaleGhost(front_phi_tmp.vec, -1.);
 
     if (num_islands > 1)
     {
+      ierr = PetscPrintf(mpi_comm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
       island_number.get_array();
       front_phi_tmp.get_array();
 
@@ -3557,7 +3680,117 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neig
       // TODO: make it real area instead of number of points
       std::vector<double> island_area(num_islands, 0);
 
-      foreach_local_node(n, nodes_)
+      foreach_local_node(n, nodes) {
+        if (island_number.ptr[n] >= 0) {
+          ++island_area[ (int) island_number.ptr[n] ];
+        }
+      }
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+      // find the biggest liquid pool
+      int main_island = 0;
+      int island_area_max = island_area[0];
+
+      for (int i = 1; i < num_islands; ++i) {
+        if (island_area[i] > island_area_max) {
+          main_island     = i;
+          island_area_max = island_area[i];
+        }
+      }
+
+      if (main_island < 0) throw;
+
+      // solidify all but the biggest pool
+      foreach_node(n, nodes) {
+        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
+          front_phi_tmp.ptr[n] = new_phi_val;
+        }
+      }
+
+      island_number.restore_array();
+      front_phi_tmp.restore_array();
+
+      // TODO: make the decision whether to solidify a liquid pool or not independently
+      // for each pool based on its size and shape
+    }
+
+    island_number.destroy();
+
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+    VecShiftGhost(front_phi_tmp.vec, -shift);
+
+    // "solidify" nodes that changed sign
+    phi.get_array();
+    front_phi_tmp.get_array();
+
+    foreach_node(n, nodes) {
+      if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
+//        double blending = smoothstep(2, front_phi_tmp.ptr[n]/shift);
+//        front_phi_cur.ptr[n] = blending*front_phi_cur.ptr[n] + (1.-blending)*front_phi_tmp.ptr[n];
+        phi.ptr[n] = front_phi_tmp.ptr[n];
+        num_nodes_smoothed++;
+      }
+    }
+
+    phi.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+  }
+
+  if (proximity_smoothing_ > 0) { // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
+    // shift level-set downwards and reinitialize
+    my_p4est_level_set_t ls(ngbd);
+    vec_and_ptr_t front_phi_tmp(phi.vec);
+    double shift = -0.1*dxyz_min_*proximity_smoothing_;
+    VecCopyGhost(phi.vec, front_phi_tmp.vec);
+    VecShiftGhost(front_phi_tmp.vec, shift);
+
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+    VecShiftGhost(front_phi_tmp.vec, -shift);
+
+    // "solidify" nodes that changed sign
+    phi.get_array();
+    front_phi_tmp.get_array();
+
+    foreach_node(n, nodes) {
+      if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
+        phi.ptr[n] = front_phi_tmp.ptr[n];
+        num_nodes_smoothed++;
+      }
+    }
+
+    phi.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+  }
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
+
+  vec_and_ptr_t front_phi_tmp;
+  front_phi_tmp.set(phi.vec);
+
+  // third pass: look for isolated pools of liquid and remove them
+  if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+  {
+    ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
+    int num_islands = 0;
+    vec_and_ptr_t island_number(phi.vec);
+
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+
+    if (num_islands > 1)
+    {
+      ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
+      island_number.get_array();
+      front_phi_tmp.get_array();
+
+      // compute liquid pools areas
+      // TODO: make it real area instead of number of points
+      std::vector<double> island_area(num_islands, 0);
+
+      foreach_local_node(n, nodes)
       {
         if (island_number.ptr[n] >= 0)
         {
@@ -3565,7 +3798,7 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neig
         }
       }
 
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
 
       // find the biggest liquid pool
       int main_island = 0;
@@ -3583,7 +3816,7 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neig
       if (main_island < 0) throw;
 
       // solidify all but the biggest pool
-      foreach_node(n, nodes_)
+      foreach_node(n, nodes)
       {
         if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island)
         {
@@ -3603,14 +3836,40 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, my_p4est_node_neig
 
 //  front_phi_cur.destroy();
 //  front_phi_cur.set(front_phi_tmp.vec);
-  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
-  front_phi_tmp.destroy();
-  front_phi_.set(front_phi_cur.vec);
+//  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
+//  front_phi_tmp.destroy();
 
+  // iterpolate back onto fine grid
+//  if (front_smoothing_ != 0)
+//  {
+//    my_p4est_level_set_t ls(ngbd);
+//    ls.reinitialize_2nd_order(phi.vec, 20);
 
-  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+//    my_p4est_interpolation_nodes_t interp(ngbd_cur);
+
+//    double xyz[P4EST_DIM];
+//    foreach_node(n, nodes_)
+//    {
+//      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+//      interp.add_point(n, xyz);
+//    }
+
+//    interp.set_input(front_phi_cur.vec, quadratic);
+//    interp.interpolate(front_phi_.vec);
+
+//    front_phi_cur.destroy();
+//    delete ngbd_cur;
+//    delete hierarchy_cur;
+//    p4est_nodes_destroy(nodes_cur);
+//    p4est_ghost_destroy(ghost_cur);
+//    p4est_destroy(p4est_cur);
+//  } else {
+//    phi.set(front_phi_cur.vec);
+//  }
+
+  ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log__regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SAVING TO VTK:
 // --------------------------------------------------------------------------------------------------------------
@@ -5127,9 +5386,13 @@ int main(int argc, char** argv) {
         compute_curvature(phi,normal,curvature,ngbd_np1,ls_new_new); // TO-DO: don't need to do this for coupled problem example
 
         // Feed the curvature computed to the interfacial boundary condition:
-        if((example_ !=COUPLED_PROBLEM_EXAMPLE) && (example_ != COUPLED_TEST_2)){
+        if((example_ ==ICE_AROUND_CYLINDER) || (example_ == DENDRITE_TEST)){
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
+            if(example_ == DENDRITE_TEST){
+              bc_interface_val_temp[d]->set_normals(ngbd_np1,normal.vec[0],normal.vec[1]);
+
+            }
           }
         }
         // -------------------------------
@@ -5233,9 +5496,12 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed
         // -------------------------------
-        if((example_ != COUPLED_PROBLEM_EXAMPLE)&& (example_ != COUPLED_TEST_2)){
+        if((example_ == ICE_AROUND_CYLINDER)|| (example_ == DENDRITE_TEST)){
           for(unsigned char d=0;d<2;++d){
             bc_interface_val_temp[d]->clear();
+            if(example_ == DENDRITE_TEST){
+              bc_interface_val_temp[d]->clear_normals();
+            }
           }
         }
       } // end of "if solve stefan"
