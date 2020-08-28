@@ -577,7 +577,8 @@ int select_stefan_formulation(){
     }
   case NS_GIBOU_EXAMPLE:
   case FLOW_PAST_CYLINDER:
-    break; // no stefan here
+    return NONDIM_YES_FLUID;
+    break; // no stefan here, but nondim used for NS stuff alone as well
 
   case COUPLED_PROBLEM_EXAMPLE:
   case COUPLED_TEST_2:
