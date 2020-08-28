@@ -759,49 +759,10 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   divergence_free_projector->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL /* mass_flux times jump of inverse mass density */);
   divergence_free_projector->solve(ksp, pc);
 
+  // extrapolate the solutions from either side so that the projection can be done for ghost-values velocities, as well
+  const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
+  divergence_free_projector->extrapolate_solution_from_either_side_to_the_other(niter);
   divergence_free_projector->project_face_velocities(faces_n);
-
-  PetscErrorCode ierr;
-  double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGetArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]); CHKERRXX(ierr);
-  }
-
-  // layer faces, first
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
-    for (size_t k = 0; k < faces_n->get_layer_size(dim); ++k)
-    {
-      const p4est_locidx_t f_idx = faces_n->get_layer_face(dim, k);
-      const char sgn_face = sgn_of_face(f_idx, dim);
-      double *vface_this_side = (sgn_face < 0 ? vnp1_face_minus_p[dim]  : vnp1_face_plus_p[dim]);
-      double *vface_across    = (sgn_face < 0 ? vnp1_face_plus_p[dim]   : vnp1_face_minus_p[dim]);
-      P4EST_ASSERT(fabs(vface_this_side[f_idx]) < threshold_dbl_max);
-      vface_across[f_idx] = vface_this_side[f_idx];
-    }
-    // start the ghost updates
-    ierr = VecGhostUpdateBegin(vnp1_face_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vnp1_face_plus[dim], INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
-  }
-  // inner faces, second
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
-    for (size_t k = 0; k < faces_n->get_local_size(dim); ++k)
-    {
-      const p4est_locidx_t f_idx = faces_n->get_local_face(dim, k);
-      const char sgn_face = sgn_of_face(f_idx, dim);
-      double *vface_this_side = (sgn_face < 0 ? vnp1_face_minus_p[dim]  : vnp1_face_plus_p[dim]);
-      double *vface_across    = (sgn_face < 0 ? vnp1_face_plus_p[dim]   : vnp1_face_minus_p[dim]);
-      P4EST_ASSERT(fabs(vface_this_side[f_idx]) < threshold_dbl_max);
-      vface_across[f_idx] = vface_this_side[f_idx];
-    }
-    // start the ghost updates
-    ierr = VecGhostUpdateEnd(vnp1_face_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vnp1_face_plus[dim], INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
-  }
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecRestoreArray(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]); CHKERRXX(ierr);
-  }
 
   return;
 }
