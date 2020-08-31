@@ -619,6 +619,9 @@ void set_nondimensional_groups(){
    else{
      time_nondim_to_dim = 1.;
    };
+   if((example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE) || (example_ == FRANK_SPHERE) ){
+     St = 1.0;
+   }
 }
 
 // ---------------------------------------
@@ -667,8 +670,8 @@ void simulation_time_info(){
 //      dt = 1.e-3;
       break;
     case COUPLED_TEST_2:
-      tfinal = 0.5;//1.;
-      dt_max_allowed=1.0e-2;
+      tfinal = 0.75;//1.;
+      dt_max_allowed=1.0e-1;
       tstart=0.0;
       break;
     case DENDRITE_TEST:
@@ -1357,14 +1360,15 @@ public:
 
         P4EST_ASSERT(min_idx>-1 && min_idx<4);
         double sigma_new = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
-        return theta_interface*(1. - (sigma_new/d_val)*(*kappa_interp)(x,y));
+        return theta_interface*(1. - (sigma_new/d_val)*(*kappa_interp)(x,y))- (Tinterface/deltaT)*(sigma/d_val)*(*kappa_interp)(x,y);
       }
       case ICE_AROUND_CYLINDER: {
+        double interface_val = theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y)) - (T_cyl/deltaT)*(sigma/d_val)*(*kappa_interp)(x,y);
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-          return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y)));
+          return ramp_BC(theta_wall,interface_val/*theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y))*/);
         }
-        else return theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y));
+        else return interface_val;//theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y));
       }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
@@ -1489,7 +1493,9 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
     }
     case COUPLED_TEST_2:{
-      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
+
+//      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
   }
 };
@@ -1510,7 +1516,9 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
     case COUPLED_TEST_2:{
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
+
+//      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
     case FRANK_SPHERE:{
       throw std::runtime_error("dirichlet velocity walls: invalid example: frank sphere");
@@ -2866,6 +2874,11 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   double dt_computed;
   dt_computed = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
   dt = min(dt_computed,dt_max_allowed);
+
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+    double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
+    dt = tfinal/N;
+  }
 
   v_interface_max_norm = global_max_vnorm;
 }
@@ -4279,7 +4292,6 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
     vorticity.restore_array();
   }
 
-
   // Restore arrays:
   vn_analytical.restore_array(); vn_error.restore_array(); v_NS.restore_array();
   pn_analytical.restore_array(); press_error.restore_array(); press.restore_array();
@@ -4350,9 +4362,8 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
     save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
 
     if(example_ == ICE_AROUND_CYLINDER)phi_cylinder.destroy();
-
+    if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
   }
-  if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
 };
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
@@ -5816,17 +5827,17 @@ int main(int argc, char** argv) {
           save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
         }
       if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
-        const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
+        const char* out_dir_coupled = getenv("OUT_DIR_VTK");
 
         char output[1000];
         PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
         sprintf(output,"%s/snapshot_coupled_test_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
-        if(true/*tstep>0*/){
-          PetscPrintf(mpi.comm(),"Saving coupled problem example \n");
-          save_coupled_test_case(p4est_np1,nodes_np1,ghost_np1,phi,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_coupled_errors,fich_coupled_errors); // Don't check first timestep bc have not computed velocity yet
-        }
+        PetscPrintf(mpi.comm(),"Saving coupled problem example \n");
+        save_coupled_test_case(p4est_np1,nodes_np1,ghost_np1,phi,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_coupled_errors,fich_coupled_errors); // Don't check first timestep bc have not computed velocity yet
+        PetscPrintf(mpi.comm(),"Coupled test case saved \n");
+
       }
       if(example_ == FRANK_SPHERE){
           const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
@@ -5910,12 +5921,16 @@ int main(int argc, char** argv) {
 
       // Clip time and switch vel direction for coupled problem example:
       if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
-        if((tn+dt > tfinal/2.0) && !vel_has_switched){
-          dt = max((tfinal/2.0) - tn,dt_min_allowed);
+        if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
+          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
+            PetscPrintf(mpi.comm(),"uneven situation \n");
+            dt = (tfinal/2.) - tn;
+          }
           PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n",coupled_test_sign);
           coupled_test_switch_sign();
           vel_has_switched=true;
-          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n",coupled_test_sign);
+          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n dt : %e \n",coupled_test_sign,dt);
+
         }
       }
 
