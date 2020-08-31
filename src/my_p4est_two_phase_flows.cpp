@@ -12,6 +12,20 @@
 #include <src/my_p4est_solve_lsqr.h>
 #endif
 
+#ifndef CASL_LOG_EVENTS
+#undef PetscLogEventBegin
+#undef PetscLogEventEnd
+#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
+#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
+#else
+extern PetscLogEvent log_my_p4est_two_phase_flows_update;
+extern PetscLogEvent log_my_p4est_two_phase_flows_solve_pressure_guess;
+extern PetscLogEvent log_my_p4est_two_phase_flows_solve_projection;
+extern PetscLogEvent log_my_p4est_two_phase_flows_compute_backtracing;
+extern PetscLogEvent log_my_p4est_two_phase_flows_solve_viscosity;
+extern PetscLogEvent log_my_p4est_two_phase_flows_interpolate_velocity_at_nodes;
+#endif
+
 void my_p4est_two_phase_flows_t::splitting_criteria_computational_grid_two_phase_t::
 tag_quadrant(p4est_t *p4est_np1, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_nodes_t* nodes_np1,
              const double *phi_np1_on_computational_nodes_p,
@@ -686,7 +700,10 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
 {
   if(pressure_guess_is_set)
     return;
-  /* Make the two-phase velocity field divergence free : */
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_pressure_guess, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  /* Solve for the pressure guess: */
   compute_pressure_jump();
 
   if(pressure_guess_solver == NULL)
@@ -708,7 +725,6 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
   pressure_guess_solver->set_jumps(pressure_jump, NULL);
   pressure_guess_solver->solve(ksp, pc);
 
-  PetscErrorCode ierr;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     if(grad_p_guess_over_rho_minus[dim] == NULL){
       ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dim], dim); CHKERRXX(ierr); }
@@ -719,6 +735,8 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
   pressure_guess_solver->get_flux_components(grad_p_guess_over_rho_minus, grad_p_guess_over_rho_plus, faces_n);
 
   pressure_guess_is_set = true;
+
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_pressure_guess, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
 
@@ -730,6 +748,8 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
  */
 void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCType pc)
 {
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_projection, 0, 0, 0, 0); CHKERRXX(ierr);
   /* Make the two-phase velocity field divergence free : */
   if(divergence_free_projector == NULL)
   {
@@ -763,6 +783,7 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   divergence_free_projector->extrapolate_solution_from_either_side_to_the_other(niter);
   divergence_free_projector->project_face_velocities(faces_n);
 
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_projection, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
 
@@ -1092,10 +1113,14 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
     solve_for_pressure_guess((cell_jump_solver_to_use == FV ? KSPBCGS : KSPCG), PCHYPRE);
   create_vnp1_face_vectors_if_needed();
   compute_backtraced_velocities();
+
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
   viscosity_solver.set_diagonals(BDF_alpha()*rho_minus/dt_n, BDF_alpha()*rho_plus/dt_n);
   viscosity_solver.solve();
   const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
   viscosity_solver.extrapolate_face_velocities_across_interface(vnp1_face_minus, vnp1_face_plus, niter);
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
 
@@ -2015,6 +2040,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::face_velocity_extrapolation_l
 void my_p4est_two_phase_flows_t::compute_velocities_at_nodes()
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_interpolate_velocity_at_nodes, 0, 0, 0, 0); CHKERRXX(ierr);
 
   if(vnp1_nodes_minus == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &vnp1_nodes_minus); CHKERRXX(ierr); }
@@ -2051,6 +2077,8 @@ void my_p4est_two_phase_flows_t::compute_velocities_at_nodes()
     ierr = VecRestoreArrayRead(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(vnp1_face_plus[dir],   &vnp1_face_plus_p[dir]);  CHKERRXX(ierr);
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_interpolate_velocity_at_nodes, 0, 0, 0, 0); CHKERRXX(ierr);
 
 //  TVD_extrapolation_of_np1_node_velocities();
   compute_vorticities();
@@ -2486,6 +2514,9 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
 {
   if(semi_lagrangian_backtrace_is_done)
     return;
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_compute_backtracing, 0, 0, 0, 0); CHKERRXX(ierr);
+
   P4EST_ASSERT((vnm1_nodes_minus_xxyyzz == NULL && vnm1_nodes_plus_xxyyzz == NULL && vn_nodes_minus_xxyyzz == NULL && vn_nodes_plus_xxyyzz == NULL) ||
                (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL));
 
@@ -2653,6 +2684,7 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
     }
   }
   semi_lagrangian_backtrace_is_done = true;
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_compute_backtracing, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
 
@@ -2814,6 +2846,7 @@ void my_p4est_two_phase_flows_t::sample_static_levelset_on_nodes(const p4est_t *
 void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset, const bool& static_interface)
 {
   PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
   if(!dt_updated)
     compute_dt();
@@ -3276,6 +3309,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
       voro_cell[dir].resize(faces_n->num_local[dir]);
     }
   }
+
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return;
 }
