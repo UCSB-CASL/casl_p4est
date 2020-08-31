@@ -27,7 +27,7 @@ tag_quadrant(p4est_t *p4est_np1, const p4est_locidx_t& quad_idx, const p4est_top
     quad->p.user_int = COARSEN_QUADRANT;
   else
   {
-    double inv_quad_scal            = 1.0/((double) (1 << quad->level));
+    const double inv_quad_scal      = 1.0/((double) (1 << quad->level));
     const double quad_diag          = owner->tree_diagonal*inv_quad_scal;
     const double quad_dxyz_max      = MAX(DIM(owner->tree_dimension[0], owner->tree_dimension[1], owner->tree_dimension[2]))*inv_quad_scal;
     const double smallest_dxyz_max  = MAX(DIM(owner->dxyz_smallest_quad[0], owner->dxyz_smallest_quad[1], owner->dxyz_smallest_quad[2]));
@@ -130,7 +130,7 @@ refine_and_coarsen(p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
 {
   const double *phi_np1_on_computational_nodes_p, *vorticity_magnitude_np1_on_computational_nodes_minus_p, *vorticity_magnitude_np1_on_computational_nodes_plus_p;
   PetscErrorCode ierr;
-  ierr = VecGetArrayRead(phi_np1_on_computational_nodes,              &phi_np1_on_computational_nodes_p);             CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_np1_on_computational_nodes,                        &phi_np1_on_computational_nodes_p);                       CHKERRXX(ierr);
   ierr = VecGetArrayRead(vorticity_magnitude_np1_on_computational_nodes_minus,  &vorticity_magnitude_np1_on_computational_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(vorticity_magnitude_np1_on_computational_nodes_plus,   &vorticity_magnitude_np1_on_computational_nodes_plus_p);  CHKERRXX(ierr);
 
@@ -146,7 +146,7 @@ refine_and_coarsen(p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
   my_p4est_coarsen(p4est_np1, P4EST_FALSE, coarsen_fn, init_fn);
   my_p4est_refine (p4est_np1, P4EST_FALSE, refine_fn,  init_fn);
 
-  int is_grid_changed = false; // "int" cause of MPI_Allreduce thereafter
+  bool is_grid_changed = false;
   for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
     p4est_tree_t* tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
@@ -159,11 +159,11 @@ refine_and_coarsen(p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
   }
 
 function_end:
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est_np1->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_CXX_BOOL, MPI_LOR, p4est_np1->mpicomm); SC_CHECK_MPI(mpiret);
 
   ierr = VecRestoreArrayRead(vorticity_magnitude_np1_on_computational_nodes_plus,   &vorticity_magnitude_np1_on_computational_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vorticity_magnitude_np1_on_computational_nodes_minus,  &vorticity_magnitude_np1_on_computational_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(phi_np1_on_computational_nodes,              &phi_np1_on_computational_nodes_p);             CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_np1_on_computational_nodes,                        &phi_np1_on_computational_nodes_p);                       CHKERRXX(ierr);
 
   return is_grid_changed;
 }
@@ -200,7 +200,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     dxyz_smallest_quad[dim] = tree_dimension[dim]/((double) (1 << interface_manager->get_max_level_computational_grid()));
     periodicity[dim]        = is_periodic(p4est_n, dim);
   }
-  tree_diagonal = sqrt(SUMD(SQR(tree_dimension[0]), SQR(tree_dimension[1]), SQR(tree_dimension[2])));
+  tree_diagonal = ABSD(tree_dimension[0], tree_dimension[1], tree_dimension[2]);
+  smallest_diagonal = ABSD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]);
 
   dt_nm1 = dt_n = 0.5*MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
 
@@ -392,8 +393,8 @@ void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, c
     phi_on_computational_nodes = phi_on_interface_capturing_nodes; // the interface-manager figures it out for itself, like a big boy!
   else if(phi_on_computational_nodes_ != NULL)
   {
-    if(phi_on_computational_nodes != phi_on_computational_nodes_)
-      delete_and_nullify_vector(phi_on_computational_nodes);
+    if(phi_on_computational_nodes != phi_on_computational_nodes_){
+      ierr =  delete_and_nullify_vector(phi_on_computational_nodes); CHKERRXX(ierr); }
     phi_on_computational_nodes = phi_on_computational_nodes_;
     interface_manager->set_under_resolved_levelset(phi_on_computational_nodes);
   }
@@ -522,6 +523,11 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
   if(pressure_jump == NULL)
     interface_manager->create_vector_on_interface_capturing_nodes(pressure_jump);
 
+
+  /* HOW TO MAKE SURE WE TAKE [2\mu n \cdot E \cdot n] into account, in general?
+   * irrelevant so long as mu_minus and mu_plus are equal, but we'll need to address that, eventually
+   */
+
   // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density + [2\mu n \cdot E \cdot n]
   // and we use [2\mu n\cdot E\cdot n] = 2*[\mu] n_cdot_grad_u_minus_or_plus_cdot_n + 2*mu_plus_or_minus*(-curvature*mass_flux*jump_of_inverse_mass_density)
   // (proof in our summary of equations)
@@ -610,7 +616,7 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
   if(fabs(surface_tension) > EPS || mass_flux_p != NULL)
   {
     if(!interface_manager->is_curvature_set())
-      interface_manager->set_curvature(); // Maybe we'd want to flatten it... -> to be tested!
+      interface_manager->set_curvature(); // Maybe we'd want to flatten it...
 
     ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
   }
@@ -697,7 +703,8 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
   pressure_guess_solver->set_interface(interface_manager);
   pressure_guess_solver->set_diagonals(0.0, 0.0);
   pressure_guess_solver->set_mus(1.0/rho_minus, 1.0/rho_plus);
-  pressure_guess_solver->set_bc(*bc_pressure);
+  if(bc_pressure != NULL)
+    pressure_guess_solver->set_bc(*bc_pressure);
   pressure_guess_solver->set_jumps(pressure_jump, NULL);
   pressure_guess_solver->solve(ksp, pc);
 
@@ -860,6 +867,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
     ierr = VecRestoreArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vn_faces); CHKERRXX(ierr);
   }
+  return;
 }
 
 double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const u_char &dir, const double *vn_dir_p)
@@ -913,7 +921,7 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
       size_t k = mod(m - 1, points->size());
       const double surface = ((*partition)[m] - (*partition)[k]).norm_L2();
 #endif
-      const double distance_to_neighbor = sqrt(SUMD(SQR((*points)[m].p.x - xyz_face[0]), SQR((*points)[m].p.y - xyz_face[1]), SQR((*points)[m].p.z - xyz_face[2])));
+      const double distance_to_neighbor = ABSD((*points)[m].p.x - xyz_face[0], (*points)[m].p.y - xyz_face[1], (*points)[m].p.z - xyz_face[2]);
       const double& mu_this_side = (sgn_face < 0 ? mu_minus : mu_plus);
       switch ((*points)[m].n) {
       case WALL_m00:
@@ -1209,7 +1217,11 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver(const u_c
        * "0 "gives better convergence rate (in 3D).
        * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
       */
+#ifdef P4_TO_P8
       ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.5"); CHKERRXX(ierr);
+#else
+      ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.25"); CHKERRXX(ierr);
+#endif
 
       /* 2- Coarsening type
        * Available Options:
@@ -1584,7 +1596,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
         size_t k = mod(m - 1, points->size());
         const double surface = ((*partition)[m] - (*partition)[k]).norm_L2();
 #endif
-        const double distance_to_neighbor = sqrt(SUMD(SQR((*points)[m].p.x - xyz_face[0]), SQR((*points)[m].p.y - xyz_face[1]), SQR((*points)[m].p.z - xyz_face[2])));
+        const double distance_to_neighbor = ABSD((*points)[m].p.x - xyz_face[0], (*points)[m].p.y - xyz_face[1], (*points)[m].p.z - xyz_face[2]);
         const double mu_this_side = (sgn_face < 0 ? env->mu_minus : env->mu_plus);
 
         switch((*points)[m].n)
@@ -2176,7 +2188,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
           nb[i].insert(logical_qcoord_diff[i]);
         }
 
-        const double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
+        const double w = MAX(min_w, 1./MAX(inv_max_w, ABSD(xyz_t[0], xyz_t[1], xyz_t[2])));
 
         rhs_lsqr[row_idx] = 0.0;
         col_idx = 0;
@@ -2222,13 +2234,12 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
   }
 
 
-  if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) <= 0.0)
+  if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
     max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
-  if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) > 0.0)
+  if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
     max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
   return;
 }
-
 
 void my_p4est_two_phase_flows_t::TVD_extrapolation_of_np1_node_velocities(const u_int& niterations, const u_char& order)
 {
@@ -2281,7 +2292,7 @@ void my_p4est_two_phase_flows_t::TVD_extrapolation_of_np1_node_velocities(const 
       else
       {
         P4EST_ASSERT(phi_on_computational_nodes_p == NULL && grad_phi_p != NULL);
-        const double magnitude = sqrt(SUMD(SQR(grad_phi_p[P4EST_DIM*node_idx]), SQR(grad_phi_p[P4EST_DIM*node_idx + 1]), SQR(grad_phi_p[P4EST_DIM*node_idx + 2])));
+        const double magnitude = ABSD(grad_phi_p[P4EST_DIM*node_idx], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
         for (u_char dim = 0; dim < P4EST_DIM; ++dim)
           normal_vector_p[dim][node_idx] = (magnitude > EPS ? grad_phi_p[P4EST_DIM*node_idx + dim]/magnitude : 0.0);
       }
@@ -2418,7 +2429,6 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
       const double* velocity_gradient = (sgn < 0 ? velocity_gradient_minus      : velocity_gradient_plus);
       double *vorticity_magnitude_p   = (sgn < 0 ? vorticity_magnitude_minus_p  : vorticity_magnitude_plus_p);
 #ifdef P4_TO_P8
-      vorticity_magnitude_p[node_idx] = 0.0;
       vorticity_magnitude_p[node_idx] = sqrt(SQR(velocity_gradient[P4EST_DIM*dir::y + dir::x] - velocity_gradient[P4EST_DIM*dir::x + dir::y])
           + SQR(velocity_gradient[P4EST_DIM*dir::x + dir::z] - velocity_gradient[P4EST_DIM*dir::z + dir::x])
           + SQR(velocity_gradient[P4EST_DIM*dir::z + dir::y] - velocity_gradient[P4EST_DIM*dir::y + dir::z]));
@@ -2534,7 +2544,7 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
 
   /* first find the velocity at the np1 points */
   my_p4est_interpolation_nodes_t interp_np1_plus(ngbd_n), interp_np1_minus(ngbd_n);
-  bool use_second_derivatives = (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL);
+  const bool use_second_derivatives = (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL);
   p4est_locidx_t serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     serialized_offset += faces_n->num_local[dir];

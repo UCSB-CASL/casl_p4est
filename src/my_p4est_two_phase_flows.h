@@ -88,7 +88,7 @@ private:
   double tree_dimension[P4EST_DIM];
   double dxyz_smallest_quad[P4EST_DIM];
   bool periodicity[P4EST_DIM];
-  double tree_diagonal;
+  double tree_diagonal, smallest_diagonal;
 
   double surface_tension;
   double mu_plus, mu_minus;
