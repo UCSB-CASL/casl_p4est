@@ -806,325 +806,325 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   return;
 }
 
-void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
-{
-  PetscErrorCode ierr;
+//void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
+//{
+//  PetscErrorCode ierr;
 
-  /* construct the right hand side */
-  compute_backtraced_velocities();
-  my_p4est_interpolation_nodes_t interp_n_minus(ngbd_n), interp_n_plus(ngbd_n);
-  interp_n_minus.set_input(vn_nodes_minus, vn_nodes_minus_xxyyzz, quadratic, P4EST_DIM);
-  interp_n_plus.set_input(vn_nodes_plus, vn_nodes_plus_xxyyzz, quadratic, P4EST_DIM);
-  const double alpha = BDF_alpha();
-  const double beta = BDF_beta();
-  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
-  {
-    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
-    {
-      double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz_face);
-      const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
-      if(sgn_face < 0)
-        interp_n_minus.add_point(f_idx, xyz_face);
-      else
-        interp_n_plus.add_point(f_idx, xyz_face);
-    }
-    Vec vn_faces;
-    double *vn_faces_p;
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vn_faces, dir); CHKERRXX(ierr);
-    ierr = VecGetArray(vn_faces, &vn_faces_p);                    CHKERRXX(ierr);
-    interp_n_minus.interpolate(vn_faces_p, dir);  interp_n_minus.clear();
-    interp_n_plus.interpolate(vn_faces_p, dir);   interp_n_plus.clear();
+//  /* construct the right hand side */
+//  compute_backtraced_velocities();
+//  my_p4est_interpolation_nodes_t interp_n_minus(ngbd_n), interp_n_plus(ngbd_n);
+//  interp_n_minus.set_input(vn_nodes_minus, vn_nodes_minus_xxyyzz, quadratic, P4EST_DIM);
+//  interp_n_plus.set_input(vn_nodes_plus, vn_nodes_plus_xxyyzz, quadratic, P4EST_DIM);
+//  const double alpha = BDF_alpha();
+//  const double beta = BDF_beta();
+//  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
+//  {
+//    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
+//    {
+//      double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz_face);
+//      const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+//      if(sgn_face < 0)
+//        interp_n_minus.add_point(f_idx, xyz_face);
+//      else
+//        interp_n_plus.add_point(f_idx, xyz_face);
+//    }
+//    Vec vn_faces;
+//    double *vn_faces_p;
+//    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vn_faces, dir); CHKERRXX(ierr);
+//    ierr = VecGetArray(vn_faces, &vn_faces_p);                    CHKERRXX(ierr);
+//    interp_n_minus.interpolate(vn_faces_p, dir);  interp_n_minus.clear();
+//    interp_n_plus.interpolate(vn_faces_p, dir);   interp_n_plus.clear();
 
-    ierr = VecGhostUpdateBegin(vn_faces, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vn_faces, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(vn_faces, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(vn_faces, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
 
-    create_vnp1_face_vectors_if_needed();
-    double *vstar_minus_p, *vstar_plus_p;
-    ierr = VecGetArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_face_plus[dir], &vstar_plus_p);   CHKERRXX(ierr);
-    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
-    {
-      double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz_face);
-      const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
-      double *vstar_p = (sgn_face < 0.0 ? vstar_minus_p : vstar_plus_p);
-      const double& rho_face = (sgn_face < 0.0 ? rho_minus : rho_plus);
-      const std::vector<double>& backtraced_vn    = (sgn_face < 0 ? backtraced_vn_faces_minus[dir] : backtraced_vn_faces_plus[dir]);
-      const std::vector<double>* backtraced_vnm1  = (sl_order == 2 ?  (sgn_face < 0 ? &backtraced_vnm1_faces_minus[dir] : &backtraced_vnm1_faces_plus[dir]) : NULL);
-      if(face_is_dirichlet_wall(f_idx, dir))
-      {
-        vstar_p[f_idx] = bc_velocity[dir].wallValue(xyz_face);
-        continue;
-      }
+//    create_vnp1_face_vectors_if_needed();
+//    double *vstar_minus_p, *vstar_plus_p;
+//    ierr = VecGetArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(vnp1_face_plus[dir], &vstar_plus_p);   CHKERRXX(ierr);
+//    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
+//    {
+//      double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz_face);
+//      const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+//      double *vstar_p = (sgn_face < 0.0 ? vstar_minus_p : vstar_plus_p);
+//      const double& rho_face = (sgn_face < 0.0 ? rho_minus : rho_plus);
+//      const std::vector<double>& backtraced_vn    = (sgn_face < 0 ? backtraced_vn_faces_minus[dir] : backtraced_vn_faces_plus[dir]);
+//      const std::vector<double>* backtraced_vnm1  = (sl_order == 2 ?  (sgn_face < 0 ? &backtraced_vnm1_faces_minus[dir] : &backtraced_vnm1_faces_plus[dir]) : NULL);
+//      if(face_is_dirichlet_wall(f_idx, dir))
+//      {
+//        vstar_p[f_idx] = bc_velocity[dir].wallValue(xyz_face);
+//        continue;
+//      }
 
-      const double viscous_term = div_mu_grad_u_dir(f_idx, dir, vn_faces_p);
-      vstar_p[f_idx] = + (dt_n/(alpha*rho_face))*viscous_term
-          + (1.0 - (beta*dt_n/(alpha*dt_nm1)))*backtraced_vn[f_idx]
-          + (sl_order == 2 ? (beta*dt_n/(alpha*dt_nm1))*(*backtraced_vnm1)[f_idx] : 0.0);
-      if (force_per_unit_mass[dir] != NULL)
-        vstar_p[f_idx] += (dt_n/alpha)*(*force_per_unit_mass[dir])(xyz_face);
-    }
-    ierr = VecRestoreArray(vnp1_face_plus[dir], &vstar_plus_p);   CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vn_faces); CHKERRXX(ierr);
-  }
-  return;
-}
+//      const double viscous_term = div_mu_grad_u_dir(f_idx, dir, vn_faces_p);
+//      vstar_p[f_idx] = + (dt_n/(alpha*rho_face))*viscous_term
+//          + (1.0 - (beta*dt_n/(alpha*dt_nm1)))*backtraced_vn[f_idx]
+//          + (sl_order == 2 ? (beta*dt_n/(alpha*dt_nm1))*(*backtraced_vnm1)[f_idx] : 0.0);
+//      if (force_per_unit_mass[dir] != NULL)
+//        vstar_p[f_idx] += (dt_n/alpha)*(*force_per_unit_mass[dir])(xyz_face);
+//    }
+//    ierr = VecRestoreArray(vnp1_face_plus[dir], &vstar_plus_p);   CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_face_minus[dir], &vstar_minus_p); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(vn_faces); CHKERRXX(ierr);
+//  }
+//  return;
+//}
 
-double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const u_char &dir, const double *vn_dir_p)
-{
-  const augmented_voronoi_cell my_cell = get_augmented_voronoi_cell(face_idx, dir);
-  double xyz_face[P4EST_DIM]; my_cell.voro.get_center_point(xyz_face);
-  const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
-  p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx;
-  faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
-#ifdef P4EST_DEBUG
-  const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, p4est_n, ghost_n);
-#endif
+//double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const u_char &dir, const double *vn_dir_p)
+//{
+//  const augmented_voronoi_cell my_cell = get_augmented_voronoi_cell(face_idx, dir);
+//  double xyz_face[P4EST_DIM]; my_cell.voro.get_center_point(xyz_face);
+//  const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+//  p4est_locidx_t quad_idx;
+//  p4est_topidx_t tree_idx;
+//  faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
+//#ifdef P4EST_DEBUG
+//  const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, p4est_n, ghost_n);
+//#endif
 
-  const u_char face_touch = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
-  P4EST_ASSERT(faces_n->q2f(quad_idx, face_touch) == face_idx);
-  p4est_quadrant_t qm, qp;
-  faces_n->find_quads_touching_face(face_idx, dir, qm, qp);
+//  const u_char face_touch = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
+//  P4EST_ASSERT(faces_n->q2f(quad_idx, face_touch) == face_idx);
+//  p4est_quadrant_t qm, qp;
+//  faces_n->find_quads_touching_face(face_idx, dir, qm, qp);
 
-  bool wall[P4EST_FACES];
-  for(u_char d = 0; d < P4EST_DIM; ++d)
-  {
-    if(d == dir)
-    {
-      wall[2*d]     = qm.p.piggy3.local_num == -1;
-      wall[2*d + 1] = qp.p.piggy3.local_num == -1;
-    }
-    else
-    {
-      wall[2*d]     = (qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qm.p.piggy3.which_tree, &qm, 2*d    )) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qp.p.piggy3.which_tree, &qp, 2*d));
-      wall[2*d + 1] = (qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qm.p.piggy3.which_tree, &qm, 2*d + 1)) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qp.p.piggy3.which_tree, &qp, 2*d + 1));
-    }
-  }
-
-
-  const vector<ngbdDIMseed> *points;
-#ifndef P4_TO_P8
-  const vector<Point2> *partition;
-  my_cell.voro.get_partition(partition);
-#endif
-  my_cell.voro.get_neighbor_seeds(points);
-  const double volume = my_cell.voro.get_volume();
-
-  double to_return = 0.0;
-  if(!my_cell.has_neighbor_across || (my_cell.cell_type != parallelepiped_no_wall && my_cell.cell_type != parallelepiped_with_wall))
-  {
-    for (size_t m = 0; m < points->size(); ++m) {
-#ifdef P4_TO_P8
-      const double surface = (*points)[m].s;
-#else
-      size_t k = mod(m - 1, points->size());
-      const double surface = ((*partition)[m] - (*partition)[k]).norm_L2();
-#endif
-      const double distance_to_neighbor = ABSD((*points)[m].p.x - xyz_face[0], (*points)[m].p.y - xyz_face[1], (*points)[m].p.z - xyz_face[2]);
-      const double& mu_this_side = (sgn_face < 0 ? mu_minus : mu_plus);
-      switch ((*points)[m].n) {
-      case WALL_m00:
-      case WALL_p00:
-      case WALL_0m0:
-      case WALL_0p0:
-#ifdef P4_TO_P8
-      case WALL_00m:
-      case WALL_00p:
-#endif
-      {
-        char wall_orientation = -1 - (*points)[m].n;
-        P4EST_ASSERT(wall_orientation >= 0 && wall_orientation < P4EST_FACES);
-        double wall_eval[P4EST_DIM];
-        const double lambda = ((wall_orientation%2 == 1 ? xyz_max[wall_orientation/2] : xyz_min[wall_orientation/2]) - xyz_face[wall_orientation/2])/((*points)[m].p.xyz(wall_orientation/2) - xyz_face[wall_orientation/2]);
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-          if(dim == wall_orientation/2)
-            wall_eval[dim] = (wall_orientation%2 == 1 ? xyz_max[wall_orientation/2] : xyz_min[wall_orientation/2]); // on the wall of interest
-          else
-            wall_eval[dim] = MIN(MAX(xyz_face[dim] + lambda*((*points)[m].p.xyz(dim) - xyz_face[dim]), xyz_min[dim] + 2.0*EPS*(xyz_max[dim] - xyz_min[dim])), xyz_max[dim] - 2.0*EPS*(xyz_max[dim] - xyz_min[dim])); // make sure it's indeed inside, just to be safe in case the bc object needs that
-        }
-        switch(bc_velocity[dir].wallType(wall_eval))
-        {
-        case DIRICHLET:
-        {
-          if(dir == wall_orientation/2)
-            throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: cannot be called on Dirichlet wall faces...");
-
-          const bool across = my_cell.has_neighbor_across && (sgn_of_wall_neighbor_of_face(face_idx, dir, wall_orientation, wall_eval) != sgn_face);
-          // WARNING distance_to_neighbor is actually *twice* what we would need here, hence the "0.5*" factors here under!
-          if(!across)
-            to_return += mu_this_side*surface*(bc_velocity[dir].wallValue(wall_eval) /*+ interp_dxyz_hodge(wall_eval)*/ - vn_dir_p[face_idx])/(0.5*distance_to_neighbor);
-          else
-          {
-            const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, (*points)[m].n, dir, wall_orientation);
-            const double& mu_across = (sgn_face > 0 ? mu_minus : mu_plus);
-            const bool is_in_positive_domain = (sgn_face > 0);
-            to_return += (wall_orientation%2 == 1 ? +1.0 : -1.0)*surface*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, wall_orientation, is_in_positive_domain, vn_dir_p[face_idx], bc_velocity[dir].wallValue(wall_eval), 0.0, 0.0, 0.5*distance_to_neighbor);
-          }
-          break;
-        }
-        case NEUMANN:
-          if(sgn_face != sgn_of_wall_neighbor_of_face(face_idx, dir, wall_orientation, wall_eval))
-            throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: Neumann boundary condition to be imposed on a tranverse wall that lies across the interface, but the face has non-uniform neighbors : this is not implemented yet, sorry...");
-          to_return += mu_this_side*surface*(bc_velocity[dir].wallValue(wall_eval) /*+ (apply_hodge_second_derivative_if_neumann ? 0.0 : 0.0)*/);
-          break;
-        default:
-          throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a cell that is either one-sided or that has a neighbor across the interface but is not a parallelepiped regular --> not handled yet, TO BE DONE IF NEEDED.");
-        }
-        break;
-      }
-      case INTERFACE:
-        throw std::logic_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: a Voronoi seed neighbor was marked INTERFACE in a cell that is either one-sided or that has a neighbor across the interface but is not a parallelepiped regular. This must not happen in this solver, have you constructed your Voronoi cell using clip_interface()?");
-        break;
-      default:
-        // this is a regular face so
-        double xyz_face_neighbor[P4EST_DIM]; faces_n->xyz_fr_f((*points)[m].n, dir, xyz_face_neighbor);
-        const bool across = (my_cell.has_neighbor_across && sgn_face != (interface_manager->phi_at_point(xyz_face_neighbor) <= 0.0 ? -1 : +1));
-        if(!across)
-          to_return += mu_this_side*surface*(vn_dir_p[(*points)[m].n] - vn_dir_p[face_idx])/distance_to_neighbor;
-        else
-        {
-          // std::cerr << "This is bad: your grid is messed up here but, hey, I don't want to crash either..." << std::endl;
-          char neighbor_orientation = -1;
-          for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-            if(fabs(xyz_face_neighbor[dim] - xyz_face[dim]) > 0.1*dxyz_smallest_quad[dim])
-              neighbor_orientation = 2*dim + (xyz_face_neighbor[dim] - xyz_face[dim] > 0.0 ? 1 : 0);
-          P4EST_ASSERT(fabs(distance_to_neighbor - dxyz_smallest_quad[neighbor_orientation/2]) < 0.001*dxyz_smallest_quad[neighbor_orientation/2]);
-          const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, (*points)[m].n, dir, neighbor_orientation);
-          const double& mu_across = (sgn_face > 0 ? mu_minus : mu_plus);
-          const bool is_in_positive_domain = (sgn_face > 0);
-          to_return += (neighbor_orientation%2 == 1 ? +1.0 : -1.0)*surface*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, neighbor_orientation, is_in_positive_domain, vn_dir_p[face_idx], vn_dir_p[(*points)[m].n], 0.0, 0.0, distance_to_neighbor);
-        }
-      }
-    }
-  }
-  else
-  {
-    P4EST_ASSERT(my_cell.cell_type == parallelepiped_no_wall || my_cell.cell_type == parallelepiped_with_wall);
-    if(points->size() != P4EST_FACES)
-      throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: not the expected number of face neighbors for face with an interface neighbor...");
-    P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl)
-                 && (qp.p.piggy3.local_num == -1 || qp.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl));
-
-    P4EST_ASSERT(fabs(volume - (wall[2*dir] || wall[2*dir + 1] ? 0.5 : 1.0)*MULTD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])) < 0.001*(wall[2*dir] || wall[2*dir + 1] ? 0.5 : 1.0)*MULTD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])); // half the "regular" volume if the face is a NEUMANN wall face
-
-    for (u_char ff = 0; ff < P4EST_FACES; ++ff)
-    {
-      // get the face index of the direct face/wall neighbor
-      p4est_locidx_t neighbor_face_idx;
-      if(my_cell.cell_type == parallelepiped_no_wall)
-      {
-#ifndef P4_TO_P8
-        neighbor_face_idx = (*points)[face_order_to_counterclock_cycle_order[ff]].n;
-#else
-        neighbor_face_idx = (*points)[ff].n; // already ordered like this, in 3D
-#endif
-      }
-      else // the cell most probably has a wall neighbor, but it's a parallelepiped and it was build by built-in routines (not by hand)
-      {
-        // the voronoi cell was actually constructed by built-in routines, gathering neighbors etc.
-        // but it should still be locally uniform, maybe with wall(s). Let's re-order the neighbors as we need them
-        if(wall[ff])
-          neighbor_face_idx = WALL_idx(ff);
-        else if(ff/2 == dir)
-        {
-          p4est_locidx_t tmp_quad_idx = (ff%2 == 1 ? qp.p.piggy3.local_num : qm.p.piggy3.local_num);
-          P4EST_ASSERT(tmp_quad_idx != -1); // can't be, otherwise wall[ff] would be true...
-          neighbor_face_idx = faces_n->q2f(tmp_quad_idx, ff);
-        }
-        else
-        {
-          set_of_neighboring_quadrants ngbd;
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ff);
-          P4EST_ASSERT(ngbd.size() == 1 && ngbd.begin()->level == quad->level && ngbd.begin()->level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl);
-          neighbor_face_idx = faces_n->q2f(ngbd.begin()->p.piggy3.local_num, face_touch);
-        }
-#ifdef P4EST_DEBUG
-        // check if it was indeed in there for consistency!
-        bool found = false;
-        for (size_t k = 0; k < points->size() && !found; ++k)
-          found = ((*points)[k].n != neighbor_face_idx);
-        P4EST_ASSERT(found);
-#endif
-      }
+//  bool wall[P4EST_FACES];
+//  for(u_char d = 0; d < P4EST_DIM; ++d)
+//  {
+//    if(d == dir)
+//    {
+//      wall[2*d]     = qm.p.piggy3.local_num == -1;
+//      wall[2*d + 1] = qp.p.piggy3.local_num == -1;
+//    }
+//    else
+//    {
+//      wall[2*d]     = (qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qm.p.piggy3.which_tree, &qm, 2*d    )) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qp.p.piggy3.which_tree, &qp, 2*d));
+//      wall[2*d + 1] = (qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qm.p.piggy3.which_tree, &qm, 2*d + 1)) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est_n, qp.p.piggy3.which_tree, &qp, 2*d + 1));
+//    }
+//  }
 
 
-      // area between the current face and the direct neighbor
-      const double neighbor_area = ((wall[2*dir] || wall[2*dir + 1]) && ff/2 != dir ? 0.5 : 1.0)*dxyz_smallest_quad[(ff/2 + 1)%P4EST_DIM] ONLY3D(*dxyz_smallest_quad[(ff/2 + 2)%P4EST_DIM]);
-      // get the contribution of the direct neighbor to the discretization of the negative laplacian and add it to the matrix
-      if(neighbor_face_idx >= 0)
-      {
-        double xyz_neighbor_face[P4EST_DIM]; faces_n->xyz_fr_f(neighbor_face_idx, dir, xyz_neighbor_face);
-        const char sgn_neighbor_face = (interface_manager->phi_at_point(xyz_neighbor_face) <= 0.0 ? -1 : 1);
-        const bool across = (sgn_face != sgn_neighbor_face);
-        if(across)
-        {
-          const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dir, ff);
-          const double& mu_this_side  = (sgn_face < 0 ? mu_minus  : mu_plus);
-          const double& mu_across     = (sgn_face < 0 ? mu_plus   : mu_minus);
-          const bool is_in_positive_domain = (sgn_face > 0);
-          to_return += (ff%2 == 1 ? +1.0 : -1.0)*neighbor_area*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, vn_dir_p[face_idx], vn_dir_p[neighbor_face_idx], 0.0, 0.0, dxyz_smallest_quad[ff/2]);
-        }
-        else
-          to_return += ((sgn_face < 0 ? mu_minus : mu_plus)*neighbor_area/dxyz_smallest_quad[ff/2])*(vn_dir_p[neighbor_face_idx] - vn_dir_p[face_idx]);
-      }
-      else
-      {
-        P4EST_ASSERT(-1 - neighbor_face_idx == ff);
-        if(ff/2 == dir) // parallel wall --> the face itself is the wall --> it *cannot* be DIRICHLET
-        {
-          P4EST_ASSERT(wall[ff] && bc_velocity[dir].wallType(xyz_face) == NEUMANN); // the face is a wall face so it MUST be NEUMANN (non-DIRICHLET) boundary condition in that case
-          to_return += neighbor_area*bc_velocity[dir].wallValue(xyz_face);
-        }
-        else // it is a tranverse wall
-        {
-          double xyz_wall[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
-          xyz_wall[ff/2] = (ff%2 == 1 ? xyz_max[ff/2] : xyz_min[ff/2]);
-          const bool across = (sgn_of_wall_neighbor_of_face(face_idx, dir, ff, xyz_wall) != sgn_face);
-          if(across) // the tranverse wall is across the interface
-          {
-            const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dir, ff);
-            // /!\ WARNING /!\ : theta is relative to 0.5*dxyz_min[ff/2] in this case!
-            const double& mu_this_side  = (sgn_face < 0 ? mu_minus  : mu_plus);
-            const double& mu_across     = (sgn_face < 0 ? mu_plus   : mu_minus);
-            const bool is_in_positive_domain = (sgn_face > 0);
+//  const vector<ngbdDIMseed> *points;
+//#ifndef P4_TO_P8
+//  const vector<Point2> *partition;
+//  my_cell.voro.get_partition(partition);
+//#endif
+//  my_cell.voro.get_neighbor_seeds(points);
+//  const double volume = my_cell.voro.get_volume();
 
-            switch (bc_velocity[dir].wallType(xyz_wall)) {
-            case DIRICHLET:
-            {
-              to_return += (ff%2 == 1 ? 1.0 : -1.0)*neighbor_area*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, vn_dir_p[face_idx], bc_velocity[dir].wallValue(xyz_wall), 0.0, 0.0, 0.5*dxyz_smallest_quad[ff/2]);
-              break;
-            }
-            case NEUMANN:
-            {
-              to_return += neighbor_area*(bc_velocity[dir].wallValue(xyz_wall) + ((double) sgn_face)*(ff%2 == 1 ? +1.0 : -1.0)*0.0);
-              break;
-            }
-            default:
-              throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a tranverse wall neighbor of a face, across the interface --> not handled yet, TO BE DONE...");
-              break;
-            }
-          }
-          else // the tranverse wall is on the same side of the interface
-          {
-            switch (bc_velocity[dir].wallType(xyz_wall)) {
-            case DIRICHLET:
-              to_return += 2.0*((sgn_face < 0 ? mu_minus : mu_plus)*neighbor_area/dxyz_smallest_quad[ff/2])*(bc_velocity[dir].wallValue(xyz_wall) - vn_dir_p[face_idx]);
-              break;
-            case NEUMANN:
-              to_return += neighbor_area*bc_velocity[dir].wallValue(xyz_wall);
-              break;
-            default:
-              throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a tranverse wall neighbor of a face, on the same side of the interface --> not handled yet, TO BE DONE...");
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-  return to_return/volume;
-}
+//  double to_return = 0.0;
+//  if(!my_cell.has_neighbor_across || (my_cell.cell_type != parallelepiped_no_wall && my_cell.cell_type != parallelepiped_with_wall))
+//  {
+//    for (size_t m = 0; m < points->size(); ++m) {
+//#ifdef P4_TO_P8
+//      const double surface = (*points)[m].s;
+//#else
+//      size_t k = mod(m - 1, points->size());
+//      const double surface = ((*partition)[m] - (*partition)[k]).norm_L2();
+//#endif
+//      const double distance_to_neighbor = ABSD((*points)[m].p.x - xyz_face[0], (*points)[m].p.y - xyz_face[1], (*points)[m].p.z - xyz_face[2]);
+//      const double& mu_this_side = (sgn_face < 0 ? mu_minus : mu_plus);
+//      switch ((*points)[m].n) {
+//      case WALL_m00:
+//      case WALL_p00:
+//      case WALL_0m0:
+//      case WALL_0p0:
+//#ifdef P4_TO_P8
+//      case WALL_00m:
+//      case WALL_00p:
+//#endif
+//      {
+//        char wall_orientation = -1 - (*points)[m].n;
+//        P4EST_ASSERT(wall_orientation >= 0 && wall_orientation < P4EST_FACES);
+//        double wall_eval[P4EST_DIM];
+//        const double lambda = ((wall_orientation%2 == 1 ? xyz_max[wall_orientation/2] : xyz_min[wall_orientation/2]) - xyz_face[wall_orientation/2])/((*points)[m].p.xyz(wall_orientation/2) - xyz_face[wall_orientation/2]);
+//        for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//          if(dim == wall_orientation/2)
+//            wall_eval[dim] = (wall_orientation%2 == 1 ? xyz_max[wall_orientation/2] : xyz_min[wall_orientation/2]); // on the wall of interest
+//          else
+//            wall_eval[dim] = MIN(MAX(xyz_face[dim] + lambda*((*points)[m].p.xyz(dim) - xyz_face[dim]), xyz_min[dim] + 2.0*EPS*(xyz_max[dim] - xyz_min[dim])), xyz_max[dim] - 2.0*EPS*(xyz_max[dim] - xyz_min[dim])); // make sure it's indeed inside, just to be safe in case the bc object needs that
+//        }
+//        switch(bc_velocity[dir].wallType(wall_eval))
+//        {
+//        case DIRICHLET:
+//        {
+//          if(dir == wall_orientation/2)
+//            throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: cannot be called on Dirichlet wall faces...");
+
+//          const bool across = my_cell.has_neighbor_across && (sgn_of_wall_neighbor_of_face(face_idx, dir, wall_orientation, wall_eval) != sgn_face);
+//          // WARNING distance_to_neighbor is actually *twice* what we would need here, hence the "0.5*" factors here under!
+//          if(!across)
+//            to_return += mu_this_side*surface*(bc_velocity[dir].wallValue(wall_eval) /*+ interp_dxyz_hodge(wall_eval)*/ - vn_dir_p[face_idx])/(0.5*distance_to_neighbor);
+//          else
+//          {
+//            const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, (*points)[m].n, dir, wall_orientation);
+//            const double& mu_across = (sgn_face > 0 ? mu_minus : mu_plus);
+//            const bool is_in_positive_domain = (sgn_face > 0);
+//            to_return += (wall_orientation%2 == 1 ? +1.0 : -1.0)*surface*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, wall_orientation, is_in_positive_domain, vn_dir_p[face_idx], bc_velocity[dir].wallValue(wall_eval), 0.0, 0.0, 0.5*distance_to_neighbor);
+//          }
+//          break;
+//        }
+//        case NEUMANN:
+//          if(sgn_face != sgn_of_wall_neighbor_of_face(face_idx, dir, wall_orientation, wall_eval))
+//            throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: Neumann boundary condition to be imposed on a tranverse wall that lies across the interface, but the face has non-uniform neighbors : this is not implemented yet, sorry...");
+//          to_return += mu_this_side*surface*(bc_velocity[dir].wallValue(wall_eval) /*+ (apply_hodge_second_derivative_if_neumann ? 0.0 : 0.0)*/);
+//          break;
+//        default:
+//          throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a cell that is either one-sided or that has a neighbor across the interface but is not a parallelepiped regular --> not handled yet, TO BE DONE IF NEEDED.");
+//        }
+//        break;
+//      }
+//      case INTERFACE:
+//        throw std::logic_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: a Voronoi seed neighbor was marked INTERFACE in a cell that is either one-sided or that has a neighbor across the interface but is not a parallelepiped regular. This must not happen in this solver, have you constructed your Voronoi cell using clip_interface()?");
+//        break;
+//      default:
+//        // this is a regular face so
+//        double xyz_face_neighbor[P4EST_DIM]; faces_n->xyz_fr_f((*points)[m].n, dir, xyz_face_neighbor);
+//        const bool across = (my_cell.has_neighbor_across && sgn_face != (interface_manager->phi_at_point(xyz_face_neighbor) <= 0.0 ? -1 : +1));
+//        if(!across)
+//          to_return += mu_this_side*surface*(vn_dir_p[(*points)[m].n] - vn_dir_p[face_idx])/distance_to_neighbor;
+//        else
+//        {
+//          // std::cerr << "This is bad: your grid is messed up here but, hey, I don't want to crash either..." << std::endl;
+//          char neighbor_orientation = -1;
+//          for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//            if(fabs(xyz_face_neighbor[dim] - xyz_face[dim]) > 0.1*dxyz_smallest_quad[dim])
+//              neighbor_orientation = 2*dim + (xyz_face_neighbor[dim] - xyz_face[dim] > 0.0 ? 1 : 0);
+//          P4EST_ASSERT(fabs(distance_to_neighbor - dxyz_smallest_quad[neighbor_orientation/2]) < 0.001*dxyz_smallest_quad[neighbor_orientation/2]);
+//          const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, (*points)[m].n, dir, neighbor_orientation);
+//          const double& mu_across = (sgn_face > 0 ? mu_minus : mu_plus);
+//          const bool is_in_positive_domain = (sgn_face > 0);
+//          to_return += (neighbor_orientation%2 == 1 ? +1.0 : -1.0)*surface*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, neighbor_orientation, is_in_positive_domain, vn_dir_p[face_idx], vn_dir_p[(*points)[m].n], 0.0, 0.0, distance_to_neighbor);
+//        }
+//      }
+//    }
+//  }
+//  else
+//  {
+//    P4EST_ASSERT(my_cell.cell_type == parallelepiped_no_wall || my_cell.cell_type == parallelepiped_with_wall);
+//    if(points->size() != P4EST_FACES)
+//      throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: not the expected number of face neighbors for face with an interface neighbor...");
+//    P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl)
+//                 && (qp.p.piggy3.local_num == -1 || qp.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl));
+
+//    P4EST_ASSERT(fabs(volume - (wall[2*dir] || wall[2*dir + 1] ? 0.5 : 1.0)*MULTD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])) < 0.001*(wall[2*dir] || wall[2*dir + 1] ? 0.5 : 1.0)*MULTD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])); // half the "regular" volume if the face is a NEUMANN wall face
+
+//    for (u_char ff = 0; ff < P4EST_FACES; ++ff)
+//    {
+//      // get the face index of the direct face/wall neighbor
+//      p4est_locidx_t neighbor_face_idx;
+//      if(my_cell.cell_type == parallelepiped_no_wall)
+//      {
+//#ifndef P4_TO_P8
+//        neighbor_face_idx = (*points)[face_order_to_counterclock_cycle_order[ff]].n;
+//#else
+//        neighbor_face_idx = (*points)[ff].n; // already ordered like this, in 3D
+//#endif
+//      }
+//      else // the cell most probably has a wall neighbor, but it's a parallelepiped and it was build by built-in routines (not by hand)
+//      {
+//        // the voronoi cell was actually constructed by built-in routines, gathering neighbors etc.
+//        // but it should still be locally uniform, maybe with wall(s). Let's re-order the neighbors as we need them
+//        if(wall[ff])
+//          neighbor_face_idx = WALL_idx(ff);
+//        else if(ff/2 == dir)
+//        {
+//          p4est_locidx_t tmp_quad_idx = (ff%2 == 1 ? qp.p.piggy3.local_num : qm.p.piggy3.local_num);
+//          P4EST_ASSERT(tmp_quad_idx != -1); // can't be, otherwise wall[ff] would be true...
+//          neighbor_face_idx = faces_n->q2f(tmp_quad_idx, ff);
+//        }
+//        else
+//        {
+//          set_of_neighboring_quadrants ngbd;
+//          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ff);
+//          P4EST_ASSERT(ngbd.size() == 1 && ngbd.begin()->level == quad->level && ngbd.begin()->level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl);
+//          neighbor_face_idx = faces_n->q2f(ngbd.begin()->p.piggy3.local_num, face_touch);
+//        }
+//#ifdef P4EST_DEBUG
+//        // check if it was indeed in there for consistency!
+//        bool found = false;
+//        for (size_t k = 0; k < points->size() && !found; ++k)
+//          found = ((*points)[k].n != neighbor_face_idx);
+//        P4EST_ASSERT(found);
+//#endif
+//      }
+
+
+//      // area between the current face and the direct neighbor
+//      const double neighbor_area = ((wall[2*dir] || wall[2*dir + 1]) && ff/2 != dir ? 0.5 : 1.0)*dxyz_smallest_quad[(ff/2 + 1)%P4EST_DIM] ONLY3D(*dxyz_smallest_quad[(ff/2 + 2)%P4EST_DIM]);
+//      // get the contribution of the direct neighbor to the discretization of the negative laplacian and add it to the matrix
+//      if(neighbor_face_idx >= 0)
+//      {
+//        double xyz_neighbor_face[P4EST_DIM]; faces_n->xyz_fr_f(neighbor_face_idx, dir, xyz_neighbor_face);
+//        const char sgn_neighbor_face = (interface_manager->phi_at_point(xyz_neighbor_face) <= 0.0 ? -1 : 1);
+//        const bool across = (sgn_face != sgn_neighbor_face);
+//        if(across)
+//        {
+//          const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dir, ff);
+//          const double& mu_this_side  = (sgn_face < 0 ? mu_minus  : mu_plus);
+//          const double& mu_across     = (sgn_face < 0 ? mu_plus   : mu_minus);
+//          const bool is_in_positive_domain = (sgn_face > 0);
+//          to_return += (ff%2 == 1 ? +1.0 : -1.0)*neighbor_area*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, vn_dir_p[face_idx], vn_dir_p[neighbor_face_idx], 0.0, 0.0, dxyz_smallest_quad[ff/2]);
+//        }
+//        else
+//          to_return += ((sgn_face < 0 ? mu_minus : mu_plus)*neighbor_area/dxyz_smallest_quad[ff/2])*(vn_dir_p[neighbor_face_idx] - vn_dir_p[face_idx]);
+//      }
+//      else
+//      {
+//        P4EST_ASSERT(-1 - neighbor_face_idx == ff);
+//        if(ff/2 == dir) // parallel wall --> the face itself is the wall --> it *cannot* be DIRICHLET
+//        {
+//          P4EST_ASSERT(wall[ff] && bc_velocity[dir].wallType(xyz_face) == NEUMANN); // the face is a wall face so it MUST be NEUMANN (non-DIRICHLET) boundary condition in that case
+//          to_return += neighbor_area*bc_velocity[dir].wallValue(xyz_face);
+//        }
+//        else // it is a tranverse wall
+//        {
+//          double xyz_wall[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+//          xyz_wall[ff/2] = (ff%2 == 1 ? xyz_max[ff/2] : xyz_min[ff/2]);
+//          const bool across = (sgn_of_wall_neighbor_of_face(face_idx, dir, ff, xyz_wall) != sgn_face);
+//          if(across) // the tranverse wall is across the interface
+//          {
+//            const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dir, ff);
+//            // /!\ WARNING /!\ : theta is relative to 0.5*dxyz_min[ff/2] in this case!
+//            const double& mu_this_side  = (sgn_face < 0 ? mu_minus  : mu_plus);
+//            const double& mu_across     = (sgn_face < 0 ? mu_plus   : mu_minus);
+//            const bool is_in_positive_domain = (sgn_face > 0);
+
+//            switch (bc_velocity[dir].wallType(xyz_wall)) {
+//            case DIRICHLET:
+//            {
+//              to_return += (ff%2 == 1 ? 1.0 : -1.0)*neighbor_area*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, vn_dir_p[face_idx], bc_velocity[dir].wallValue(xyz_wall), 0.0, 0.0, 0.5*dxyz_smallest_quad[ff/2]);
+//              break;
+//            }
+//            case NEUMANN:
+//            {
+//              to_return += neighbor_area*(bc_velocity[dir].wallValue(xyz_wall) + ((double) sgn_face)*(ff%2 == 1 ? +1.0 : -1.0)*0.0);
+//              break;
+//            }
+//            default:
+//              throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a tranverse wall neighbor of a face, across the interface --> not handled yet, TO BE DONE...");
+//              break;
+//            }
+//          }
+//          else // the tranverse wall is on the same side of the interface
+//          {
+//            switch (bc_velocity[dir].wallType(xyz_wall)) {
+//            case DIRICHLET:
+//              to_return += 2.0*((sgn_face < 0 ? mu_minus : mu_plus)*neighbor_area/dxyz_smallest_quad[ff/2])*(bc_velocity[dir].wallValue(xyz_wall) - vn_dir_p[face_idx]);
+//              break;
+//            case NEUMANN:
+//              to_return += neighbor_area*bc_velocity[dir].wallValue(xyz_wall);
+//              break;
+//            default:
+//              throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a tranverse wall neighbor of a face, on the same side of the interface --> not handled yet, TO BE DONE...");
+//              break;
+//            }
+//          }
+//        }
+//      }
+//    }
+//  }
+//  return to_return/volume;
+//}
 
 void my_p4est_two_phase_flows_t::solve_viscosity()
 {

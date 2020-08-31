@@ -347,7 +347,7 @@ private:
   inline double BDF_alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
   inline double BDF_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
 
-  double div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const u_char &dir, const double *vn_dir_p);
+//  double div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const u_char &dir, const double *vn_dir_p);
 
 
   inline const augmented_voronoi_cell& get_augmented_voronoi_cell(const p4est_locidx_t &face_idx, const u_char &dir)
@@ -569,7 +569,7 @@ public:
   }
 
   void solve_viscosity();
-  void solve_viscosity_explicit();
+//  void solve_viscosity_explicit();
 
   void compute_pressure_jump();
   void solve_for_pressure_guess(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
