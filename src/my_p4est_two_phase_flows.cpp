@@ -722,7 +722,6 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
   return;
 }
 
-
 /* solve the projection step, we consider (PHI/rho) to be the HODGE variable, define the divergence-free projection as
  * v^{n + 1} = v^{\star} - (1.0/rho) grad PHI, and we solve for PHI as the solution of
  * -div((1.0/rho)*grad(PHI)) = -div(vstar)
@@ -1095,7 +1094,8 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   compute_backtraced_velocities();
   viscosity_solver.set_diagonals(BDF_alpha()*rho_minus/dt_n, BDF_alpha()*rho_plus/dt_n);
   viscosity_solver.solve();
-  viscosity_solver.extrapolate_face_velocities_across_interface(vnp1_face_minus, vnp1_face_plus);
+  const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
+  viscosity_solver.extrapolate_face_velocities_across_interface(vnp1_face_minus, vnp1_face_plus, niter);
   return;
 }
 
@@ -1699,11 +1699,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
 
 void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iterations, const u_char& degree)
 {
-//  PetscErrorCode ierr;
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    ierr = VecCopyGhost(solution[dir], vnp1_face_minus[dir]); CHKERRXX(ierr);
-//    ierr = VecCopyGhost(solution[dir], vnp1_face_plus[dir]); CHKERRXX(ierr);
-//  }
   P4EST_ASSERT(n_iterations > 0);
   PetscErrorCode ierr;
   // normal derivatives of velocity components
@@ -2181,23 +2176,14 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
     }
   }
 
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]))
-    {
-      P4EST_ASSERT(!ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]));
-      vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] - 0.0;
-    }
-    else if(ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]))
-    {
-      P4EST_ASSERT(!ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]));
-      vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] + 0.0;
-    }
-  }
+#ifdef P4EST_DEBUG
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    P4EST_ASSERT(!ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]) && !ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]));
+#endif
 
-
-  if (!ISNAN(magnitude_velocity_minus) && interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+  if (interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
     max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
-  if (!ISNAN(magnitude_velocity_plus) && interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+  if (interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
     max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
   return;
 }
