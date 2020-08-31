@@ -2188,131 +2188,131 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
   return;
 }
 
-void my_p4est_two_phase_flows_t::TVD_extrapolation_of_np1_node_velocities(const u_int& niterations, const u_char& order)
-{
-  PetscErrorCode ierr;
-  Vec vnp1_nodes_minus_no_block[P4EST_DIM], vnp1_nodes_plus_no_block[P4EST_DIM], normal_vector[P4EST_DIM];
-  double *vnp1_nodes_minus_no_block_p[P4EST_DIM], *vnp1_nodes_plus_no_block_p[P4EST_DIM], *normal_vector_p[P4EST_DIM];
-  double *phi_on_computational_nodes_p = NULL;
-  bool phi_on_computational_nodes_locally_created = false;
-  P4EST_ASSERT(interface_manager->subcell_resolution() != 0 || phi_on_computational_nodes != NULL);
-  if(phi_on_computational_nodes == NULL)
-  {
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_on_computational_nodes); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
-    phi_on_computational_nodes_locally_created = true;
-  }
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes_minus_no_block[dim]);  CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes_plus_no_block[dim]);   CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &normal_vector[dim]);              CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]);  CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]);    CHKERRXX(ierr);
-    ierr = VecGetArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
-  }
-  double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
-  const double *grad_phi_p = NULL;
-  if(interface_manager->subcell_resolution() == 0){
-    ierr= VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr); }
-  double xyz_node[P4EST_DIM];
-  ierr = VecGetArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
-  for (size_t node_idx = 0; node_idx < nodes_n->indep_nodes.elem_count; ++node_idx) {
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      vnp1_nodes_minus_no_block_p[dim][node_idx] = vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim];
-      vnp1_nodes_plus_no_block_p[dim][node_idx] = vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim];
-    }
-    if(node_idx < (size_t) nodes_n->num_owned_indeps)
-    {
-      if(interface_manager->subcell_resolution() > 0)
-      {
-        P4EST_ASSERT(grad_phi_p == NULL);
-        node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-        if(phi_on_computational_nodes_p != NULL)
-          phi_on_computational_nodes_p[node_idx] = interface_manager->phi_at_point(xyz_node);
-        double local_normal[P4EST_DIM];
-        interface_manager->normal_vector_at_point(xyz_node, local_normal);
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-          normal_vector_p[dim][node_idx] = local_normal[dim];
-      }
-      else
-      {
-        P4EST_ASSERT(phi_on_computational_nodes_p == NULL && grad_phi_p != NULL);
-        const double magnitude = ABSD(grad_phi_p[P4EST_DIM*node_idx], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
-        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-          normal_vector_p[dim][node_idx] = (magnitude > EPS ? grad_phi_p[P4EST_DIM*node_idx + dim]/magnitude : 0.0);
-      }
-    }
-  }
-  if(interface_manager->subcell_resolution() > 0){
-    ierr = VecGhostUpdateBegin(phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGhostUpdateBegin(normal_vector[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(normal_vector[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//void my_p4est_two_phase_flows_t::TVD_extrapolation_of_np1_node_velocities(const u_int& niterations, const u_char& order)
+//{
+//  PetscErrorCode ierr;
+//  Vec vnp1_nodes_minus_no_block[P4EST_DIM], vnp1_nodes_plus_no_block[P4EST_DIM], normal_vector[P4EST_DIM];
+//  double *vnp1_nodes_minus_no_block_p[P4EST_DIM], *vnp1_nodes_plus_no_block_p[P4EST_DIM], *normal_vector_p[P4EST_DIM];
+//  double *phi_on_computational_nodes_p = NULL;
+//  bool phi_on_computational_nodes_locally_created = false;
+//  P4EST_ASSERT(interface_manager->subcell_resolution() != 0 || phi_on_computational_nodes != NULL);
+//  if(phi_on_computational_nodes == NULL)
+//  {
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_on_computational_nodes); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
+//    phi_on_computational_nodes_locally_created = true;
+//  }
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes_minus_no_block[dim]);  CHKERRXX(ierr);
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes_plus_no_block[dim]);   CHKERRXX(ierr);
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &normal_vector[dim]);              CHKERRXX(ierr);
+//    ierr = VecGetArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]);  CHKERRXX(ierr);
+//    ierr = VecGetArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]);    CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
+//  }
+//  double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
+//  const double *grad_phi_p = NULL;
+//  if(interface_manager->subcell_resolution() == 0){
+//    ierr= VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr); }
+//  double xyz_node[P4EST_DIM];
+//  ierr = VecGetArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
+//  for (size_t node_idx = 0; node_idx < nodes_n->indep_nodes.elem_count; ++node_idx) {
+//    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//    {
+//      vnp1_nodes_minus_no_block_p[dim][node_idx] = vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim];
+//      vnp1_nodes_plus_no_block_p[dim][node_idx] = vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim];
+//    }
+//    if(node_idx < (size_t) nodes_n->num_owned_indeps)
+//    {
+//      if(interface_manager->subcell_resolution() > 0)
+//      {
+//        P4EST_ASSERT(grad_phi_p == NULL);
+//        node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+//        if(phi_on_computational_nodes_p != NULL)
+//          phi_on_computational_nodes_p[node_idx] = interface_manager->phi_at_point(xyz_node);
+//        double local_normal[P4EST_DIM];
+//        interface_manager->normal_vector_at_point(xyz_node, local_normal);
+//        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//          normal_vector_p[dim][node_idx] = local_normal[dim];
+//      }
+//      else
+//      {
+//        P4EST_ASSERT(phi_on_computational_nodes_p == NULL && grad_phi_p != NULL);
+//        const double magnitude = ABSD(grad_phi_p[P4EST_DIM*node_idx], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
+//        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//          normal_vector_p[dim][node_idx] = (magnitude > EPS ? grad_phi_p[P4EST_DIM*node_idx + dim]/magnitude : 0.0);
+//      }
+//    }
+//  }
+//  if(interface_manager->subcell_resolution() > 0){
+//    ierr = VecGhostUpdateBegin(phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecGhostUpdateBegin(normal_vector[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(normal_vector[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
 
-  if(interface_manager->subcell_resolution() == 0){
-    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr); }
-  ierr = VecRestoreArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
-  }
-  if(phi_on_computational_nodes_p != NULL){
-    ierr = VecRestoreArray(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
+//  if(interface_manager->subcell_resolution() == 0){
+//    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr); }
+//  ierr = VecRestoreArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecRestoreArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
+//  }
+//  if(phi_on_computational_nodes_p != NULL){
+//    ierr = VecRestoreArray(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
 
-  my_p4est_level_set_t ls_nodes(ngbd_n);
+//  my_p4est_level_set_t ls_nodes(ngbd_n);
 
-  for (char sgn = -1; sgn <= 1; sgn += 2) {
-    if(sgn > 0)
-    {
-      ierr = VecScaleGhost(phi_on_computational_nodes, -1.0); CHKERRXX(ierr);
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecScaleGhost(normal_vector[dim], -1.0); CHKERRXX(ierr); }
-    }
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-      Vec node_velocity_component_to_extrapolate = (sgn < 0 ? vnp1_nodes_minus_no_block[dim] : vnp1_nodes_plus_no_block[dim]);
-      ls_nodes.extend_Over_Interface_TVD(phi_on_computational_nodes, node_velocity_component_to_extrapolate, niterations, order, 0.0, -DBL_MAX, +DBL_MAX, DBL_MAX, normal_vector);
-    }
-  }
+//  for (char sgn = -1; sgn <= 1; sgn += 2) {
+//    if(sgn > 0)
+//    {
+//      ierr = VecScaleGhost(phi_on_computational_nodes, -1.0); CHKERRXX(ierr);
+//      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//        ierr = VecScaleGhost(normal_vector[dim], -1.0); CHKERRXX(ierr); }
+//    }
+//    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//      Vec node_velocity_component_to_extrapolate = (sgn < 0 ? vnp1_nodes_minus_no_block[dim] : vnp1_nodes_plus_no_block[dim]);
+//      ls_nodes.extend_Over_Interface_TVD(phi_on_computational_nodes, node_velocity_component_to_extrapolate, niterations, order, 0.0, -DBL_MAX, +DBL_MAX, DBL_MAX, normal_vector);
+//    }
+//  }
 
-  ierr = VecScaleGhost(phi_on_computational_nodes, -1.0); CHKERRXX(ierr);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecScaleGhost(normal_vector[dim], -1.0); CHKERRXX(ierr); }
+//  ierr = VecScaleGhost(phi_on_computational_nodes, -1.0); CHKERRXX(ierr);
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecScaleGhost(normal_vector[dim], -1.0); CHKERRXX(ierr); }
 
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
-  }
-  ierr = VecGetArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
-  for (size_t node_idx = 0; node_idx < nodes_n->indep_nodes.elem_count; ++node_idx) {
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_minus_no_block_p[dim][node_idx];
-      vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_plus_no_block_p[dim][node_idx];
-    }
-  }
-  ierr = VecRestoreArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_nodes_minus_no_block[dim]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_nodes_plus_no_block[dim]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(normal_vector[dim]); CHKERRXX(ierr);
-  }
-  if(phi_on_computational_nodes_locally_created){
-    ierr = delete_and_nullify_vector(phi_on_computational_nodes); CHKERRXX(ierr); }
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecGetArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
+//    ierr = VecGetArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
+//  }
+//  ierr = VecGetArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
+//  for (size_t node_idx = 0; node_idx < nodes_n->indep_nodes.elem_count; ++node_idx) {
+//    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//    {
+//      vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_minus_no_block_p[dim][node_idx];
+//      vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] = vnp1_nodes_plus_no_block_p[dim][node_idx];
+//    }
+//  }
+//  ierr = VecRestoreArray(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//    ierr = VecRestoreArray(vnp1_nodes_minus_no_block[dim], &vnp1_nodes_minus_no_block_p[dim]); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_nodes_plus_no_block[dim], &vnp1_nodes_plus_no_block_p[dim]); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(normal_vector[dim], &normal_vector_p[dim]); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(vnp1_nodes_minus_no_block[dim]); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(vnp1_nodes_plus_no_block[dim]); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(normal_vector[dim]); CHKERRXX(ierr);
+//  }
+//  if(phi_on_computational_nodes_locally_created){
+//    ierr = delete_and_nullify_vector(phi_on_computational_nodes); CHKERRXX(ierr); }
 
-  return;
-}
+//  return;
+//}
 
 void my_p4est_two_phase_flows_t::compute_vorticities()
 {
