@@ -45,6 +45,7 @@
 #include <iterator>
 #include <fstream>
 #include <unordered_map>
+//#include <iomanip>
 #include "local_utils.h"
 #include "two_spheres_levelset_2d.h"
 
@@ -226,13 +227,22 @@ int main ( int argc, char* argv[] )
 						// (i.e. locally owned and ghost nodes).
 						sample_cf_on_nodes( p4est, nodes, twoSpheres, phi );
 
-						// Vectors for curvature and normals.
-						Vec curvature, normal[P4EST_DIM];
+						// Vectors for curvature, normals, and exact points on interface (for debugging).
+						Vec curvature, normal[P4EST_DIM], pOnInterface[P4EST_DIM];
 						ierr = VecDuplicate( phi, &curvature );
 						CHKERRXX( ierr );
-						for( auto& dim : normal )
+
+						double *pOnInterfacePtr[P4EST_DIM];
+
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
 						{
-							VecCreateGhostNodes( p4est, nodes, &dim );
+							ierr = VecCreateGhostNodes( p4est, nodes, &normal[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecCreateGhostNodes( p4est, nodes, &pOnInterface[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecGetArray( pOnInterface[dim], &pOnInterfacePtr[dim] );
 							CHKERRXX( ierr );
 						}
 
@@ -270,7 +280,8 @@ int main ( int argc, char* argv[] )
 							double xyz[P4EST_DIM];
 							node_xyz_fr_n( i, p4est, nodes, xyz );
 							distPhiPtr[i] = twoSpheres.getSignedDistance( xyz[0], xyz[1], H, hKappaPtr[i],
-																		  reinterpret_cast<short &>(whoPtr[i]));
+																		  whoPtr[i],
+																		  pOnInterfacePtr[0][i], pOnInterfacePtr[1][i] );
 						}
 
 						// Reinitialize level-set function.
@@ -281,6 +292,13 @@ int main ( int argc, char* argv[] )
 						// interface for comparison purposes.
 						compute_normals( nodeNeighbors, phi, normal );
 						compute_mean_curvature( nodeNeighbors, phi, normal, curvature );
+
+						const double *normalReadPtr[P4EST_DIM];
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecGetArrayRead( normal[dim], &normalReadPtr[dim] );
+							CHKERRXX( ierr );
+						}
 
 						// Prepare interpolation.
 						my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
@@ -330,6 +348,22 @@ int main ( int argc, char* argv[] )
 										// Checking for trouble.
 										if( whoPtr[s] != whoPtr[n] )
 											troublingFlag = true;
+
+										// Debugging.
+/*										if( xyz[0] >= -0.04 && xyz[0] <= 0.04 && xyz[1] >= -0.03 && xyz[1] <= 0.05 )
+										{
+											double xyz2[P4EST_DIM];
+											node_xyz_fr_n( s, p4est, nodes, xyz2 );
+											std::cout << std::setprecision( 15 )		// The point and approximated normal projection onto Gamma.
+													  << "plot(" << xyz2[0] << ", " << xyz2[1] << ", 'b.', "
+													  << xyz2[0] - phiReadPtr[s] * normalReadPtr[0][s] << ", "
+													  << xyz2[1] - phiReadPtr[s] * normalReadPtr[1][s]
+													  << ", 'mo');" << std::endl;
+											std::cout << std::setprecision( 15 )		// The expected projection onto Gamma.
+													  << whoPtr[s] << "; "
+													  << "plot(" << pOnInterfacePtr[0][s] << ", " << pOnInterfacePtr[1][s]
+													  << ", 'ko');" << std::endl;
+										}*/
 									}
 
 									if( !troublingFlag )		// Skip samples that are not troubling.
@@ -386,6 +420,15 @@ int main ( int argc, char* argv[] )
 						ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 						CHKERRXX( ierr );
 
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecRestoreArray( pOnInterface[dim], &pOnInterfacePtr[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
+							CHKERRXX( ierr );
+						}
+
 						// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 						ierr = VecDestroy( who );
 						CHKERRXX( ierr );
@@ -402,9 +445,12 @@ int main ( int argc, char* argv[] )
 						ierr = VecDestroy( curvature );
 						CHKERRXX( ierr );
 
-						for( auto& dim : normal )
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
 						{
-							ierr = VecDestroy( dim );
+							ierr = VecDestroy( normal[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecDestroy( pOnInterface[dim] );
 							CHKERRXX( ierr );
 						}
 

@@ -183,10 +183,9 @@ int main ( int argc, char* argv[] )
 
 		for( p4est_locidx_t i = 0; i < nodes->indep_nodes.elem_count; i++ )		// Calculating the signed-distance and
 		{																		// dimensionless curvature.
-			double xyz[P4EST_DIM];
+			double xyz[P4EST_DIM], xOnGamma, yOnGamma;							// Last two are dummy vars to avoid error.
 			node_xyz_fr_n( i, p4est, nodes, xyz );
-			distPhiPtr[i] = twoSpheres.getSignedDistance( xyz[0], xyz[1], H, hKappaPtr[i],
-														  reinterpret_cast<short &>(whoPtr[i]) );
+			distPhiPtr[i] = twoSpheres.getSignedDistance( xyz[0], xyz[1], H, hKappaPtr[i], whoPtr[i], xOnGamma, yOnGamma );
 			if( MIN_REFINEMENT_LEVEL == MAX_REFINEMENT_LEVEL )
 			{
 				int I = ( int ) round((xyz[0] - MIN_D) / H );

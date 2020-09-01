@@ -57,13 +57,32 @@
  */
 class TwoSpheres : public CF_2
 {
-protected:
+private:
 	Point2 _c1;				// Center coordinates of reference circle in world coordinates.
 	Point2 _c2;				// Center coordinates of second circle in world coordinates.
 	double _r1;				// Circle radii.
 	double _r2;
 	double _d;				// Distance between circles.
 	double _alpha;			// Tilt angle of reference axis with respect to world's +x direction.
+
+
+	/**
+	 * Compute the point on one of the circular interfaces in world coordinates.
+	 * Make sure the query point (x, y) != circle's center before calling this function.
+	 * @param [in] x Query point world x-coord.
+	 * @param [in] y Query point world y-coord.
+	 * @param [in] c Reference circle's center coords.
+	 * @param [in] r Reference circle's radius.
+	 * @param [out] xOnGamma Closest point x-coord lying on standing circle in world coords.
+	 * @param [out] yOnGamma Closest point y-coord lying on standing circle in world coords.
+	 */
+	static void _getPointOnCircularInterface( const double x, const double y, const Point2& c, const double r,
+										   	  double& xOnGamma, double& yOnGamma )
+	{
+		double theta = atan2( y - c.y, x - c.x );		// Angle with respect to standing circle.
+		xOnGamma = r * cos( theta ) + c.x;
+		yOnGamma = r * sin( theta ) + c.y;
+	}
 
 public:
 	/**
@@ -148,61 +167,84 @@ public:
 	 * @param [in] H Grid's cell minimum width.
 	 * @param [out] hk Dimensionless curvature of closest point on compound Gamma.
 	 * @param [out] who Set to -1 if hk is due to C1, +1 if hk is due to C2, and 0 if hk is in a discontinuous region.
+	 * @param [out] xOnGamma For debugging purposes! The closest point on the compound interface to query point x coord.
+	 * @param [out] yOnGamma For debugging purposes! The closest point on the compound interface to query point y coord.
 	 * @return The signed distance from a point to the compound interface.
 	 */
-	[[nodiscard]] double getSignedDistance( double x, double y, const double H, double& hk, short& who ) const
+	[[nodiscard]] double getSignedDistance( double x, double y, const double H, double& hk, double& who,
+										 	double& xOnGamma, double& yOnGamma ) const
 	{
 		double phi1 = sqrt( SQR( _c1.x - x ) + SQR( _c1.y - y ) ) - _r1;	// Respective signed-distances to the two
 		double phi2 = sqrt( SQR( _c2.x - x ) + SQR( _c2.y - y ) ) - _r2;	// circles.
 
-		if( _d > _r1 + _r2 || ( phi1 >= 0 && phi2 >= 0 ) )	// Are circles NOT intersecting? Or is the point exterior to intersecting circles?
-		{
-			if( phi1 < phi2 )			// Select the closest circular interface.
-			{
-				hk = H / _r1;
-				who = -1;
-				return phi1;
-			}
-			if( phi2 < phi1 )
-			{
-				hk = H / _r2;
-				who = +1;
-				return phi2;
-			}
-			hk = -1;					// Indicates a discontinuity in the level-set function as the point is equally
-			who = 0;					// distant from both C1's and C2's interfaces.
-			return phi1;
-		}
+		double wx = x;					// Copy of (x, y) in world coordinates.
+		double wy = y;
 
-		// Point lies inside of at least one of the two circles.  To facilitate calculations, we map the point from
-		// world coordinates into local coordinates, where the reference circle is at the origin, and the second circle
-		// sits to the right on the local +x axis.
+		// To facilitate calculations, we map the point from world coordinates into local coordinates, where the
+		// reference circle is at the origin, and the second circle sits to the right on the local +x axis.
 		toLocalCoordinates( x, y );
 
-		// Find the intersection point(s) between C1 and C2.
-		double xi = (SQR( _d ) - SQR( _r2 ) + SQR( _r1 )) / (2 * _d);	// Point(s) (xi, ±yi) found with respect to C1.
-		double yi = sqrt( 4 * SQR( _d * _r1 ) - SQR( SQR( _d ) - SQR( _r2 ) + SQR( _r1 ) ) ) / (2 * _d);
-
-		double dp = sqrt( SQR( x - xi ) + SQR( y - yi ) );		// Corresponding distances to intersection points p
-		double dq = sqrt( SQR( x - xi ) + SQR( y + yi ) );		// (above) and q (below).
-		double minDPQ = MIN( dp, dq );							// The minimum distance to intersection points.
-
-		// Check for domain error should we execute atan2: (0, 0).
+		// Check for domain error should we execute atan2(0, 0).
 		if( ABS( y ) < EPS )
 		{
 			if( ABS( x ) < EPS )			// At the center (x1, y1)?
 			{
 				hk = H / _r1;
 				who = -1;
+				xOnGamma = -_r1;			// From the infinite number of closest points, choose the left-most one.
+				yOnGamma = 0;
+				toWorldCoordinates( xOnGamma, yOnGamma );
 				return phi1;
 			}
 			if( ABS( x - _d ) < EPS )		// At the center (x2, y2)?
 			{
 				hk = H / _r2;
 				who = +1;
+				xOnGamma = _d + _r2;		// From the infinite number of closest points, choose the right-most one.
+				yOnGamma = 0;
+				toWorldCoordinates( xOnGamma, yOnGamma );
 				return phi2;
 			}
 		}
+
+		// Are circles NOT intersecting? Or is the point exterior to intersecting circles?
+		if( _d > _r1 + _r2 || ( phi1 >= 0 && phi2 >= 0 ) )
+		{
+			if( phi1 < phi2 )			// Select the closest circular interface.
+			{
+				hk = H / _r1;
+				who = -1;
+				_getPointOnCircularInterface( wx, wy, _c1, _r1, xOnGamma, yOnGamma );
+				return phi1;
+			}
+			if( phi2 < phi1 )
+			{
+				hk = H / _r2;
+				who = +1;
+				_getPointOnCircularInterface( wx, wy, _c2, _r2, xOnGamma, yOnGamma );
+				return phi2;
+			}
+			hk = -1;					// Indicates a discontinuity in the level-set function as the point is equally
+			who = 0;					// distant from both C1's and C2's interfaces.
+			_getPointOnCircularInterface( wx, wy, _c1, _r1, xOnGamma, yOnGamma );	// Arbitrarily, choose first circle.
+			return phi1;
+		}
+
+		// Point lies inside at least one of the two circles.
+		// Find the intersection point(s) between C1 and C2.
+		double xi = (SQR( _d ) - SQR( _r2 ) + SQR( _r1 )) / (2 * _d);	// Point(s) (xi, ±yi) found with respect to C1.
+		double yi = sqrt( 4 * SQR( _d * _r1 ) - SQR( SQR( _d ) - SQR( _r2 ) + SQR( _r1 ) ) ) / (2 * _d);
+
+		double dp = sqrt( SQR( x - xi ) + SQR( y - yi ) );		// Corresponding distances to intersection points p
+		double dq = sqrt( SQR( x - xi ) + SQR( y + yi ) );		// (above) and q (below).
+		double minWXi = xi, minWYi = yi;
+		double minDPQ = dp;										// Choose the closes intersection point and put its
+		if( dq < dp )											// coordinates into world coords.
+		{
+			minDPQ = dq;
+			minWYi = -yi;
+		}
+		toWorldCoordinates( minWXi, minWYi );
 
 		// Query point doesn't match any of the two circles' centers: find angles.
 		double psi1 = atan2( yi, xi );							// Psi1 is the angular range [-psi1, +psi1] that defines
@@ -219,10 +261,13 @@ public:
 			{
 				hk = H / _r2;
 				who = +1;
+				_getPointOnCircularInterface( wx, wy, _c2, _r2, xOnGamma, yOnGamma );
 				return phi2;
 			}
 			hk = -1;											// Closest point on compound interface is (xi, ±yi).
 			who = 0;
+			xOnGamma = minWXi;
+			yOnGamma = minWYi;
 			return -minDPQ;										// theta2 in range of asymmetric quad.  Note the - sign.
 		}
 		if( phi1 < 0 && phi2 >= 0 )								// Inside C1 but outside C2?
@@ -231,10 +276,13 @@ public:
 			{
 				hk = H / _r1;
 				who = -1;
+				_getPointOnCircularInterface( wx, wy, _c1, _r1, xOnGamma, yOnGamma );
 				return phi1;
 			}
 			hk = -1;											// Closest point on compound interface is (xi, ±yi).
 			who = 0;
+			xOnGamma = minWXi;
+			yOnGamma = minWYi;
 			return -minDPQ;										// theta1 in range of asymmetric quad.
 		}
 		double phi = -PETSC_MAX_REAL;
@@ -243,6 +291,7 @@ public:
 			phi = phi1;
 			hk = H / _r1;
 			who = -1;
+			_getPointOnCircularInterface( wx, wy, _c1, _r1, xOnGamma, yOnGamma );
 		}
 		if( theta2 < psi2 || theta2 > 2 * M_PI - psi2 )			// theta2 not in psi2 range?
 		{
@@ -251,6 +300,7 @@ public:
 				phi = phi2;
 				hk = H / _r2;
 				who = +1;
+				_getPointOnCircularInterface( wx, wy, _c2, _r2, xOnGamma, yOnGamma );
 			}
 			else
 			{
@@ -263,6 +313,8 @@ public:
 			phi = -minDPQ;
 			hk = -1;											// Discontinuity in the level-set function.
 			who = 0;
+			xOnGamma = minWXi;
+			yOnGamma = minWYi;
 		}
 		return phi;
 	}
