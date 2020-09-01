@@ -104,6 +104,8 @@ protected:
   /* ---- Control flags ---- */
   bool matrix_is_set, rhs_is_set;
   bool scale_system_by_diagonals;
+  bool extrapolations_are_set;
+  bool use_extrapolations_in_sharp_flux_calculations;
 
   inline bool mus_are_equal()                         const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool diffusion_coefficients_have_been_set()  const { return mu_minus > 0.0 && mu_plus > 0.0; }
@@ -256,15 +258,51 @@ public:
   inline Vec get_extrapolated_solution_minus()                  const { return extrapolation_minus;         }
   inline Vec get_extrapolated_solution_plus()                   const { return extrapolation_plus;          }
 
-  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL) const;
-  inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces) const
+  /*!
+   * \brief project_face_velocities calculates the sharp flux components of the solution (at faces of the
+   * computational grids) and subtract them from the (corresponding) user-defined velocity components, if
+   * they're provided --> this function executes the "two-phase projection step".
+   * \param [in] faces      : pointer to the face data structure for the computational grid under consideration
+   * \param [in] flux_minus : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
+   * \param [in] flux_plus  : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
+   * (A) If the solver is aware of face-sampled velocity components (and used them in order to define and determine
+   * the divergence-free projection problem to solve) this function will operate on the user-provided velocity and
+   * subtract the relevant flux components;
+   * (B) If flux_minus and flux_plus are NULL, the actual flux components are _not_ returned to the user in any way
+   * (C) If flux_minus and flux_plus are not NULL but equal (thus pointing to the same array), the local sharp flux
+   * components are returned (e.g. if phi_face <= 0.0, only the negative flux component is returned)
+   * (D) If flux_minus and flux_plus are not NULL and pointing to separate arrays, the corresponding flux components
+   * are returned in the corresponding arrays wherever they can be evaluated (the value is unmodified otherwise)
+   *
+   * If the solver is aware of the extrapolated solutions from either side of the domain, it will give them precedence
+   * in the calculation of the flux components and either (sharp) flux component can then be evaluated everywhere in
+   * the domain (and the projection is actually executed for extrapolated velocity components as well, if the user has
+   * set the velocity components).
+   * Otherwise, only the sharp solution and the jump conditions are used to determine the sharp flux components and,
+   * therefore, the flux components from one side cannot be determine far in the other side. In such a case, the
+   * velocity components are set to DBL_MAX (if known to the solver) as a way to tag them "unknown" and prevent their
+   * use thereafter...
+   */
+  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL);
+  /*!
+   * \brief get_sharp_flux_components returns the local sharp flux component corresponding to the local sign of the
+   * face (only the sharp locally defined flux component)
+   * --> more details in project_face_velocities
+   */
+  inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces)
   {
     project_face_velocities(faces, flux, flux);
   }
-  inline void get_flux_components(Vec flux_minus[P4EST_DIM], Vec flux_plus[P4EST_DIM], const my_p4est_faces_t* faces) const
+  /*!
+   * \brief get_flux_components returns the flux components from either side wherever they can be evaluated
+   * --> more details in project_face_velocities
+   */
+  inline void get_flux_components(Vec flux_minus[P4EST_DIM], Vec flux_plus[P4EST_DIM], const my_p4est_faces_t* faces)
   {
     project_face_velocities(faces, flux_minus, flux_plus);
   }
+
+  inline void extrapolate_before_calculating_fluxes(const bool& desired_action) { use_extrapolations_in_sharp_flux_calculations = desired_action; }
 
   void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1);
 
@@ -284,7 +322,7 @@ public:
    * using KSPSetDiagonalScaleFix which also "unscales" (D^{-1/2}*A*D^{-1/2}) back to A (costly operation)/
    * \param do_the_scaling [in] action desired by the user;
    */
-  void set_scale_by_diagonal(const bool& do_the_scaling) { scale_system_by_diagonals = do_the_scaling; }
+  inline void set_scale_by_diagonal(const bool& do_the_scaling) { scale_system_by_diagonals = do_the_scaling; }
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_H

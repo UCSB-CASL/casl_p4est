@@ -718,12 +718,24 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
   const char sgn_face   = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
   const char sgn_q      = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
   PetscErrorCode ierr;
-  const double *solution_p;
-  const double *extension_p = NULL;
-  ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
-  if(extension != NULL){
-    ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr);
+  // we need either the extrapolated solution
+  const double *extrapolation_minus_p = NULL, *extrapolation_plus_p = NULL;
+  const double *solution_p = NULL, *extension_p = NULL;
+  bool using_extrapolations = false;
+  if(extrapolation_minus != NULL && extrapolation_plus != NULL)
+  {
+    ierr = VecGetArrayRead(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+    using_extrapolations = true;
   }
+  else
+  {
+    ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
+    if(extension != NULL){
+      ierr = VecGetArrayRead(extension, &extension_p); CHKERRXX(ierr);
+    }
+  }
+  P4EST_ASSERT((using_extrapolations && extrapolation_minus_p != NULL && extrapolation_plus_p != NULL) || (!using_extrapolations && solution_p != NULL));
 
   double flux_component_minus, flux_component_plus;
   flux_component_minus = flux_component_plus = NAN;
@@ -740,10 +752,18 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
     switch(bc->wallType(xyz_face))
     {
     case DIRICHLET:
-      sharp_flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
+      if(using_extrapolations)
+      {
+        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus*(bc->wallValue(xyz_face) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus*(bc->wallValue(xyz_face) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
+      }
+      else
+        sharp_flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
+      // not doing sharp_flux_across for now --> will be done later, once we know the overall strategy works in two-phase flows, if needed...
       break;
     case NEUMANN:
-      sharp_flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(sgn_face > 0 ? mu_plus : mu_minus)*bc->wallValue(xyz_face);
+      sharp_flux_at_face  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(sgn_face > 0 ? mu_plus   : mu_minus)*bc->wallValue(xyz_face);
+      sharp_flux_across   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(sgn_face > 0 ? mu_minus  : mu_plus)*bc->wallValue(xyz_face);
       break;
     default:
       throw std::invalid_argument("my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(): unknown boundary condition on a wall.");
@@ -755,70 +775,86 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
     bool one_sided;
     linear_combination_of_dof_t stable_projection_derivative = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, one_sided);
 
-    if(one_sided)
+    if(using_extrapolations)
     {
-      if(signs_of_phi_are_different(sgn_q, sgn_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across the interface
-      {
-        // calculate the flux component as seen from the other side
-        sharp_flux_across = (sgn_face > 0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
-
-        // evaluate the jump in flux component as defined consistently with the logic for regular interface point
-        const double jump_normal_flux = (interp_jump_normal_flux != NULL ? (*interp_jump_normal_flux)(xyz_face) : 0.0);
-        double normal[P4EST_DIM];
-        interface_manager->normal_vector_at_point(xyz_face, normal);
-
-        double jump_in_flux_component = jump_normal_flux*normal[dim];
-        if(activate_xGFM)
-        {
-          if(interp_grad_jump != NULL)
-          {
-            double local_grad_jump[P4EST_DIM];
-            (*interp_grad_jump)(xyz_face, local_grad_jump);
-            for (u_char dd = 0; dd < P4EST_DIM; ++dd)
-              jump_in_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dd == dim ? 1.0 : 0.0) - normal[dim]*normal[dd])*local_grad_jump[dd];
-          }
-
-          if(!mus_are_equal() && extension_p != NULL)
-          {
-            linear_combination_of_dof_t xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_face, normal, quad_idx, direct_neighbors.begin()->p.piggy3.local_num, dim);
-            jump_in_flux_component += xgfm_jump_flux_component_correction(extension_p);
-          }
-        }
-
-        sharp_flux_at_face = sharp_flux_across + (sgn_face > 0 ? +1.0 : -1.0)*jump_in_flux_component;
-      }
-      else
-        sharp_flux_at_face = (sgn_face > 0 ? mu_plus : mu_minus)*stable_projection_derivative(solution_p);
+      flux_component_minus  = mu_minus*stable_projection_derivative(extrapolation_minus_p);
+      flux_component_plus   = mu_plus*stable_projection_derivative(extrapolation_plus_p);
     }
     else
     {
-      const double &mu_this_side    = (sgn_q < 0 ? mu_minus  : mu_plus);
-      const double &mu_across       = (sgn_q < 0 ? mu_plus   : mu_minus);
-      const bool in_positive_domain = (sgn_q > 0);
-      P4EST_ASSERT(direct_neighbors.size() == 1);
-      const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
+      if(one_sided)
+      {
+        if(signs_of_phi_are_different(sgn_q, sgn_face)) // can be under-resolved :  +-+ or -+- --> derivative operator may be seen as one sided but the face is actually across the interface
+        {
+          // calculate the flux component as seen from the other side
+          sharp_flux_across = (sgn_face > 0 ? mu_minus : mu_plus)*stable_projection_derivative(solution_p);
 
-      const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
-      const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
-      map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
-      if(it == xgfm_jump_between_quads.end())
-        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
+          // evaluate the jump in flux component as defined consistently with the logic for regular interface point
+          const double jump_normal_flux = (interp_jump_normal_flux != NULL ? (*interp_jump_normal_flux)(xyz_face) : 0.0);
+          double normal[P4EST_DIM];
+          interface_manager->normal_vector_at_point(xyz_face, normal);
 
-      const xgfm_jump& jump_info = it->second;
+          double jump_in_flux_component = jump_normal_flux*normal[dim];
+          if(activate_xGFM)
+          {
+            if(interp_grad_jump != NULL)
+            {
+              double local_grad_jump[P4EST_DIM];
+              (*interp_grad_jump)(xyz_face, local_grad_jump);
+              for (u_char dd = 0; dd < P4EST_DIM; ++dd)
+                jump_in_flux_component += (extend_negative_interface_values() ? mu_plus : mu_minus)*((dd == dim ? 1.0 : 0.0) - normal[dim]*normal[dd])*local_grad_jump[dd];
+            }
 
-      double& flux_quad_side = (sgn_q < 0 ? flux_component_minus : flux_component_plus);
-      flux_quad_side = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
-          jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
+            if(!mus_are_equal() && extension_p != NULL)
+            {
+              linear_combination_of_dof_t xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_face, normal, quad_idx, direct_neighbors.begin()->p.piggy3.local_num, dim);
+              jump_in_flux_component += xgfm_jump_flux_component_correction(extension_p);
+            }
+          }
 
-      if(sgn_q < 0)
-        flux_component_plus   = flux_component_minus  + jump_info.jump_flux_component(extension_p);
+          sharp_flux_at_face = sharp_flux_across + (sgn_face > 0 ? +1.0 : -1.0)*jump_in_flux_component;
+        }
+        else
+          sharp_flux_at_face = (sgn_face > 0 ? mu_plus : mu_minus)*stable_projection_derivative(solution_p);
+      }
       else
-        flux_component_minus  = flux_component_plus   - jump_info.jump_flux_component(extension_p);
+      {
+        const double &mu_this_side    = (sgn_q < 0 ? mu_minus  : mu_plus);
+        const double &mu_across       = (sgn_q < 0 ? mu_plus   : mu_minus);
+        const bool in_positive_domain = (sgn_q > 0);
+        P4EST_ASSERT(direct_neighbors.size() == 1);
+        const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
+
+        const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
+        const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
+        map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+        if(it == xgfm_jump_between_quads.end())
+          throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
+
+        const xgfm_jump& jump_info = it->second;
+
+        double& flux_quad_side = (sgn_q < 0 ? flux_component_minus : flux_component_plus);
+        flux_quad_side = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
+            jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
+
+        if(sgn_q < 0)
+          flux_component_plus   = flux_component_minus  + jump_info.jump_flux_component(extension_p);
+        else
+          flux_component_minus  = flux_component_plus   - jump_info.jump_flux_component(extension_p);
+      }
     }
   }
-  ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
-  if(extension_p != NULL){
-    ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr); }
+  if(extrapolation_minus_p != NULL && extrapolation_plus_p != NULL)
+  {
+    ierr = VecRestoreArrayRead(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+  }
+  else
+  {
+    ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
+    if(extension_p != NULL){
+      ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr); }
+  }
 
   // If the user needs the flux components back, return them hereunder
   // If the user needs the sharp flux components back (i.e., if flux_component_minus and flux_component_plus are pointing

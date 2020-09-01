@@ -182,6 +182,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
     }
   }
 
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &use_extrapolations_in_sharp_flux_calculations, 1, MPI_CXX_BOOL, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Waitall(nonblocking_send_requests.size(), nonblocking_send_requests.data(), MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
   are_required_finite_volumes_and_correction_functions_known = true;
@@ -266,6 +267,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
     } catch (std::exception e) { // it couldn't be done on the slow side
       use_slow_side = false;
       correction_function_to_build.use_fast_side = true;
+      use_extrapolations_in_sharp_flux_calculations = true;
       get_lsqr_cell_gradient_operator_at_point(xyz_for_normal_derivative, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point, pin_normal_derivative_for_correction_functions, quad_idx); // this should work if the other didn't (hopefully, otherwise, we're screwed)
     }
 
@@ -708,8 +710,20 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
   const bool is_face_crossed = interface_manager->is_face_crossed_by_interface(f_idx, dim);
 
   PetscErrorCode ierr;
-  const double *solution_p;
-  ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  const double *extrapolation_minus_p = NULL, *extrapolation_plus_p = NULL;
+  const double *solution_p = NULL;
+  bool using_extrapolations = false;
+  if(extrapolation_minus != NULL && extrapolation_plus != NULL)
+  {
+    ierr = VecGetArrayRead(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+    using_extrapolations = true;
+  }
+  else
+  {
+    ierr = VecGetArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  }
+  P4EST_ASSERT((using_extrapolations && extrapolation_minus_p != NULL && extrapolation_plus_p != NULL) || (!using_extrapolations && solution_p != NULL));
 
   double flux_component_minus, flux_component_plus;
   flux_component_minus = flux_component_plus = NAN;
@@ -725,11 +739,18 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
     switch(bc->wallType(xyz_face))
     {
     case DIRICHLET:
-      *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
+      if(using_extrapolations)
+      {
+        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus *(bc->wallValue(xyz_face) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus  *(bc->wallValue(xyz_face) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
+      }
+      else
+        *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
       break;
     case NEUMANN:
     {
-      *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(sgn_face > 0 ? mu_plus : mu_minus)*bc->wallValue(xyz_face);
+      flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_minus*bc->wallValue(xyz_face);
+      flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_plus*bc->wallValue(xyz_face);
       break;
     }
     default:
@@ -742,44 +763,60 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
     bool one_sided;
     linear_combination_of_dof_t stable_projection_derivative = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, one_sided);
 
-    if(one_sided && !signs_of_phi_are_different(sgn_q, sgn_face) && !is_face_crossed)
-      *flux_at_face = (sgn_face > 0 ? mu_plus : mu_minus)*stable_projection_derivative(solution_p);
+    if(using_extrapolations)
+    {
+      flux_component_minus  = mu_minus*stable_projection_derivative(extrapolation_minus_p);
+      flux_component_plus   = mu_plus *stable_projection_derivative(extrapolation_plus_p);
+    }
     else
     {
-      P4EST_ASSERT(direct_neighbors.size() == 1);
-      const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
-      P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
-      const char sgn_direct_neighbor  = (one_sided ? 1 : -1)*sgn_q;
+      if(one_sided && !signs_of_phi_are_different(sgn_q, sgn_face) && !is_face_crossed)
+        *flux_at_face = (sgn_face > 0 ? mu_plus : mu_minus)*stable_projection_derivative(solution_p);
+      else
+      {
+        P4EST_ASSERT(direct_neighbors.size() == 1);
+        const p4est_quadrant_t& direct_neighbor = *direct_neighbors.begin();
+        P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
+        const char sgn_direct_neighbor  = (one_sided ? 1 : -1)*sgn_q;
 
-      for (char sgn_flux = (is_face_crossed ? -1 : sgn_face); sgn_flux <= (is_face_crossed ? +1 : sgn_face); sgn_flux += 2) {
-        const double &mu_flux = (sgn_flux < 0 ? mu_minus  : mu_plus);
-        flux_at_face    = (sgn_flux < 0 ? &flux_component_minus : &flux_component_plus);
-        *flux_at_face   = 0.0; // initialization
+        for (char sgn_flux = (is_face_crossed ? -1 : sgn_face); sgn_flux <= (is_face_crossed ? +1 : sgn_face); sgn_flux += 2) {
+          const double &mu_flux = (sgn_flux < 0 ? mu_minus  : mu_plus);
+          flux_at_face    = (sgn_flux < 0 ? &flux_component_minus : &flux_component_plus);
+          *flux_at_face   = 0.0; // initialization
 
-        for (u_char dof = 0; dof < 2; ++dof) // dof == 0 : this quadrant; dof == 1 : the direct neighbor
-        {
-          const double coeff_dof        = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(dof == 0 ? -1.0 : +1.0)*mu_flux/dxyz_min[oriented_dir/2];
-          const p4est_locidx_t& idx_dof = (dof == 0 ? quad_idx  : direct_neighbor.p.piggy3.local_num);
-          const char& sgn_dof           = (dof == 0 ? sgn_q     : sgn_direct_neighbor);
-
-          *flux_at_face += coeff_dof*solution_p[idx_dof];
-          if(signs_of_phi_are_different(sgn_flux, sgn_dof))
+          for (u_char dof = 0; dof < 2; ++dof) // dof == 0 : this quadrant; dof == 1 : the direct neighbor
           {
-#ifdef CASL_THROWS
-            if(correction_function_for_quad.find(idx_dof) == correction_function_for_quad.end())
-              throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::local_projection_for_face couldn't find the correction function for quad " + std::to_string(idx_dof)
-                                       + ", required for the calculation of a one-sided flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
-                                       + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
-                                       + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
-#endif
-            const correction_function_t& correction_function_dof = correction_function_for_quad.at(idx_dof);
-            *flux_at_face += coeff_dof*(sgn_flux > 0 ? +1.0 : -1.0)*correction_function_dof(solution_p);
+            const double coeff_dof        = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(dof == 0 ? -1.0 : +1.0)*mu_flux/dxyz_min[oriented_dir/2];
+            const p4est_locidx_t& idx_dof = (dof == 0 ? quad_idx  : direct_neighbor.p.piggy3.local_num);
+            const char& sgn_dof           = (dof == 0 ? sgn_q     : sgn_direct_neighbor);
+
+            *flux_at_face += coeff_dof*solution_p[idx_dof];
+            if(signs_of_phi_are_different(sgn_flux, sgn_dof))
+            {
+  #ifdef CASL_THROWS
+              if(correction_function_for_quad.find(idx_dof) == correction_function_for_quad.end())
+                throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::local_projection_for_face couldn't find the correction function for quad " + std::to_string(idx_dof)
+                                         + ", required for the calculation of a one-sided flux at face " + std::to_string(f_idx) + " of Cartesian normal " + std::to_string(dim) + ", found between quads "
+                                         + std::to_string(quad_idx) + " and " + std::to_string(direct_neighbor.p.piggy3.local_num) + " on proc " + std::to_string(p4est->mpirank)
+                                         + " (local partition has " + std::to_string(p4est->local_num_quadrants) + " quadrants).");
+  #endif
+              const correction_function_t& correction_function_dof = correction_function_for_quad.at(idx_dof);
+              *flux_at_face += coeff_dof*(sgn_flux > 0 ? +1.0 : -1.0)*correction_function_dof(solution_p);
+            }
           }
         }
       }
     }
   }
-  ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  if(extrapolation_minus_p != NULL && extrapolation_plus_p != NULL)
+  {
+    ierr = VecRestoreArrayRead(extrapolation_minus, &extrapolation_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(extrapolation_plus, &extrapolation_plus_p); CHKERRXX(ierr);
+  }
+  else
+  {
+    ierr = VecRestoreArrayRead(solution, &solution_p); CHKERRXX(ierr);
+  }
 
   // If the user needs the flux components back, return them hereunder
   // If the user needs the sharp flux components back (i.e., if flux_component_minus and flux_component_plus are pointing
@@ -797,20 +834,17 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
 
   if(face_velocity_plus_p[dim] != NULL && face_velocity_minus_p[dim] != NULL)
   {
-    if(sgn_face < 0 || is_face_crossed)
-    {
-      P4EST_ASSERT(!ISNAN(flux_component_minus));
+    P4EST_ASSERT((sgn_face > 0 && !is_face_crossed) || !ISNAN(flux_component_minus));
+    P4EST_ASSERT((sgn_face < 0 && !is_face_crossed) || !ISNAN(flux_component_plus ));
+    if(ISNAN(flux_component_minus))
+      face_velocity_minus_p[dim][f_idx] = DBL_MAX;
+    else
       face_velocity_minus_p[dim][f_idx] -= flux_component_minus;
-      if(!is_face_crossed)
-        face_velocity_plus_p[dim][f_idx] = DBL_MAX;
-    }
-    if(sgn_face > 0 || is_face_crossed)
-    {
-      P4EST_ASSERT(!ISNAN(flux_component_plus));
+
+    if(ISNAN(flux_component_plus))
+      face_velocity_plus_p[dim][f_idx] = DBL_MAX;
+    else
       face_velocity_plus_p[dim][f_idx] -= flux_component_plus;
-      if(!is_face_crossed)
-        face_velocity_minus_p[dim][f_idx] = DBL_MAX;
-    }
   }
 
   return;

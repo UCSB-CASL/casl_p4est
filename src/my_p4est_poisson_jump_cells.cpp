@@ -33,6 +33,8 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   scale_system_by_diagonals = true;
   bc = NULL;
   matrix_is_set = rhs_is_set = false;
+  extrapolations_are_set = false;
+  use_extrapolations_in_sharp_flux_calculations = false;
 
   const splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
 
@@ -105,6 +107,8 @@ void my_p4est_poisson_jump_cells_t::set_interface(my_p4est_interface_manager_t* 
     interface_manager->set_grad_phi();
 
   matrix_is_set = rhs_is_set = false;
+  extrapolations_are_set = false;
+  use_extrapolations_in_sharp_flux_calculations = false;
   return;
 }
 
@@ -141,6 +145,7 @@ void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_
     interp_jump_normal_flux->set_input(jump_normal_flux_u, linear);
 
   rhs_is_set = false;
+  extrapolations_are_set = false;
   return;
 }
 
@@ -324,6 +329,7 @@ void my_p4est_poisson_jump_cells_t::solve_linear_system()
   if(termination_reason <= 0)
     throw std::runtime_error("my_p4est_poisson_jump_cells_t::solve_linear_system() : the Krylov solver failed to converge for a linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
 #endif
+  extrapolations_are_set = false;
   return;
 }
 
@@ -519,7 +525,7 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   return;
 }
 
-void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *flux_minus, Vec *flux_plus) const
+void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *flux_minus, Vec *flux_plus)
 {
   P4EST_ASSERT(faces->get_p4est() == p4est); // the faces must be built from the same computational grid
   P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) ||
@@ -528,9 +534,13 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
   P4EST_ASSERT(flux_plus == NULL || VecsAreSetForFaces(flux_plus, faces, 1));
 
 #ifdef CASL_THROWS
-  if(solution == NULL)
-    throw std::runtime_error("my_p4est_poisson_jump_cells_t::project_face_velocities(): requires the solution, have you called called solve() before?");
+  if((extrapolation_minus == NULL || extrapolation_plus == NULL) && solution == NULL)
+    throw std::runtime_error("my_p4est_poisson_jump_cells_t::project_face_velocities(): requires either the extrapolated or the sharp solution(s), have you called solve() before?");
 #endif
+
+  // check if we want/need to use extrapolations only when calculating flux components...
+  if(use_extrapolations_in_sharp_flux_calculations && (extrapolation_minus == NULL || extrapolation_plus == NULL || !extrapolations_are_set))
+    extrapolate_solution_from_either_side_to_the_other(20);
 
   const bool velocities_provided            = (face_velocity_minus != NULL && face_velocity_plus != NULL);
   double *flux_minus_p[P4EST_DIM]           = {DIM(NULL, NULL, NULL)};
@@ -602,6 +612,9 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
 
 void my_p4est_poisson_jump_cells_t::extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree)
 {
+  if(extrapolations_are_set)
+    return;
+
   P4EST_ASSERT(n_pseudo_time_iterations > 0);
   P4EST_ASSERT(solution != NULL);
 
@@ -743,6 +756,8 @@ void my_p4est_poisson_jump_cells_t::extrapolate_solution_from_either_side_to_the
   ierr = delete_and_nullify_vector(tmp_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(tmp_plus); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(solution, &sharp_solution_p); CHKERRXX(ierr);
+
+  extrapolations_are_set = true;
 
   return;
 }
