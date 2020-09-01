@@ -167,7 +167,7 @@
 
 		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
 
-		if( sample[s] < 0 )								// Fix sign.
+		if( star( xyz[0], xyz[1] ) < 0 )				// Fix sign.
 			distances[s] *= -1;
 
 		if( s == 4 )									// For center node we need theta to yield curvature.
@@ -197,7 +197,7 @@ int main ( int argc, char* argv[] )
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 
-	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
