@@ -2183,3 +2183,66 @@ my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t 
 
   ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 }
+
+void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                          const int& write_rank, const int& write_tree, const char *filename,
+                                          const std::vector<Vec_for_vtk_export_t> *node_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *node_vector_fields_by_block,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_vector_fields_by_block)
+{
+
+  std::vector<const double*>* node_scalar_data  = (node_scalar_fields != NULL ? new std::vector<const double*>(node_scalar_fields->size())  : NULL);
+  std::vector<std::string>* node_scalar_names   = (node_scalar_fields != NULL ? new std::vector<std::string>(node_scalar_fields->size())    : NULL);
+  if (node_scalar_fields != NULL)
+    for (size_t k = 0; k < node_scalar_fields->size(); ++k) {
+      (*node_scalar_data)[k]  = (*node_scalar_fields)[k].ptr;
+      (*node_scalar_names)[k] = (*node_scalar_fields)[k].name;
+    }
+  std::vector<const double*>* node_vector_block_data          = (node_vector_fields_by_block != NULL  ? new std::vector<const double*>(node_vector_fields_by_block->size()) : NULL);
+  std::vector<std::string>* node_vector_block_names           = (node_vector_fields_by_block != NULL  ? new std::vector<std::string>(node_vector_fields_by_block->size())   : NULL);
+  if(node_vector_fields_by_block != NULL)
+    for (size_t k = 0; k < node_vector_fields_by_block->size(); ++k) {
+      (*node_vector_block_data)[k]  = (*node_vector_fields_by_block)[k].ptr;
+      (*node_vector_block_names)[k] = (*node_vector_fields_by_block)[k].name;
+    }
+
+  std::vector<const double*>* cell_scalar_data  = (cell_scalar_fields != NULL ? new std::vector<const double*>(cell_scalar_fields->size())  : NULL);
+  std::vector<std::string>* cell_scalar_names   = (cell_scalar_fields != NULL ? new std::vector<std::string>(cell_scalar_fields->size())    : NULL);
+  if (cell_scalar_fields != NULL)
+    for (size_t k = 0; k < cell_scalar_fields->size(); ++k) {
+      (*cell_scalar_data)[k]  = (*cell_scalar_fields)[k].ptr;
+      (*cell_scalar_names)[k] = (*cell_scalar_fields)[k].name;
+    }
+  std::vector<const double*>* cell_vector_block_data          = (cell_vector_fields_by_block != NULL  ? new std::vector<const double*>(cell_vector_fields_by_block->size()) : NULL);
+  std::vector<std::string>* cell_vector_block_names           = (cell_vector_fields_by_block != NULL  ? new std::vector<std::string>(cell_vector_fields_by_block->size())   : NULL);
+  if(cell_vector_fields_by_block != NULL)
+    for (size_t k = 0; k < cell_vector_fields_by_block->size(); ++k) {
+      (*cell_vector_block_data)[k]  = (*cell_vector_fields_by_block)[k].ptr;
+      (*cell_vector_block_names)[k] = (*cell_vector_fields_by_block)[k].name;
+    }
+
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       node_scalar_data, node_scalar_names, NULL, NULL, node_vector_block_data, node_vector_block_names,
+                                       cell_scalar_data, cell_scalar_names, NULL, NULL, cell_vector_block_data, cell_vector_block_names);
+
+  if(node_scalar_data != NULL)
+    delete node_scalar_data;
+  if(node_scalar_names != NULL)
+    delete node_scalar_names;
+  if(node_vector_block_data != NULL)
+    delete node_vector_block_data;
+  if(node_vector_block_names != NULL)
+    delete node_vector_block_names;
+
+  if(cell_scalar_data != NULL)
+    delete cell_scalar_data;
+  if(cell_scalar_names != NULL)
+    delete cell_scalar_names;
+  if(cell_vector_block_data != NULL)
+    delete cell_vector_block_data;
+  if(cell_vector_block_names != NULL)
+    delete cell_vector_block_names;
+
+  return;
+}

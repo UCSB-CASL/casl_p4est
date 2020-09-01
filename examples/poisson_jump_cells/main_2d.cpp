@@ -400,28 +400,6 @@ p4est_bool_t refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx
   }
 }
 
-struct Vec_for_vtk_export_t {
-  Vec vector;
-  const double* ptr;
-  string name;
-  Vec_for_vtk_export_t(Vec to_export, const string& name_tag)
-  {
-    vector = to_export;
-    PetscErrorCode ierr = VecGetArrayRead(vector, &ptr); CHKERRXX(ierr);
-    name = name_tag;
-  }
-  ~Vec_for_vtk_export_t()
-  {
-    PetscErrorCode ierr = VecRestoreArrayRead(vector, &ptr); CHKERRXX(ierr);
-  }
-};
-
-void add_vtk_export_to_list(const Vec_for_vtk_export_t& to_export, std::vector<const double *>& list_of_data_pointers, std::vector<string>& list_of_data_name_tags)
-{
-  list_of_data_pointers.push_back(to_export.ptr);
-  list_of_data_name_tags.push_back(to_export.name);
-}
-
 void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, Vec exact_solution_plus,
               const std::vector<convergence_analyzer_for_jump_cell_solver_t>& convergence_anlayzers,
               const my_p4est_brick_t *brick)
@@ -446,27 +424,17 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   const p4est_nodes_t* nodes = convergence_anlayzers[0].jump_cell_solver->get_nodes();
   const p4est_ghost_t* ghost = convergence_anlayzers[0].jump_cell_solver->get_ghost();
 
-  std::vector<const double*> comp_node_scalar_fields_pointers;
-  std::vector<string> comp_node_scalar_fields_names;
-  std::vector<const double*> comp_node_vector_fields_block_pointers;
-  std::vector<string> comp_node_vector_fields_block_names;
-  std::vector<const double*> comp_cell_scalar_fields_pointers;
-  std::vector<string> comp_cell_scalar_fields_names;
-  std::vector<const double*>* interface_capturing_node_scalar_fields_pointers       = (interface_manager->subcell_resolution() > 0 ? new std::vector<const double*> : &comp_node_scalar_fields_pointers);
-  std::vector<string>* interface_capturing_node_scalar_fields_names                 = (interface_manager->subcell_resolution() > 0 ? new std::vector<string>        : &comp_node_scalar_fields_names);
-  std::vector<const double*>* interface_capturing_node_vector_fields_block_pointers = (interface_manager->subcell_resolution() > 0 ? new std::vector<const double*> : &comp_node_vector_fields_block_pointers);
-  std::vector<string>* interface_capturing_node_vector_fields_block_names           = (interface_manager->subcell_resolution() > 0 ? new std::vector<string>        : &comp_node_vector_fields_block_names);
-  std::vector<const double*>* interface_capturing_cell_scalar_fields_pointers       = (interface_manager->subcell_resolution() > 0 ? new std::vector<const double*> : &comp_cell_scalar_fields_pointers);
-  std::vector<string>* interface_capturing_cell_scalar_fields_names                 = (interface_manager->subcell_resolution() > 0 ? new std::vector<string>        : &comp_cell_scalar_fields_names);
+  std::vector<Vec_for_vtk_export_t> comp_node_scalar_fields;
+  std::vector<Vec_for_vtk_export_t> comp_node_vector_fields;
+  std::vector<Vec_for_vtk_export_t> comp_cell_scalar_fields;
+  std::vector<Vec_for_vtk_export_t>* interface_capturing_node_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_scalar_fields);
+  std::vector<Vec_for_vtk_export_t>* interface_capturing_node_vector_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_vector_fields);
+  std::vector<Vec_for_vtk_export_t>* interface_capturing_cell_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_cell_scalar_fields);
 
-  std::vector<Vec_for_vtk_export_t> list_of_vtk_vectors_to_export;
   // on computational grid nodes
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(exact_solution_minus, "exact_solution_minus"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(exact_solution_plus, "exact_solution_plus"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(interface_manager->get_phi_on_computational_nodes(), "phi"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_node_scalar_fields_pointers, comp_node_scalar_fields_names);
+  comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_minus, "exact_solution_minus"));
+  comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_plus, "exact_solution_plus"));
+  comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_phi_on_computational_nodes(), "phi"));
   for (size_t k = 0; k < convergence_anlayzers.size(); ++k) {
     my_p4est_poisson_jump_cells_t* jump_solver = convergence_anlayzers[k].jump_cell_solver;
     my_p4est_poisson_jump_cells_xgfm_t* xgfm_solver = dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(jump_solver);
@@ -474,50 +442,33 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     const string name_extension = std::string("_") + convert_to_string(convergence_anlayzers[k].tag);
     P4EST_ASSERT((xgfm_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) == NULL) || (xgfm_solver == NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(jump_solver) != NULL));
 
-    list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(jump_solver->get_solution(), "solution" + name_extension));
-    add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
-    list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_error, "error" + name_extension));
-    add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
-    if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections()){
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
-      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
-    }
+    comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(jump_solver->get_solution(), "solution" + name_extension));
+    comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_error, "error" + name_extension));
+    if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections())
+      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
 
     Vec extrapolated_solution_minus = jump_solver->get_extrapolated_solution_minus();
     if(extrapolated_solution_minus != NULL)
     {
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(extrapolated_solution_minus, "extrapolated_solution_minus" + name_extension));
-      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_minus, "extrapolation_error_minus" + name_extension));
-      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_minus, "extrapolated_solution_minus" + name_extension));
+      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_minus, "extrapolation_error_minus" + name_extension));
     }
     Vec extrapolated_solution_plus  = jump_solver->get_extrapolated_solution_plus();
     if(extrapolated_solution_plus != NULL)
     {
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
-      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
-      list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
-      add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), comp_cell_scalar_fields_pointers, comp_cell_scalar_fields_names);
+      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
+      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
     }
   }
   // on interface-capturing grid nodes
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump(), "jump"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), *interface_capturing_node_scalar_fields_pointers, *interface_capturing_node_scalar_fields_names);
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump_in_normal_flux(), "jump_normal_flux"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), *interface_capturing_node_scalar_fields_pointers, *interface_capturing_node_scalar_fields_names);
-  list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
-  add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), *interface_capturing_node_vector_fields_block_pointers, *interface_capturing_node_vector_fields_block_names);
-  if(interface_manager->subcell_resolution() > 0){
-    list_of_vtk_vectors_to_export.push_back(Vec_for_vtk_export_t(interface_manager->get_phi(), "phi"));
-    add_vtk_export_to_list(list_of_vtk_vectors_to_export.back(), *interface_capturing_node_scalar_fields_pointers, *interface_capturing_node_scalar_fields_names);
-  }
+  interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump(), "jump"));
+  interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump_in_normal_flux(), "jump_normal_flux"));
+  interface_capturing_node_vector_fields->push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
+  if(interface_manager->subcell_resolution() > 0)
+    interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(interface_manager->get_phi(), "phi"));
 
   my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, oss_computational.str().c_str(),
-                                       &comp_node_scalar_fields_pointers, &comp_node_scalar_fields_names,
-                                       NULL, NULL,
-                                       &comp_node_vector_fields_block_pointers, &comp_node_vector_fields_block_names,
-                                       &comp_cell_scalar_fields_pointers, &comp_cell_scalar_fields_names,
-                                       NULL, NULL, NULL, NULL);
+                                       &comp_node_scalar_fields, &comp_node_vector_fields, &comp_cell_scalar_fields, NULL);
 
   if(interface_manager->subcell_resolution() > 0)
   {
@@ -529,21 +480,12 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     const p4est_nodes_t*  interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
     const p4est_ghost_t*  interface_capturing_ghost = interface_manager->get_interface_capturing_ngbd_n().get_ghost();
     my_p4est_vtk_write_all_general_lists(interface_capturing_p4est, interface_capturing_nodes, interface_capturing_ghost, P4EST_TRUE, P4EST_TRUE, oss_interface_capturing.str().c_str(),
-                                         interface_capturing_node_scalar_fields_pointers, interface_capturing_node_scalar_fields_names,
-                                         NULL, NULL,
-                                         interface_capturing_node_vector_fields_block_pointers, interface_capturing_node_vector_fields_block_names,
-                                         interface_capturing_cell_scalar_fields_pointers, interface_capturing_cell_scalar_fields_names,
-                                         NULL, NULL, NULL, NULL);
-  }
+                                         interface_capturing_node_scalar_fields, interface_capturing_node_vector_fields,
+                                         interface_capturing_cell_scalar_fields, NULL);
 
-  if(interface_manager->subcell_resolution() > 0)
-  {
-    delete interface_capturing_node_scalar_fields_pointers;
-    delete interface_capturing_node_scalar_fields_names;
-    delete interface_capturing_node_vector_fields_block_pointers;
-    delete interface_capturing_node_vector_fields_block_names;
-    delete interface_capturing_cell_scalar_fields_pointers;
-    delete interface_capturing_cell_scalar_fields_names;
+    delete interface_capturing_node_scalar_fields;
+    delete interface_capturing_node_vector_fields;
+    delete interface_capturing_cell_scalar_fields;
   }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());

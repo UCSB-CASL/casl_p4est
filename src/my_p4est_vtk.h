@@ -42,6 +42,22 @@
  * It will be replaced with a generic transfinite blending scheme.  *
  ********************************************************************/
 
+struct Vec_for_vtk_export_t {
+  Vec vector;
+  const double* ptr;
+  std::string name;
+  Vec_for_vtk_export_t(Vec to_export, const std::string& name_tag)
+  {
+    vector = to_export;
+    PetscErrorCode ierr = VecGetArrayRead(vector, &ptr); CHKERRXX(ierr);
+    name = name_tag;
+  }
+  ~Vec_for_vtk_export_t()
+  {
+    PetscErrorCode ierr = VecRestoreArrayRead(vector, &ptr); CHKERRXX(ierr);
+  }
+};
+
 SC_EXTERN_C_BEGIN;
 
 static const int VTK_POINT_DATA = 0;
@@ -269,5 +285,33 @@ inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_node
 }
 
 SC_EXTERN_C_END;
+
+
+// the following ones work with vectors defined as block-structured PetSc vectors only (no vector field given component by component)
+void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                          const int& write_rank, const int& write_tree, const char *filename,
+                                          const std::vector<Vec_for_vtk_export_t> *node_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *node_vector_fields_by_block,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_vector_fields_by_block);
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<Vec_for_vtk_export_t> &node_scalar_fields)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &node_scalar_fields, NULL, NULL, NULL);
+  return;
+}
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<Vec_for_vtk_export_t> &node_scalar_fields,
+                                         const std::vector<Vec_for_vtk_export_t> &cell_scalar_fields)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &node_scalar_fields, NULL, &cell_scalar_fields, NULL);
+  return;
+}
 
 #endif /* !MY_P4EST_VTK_H */
