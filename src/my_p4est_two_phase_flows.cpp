@@ -2424,87 +2424,55 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
 void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index) const
 {
   PetscErrorCode ierr;
-  std::vector<const double*> node_scalar_data;        std::vector<std::string> node_scalar_names;
-  std::vector<const double*> node_vector_block_data;  std::vector<std::string> node_vector_block_names;
-  std::vector<const double*> cell_scalar_data;        std::vector<std::string> cell_scalar_names;
-  const double *phi_on_computational_nodes_p, *projection_variable_p, *vnp1_nodes_plus_p, *vnp1_nodes_minus_p;
-  const double *phi_on_fine_nodes_p, *curvature_p, *grad_phi_p;
-  Vec projection_variable = divergence_free_projector->get_solution();
-  if(phi_on_computational_nodes != NULL){
-    ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr);
-    node_scalar_data.push_back(phi_on_computational_nodes_p);
-    node_scalar_names.push_back("phi");
-  }
-  if(projection_variable != NULL){
-    ierr = VecGetArrayRead(projection_variable, &projection_variable_p); CHKERRXX(ierr);
-    cell_scalar_data.push_back(projection_variable_p);
-    cell_scalar_names.push_back("projection variable");
-  }
-  if(vnp1_nodes_minus != NULL){
-    ierr = VecGetArrayRead(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr);
-    node_vector_block_data.push_back(vnp1_nodes_minus_p);
-    node_vector_block_names.push_back("vnp1 minus");
-  }
-  if(vnp1_nodes_plus != NULL){
-    ierr = VecGetArrayRead(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr);
-    node_vector_block_data.push_back(vnp1_nodes_plus_p);
-    node_vector_block_names.push_back("vnp1 plus");
-  }
+  std::vector<Vec_for_vtk_export_t> node_scalar_fields;
+  std::vector<Vec_for_vtk_export_t> node_vector_fields;
+  std::vector<Vec_for_vtk_export_t> cell_scalar_fields;
+  if(phi_on_computational_nodes != NULL)
+    node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_on_computational_nodes, "phi"));
+  if(vnp1_nodes_minus != NULL)
+    node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_minus, "vnp1_minus"));
+  if(vnp1_nodes_plus != NULL)
+    node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_plus, "vnp1_plus"));
   if(interface_manager->subcell_resolution() == 0)
   {
-    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
-    node_scalar_data.push_back(curvature_p);
-    node_scalar_names.push_back("curvature");
-    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-    node_vector_block_data.push_back(grad_phi_p);
-    node_vector_block_names.push_back("grad_phi");
+    node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
+    node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
   }
+
+  Vec projection_variable = divergence_free_projector->get_solution();
+  if(projection_variable != NULL)
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(projection_variable, "projection_variable"));
+  Vec discretized_div_u_star = NULL;
+  if(divergence_free_projector->get_rhs() != NULL)
+  {
+    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
+    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
+  }
+  Vec pressure_guess      = pressure_guess_solver->get_solution();
+  if(pressure_guess != NULL)
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_guess, "pressure_guess"));
+
   my_p4est_vtk_write_all_general_lists(p4est_n, nodes_n, ghost_n,
                                        P4EST_TRUE, P4EST_TRUE,
                                        (vtk_directory + "/snapshot_" + std::to_string(index)).c_str(),
-                                       &node_scalar_data, &node_scalar_names,
-                                       NULL, NULL,
-                                       &node_vector_block_data, &node_vector_block_names,
-                                       &cell_scalar_data, &cell_scalar_names,
-                                       NULL, NULL,
-                                       NULL, NULL);
-  if(vnp1_nodes_plus != NULL){
-    ierr = VecRestoreArrayRead(vnp1_nodes_plus, &vnp1_nodes_plus_p); CHKERRXX(ierr); }
-  if(vnp1_nodes_minus != NULL){
-    ierr = VecRestoreArrayRead(vnp1_nodes_minus, &vnp1_nodes_minus_p); CHKERRXX(ierr); }
-  if(projection_variable != NULL){
-    ierr = VecRestoreArrayRead(projection_variable, &projection_variable_p); CHKERRXX(ierr); }
-  if(phi_on_computational_nodes != NULL){
-    ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
-
-  if(interface_manager->subcell_resolution() == 0)
-  {
-    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-  }
+                                       &node_scalar_fields, &node_vector_fields, &cell_scalar_fields, NULL);
 
   if(interface_manager->subcell_resolution() > 0)
   {
-    node_scalar_data.clear(); node_scalar_names.clear();
-    node_vector_block_data.clear(); node_vector_block_names.clear();
-    ierr = VecGetArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
-    node_scalar_data.push_back(phi_on_fine_nodes_p);
-    node_scalar_names.push_back("phi");
-    ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
-    node_scalar_data.push_back(curvature_p);
-    node_scalar_names.push_back("curvature");
-    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
-    node_vector_block_data.push_back(grad_phi_p);
-    node_vector_block_names.push_back("grad_phi");
+    node_scalar_fields.clear();
+    node_vector_fields.clear();
+    node_scalar_fields.push_back(Vec_for_vtk_export_t(phi, "phi"));
+    node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
+    node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
     my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
                                          P4EST_TRUE, P4EST_TRUE,
                                          (vtk_directory + "/subresolved_snapshot_" + std::to_string(index)).c_str(),
-                                         &node_scalar_data, &node_scalar_names, NULL, NULL, &node_vector_block_data, &node_vector_block_names,
-                                         NULL, NULL, NULL, NULL, NULL, NULL);
-    ierr = VecRestoreArrayRead(phi, &phi_on_fine_nodes_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+                                         &node_scalar_fields, &node_vector_fields, NULL, NULL);
   }
+  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
   return;

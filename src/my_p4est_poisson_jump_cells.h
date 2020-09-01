@@ -252,6 +252,7 @@ public:
   inline const my_p4est_hierarchy_t* get_hierarchy()            const { return cell_ngbd->get_hierarchy();  }
   inline const double* get_smallest_dxyz()                      const { return dxyz_min;                    }
   inline Vec get_solution()                                     const { return solution;                    }
+  inline Vec get_rhs()                                          const { return rhs;                         }
   inline Vec get_jump()                                         const { return jump_u;                      }
   inline Vec get_jump_in_normal_flux()                          const { return jump_normal_flux_u;          }
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
