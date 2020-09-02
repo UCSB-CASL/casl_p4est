@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC star_datasets_2d.cpp )
+	list( APPEND SRC old_mlds_flowerDatasets.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )

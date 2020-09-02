@@ -6,6 +6,9 @@
 #define FAST_SWEEPING_LOCAL_UTILS_H
 
 #include <sys/stat.h>
+#include <vector>
+#include <string>
+#include <src/my_p4est_utils.h>
 
 
 /**

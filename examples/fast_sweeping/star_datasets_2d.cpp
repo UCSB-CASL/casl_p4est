@@ -82,8 +82,6 @@
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
  * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
- * @throws runtime exception if distance between original projected point on interface and point found by Newton-Raphson
- * are farther than H and if Newton-Raphson's method converged to a local minimum (didn't get to zero).
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,

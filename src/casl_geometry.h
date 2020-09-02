@@ -152,6 +152,32 @@ namespace geom
 		}
 
 		/**
+	 	 * Compute the spacing and the minimum value for the current star parameters given a desired resolution.
+	 	 * @param [in] nGridPoints Number of uniformly distributed grid points along each dimension.
+	 	 * @param [out] h Spacing (i.e. minimum cell width at the maximum refinement level).
+	 	 * @param [out] minVal Minimum value in the active domain [minVal, -minVal]^2.
+	 	 * @param [in] padding Number of uniform grid points to be used as padding around star (min value is 2).
+	 	 */
+		void getHAndMinVal( unsigned nGridPoints, double& h, double& minVal, unsigned padding = 2 ) const
+		{
+			if( nGridPoints < 16 )
+			{
+				nGridPoints = 16;
+				std::cerr << "Number of grid points is too small, it'll be set to 16" << std::endl;
+			}
+
+			if( padding < 2 )
+			{
+				padding = 2;
+				std::cerr << "Number of padding grid points used should be at least 2. It'll be set to 2" << std::endl;
+			}
+
+			double limitVal = MAX( ABS( _a + _b ), ABS( _a - _b ) );	// We have at least 2h as padding on each
+			h = 2 * limitVal / ( nGridPoints - 1 - 2 * padding );		// direction from the limit val of the flower.
+			minVal = -limitVal - padding * h;	// This is the lowest value we consider in the domain to create a grid.
+		}
+
+		/**
 		 * Get the 'a' perturbation star's parameter.
 		 * @return star.a.
 		 */
