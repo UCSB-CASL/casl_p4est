@@ -248,7 +248,7 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 		throw std::runtime_error( "Point cartesian coordinates file " + pointsFileName + " couldn't be opened!" );
 
 	std::ostringstream headerPointsStream;								// Write output file header.
-	headerPointsStream << R"("x","y")";
+	headerPointsStream << R"("i","x","y")";
 	pointsFile << headerPointsStream.str() << std::endl;
 
 	pointsFile.precision( 15 );
