@@ -55,7 +55,7 @@ std::istream& operator>> (std::istream& is, poisson_jump_cell_solver_tag& solver
 const int default_lmin = 4;
 const int default_lmax = 4;
 const int default_ntree = 1;
-const interpolation_method default_interp_method_phi = linear;
+const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
 const bool default_use_second_order_theta = false;
 const bool default_subrefinement = false;
 const double default_box_size = 2.5;
@@ -68,10 +68,10 @@ const double default_viscosity = 1.0/12000.0;
 const double default_surface_tension = 1.0/12000.0;
 const double default_duration_nondimensional = 250.0;
 const double default_vtk_dt_nondimensional = 1.0;
-const int default_sl_order = 1;
+const int default_sl_order = 2;
 const double default_cfl_advection = 1.0;
 const double default_cfl_capillary = 0.5;
-const poisson_jump_cell_solver_tag default_projection = GFM;
+const poisson_jump_cell_solver_tag default_projection = FV;
 const int default_n_reinit = INT_MAX;
 const bool default_static_interface = true;
 const bool default_save_vtk = true;
@@ -316,6 +316,111 @@ void export_results(const double& nondimensional_tn, const double& magnitude_non
   fclose(fp_volume);
 }
 
+void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
+                                my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity,
+                                splitting_criteria_cf_and_uniform_band_t* &data, splitting_criteria_cf_t* &subrefined_data)
+{
+  const int lmin                        = cmd.get<int>    ("lmin",              default_lmin);
+  const int lmax                        = cmd.get<int>    ("lmax",              default_lmax);
+  const double vorticity_threshold      = cmd.get<double> ("thresh",            default_vorticity_threshold);
+  const int ntree                       = cmd.get<int>    ("ntree",             default_ntree);
+  const int ntree_xyz[P4EST_DIM]        = {DIM(ntree, ntree, ntree)};
+  const double box_size                 = cmd.get<double> ("box_size",          default_box_size);
+  const double xyz_min[P4EST_DIM]       = { DIM(-0.5*box_size, -0.5*box_size, -0.5*box_size) };
+  const double xyz_max[P4EST_DIM]       = { DIM( 0.5*box_size,  0.5*box_size,  0.5*box_size) };
+  const int periodic[P4EST_DIM]         = { DIM(cmd.get<bool>("xperiodic", default_periodic[0]),
+                                            cmd.get<bool>("yperiodic", default_periodic[1]),
+                                            cmd.get<bool>("zperiodic", default_periodic[2]))};
+  const double dxmin                    = box_size/(((double) ntree)*((double) (1 << lmax)));
+  const double bubble_radius            = cmd.get<double> ("radius",            default_bubble_radius);
+  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*bubble_radius/dxmin);
+  const double mass_density             = cmd.get<double> ("mass_density",      default_mass_density);
+  const double viscosity                = cmd.get<double> ("viscosity",         default_viscosity);
+  const double surface_tension          = cmd.get<double> ("surface_tension",   default_surface_tension);
+  const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
+  const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
+  const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
+  const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
+  const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
+  const poisson_jump_cell_solver_tag projection_solver_to_use = cmd.get<poisson_jump_cell_solver_tag>("projection", default_projection);
+
+
+  const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
+  const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
+
+  if(2.0*bubble_radius > box_size)
+    throw std::invalid_argument("main for static bubble: create_solver_from_scratch: invalid bubble radius (the bubble is larger than the computational domain).");
+  LEVEL_SET level_set(bubble_radius);
+
+  if(brick != NULL && brick->nxyz_to_treeid != NULL)
+  {
+    if(brick->nxyz_to_treeid != NULL)
+    {
+      P4EST_FREE(brick->nxyz_to_treeid);
+      brick->nxyz_to_treeid = NULL;
+    }
+    delete brick; brick = NULL;
+  }
+  P4EST_ASSERT(brick == NULL);
+  brick = new my_p4est_brick_t;
+  if(connectivity != NULL)
+  {
+    p4est_connectivity_destroy(connectivity); connectivity = NULL;
+  }
+  connectivity = my_p4est_brick_new(ntree_xyz, xyz_min, xyz_max, brick, periodic);
+  if(data != NULL)
+    delete data;
+  data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band_in_dxmin);
+  p4est_t                       *p4est_nm1      = NULL, *p4est_n      = NULL, *subrefined_p4est     = NULL;
+  p4est_ghost_t                 *ghost_nm1      = NULL, *ghost_n      = NULL, *subrefined_ghost     = NULL;
+  p4est_nodes_t                 *nodes_nm1      = NULL, *nodes_n      = NULL, *subrefined_nodes     = NULL;
+  my_p4est_hierarchy_t          *hierarchy_nm1  = NULL, *hierarchy_n  = NULL, *subrefined_hierarchy = NULL;
+  my_p4est_node_neighbors_t     *ngbd_nm1       = NULL, *ngbd_n       = NULL, *subrefined_ngbd_n    = NULL;
+  Vec                                                    phi          = NULL,  subrefined_phi       = NULL;
+  my_p4est_cell_neighbors_t                             *ngbd_c       = NULL;
+  my_p4est_faces_t                                      *faces        = NULL;
+
+  build_computational_grids(mpi, brick, connectivity, data, level_set,
+                            p4est_nm1, ghost_nm1, nodes_nm1, hierarchy_nm1, ngbd_nm1,
+                            p4est_n, ghost_n, nodes_n, hierarchy_n, ngbd_n,
+                            ngbd_c, faces, phi);
+  Vec interface_capturing_phi = phi; // no creation here, just a renamed pointer to streamline the logic
+
+  if(use_subrefinement)
+  {
+    // build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
+    if(subrefined_data != NULL)
+      delete subrefined_data;
+    subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &level_set);
+    build_interface_capturing_grid(p4est_n, brick, subrefined_data, level_set,
+                                   subrefined_p4est, subrefined_ghost, subrefined_nodes, subrefined_hierarchy, subrefined_ngbd_n, subrefined_phi);
+    interface_capturing_phi = subrefined_phi;
+  }
+
+  CF_DIM *vnm1_minus[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  CF_DIM *vnm1_plus[P4EST_DIM]  = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  CF_DIM *vn_minus[P4EST_DIM]   = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  CF_DIM *vn_plus[P4EST_DIM]    = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+
+  if(solver != NULL)
+    delete solver;
+  solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces, (use_subrefinement ? subrefined_ngbd_n : NULL));
+  solver->set_phi(interface_capturing_phi, phi_interp, phi);
+  solver->set_dynamic_viscosities(viscosity, viscosity);
+  solver->set_densities(mass_density, mass_density);
+  solver->set_surface_tension(surface_tension);
+  solver->set_uniform_bands(uniform_band_in_dxmin, uniform_band_in_dxmin);
+  solver->set_vorticity_split_threshold(vorticity_threshold);
+  solver->set_cfls(cfl_advection, cfl_capillary);
+  solver->set_semi_lagrangian_order(sl_order);
+  solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
+
+  solver->set_projection_solver(projection_solver_to_use);
+  if(use_second_order_theta)
+    solver->fetch_interface_points_with_second_order_accuracy();
+  return;
+}
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -371,47 +476,67 @@ int main (int argc, char* argv[])
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
-  const int lmin                        = cmd.get<int>    ("lmin",              default_lmin);
-  const int lmax                        = cmd.get<int>    ("lmax",              default_lmax);
-  const double vorticity_threshold      = cmd.get<double> ("thresh",            default_vorticity_threshold);
-  const int ntree                       = cmd.get<int>    ("ntree",             default_ntree);
-  const int ntree_xyz[P4EST_DIM]        = {DIM(ntree, ntree, ntree)};
-  const double box_size                 = cmd.get<double> ("box_size",          default_box_size);
-  const double xyz_min[P4EST_DIM]       = { DIM(-0.5*box_size, -0.5*box_size, -0.5*box_size) };
-  const double xyz_max[P4EST_DIM]       = { DIM( 0.5*box_size,  0.5*box_size,  0.5*box_size) };
-  const int periodic[P4EST_DIM]         = { DIM(cmd.get<bool>("xperiodic", default_periodic[0]),
-                                            cmd.get<bool>("yperiodic", default_periodic[1]),
-                                            cmd.get<bool>("zperiodic", default_periodic[2]))};
-  const double dxmin                    = box_size/(((double) ntree)*((double) (1 << lmax)));
-  const double bubble_radius            = cmd.get<double> ("radius",            default_bubble_radius);
-  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*bubble_radius/dxmin);
-  const double mass_density             = cmd.get<double> ("mass_density",      default_mass_density);
-  const double viscosity                = cmd.get<double> ("viscosity",         default_viscosity);
-  const double surface_tension          = cmd.get<double> ("surface_tension",   default_surface_tension);
-  const double characteristic_time_unit = (2.0*bubble_radius*viscosity/surface_tension);
-  const double duration                 = cmd.get<double> ("duration",          default_duration_nondimensional)*characteristic_time_unit;
-  const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
-  const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
-  const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
-  const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
-  const bool save_vtk                   = cmd.get<bool>   ("save_vtk",          default_save_vtk);
-  const double vtk_dt                   = cmd.get<double> ("vtk_dt",            default_vtk_dt_nondimensional)*characteristic_time_unit;
   const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
-  const poisson_jump_cell_solver_tag projection_solver_to_use = cmd.get<poisson_jump_cell_solver_tag>("projection", default_projection);
   const int niter_reinit                = cmd.get<int>    ("n_reinit",          default_n_reinit);
   const bool static_interface           = cmd.get<bool>   ("static_interface",  default_static_interface);
 
+  PetscErrorCode ierr;
 
-  const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
-  const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
+  BoundaryConditionsDIM bc_v[P4EST_DIM];
+  BoundaryConditionsDIM bc_p; bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(zero_cf);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    bc_v[dim].setWallTypes(bc_walltype_velocity); bc_v[dim].setWallValues(zero_cf);
+  }
+  CF_DIM *external_force_per_unit_mass[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
 
-  if(2.0*bubble_radius > box_size)
-    throw std::invalid_argument("main for static bubble: invalid bubble radius (the bubble is larger than the computational domain).");
+  my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
+  my_p4est_brick_t *brick                           = NULL;
+  p4est_connectivity_t* connectivity                = NULL;
+  splitting_criteria_cf_and_uniform_band_t* data    = NULL;
+  splitting_criteria_cf_t* subrefined_data          = NULL;
+  double tn, dt;
+
+//  if(cmd.contains("restart"))
+//    load_solver_from_state();
+//  else
+  {
+    create_solver_from_scratch(mpi, cmd, two_phase_flow_solver, brick, connectivity, data, subrefined_data);
+    tn = 0.0;// no restart for now, so we assume we start from 0.0
+    dt = two_phase_flow_solver->get_capillary_dt();
+  }
+
+  // make sure we're doing consistent stuff
+  if(fabs(two_phase_flow_solver->get_mu_minus() - two_phase_flow_solver->get_mu_plus()) > 1e-6*MIN(fabs(two_phase_flow_solver->get_mu_minus()), fabs(two_phase_flow_solver->get_mu_plus())))
+    throw std::runtime_error("main for static bubble: this test is designed for mu_minus == mu_plus");
+  if(fabs(two_phase_flow_solver->get_rho_minus() - two_phase_flow_solver->get_rho_plus()) > 1e-6*MIN(fabs(two_phase_flow_solver->get_rho_minus()), fabs(two_phase_flow_solver->get_rho_plus())))
+    throw std::runtime_error("main for static bubble: this test is designed for rho_minus == rho_plus");
+
+  const double bubble_radius        = cmd.get<double> ("radius", default_bubble_radius);
+#ifdef P4_TO_P8
+  const double exact_bubble_volume  = (4.0/3.0)*M_PI*pow(bubble_radius, 3.0);
+#else
+  const double exact_bubble_volume  = M_PI*SQR(bubble_radius);
+#endif
+
+  const double viscosity        = two_phase_flow_solver->get_mu_minus();
+  const double mass_density     = two_phase_flow_solver->get_rho_minus();
+  const double surface_tension  = two_phase_flow_solver->get_surface_tension();
+  const double characteristic_time_unit = (2.0*bubble_radius*viscosity/surface_tension);
+  const double duration                 = cmd.get<double> ("duration",  default_duration_nondimensional)*characteristic_time_unit;
+  const double vtk_dt                   = cmd.get<double> ("vtk_dt",    default_vtk_dt_nondimensional)*characteristic_time_unit;
+  const bool save_vtk                   = cmd.get<bool>   ("save_vtk",  default_save_vtk);
   if(vtk_dt <= 0.0)
     throw std::invalid_argument("main for static bubble: the value of vtk_dt must be strictly positive.");
+  if(save_vtk && !cmd.contains("retsart"))
+  {
+    dt = MIN(dt, vtk_dt);
+    two_phase_flow_solver->set_dt(dt, dt);
+  }
+
   const double inv_Oh_square = surface_tension*mass_density*2.0*bubble_radius/SQR(viscosity);
   streamObj.str(""); streamObj << inv_Oh_square;
-  const string export_dir = root_export_folder + (root_export_folder.back() == '/' ? "" : "/") + "inv_Oh_squared_" + streamObj.str() + "/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
+  const splitting_criteria_t* sp = (splitting_criteria_t*) two_phase_flow_solver->get_p4est_n()->user_pointer;
+  const string export_dir = root_export_folder + (root_export_folder.back() == '/' ? "" : "/") + "inv_Oh_squared_" + streamObj.str() + "/lmin_" + to_string(sp->min_lvl) + "_lmax_" + to_string(sp->max_lvl);
   const string vtk_dir    = export_dir + "/vtu";
   const string results_dir   = export_dir + "/results";
   if(create_directory(export_dir.c_str(), mpi.rank(), mpi.comm()))
@@ -421,78 +546,8 @@ int main (int argc, char* argv[])
   if(save_vtk && create_directory(vtk_dir, mpi.rank(), mpi.comm()))
     throw std::runtime_error("main for static bubble: could not create directory for visualization files, i.e., " + vtk_dir);
 
-  PetscErrorCode ierr;
-  my_p4est_brick_t brick;
-  my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
-
-  BoundaryConditionsDIM bc_v[P4EST_DIM];
-  BoundaryConditionsDIM bc_p; bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(zero_cf);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    bc_v[dim].setWallTypes(bc_walltype_velocity); bc_v[dim].setWallValues(zero_cf);
-  }
-  CF_DIM *external_force_per_unit_mass[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-
-  LEVEL_SET level_set(bubble_radius);
-#ifdef P4_TO_P8
-  const double exact_bubble_volume = 4.0*M_PI*pow(bubble_radius, 3.0)/3.0;
-#else
-  const double exact_bubble_volume = M_PI*SQR(bubble_radius);
-#endif
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(ntree_xyz, xyz_min, xyz_max, &brick, periodic);
-  splitting_criteria_cf_and_uniform_band_t* data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band_in_dxmin);
-
-  splitting_criteria_cf_t* subrefined_data = NULL;
-  p4est_t                       *p4est_nm1      = NULL, *p4est_n      = NULL, *subrefined_p4est     = NULL;
-  p4est_ghost_t                 *ghost_nm1      = NULL, *ghost_n      = NULL, *subrefined_ghost     = NULL;
-  p4est_nodes_t                 *nodes_nm1      = NULL, *nodes_n      = NULL, *subrefined_nodes     = NULL;
-  my_p4est_hierarchy_t          *hierarchy_nm1  = NULL, *hierarchy_n  = NULL, *subrefined_hierarchy = NULL;
-  my_p4est_node_neighbors_t     *ngbd_nm1       = NULL, *ngbd_n       = NULL, *subrefined_ngbd_n    = NULL;
-  Vec                                                    phi          = NULL,  subrefined_phi       = NULL;
-  my_p4est_cell_neighbors_t                             *ngbd_c       = NULL;
-  my_p4est_faces_t                                      *faces        = NULL;
-
-  build_computational_grids(mpi, &brick, connectivity, data, level_set,
-                            p4est_nm1, ghost_nm1, nodes_nm1, hierarchy_nm1, ngbd_nm1,
-                            p4est_n, ghost_n, nodes_n, hierarchy_n, ngbd_n,
-                            ngbd_c, faces, phi);
-  Vec interface_capturing_phi = phi; // no creation here, just a renamed pointer to streamline the logic
-
-  if(use_subrefinement)
-  {
-    // build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
-    subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &level_set);
-    build_interface_capturing_grid(p4est_n, &brick, subrefined_data, level_set,
-                                   subrefined_p4est, subrefined_ghost, subrefined_nodes, subrefined_hierarchy, subrefined_ngbd_n, subrefined_phi);
-    interface_capturing_phi = subrefined_phi;
-  }
-
-  CF_DIM *vnm1_minus[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vnm1_plus[P4EST_DIM]  = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vn_minus[P4EST_DIM]   = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vn_plus[P4EST_DIM]    = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-
-  two_phase_flow_solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces, (use_subrefinement ? subrefined_ngbd_n : NULL));
-  two_phase_flow_solver->set_phi(interface_capturing_phi, phi_interp, phi);
-  two_phase_flow_solver->set_dynamic_viscosities(viscosity, viscosity);
-  two_phase_flow_solver->set_densities(mass_density, mass_density);
-  two_phase_flow_solver->set_surface_tension(surface_tension);
-  two_phase_flow_solver->set_uniform_bands(uniform_band_in_dxmin, uniform_band_in_dxmin);
-  two_phase_flow_solver->set_vorticity_split_threshold(vorticity_threshold);
-  two_phase_flow_solver->set_cfls(cfl_advection, cfl_capillary);
-  two_phase_flow_solver->set_semi_lagrangian_order(sl_order);
-  two_phase_flow_solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
-
-  double tn = 0.0; // no restart for now, so we assume we start from 0.0
-  double dt = cfl_capillary*sqrt(2.0*mass_density*pow(dxmin, 3.0)/(M_PI*surface_tension));
-  if(save_vtk)
-    dt = MIN(dt, vtk_dt);
-  two_phase_flow_solver->set_dt(dt, dt);
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
   two_phase_flow_solver->set_external_forces_per_unit_mass(external_force_per_unit_mass);
-
-  two_phase_flow_solver->set_projection_solver(projection_solver_to_use);
-  if(use_second_order_theta)
-    two_phase_flow_solver->fetch_interface_points_with_second_order_accuracy();
 
   string parasitic_current_datafile, volume_datafile;
   initialize_exportations(mpi, results_dir, parasitic_current_datafile, volume_datafile);
@@ -539,7 +594,8 @@ int main (int argc, char* argv[])
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_nondimensional_velocity_overall);
 
   delete two_phase_flow_solver;
-  my_p4est_brick_destroy(connectivity, &brick);
+  my_p4est_brick_destroy(connectivity, brick);
+  delete brick;
   delete data;
   delete subrefined_data;
 

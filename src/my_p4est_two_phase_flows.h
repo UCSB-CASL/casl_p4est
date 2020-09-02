@@ -520,12 +520,22 @@ public:
   my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time);
   ~my_p4est_two_phase_flows_t();
 
+  inline double get_capillary_dt() const
+  {
+    return cfl_surface_tension*sqrt((rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(M_PI*surface_tension));
+  }
+
+  inline double get_advection_dt(const double &min_value_for_u_max) const
+  {
+    const double max_L2_norm_u_overall = MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
+    return MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
+  }
+
   inline void compute_dt(const double &min_value_for_u_max = 1.0)
   {
     dt_nm1 = dt_n;
-    const double max_L2_norm_u_overall = MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
-    dt_n = MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
-    dt_n = MIN(dt_n, cfl_surface_tension*sqrt((rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(M_PI*surface_tension)));
+    dt_n = get_advection_dt(min_value_for_u_max);
+    dt_n = MIN(dt_n, get_capillary_dt());
 
     dt_updated = true;
   }
@@ -613,6 +623,12 @@ public:
   inline Vec get_vnp1_nodes_minus() const                                   { return vnp1_nodes_minus; }
   inline Vec get_vnp1_nodes_plus() const                                    { return vnp1_nodes_plus; }
   inline double get_diag_min() const                                        { return tree_diagonal/((double) (1 << (interface_manager->get_max_level_computational_grid()))); }
+  inline double get_mu_minus() const                                        { return mu_minus; }
+  inline double get_mu_plus() const                                         { return mu_plus; }
+  inline double get_rho_minus() const                                       { return rho_minus; }
+  inline double get_rho_plus() const                                        { return rho_plus; }
+  inline double get_surface_tension() const                                 { return surface_tension; }
+
 
   inline void do_voronoi_computations_on_the_fly(const bool& do_it_on_the_fly)
   {
