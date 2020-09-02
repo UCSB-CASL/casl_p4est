@@ -24,12 +24,6 @@
 #include <src/my_p4est_save_load.h>
 #endif
 
-typedef enum
-{
-  SAVE=3541,
-  LOAD
-} save_or_load;
-
 typedef enum {
   grid_update,
   viscous_step,

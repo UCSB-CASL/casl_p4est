@@ -293,6 +293,303 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   fetch_interface_FD_neighbors_with_second_order_accuracy = false;
 }
 
+my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time)
+  : threshold_dbl_max(get_largest_dbl_smaller_than_dbl_max())
+{
+
+}
+
+void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, double& tn, const int& n_saved)
+{
+  if(!is_folder(path_to_root_directory))
+  {
+    if(!create_directory(path_to_root_directory, p4est_n->mpirank, p4est_n->mpicomm))
+    {
+      char error_msg[1024];
+      sprintf(error_msg, "my_p4est_two_phase_flows_t::save_state: the path %s is invalid and the directory could not be created", path_to_root_directory);
+      throw std::invalid_argument(error_msg);
+    }
+  }
+
+  int backup_idx = 0;
+
+  if(p4est_n->mpirank == 0)
+  {
+    int n_backup_subfolders = 0;
+    // get the current number of backups already present
+    // delete the extra ones that may exist for whatever reason
+    std::vector<std::string> subfolders; subfolders.resize(0);
+    get_subdirectories_in(path_to_root_directory, subfolders);
+    char temp_backup_folder_to_delete[PATH_MAX]; int to_delete_idx = 0;
+    for (size_t idx = 0; idx < subfolders.size(); ++idx) {
+      if(!subfolders[idx].compare(0, 7, "backup_"))
+      {
+        int read_idx;
+        sscanf(subfolders[idx].c_str(), "backup_%d", &read_idx);
+        if(read_idx >= n_saved)
+        {
+          // delete extra backups existing for whatever reasons (renamed to temporary folders beforehand to avoid issues)
+          char full_path[PATH_MAX];
+          sprintf(full_path, "%s/%s", path_to_root_directory, subfolders[idx].c_str());
+          sprintf(temp_backup_folder_to_delete, "%s/temp_backup_folder_to_delete_%d", path_to_root_directory, to_delete_idx++);
+          rename(full_path, temp_backup_folder_to_delete);
+          delete_directory(temp_backup_folder_to_delete, p4est_n->mpirank, p4est_n->mpicomm, true);
+        }
+        else
+          n_backup_subfolders++;
+      }
+    }
+
+    // check that they are successively indexed if less than the max number
+    if(n_backup_subfolders < n_saved)
+    {
+      backup_idx = 0;
+      for (int idx = 0; idx < n_backup_subfolders; ++idx) {
+        char expected_dir[PATH_MAX];
+        sprintf(expected_dir, "%s/backup_%d", path_to_root_directory, idx);
+        if(!is_folder(expected_dir))
+          break; // well, it's a mess in there, but I can't really do any better...
+        backup_idx++;
+      }
+    }
+    if (n_saved > 1 && n_backup_subfolders == n_saved)
+    {
+      // delete the 0th (renamed to a temporary folder beforehand to avoid issues)
+      char full_path_zeroth_index[PATH_MAX];
+      sprintf(full_path_zeroth_index, "%s/backup_0", path_to_root_directory);
+      sprintf(temp_backup_folder_to_delete, "%s/temp_backup_folder_to_delete_%d", path_to_root_directory, to_delete_idx++);
+      rename(full_path_zeroth_index, temp_backup_folder_to_delete);
+      delete_directory(temp_backup_folder_to_delete, p4est_n->mpirank, p4est_n->mpicomm, true);
+      // shift the others
+      for (int idx = 1; idx < n_saved; ++idx) {
+        char old_name[PATH_MAX], new_name[PATH_MAX];
+        sprintf(old_name, "%s/backup_%d", path_to_root_directory, (int) idx);
+        sprintf(new_name, "%s/backup_%d", path_to_root_directory, (int) (idx - 1));
+        rename(old_name, new_name);
+      }
+      backup_idx = n_saved - 1;
+    }
+  }
+  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);// acts as an MPI_Barrier, too
+
+  char path_to_folder[PATH_MAX];
+  sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
+  create_directory(path_to_folder, p4est_n->mpirank, p4est_n->mpicomm);
+
+
+  char filename[PATH_MAX];
+  // save the solver parameters
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, (fine_p4est_n != NULL ? (splitting_criteria_t*) fine_p4est_n->user_pointer : NULL), SAVE, tn);
+  // save p4est_n and all corresponding data
+  if(fine_p4est_n != NULL || phi_on_computational_nodes == NULL)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::save_state: cannot handle the use of subrefining grids yet...");
+
+  my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
+                                  "p4est_n", 3,
+                                  "phi_comp", 1, &phi_on_computational_nodes,
+                                  "vn_nodes_minus", 1, &vn_nodes_minus,
+                                  "vn_nodes_plus", 1, &vn_nodes_plus);
+
+  // save p4est_nm1
+  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1,
+                                "p4est_nm1", 2,
+                                "vnm1_nodes_minus", 1, &vnm1_nodes_minus,
+                                "vnm1_nodes_plus", 1, &vnm1_nodes_plus);
+  PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
+}
+
+void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double &tn)
+{
+  size_t idx = 0;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = tree_dimension[dim];
+      break;
+    case LOAD:
+      tree_dimension[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = dxyz_smallest_quad[dim];
+      break;
+    case LOAD:
+      dxyz_smallest_quad[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  {
+    switch (flag) {
+    case SAVE:
+    {
+      data[idx++] = surface_tension;
+      data[idx++] = mu_minus;
+      data[idx++] = mu_plus;
+      data[idx++] = rho_minus;
+      data[idx++] = rho_plus;
+      data[idx++] = tn;
+      data[idx++] = dt_n;
+      data[idx++] = dt_nm1;
+      data[idx++] = max_L2_norm_velocity_minus;
+      data[idx++] = max_L2_norm_velocity_plus;
+      data[idx++] = uniform_band_minus;
+      data[idx++] = uniform_band_plus;
+      data[idx++] = threshold_split_cell;
+      data[idx++] = cfl_advection;
+      data[idx++] = cfl_surface_tension;
+      data[idx++] = splitting_criterion->lip;
+      data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip);
+      break;
+    }
+    case LOAD:
+    {
+      surface_tension = data[idx++];
+      mu_minus = data[idx++];
+      mu_plus = data[idx++];
+      rho_minus = data[idx++];
+      rho_plus = data[idx++];
+      tn = data[idx++];
+      dt_n = data[idx++];
+      dt_nm1 = data[idx++];
+      max_L2_norm_velocity_minus = data[idx++];
+      max_L2_norm_velocity_plus = data[idx++];
+      uniform_band_minus = data[idx++];
+      uniform_band_plus = data[idx++];
+      threshold_split_cell = data[idx++];
+      cfl_advection = data[idx++];
+      cfl_surface_tension = data[idx++];
+      splitting_criterion->lip = data[idx++];
+      (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip) = data[idx++];
+      break;
+    }
+    default:
+      throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  P4EST_ASSERT(idx == 2*P4EST_DIM + 17);
+}
+
+void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt *data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion)
+{
+  size_t idx = 0;
+  switch (flag) {
+  case SAVE:
+  {
+    data[idx++] = P4EST_DIM;
+    data[idx++] = (PetscInt) cell_jump_solver_to_use;
+    data[idx++] = (PetscInt) fetch_interface_FD_neighbors_with_second_order_accuracy;
+    data[idx++] = splitting_criterion->min_lvl;
+    data[idx++] = splitting_criterion->max_lvl;
+    data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->min_lvl : splitting_criterion->min_lvl);
+    data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl);
+    data[idx++] = (PetscInt) levelset_interpolation_method;
+    data[idx++] = sl_order;
+    data[idx++] = (PetscInt) voronoi_on_the_fly;
+    break;
+  }
+  case LOAD:
+  {
+    PetscInt P4EST_DIM_COPY       = data[idx++];
+    if(P4EST_DIM_COPY != P4EST_DIM)
+      throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(...): you're trying to load 2D (resp. 3D) data with a 3D (resp. 2D) program...");
+    cell_jump_solver_to_use = (poisson_jump_cell_solver_tag) data[idx++];
+    fetch_interface_FD_neighbors_with_second_order_accuracy = (bool) data[idx++];
+    splitting_criterion->min_lvl  = data[idx++];
+    splitting_criterion->max_lvl  = data[idx++];
+    (fine_splitting_criterion != NULL ? fine_splitting_criterion->min_lvl : splitting_criterion->min_lvl) = data[idx++];
+    (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl) = data[idx++];
+    levelset_interpolation_method = (interpolation_method) data[idx++];
+    sl_order = data[idx++];
+    voronoi_on_the_fly = (bool) data[idx++];
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_integer_data: unknown flag value");
+    break;
+  }
+  P4EST_ASSERT(idx == 10);
+}
+
+void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
+{
+  PetscErrorCode ierr;
+  // tree_dimension, dxyz_smallest_quad, surface_tension, mu_minus, mu_plus, rho_minus, rho_plus,
+  // tn, dt_n, dt_nm1, max_L2_norm_velocity_minus, max_L2_norm_velocity_plus, uniform_band_minus, uniform_band_plus,
+  // threshold_split_cell, cfl_advection, cfl_surface_tension, splitting_criterion->lip, fine_splitting_criterion->lip
+  // that makes 2*P4EST_DIM + 17 doubles to save
+  PetscReal double_parameters[2*P4EST_DIM + 17];
+  // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
+  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, voronoi_on_the_fly
+  // that makes 10 integers
+  PetscInt integer_parameters[10];
+  int fd;
+  char diskfilename[PATH_MAX];
+  switch (flag) {
+  case SAVE:
+  {
+    if(p4est_n->mpirank == 0)
+    {
+      sprintf(diskfilename, "%s_integers", filename);
+      fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters, 10, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      // Then we save the double parameters
+      sprintf(diskfilename, "%s_doubles", filename);
+      fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters, 2*P4EST_DIM + 17, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    break;
+  }
+  case LOAD:
+  {
+    sprintf(diskfilename, "%s_integers", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's integer parameters could not be found");
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters, 10, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    int mpiret = MPI_Bcast(integer_parameters, 10, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
+    fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
+    // Then we save the double parameters
+    sprintf(diskfilename, "%s_doubles", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's double parameters could not be found");
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters, 2*P4EST_DIM + 17, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    mpiret = MPI_Bcast(double_parameters, 2*P4EST_DIM + 17, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_two_phase_flows_t::save_or_load_parameters: unknown flag value");
+    break;
+    break;
+  }
+}
+
 my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
 {
   PetscErrorCode ierr;

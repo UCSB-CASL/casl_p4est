@@ -9,6 +9,7 @@
 #include <src/my_p8est_poisson_jump_cells_fv.h>
 #include <src/my_p8est_poisson_jump_cells_xgfm.h>
 #include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_save_load.h>
 #include <src/voronoi3D.h>
 #else
 #include <src/my_p4est_interface_manager.h>
@@ -18,6 +19,7 @@
 #include <src/my_p4est_poisson_jump_cells_fv.h>
 #include <src/my_p4est_poisson_jump_cells_xgfm.h>
 #include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_save_load.h>
 #include <src/voronoi2D.h>
 #endif
 
@@ -91,8 +93,8 @@ private:
   double tree_diagonal, smallest_diagonal;
 
   double surface_tension;
-  double mu_plus, mu_minus;
-  double rho_plus, rho_minus;
+  double mu_minus, mu_plus;
+  double rho_minus, rho_plus;
   double dt_n;
   double dt_nm1;
   double max_L2_norm_velocity_minus, max_L2_norm_velocity_plus;
@@ -457,9 +459,65 @@ private:
     return;
   }
 
+  /*!
+   * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
+   * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
+   * The integer parameters that are saved/loaded are (in this order):
+   * - P4EST_DIM
+   * - cell_jump_solver_to_use
+   * - fetch_interface_FD_neighbors_with_second_order_accuracy
+   * - data->min_lvl
+   * - data->max_lvl
+   * - fine_data->min_lvl (value exported is the same as data->min_lvl if not using subrefinement)
+   * - fine_data->max_lvl (value exported is the same as data->max_lvl if not using subrefinement)
+   * - levelset_interpolation_method
+   * - sl_order
+   * - voronoi_on_the_fly
+   * The double parameters/variables that are saved/loaded are (in this order):
+   * - tree_dimension[0 : P4EST_DIM - 1]
+   * - dxyz_smallest_quad[0 : P4EST_DIM - 1]
+   * - surface_tension
+   * - mu_minus
+   * - mu_plus
+   * - rho_minus
+   * - rho_plus
+   * - the simulation time tn
+   * - dt_n
+   * - dt_nm1
+   * - max_L2_norm_velocity_minus
+   * - max_L2_norm_velocity_plus
+   * - uniform_band_minus
+   * - uniform_band_plus
+   * - threshold_split_cell
+   * - cfl_advection
+   * - cfl_surface_tension
+   * - splitting_criterion->lip
+   * - fine_splitting_criterion->lip (or a duplicate of the above value if not using subrefinement)
+   * The integer and double parameters are saved separately in two different files to avoid reading errors due to
+   * byte padding (occurs in order to ensure data alignment when written in file)...
+   * \param filename [in] : basename of the path to the files to be written or read (absolute path)
+   * \param splitting_criterion [inout]       : pointer to the splitting criterion to be exported/loaded (computational grid)
+   * \param fine_splitting_criterion [inout]  : pointer to the splitting criterion to be exported/loaded (interface-capturing grid --> set to NULL if not using subrefinement)
+   * \param flag[in]      : switch the behavior between write or read
+   * \param tn[inout]     : in write mode, simulation time at which the function is called (to be saved, unmodified)
+   *                        in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
+   * \param mpi[in]       : pointer to the mpi_environment_t (necessary for the load, disregarded for the save)
+   * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to code duplication
+   * in several functions to be modified in the future if the parameter/variable order or the parameter/variable list is changed
+   * (the save-state files are binary files, order and number of read/write operations is crucial)]
+   * WARNING: this function throws an std::invalid_argument exception if the files can't be found when loading parameters
+   * Raphael EGAN
+   */
+  void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion,
+                               save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
+  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
+
+  my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time);
   ~my_p4est_two_phase_flows_t();
 
   inline void compute_dt(const double &min_value_for_u_max = 1.0)
@@ -592,6 +650,18 @@ public:
   inline double volume_in_negative_domain() const { return interface_manager->volume_in_negative_domain(); }
 
   inline int get_rank() const { return p4est_n->mpirank; }
+
+  /*!
+   * \brief save_state saves the solver states in a subdirectory 'backup_' created under the user-provided root-directory.
+   * the n_states (> 0) latest succesive states can be saved, with automatic update of the subdirectory names.
+   * If more than n_states subdirectories exist at any time when this function is called, it will automatically delete the
+   * extra subdirectories.
+   * \param path_to_root_directory: path to the root exportation directory. n_saved subdirectories 'backup_' will be created
+   * under the root directory, in which successive solver states will be saved.
+   * \param tn: simulation time at which the function is called
+   * \param n_saved: number of solver states to keep in memory (default is 1)
+   */
+  void save_state(const char* path_to_root_directory, double& tn, const int& n_saved = 1);
 
 
 };

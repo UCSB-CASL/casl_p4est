@@ -13,6 +13,12 @@ static const int NODE_DATA = 13846;
 static const int CELL_DATA = 13847;
 static const int FACE_DATA = 13848;
 
+typedef enum
+{
+  SAVE=3541,
+  LOAD
+} save_or_load;
+
 /*!
  * \brief The pointers_to_grid_data_info struct is what the user_pointer of the p4est object needs to point to
  *        during the creation of cell-associated data that are exported on disk WITH the p4est object
