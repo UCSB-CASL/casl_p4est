@@ -87,7 +87,7 @@ DEFINE_PARAMETER(pl,bool,save_using_dt,false,"We save vtk files using a given dt
 DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number of iterations if this is set to true \n");
 
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
+DEFINE_PARAMETER(pl,double,save_every_dt,1,"Saves vtk every dt amount of time in seconds of dimensional time (default is 1)");
 
 // Checking memory usage:
 DEFINE_PARAMETER(pl,int,check_mem_every_iter,-1,"Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value)");
@@ -657,7 +657,8 @@ DEFINE_PARAMETER(pl,double,t_ramp,10.,"Time at which boundary conditions are ram
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
 
 void simulation_time_info(){
-  t_ramp = t_ramp/time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
+  t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
+  save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
   switch(example_){
     case FRANK_SPHERE:
       tfinal = 1.30;
@@ -4653,8 +4654,14 @@ int main(int argc, char** argv) {
                            "Save state every iter = %d \n"
                            "Save to vtk? %s \n"
                            "Save using %s \n"
-                           "Save every dt = %0.2f\n"
-                           "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",tstep,save_state_every_iter,save_to_vtk?"Yes":"No",save_using_dt? "dt" :"iter",save_every_dt,save_every_iter);
+                           "Save every dt = %0.2f [nondim] = %0.2f [seconds]\n"
+                           "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",
+                          tstep,
+                          save_state_every_iter,
+                          save_to_vtk?"Yes":"No",
+                          save_using_dt? "dt" :"iter",
+                          save_every_dt, save_every_dt*time_nondim_to_dim,
+                          save_every_iter);
 
 
     // Initialize output file numbering:
