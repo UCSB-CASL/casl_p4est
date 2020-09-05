@@ -81,30 +81,30 @@ DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
 // ---------------------------------------
 // Save options:
 // ---------------------------------------
-//DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
-//DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
-//DEFINE_PARAMETER(pl,bool,save_coupled_fields,false,"Save the coupled problem?");
-
+// Options for saving to vtk:
 DEFINE_PARAMETER(pl,bool,save_to_vtk,true,"We save vtk files using a given dt increment if this is set to true \n");
 DEFINE_PARAMETER(pl,bool,save_using_dt,false,"We save vtk files using a given dt increment if this is set to true \n");
 DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number of iterations if this is set to true \n");
 
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
-DEFINE_PARAMETER(pl,int,num_save_states,20,"Number of save states we keep on file (default is 20)");
-
-DEFINE_PARAMETER(pl,int,check_mem_every_iter,1000,"Checks memory usage every n number of iterations (default is 1000)");
-
 DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
 
+// Checking memory usage:
+DEFINE_PARAMETER(pl,int,check_mem_every_iter,-1,"Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value)");
 
-DEFINE_PARAMETER(pl,int,timing_every_n,1000,"Print timing info every n iterations (default 100)");
+// Checking timing:
+DEFINE_PARAMETER(pl,int,timing_every_n,-1,"Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
+
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
-DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
-DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper liFmit before closing the program -- in bytes");
+DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
+
+// Option to compute and save fluid forces to a file:
 DEFINE_PARAMETER(pl,bool,save_fluid_forces,false,"Saves fluid forces if true (default: false) \n");
 
-// Load options
+// Save state options
+DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
+DEFINE_PARAMETER(pl,int,num_save_states,20,"Number of save states we keep on file (default is 20)");
+// Load state options
 DEFINE_PARAMETER(pl,bool,loading_from_previous_state,false,"");
 
 // ---------------------------------------
@@ -118,6 +118,15 @@ DEFINE_PARAMETER(pl,double,Re_overwrite,-100.0,"overwrite the examples set Reyno
 DEFINE_PARAMETER(pl,double,duration_overwrite,-100.0,"overwrite the duration");
 
 DEFINE_PARAMETER(pl,bool,use_uniform_band,true,"Boolean whether or not to refine using a uniform band");
+DEFINE_PARAMETER(pl,bool,no_flow,false,"An override switch for the ice cylinder example to run a case with no flow (default: false)");
+
+DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
+DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
+DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error convergence (default:1.e-3)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
+DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
+DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
+
 
 void select_solvers(){
   switch(example_){
@@ -130,10 +139,16 @@ void select_solvers(){
       do_advection = false;
       break;
     case ICE_AROUND_CYLINDER:
-      solve_stefan = true;
-      solve_navier_stokes = true;
-
-      do_advection=true;
+      if(!no_flow){
+        solve_stefan = true;
+        solve_navier_stokes = true;
+        do_advection=true;
+      }
+      else{
+        solve_stefan=true;
+        solve_navier_stokes=false;
+        do_advection=false;
+      }
       break;
     case NS_GIBOU_EXAMPLE:
       solve_stefan = false;
@@ -158,20 +173,10 @@ void select_solvers(){
     }
 }
 
-DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:1) -- note: this also sets the NS solution order");
-DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
-
-DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error convergence (default:1.e-3)");
-
-
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
-DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
-
-DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
+// Refinement options:
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
-int stop_flag = -1;
 // ---------------------------------------
 // Geometry options:
 // ---------------------------------------
@@ -196,39 +201,36 @@ double r0;
 double s0;
 double T_inf;
 
-// For solution of temperature fields:
+
+
+// For stefan fluids coupled problems:
+DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
+DEFINE_PARAMETER(pl,double,T_cyl,263.,"Temperature of cooled cylinder in K (default : 263)");
+
+double r_cyl; // non dim variable used to set up LSF, computed in set_geometry()
+double d_seed; // for dendrite test
+
+// For solution of temperature fields:set in set_physical_properties()
 double Twall;
 double Tinterface;
 double back_wall_temp_flux;
 double deltaT;
 
+// Nondimensional temperature values (computed in set_physical_properties)
 double theta_wall;
 double theta_interface;
 double theta_cyl;
 
-// For solidifying ice problem:
-double r_cyl; // non dim
-//double T_cyl; // dimensional
-//double d_cyl; // dimensional
-double d_seed; // for dendrite test
-DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
-DEFINE_PARAMETER(pl,double,T_cyl,260.,"Temperature of cooled cylinder in K (default : 260)");
-// For tracking allowable temperature values:
-double T_max_allowable;
-double T_max_allowable_err = 1.0e-7;
-
-// Keeping track of maxes and mins:
-double T_l_max, T_l_min, T_s_max, T_s_min;
-
 // For surface tension: (used to apply some interfacial BC's in temperature)
-//double sigma;
-DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
+double sigma; // set in set_physical_properties()
+//DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
 
 // For the coupled test case where we have to swtich sign:
 double coupled_test_sign;
 bool vel_has_switched;
 void coupled_test_switch_sign(){coupled_test_sign*=-1.;}
 
+// for defining LSF for coupled test case
 double x0_lsf;
 double y0_lsf;
 
@@ -348,7 +350,7 @@ void set_geometry(){
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.10;
+      r0 = 0.01;
       d_seed = (3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
       // physical property paper ""
       break;
@@ -436,8 +438,6 @@ void set_physical_properties(){
 
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
 
-      T_max_allowable=Twall; // Max allowable value for T
-
       break;
 
     case COUPLED_TEST_2:
@@ -457,7 +457,7 @@ void set_physical_properties(){
       Re = 1.0;
       break;
     case DENDRITE_TEST:
-      cp_s = 1913.; // Specific heat of solid, [J/kg]
+      cp_s = 1913.; // Specific heat of solid, [J/kgK]
 
       alpha_l = 1.16e-7;
       alpha_s = 1.12e-7;
@@ -473,12 +473,13 @@ void set_physical_properties(){
       double nu = 2.6e-6;
       mu_l = nu*rho_l; // [Pa s]
 
-      double gamma_sl = 8.9e-3; //[J/m^2]
-      sigma = 2.*gamma_sl/rho_l/L; // relation from alban email [m], modified using relation from Dantzig book
+      // TO-DO gamma_sl units should be N/m
+      double gamma_sl = 8.9e-3; //[J/m^2 = same as N/m]
+      sigma = gamma_sl/(rho_s*L); // relation from alban email [m], modified using relation from Dantzig book
 
 //      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma/2.);
       // BC info:
-      double delta = -0.04;//-0.55;
+      double delta = -0.55;//-0.55;
       Tinterface = 331.23;
       Twall = delta*(L/cp_s) + Tinterface;
       deltaT = Twall-Tinterface;
@@ -562,6 +563,7 @@ void set_NS_info(){
 }
 
 
+// For selecting the appropriate nondimensionalized formulation of the problem:
 enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL};
 int stefan_condition_type;
 int select_stefan_formulation(){
@@ -577,16 +579,21 @@ int select_stefan_formulation(){
     }
   case NS_GIBOU_EXAMPLE:
   case FLOW_PAST_CYLINDER:
-    return NONDIM_YES_FLUID;
-    break; // no stefan here, but nondim used for NS stuff alone as well
+    return NONDIM_YES_FLUID; // no stefan here, but nondim used for NS stuff alone as well
 
   case COUPLED_PROBLEM_EXAMPLE:
   case COUPLED_TEST_2:
   case ICE_AROUND_CYLINDER:
-    return NONDIM_YES_FLUID;
+    if(solve_navier_stokes){
+      return NONDIM_YES_FLUID;
+    }
+    else{
+      return NONDIM_NO_FLUID;
+    }
   }
 };
 
+// For defining appropriate nondimensional groups:
 double time_nondim_to_dim;
 double vel_nondim_to_dim;
 void set_nondimensional_groups(){
@@ -598,7 +605,7 @@ void set_nondimensional_groups(){
      St = cp_s*fabs(deltaT)/L;
 
      if(example_==DENDRITE_TEST){
-       u_inf=Re*mu_l/rho_l/(d_seed/2.);
+       u_inf=Re*mu_l/rho_l/(d_seed);
        vel_nondim_to_dim = u_inf;
        time_nondim_to_dim=d_seed/u_inf;
      }
@@ -609,12 +616,20 @@ void set_nondimensional_groups(){
      }
    }
    else if(stefan_condition_type==NONDIM_NO_FLUID){
+     double d_length_scale = 0.;
+     if(example_ == ICE_AROUND_CYLINDER){
+       d_length_scale=d_cyl;
+     }
+     else if (example_ == DENDRITE_TEST){
+       d_length_scale = d_seed;
+     }
+
      Pr = mu_l/(alpha_l*rho_l);
      St = cp_s*fabs(deltaT)/L;
      Re = 0.; Pe = 0.;
 
-     time_nondim_to_dim = SQR(d_seed/2.)/alpha_s;
-     vel_nondim_to_dim = (alpha_s)/(d_seed/2.);
+     time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
+     vel_nondim_to_dim = (alpha_s)/(d_length_scale);
    }
    else{
      time_nondim_to_dim = 1.;
@@ -625,7 +640,7 @@ void set_nondimensional_groups(){
 }
 
 // ---------------------------------------
-// Time-stepping:
+// For setting up simulation timing information:
 // ---------------------------------------
 double tfinal;
 double dt_max_allowed;
@@ -638,10 +653,11 @@ double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
 
-DEFINE_PARAMETER(pl,double,t_ramp,0.25,"Time at which NS boundary conditions are ramped up to the freestream value \n");
-DEFINE_PARAMETER(pl,bool,ramp_bcs,true,"Boolean option to ramp the BC's for the ice over cylinder case \n");
+DEFINE_PARAMETER(pl,double,t_ramp,10.,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 10 seconds) \n");
+DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
 
 void simulation_time_info(){
+  t_ramp = t_ramp/time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
   switch(example_){
     case FRANK_SPHERE:
       tfinal = 1.30;
@@ -653,21 +669,18 @@ void simulation_time_info(){
       tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
       dt_max_allowed = save_every_dt;
       tstart = 0.0;
-//      dt = 1.e-5;
       break;
 
     case NS_GIBOU_EXAMPLE:
       tfinal = PI/3.;
       dt_max_allowed = 1.e-2;
       tstart = 0.0;
-//      dt = 1.e-3;
       break;
 
     case COUPLED_PROBLEM_EXAMPLE:
       tfinal = PI/3.;//PI/2.;
       dt_max_allowed = 1.0e-1;
       tstart = 0.0;
-//      dt = 1.e-3;
       break;
     case COUPLED_TEST_2:
       tfinal = 0.75;//1.;
@@ -676,36 +689,19 @@ void simulation_time_info(){
       break;
     case DENDRITE_TEST:
       tfinal =(1.0e-4/*0.5*60.*/)/(time_nondim_to_dim); // half a minute(commented), one millisecond -- active
-
-      //tfinal = 1.0;
       tstart=0.;
       dt_max_allowed = 1.e-2;
 
       break;
 
     }
-  if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)/(time_nondim_to_dim);
-
-//  dt_nm1 = dt;
+  if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)/(time_nondim_to_dim); // convert input in minutes to nondimensional time
 }
 
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
 double v_int_max_allowed = 50.0;
-double vint_max_test2 = 4.5;
-
-bool move_interface_with_v_external = false;
-
-bool check_temperature_values = false; // Whether or not you want to print out temperature value averages during various steps of the solution process -- for debugging
-
-DEFINE_PARAMETER(pl,bool,check_avg_values,false,"Check average temp vals per timestep or not (default:false)");
-bool check_derivative_values = false;// Whether or not you want to print out temperature derivative value averages during various steps of the solution process -- for debugging
-
-bool check_interfacial_velocity = true; // Whether or not you want to print out interfacial velocity value averages during various steps of the solution process -- for debugging
-
-bool save_temperature_derivative_fields = false; // saving temperature derivative fields to vtk or not
-
 // Variables used for advection:
 double advection_alpha_coeff= 0.0;
 double advection_beta_coeff =0.0;
@@ -1321,7 +1317,7 @@ private:
 
 
   std::vector<double> theta0 = {0., PI/2.,-PI,-PI/2.};
-  double eps4 = 0.0055;
+  double eps4 = 0.05;
 
 public:
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
@@ -1331,11 +1327,11 @@ public:
       kappa_interp->set_input(kappa,linear);
     }
   }
+  double Gibbs_Thomson(double sigma_,double T0, double dval,DIM(double x, double y, double z)) const {
+    return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday
+  }
   double operator()(DIM(double x, double y, double z)) const
   {
-    double d_val = 1.;
-    if(example_ == ICE_AROUND_CYLINDER)d_val = d_cyl;
-    if(example_ == DENDRITE_TEST)d_val = d_seed/2.;
     switch(example_){
       case FRANK_SPHERE:{ // Frank sphere case, no surface tension
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
@@ -1351,25 +1347,19 @@ public:
             min_idx = i; // grab the index of whatever is the closest theta val
           }
         }
-
-//        printf("min theta = %0.2f , min idx = %d \n"
-//               "nx = %0.2f, ny = %0.2f \n",min_theta,min_idx,(*nx_interp)(x,y),(*ny_interp)(x,y));
-
-        // need to use angle between normal dir and principle growth direction -- in our case
-        // that is the four axial directions, so use angle bw normal and closest axis (either
-
         P4EST_ASSERT(min_idx>-1 && min_idx<4);
-        double sigma_new = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
-        return theta_interface*(1. - (sigma_new/d_val)*(*kappa_interp)(x,y))- (Tinterface/deltaT)*(sigma/d_val)*(*kappa_interp)(x,y);
+        double sigma_ = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
+        return Gibbs_Thomson(sigma_,Tinterface,d_seed,DIM(x,y,z));
       }
       case ICE_AROUND_CYLINDER: {
-        double interface_val = theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y)) - (T_cyl/deltaT)*(sigma/d_val)*(*kappa_interp)(x,y);
+        double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
+
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-          return ramp_BC(theta_wall,interface_val/*theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y))*/);
+          return ramp_BC(theta_wall,interface_val);
         }
-        else return interface_val;//theta_interface*(1. - (sigma/d_val)*(*kappa_interp)(x,y));
-      }
+        else return interface_val;
+    }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
       return temperature_[dom]->T(DIM(x,y,z));
@@ -1763,7 +1753,6 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     }
 }
 
-
 // Interfacial condition:
 class BC_interface_value_velocity: public CF_DIM{
 private:
@@ -1948,478 +1937,8 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// Functions for checking the values of interest during the solution process
-// --------------------------------------------------------------------------------------------------------------
-void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl,bool check_for_reasonable_values, bool update_Tl_values, bool update_Ts_values) {
-  T.get_array();
-  phi.get_array();
-  if (example_ == ICE_AROUND_CYLINDER) phi_cyl.get_array();
-
-  double avg_T = 0.0;
-  double max_T = 0.;
-  double min_T = 1.e10;
-  double min_mag_T = 1.e10;
-
-  int pts_avg = 0;
-  bool in_domain;
-
-  // Make sure phi_cyl is defined if we are running an example where it is required:
-  if(example_ ==ICE_AROUND_CYLINDER && phi_cyl.ptr == NULL){
-      throw std::invalid_argument("You must provide a phi_cylinder vector to run the ice cylnder example \n");
-    }
-
-  // Loop over each node, check if node is in the subdomain we are considering. If so, compute average,max, and min values for the domain
-  foreach_local_node(n,nodes){
-    in_domain = false;
-    // Check if the node is in the domain we are checking:
-    if (example_ ==ICE_AROUND_CYLINDER ){
-        ((phi.ptr[n] < 0.) && (phi_cyl.ptr[n] < 0.)) ? in_domain = true : in_domain = false;
-      }
-    else{
-        (phi.ptr[n] < 0.) ? in_domain = true : in_domain = false;
-      }
-    // Compute required values:
-    if (in_domain){
-      avg_T+=T.ptr[n];
-      pts_avg ++;
-
-      max_T = max(max_T,T.ptr[n]);
-      min_T = min(min_T,T.ptr[n]);
-      min_mag_T = min(min_mag_T,fabs(T.ptr[n]));
-      }
-  }
-
-  // Use MPI_Allreduce to get the values on a global scale, not just on one process:
-  double global_avg_T = 0.0;
-  double global_max_T = 0.;
-  double global_min_T = 1.e10;
-  double global_min_mag_T = 1.e10;
-
-  int global_pts_avg = 0;
-
-  MPI_Allreduce(&avg_T,&global_avg_T,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
-  MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
-
-  global_avg_T/=global_pts_avg;
-
-  MPI_Allreduce(&max_T,&global_max_T,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-  MPI_Allreduce(&min_T,&global_min_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-  MPI_Allreduce(&min_mag_T,&global_min_mag_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-
-  PetscPrintf(p4est->mpicomm,"\n"
-                             "Average: %0.4f  "
-                             "Max: %0.4f  "
-                             "Min: %0.4f  "
-                             "Min magnitude: %0.4f \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
-  if(update_Tl_values) {T_l_max = global_max_T; T_l_min = global_min_T;}
-  if(update_Ts_values){T_s_max = global_max_T; T_s_min = global_min_T;}
-
-  T.restore_array();
-  phi.restore_array();
-  if(example_ ==ICE_AROUND_CYLINDER) phi_cyl.restore_array();
-
-}
-
-void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes* nodes, p4est_t* p4est, bool get_location){
-  dT.get_array();
-  phi.get_array();
-
-  foreach_dimension(d){
-    double avg_dT = 0.0;
-    double max_dT = 0.;
-    double min_dT = 1.e10;
-    double min_mag_dT = 1.e10;
-
-    int pts_avg = 0;
-
-    foreach_local_node(n,nodes){
-      avg_dT+=dT.ptr[d][n];
-      pts_avg ++;
-
-      max_dT = max(max_dT,dT.ptr[d][n]);
-      min_dT = min(min_dT,dT.ptr[d][n]);
-
-      min_mag_dT = min(min_mag_dT,fabs(dT.ptr[d][n]));
-    }
-    double global_avg_dT = 0.0;
-    double global_max_dT = 0.;
-    double global_min_dT = 1.e10;
-    double global_min_mag_dT = 1.e10;
-
-    int global_pts_avg = 0;
-
-    MPI_Allreduce(&avg_dT,&global_avg_dT,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
-    MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
-
-    global_avg_dT/=global_pts_avg;
-
-    MPI_Allreduce(&max_dT,&global_max_dT,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-    MPI_Allreduce(&min_dT,&global_min_dT,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-    MPI_Allreduce(&min_mag_dT,&global_min_mag_dT,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-
-    PetscPrintf(p4est->mpicomm,"\n");
-    if(d==0) PetscPrintf(p4est->mpicomm,"In x direction: \n{\n");
-    else PetscPrintf(p4est->mpicomm,"In y direction: \n{\n");
-
-    PetscPrintf(p4est->mpicomm,"Average: %0.2f \n",global_avg_dT);
-    PetscPrintf(p4est->mpicomm,"Maximum: %0.2f \n",global_max_dT);
-    PetscPrintf(p4est->mpicomm,"Minimum: %0.2f \n",global_min_dT);
-    PetscPrintf(p4est->mpicomm,"Minimum magnitude: %0.2f \n",global_min_mag_dT);
-
-    // See what the location is of the min and max values:
-    if (get_location){
-        double xyz_min[P4EST_DIM];
-        double xyz_max[P4EST_DIM];
-        double rmin;
-        double rmax;
-        foreach_local_node(n,nodes){
-          if ((dT.ptr[d][n] <= global_max_dT + EPS) && (dT.ptr[d][n] >= global_max_dT - EPS)){
-              node_xyz_fr_n(n,p4est,nodes,xyz_max);
-              rmax = sqrt(SQR(xyz_max[0]) + SQR(xyz_max[1]));
-              PetscPrintf(p4est->mpicomm,"Maximum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_max[0],xyz_max[1],rmax);
-
-            }
-
-          if ((dT.ptr[d][n] <= global_min_dT + EPS) && (dT.ptr[d][n] >= global_min_dT - EPS)){
-              node_xyz_fr_n(n,p4est,nodes,xyz_min);
-              rmin = sqrt(SQR(xyz_min[0]) + SQR(xyz_min[1]));
-
-              PetscPrintf(p4est->mpicomm,"Minimum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_min[0],xyz_min[1],rmin);
-
-            }
-        }}
-}
-  dT.restore_array();
-  phi.restore_array();
-}
-
-void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes* nodes, p4est_t* p4est, bool get_location,double dxyz_close_to_interface){
-  vel.get_array();
-  phi.get_array();
-
-  // Check directional info:
-  foreach_dimension(d){
-    double avg_vel = 0.0;
-    double max_vel = 0.;
-    double min_vel = 1.e10;
-    double min_mag_vel = 1.e10;
-
-    int pts_avg = 0;
-
-    foreach_local_node(n,nodes){
-      if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
-        avg_vel+=vel.ptr[d][n];
-        pts_avg ++;
-
-        max_vel = max(max_vel,vel.ptr[d][n]);
-        min_vel = min(min_vel,vel.ptr[d][n]);
-
-        min_mag_vel = min(min_mag_vel,fabs(vel.ptr[d][n]));
-      }
-    }
-    double global_avg_vel = 0.0;
-    double global_max_vel = 0.;
-    double global_min_vel = 1.e10;
-    double global_min_mag_vel = 1.e10;
-
-    int global_pts_avg = 0;
-
-    MPI_Allreduce(&avg_vel,&global_avg_vel,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
-    MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
-
-    global_avg_vel/=global_pts_avg;
-
-    MPI_Allreduce(&max_vel,&global_max_vel,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-    MPI_Allreduce(&min_vel,&global_min_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-    MPI_Allreduce(&min_mag_vel,&global_min_mag_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-
-    PetscPrintf(p4est->mpicomm,"\n");
-    if(d==0) PetscPrintf(p4est->mpicomm,"In x direction: \n{\n");
-    else PetscPrintf(p4est->mpicomm,"In y direction: \n{\n");
-
-    PetscPrintf(p4est->mpicomm,"Average: %0.2e \n",global_avg_vel);
-    PetscPrintf(p4est->mpicomm,"Maximum: %0.2e \n",global_max_vel);
-    PetscPrintf(p4est->mpicomm,"Minimum: %0.2e \n",global_min_vel);
-    PetscPrintf(p4est->mpicomm,"Minimum magnitude: %0.2e \n",global_min_mag_vel);
-
-    // See what the location is of the min and max values:
-    if (get_location){
-        double xyz_min[P4EST_DIM];
-        double xyz_max[P4EST_DIM];
-        double rmin;
-        double rmax;
-        foreach_local_node(n,nodes){
-          if ((vel.ptr[d][n] <= global_max_vel + EPS) && (vel.ptr[d][n] >= global_max_vel - EPS)){
-              node_xyz_fr_n(n,p4est,nodes,xyz_max);
-              rmax = sqrt(SQR(xyz_max[0]) + SQR(xyz_max[1]));
-              PetscPrintf(p4est->mpicomm,"Maximum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_max[0],xyz_max[1],rmax);
-
-            }
-
-          if ((vel.ptr[d][n] <= global_min_vel + EPS) && (vel.ptr[d][n] >= global_min_vel - EPS)){
-              node_xyz_fr_n(n,p4est,nodes,xyz_min);
-              rmin = sqrt(SQR(xyz_min[0]) + SQR(xyz_min[1]));
-
-              PetscPrintf(p4est->mpicomm,"Minimum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_min[0],xyz_min[1],rmin);
-
-            }
-        }}
-
-
-
-}
-
-  // Now check the norms:
-  double avg_vel = 0.0;
-  double max_vel = 0.;
-  double min_vel = 1.e10;
-
-  int pts_avg = 0;
-
-  foreach_local_node(n,nodes){
-    if(fabs(phi.ptr[n])<dxyz_close_to_interface){
-      double local_vel = sqrt(SQR(vel.ptr[0][n]) + SQR(vel.ptr[1][n]));
-      avg_vel+=local_vel;
-      pts_avg ++;
-
-      max_vel = max(max_vel,local_vel);
-      min_vel = min(min_vel,local_vel);
-    }
-  }
-
-  double global_avg_vel = 0.0;
-  double global_max_vel = 0.;
-  double global_min_vel = 1.e10;
-
-  int global_pts_avg = 0;
-
-  MPI_Allreduce(&avg_vel,&global_avg_vel,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
-  MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
-
-  global_avg_vel/=global_pts_avg;
-
-  MPI_Allreduce(&max_vel,&global_max_vel,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-  MPI_Allreduce(&min_vel,&global_min_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
-
-  PetscPrintf(p4est->mpicomm,"2 norm info: \n{\n");
-
-  PetscPrintf(p4est->mpicomm,"Average: %0.2e \n",global_avg_vel);
-  PetscPrintf(p4est->mpicomm,"Maximum: %0.2e \n",global_max_vel);
-  PetscPrintf(p4est->mpicomm,"Minimum: %0.2e \n",global_min_vel);
-
-  vel.restore_array();
-  phi.restore_array();
-}
-
-// --------------------------------------------------------------------------------------------------------------
-// Function for checking the error in the Frank sphere solution:
-// --------------------------------------------------------------------------------------------------------------
-void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface,  double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk,char *name, FILE *fich){
-  PetscErrorCode ierr;
-
-  vec_and_ptr_t T_ana,phi_ana, v_interface_ana;
-  T_ana.create(p4est,nodes); phi_ana.create(p4est,nodes);v_interface_ana.create(p4est,nodes);
-
-  vec_and_ptr_t T_l_err,T_s_err,phi_err,v_interface_err;
-  T_l_err.create(p4est,nodes); T_s_err.create(p4est,nodes); phi_err.create(p4est,nodes); v_interface_err.create(p4est,nodes);
-
-  T_l.get_array(); T_s.get_array();
-  phi.get_array(); v_interface.get_array();
-
-  T_ana.get_array(); v_interface_ana.get_array();phi_ana.get_array();
-  T_l_err.get_array();T_s_err.get_array();v_interface_err.get_array();phi_err.get_array();
-
-  double Linf_Tl = 0.0;
-  double Linf_Ts = 0.0;
-  double Linf_phi = 0.0;
-  double Linf_v_int = 0.0;
-
-  double r;
-  double sval;
-  double vel;
-
-  // NOTE: We have just solved for time (n+1), so we compare computed solution to the analytical solution at time = (tn + dt)
-//  double v_exact = s0/(2.0*sqrt(tn/*+dt*/));
-
-  //PetscPrintf(mpi.comm(),"Exact solution of velocity is: %0.2f",v_exact);
-  // Now loop through nodes to compare errors between LSF and Temperature profiles:
-  double xyz[P4EST_DIM];
-  foreach_node(n,nodes){
-    node_xyz_fr_n(n,p4est,nodes,xyz);
-
-    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    sval = r/sqrt(tn+dt);
-
-    phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
-
-    T_ana.ptr[n] = frank_sphere_solution_t(sval);
-
-    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
-
-    // Error on phi and v_int:
-    if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
-
-      // Errors on phi:
-      phi_err.ptr[n] = fabs(phi.ptr[n] - phi_ana.ptr[n]);
-
-      Linf_phi = max(Linf_phi,phi_err.ptr[n]); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
-
-      // Errors on v_int:
-      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
-      v_interface_err.ptr[n] = fabs(vel - v_interface_ana.ptr[n]);
-      Linf_v_int = max(Linf_v_int,v_interface_err.ptr[n]);
-      }
-
-    // Check error in the negative subdomain (T_liquid) (Domain = Omega_minus)
-    if(phi.ptr[n]<0.){
-        T_l_err.ptr[n]  = fabs(T_l.ptr[n] - T_ana.ptr[n]);
-        Linf_Tl = max(Linf_Tl,T_l_err.ptr[n]);
-      }
-    if (phi.ptr[n]>0.){
-        T_s_err.ptr[n]  = fabs(T_s.ptr[n] - T_ana.ptr[n]);
-        Linf_Ts = max(Linf_Ts,T_s_err.ptr[n]);
-      }
-  }
-
-  double global_Linf_errors[] = {0.0, 0.0, 0.0,0.0,0.0};
-  double local_Linf_errors[] = {Linf_phi,Linf_Tl,Linf_Ts,Linf_v_int};
-
-
-  // Now get the global maximum errors:
-  int mpiret = MPI_Allreduce(local_Linf_errors,global_Linf_errors,4,MPI_DOUBLE,MPI_MAX,p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-
-  // Print Errors to application output:
-  PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n",dxyz_close_to_interface);
-
-  int num_nodes = nodes->indep_nodes.elem_count;
-  PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
-
-
-  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4f \n Linf on T_l: %0.4f \n Linf on T_s: %0.4f \n Linf on v_int: %0.4f \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
-
-  // Print errors to file:
-  ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
-  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n",tn + dt,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);
-  ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
-
-  // If we are saving this timestep, output the results to vtk:
-  if(are_we_saving_vtk){
-      std::vector<std::string> point_names;
-      std::vector<double*> point_data;
-
-      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","phi_ana","T_ana","v_interface_vec_ana","phi_err","T_l_err","T_s_err","v_interface_vec_err"};
-      point_data = {phi.ptr,T_l.ptr,T_s.ptr,v_interface.ptr[0],v_interface.ptr[1],phi_ana.ptr,T_ana.ptr,v_interface_ana.ptr,phi_err.ptr,T_l_err.ptr,T_s_err.ptr,v_interface_err.ptr};
-
-
-      std::vector<std::string> cell_names = {};
-      std::vector<double*> cell_data = {};
-
-      my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
-
-    }
-
-  T_l.restore_array();
-  T_s.restore_array();
-  phi.restore_array();
-  v_interface.restore_array();
-
-  T_ana.restore_array();v_interface_ana.restore_array();phi_ana.restore_array();
-  T_l_err.restore_array();T_s_err.restore_array();v_interface_err.restore_array();phi_err.restore_array();
-  T_ana.destroy();v_interface_ana.destroy();phi_ana.destroy();
-  T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
-}
-
-void check_ice_cylinder_v_and_radius(vec_and_ptr_t phi,p4est_t* p4est,p4est_nodes_t* nodes,double dxyz_close,char *name,FILE *fich){
-
-  std::vector<double> theta;
-  std::vector<double> delta_r;
-
-  phi.get_array();
-  double xyz[P4EST_DIM];
-  double max_theta =-200.0;
-  foreach_local_node(n,nodes){
-    if(fabs(phi.ptr[n])<0.5*dxyz_close){
-        node_xyz_fr_n(n,p4est,nodes,xyz);
-        // Note: we are using coordinates shifted such that the origin is defined as the center of the cylinder
-
-        // Note: this x and y must be defined in the same way as it is in the Level set function
-        double x = xyz[0] - (xmax)/4.0;
-        double y = xyz[1] - (ymax)/2.0;
-
-
-        double r = sqrt(SQR(x) + SQR(y));
-        double Theta = atan2(y,x);
-
-
-        double dr = r - r_cyl;
-
-//        printf("(x,y) = (%0.3f, %0.3f), (xnew,ynew) = (%0.3f, %0.3f), r = %.2f, dr = %.2f, theta = %.2f \n",xyz[0],xyz[1],x,y,r,dr,Theta*180./PI);
-
-
-        delta_r.push_back(dr);
-        theta.push_back(Theta);
-        max_theta = max(max_theta,Theta);
-      }
-  }
-
-  phi.restore_array();
-  PetscErrorCode ierr;
-
-  unsigned long local_theta_size = 0.0;
-  local_theta_size+=theta.size();
-  unsigned long global_theta_size = 0;
-  MPI_Allreduce(&local_theta_size,&global_theta_size,1,MPI_INT,MPI_SUM,p4est->mpicomm);
-
-  ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
-  ierr = PetscFPrintf(p4est->mpicomm,fich,"\n%0.4e %0.4e %d ",tn, v_interface_max_norm,global_theta_size);CHKERRXX(ierr);
-
-  for (unsigned long i = 0; i<theta.size();i++){
-      ierr = PetscSynchronizedFPrintf(p4est->mpicomm,fich,"%0.4e %0.4e ",theta[i],delta_r[i]);CHKERRXX(ierr);
-    }
-
-  ierr= PetscSynchronizedFlush(p4est->mpicomm,fich);
-  ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
-
-//  theta.clear();
-//  delta_r.clear();
-//  theta.shrink_to_fit();
-//  delta_r.shrink_to_fit();
-  std::vector<double>().swap(delta_r);
-  std::vector<double>().swap(theta);
-
-
-}
-// --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SOLVING THE PROBLEM:
 // --------------------------------------------------------------------------------------------------------------
-bool check_ice_melted(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes,p4est_t* p4est){
-  int still_solid_present = 0;
-  int global_still_solid_present;// = false;
-
-  // Check if LSF is positive anywhere to see if solid is still present:
-  phi.get_array();
-  foreach_local_node(n,nodes){
-    if (phi.ptr[n]>EPS) still_solid_present = 1;
-  }
-  phi.restore_array();
-
-  //printf("Process %d has still solid present = %s \n",p4est->mpirank,still_solid_present ? "true": "false");
-
-  // Get the global outcome:
-  int mpi_check;
-
-  mpi_check = MPI_Allreduce(&still_solid_present,&global_still_solid_present,1,MPI_INT,MPI_LOR,p4est->mpicomm);
-
-
-  SC_CHECK_MPI(mpi_check);
-  if (!global_still_solid_present){ // If no more solid, then ice has melted
-      PetscPrintf(p4est->mpicomm,"\n \n Ice has entirely melted as of t = %0.3e \n \n ",time);
-    }
-return global_still_solid_present;
-}
-
 void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t rhs_Tl, vec_and_ptr_t rhs_Ts,vec_and_ptr_t T_l_backtrace, vec_and_ptr_t T_l_backtrace_nm1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd, external_heat_source** external_heat_source_term=NULL){
 
   // In building RHS, if we are doing advection, we have two options:
@@ -3149,7 +2668,11 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       bool last_grid_balance = false;
       while(is_grid_changing){
           if(!last_grid_balance){
-              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,uniform_band,uniform_band*1.5,fields_new_,NULL,criteria,compare_opn,diag_opn,custom_lmax);
+              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,
+                                                          num_fields,use_block,true,
+                                                          uniform_band,uniform_band*1.5,
+                                                          fields_new_,NULL,criteria,
+                                                          compare_opn,diag_opn,custom_lmax);
 
               if(no_grid_changes>0 && !is_grid_changing){
                   last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid
@@ -3479,6 +3002,7 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   }
   return out;
 }
+// --------------------------------------------------------------------------------------------------------------
 // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
 // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
 
@@ -3983,6 +3507,161 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   }
 }
 
+void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
+                       p4est_ghost_t* ghost, my_p4est_node_neighbors_t* ngbd,
+                       int out_idx, int grid_res_iter,
+                       vec_and_ptr_t phi, vec_and_ptr_t phi_cylinder,
+                       vec_and_ptr_t T_l_n,vec_and_ptr_t T_s_n,
+                       vec_and_ptr_dim_t v_interface,
+                       vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity){
+  int mpi_comm = p4est->mpicomm;
+
+  // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
+  bool test_cases = (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE) || (example_ == NS_GIBOU_EXAMPLE);
+
+  char output[1000];
+  if(!test_cases){
+    const char* out_dir = getenv("OUT_DIR_VTK");
+    if(!out_dir){
+        throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK");
+      }
+
+    PetscPrintf(mpi_comm,"Saving to vtk...\n");
+
+    if(example_==ICE_AROUND_CYLINDER){
+      // Create the cylinder just for visualization purposes, then destroy after saving
+      phi_cylinder.create(p4est,nodes);
+      sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+    }
+
+    sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+    save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+
+    if(example_ == ICE_AROUND_CYLINDER)phi_cylinder.destroy();
+    if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
+  }
+};
+
+// --------------------------------------------------------------------------------------------------------------
+// Function for checking the error in test cases (and then saving to vtk):
+// --------------------------------------------------------------------------------------------------------------
+void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface,  double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk,char *name, FILE *fich){
+  PetscErrorCode ierr;
+
+  vec_and_ptr_t T_ana,phi_ana, v_interface_ana;
+  T_ana.create(p4est,nodes); phi_ana.create(p4est,nodes);v_interface_ana.create(p4est,nodes);
+
+  vec_and_ptr_t T_l_err,T_s_err,phi_err,v_interface_err;
+  T_l_err.create(p4est,nodes); T_s_err.create(p4est,nodes); phi_err.create(p4est,nodes); v_interface_err.create(p4est,nodes);
+
+  T_l.get_array(); T_s.get_array();
+  phi.get_array(); v_interface.get_array();
+
+  T_ana.get_array(); v_interface_ana.get_array();phi_ana.get_array();
+  T_l_err.get_array();T_s_err.get_array();v_interface_err.get_array();phi_err.get_array();
+
+  double Linf_Tl = 0.0;
+  double Linf_Ts = 0.0;
+  double Linf_phi = 0.0;
+  double Linf_v_int = 0.0;
+
+  double r;
+  double sval;
+  double vel;
+
+  // NOTE: We have just solved for time (n+1), so we compare computed solution to the analytical solution at time = (tn + dt)
+//  double v_exact = s0/(2.0*sqrt(tn/*+dt*/));
+
+  //PetscPrintf(mpi.comm(),"Exact solution of velocity is: %0.2f",v_exact);
+  // Now loop through nodes to compare errors between LSF and Temperature profiles:
+  double xyz[P4EST_DIM];
+  foreach_node(n,nodes){
+    node_xyz_fr_n(n,p4est,nodes,xyz);
+
+    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
+    sval = r/sqrt(tn+dt);
+
+    phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
+
+    T_ana.ptr[n] = frank_sphere_solution_t(sval);
+
+    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
+
+    // Error on phi and v_int:
+    if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
+
+      // Errors on phi:
+      phi_err.ptr[n] = fabs(phi.ptr[n] - phi_ana.ptr[n]);
+
+      Linf_phi = max(Linf_phi,phi_err.ptr[n]); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
+
+      // Errors on v_int:
+      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
+      v_interface_err.ptr[n] = fabs(vel - v_interface_ana.ptr[n]);
+      Linf_v_int = max(Linf_v_int,v_interface_err.ptr[n]);
+      }
+
+    // Check error in the negative subdomain (T_liquid) (Domain = Omega_minus)
+    if(phi.ptr[n]<0.){
+        T_l_err.ptr[n]  = fabs(T_l.ptr[n] - T_ana.ptr[n]);
+        Linf_Tl = max(Linf_Tl,T_l_err.ptr[n]);
+      }
+    if (phi.ptr[n]>0.){
+        T_s_err.ptr[n]  = fabs(T_s.ptr[n] - T_ana.ptr[n]);
+        Linf_Ts = max(Linf_Ts,T_s_err.ptr[n]);
+      }
+  }
+
+  double global_Linf_errors[] = {0.0, 0.0, 0.0,0.0,0.0};
+  double local_Linf_errors[] = {Linf_phi,Linf_Tl,Linf_Ts,Linf_v_int};
+
+
+  // Now get the global maximum errors:
+  int mpiret = MPI_Allreduce(local_Linf_errors,global_Linf_errors,4,MPI_DOUBLE,MPI_MAX,p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+
+  // Print Errors to application output:
+  PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n",dxyz_close_to_interface);
+
+  int num_nodes = nodes->indep_nodes.elem_count;
+  PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
+
+
+  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4f \n Linf on T_l: %0.4f \n Linf on T_s: %0.4f \n Linf on v_int: %0.4f \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
+
+  // Print errors to file:
+  ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
+  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n",tn + dt,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);
+  ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
+
+  // If we are saving this timestep, output the results to vtk:
+  if(are_we_saving_vtk){
+      std::vector<std::string> point_names;
+      std::vector<double*> point_data;
+
+      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","phi_ana","T_ana","v_interface_vec_ana","phi_err","T_l_err","T_s_err","v_interface_vec_err"};
+      point_data = {phi.ptr,T_l.ptr,T_s.ptr,v_interface.ptr[0],v_interface.ptr[1],phi_ana.ptr,T_ana.ptr,v_interface_ana.ptr,phi_err.ptr,T_l_err.ptr,T_s_err.ptr,v_interface_err.ptr};
+
+
+      std::vector<std::string> cell_names = {};
+      std::vector<double*> cell_data = {};
+
+      my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+
+    }
+
+  T_l.restore_array();
+  T_s.restore_array();
+  phi.restore_array();
+  v_interface.restore_array();
+
+  T_ana.restore_array();v_interface_ana.restore_array();phi_ana.restore_array();
+  T_l_err.restore_array();T_s_err.restore_array();v_interface_err.restore_array();phi_err.restore_array();
+  T_ana.destroy();v_interface_ana.destroy();phi_ana.destroy();
+  T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
+}
+
 void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
 
   // Save NS analytical to compare:
@@ -4331,40 +4010,6 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
 }
 
-void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
-                       p4est_ghost_t* ghost, my_p4est_node_neighbors_t* ngbd,
-                       int out_idx, int grid_res_iter,
-                       vec_and_ptr_t phi, vec_and_ptr_t phi_cylinder,
-                       vec_and_ptr_t T_l_n,vec_and_ptr_t T_s_n,
-                       vec_and_ptr_dim_t v_interface,
-                       vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity){
-  int mpi_comm = p4est->mpicomm;
-
-  // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
-  bool test_cases = (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE) || (example_ == NS_GIBOU_EXAMPLE);
-
-  char output[1000];
-  if(!test_cases){
-    const char* out_dir = getenv("OUT_DIR_VTK");
-    if(!out_dir){
-        throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK");
-      }
-
-    PetscPrintf(mpi_comm,"Saving to vtk...\n");
-
-    if(example_==ICE_AROUND_CYLINDER){
-      // Create the cylinder just for visualization purposes, then destroy after saving
-      phi_cylinder.create(p4est,nodes);
-      sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-    }
-
-    sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-    save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
-
-    if(example_ == ICE_AROUND_CYLINDER)phi_cylinder.destroy();
-    if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
-  }
-};
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
 // --------------------------------------------------------------------------------------------------------------
@@ -4877,19 +4522,22 @@ int main(int argc, char** argv) {
       }
     set_nondimensional_groups();
 
-    PetscPrintf(mpi.comm(),"\n Nondim groups are: \n"
+    PetscPrintf(mpi.comm(),"\n\nNONDIM GROUPS ARE: \n"
                            "Re = %f \n"
                            "Pr = %f \n"
                            "Pe = %f \n"
                            "St = %f \n"
-                           "And we have: \n"
-                           "u_inf = %0.3e [m/s]\n", Re, Pr, Pe, St,u_inf);
+                           "With: \n"
+                           "u_inf = %0.3e [m/s]\n"
+                           "delta T = %0.2f [K]\n\n", Re, Pr, Pe, St,u_inf,deltaT);
+
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
     PetscPrintf(mpi.comm(),"Example number %d \n",example_);
     PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
-    PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n",uniform_band);
+    PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
+    PetscPrintf(mpi.comm(),"Ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds]",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
     // -----------------------------------------------
     // Create the grid:
     // -----------------------------------------------
@@ -5311,7 +4959,7 @@ int main(int argc, char** argv) {
                                     dt, dt*(time_nondim_to_dim),
                                     ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
 
-      if(tstep%timing_every_n == 0) {
+      if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
       }
@@ -5389,16 +5037,21 @@ int main(int argc, char** argv) {
         // -------------------------------
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
+        // Get the new solid LSF:
+        VecCopyGhost(phi.vec,phi_solid.vec);
+        VecScaleGhost(phi_solid.vec,-1.0);
 
         // Compute normals on the interface:
-        compute_normals(*ngbd_np1,phi.vec,normal.vec);
+        compute_normals(*ngbd_np1,phi_solid.vec,normal.vec); // normal here is outward normal of solid domain
 
         // Compute curvature on the interface:
         my_p4est_level_set_t ls_new_new(ngbd_np1);
-        compute_curvature(phi,normal,curvature,ngbd_np1,ls_new_new); // TO-DO: don't need to do this for coupled problem example
 
         // Feed the curvature computed to the interfacial boundary condition:
         if((example_ ==ICE_AROUND_CYLINDER) || (example_ == DENDRITE_TEST)){
+          // We need curvature of the solid domain, so we use phi_solid and negative of normals
+          compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
+
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
             if(example_ == DENDRITE_TEST){
@@ -5411,11 +5064,6 @@ int main(int argc, char** argv) {
         // Get most updated derivatives of the LSF's (on current grid)
         // -------------------------------
         if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
-
-        // Get the new solid LSF:
-        VecScaleGhost(phi.vec,-1.0);
-        VecCopyGhost(phi.vec,phi_solid.vec);
-        VecScaleGhost(phi.vec,-1.0);
 
         // Get derivatives of liquid and solid LSF's
         if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
@@ -6044,7 +5692,7 @@ int main(int argc, char** argv) {
       // Do a memory safety check as user specified
       // -------------------------------
       PetscLogDouble mem_safety_check;
-      if((tstep%check_mem_every_iter)==0){
+      if((check_mem_every_iter>0) && (tstep%check_mem_every_iter)==0){
         MPI_Barrier(mpi.comm());
         PetscMemoryGetCurrentUsage(&mem_safety_check);
 
