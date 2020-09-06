@@ -32,7 +32,7 @@ static void set_quadrant_data_for_exportation(p4est_t* forest, p4est_topidx_t wh
   const my_p4est_faces_t* faces                           = ptr->faces;
   const std::vector<p4est_gloidx_t>* node_offset_on_proc  = ptr->global_node_offsets;
   const std::vector<p4est_gloidx_t>* face_offset_on_proc[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     face_offset_on_proc[dir]                              = ptr->global_face_offsets[dir];
 
   p4est_tree_t* tree = p4est_tree_array_index(forest->trees, which_tree);
@@ -42,7 +42,7 @@ static void set_quadrant_data_for_exportation(p4est_t* forest, p4est_topidx_t wh
 
   p4est_gloidx_t *global_indices  = (p4est_gloidx_t*) q->p.user_data;
 
-  for (unsigned char k = 0; k < P4EST_CHILDREN; ++k)
+  for (u_char k = 0; k < P4EST_CHILDREN; ++k)
   {
     p4est_locidx_t local_node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx+k];
     if(local_node_idx < nodes->num_owned_indeps) // local node
@@ -57,8 +57,8 @@ static void set_quadrant_data_for_exportation(p4est_t* forest, p4est_topidx_t wh
 
   if(faces != NULL)
   {
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      for (unsigned char ii = 0; ii < 2; ++ii) {
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      for (u_char ii = 0; ii < 2; ++ii) {
         p4est_locidx_t local_face_idx = faces->q2f(quad_idx, 2*dir+ii);
         if((local_face_idx >=0) && (local_face_idx < faces->num_local[dir]))
           global_indices[P4EST_CHILDREN+2*dir+ii] = local_face_idx + face_offset_on_proc[dir]->at(forest->mpirank);
@@ -74,7 +74,7 @@ static void set_quadrant_data_for_exportation(p4est_t* forest, p4est_topidx_t wh
   }
 }
 
-PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, PetscBool skippheader, PetscBool usempiio)
+PetscErrorCode VecDump(const char fname[], u_int n_vecs, const Vec *x, PetscBool skippheader, PetscBool usempiio)
 {
   MPI_Comm       comm;
   PetscViewer    viewer;
@@ -89,7 +89,7 @@ PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, Pe
   if (usempiio) { ierr = PetscViewerBinarySetUseMPIIO(viewer, PETSC_TRUE);CHKERRQ(ierr); }
   ierr = PetscViewerFileSetName(viewer, fname);CHKERRQ(ierr);
 
-  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
+  for (u_int kk = 0; kk < n_vecs; ++kk) {
     ierr = VecView(x[kk],viewer);CHKERRQ(ierr);
   }
 
@@ -113,8 +113,9 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
   IS index_set_in_memory_local, index_set_from_disk;
   ISLocalToGlobalMapping l2g;
   PetscInt petsc_int_l2g_size;
-  p4est_locidx_t l2g_size, counter;
+  p4est_locidx_t l2g_size, dof_counter;
   std::vector<PetscInt> global_indices;
+  const u_int blocksize = (dtype == NODE_BLOCK_VECTOR_DATA ? P4EST_DIM : 1); // default behavior is blocksize of 1
 
   ierr = VecGetLocalToGlobalMapping(in_memory, &l2g); CHKERRXX(ierr);
   ierr = ISLocalToGlobalMappingGetSize(l2g, &petsc_int_l2g_size); CHKERRXX(ierr);
@@ -125,31 +126,38 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
   // do not have the same size. It is usually the case on local machines or small clusters,
   // but it is not necessarily on STAMPEDE2 for instance and the code crashed because of this...
   global_indices.resize(l2g_size, -1); // initialize every corresponding global index to -1
-  counter = 0;
+  dof_counter = 0;
 
   switch (dtype) {
   case CELL_DATA:
   {
-    P4EST_ASSERT(l2g_size == (augmented_forest->local_num_quadrants + ((p4est_locidx_t) ghost->ghosts.elem_count)));
+    P4EST_ASSERT(l2g_size == ((int) blocksize)*(augmented_forest->local_num_quadrants + ((p4est_locidx_t) ghost->ghosts.elem_count)));
     // global ordering is conserved in for the quadrants (stored and distributed following a z-order)
     for (p4est_topidx_t tree_idx = augmented_forest->first_local_tree; tree_idx <= augmented_forest->last_local_tree; ++tree_idx) {
       const p4est_tree_t* tree = p4est_tree_array_index(augmented_forest->trees, tree_idx);
       for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
-        global_indices[counter++] = q + tree->quadrants_offset + augmented_forest->global_first_quadrant[augmented_forest->mpirank];
+      {
+        for (u_int comp = 0; comp < blocksize; ++comp)
+          global_indices[blocksize*dof_counter + comp] = blocksize*(q + tree->quadrants_offset + augmented_forest->global_first_quadrant[augmented_forest->mpirank]) + comp;
+        dof_counter++;
+      }
     }
     for (int r = 0; r < augmented_forest->mpisize; ++r)
       for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q) {
         const p4est_quadrant_t* quad = (const p4est_quadrant_t*) sc_array_index(&ghost->ghosts, q);
-        global_indices[counter++] = (PetscInt) (quad->p.piggy3.local_num + augmented_forest->global_first_quadrant[r]);
+        for (u_int comp = 0; comp < blocksize; ++comp)
+          global_indices[blocksize*dof_counter + comp] = (PetscInt) (blocksize*(quad->p.piggy3.local_num + augmented_forest->global_first_quadrant[r]) + comp);
+        dof_counter++;
       }
     break;
   }
+  case NODE_BLOCK_VECTOR_DATA:
   case NODE_DATA:
   {
     P4EST_ASSERT(nodes != NULL);
-    P4EST_ASSERT(l2g_size == ((p4est_locidx_t) nodes->indep_nodes.elem_count));
+    P4EST_ASSERT(l2g_size == ((int) blocksize)*((p4est_locidx_t) nodes->indep_nodes.elem_count));
     P4EST_ASSERT(augmented_forest->data_size%(sizeof(p4est_gloidx_t)) == 0);
-    unsigned int n_global_indices_per_quad = augmented_forest->data_size/(sizeof(p4est_gloidx_t));
+    u_int n_global_indices_per_quad = augmented_forest->data_size/(sizeof(p4est_gloidx_t));
     P4EST_ASSERT(n_global_indices_per_quad >= P4EST_CHILDREN);
     p4est_gloidx_t* ghost_data = (p4est_gloidx_t*) P4EST_ALLOC(p4est_gloidx_t, n_global_indices_per_quad*ghost->ghosts.elem_count);
     p4est_ghost_exchange_data (augmented_forest, ghost, ghost_data);
@@ -157,7 +165,7 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
     // Calculate the global node offset per proc
     std::vector<p4est_gloidx_t> global_node_offset_on_proc(augmented_forest->mpisize, 0);
     for (int r = 1; r<augmented_forest->mpisize; ++r)
-      global_node_offset_on_proc[r] = global_node_offset_on_proc[r-1] + (p4est_gloidx_t)nodes->global_owned_indeps[r-1];
+      global_node_offset_on_proc[r] = global_node_offset_on_proc[r - 1] + (p4est_gloidx_t)nodes->global_owned_indeps[r - 1];
 
     for (p4est_topidx_t tree_idx = augmented_forest->first_local_tree; tree_idx <= augmented_forest->last_local_tree; ++tree_idx) {
       p4est_tree_t* tree = p4est_tree_array_index(augmented_forest->trees, tree_idx);
@@ -165,25 +173,27 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
         const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
         const p4est_quadrant_t* quadrant = (const p4est_quadrant_t*) p4est_quadrant_array_index(&tree->quadrants, q);
         p4est_gloidx_t* quad_data = (p4est_gloidx_t*) quadrant->p.user_data;
-        for (unsigned char i = 0; i < P4EST_CHILDREN; ++i) {
-          p4est_locidx_t local_node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx+i];
-          P4EST_ASSERT((local_node_idx >=0) && (local_node_idx < ((p4est_locidx_t) nodes->indep_nodes.elem_count)));
-          if(global_indices.at(local_node_idx) == -1)
+        for (u_char i = 0; i < P4EST_CHILDREN; ++i) {
+          p4est_locidx_t local_node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + i];
+          P4EST_ASSERT(local_node_idx >= 0 && local_node_idx < (p4est_locidx_t) nodes->indep_nodes.elem_count);
+          if(global_indices.at(blocksize*local_node_idx) == -1)
           {
-            global_indices[local_node_idx] = quad_data[i];
-            counter++;
+            for (u_int comp = 0; comp < blocksize; ++comp)
+              global_indices[blocksize*local_node_idx + comp] = blocksize*quad_data[i] + comp;
+            dof_counter++;
           }
         }
       }
     }
     for (size_t q = 0; q < ghost->ghosts.elem_count; ++q) {
-      for (unsigned char i = 0; i < P4EST_CHILDREN; ++i) {
-        p4est_locidx_t local_node_idx = nodes->local_nodes[P4EST_CHILDREN*(q+augmented_forest->local_num_quadrants)+i];
-        P4EST_ASSERT((local_node_idx >=0) && (local_node_idx < ((p4est_locidx_t) nodes->indep_nodes.elem_count)));
-        if(global_indices.at(local_node_idx) == -1)
+      for (u_char i = 0; i < P4EST_CHILDREN; ++i) {
+        p4est_locidx_t local_node_idx = nodes->local_nodes[P4EST_CHILDREN*(q+augmented_forest->local_num_quadrants) + i];
+        P4EST_ASSERT(local_node_idx >= 0 && local_node_idx < (p4est_locidx_t) nodes->indep_nodes.elem_count);
+        if(global_indices.at(blocksize*local_node_idx) == -1)
         {
-          global_indices[local_node_idx] = ghost_data[q*n_global_indices_per_quad+i];
-          counter++;
+          for (u_int comp = 0; comp < blocksize; ++comp)
+            global_indices[blocksize*local_node_idx + comp] = blocksize*ghost_data[q*n_global_indices_per_quad + i] + comp;
+          dof_counter++;
         }
       }
     }
@@ -193,22 +203,18 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
   case FACE_DATA:
   {
     P4EST_ASSERT(faces != NULL);
-    P4EST_ASSERT((dim==dir::x) || (dim==dir::y)
-             #ifdef P4_TO_P8
-                 || (dim==dir::z)
-             #endif
-                 );
-    P4EST_ASSERT(l2g_size == (faces->num_local[dim] + faces->num_ghost[dim]));
+    P4EST_ASSERT(ORD(dim==dir::x, dim==dir::y, dim==dir::z));
+    P4EST_ASSERT(l2g_size == ((int) blocksize)*(faces->num_local[dim] + faces->num_ghost[dim]));
     P4EST_ASSERT(augmented_forest->data_size%(sizeof(p4est_gloidx_t)) == 0);
-    unsigned int n_global_indices_per_quad = augmented_forest->data_size/(sizeof(p4est_gloidx_t));
-    P4EST_ASSERT(n_global_indices_per_quad == P4EST_CHILDREN+P4EST_FACES);
+    u_int n_global_indices_per_quad = augmented_forest->data_size/(sizeof(p4est_gloidx_t));
+    P4EST_ASSERT(n_global_indices_per_quad == P4EST_CHILDREN + P4EST_FACES);
     p4est_gloidx_t* ghost_data = (p4est_gloidx_t*) P4EST_ALLOC(p4est_gloidx_t, n_global_indices_per_quad*ghost->ghosts.elem_count);
     p4est_ghost_exchange_data (augmented_forest, ghost, ghost_data);
 
     // Calculate the global face offset per proc
     std::vector<p4est_gloidx_t> global_face_offset_on_proc(augmented_forest->mpisize, 0);
     for (int r = 1; r<augmented_forest->mpisize; ++r)
-      global_face_offset_on_proc[r] = global_face_offset_on_proc[r-1] + (p4est_gloidx_t)faces->global_owned_indeps[dim][r-1];
+      global_face_offset_on_proc[r] = global_face_offset_on_proc[r - 1] + (p4est_gloidx_t)faces->global_owned_indeps[dim][r - 1];
 
     for (p4est_topidx_t tree_idx = augmented_forest->first_local_tree; tree_idx <= augmented_forest->last_local_tree; ++tree_idx) {
       p4est_tree_t* tree = p4est_tree_array_index(augmented_forest->trees, tree_idx);
@@ -216,29 +222,31 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
         const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
         const p4est_quadrant_t* quadrant = (const p4est_quadrant_t*) p4est_quadrant_array_index(&tree->quadrants, q);
         p4est_gloidx_t* quad_data = (p4est_gloidx_t*) quadrant->p.user_data;
-        for (unsigned char i = 0; i < 2; ++i) {
+        for (u_char i = 0; i < 2; ++i) {
           p4est_locidx_t local_face_idx = faces->q2f(quad_idx, 2*dim+i);
-          P4EST_ASSERT(((local_face_idx >=0) && (local_face_idx < ((p4est_locidx_t)(faces->num_local[dim] + faces->num_ghost[dim])))) || local_face_idx == NO_VELOCITY);
+          P4EST_ASSERT((local_face_idx >= 0 && local_face_idx < (p4est_locidx_t)(faces->num_local[dim] + faces->num_ghost[dim])) || local_face_idx == NO_VELOCITY);
           if(local_face_idx == NO_VELOCITY)
             continue;
-          if(global_indices[local_face_idx] == -1)
+          if(global_indices[blocksize*local_face_idx] == -1)
           {
-            global_indices[local_face_idx] = quad_data[P4EST_CHILDREN+2*dim+i];
-            counter++;
+            for (u_int comp = 0; comp < blocksize; ++comp)
+              global_indices[blocksize*local_face_idx + comp] = blocksize*quad_data[P4EST_CHILDREN + 2*dim + i] + comp;
+            dof_counter++;
           }
         }
       }
     }
     for (size_t q = 0; q < ghost->ghosts.elem_count; ++q) {
-      for (unsigned char i = 0; i < 2; ++i) {
-        p4est_locidx_t local_face_idx = faces->q2f(q+augmented_forest->local_num_quadrants, 2*dim+i);
-        P4EST_ASSERT(((local_face_idx >=0) && (local_face_idx < ((p4est_locidx_t)(faces->num_local[dim] + faces->num_ghost[dim])))) || local_face_idx == NO_VELOCITY);
+      for (u_char i = 0; i < 2; ++i) {
+        p4est_locidx_t local_face_idx = faces->q2f(q+augmented_forest->local_num_quadrants, 2*dim + i);
+        P4EST_ASSERT((local_face_idx >= 0 && local_face_idx < (p4est_locidx_t)(faces->num_local[dim] + faces->num_ghost[dim])) || local_face_idx == NO_VELOCITY);
         if(local_face_idx == NO_VELOCITY)
           continue;
-        if(global_indices[local_face_idx] == -1)
+        if(global_indices[blocksize*local_face_idx] == -1)
         {
-          global_indices[local_face_idx] = ghost_data[q*n_global_indices_per_quad+P4EST_CHILDREN+2*dim+i];
-          counter++;
+          for (u_int comp = 0; comp < blocksize; ++comp)
+            global_indices[blocksize*local_face_idx + comp] = blocksize*ghost_data[q*n_global_indices_per_quad + P4EST_CHILDREN + 2*dim + i] + comp;
+          dof_counter++;
         }
       }
     }
@@ -249,7 +257,7 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
     throw std::runtime_error("VecScatterCreateChangeLayout: unknown data type, only cell-, node- or face-sampled values are handled...");
     break;
   }
-  P4EST_ASSERT(counter == l2g_size);
+  P4EST_ASSERT(((int) blocksize)*dof_counter == l2g_size);
 
   ierr = ISCreateGeneral(augmented_forest->mpicomm, petsc_int_l2g_size, global_indices.data(), PETSC_COPY_VALUES, &index_set_from_disk); CHKERRXX(ierr);
 
@@ -268,7 +276,7 @@ PetscErrorCode VecScatterCreateChangeLayout(Vec from_disk, Vec in_memory, const 
   return ierr;
 }
 
-PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, const int dtype,
+PetscErrorCode LoadVec(const char fname[], u_int n_vecs, Vec *x, const int dtype,
                        p4est_t* augmented_forest, p4est_ghost_t* ghost, const p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
                        PetscBool skippheader, PetscBool usempiio)
 {
@@ -285,7 +293,7 @@ PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, const in
   if(dtype == FACE_DATA && n_vecs%P4EST_DIM!=0)
     throw std::invalid_argument("LoadVec: the number of vectors to be loaded must be proportional to P4EST_DIM if loading FACE_DATA.");
 
-  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
+  for (u_int kk = 0; kk < n_vecs; ++kk) {
     Vec vector_as_loaded;
     ierr = VecCreate(augmented_forest->mpicomm, &vector_as_loaded);CHKERRQ(ierr);
     ierr = VecLoad(vector_as_loaded, viewer);CHKERRQ(ierr);
@@ -319,7 +327,7 @@ void my_p4est_save_forest(const char* absolute_path_to_file, p4est_t* forest, p4
 
   std::vector<p4est_gloidx_t> global_face_offsets[P4EST_DIM];
   if(faces != NULL)
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     {
       global_face_offsets[dir].resize(forest->mpisize, 0);
       for (int r = 1; r < forest->mpisize; ++r)
@@ -330,7 +338,7 @@ void my_p4est_save_forest(const char* absolute_path_to_file, p4est_t* forest, p4
   ptr.nodes                 = nodes;
   ptr.faces                 = faces;
   ptr.global_node_offsets   = &global_node_offsets;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
     ptr.global_face_offsets[dir] = &global_face_offsets[dir];
 
   p4est_reset_data(forest, ((sizeof(p4est_gloidx_t))*(P4EST_CHILDREN + ((faces == NULL)? 0 : P4EST_FACES))), set_quadrant_data_for_exportation, ((void*) &ptr));
@@ -339,7 +347,7 @@ void my_p4est_save_forest(const char* absolute_path_to_file, p4est_t* forest, p4
 }
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
-                                   const char* forest_filename, unsigned int num_exports, va_list args)
+                                   const char* forest_filename, u_int num_exports, va_list args)
 {
   if(create_directory(absolute_path_to_folder, forest->mpirank, forest->mpicomm) != 0)
 #ifdef CASL_THROWS
@@ -349,7 +357,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 #endif
 
   char absolute_path_to_file[PATH_MAX];
-  unsigned int num_vecs;
+  u_int num_vecs;
   const char* vec_name;
 
   // save the p4est object with global order of dofs saved as cell-level data to recover correct data localization at reload stage
@@ -357,12 +365,12 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
   my_p4est_save_forest(absolute_path_to_file, forest, nodes, faces);
 
   // export the Petsc vectors
-  for (unsigned int i = 0; i < num_exports; ++i) {
+  for (u_int i = 0; i < num_exports; ++i) {
     /* get the name of the vector(s) for the export */
     vec_name = va_arg(args, const char*);
     sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, vec_name);
     /* get the number of vectors to be exported under that name */
-    num_vecs = va_arg(args, unsigned int);
+    num_vecs = va_arg(args, u_int);
     /* get the pointer to Vec object(s) pointing to the vectors to be exported */
     Vec* pointer_to_vecs = va_arg(args, Vec*);
     PetscErrorCode ierr = VecDump(absolute_path_to_file, num_vecs, pointer_to_vecs); CHKERRXX(ierr);
@@ -370,7 +378,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 }
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
-                                   const char* forest_filename, unsigned int num_exports, ...)
+                                   const char* forest_filename, u_int num_exports, ...)
 {
   va_list args;
   va_start(args, num_exports);
@@ -380,7 +388,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 };
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes,
-                                   const char* forest_filename, unsigned int num_exports, ...)
+                                   const char* forest_filename, u_int num_exports, ...)
 {
   va_list args;
   va_start(args, num_exports);
@@ -393,10 +401,10 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
                                    const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
                                    const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
-                                   const char* forest_filename, unsigned int num_loads, va_list args)
+                                   const char* forest_filename, u_int num_loads, va_list args)
 {
   char absolute_path_to_file[PATH_MAX];
-  unsigned int num_vecs;
+  u_int num_vecs;
   const char* vec_name;
 
   // load the p4est object and the connectivity
@@ -423,7 +431,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     double tree_dimensions[P4EST_DIM];
     p4est_topidx_t v_m  = conn->tree_to_vertex[0];                  // index of the front lower left corner of the first tree in the macro-mesh
     p4est_topidx_t v_p  = conn->tree_to_vertex[P4EST_CHILDREN - 1]; // index of the back upper right corner of the first tree in the macro-mesh
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       tree_dimensions[dir] = conn->vertices[3*v_p + dir] - conn->vertices[3*v_m + dir];
     if(third_degree_ghost_are_required(tree_dimensions))
       my_p4est_ghost_expand(forest, ghost);
@@ -466,7 +474,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 
   // load the Petsc vectors and redistribute them accordingly
   PetscErrorCode ierr;
-  for (unsigned int i = 0; i < num_loads; ++i) {
+  for (u_int i = 0; i < num_loads; ++i) {
     /* get the vector name corresponding to the on-disk file for the load */
     vec_name = va_arg(args, const char*);
     sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, vec_name);
@@ -475,37 +483,44 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     /* get the type of data to load (NODE_DATA, CELL_DATA OR FACE_DATA) */
     int data_type = va_arg(args, int);
     /* get the number of vectors to be loaded under that name */
-    num_vecs = va_arg(args, unsigned int);
+    num_vecs = va_arg(args, u_int);
     /* get the pointer to Vec object(s) pointing to the vectors to be loaded in */
     Vec* pointer_to_vecs = va_arg(args, Vec*);
     switch (data_type) {
     case NODE_DATA:
     {
-      for (unsigned int i = 0; i < num_vecs; ++i) {
+      for (u_int i = 0; i < num_vecs; ++i) {
         ierr = VecCreateGhostNodes(forest, nodes, &pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
     case CELL_DATA:
     {
-      for (unsigned int i = 0; i < num_vecs; ++i) {
+      for (u_int i = 0; i < num_vecs; ++i) {
         ierr = VecCreateGhostCells(forest, ghost, &pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
     case FACE_DATA:
     {
-      P4EST_ASSERT(num_vecs%P4EST_DIM==0);
-      for (unsigned int i = 0; i < num_vecs/P4EST_DIM; ++i) {
-        for (unsigned char k = 0; k < P4EST_DIM; ++k) {
-          ierr = VecCreateGhostFaces(forest, faces, &pointer_to_vecs[P4EST_DIM*i+k], k); CHKERRXX(ierr);
+      P4EST_ASSERT(num_vecs%P4EST_DIM == 0);
+      for (u_int i = 0; i < num_vecs/P4EST_DIM; ++i) {
+        for (u_char k = 0; k < P4EST_DIM; ++k) {
+          ierr = VecCreateGhostFaces(forest, faces, &pointer_to_vecs[P4EST_DIM*i + k], k); CHKERRXX(ierr);
         }
+      }
+      break;
+    }
+    case NODE_BLOCK_VECTOR_DATA:
+    {
+      for (u_int i = 0; i < num_vecs; ++i) {
+        ierr = VecCreateGhostNodesBlock(forest, nodes, P4EST_DIM, &pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
     default:
     {
-      throw std::invalid_argument("my_p4est_load_forest_and_data: unknown data type. Use either NODE_DATA, CELL_DATA, FACE_DATA...");
+      throw std::invalid_argument("my_p4est_load_forest_and_data: unknown data type. Use either NODE_DATA, CELL_DATA, FACE_DATA, NODE_BLOCK_VECTOR_DATA...");
       break;
     }
     }
@@ -519,7 +534,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
                                    const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
                                    const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
-                                   const char* forest_filename, unsigned int num_loads, ...)
+                                   const char* forest_filename, u_int num_loads, ...)
 {
   va_list args;
   va_start(args, num_loads);
@@ -532,7 +547,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
-                                   const char* forest_filename, unsigned int num_loads, ...)
+                                   const char* forest_filename, u_int num_loads, ...)
 {
   va_list args;
   va_start(args, num_loads);
@@ -561,7 +576,7 @@ my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivit
   const p4est_topidx_t* t2v = connectivity->tree_to_vertex;
   const double* v2c = connectivity->vertices;
 
-  for (unsigned char i = 0; i < 3; ++i) {
+  for (u_char i = 0; i < 3; ++i) {
     brick->xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree+P4EST_CHILDREN-1] + i];
     brick->xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree+0] + i];
   }
@@ -572,17 +587,17 @@ my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivit
   if(connectivity->num_trees > 1)
   {
     double min_tree_dimensions[3];
-    for (unsigned char i = 0; i < 3; ++i)
+    for (u_char i = 0; i < 3; ++i)
       min_tree_dimensions[i] = brick->xyz_max[i] - brick->xyz_min[i];
     // get the minimum possible tree dimension along each direction (for robust double comparisons later on)
     for (p4est_topidx_t tt = 0; tt < connectivity->num_trees; ++tt)
-      for (unsigned char i = 0; i < 3; ++i)
+      for (u_char i = 0; i < 3; ++i)
         min_tree_dimensions[i] = MIN(min_tree_dimensions[i], v2c[3*t2v[P4EST_CHILDREN*tt+P4EST_CHILDREN-1]+i]-v2c[3*t2v[P4EST_CHILDREN*tt+0]+i]);
     std::vector<double> first_vertices_of_trees[3];
-    for (unsigned char i = 0; i < 3; ++i)
+    for (u_char i = 0; i < 3; ++i)
       first_vertices_of_trees[i].resize(0);
     for (p4est_topidx_t tt = 0; tt < connectivity->num_trees; ++tt) {
-      for (unsigned char i = 0; i < 3; ++i) {
+      for (u_char i = 0; i < 3; ++i) {
         bool is_not_in_yet = true;
         for (size_t k = 0; k < first_vertices_of_trees[i].size(); ++k) {
           is_not_in_yet = is_not_in_yet && (fabs(v2c[3*t2v[P4EST_CHILDREN*tt+0]+i] - first_vertices_of_trees[i][k]) > 0.1*min_tree_dimensions[i]);
@@ -593,7 +608,7 @@ my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivit
           first_vertices_of_trees[i].push_back(v2c[3*t2v[P4EST_CHILDREN*tt+0]+i]);
       }
     }
-    for (unsigned char i = 0; i < 3; ++i)
+    for (u_char i = 0; i < 3; ++i)
     {
       std::sort(first_vertices_of_trees[i].begin(), first_vertices_of_trees[i].end());
       brick->nxyztrees[i] = first_vertices_of_trees[i].size();
@@ -603,7 +618,7 @@ my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivit
 #endif
     for (p4est_topidx_t tt = 0; tt < connectivity->num_trees; ++tt) {
       int cartesian_tree_idx[3];
-      for (unsigned char i = 0; i < 3; ++i) {
+      for (u_char i = 0; i < 3; ++i) {
         if(first_vertices_of_trees[i].size() == 1)
           cartesian_tree_idx[i] = 0; // safer in 3D otherwise we compare 0 to 0, risky...
         else
