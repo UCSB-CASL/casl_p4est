@@ -51,6 +51,7 @@ struct splitting_criteria_t {
 
   int max_lvl, min_lvl;
   double lip;
+  virtual ~splitting_criteria_t() {};
 };
 
 struct splitting_criteria_cf_t : splitting_criteria_t {
@@ -61,6 +62,7 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
     this->phi = phi;
   }
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
+  virtual ~splitting_criteria_cf_t() {};
 };
 
 struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
@@ -78,6 +80,7 @@ struct splitting_criteria_thresh_t : splitting_criteria_t {
     this->f = f;
     this->thresh = thresh;
   }
+  virtual ~splitting_criteria_thresh_t() {};
 };
 
 struct splitting_criteria_random_t : splitting_criteria_t {
@@ -89,6 +92,7 @@ struct splitting_criteria_random_t : splitting_criteria_t {
     this->max_quads = max_quads;
     num_quads = 0;
   }
+  virtual ~splitting_criteria_random_t() {};
 };
 
 class splitting_criteria_marker_t: public splitting_criteria_t {
@@ -110,6 +114,7 @@ public:
   }
   inline p4est_bool_t& operator[](p4est_locidx_t q) { return markers[q]; }
   inline const p4est_bool_t& operator[](p4est_locidx_t q) const { return markers[q]; }
+  virtual ~splitting_criteria_marker_t() {};
 };
 
 class splitting_criteria_tag_t: public splitting_criteria_t {
@@ -180,6 +185,8 @@ public:
                           std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
 
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
+
+  virtual ~ splitting_criteria_tag_t() {};
 };
 
 struct splitting_criteria_grad_t: public splitting_criteria_t {
@@ -189,6 +196,7 @@ struct splitting_criteria_grad_t: public splitting_criteria_t {
   splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_DIM* cf, double fmax, double tol = 1e-2)
   : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
   {}
+  virtual ~splitting_criteria_grad_t() {};
 };
 
 /*!
