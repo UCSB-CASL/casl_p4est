@@ -318,6 +318,15 @@ public:
 		}
 		return phi;
 	}
+
+	/**
+	 * Retrieve a reference to the center of the right circle in world coordinates.
+	 * @return c2.
+	 */
+	[[nodiscard]] const Point2& getC2() const
+	{
+		return _c2;
+	}
 };
 
 #endif //FAST_SWEEPING_TWO_SPHERES_LEVELSET_2D_H

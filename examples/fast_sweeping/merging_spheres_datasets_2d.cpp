@@ -6,11 +6,19 @@
  * sample (i.e. nth row in both files) correspond to the same standing point adjacent to the interface and its 9-stencil
  * neighborhood.  This correspondance can be used, eventually, to train denoising-like autoencoders.
  *
+ * [Update 09/07/2020] A new data set is generated to mirror the merging samples from reinitialized level-set functions.
+ * The mirrored data set contains the sample as if it wasn't near a discontinuity.  That is, if in sample s, the center
+ * node is closer to circle 1, than a corresponding sample with the exact signed distance to circle 1 will be created.
+ * This will serve as a way to reconstruct an encoder-decorder network that should be capable of regenerating samples
+ * with missing (i.e. discontinuous, noisy) information.
+ *
  * The files generated are named merging_spheres_[X]_[Y].csv, where [X] is one of "sdf" or "rls", for signed distance
- * function and reinitialized level-set, respectively, and [Y] is the highest level of tree resolution.
+ * function and reinitialized level-set, respectively, and [Y] is the highest level of tree resolution.  The new file
+ * for reconstructing missing distances from discontinuous entries is named continuous_mergin_spheres_rls_[Y].csv.
  *
  * Developer: Luis Ángel.
- * Date: August 14, 2020.
+ * Original Date: August 14, 2020.
+ * Updated: September 7, 2020.
  */
 
 // System.
@@ -113,6 +121,12 @@ int main ( int argc, char* argv[] )
 		if( !rlsFile.is_open() )
 			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
 
+		std::ofstream contFile;
+		std::string contFileName = DATA_PATH + "continuous_merging_sphere_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) + ".csv";
+		contFile.open( contFileName, std::ofstream::trunc );
+		if( !contFile.is_open() )
+			throw std::runtime_error( "Output file " + contFileName + " couldn't be opened!" );
+
 		// Write column headers: enforcing strings by adding quotes around them.
 		std::ostringstream headerStream;
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
@@ -120,9 +134,11 @@ int main ( int argc, char* argv[] )
 		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
 		sdfFile << headerStream.str() << std::endl;
 		rlsFile << headerStream.str() << std::endl;
+		contFile << headerStream.str() << std::endl;
 
 		sdfFile.precision( 15 );							// Precision for floating point numbers.
 		rlsFile.precision( 15 );
+		contFile.precision( 15 );
 
 		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
 		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
@@ -164,6 +180,7 @@ int main ( int argc, char* argv[] )
 
 				std::vector<std::vector<double>> rlsSamples;
 				std::vector<std::vector<double>> sdfSamples;
+				std::vector<std::vector<double>> contSamples;
 
 				const double T[] = {
 					uniformDistributionH_2( gen ),		// Translate center coords by a randomly chosen
@@ -246,13 +263,34 @@ int main ( int argc, char* argv[] )
 							CHKERRXX( ierr );
 						}
 
-						// A vector to store the signed distance function for all nodes.
+						// A vector to store the signed distance function for all nodes to the compound interface.
 						Vec distPhi;
 						ierr = VecDuplicate( phi, &distPhi );
 						CHKERRXX( ierr );
 
 						double *distPhiPtr;
 						ierr = VecGetArray( distPhi, &distPhiPtr );
+						CHKERRXX( ierr );
+
+						// Vectors to store the exact distance to both interfaces: left and right circels.  Used for
+						// reconstruction samples assuming the interface is continuous.
+						Vec distPhi1, distPhi2;
+						ierr = VecDuplicate( phi, &distPhi1 );
+						CHKERRXX( ierr );
+						ierr = VecDuplicate( phi, &distPhi2 );
+						CHKERRXX( ierr );
+
+						const Point2 C2 = twoSpheres.getC2();
+						geom::Sphere sphere1( X1, Y1, R1 );			// Creating independent signed distance level-sets.
+						geom::Sphere sphere2( C2.x, C2.y, R2 );
+
+						sample_cf_on_nodes( p4est, nodes, sphere1, distPhi1 );		// Sampling: collecting the exact
+						sample_cf_on_nodes( p4est, nodes, sphere2, distPhi2 );		// signed distance to each circle.
+
+						const double *distPhi1ReadPtr, *distPhi2ReadPtr;			// Getting read references to
+						ierr = VecGetArrayRead( distPhi1, &distPhi1ReadPtr );		// access their data below.
+						CHKERRXX( ierr );
+						ierr = VecGetArrayRead( distPhi2, &distPhi2ReadPtr );
 						CHKERRXX( ierr );
 
 						// A vector to store which circle produces the closest distance to each node.
@@ -329,25 +367,37 @@ int main ( int argc, char* argv[] )
 								{
 									std::vector<double> sdfData;	// Signed-distance function values.
 									std::vector<double> rlsData;	// Reinitialized level-set function values.
+									std::vector<double> contData;	// Reconstructing continuous data function values.
 									totalInclusiveSamples++;
 
 									// A troubling node is one that lies in a discontinuity region or owns at least one
 									// of its 9-point stencil neighbors lying on a discontinuity or with a phi value
 									// that is due to a circle different to n's.
-									bool troublingFlag = whoPtr[n] == 0;
+									auto reference = static_cast<short>( whoPtr[n] );
+									short fromSameCircle = 0;	// Counting how many nodes in the stencil are closer to the same center node circle.
+									bool troublingFlag = reference == 0;
 									double sampleError = 0;
 									for( auto s : stencil )
 									{
 										sdfData.push_back( -distPhiPtr[s] );
 										rlsData.push_back( -phiReadPtr[s] );
 
+										switch( reference )
+										{
+											case -1: contData.push_back( -distPhi1ReadPtr[s] ); break;	// Due to C1.
+											case +1: contData.push_back( -distPhi2ReadPtr[s] ); break;	// Due to C2.
+											default: contData.push_back( 0 );		// Discontinuous center point!
+										}
+
 										// Error for standing stencil.
 										double error = ABS( sdfData.back() - rlsData.back() ) / H;
 										sampleError = MAX( sampleError, error );
 
 										// Checking for trouble.
-										if( whoPtr[s] != whoPtr[n] )
+										if( static_cast<short>( whoPtr[s] ) != reference )
 											troublingFlag = true;
+										else
+											fromSameCircle++;
 
 										// Debugging.
 /*										if( xyz[0] >= -0.04 && xyz[0] <= 0.04 && xyz[1] >= -0.03 && xyz[1] <= 0.05 )
@@ -369,11 +419,16 @@ int main ( int argc, char* argv[] )
 									if( !troublingFlag )		// Skip samples that are not troubling.
 										continue;
 
+									// Sanity check.
+									if( reference )
+										assert( ABS( sdfData[4] - contData[4] ) < EPS );
+
 									maxRE = MAX( sampleError, maxRE );
 
 									// Appending target dimensionless curvature.
 									sdfData.push_back( -hKappaPtr[n] );
 									rlsData.push_back( -hKappaPtr[n] );
+									contData.push_back( -hKappaPtr[n] );	// Adding a target, though it isn't really needed.
 
 									// Computing the gradient.
 									double grad[P4EST_DIM];					// Getting its gradient (i.e. normal).
@@ -389,15 +444,21 @@ int main ( int argc, char* argv[] )
 									double iHKappa = H * interpolation( xyz[0], xyz[1] );
 									sdfData.push_back( 0 );
 									rlsData.push_back( -iHKappa );			// Append interpolated h*kappa.
+									contData.push_back( fromSameCircle );	// For the continuous reconstruction data,
+																			// last column indicates how many stencil
+																			// nodes are closer to the same circle as
+																			// the center node.
 
 									// Add troubling samples to global samples vectors using data augmentation.
 									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
 									{								// three times.
 										rlsSamples.push_back( rlsData );
 										sdfSamples.push_back( sdfData );
+										contSamples.push_back( contData );
 
 										rotatePhiValues90( rlsData, NUM_COLUMNS );
 										rotatePhiValues90( sdfData, NUM_COLUMNS );
+										rotatePhiValues90( contData, NUM_COLUMNS );
 									}
 								}
 							}
@@ -420,6 +481,12 @@ int main ( int argc, char* argv[] )
 						ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 						CHKERRXX( ierr );
 
+						ierr = VecRestoreArrayRead( distPhi1, &distPhi1ReadPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArrayRead( distPhi2, &distPhi2ReadPtr );
+						CHKERRXX( ierr );
+
 						for( int dim = 0; dim < P4EST_DIM; dim++ )
 						{
 							ierr = VecRestoreArray( pOnInterface[dim], &pOnInterfacePtr[dim] );
@@ -440,6 +507,12 @@ int main ( int argc, char* argv[] )
 						CHKERRXX( ierr );
 
 						ierr = VecDestroy( phi );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( distPhi1 );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( distPhi2 );
 						CHKERRXX( ierr );
 
 						ierr = VecDestroy( curvature );
@@ -465,14 +538,20 @@ int main ( int argc, char* argv[] )
 				// Write all samples collected for all circles with the same radius but randomized center content to files.
 				for( const auto& row : sdfSamples )
 				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );
 					sdfFile << row.back() << std::endl;
 				}
 
 				for( const auto& row : rlsSamples )
 				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );
 					rlsFile << row.back() << std::endl;
+				}
+
+				for( const auto& row : contSamples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( contFile, "," ) );
+					contFile << row.back() << std::endl;
 				}
 
 				nSamples += rlsSamples.size();
@@ -486,6 +565,7 @@ int main ( int argc, char* argv[] )
 
 		sdfFile.close();
 		rlsFile.close();
+		contFile.close();
 
 		printf( "<< Finished generating %d samples in %f secs.\n", nSamples, watch.get_duration_current() );
 		watch.stop();
