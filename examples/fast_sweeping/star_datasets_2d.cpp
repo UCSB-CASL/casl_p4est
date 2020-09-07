@@ -141,9 +141,11 @@
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find theta that yields "a" minimum distance between stencil point and star using Newton-Raphson's method.
-		valOfDerivative = 1;
-		theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
-			valOfDerivative, newDistance );
+		if( distances.back() > EPS )
+		{
+			valOfDerivative = 1;
+			theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
+										 valOfDerivative, newDistance );
 
 //		if( s == 4 )
 //		{
@@ -154,16 +156,17 @@
 //					  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
 //		}
 
-		if( newDistance - distances[s] > EPS )			// Verify that new point is closest than previous approximmation.
-		{
-			std::ostringstream stream;
-			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
-				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-				   << ".  Old dist: " << distances[s];
-			throw std::runtime_error( stream.str() );
-		}
+			if( newDistance - distances[s] > EPS )		// Verify that new point is closest than previous approximmation.
+			{
+				std::ostringstream stream;
+				stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+					   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+					   << ".  Old dist: " << distances[s];
+				throw std::runtime_error( stream.str() );
+			}
 
-		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
+			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+		}
 
 		if( star( xyz[0], xyz[1] ) < 0 )				// Fix sign.
 			distances[s] *= -1;

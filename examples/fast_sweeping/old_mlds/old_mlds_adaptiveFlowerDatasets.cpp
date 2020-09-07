@@ -1,6 +1,6 @@
 //
 // Created by Im YoungMin on 11/5/19.
-// Note: This was adapted on 9/2/20 to allow for interpolated h*kappa at the interface because the results in the paper
+// Note: This was adapted on 9/7/20 to allow for interpolated h*kappa at the interface because the results in the paper
 // were collected, for the numerical method, at the stencil center rather than at gamma.  Thus, the comparison was
 // unfair, in favor of the neural network (which produces h*kappa at the interface).
 //
@@ -27,8 +27,8 @@
 #include <fstream>
 
 // Root finding.
-#include "star_theta_root_finding.h"
-#include "local_utils.h"
+#include "../star_theta_root_finding.h"
+#include "../local_utils.h"
 
 /**
  * Generate the sample row of level-set function values and target h*kappa for a node that has been found next to the
@@ -108,20 +108,23 @@
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find theta that yields "a" minimum distance between stencil point and star using Newton-Raphson's method.
-		valOfDerivative = 1;
-		theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
-									 valOfDerivative, newDistance );
-
-		if( newDistance - distances[s] > EPS )			// Verify that new point is closest than previous approximmation.
+		if( distances.back() > EPS )
 		{
-			std::ostringstream stream;
-			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
-				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-				   << ".  Old dist: " << distances[s];
-			throw std::runtime_error( stream.str() );
-		}
+			valOfDerivative = 1;
+			theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
+										 valOfDerivative, newDistance );
 
-		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
+			if( newDistance - distances[s] > EPS )		// Verify that new point is closest than previous approximmation.
+			{
+				std::ostringstream stream;
+				stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+					   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+					   << ".  Old dist: " << distances[s];
+				throw std::runtime_error( stream.str() );
+			}
+
+			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+		}
 
 		if( star( xyz[0], xyz[1] ) < 0 )				// Fix sign.
 			distances[s] *= -1;
@@ -149,10 +152,11 @@
  * @param [in] star The flower interface.
  * @param [in] resolution Target unitary resolution (e.g. 256 grid points per unit length).
  * @param [in] nGridPoints Number of grid points along each direction.
+ * @param [in] padding Number of min-width cells to leave around effective domain of flower.
  * @param [in] iter Number of iterations for level set reinitialization (e.g. 5, 10, 20).
  * @param [in] mpi MPI object.
  */
-void generateReinitializedFlowerDataset( const geom::Star& star, int resolution, int nGridPoints, int iter,
+void generateReinitializedFlowerDataset( geom::Star& star, int resolution, int nGridPoints, int padding, int iter,
 										 const mpi_environment_t& mpi )
 {
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
@@ -162,17 +166,19 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 
 	// We need to collect grid points along the flower interface and determine the value for h and minVal.
 	double H, minVal;
-	star.getHAndMinVal( nGridPoints, H, minVal );
+	star.getHAndMinVal( nGridPoints, H, minVal, padding );
 
 	//////////////////////////////////////////// Setting up the p4est structs //////////////////////////////////////////
 
 	PetscErrorCode ierr;
+	const int N_CELLS = 1;
+	const int MAX_REFINEMENT_LEVEL = 7;
 
 	// Domain information.
-	int n_xyz[] = {nGridPoints - 1, nGridPoints - 1, nGridPoints - 1};	// Number of root cells in the macromesh.
-	double xyz_min[] = {minVal, minVal, minVal};						// Coordinates of the lower-left-back point.
-	double xyz_max[] = {-minVal, -minVal, -minVal};						// Coordinates of the front-right-top point.
-	int periodic[] = {0, 0, 0};											// Whether the domain is periodic or not.
+	int n_xyz[] = {N_CELLS, N_CELLS, N_CELLS};			// Number of root cells in the macromesh.
+	double xyz_min[] = {minVal, minVal, minVal};		// Coordinates of the lower-left-back point.
+	double xyz_max[] = {-minVal, -minVal, -minVal};		// Coordinates of the front-right-top point.
+	int periodic[] = {0, 0, 0};							// Whether the domain is periodic or not.
 
 	// p4est variables and data structures.
 	p4est_t *p4est;
@@ -182,7 +188,7 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 	p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 	// Definining the non-signed distance level-set function to be reinitialized.
-	splitting_criteria_cf_and_uniform_band_t levelSetSC( 0, 0, (CF_2 *) &star, 2 );
+	splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &star, 2 );
 
 	// Create the forest using a level set as refinement criterion.
 	p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -206,11 +212,11 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 
 	parStopWatch watch;
 
-	printf( ">> Beginning to generate flower dataset for %i grid points, and h = %f, in a [%f,%f]^2 domain\n",
+	printf( ">> Beginning to generate adaptive flower data set for %i grid points, and h = %f, in a [%f,%f]^2 domain\n",
 		 	nGridPoints, H, minVal, -minVal );
 	watch.start();
 
-	std::string DATA_PATH = "/Users/youngmin/Documents/CS/CASL/LSCurvatureML/data/updated_flower/";
+	std::string DATA_PATH = "/Users/youngmin/Documents/CS/CASL/LSCurvatureML/data/updated_adaptiveFlower/";
 	const std::string COLUMN_NAMES[] = {
 		"(i-1,j+1)", "(i,j+1)", "(i+1,j+1)", "(i-1,j)", "(i,j)", "(i+1,j)", "(i-1,j-1)", "(i,j-1)", "(i+1,j-1)",
 		"h*kappa", "ihk"		// Replaced old "h" by interpolated h*kappa in the last column.
@@ -218,12 +224,12 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 	const int NUM_COLUMNS = 11;
 
 	DATA_PATH += std::to_string( resolution ) + "/";
-	checkOrCreateDirectory( DATA_PATH );								// Resolution directory (256/, 266/, or 276/).
+	checkOrCreateDirectory( DATA_PATH );				// Resolution directory (only 266/ is currently supported).
 
 	char auxA[10];
 	sprintf( auxA, "%.3f", star.getA() );
 	DATA_PATH += "a_" + std::string( auxA ) + "/";
-	checkOrCreateDirectory( DATA_PATH );								// Smoothness directory (a_0.050/ or a_0.075/).
+	checkOrCreateDirectory( DATA_PATH );				// Smoothness directory (only a_0.050/ is currently supported).
 
 	// Prepare file where to write sample phi values.
 	std::ofstream outputFile;
@@ -288,7 +294,7 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 
 	// Prepare scaffold to collect nodal indices along the interface.  Also, collect indicators for those nodes that
 	// are adjacent to the interface and have a full 9-point uniform neighborhood.
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, 0 );
+	NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
 
 	// Curvature and normal ghosted parallel vectors.
 	Vec curvature, normal[P4EST_DIM];
@@ -382,7 +388,7 @@ void generateReinitializedFlowerDataset( const geom::Star& star, int resolution,
 
 	// Write paraview file to visualize the star interface and nodes following along.
 	std::ostringstream oss;
-	oss << "old_mlds_star_" << resolution << "_a_" << std::string( auxA ) << "_iter_" << iter;
+	oss << "old_mlds_adaptive_star_" << resolution << "_a_" << std::string( auxA ) << "_iter_" << iter;
 	my_p4est_vtk_write_all( p4est, nodes, ghost,
 							P4EST_TRUE, P4EST_TRUE,
 							1, 0, oss.str().c_str(),
@@ -423,23 +429,17 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		// 256 | Smooth = 107, Sharp = 120.
-		// 266 | Smooth = 111, Sharp = 124.
-		// 276 | Smooth = 114, Sharp = 129.
-		int iterations = 5;					// Choose 5, 10, and 20 to test neural networks dictionary.
-		int resolution = 256;				// Choose 256, 266, 276 as from above.
-		int nGridNodes = 107;				// Choose 107 - 129 as from above.
-		double a;
-		if( nGridNodes == 107 || nGridNodes == 111 || nGridNodes == 114 )
-			a = 0.05;
-		else if( nGridNodes == 120 || nGridNodes == 124 || nGridNodes == 129 )
-			a = 0.075;
-		else
-			throw std::runtime_error( "Wrong combination of parameters!" );
+		// For flower with a=0.050: M = 129, padding = 12, N_CELLS = 1, yields 261 grid points per unit.
+		// For flower with a=0.075: M = 129, padding = 5, N_CELLS = 1, yields 263.222 grid points per unit.
+		const int ITERATIONS = 5;			// Choose 5, 10, and 20 to test neural networks dictionary.
+		const int RESOLUTION = 266;			// Collected data are compatible with 266 nnet.
+		const int N_GRID_NODES = 129;		// Expected outcome uses 129 grid points.
+		const double A = 0.050;
+		const int PADDING = 12;
 
-		geom::Star star( a, 0.15, 3 );		// Smooth a = 0.05. Sharp a = 0.075.
+		geom::Star star( A, 0.15, 3 );		// Smooth a = 0.05. Sharp a = 0.075.
 
-		generateReinitializedFlowerDataset( star, resolution, nGridNodes, iterations, mpi );
+		generateReinitializedFlowerDataset( star, RESOLUTION, N_GRID_NODES, PADDING, ITERATIONS, mpi );
 	}
 	catch( const std::exception &e )
 	{
