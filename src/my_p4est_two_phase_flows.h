@@ -161,6 +161,7 @@ private:
   vector<augmented_voronoi_cell> voro_cell[P4EST_DIM];
   class jump_face_solver
   {
+    friend class my_p4est_two_phase_flows_t;
     /* NOTE : inspired from my_p4est_poisson_faces_t with an xgfm twist for interface jump problems,
      * and without any Shortley-Weller kind of treatment (to keep symmetric systems).
      * There is a notable difference though in the treatment of Neumann boundary conditions, since we assume
@@ -303,11 +304,13 @@ private:
                                        double *vnp1_face_minus_p[P4EST_DIM], double *vnp1_face_plus_p[P4EST_DIM],
                                        double *normal_derivative_of_vnp1_face_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_face_plus_p[P4EST_DIM], const u_char& degree);
     void extrapolate_normal_derivatives_of_face_velocity_local(const p4est_locidx_t &f_idx, const u_char &dir,
-                                                               double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                               const double *normal_derivative_of_vnp1_minus_n_p[P4EST_DIM], const double *normal_derivative_of_vnp1_plus_n_p[P4EST_DIM],
+                                                               double *normal_derivative_of_vnp1_minus_np1_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_np1_p[P4EST_DIM]);
 
     void face_velocity_extrapolation_local(const p4est_locidx_t &f_idx, const u_char &dir, const double* sharp_solution_p[P4EST_DIM],
                                            const double *normal_derivative_of_vnp1_face_minus_p[P4EST_DIM], const double *normal_derivative_of_vnp1_face_plus_p[P4EST_DIM],
-                                           double *vnp1_face_minus_p[P4EST_DIM], double *vnp1_face_plus_p[P4EST_DIM]);
+                                           const double *vnp1_face_minus_n_p[P4EST_DIM], const double *vnp1_face_plus_n_p[P4EST_DIM],
+                                           double *vnp1_face_minus_np1_p[P4EST_DIM], double *vnp1_face_plus_np1_p[P4EST_DIM]);
 
   } viscosity_solver;
 
@@ -614,6 +617,7 @@ public:
   inline double get_dt() const                                              { return dt_n; }
   inline double get_dtnm1() const                                           { return dt_nm1; }
   inline p4est_t* get_p4est_n() const                                       { return p4est_n; }
+  inline p4est_t* get_fine_p4est_n() const                                  { return fine_p4est_n; }
   inline p4est_nodes_t* get_nodes_n() const                                 { return nodes_n; }
   inline my_p4est_faces_t* get_faces_n() const                              { return faces_n ; }
   inline p4est_ghost_t* get_ghost_n() const                                 { return ghost_n; }
