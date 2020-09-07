@@ -165,6 +165,7 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}/src/my_p4est_semi_lagrangian.h
 			${PARCASL}/src/my_p4est_shs_channel.h
 			${PARCASL}/src/my_p4est_solve_lsqr.h
+			${PARCASL}/src/my_p4est_surfactant.h
 			${PARCASL}/src/my_p4est_trajectory_of_point.h
 			${PARCASL}/src/my_p4est_utils.h
 			${PARCASL}/src/my_p4est_vtk.h
@@ -211,6 +212,7 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}/src/my_p4est_scft.cpp
 			${PARCASL}/src/my_p4est_semi_lagrangian.cpp
 			${PARCASL}/src/my_p4est_solve_lsqr.cpp
+			${PARCASL}/src/my_p4est_surfactant.cpp
 			${PARCASL}/src/my_p4est_trajectory_of_point.cpp
 			${PARCASL}/src/my_p4est_utils.cpp
 			${PARCASL}/src/my_p4est_vtk.cpp
@@ -265,6 +267,7 @@ if( DIMENSION MATCHES 3d )
 			#  ${PARCASL}/src/my_p8est_scft.h
 			${PARCASL}/src/my_p8est_semi_lagrangian.h
 			${PARCASL}/src/my_p8est_solve_lsqr.h
+			${PARCASL}/src/my_p8est_surfactant.h
 			${PARCASL}/src/my_p8est_shs_channel.h
 			${PARCASL}/src/my_p8est_trajectory_of_point.h
 			${PARCASL}/src/my_p8est_utils.h
@@ -312,6 +315,7 @@ if( DIMENSION MATCHES 3d )
 			#  ${PARCASL}/src/my_p8est_scft.cpp
 			${PARCASL}/src/my_p8est_semi_lagrangian.cpp
 			${PARCASL}/src/my_p8est_solve_lsqr.cpp
+			${PARCASL}/src/my_p8est_surfactant.cpp
 			${PARCASL}/src/my_p8est_trajectory_of_point.cpp
 			${PARCASL}/src/my_p8est_utils.cpp
 			${PARCASL}/src/my_p8est_vtk.cpp
