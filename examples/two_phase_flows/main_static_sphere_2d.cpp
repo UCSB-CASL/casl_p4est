@@ -571,7 +571,7 @@ int main (int argc, char* argv[])
   const double vtk_dt     = cmd.get<double> ("vtk_dt",        default_vtk_dt_nondimensional)*characteristic_time_unit;
   const bool save_vtk     = cmd.get<bool>   ("save_vtk",      default_save_vtk);
   const int save_nstates  = cmd.get<int>    ("save_nstates",  default_save_nstates);
-  const int save_state_dt = cmd.get<double> ("save_state_dt", default_save_state_dt_nondimensional)*characteristic_time_unit;
+  const double save_state_dt = cmd.get<double> ("save_state_dt", default_save_state_dt_nondimensional)*characteristic_time_unit;
   if(vtk_dt <= 0.0)
     throw std::invalid_argument("main for static bubble: the value of vtk_dt must be strictly positive.");
   if(save_vtk && !cmd.contains("retsart"))
@@ -622,7 +622,6 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->save_state(export_dir.c_str(), tn, save_nstates);
     }
 
-
     two_phase_flow_solver->solve_viscosity();
     two_phase_flow_solver->solve_projection();
 
@@ -638,7 +637,7 @@ int main (int argc, char* argv[])
     {
       if(save_vtk)
         two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx);
-      ierr = PetscPrintf(mpi.comm(), "The simulation blew up..."); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "The simulation blew up... Maximum (non-dimensional) velocity found to be %g\n", two_phase_flow_solver->get_max_velocity()*viscosity/surface_tension); CHKERRXX(ierr);
       break;
     }
 
