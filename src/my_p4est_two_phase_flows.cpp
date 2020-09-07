@@ -296,6 +296,157 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time)
   : threshold_dbl_max(get_largest_dbl_smaller_than_dbl_max())
 {
+  // we need to initialize those to NULL, otherwise the loader will freak out
+  // no risk of memory leak here, this is a CONSTRUCTOR
+  brick = NULL; conn = NULL;
+  p4est_nm1 = NULL; ghost_nm1 = NULL; nodes_nm1 = NULL;
+  hierarchy_nm1 = NULL; ngbd_nm1 = NULL;
+  p4est_n = NULL; ghost_n = NULL; nodes_n = NULL;
+  hierarchy_n = NULL; ngbd_n = NULL;
+  ngbd_c = NULL; faces_n = NULL;
+  fine_p4est_n = NULL; fine_ghost_n = NULL; fine_nodes_n = NULL;
+  fine_hierarchy_n = NULL; fine_ngbd_n = NULL;
+  interface_manager = NULL;
+
+  bc_velocity = NULL;
+  bc_pressure = NULL;
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+    force_per_unit_mass[dim]  = NULL;
+
+  // -------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
+  // -------------------------------------------------------------------
+  // scalar fields
+  phi           = NULL;
+  pressure_jump = NULL;
+  mass_flux     = NULL;
+  // vector fields and/or other P4EST_DIM-block-structured
+  phi_xxyyzz  = NULL;
+  interface_stress = NULL;
+  // -----------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
+  // -----------------------------------------------------------------------
+  // scalar fields
+  phi_on_computational_nodes    = NULL;
+  vorticity_magnitude_minus     = NULL;
+  vorticity_magnitude_plus      = NULL;
+  // vector fields
+  vnp1_nodes_minus              = NULL;
+  vnp1_nodes_plus               = NULL;
+  vn_nodes_minus                = NULL;
+  vn_nodes_plus                 = NULL;
+  interface_velocity_np1        = NULL;
+  // tensor/matrix fields
+  vn_nodes_minus_xxyyzz         = NULL;
+  vn_nodes_plus_xxyyzz          = NULL;
+  interface_velocity_np1_xxyyzz = NULL;
+  // ------------------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
+  // ------------------------------------------------------------------------------
+  // vector fields
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    grad_p_guess_over_rho_minus[dir]  = NULL;
+    grad_p_guess_over_rho_plus[dir]   = NULL;
+    vnp1_face_minus[dir]  = NULL;
+    vnp1_face_plus[dir]   = NULL;
+  }
+  // -------------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
+  // -------------------------------------------------------------------------
+  // vector fields
+  vnm1_nodes_minus        = NULL;
+  vnm1_nodes_plus         = NULL;
+  // tensor/matrix fields
+  vnm1_nodes_minus_xxyyzz = NULL;
+  vnm1_nodes_plus_xxyyzz  = NULL;
+  dt_updated = false;
+
+  // load the solver state from disk
+  load_state(mpi, path_to_saved_state, simulation_time);
+
+  // clear backtraced values of velocity components
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    backtraced_vn_faces_minus[dir].clear();   backtraced_vn_faces_plus[dir].clear();
+    backtraced_vnm1_faces_minus[dir].clear(); backtraced_vnm1_faces_plus[dir].clear();
+    voro_cell[dir].resize(faces_n->num_local[dir]);
+  }
+  semi_lagrangian_backtrace_is_done = false;
+  voronoi_on_the_fly = false;
+
+  ngbd_n->init_neighbors();
+  ngbd_nm1->init_neighbors();
+  if(!faces_n->finest_faces_neighborhoods_have_been_set())
+    faces_n->set_finest_face_neighborhoods();
+
+  viscosity_solver.set_environment(this);
+  pressure_guess_solver = NULL;
+  pressure_guess_is_set = false;
+  divergence_free_projector = NULL;
+
+  interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
+  xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
+  xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    periodicity[dim] = is_periodic(p4est_n, dim);
+  tree_diagonal = ABSD(tree_dimension[0], tree_dimension[1], tree_dimension[2]);
+  smallest_diagonal = ABSD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]);
+
+  set_phi((fine_ngbd_n != NULL ? phi : phi_on_computational_nodes), levelset_interpolation_method, phi_on_computational_nodes);
+
+  compute_second_derivatives_of_n_velocities();
+  compute_second_derivatives_of_nm1_velocities();
+}
+
+
+void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
+{
+  PetscErrorCode ierr;
+  char filename[PATH_MAX];
+
+  if(!is_folder(path_to_folder))
+    throw std::invalid_argument("my_p4est_two_phase_flows_t::load_state: path_to_folder is invalid.");
+
+  // load general solver parameters first
+  splitting_criteria_t* data = new splitting_criteria_t;
+  splitting_criteria_t* fine_data = new splitting_criteria_t;
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, data, fine_data, LOAD, tn, &mpi);
+
+  // load p4est_n and the corresponding objects
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder, p4est_n, conn, P4EST_TRUE, ghost_n, nodes_n,
+                                P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
+                                "p4est_n", 3,
+                                "phi_comp", NODE_DATA, 1, &phi_on_computational_nodes,
+                                "vn_nodes_minus", NODE_BLOCK_VECTOR_DATA, 1, &vn_nodes_minus,
+                                "vn_nodes_plus", NODE_BLOCK_VECTOR_DATA, 1, &vn_nodes_plus);
+
+  P4EST_ASSERT(find_max_level(p4est_n) == data->max_lvl);
+
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  ngbd_n->init_neighbors();
+  // load p4est_nm1 and the corresponding objects
+  p4est_connectivity_t* conn_nm1 = NULL;
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder, p4est_nm1, conn_nm1, P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                "p4est_nm1", 2,
+                                "vnm1_nodes_minus", NODE_BLOCK_VECTOR_DATA, 1, &vnm1_nodes_minus,
+                                "vnm1_nodes_plus", NODE_BLOCK_VECTOR_DATA, 1, &vnm1_nodes_plus);
+  p4est_connectivity_destroy(conn_nm1);
+
+  p4est_nm1->connectivity = conn;
+  if(hierarchy_nm1 != NULL)
+    delete hierarchy_nm1;
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  if(ngbd_nm1 != NULL)
+    delete ngbd_nm1;
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+  ngbd_nm1->init_neighbors();
+
+  p4est_n->user_pointer = (void*) data;
+  p4est_nm1->user_pointer = (void*) data;
+
+  ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
 
 }
 
@@ -386,10 +537,10 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
     throw std::runtime_error("my_p4est_two_phase_flows_t::save_state: cannot handle the use of subrefining grids yet...");
 
   my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
-                                  "p4est_n", 3,
-                                  "phi_comp", 1, &phi_on_computational_nodes,
-                                  "vn_nodes_minus", 1, &vn_nodes_minus,
-                                  "vn_nodes_plus", 1, &vn_nodes_plus);
+                                "p4est_n", 3,
+                                "phi_comp", 1, &phi_on_computational_nodes,
+                                "vn_nodes_minus", 1, &vn_nodes_minus,
+                                "vn_nodes_plus", 1, &vn_nodes_plus);
 
   // save p4est_nm1
   my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1,

@@ -68,6 +68,8 @@ const double default_viscosity = 1.0/12000.0;
 const double default_surface_tension = 1.0/12000.0;
 const double default_duration_nondimensional = 250.0;
 const double default_vtk_dt_nondimensional = 1.0;
+const double default_save_state_dt_nondimensional = 10.0;
+const int default_save_nstates = 0;
 const int default_sl_order = 2;
 const double default_cfl_advection = 1.0;
 const double default_cfl_capillary = 0.5;
@@ -213,43 +215,43 @@ void build_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, c
   return;
 }
 
-//void truncate_exportation_file_up_to_tstart(const string &filename, const unsigned int& n_extra_values_exported_per_line)
-//{
-//  FILE* fp = fopen(filename.c_str(), "r+");
-//  char* read_line = NULL;
-//  size_t len = 0;
-//  ssize_t len_read;
-//  long size_to_keep = 0;
-//  if(((len_read = getline(&read_line, &len, fp)) != -1))
-//    size_to_keep += (long) len_read;
-//  else
-//    throw std::runtime_error("truncate_exportation_file: couldn't read the first header line of " + filename);
-//  string read_format = "%lg";
-//  for (unsigned int k = 0; k < n_extra_values_exported_per_line; ++k)
-//    read_format += " %*g";
-//  double time, time_nm1;
-//  double dt = 0.0;
-//  bool not_first_line = false;
-//  while ((len_read = getline(&read_line, &len, fp)) != -1) {
-//    if(not_first_line)
-//      time_nm1 = time;
-//    sscanf(read_line, read_format.c_str(), &time);
-//    if(not_first_line)
-//      dt = time - time_nm1;
-//    if(time <= tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
-//      size_to_keep += (long) len_read;
-//    else
-//      break;
-//    not_first_line = true;
-//  }
-//  fclose(fp);
-//  if(read_line)
-//    free(read_line);
-//  if(truncate(filename.c_str(), size_to_keep))
-//    throw std::runtime_error("simulation_setup::truncate_exportation_file: couldn't truncate " + filename);
-//}
+void truncate_exportation_file_up_to_tstart(const double& tstart, const string &filename, const u_int& n_extra_values_exported_per_line)
+{
+  FILE* fp = fopen(filename.c_str(), "r+");
+  char* read_line = NULL;
+  size_t len = 0;
+  ssize_t len_read;
+  long size_to_keep = 0;
+  if(((len_read = getline(&read_line, &len, fp)) != -1))
+    size_to_keep += (long) len_read;
+  else
+    throw std::runtime_error("truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
+  string read_format = "%lg";
+  for (u_int k = 0; k < n_extra_values_exported_per_line; ++k)
+    read_format += " %*g";
+  double time, time_nm1;
+  double dt = 0.0;
+  bool not_first_line = false;
+  while ((len_read = getline(&read_line, &len, fp)) != -1) {
+    if(not_first_line)
+      time_nm1 = time;
+    sscanf(read_line, read_format.c_str(), &time);
+    if(not_first_line)
+      dt = time - time_nm1;
+    if(time <= tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
+      size_to_keep += (long) len_read;
+    else
+      break;
+    not_first_line = true;
+  }
+  fclose(fp);
+  if(read_line)
+    free(read_line);
+  if(truncate(filename.c_str(), size_to_keep))
+    throw std::runtime_error("simulation_setup::truncate_exportation_file: couldn't truncate " + filename);
+}
 
-void initialize_exportations(const mpi_environment_t& mpi, const string& results_dir,
+void initialize_exportations(const double &tstart, const mpi_environment_t& mpi, const string& results_dir,
                              string& datafile_parasitic_current, string& datafile_volume_bubble)
 {
   datafile_parasitic_current  = results_dir + "/magnitude_parasitic_current.dat";
@@ -260,17 +262,27 @@ void initialize_exportations(const mpi_environment_t& mpi, const string& results
 
   if(mpi.rank() == 0)
   {
-    FILE* fp_parasitic_currents = fopen(datafile_parasitic_current.c_str(), "w");
-    if(fp_parasitic_currents == NULL)
-      throw std::runtime_error("initialize_exportations: could not open file for output of magnitude of parasitic current.");
-    fprintf(fp_parasitic_currents, "%% tn | nondimensional parasitic current \n");
-    fclose(fp_parasitic_currents);
+    if(!file_exists(datafile_parasitic_current))
+    {
+      FILE* fp_parasitic_currents = fopen(datafile_parasitic_current.c_str(), "w");
+      if(fp_parasitic_currents == NULL)
+        throw std::runtime_error("initialize_exportations: could not open file for output of magnitude of parasitic current.");
+      fprintf(fp_parasitic_currents, "%% tn | nondimensional parasitic current \n");
+      fclose(fp_parasitic_currents);
+    }
+    else
+      truncate_exportation_file_up_to_tstart(tstart, datafile_parasitic_current, 1);
 
-    FILE* fp_bubble_voume = fopen(datafile_volume_bubble.c_str(), "w");
-    if(fp_bubble_voume == NULL)
-      throw std::runtime_error("initialize_exportations: could not open file for output of bubble volume drift.");
-    fprintf(fp_bubble_voume, "%% tn | volume \n");
-    fclose(fp_bubble_voume);
+    if(!file_exists(datafile_volume_bubble))
+    {
+      FILE* fp_bubble_voume = fopen(datafile_volume_bubble.c_str(), "w");
+      if(fp_bubble_voume == NULL)
+        throw std::runtime_error("initialize_exportations: could not open file for output of bubble volume drift.");
+      fprintf(fp_bubble_voume, "%% tn | volume \n");
+      fclose(fp_bubble_voume);
+    }
+    else
+      truncate_exportation_file_up_to_tstart(tstart, datafile_volume_bubble, 1);
 
     char liveplot[PATH_MAX];
     sprintf(liveplot, "%s/liveplot.gnu", results_dir.c_str());
@@ -317,8 +329,7 @@ void export_results(const double& nondimensional_tn, const double& magnitude_non
 }
 
 void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
-                                my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity,
-                                splitting_criteria_cf_and_uniform_band_t* &data, splitting_criteria_cf_t* &subrefined_data)
+                                my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity)
 {
   const int lmin                        = cmd.get<int>    ("lmin",              default_lmin);
   const int lmax                        = cmd.get<int>    ("lmax",              default_lmax);
@@ -368,9 +379,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     p4est_connectivity_destroy(connectivity); connectivity = NULL;
   }
   connectivity = my_p4est_brick_new(ntree_xyz, xyz_min, xyz_max, brick, periodic);
-  if(data != NULL)
-    delete data;
-  data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band_in_dxmin);
+  splitting_criteria_cf_and_uniform_band_t* data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band_in_dxmin);
   p4est_t                       *p4est_nm1      = NULL, *p4est_n      = NULL, *subrefined_p4est     = NULL;
   p4est_ghost_t                 *ghost_nm1      = NULL, *ghost_n      = NULL, *subrefined_ghost     = NULL;
   p4est_nodes_t                 *nodes_nm1      = NULL, *nodes_n      = NULL, *subrefined_nodes     = NULL;
@@ -389,9 +398,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   if(use_subrefinement)
   {
     // build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
-    if(subrefined_data != NULL)
-      delete subrefined_data;
-    subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &level_set);
+    splitting_criteria_cf_t* subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &level_set);
     build_interface_capturing_grid(p4est_n, brick, subrefined_data, level_set,
                                    subrefined_p4est, subrefined_ghost, subrefined_nodes, subrefined_hierarchy, subrefined_ngbd_n, subrefined_phi);
     interface_capturing_phi = subrefined_phi;
@@ -421,12 +428,43 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   return;
 }
 
+void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, double& tn,
+                            my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity)
+{
+  const string backup_directory = cmd.get<string>("restart", "");
+  if(!is_folder(backup_directory.c_str()))
+    throw std::invalid_argument("load_solver_from_state: the restart path " + backup_directory + " is not an accessible directory.");
+
+  if (solver != NULL) {
+    delete solver; solver = NULL; }
+  P4EST_ASSERT(solver == NULL);
+  solver = new my_p4est_two_phase_flows_t(mpi, backup_directory.c_str(), tn);
+
+
+  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  {
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
+    delete brick; brick = NULL;
+  }
+
+  P4EST_ASSERT(brick == NULL);
+  brick = solver->get_brick();
+  if(connectivity != NULL){
+    p4est_connectivity_destroy(connectivity); connectivity = NULL; }
+  connectivity = solver->get_connetivity();
+
+  PetscErrorCode ierr = PetscPrintf(solver->get_p4est_n()->mpicomm, "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
+  return;
+}
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  cmdParser cmd;// computational grid parameters
+  cmdParser cmd;
+  cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
+  // computational grid parameters
   ostringstream streamObj;
   cmd.add_option("lmin", "min level of the trees, default is " + to_string(default_lmin));
   cmd.add_option("lmax", "max level of the trees, default is " + to_string(default_lmax));
@@ -472,6 +510,9 @@ int main (int argc, char* argv[])
   streamObj.str(""); streamObj << default_interp_method_phi;
   cmd.add_option("phi_interp", "interpolation method for the node-sampled levelset function. Default is " + streamObj.str());
   cmd.add_option("subrefinement", "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
+  streamObj.str(""); streamObj << default_save_state_dt_nondimensional;
+  cmd.add_option("save_state_dt", "if save_nstates > 0, the solver state is saved every save_state_dt*(D*mu/gamma) time increments in backup_ subfolders. Default is " + streamObj.str());
+  cmd.add_option("save_nstates",  "determines how many solver states must be memorized in backup_ folders (default is " + to_string(default_save_nstates) + ")");
 
   if(cmd.parse(argc, argv, main_description))
     return 0;
@@ -492,18 +533,22 @@ int main (int argc, char* argv[])
   my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
   my_p4est_brick_t *brick                           = NULL;
   p4est_connectivity_t* connectivity                = NULL;
-  splitting_criteria_cf_and_uniform_band_t* data    = NULL;
-  splitting_criteria_cf_t* subrefined_data          = NULL;
   double tn, dt;
 
-//  if(cmd.contains("restart"))
-//    load_solver_from_state();
-//  else
+  if(cmd.contains("restart"))
   {
-    create_solver_from_scratch(mpi, cmd, two_phase_flow_solver, brick, connectivity, data, subrefined_data);
+    load_solver_from_state(mpi, cmd, tn, two_phase_flow_solver, brick, connectivity);
+    dt = two_phase_flow_solver->get_dt();
+  }
+  else
+  {
+    create_solver_from_scratch(mpi, cmd, two_phase_flow_solver, brick, connectivity);
     tn = 0.0;// no restart for now, so we assume we start from 0.0
     dt = two_phase_flow_solver->get_capillary_dt();
   }
+
+  splitting_criteria_t* data            = (splitting_criteria_t*) (two_phase_flow_solver->get_p4est_n()->user_pointer); // to delete it appropriately, eventually
+  splitting_criteria_t* subrefined_data = (two_phase_flow_solver->get_fine_p4est_n() != NULL ? (splitting_criteria_t*) two_phase_flow_solver->get_fine_p4est_n()->user_pointer : NULL); // same, to delete it appropriately, eventually
 
   // make sure we're doing consistent stuff
   if(fabs(two_phase_flow_solver->get_mu_minus() - two_phase_flow_solver->get_mu_plus()) > 1e-6*MIN(fabs(two_phase_flow_solver->get_mu_minus()), fabs(two_phase_flow_solver->get_mu_plus())))
@@ -522,9 +567,11 @@ int main (int argc, char* argv[])
   const double mass_density     = two_phase_flow_solver->get_rho_minus();
   const double surface_tension  = two_phase_flow_solver->get_surface_tension();
   const double characteristic_time_unit = (2.0*bubble_radius*viscosity/surface_tension);
-  const double duration                 = cmd.get<double> ("duration",  default_duration_nondimensional)*characteristic_time_unit;
-  const double vtk_dt                   = cmd.get<double> ("vtk_dt",    default_vtk_dt_nondimensional)*characteristic_time_unit;
-  const bool save_vtk                   = cmd.get<bool>   ("save_vtk",  default_save_vtk);
+  const double duration   = cmd.get<double> ("duration",      default_duration_nondimensional)*characteristic_time_unit;
+  const double vtk_dt     = cmd.get<double> ("vtk_dt",        default_vtk_dt_nondimensional)*characteristic_time_unit;
+  const bool save_vtk     = cmd.get<bool>   ("save_vtk",      default_save_vtk);
+  const int save_nstates  = cmd.get<int>    ("save_nstates",  default_save_nstates);
+  const int save_state_dt = cmd.get<double> ("save_state_dt", default_save_state_dt_nondimensional)*characteristic_time_unit;
   if(vtk_dt <= 0.0)
     throw std::invalid_argument("main for static bubble: the value of vtk_dt must be strictly positive.");
   if(save_vtk && !cmd.contains("retsart"))
@@ -550,14 +597,15 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_external_forces_per_unit_mass(external_force_per_unit_mass);
 
   string parasitic_current_datafile, volume_datafile;
-  initialize_exportations(mpi, results_dir, parasitic_current_datafile, volume_datafile);
-  int iter = 0, iter_vtk = -1, export_time_idx = -1;
+  initialize_exportations(tn, mpi, results_dir, parasitic_current_datafile, volume_datafile);
+  int iter = 0;
+  int vtk_idx = (cmd.contains("restart") ? (int) floor(tn/vtk_dt)  : -1);
+  int backup_time_idx = (int) floor(tn/save_state_dt);
   double max_nondimensional_velocity_overall = 0.0;
   double magnitude_nondimensional_parasitic_current = 0.0*viscosity/mass_density;
   double error_nondimensional_volume = (exact_bubble_volume - two_phase_flow_solver->volume_in_negative_domain())/exact_bubble_volume;
-  if(mpi.rank() == 0)
+  if(mpi.rank() == 0 && !cmd.contains("restart"))
     export_results(tn/characteristic_time_unit, magnitude_nondimensional_parasitic_current, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
-
 
   while(tn + 0.01*dt < duration)
   {
@@ -568,16 +616,30 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->update_from_tn_to_tnp1(iter%niter_reinit == 0, static_interface);
     }
 
+    if(save_nstates > 0 && (int) floor(tn/save_state_dt) != backup_time_idx)
+    {
+      backup_time_idx = (int) floor(tn/save_state_dt);
+      two_phase_flow_solver->save_state(export_dir.c_str(), tn, save_nstates);
+    }
+
+
     two_phase_flow_solver->solve_viscosity();
     two_phase_flow_solver->solve_projection();
 
     two_phase_flow_solver->compute_velocities_at_nodes();
 
-
-    if((int) floor((tn + dt)/vtk_dt) != export_time_idx || two_phase_flow_solver->get_max_velocity() > 1.0)
+    if(save_vtk && (int) floor((tn + dt)/vtk_dt) != vtk_idx)
     {
-      export_time_idx = (int) floor((tn + dt)/vtk_dt);
-      two_phase_flow_solver->save_vtk(vtk_dir, ++iter_vtk);
+      vtk_idx = (int) floor((tn + dt)/vtk_dt);
+      two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx);
+    }
+
+    if(two_phase_flow_solver->get_max_velocity() > 1.0)
+    {
+      if(save_vtk)
+        two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx);
+      ierr = PetscPrintf(mpi.comm(), "The simulation blew up..."); CHKERRXX(ierr);
+      break;
     }
 
     tn += dt;

@@ -679,6 +679,123 @@ public:
    */
   void save_state(const char* path_to_root_directory, double& tn, const int& n_saved = 1);
 
+  /*!
+   * \brief load_state loads a solver state that has been previously saved on disk
+   * \param mpi             [in]    mpi environment to load the solver state in
+   * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
+   * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
+   * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
+   * if they have already been constructed beforehand...
+   * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
+   */
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+
+
+  inline my_p4est_brick_t* get_brick() const { return brick; }
+  inline p4est_connectivity_t* get_connetivity() const { return conn; }
+
+
+  inline void print_velocities_at_nodes() const
+  {
+    PetscErrorCode ierr;
+    if(p4est_n->mpirank == 0)
+      std::cout << "vn_nodes_minus = " << std::endl;
+    ierr = VecView(vn_nodes_minus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+
+    if(p4est_n->mpirank == 0)
+      std::cout << "vn_nodes_plus = " << std::endl;
+    ierr = VecView(vn_nodes_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+
+
+    if(p4est_n->mpirank == 0)
+      std::cout << "vnm1_nodes_minus = " << std::endl;
+    ierr = VecView(vnm1_nodes_minus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+
+    if(p4est_n->mpirank == 0)
+      std::cout << "vnm1_nodes_plus = " << std::endl;
+    ierr = VecView(vnm1_nodes_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+  }
+
+  inline void print_phi() const
+  {
+    PetscErrorCode ierr;
+    if(phi_on_computational_nodes != NULL && phi_on_computational_nodes != phi)
+    {
+      if(p4est_n->mpirank == 0)
+        std::cout << "phi_on_computational_nodes = " << std::endl;
+      ierr = VecView(phi_on_computational_nodes, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+    if(phi != NULL)
+    {
+      if(p4est_n->mpirank == 0)
+        std::cout << "phi = " << std::endl;
+      ierr = VecView(phi, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+    if(phi_xxyyzz != NULL)
+    {
+      if(p4est_n->mpirank == 0)
+        std::cout << "phi_xxyyzz = " << std::endl;
+      ierr = VecView(phi_xxyyzz, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+  }
+
+  inline void print_pressure_guess() const
+  {
+    if(pressure_guess_solver != NULL && pressure_guess_solver->get_solution() != NULL)
+    {
+      PetscErrorCode ierr;
+      if(p4est_n->mpirank == 0)
+        std::cout << "pressure_guess = " << std::endl;
+      ierr = VecView(pressure_guess_solver->get_solution(), PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+  }
+
+  inline void print_viscosity_rhs() const
+  {
+    PetscErrorCode ierr;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      if(p4est_n->mpirank == 0)
+        std::cout << "viscosity rhs[" << int(dim) << "] = " << std::endl;
+      ierr = VecView(viscosity_solver.rhs[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+  }
+
+  inline void print_vnp1_faces() const
+  {
+    PetscErrorCode ierr;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      if(p4est_n->mpirank == 0)
+        std::cout << "vnp1_faces_minus[" << int(dim) << "] = " << std::endl;
+      ierr = VecView(vnp1_face_minus[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+      if(p4est_n->mpirank == 0)
+        std::cout << "vnp1_face_plus[" << int(dim) << "] = " << std::endl;
+      ierr = VecView(vnp1_face_plus[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+  }
+
+  inline void print_sharp_viscous_solutions() const
+  {
+    PetscErrorCode ierr;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      if(p4est_n->mpirank == 0)
+        std::cout << "sharp_viscous_solution[" << int(dim) << "] = " << std::endl;
+      ierr = VecView(viscosity_solver.solution[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+  }
+
+  inline void print_vnp1_nodes() const
+  {
+    PetscErrorCode ierr;
+    if(p4est_n->mpirank == 0)
+      std::cout << "vnp1_nodes_minus = " << std::endl;
+    ierr = VecView(vnp1_nodes_minus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    if(p4est_n->mpirank == 0)
+      std::cout << "vnp1_nodes_plus = " << std::endl;
+    ierr = VecView(vnp1_nodes_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+  }
+  inline int get_sl_order()         const { return sl_order; }
+  inline double get_advection_cfl() const { return cfl_advection; }
+
 
 };
 
