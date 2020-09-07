@@ -67,6 +67,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_t;
   friend class my_p4est_scft_t;
   friend class my_p4est_semi_lagrangian_t;
+  friend class my_p4est_surfactant_t;
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
   friend class FastSweeping;
