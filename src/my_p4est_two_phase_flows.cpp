@@ -1213,7 +1213,7 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   divergence_free_projector->set_interface(interface_manager);
   divergence_free_projector->set_diagonals(0.0, 0.0);
   divergence_free_projector->set_mus(1.0/rho_minus, 1.0/rho_plus);
-  struct wall_type_hodge_t : WallBCDIM{
+  struct wall_type_hodge_t : WallBCDIM {
     BoundaryConditionType operator()(DIM(double, double, double)) const { return NEUMANN; }
   } wall_type_hodge;
   BoundaryConditionsDIM bc_hodge;
@@ -2353,6 +2353,17 @@ void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_a
       ierr = VecRestoreArray(tmp_plus[dir],   &tmp_plus_p[dir]);  CHKERRXX(ierr);
       std::swap(vnp1_face_minus[dir], tmp_minus[dir]);
       std::swap(vnp1_face_plus[dir], tmp_plus[dir]);
+    }
+  }
+
+  // Destroy what you created!
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = delete_and_nullify_vector(tmp_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(tmp_plus[dir]);  CHKERRXX(ierr);
+    if(degree > 0)
+    {
+      ierr = delete_and_nullify_vector(normal_derivative_of_vnp1_minus[dir]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(normal_derivative_of_vnp1_plus[dir]);  CHKERRXX(ierr);
     }
   }
 
