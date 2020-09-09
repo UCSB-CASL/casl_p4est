@@ -2172,12 +2172,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const u_c
 
 void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_across_interface(Vec vnp1_face_minus[P4EST_DIM], Vec vnp1_face_plus[P4EST_DIM], const u_int& n_iterations, const u_char& degree)
 {
-//  PetscErrorCode ierr;
-//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-//    ierr = VecCopyGhost(solution[dir], vnp1_face_minus[dir]); CHKERRXX(ierr);
-//    ierr = VecCopyGhost(solution[dir], vnp1_face_plus[dir]); CHKERRXX(ierr);
-//  }
-
   P4EST_ASSERT(n_iterations > 0);
   PetscErrorCode ierr;
   // time-stepping temporary vectors
@@ -2339,7 +2333,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::extrapolate_face_velocities_a
       ierr = VecGhostUpdateEnd(tmp_minus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(tmp_plus[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     }
-    // get appropriate pointers
+    // restore pointers and swap vectors
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
       ierr = VecRestoreArrayRead(solution[dir],  &sharp_solution_p[dir]); CHKERRXX(ierr);
       if(degree > 0)
@@ -2389,58 +2383,42 @@ void my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation
     if(degree > 0)
     {
       double n_dot_grad_u_dir = 0.0;
+      const double& mu_this_side  = (sgn_face < 0 ? env->mu_minus : env->mu_plus);
+      const double& mu_across     = (sgn_face < 0 ? env->mu_plus  : env->mu_minus);
+      const bool& is_in_positive_domain = (sgn_face > 0);
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        const p4est_locidx_t p_neighbor_face = face_ngbd->neighbor_face_idx[2*dim + 1];
-        const p4est_locidx_t m_neighbor_face = face_ngbd->neighbor_face_idx[2*dim];
-        P4EST_ASSERT((p_neighbor_face >= 0 || -1 - p_neighbor_face == 2*dim + 1) && (m_neighbor_face >= 0 || -1 - m_neighbor_face == 2*dim));
-        double xyz_p_wall[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])}; xyz_p_wall[dim] = env->xyz_max[dim];
-        double xyz_m_wall[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])}; xyz_m_wall[dim] = env->xyz_min[dim];
-        const char sgn_p_neighbor = (p_neighbor_face >= 0 ? env->sgn_of_face(p_neighbor_face, dir) : env->sgn_of_wall_neighbor_of_face(f_idx, dir, 2*dim + 1, xyz_p_wall));
-        const char sgn_m_neighbor = (m_neighbor_face >= 0 ? env->sgn_of_face(m_neighbor_face, dir) : env->sgn_of_wall_neighbor_of_face(f_idx, dir, 2*dim,     xyz_m_wall));
-        if((m_neighbor_face < 0 && env->bc_velocity[dir].wallType(xyz_m_wall) == NEUMANN) || (p_neighbor_face < 0 && env->bc_velocity[dir].wallType(xyz_p_wall) == NEUMANN))
-          throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation : not handling neumann velocity walls, yet");
-        const double& mu_this_side  = (sgn_face < 0 ? env->mu_minus : env->mu_plus);
-        const double& mu_across     = (sgn_face < 0 ? env->mu_plus  : env->mu_minus);
-        const bool& is_in_positive_domain = (sgn_face > 0);
-        double finite_difference = 0.0;
-        double differentiation_arm = 0.0;
-        if(sgn_p_neighbor == sgn_face)
-        {
-          finite_difference   += (p_neighbor_face >= 0 ? sharp_solution_p[dir][p_neighbor_face] : env->bc_velocity[dir].wallValue(xyz_p_wall));
-          differentiation_arm += (p_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
-        }
-        else
-        {
-          const double solution_across = (p_neighbor_face >= 0 ? sharp_solution_p[dir][p_neighbor_face] : env->bc_velocity[dir].wallValue(xyz_p_wall));
-          const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, p_neighbor_face, dir, 2*dim + 1);
-          // fetch the interface-defined value (on the same side)
-          finite_difference   += face_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, 2*dim + 1, is_in_positive_domain, is_in_positive_domain, sharp_solution_p[dir][f_idx], solution_across, 0.0, 0.0, (p_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim]);
-          differentiation_arm += face_interface_neighbor.theta*(p_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
+        double dist_m, dist_p;
+        double sharp_derivative_m, sharp_derivative_p;
+        for (u_char orientation = 0; orientation < 2; ++orientation) {
+          double &oriented_sharp_derivative   = (orientation == 1 ? sharp_derivative_p  : sharp_derivative_m);
+          double &oriented_dist               = (orientation == 1 ? dist_p              : dist_m);
+          const p4est_locidx_t neighbor_face  = face_ngbd->neighbor_face_idx[2*dim + orientation];
+          P4EST_ASSERT(neighbor_face >= 0 || -1 - neighbor_face == 2*dim + orientation);
+          double xyz_wall[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])}; xyz_wall[dim] = (orientation == 1 ? env->xyz_max[dim] : env->xyz_min[dim]);
+          const char sgn_neighbor = (neighbor_face >= 0 ? env->sgn_of_face(neighbor_face, dir) : env->sgn_of_wall_neighbor_of_face(f_idx, dir, 2*dim + orientation, xyz_wall));
+          if(neighbor_face < 0 && env->bc_velocity[dir].wallType(xyz_wall) == NEUMANN)
+            throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation : not handling neumann velocity walls, yet");
+
+          if(sgn_neighbor == sgn_face)
+          {
+            oriented_dist             = (neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
+            oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*((neighbor_face >= 0 ? sharp_solution_p[dir][neighbor_face] : env->bc_velocity[dir].wallValue(xyz_wall)) - sharp_solution_p[dir][f_idx])/oriented_dist;
+          }
+          else
+          {
+            const double solution_across = (neighbor_face >= 0 ? sharp_solution_p[dir][neighbor_face] : env->bc_velocity[dir].wallValue(xyz_wall));
+            const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, neighbor_face, dir, 2*dim + orientation);
+            // fetch the interface-defined value (on the same side)
+            oriented_dist             = face_interface_neighbor.theta*(neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
+            oriented_sharp_derivative = face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, 2*dim + orientation, is_in_positive_domain, sharp_solution_p[dir][f_idx], solution_across, 0.0, 0.0, (neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim])/mu_this_side;
+          }
         }
 
-        if(sgn_m_neighbor == sgn_face)
-        {
-          finite_difference   -= (m_neighbor_face >= 0 ? sharp_solution_p[dir][m_neighbor_face] : env->bc_velocity[dir].wallValue(xyz_m_wall));
-          differentiation_arm += (m_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
-        }
-        else
-        {
-          const double solution_across = (m_neighbor_face >= 0 ? sharp_solution_p[dir][m_neighbor_face] : env->bc_velocity[dir].wallValue(xyz_m_wall));
-          // fetch the interface-defined value (on the same side)
-          const FD_interface_neighbor& face_interface_neighbor = env->interface_manager->get_face_FD_interface_neighbor_for(f_idx, m_neighbor_face, dir, 2*dim);
-          finite_difference   -= face_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, 2*dim, is_in_positive_domain, is_in_positive_domain, sharp_solution_p[dir][f_idx], solution_across, 0.0, 0.0, (m_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim]);
-          differentiation_arm += face_interface_neighbor.theta*(m_neighbor_face >= 0 ? 1.0 : 0.5)*env->dxyz_smallest_quad[dim];
-        }
+        double derivative = (dist_m*sharp_derivative_p + dist_p*sharp_derivative_m)/(dist_m + dist_p); // "0.1" <--> minimum for coarse grid.
+        if(dist_m + dist_p < 0.1*pow(2.0, -env->interface_manager->get_max_level_computational_grid())*env->dxyz_smallest_quad[dim])
+          n_dot_grad_u_dir += 0.5*(sharp_derivative_m + sharp_derivative_p);
 
-        if(differentiation_arm > pow(2.0, -env->interface_manager->get_max_level_computational_grid())*env->dxyz_smallest_quad[dim])
-          n_dot_grad_u_dir += oriented_normal[dim]*finite_difference/differentiation_arm;
-        else // very small differentation arm --> safer to use values across and the jump in flux component
-        {
-          if(p_neighbor_face < 0 || m_neighbor_face < 0)
-            throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation : this is a nightmare, please kill me now...");
-          const double derivative = (mu_across*(sharp_solution_p[p_neighbor_face] - sharp_solution_p[m_neighbor_face])/(2.0*env->dxyz_smallest_quad[dim]) + sgn_face*0.0)/mu_this_side;
-          n_dot_grad_u_dir += oriented_normal[dim]*derivative;
-        }
+        n_dot_grad_u_dir += oriented_normal[dim]*derivative;
       }
 
       normal_derivative_of_vnp1_dir_this_side_p[f_idx] = n_dot_grad_u_dir;
