@@ -343,14 +343,14 @@ void set_geometry(){
       ymin = 0.; ymax = 2.;
 
       // Number of trees and periodicity:
-      nx = 4; ny = 4;
+      nx = 2; ny = 2;
       px = 1; py = 0;
 
       // band:
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.01;
+      r0 = 0.1;
       d_seed = (3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
       // physical property paper ""
       break;
@@ -402,6 +402,7 @@ double cp_s;
 double mu_l;
 
 void set_physical_properties(){
+  double nu;
   switch(example_){
     case FRANK_SPHERE:
       alpha_s = 1.0;
@@ -415,19 +416,24 @@ void set_physical_properties(){
 
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:
-      alpha_s = (1.1e-6); //ice - [m^2]/s
-      alpha_l = (1.315e-7); //water- [m^2]/s  // 6-16-2020: changed from 1.5 e-7 to 1.3e-7 to be more consistent with Okada paper prandtl number --> Pr ~ 13, before was doing Pr ~ 11
+      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
+      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
+
       k_s = 2.22; // W/[m*K]
-      k_l = 0.608; // W/[m*K]
-      L = 334.e3;  // J/kg
+      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+
       rho_l = 1000.0;// kg/m^3
-      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
       rho_s = 920.; //[kg/m^3]
-      mu_l = 1.7106e-3;//1.793e-3;  // Viscosity of water , [Pa s]
+
+
+      mu_l = 0.001730725; // [Pa * s]
       cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
 
+      L = 334.e3;  // J/kg
+      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
+
       // Boundary condition info:
-      Twall = 276.;    // Physical wall temp [K]
+      Twall = 273. + 2.5;    // Physical wall temp [K] (aka T_infty)
       Tinterface = 273.15; // Physical interface temp [K]
 
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
@@ -470,7 +476,7 @@ void set_physical_properties(){
       rho_l = 988.; // [kg/m^3]
       rho_s = k_s/alpha_s/cp_s; // [kg/m^3]
 
-      double nu = 2.6e-6;
+      nu = 2.6e-6;
       mu_l = nu*rho_l; // [Pa s]
 
       // TO-DO gamma_sl units should be N/m
@@ -653,8 +659,9 @@ double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
 
-DEFINE_PARAMETER(pl,double,t_ramp,10.,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 10 seconds) \n");
+DEFINE_PARAMETER(pl,double,t_ramp,3.,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
+DEFINE_PARAMETER(pl,int,startup_iterations,-1,"Number of startup iterations to do before entering real time loop, used for verification tests to allow v_interface and NS fields to stabilize. Default:-1, to use this, set number to positive integer value.");
 
 void simulation_time_info(){
   t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
@@ -3407,7 +3414,7 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
 //  }
 
   ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log__regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SAVING TO VTK:
@@ -4954,6 +4961,19 @@ int main(int argc, char** argv) {
     tn = tstart;
     int last_tstep=-1;
     while(tn<=tfinal){ // trying something
+      // Enforce startup iterations for verification tests if needed:
+      if((startup_iterations>0)){
+        if(tstep<startup_iterations){
+          force_interfacial_velocity_to_zero=true;
+          tn=tstart;
+        }
+        else if(tstep==startup_iterations){
+          force_interfacial_velocity_to_zero=false;
+          tn = tstart;
+        }
+      }
+
+
       // ------------------------------------------------------------
       // Print iteration information:
       // ------------------------------------------------------------
