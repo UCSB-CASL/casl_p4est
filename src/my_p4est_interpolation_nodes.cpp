@@ -115,11 +115,11 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   P4EST_ASSERT(bs_f > 0);
   P4EST_ASSERT(comp == ALL_COMPONENTS || comp < bs_f);
 
-  const double *Fi_p[n_functions];
+  std::vector<const double *> Fi_p(n_functions);
   for (size_t k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr); }
   const size_t nelem_per_node = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*n_functions: n_functions);
-  double f[nelem_per_node*P4EST_CHILDREN]; // f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+j] = value of the ccth component of the kth block vector at node j
+  std::vector<double> f(nelem_per_node*P4EST_CHILDREN); // f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+j] = value of the ccth component of the kth block vector at node j
 
   for (u_char i = 0; i < P4EST_CHILDREN; i++) {
     p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
@@ -162,7 +162,7 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   /* compute derivatives */
   if (method != linear)
   {
-    double fdd[nelem_per_node*P4EST_CHILDREN*P4EST_DIM];
+    std::vector<double> fdd(nelem_per_node*P4EST_CHILDREN*P4EST_DIM);
     // description of the above data structure:
     // if (comp == ALL_COMPONENTS && bs_f > 1)
     //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dim] = value of second derivative along cartesian direction dim of the ccth component of the kth block vector at node j
@@ -230,7 +230,7 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
       if(!local_quad)
         throw std::invalid_argument("my_p4est_interpolation_nodes_t::interpolate(): attempting to calculate second derivative of input fields in the ghost layer...");
 
-      double tmp[nelem_per_node*P4EST_DIM];
+      std::vector<double> tmp(nelem_per_node*P4EST_DIM);
       const bool neihbors_are_initialized = ngbd_n->neighbors_are_initialized();
       quad_neighbor_nodes_of_node_t qnnn;
       const quad_neighbor_nodes_of_node_t *qnnn_p = (neihbors_are_initialized ? NULL : &qnnn); // we'll avoid data copy if the neighbors are initialized!
@@ -242,14 +242,14 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
           ngbd_n->get_neighbors(node_idx, qnnn);
         if(bs_f == 1 || (comp < bs_f && bs_f > 1))
         {
-          (bs_f == 1 ? qnnn_p->laplace(Fi_p, tmp, n_functions) : qnnn_p->laplace_component(Fi_p, tmp, n_functions, bs_f, comp));
+          (bs_f == 1 ? qnnn_p->laplace(Fi_p.data(), tmp.data(), n_functions) : qnnn_p->laplace_component(Fi_p.data(), tmp.data(), n_functions, bs_f, comp));
           for (size_t k = 0; k < n_functions; ++k)
             for (u_char dim = 0; dim < P4EST_DIM; ++dim)
               fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dim] = tmp[k*P4EST_DIM + dim];
         }
         else
         {
-          qnnn_p->laplace_all_components(Fi_p, tmp, n_functions, bs_f);
+          qnnn_p->laplace_all_components(Fi_p.data(), tmp.data(), n_functions, bs_f);
           for (size_t k = 0; k < n_functions; ++k)
             for (u_int cc = 0; cc < bs_f; ++cc)
               for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -262,19 +262,19 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     }
 
     if(method == quadratic) {
-      quadratic_interpolation(p4est, tree_idx, quad, f, fdd, xyz_p, results, nelem_per_node);
+      quadratic_interpolation(p4est, tree_idx, quad, f.data(), fdd.data(), xyz_p, results, nelem_per_node);
       return;
     }
     else if (method == quadratic_non_oscillatory) {
-      quadratic_non_oscillatory_interpolation(p4est, tree_idx, quad, f, fdd, xyz_p, results, nelem_per_node);
+      quadratic_non_oscillatory_interpolation(p4est, tree_idx, quad, f.data(), fdd.data(), xyz_p, results, nelem_per_node);
       return;
     }
     else if (method == quadratic_non_oscillatory_continuous_v1){
-      quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_idx, quad, f, fdd, xyz_p, results, nelem_per_node);
+      quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_idx, quad, f.data(), fdd.data(), xyz_p, results, nelem_per_node);
       return;
     }
     else if (method == quadratic_non_oscillatory_continuous_v2){
-      quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_idx, quad, f, fdd, xyz_p, results, nelem_per_node);
+      quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_idx, quad, f.data(), fdd.data(), xyz_p, results, nelem_per_node);
       return;
     }
   }
@@ -283,6 +283,6 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
   }
 
-  linear_interpolation(p4est, tree_idx, quad, f, xyz_p, results, nelem_per_node);
+  linear_interpolation(p4est, tree_idx, quad, f.data(), xyz_p, results, nelem_per_node);
   return;
 }

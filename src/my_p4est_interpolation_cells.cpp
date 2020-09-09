@@ -57,7 +57,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
   const size_t n_functions = n_vecs();
   P4EST_ASSERT(n_functions > 0);
   P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
-  const double *Fi_p[n_functions];
+  std::vector<const double *> Fi_p(n_functions);
   for (u_int k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
   }
@@ -86,7 +86,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
 
   matrix_t A;
   A.resize(1, 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM+1)/2);
-  std::vector<double> p[n_functions];
+  std::vector<double>* p = new std::vector<double>[n_functions];
   for (size_t k = 0; k < n_functions; ++k)
     p[k].resize(0);
   std::vector<double> nb[P4EST_DIM];
@@ -150,6 +150,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
   A.scale_by_maxabs(p, n_functions);
 
   solve_lsqr_system(A, p, n_functions, results, DIM(nb[0].size(), nb[1].size(), nb[2].size()));
+  delete [] p;
 
   return;
 }

@@ -224,10 +224,10 @@ void my_p4est_poisson_jump_cells_t::pointwise_operation_with_sqrt_of_diag(size_t
   PetscErrorCode ierr;
   va_list ap;
   va_start(ap, num_vectors);
-  Vec vectors[num_vectors];
-  int operation[num_vectors];
-  bool is_ghosted[num_vectors];
-  double *vectors_p[num_vectors];
+  std::vector<Vec> vectors(num_vectors);
+  std::vector<int> operation(num_vectors);
+  std::vector<bool> is_ghosted(num_vectors);
+  std::vector<double *> vectors_p(num_vectors);
   const double *sqrt_reciprocal_diagonal_p;
   ierr = VecGetArrayRead(sqrt_reciprocal_diagonal, &sqrt_reciprocal_diagonal_p); CHKERRXX(ierr);
   for (size_t k = 0; k < num_vectors; ++k){

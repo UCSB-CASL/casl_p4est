@@ -477,8 +477,8 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    double temp_0[n_arrays*bs], temp_1[n_arrays*bs] ONLY3D(COMMA temp_2[n_arrays*bs] COMMA temp_3[n_arrays*bs]);
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
+    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs) ONLY3D(COMMA temp_2(n_arrays*bs) COMMA temp_3(n_arrays*bs));
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -519,8 +519,8 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
-    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
+    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -556,8 +556,8 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
-    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
+    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0.data(), temp_1.data() ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -603,8 +603,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    double temp_0[n_arrays*bs], temp_1[n_arrays*bs] ONLY3D(COMMA temp_2[n_arrays*bs] COMMA temp_3[n_arrays*bs]);
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
+    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs) ONLY3D(COMMA temp_2(n_arrays*bs) COMMA temp_3(n_arrays*bs));
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -644,8 +644,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
-    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
+    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -681,8 +681,8 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays] ONLY3D(COMMA temp_2[n_arrays] COMMA temp_3[n_arrays]);
-    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays) ONLY3D(COMMA temp_2(n_arrays) COMMA temp_3(n_arrays));
+    ngbd_with_quadratic_interpolation(f, f_000, temp_0.data(), temp_1.data(), f_0m0, f_0p0 ONLY3D(COMMA temp_2.data() COMMA temp_3.data()), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -727,8 +727,8 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_all_comp
   }
   else
   {
-    double temp_0[n_arrays*bs], temp_1[n_arrays*bs], temp_2[n_arrays*bs], temp_3[n_arrays*bs];
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays, bs);
+    std::vector<double> temp_0(n_arrays*bs), temp_1(n_arrays*bs), temp_2(n_arrays*bs), temp_3(n_arrays*bs);
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -765,8 +765,8 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_componen
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays], temp_2[n_arrays], temp_3[n_arrays];
-    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays, bs, comp);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays), temp_2(n_arrays), temp_3(n_arrays);
+    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -799,8 +799,8 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation(const do
   }
   else
   {
-    double temp_0[n_arrays], temp_1[n_arrays], temp_2[n_arrays], temp_3[n_arrays];
-    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, temp_2, temp_3, f_00m, f_00p, n_arrays);
+    std::vector<double> temp_0(n_arrays), temp_1(n_arrays), temp_2(n_arrays), temp_3(n_arrays);
+    ngbd_with_quadratic_interpolation(f, f_000, temp_0.data(), temp_1.data(), temp_2.data(), temp_3.data(), f_00m, f_00p, n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -841,13 +841,13 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
     if (bs == 1)
-      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
 
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
@@ -934,23 +934,23 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_p00[nelements], f_m00[nelements];
+  std::vector<double> f_000(nelements), f_p00(nelements), f_m00(nelements);
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_m00_linear(f, f_m00, n_arrays);
-    f_p00_linear(f, f_p00, n_arrays);
+    f_m00_linear(f, f_m00.data(), n_arrays);
+    f_p00_linear(f, f_p00.data(), n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_m00_linear_component(f, f_m00, n_arrays, bs, comp);
-    f_p00_linear_component(f, f_p00, n_arrays, bs, comp);
+    f_m00_linear_component(f, f_m00.data(), n_arrays, bs, comp);
+    f_p00_linear_component(f, f_p00.data(), n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
       for (unsigned int comp = 0; comp < bs; ++comp)
         f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_m00_linear_all_components(f, f_m00, n_arrays, bs);
-    f_p00_linear_all_components(f, f_p00, n_arrays, bs);
+    f_m00_linear_all_components(f, f_m00.data(), n_arrays, bs);
+    f_p00_linear_all_components(f, f_p00.data(), n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00); // naive approach so far
@@ -968,13 +968,13 @@ void quad_neighbor_nodes_of_node_t::dx_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
     if (bs == 1)
-      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
 
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dx_needs_yy_correction)
@@ -1007,23 +1007,23 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_0p0[nelements], f_0m0[nelements];
+  std::vector<double> f_000(nelements), f_0p0(nelements), f_0m0(nelements);
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_0m0_linear(f, f_0m0, n_arrays);
-    f_0p0_linear(f, f_0p0, n_arrays);
+    f_0m0_linear(f, f_0m0.data(), n_arrays);
+    f_0p0_linear(f, f_0p0.data(), n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_0m0_linear_component(f, f_0m0, n_arrays, bs, comp);
-    f_0p0_linear_component(f, f_0p0, n_arrays, bs, comp);
+    f_0m0_linear_component(f, f_0m0.data(), n_arrays, bs, comp);
+    f_0p0_linear_component(f, f_0p0.data(), n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
       for (unsigned int comp = 0; comp < bs; ++comp)
         f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_0m0_linear_all_components(f, f_0m0, n_arrays, bs);
-    f_0p0_linear_all_components(f, f_0p0, n_arrays, bs);
+    f_0m0_linear_all_components(f, f_0m0.data(), n_arrays, bs);
+    f_0p0_linear_all_components(f, f_0p0.data(), n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0); // naive approach so far
@@ -1041,13 +1041,13 @@ void quad_neighbor_nodes_of_node_t::dy_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double DIM(fxx[nelements],fyy[nelements], fzz[nelements]);
+    std::vector<double> DIM(fxx(nelements),fyy(nelements), fzz(nelements));
     if (bs == 1)
-      laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+      laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
     else if (bs > 1 && comp < bs)
-      laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+      laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
     else
-      laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+      laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dy_needs_xx_correction)
         fy[k] -= fxx[k]*xx_correction_weight_to_df_dy;
@@ -1080,23 +1080,23 @@ void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], doubl
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
   const unsigned int nelements = n_arrays*(((bs>1) && (comp==bs))? bs : 1);
-  double f_000[nelements], f_00p[nelements], f_00m[nelements];
+  std::vector<double> f_000(nelements), f_00p(nelements), f_00m(nelements);
   if (bs==1){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
-    f_00m_linear(f, f_00m, n_arrays);
-    f_00p_linear(f, f_00p, n_arrays);
+    f_00m_linear(f, f_00m.data(), n_arrays);
+    f_00p_linear(f, f_00p.data(), n_arrays);
   } else if ((bs>1) && (comp < bs)){
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][bs*node_000+comp];
-    f_00m_linear_component(f, f_00m, n_arrays, bs, comp);
-    f_00p_linear_component(f, f_00p, n_arrays, bs, comp);
+    f_00m_linear_component(f, f_00m.data(), n_arrays, bs, comp);
+    f_00p_linear_component(f, f_00p.data(), n_arrays, bs, comp);
   } else {
     for (unsigned int k = 0; k < n_arrays; ++k)
       for (unsigned int comp = 0; comp < bs; ++comp)
         f_000[k*bs+comp] = f[k][bs*node_000+comp];
-    f_00m_linear_all_components(f, f_00m, n_arrays, bs);
-    f_00p_linear_all_components(f, f_00p, n_arrays, bs);
+    f_00m_linear_all_components(f, f_00m.data(), n_arrays, bs);
+    f_00p_linear_all_components(f, f_00p.data(), n_arrays, bs);
   }
   for (unsigned int k = 0; k < nelements; ++k)
     fz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m); // naive approach so far
@@ -1109,13 +1109,13 @@ void quad_neighbor_nodes_of_node_t::dz_central_internal(const double *f[], doubl
 
   if(second_derivatives_needed)
   {
-    double fxx[nelements],fyy[nelements], fzz[nelements];
+    std::vector<double> fxx(nelements),fyy(nelements), fzz(nelements);
     if (bs==1)
-      laplace(f, fxx, fyy, fzz, n_arrays);
+      laplace(f, fxx.data(), fyy.data(), fzz.data(), n_arrays);
     else if ((bs > 1) && (comp < bs))
-      laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
+      laplace_component(f, fxx.data(), fyy.data(), fzz.data(), n_arrays, bs, comp);
     else
-      laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
+      laplace_all_components(f, fxx.data(), fyy.data(), fzz.data(), n_arrays, bs);
     for (unsigned int k = 0; k < nelements; ++k) {
       if(Dz_needs_xx_correction)
         fz[k] -= fxx[k]*xx_correction_weight_to_df_dz;

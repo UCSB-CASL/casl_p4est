@@ -45,7 +45,7 @@ bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> 
     first_line->resize(n, 0.0);
   if(A_inv != NULL)
     A_inv->resize(n, n);
-  double Lf[n*(n + 1)/2]; // store only the nonzero terms the (i, j) element (j <= i) is Lf[tri_idx(i, j)]
+  std::vector<double> Lf(n*(n + 1)/2); // store only the nonzero terms the (i, j) element (j <= i) is Lf[tri_idx(i, j)]
   double max_diag_Lf = 0.0;
   double min_diag_Lf = DBL_MAX;
 
@@ -97,7 +97,7 @@ bool solve_cholesky(const matrix_t &A, const vector<double> b[], vector<double> 
   }
 
   /* forward solve L*Y=B' */
-  double *Y[n];
+  std::vector<double *> Y(n);
 
   for(size_t i = 0; i < n; ++i)
   {
@@ -188,8 +188,8 @@ void solve_lsqr_system(const matrix_t& A, const vector<double> p[], const size_t
   P4EST_ASSERT(nconstraints <= P4EST_DIM);
   const int m = A.num_rows();
   matrix_t *M = new matrix_t();
-  vector<double> Atp[n_vectors];
-  vector<double> coeffs[n_vectors];
+  vector<double>* Atp     = new std::vector<double>[n_vectors];
+  vector<double>* coeffs  = new std::vector<double>[n_vectors];
   vector<double>* my_interp_coeffs = NULL;
   if(interp_coeffs != NULL)
     my_interp_coeffs = new vector<double>(0);
@@ -207,6 +207,8 @@ void solve_lsqr_system(const matrix_t& A, const vector<double> p[], const size_t
         A.matvec(*my_interp_coeffs, *interp_coeffs);
       if(my_interp_coeffs != NULL)
         delete  my_interp_coeffs;
+      delete [] Atp;
+      delete [] coeffs;
       return;
     }
   }
@@ -262,6 +264,8 @@ void solve_lsqr_system(const matrix_t& A, const vector<double> p[], const size_t
         delete my_interp_coeffs;
       if(const_trunc_mat != NULL && const_trunc_mat != &A)
         delete const_trunc_mat;
+      delete [] Atp;
+      delete [] coeffs;
       return;
     }
     if(const_trunc_mat != NULL && const_trunc_mat != &A)
@@ -295,6 +299,8 @@ void solve_lsqr_system(const matrix_t& A, const vector<double> p[], const size_t
     solutions[k] = numerator/denominator;
   }
   delete M;
+  delete [] Atp;
+  delete [] coeffs;
   return;
 }
 

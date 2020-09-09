@@ -564,7 +564,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   Vec phi_np1;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
 
-  Vec fields_np1[num_fields];
+  std::vector<Vec> fields_np1(num_fields);
   Vec fields_block_np1;
   if(num_fields!=0){
     if(use_block){
@@ -658,7 +658,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,additional_phi_is_used?phi_np1_eff:phi_np1,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
+    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,additional_phi_is_used?phi_np1_eff:phi_np1,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_np1.data(),fields_block_np1,criteria,compare_opn,diag_opn);
 
     // Destroy the phi_effective now that no longer in use:
     if(additional_phi_is_used){

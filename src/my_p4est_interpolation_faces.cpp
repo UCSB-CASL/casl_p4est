@@ -86,7 +86,7 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   const p4est_qcoord_t smallest_logical_size_of_nearby_quad = ngbd_c->gather_neighbor_cells_of_cell(quad, ngbd, true);
   const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double)smallest_logical_size_of_nearby_quad/(double)P4EST_ROOT_LEN;
 
-  const double *Fi_p[n_functions];
+  std::vector<const double *> Fi_p(n_functions);
   for (size_t k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
   }
@@ -99,7 +99,7 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   matrix_t A;
   A.resize(1, 1 + (degree >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (degree >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0)); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM + 1) squared and crossed terms
 
-  std::vector<double> p[n_functions];
+  std::vector<double>* p = new std::vector<double>[n_functions];
   for (size_t k = 0; k < n_functions; ++k)
     p[k].resize(0);
   std::vector<double> nb[P4EST_DIM];
@@ -198,5 +198,7 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   A.scale_by_maxabs(p, n_functions);
 
   solve_lsqr_system(A, p, n_functions, results, DIM(nb[0].size(), nb[1].size(), nb[2].size()), degree, nb_neumann_walls);
+  delete [] p;
+
   return;
 }

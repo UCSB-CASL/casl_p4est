@@ -118,7 +118,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
   // receive incoming queries about points and send back the interpolated result
   const size_t nfunctions = n_vecs();
   const size_t nelements_per_point = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*nfunctions : nfunctions);
-  double results[nelements_per_point]; // serialized_results, for every point of interest
+  std::vector<double> results(nelements_per_point); // serialized_results, for every point of interest
   std::vector<double> xyz(0);
 #ifdef CASL_LOG_EVENTS
   receive_queried_coordinates_and_allocate_send_buffer_in_map(xyz, send_buffer, nelements_per_point, status, entry);
@@ -150,7 +150,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
     if (rank_found == p4est->mpirank)
     {
       P4EST_ASSERT(best_match.p.piggy3.local_num < p4est->local_num_quadrants);
-      interpolate(best_match, &xyz[i], results, comp);
+      interpolate(best_match, &xyz[i], results.data(), comp);
       buff.push_back(int(i/P4EST_DIM));
       if(comp == ALL_COMPONENTS && bs_f > 1)
         for(size_t k = 0; k < nfunctions; ++k)
@@ -341,7 +341,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const u_int &co
   MPI_Status status;
 
   const size_t nelements_per_point = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*n_outputs : n_outputs);
-  double results[nelements_per_point]; // serialized_results, for every locally owned point
+  std::vector<double> results(nelements_per_point); // serialized_results, for every locally owned point
 
   while (!done) {
     // interpolate local points
@@ -353,7 +353,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const u_int &co
       P4EST_ASSERT(quad.p.piggy3.local_num < p4est->local_num_quadrants);
 
       const p4est_locidx_t &node_idx = input->node_idx[it];
-      interpolate(quad, xyz, results, comp);
+      interpolate(quad, xyz, results.data(), comp);
       //de-serialize
       if(comp == ALL_COMPONENTS && bs_f > 1)
         for(size_t k = 0; k < n_outputs; ++k)

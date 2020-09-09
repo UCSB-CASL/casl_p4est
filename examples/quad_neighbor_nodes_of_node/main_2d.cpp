@@ -263,13 +263,13 @@ void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est
                                  Vec &grad_field_block, Vec &second_derivatives_field_block,
                                  DIM(Vec dx_[], Vec dy_[], Vec dz_[]),
                                  DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]),
-                                 double err_gradient[][P4EST_DIM], double err_second_derivatives[][P4EST_DIM])
+                                 double* err_gradient, double* err_second_derivatives)
 {
   PetscErrorCode ierr;
   const double *grad_field_block_p, *second_derivatives_field_block_p;
-  const double *dx_p[nfields], *dy_p[nfields], *ddxx_p[nfields], *ddyy_p[nfields];
+  std::vector<const double*> dx_p(nfields), dy_p(nfields), ddxx_p(nfields), ddyy_p(nfields);
 #ifdef P4_TO_P8
-  const double *dz_p[nfields], *ddzz_p[nfields];
+  std::vector<const double*> dz_p(nfields), ddzz_p(nfields);
 #endif
 
 
@@ -290,8 +290,8 @@ void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est
     }
   for (unsigned int k = 0; k < nfields; ++k)
     for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      err_gradient[k][der] = 0.0;
-      err_second_derivatives[k][der] = 0.0;
+      err_gradient[P4EST_DIM*k + der] = 0.0;
+      err_second_derivatives[P4EST_DIM*k + der] = 0.0;
     }
 
   for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i)
@@ -301,30 +301,30 @@ void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est
     if(method!=2)
     {
       for (unsigned int k = 0; k < nfields; ++k) {
-        err_gradient[k][0] = MAX(err_gradient[k][0], fabs(dx_p[k][i]-cf_field[k]->dx(xyz)));
-        err_gradient[k][1] = MAX(err_gradient[k][1], fabs(dy_p[k][i]-cf_field[k]->dy(xyz)));
+        err_gradient[P4EST_DIM*k + 0] = MAX(err_gradient[P4EST_DIM*k + 0], fabs(dx_p[k][i]-cf_field[k]->dx(xyz)));
+        err_gradient[P4EST_DIM*k + 1] = MAX(err_gradient[P4EST_DIM*k + 1], fabs(dy_p[k][i]-cf_field[k]->dy(xyz)));
 #ifdef P4_TO_P8
-        err_gradient[k][2] = MAX(err_gradient[k][2], fabs(dz_p[k][i]-cf_field[k]->dz(xyz)));
+        err_gradient[P4EST_DIM*k + 2] = MAX(err_gradient[P4EST_DIM*k + 2], fabs(dz_p[k][i]-cf_field[k]->dz(xyz)));
 #endif
-        err_second_derivatives[k][0] = MAX(err_second_derivatives[k][0], fabs(ddxx_p[k][i]-cf_field[k]->ddxx(xyz)));
-        err_second_derivatives[k][1] = MAX(err_second_derivatives[k][1], fabs(ddyy_p[k][i]-cf_field[k]->ddyy(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 0] = MAX(err_second_derivatives[P4EST_DIM*k + 0], fabs(ddxx_p[k][i]-cf_field[k]->ddxx(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 1] = MAX(err_second_derivatives[P4EST_DIM*k + 1], fabs(ddyy_p[k][i]-cf_field[k]->ddyy(xyz)));
 #ifdef P4_TO_P8
-        err_second_derivatives[k][2] = MAX(err_second_derivatives[k][2], fabs(ddzz_p[k][i]-cf_field[k]->ddzz(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 2] = MAX(err_second_derivatives[P4EST_DIM*k + 2], fabs(ddzz_p[k][i]-cf_field[k]->ddzz(xyz)));
 #endif
       }
     }
     else
     {
       for (unsigned int k = 0; k < nfields; ++k) {
-        err_gradient[k][0] = MAX(err_gradient[k][0], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+0]-cf_field[k]->dx(xyz)));
-        err_gradient[k][1] = MAX(err_gradient[k][1], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+1]-cf_field[k]->dy(xyz)));
+        err_gradient[P4EST_DIM*k + 0] = MAX(err_gradient[P4EST_DIM*k + 0], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+0]-cf_field[k]->dx(xyz)));
+        err_gradient[P4EST_DIM*k + 1] = MAX(err_gradient[P4EST_DIM*k + 1], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+1]-cf_field[k]->dy(xyz)));
 #ifdef P4_TO_P8
-        err_gradient[k][2] = MAX(err_gradient[k][2], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+2]-cf_field[k]->dz(xyz)));
+        err_gradient[P4EST_DIM*k + 2] = MAX(err_gradient[P4EST_DIM*k + 2], fabs(grad_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+2]-cf_field[k]->dz(xyz)));
 #endif
-        err_second_derivatives[k][0] = MAX(err_second_derivatives[k][0], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+0]-cf_field[k]->ddxx(xyz)));
-        err_second_derivatives[k][1] = MAX(err_second_derivatives[k][1], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+1]-cf_field[k]->ddyy(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 0] = MAX(err_second_derivatives[P4EST_DIM*k + 0], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+0]-cf_field[k]->ddxx(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 1] = MAX(err_second_derivatives[P4EST_DIM*k + 1], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+1]-cf_field[k]->ddyy(xyz)));
 #ifdef P4_TO_P8
-        err_second_derivatives[k][2] = MAX(err_second_derivatives[k][2], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+2]-cf_field[k]->ddzz(xyz)));
+        err_second_derivatives[P4EST_DIM*k + 2] = MAX(err_second_derivatives[P4EST_DIM*k + 2], fabs(second_derivatives_field_block_p[i*nfields*P4EST_DIM+k*P4EST_DIM+2]-cf_field[k]->ddzz(xyz)));
 #endif
       }
     }
@@ -546,7 +546,7 @@ int main (int argc, char* argv[]){
   parStopWatch timer;
 
   // create the test function(s), with random parameters
-  const test_function *cf_field[nfields];
+  std::vector<const test_function *> cf_field(nfields);
   for (unsigned int k = 0; k < nfields; ++k) {
     if(k%P4EST_DIM == dir::x)
       cf_field[k] = new uex(DIM(random_generator(0.0, 1.0), random_generator(0.0, 1.0), random_generator(0.0, 1.0)));
@@ -577,10 +577,10 @@ int main (int argc, char* argv[]){
   // nfields Petsc vectors for the node-sampled function values, for every partial derivative
   // along a Cartesian direction, and also for every second partial derivative along a Cartesian
   // direction
-  Vec field_[nfields];
-  Vec dx_[nfields], dy_[nfields], ddxx_[nfields], ddyy_[nfields];
+  std::vector<Vec> field_(nfields);
+  std::vector<Vec> dx_(nfields), dy_(nfields), ddxx_(nfields), ddyy_(nfields);
 #ifdef P4_TO_P8
-  Vec dz_[nfields], ddzz_[nfields];
+  std::vector<Vec> dz_(nfields), ddzz_(nfields);
 #endif
   for (unsigned int k = 0; k < nfields; ++k) {
     field_[k] = NULL;
@@ -609,10 +609,10 @@ int main (int argc, char* argv[]){
   double time_spent_on_ngbd_initialization  = 0.0;
   double time_spent_on_derivative           = 0.0;
   // relevant error measures on former grid (--> '_m1') and on the current grid
-  double err_gradient_step_m1[nfields][P4EST_DIM];
-  double err_gradient_step[nfields][P4EST_DIM];
-  double err_second_derivatives_step_m1[nfields][P4EST_DIM];
-  double err_second_derivatives_step[nfields][P4EST_DIM];
+  std::vector<double> err_gradient_step_m1(nfields*P4EST_DIM);
+  std::vector<double> err_gradient_step(nfields*P4EST_DIM);
+  std::vector<double> err_second_derivatives_step_m1(nfields*P4EST_DIM);
+  std::vector<double> err_second_derivatives_step(nfields*P4EST_DIM);
   for (unsigned int ss = 0; ss < ngrids; ++ss) {
     if(ss > 0)
       refine_my_grid(p4est, ghost, nodes);
@@ -629,9 +629,10 @@ int main (int argc, char* argv[]){
      */
     my_p4est_node_neighbors_t ngbd_n(&hierarchy, nodes);
 
-    ierr = create_vectors_and_sample_functions_on_nodes(method, p4est, nodes, cf_field, nfields,
+    ierr = create_vectors_and_sample_functions_on_nodes(method, p4est, nodes, cf_field.data(), nfields,
                                                         field_block, grad_field_block, second_derivatives_field_block,
-                                                        field_, DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_)); CHKERRXX(ierr);
+                                                        field_.data(), DIM(dx_.data(), dy_.data(), dz_.data()),
+                                                        DIM(ddxx_.data(), ddyy_.data(), ddzz_.data())); CHKERRXX(ierr);
     if(!timing_off)
       timer.start();
 
@@ -665,8 +666,8 @@ int main (int argc, char* argv[]){
        * When nfields is large, one can save execution time by avoiding the redundant
        * grid-related calculations, especially on large 3D grids.
        */
-      ngbd_n.first_derivatives_central(field_, DIM(dx_, dy_, dz_), nfields);
-      ngbd_n.second_derivatives_central(field_, DIM(ddxx_, ddyy_, ddzz_), nfields);
+      ngbd_n.first_derivatives_central(field_.data(), DIM(dx_.data(), dy_.data(), dz_.data()), nfields);
+      ngbd_n.second_derivatives_central(field_.data(), DIM(ddxx_.data(), ddyy_.data(), ddzz_.data()), nfields);
       break;
     }
     case 2:
@@ -695,15 +696,17 @@ int main (int argc, char* argv[]){
       for (unsigned int k = 0; k < nfields; ++k)
         for (unsigned char der = 0; der < P4EST_DIM; ++der)
         {
-          err_gradient_step_m1[k][der]            = err_gradient_step[k][der];
-          err_second_derivatives_step_m1[k][der]  = err_second_derivatives_step[k][der];
+          err_gradient_step_m1[P4EST_DIM*k + der]            = err_gradient_step[P4EST_DIM*k + der];
+          err_second_derivatives_step_m1[P4EST_DIM*k + der]  = err_second_derivatives_step[P4EST_DIM*k + der];
         }
 
-    evaluate_max_error_on_nodes(method, p4est, nodes, cf_field, nfields,
+    evaluate_max_error_on_nodes(method, p4est, nodes, cf_field.data(), nfields,
                                 grad_field_block, second_derivatives_field_block,
-                                DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_), err_gradient_step, err_second_derivatives_step);
+                                DIM(dx_.data(), dy_.data(), dz_.data()),
+                                DIM(ddxx_.data(), ddyy_.data(), ddzz_.data()),
+                                err_gradient_step.data(), err_second_derivatives_step.data());
     ierr = destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
-                                     field_, DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_)); CHKERRXX(ierr);
+                                     field_.data(), DIM(dx_.data(), dy_.data(), dz_.data()), DIM(ddxx_.data(), ddyy_.data(), ddzz_.data())); CHKERRXX(ierr);
 
     if (mpi.rank() == 0 && ss>0)
     {
@@ -719,7 +722,7 @@ int main (int argc, char* argv[]){
         std::cout << "\tfield #" << comp << ": \t";
         std::cout << std::fixed;
         for (unsigned char der = 0; der < P4EST_DIM; ++der)
-          std::cout << std::setprecision(4) << log(err_gradient_step_m1[comp][der]/err_gradient_step[comp][der])/log(2.0) << "\t\t";
+          std::cout << std::setprecision(4) << log(err_gradient_step_m1[P4EST_DIM*comp + der]/err_gradient_step[P4EST_DIM*comp + der])/log(2.0) << "\t\t";
         std::cout << std::endl;
       }
       std::cout << std::endl;
@@ -729,7 +732,7 @@ int main (int argc, char* argv[]){
         std::cout << "\tfield #" << comp << ": \t";
         std::cout << std::fixed;
         for (unsigned char der = 0; der < P4EST_DIM; ++der)
-          std::cout << std::setprecision(4) << log(err_second_derivatives_step_m1[comp][der]/err_second_derivatives_step[comp][der])/log(2.0) << "\t\t";
+          std::cout << std::setprecision(4) << log(err_second_derivatives_step_m1[P4EST_DIM*comp + der]/err_second_derivatives_step[P4EST_DIM*comp + der])/log(2.0) << "\t\t";
         std::cout << std::endl;
       }
       std::cout << std::endl;

@@ -316,7 +316,7 @@ static double get_largest_dbl_smaller_than_dbl_max()
   while (DBL_MAX - p == DBL_MAX)
     p *= 2.0;
   return DBL_MAX - p;
-};
+}
 
 static const double largest_dbl_smaller_than_dbl_max = get_largest_dbl_smaller_than_dbl_max();
 

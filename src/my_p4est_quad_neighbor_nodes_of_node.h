@@ -627,8 +627,13 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays*bs], tmp_m00[n_arrays*bs], tmp_p00[n_arrays*bs], tmp_0m0[n_arrays*bs], tmp_0p0[n_arrays*bs] ONLY3D(COMMA tmp_00m[n_arrays*bs] COMMA tmp_00p[n_arrays*bs]);
-    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs);
+    std::vector<double> tmp_000(n_arrays*bs);
+    std::vector<double> tmp_m00(n_arrays*bs); std::vector<double> tmp_p00(n_arrays*bs);
+    std::vector<double> tmp_0m0(n_arrays*bs); std::vector<double> tmp_0p0(n_arrays*bs);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays*bs); std::vector<double> tmp_00p(n_arrays*bs);
+#endif
+    laplace_all_components(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs);
     return;
   }
 
@@ -647,8 +652,13 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays] ONLY3D(COMMA tmp_00m[n_arrays] COMMA tmp_00p[n_arrays]);
-    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+    std::vector<double> tmp_000(n_arrays);
+    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
+    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
+#endif
+    laplace_component(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     return;
   }
 
@@ -665,8 +675,13 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays] ONLY3D(COMMA tmp_00m[n_arrays] COMMA tmp_00p[n_arrays]);
-    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays);
+    std::vector<double> tmp_000(n_arrays);
+    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
+    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
+#endif
+    laplace(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays);
     return;
   }
 
@@ -698,8 +713,8 @@ private:
     }
     */
 
-    double DIM(fxx[n_arrays*bs], fyy[n_arrays*bs], fzz[n_arrays*bs]);
-    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs);
+    std::vector<double> DIM(fxx(n_arrays*bs), fyy(n_arrays*bs), fzz(n_arrays*bs));
+    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -750,8 +765,8 @@ private:
     }
     */
 
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs, comp);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs, comp);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -798,8 +813,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays*bs], f_000[n_arrays*bs], f_p00[n_arrays*bs];
-    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00, f_000, f_p00, n_arrays, bs);
+    std::vector<double> f_m00(n_arrays*bs), f_000(n_arrays*bs), f_p00(n_arrays*bs);
+    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -815,8 +830,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays], f_000[n_arrays], f_p00[n_arrays];
-    x_ngbd_with_quadratic_interpolation_component(f, f_m00, f_000, f_p00, n_arrays, bs, comp);
+    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
+    x_ngbd_with_quadratic_interpolation_component(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -830,8 +845,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays], f_000[n_arrays], f_p00[n_arrays];
-    x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, n_arrays);
+    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
+    x_ngbd_with_quadratic_interpolation(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -846,8 +861,8 @@ private:
     }
     */
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    double f_0m0[n_arrays*bs], f_000[n_arrays*bs], f_0p0[n_arrays*bs];
-    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0, f_000, f_0p0, n_arrays, bs);
+    std::vector<double> f_0m0(n_arrays*bs), f_000(n_arrays*bs), f_0p0(n_arrays*bs);
+    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -863,8 +878,8 @@ private:
     */
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    double f_0m0[n_arrays], f_000[n_arrays], f_0p0[n_arrays];
-    y_ngbd_with_quadratic_interpolation_component(f, f_0m0, f_000, f_0p0, n_arrays, bs, comp);
+    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
+    y_ngbd_with_quadratic_interpolation_component(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -878,8 +893,8 @@ private:
       return;
     }
     */
-    double f_0m0[n_arrays], f_000[n_arrays], f_0p0[n_arrays];
-    y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, n_arrays);
+    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
+    y_ngbd_with_quadratic_interpolation(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -895,8 +910,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays*bs],f_000[n_arrays*bs],f_00p[n_arrays*bs];
-    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m, f_000, f_00p, n_arrays, bs);
+    std::vector<double> f_00m(n_arrays*bs), f_000(n_arrays*bs), f_00p(n_arrays*bs);
+    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -912,8 +927,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays],f_000[n_arrays],f_00p[n_arrays];
-    z_ngbd_with_quadratic_interpolation_component(f, f_00m, f_000, f_00p, n_arrays, bs, comp);
+    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
+    z_ngbd_with_quadratic_interpolation_component(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -927,8 +942,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays],f_000[n_arrays],f_00p[n_arrays];
-    z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p, n_arrays);
+    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
+    z_ngbd_with_quadratic_interpolation(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -1040,10 +1055,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays*bs], f_m00[n_arrays*bs], f_p00[n_arrays*bs], f_0m0[n_arrays*bs], f_0p0[n_arrays*bs] ONLY3D(COMMA f_00m[n_arrays*bs] COMMA f_00p[n_arrays*bs]);
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs);
+    std::vector<double> f_000(n_arrays*bs), f_m00(n_arrays*bs), f_p00(n_arrays*bs), f_0m0(n_arrays*bs), f_0p0(n_arrays*bs) ONLY3D(COMMA f_00m(n_arrays*bs) COMMA f_00p(n_arrays*bs));
+    linearly_interpolated_neighbors_all_components(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs);
 
-    double DIM(naive_Dx[n_arrays*bs], naive_Dy[n_arrays*bs], naive_Dz[n_arrays*bs]);
+    std::vector<double> DIM(naive_Dx(n_arrays*bs), naive_Dy(n_arrays*bs), naive_Dz(n_arrays*bs));
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1051,7 +1066,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, bs);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, bs);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1076,10 +1091,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays] ONLY3D(COMMA f_00m[n_arrays] COMMA f_00p[n_arrays]);
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs, comp);
+    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
+    linearly_interpolated_neighbors_component(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs, comp);
 
-    double DIM(naive_Dx[n_arrays], naive_Dy[n_arrays], naive_Dz[n_arrays]);
+    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1087,7 +1102,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, comp);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, comp);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1109,10 +1124,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays] ONLY3D(COMMA f_00m[n_arrays] COMMA f_00p[n_arrays]);
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays);
+    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
+    linearly_interpolated_neighbors(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays);
 
-    double DIM(naive_Dx[n_arrays], naive_Dy[n_arrays], naive_Dz[n_arrays]);
+    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1120,7 +1135,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, 1, 1);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, 1, 1);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1477,8 +1492,8 @@ public:
 
   inline void laplace(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays) const
   {
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1492,8 +1507,8 @@ public:
 
   inline void laplace_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays) const
   {
-    double DIM(fxx_serial[n_arrays], fyy_serial[n_arrays], fzz_serial[n_arrays]);
-    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
+    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
+    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k][node_000] = fxx_serial[k];
       fyy[k][node_000] = fyy_serial[k];
@@ -1506,8 +1521,8 @@ public:
 
   inline void laplace_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays) const
   {
-    double DIM(fxx_serial[n_arrays], fyy_serial[n_arrays], fzz_serial[n_arrays]);
-    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
+    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
+    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxxyyzz[k][l_offset]      = fxx_serial[k];
@@ -1523,8 +1538,8 @@ public:
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fxx[n_arrays_bs], fyy[n_arrays_bs], fzz[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+    std::vector<double> DIM(fxx(n_arrays_bs), fyy(n_arrays_bs), fzz(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1544,8 +1559,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs =n_arrays*bs;
-    double DIM(fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs], fzz_serial[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1566,8 +1581,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs =n_arrays*bs;
-    double DIM(fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs], fzz_serial[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1586,8 +1601,8 @@ public:
 
   inline void laplace_component(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1621,8 +1636,8 @@ public:
     }
     */
 
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -1687,8 +1702,8 @@ public:
   }
   inline void dxx_central_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays) const
   {
-    double fxx_serial[n_arrays];
-    dxx_central(f, fxx_serial, n_arrays);
+    std::vector<double> fxx_serial(n_arrays);
+    dxx_central(f, fxx_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k][node_000] = fxx_serial[k];
     return;
@@ -1696,8 +1711,8 @@ public:
   inline void dxx_central_all_components_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fxx_serial[n_arrays*bs];
-    dxx_central_all_components(f, fxx_serial, n_arrays, bs);
+    std::vector<double> fxx_serial(n_arrays*bs);
+    dxx_central_all_components(f, fxx_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1715,8 +1730,8 @@ public:
   }
   inline void dyy_central_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays) const
   {
-    double fyy_serial[n_arrays];
-    dyy_central(f, fyy_serial, n_arrays);
+    std::vector<double> fyy_serial(n_arrays);
+    dyy_central(f, fyy_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k][node_000] = fyy_serial[k];
     return;
@@ -1724,8 +1739,8 @@ public:
   inline void dyy_central_all_components_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fyy_serial[n_arrays*bs];
-    dyy_central_all_components(f, fyy_serial, n_arrays, bs);
+    std::vector<double>  fyy_serial(n_arrays*bs);
+    dyy_central_all_components(f, fyy_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1744,8 +1759,8 @@ public:
   }
   inline void dzz_central_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays) const
   {
-    double fzz_serial[n_arrays];
-    dzz_central(f, fzz_serial, n_arrays);
+    std::vector<double> fzz_serial(n_arrays);
+    dzz_central(f, fzz_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k][node_000] = fzz_serial[k];
     return;
@@ -1753,8 +1768,8 @@ public:
   inline void dzz_central_all_components_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fzz_serial[n_arrays*bs];
-    dzz_central_all_components(f, fzz_serial, n_arrays, bs);
+    std::vector<double>  fzz_serial(n_arrays*bs);
+    dzz_central_all_components(f, fzz_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1780,8 +1795,8 @@ public:
   }
   inline void gradient(const double **f, double **fxyz, const unsigned int &n_vecs) const
   {
-    double DIM(fx_serial[n_vecs], fy_serial[n_vecs], fz_serial[n_vecs]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_vecs);
+    std::vector<double> DIM(fx_serial(n_vecs), fy_serial(n_vecs), fz_serial(n_vecs));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_vecs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       fxyz[k][0] = fx_serial[k];
       fxyz[k][1] = fy_serial[k];
@@ -1800,8 +1815,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned bsnvecs = bs*n_vecs;
-    double DIM(fx_serial[bsnvecs], fy_serial[bsnvecs], fz_serial[bsnvecs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_vecs, bs);
+    std::vector<double>  DIM(fx_serial(bsnvecs), fy_serial(bsnvecs), fz_serial(bsnvecs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_vecs, bs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       const unsigned int bsk = bs*k;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1818,8 +1833,8 @@ public:
   inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double DIM(fx_serial[bs], fy_serial[bs], fz_serial[bs]);
-    gradient_all_components(&f, DIM(fx_serial, fy_serial, fz_serial),  1, bs);
+    std::vector<double> DIM(fx_serial(bs), fy_serial(bs), fz_serial(bs));
+    gradient_all_components(&f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  1, bs);
     for (unsigned int comp = 0; comp < bs; ++comp) {
       const unsigned int comp_dim = comp*P4EST_DIM;
       fxyz[comp_dim + 0] = fx_serial[comp];
@@ -1832,8 +1847,8 @@ public:
   }
   inline void gradient_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays) const
   {
-    double DIM(fx_serial[n_arrays], fy_serial[n_arrays], fz_serial[n_arrays]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays);
+    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fx[k][node_000] = fx_serial[k];
       fy[k][node_000] = fy_serial[k];
@@ -1845,8 +1860,8 @@ public:
   }
   inline void gradient_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays) const
   {
-    double DIM(fx_serial[n_arrays], fy_serial[n_arrays], fz_serial[n_arrays]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_arrays);
+    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxyz[k][l_offset]     = fx_serial[k];
@@ -1862,8 +1877,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fx_serial[n_arrays_bs], fy_serial[n_arrays_bs], fz_serial[n_arrays_bs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1883,8 +1898,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fx_serial[n_arrays_bs], fy_serial[n_arrays_bs], fz_serial[n_arrays_bs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       unsigned int kbs = k*bs;
@@ -1910,8 +1925,8 @@ public:
   }
   inline void dx_central_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays) const
   {
-    double fx_serial[n_arrays];
-    dx_central(f, fx_serial, n_arrays);
+    std::vector<double> fx_serial(n_arrays);
+    dx_central(f, fx_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fx[k][node_000] = fx_serial[k];
     return;
@@ -1925,8 +1940,8 @@ public:
   inline void dx_central_all_components_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fx_serial[n_arrays*bs];
-    dx_central_all_components(f, fx_serial, n_arrays, bs);
+    std::vector<double> fx_serial(n_arrays*bs);
+    dx_central_all_components(f, fx_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1944,8 +1959,8 @@ public:
   }
   inline void dy_central_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays) const
   {
-    double fy_serial[n_arrays];
-    dy_central(f, fy_serial, n_arrays);
+    std::vector<double> fy_serial(n_arrays);
+    dy_central(f, fy_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fy[k][node_000] = fy_serial[k];
     return;
@@ -1959,8 +1974,8 @@ public:
   inline void dy_central_all_components_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fy_serial[n_arrays*bs];
-    dy_central_all_components(f, fy_serial, n_arrays, bs);
+    std::vector<double> fy_serial(n_arrays*bs);
+    dy_central_all_components(f, fy_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1979,8 +1994,8 @@ public:
   }
   inline void dz_central_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays) const
   {
-    double fz_serial[n_arrays];
-    dz_central(f, fz_serial, n_arrays);
+    std::vector<double> fz_serial(n_arrays);
+    dz_central(f, fz_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fz[k][node_000] = fz_serial[k];
     return;
@@ -1994,8 +2009,8 @@ public:
   inline void dz_central_all_components_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fz_serial[n_arrays*bs];
-    dz_central_all_components(f, fz_serial, n_arrays, bs);
+    std::vector<double> fz_serial(n_arrays*bs);
+    dz_central_all_components(f, fz_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {

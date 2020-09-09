@@ -1235,27 +1235,27 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
     double phi_n = interp_phi(pc.x, pc.y);
 #endif
 
-    double mue_n[block_size][block_size],
-        mue_l[block_size][block_size],
-        mue_h[block_size][block_size],
-        mue_tmp[block_size][block_size],
-        mue_inv[block_size][block_size];
+    double **mue_n, **mue_l, **mue_h, **mue_tmp, **mue_inv;
+    mue_n   = new double*[block_size];
+    mue_l   = new double*[block_size];
+    mue_h   = new double*[block_size];
+    mue_tmp = new double*[block_size];
+    mue_inv = new double*[block_size];
+    for (int k = 0; k < block_size; ++k) {
+      mue_n[k]   = new double[block_size];
+      mue_l[k]   = new double[block_size];
+      mue_h[k]   = new double[block_size];
+      mue_tmp[k] = new double[block_size];
+      mue_inv[k] = new double[block_size];
+    }
 
     // compute mue
     for (int bi=0; bi<block_size; bi++) {
       for (int bj=0; bj<block_size; bj++) {
         if (phi_n < 0) {
-#ifdef P4_TO_P8
-          mue_n[bi][bj] = (*mu_m[bi][bj])(pc.x, pc.y, pc.z);
-#else
-          mue_n[bi][bj] = (*mu_m[bi][bj])(pc.x, pc.y);
-#endif
+          mue_n[bi][bj] = (*mu_m[bi][bj])(DIM(pc.x, pc.y, pc.z));
         } else {
-#ifdef P4_TO_P8
-          mue_n[bi][bj] = (*mu_p[bi][bj])(pc.x, pc.y, pc.z);
-#else
-          mue_n[bi][bj] = (*mu_p[bi][bj])(pc.x, pc.y);
-#endif
+          mue_n[bi][bj] = (*mu_p[bi][bj])(DIM(pc.x, pc.y, pc.z));
         }
       }
     }
@@ -1411,7 +1411,21 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
         }
       } // l loop
     } // bi loop
+
+    for (int k = 0; k < block_size; ++k) {
+      delete [] mue_n[k];
+      delete [] mue_l[k];
+      delete [] mue_h[k];
+      delete [] mue_tmp[k];
+      delete [] mue_inv[k];
+    }
+    delete[] mue_n;
+    delete[] mue_l;
+    delete[] mue_h;
+    delete[] mue_tmp;
+    delete[] mue_inv;
   } // n loop
+
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
@@ -2016,7 +2030,7 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
 
-  double* solution_p[block_size];
+  std::vector<double*> solution_p(block_size);
   for (int i=0; i<block_size; i++){
     ierr = VecGetArray(solution[i], &solution_p[i]); CHKERRXX(ierr);
   }

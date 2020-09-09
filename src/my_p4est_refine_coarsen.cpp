@@ -896,7 +896,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
   bool is_grid_changed;
 
   const double* phi_p;
-  const double* fields_p[num_fields];
+  std::vector<const double*> fields_p(num_fields);
   const double* fields_block_p;
 
   // Get appropriate arrays -- phi, and either PETSc block vector of fields, or vector of PETSC Vector fields
@@ -919,7 +919,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
 
 
   // Call inner function which uses the pointers:
-  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_p,fields_block_p,criteria,compare_opn,diag_opn);
+  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_p.data(),fields_block_p,criteria,compare_opn,diag_opn);
 
 
   // Restore appropriate arrays:

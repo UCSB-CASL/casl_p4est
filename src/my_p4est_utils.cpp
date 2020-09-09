@@ -44,8 +44,8 @@
 
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
-WallBC2D::~WallBC2D() {};
-WallBC3D::~WallBC3D() {};
+WallBC2D::~WallBC2D() {}
+WallBC3D::~WallBC3D() {}
 
 bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
                                     const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p)

@@ -2755,7 +2755,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
       if(!subfolders[idx].compare(0, 7, "backup_"))
       {
         unsigned int backup_idx;
-        sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
+        sscanf(subfolders[idx].c_str(), "backup_%ud", &backup_idx);
         if(backup_idx >= n_saved)
         {
           // delete extra backups existing for whatever reasons (renamed to temporary folders beforehand to avoid issues)

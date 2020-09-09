@@ -466,11 +466,11 @@ public:
   inline void interpolate(Vec *Fos)
   {
     const u_int n_outputs = Fi.size();
-    double *Fo_p[n_outputs];
+    std::vector<double *> Fo_p(n_outputs);
     for (u_int k = 0; k < n_outputs; ++k) {
       PetscErrorCode ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
 
-    interpolate(Fo_p, ALL_COMPONENTS);
+    interpolate(Fo_p.data(), ALL_COMPONENTS);
     for (u_int k = 0; k < n_outputs; ++k) {
       PetscErrorCode ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
   }

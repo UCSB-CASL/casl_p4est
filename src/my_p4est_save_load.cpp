@@ -385,7 +385,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
   my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, faces,
                                 forest_filename, num_exports, args);
   va_end(args);
-};
+}
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes,
                                    const char* forest_filename, u_int num_exports, ...)
@@ -395,7 +395,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
   my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, NULL,
                                 forest_filename, num_exports, args);
   va_end(args);
-};
+}
 
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
@@ -562,7 +562,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
                                 P4EST_FALSE, brick, P4EST_FALSE, faces, hierarchy, ngbd_c,
                                 forest_filename, num_loads, args);
   va_end(args);
-};
+}
 
 
 
