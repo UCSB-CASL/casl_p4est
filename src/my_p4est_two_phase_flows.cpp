@@ -2731,10 +2731,15 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
     P4EST_ASSERT(!ISNAN(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim]) && !ISNAN(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]));
 #endif
 
-  if (interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+  if (interface_manager->phi_at_point(xyz_node) <= 0.0)
     max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
-  if (interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+  if (interface_manager->phi_at_point(xyz_node) >= 0.0)
     max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
+
+//  if (interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+//    max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
+//  if (interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
+//    max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
   return;
 }
 
