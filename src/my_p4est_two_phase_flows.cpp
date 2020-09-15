@@ -2414,9 +2414,9 @@ void my_p4est_two_phase_flows_t::jump_face_solver::initialize_face_extrapolation
           }
         }
 
-        double derivative = (dist_m*sharp_derivative_p + dist_p*sharp_derivative_m)/(dist_m + dist_p); // "0.1" <--> minimum for coarse grid.
-        if(dist_m + dist_p < 0.1*pow(2.0, -env->interface_manager->get_max_level_computational_grid())*env->dxyz_smallest_quad[dim])
-          n_dot_grad_u_dir += 0.5*(sharp_derivative_m + sharp_derivative_p);
+        double derivative = (dist_m*sharp_derivative_p + dist_p*sharp_derivative_m)/(dist_m + dist_p);
+        if(dist_m + dist_p < 0.1*pow(2.0, -env->interface_manager->get_max_level_computational_grid())*env->dxyz_smallest_quad[dim]) // "0.1" <--> minimum for coarse grid.
+          derivative = 0.5*(sharp_derivative_m + sharp_derivative_p);
 
         n_dot_grad_u_dir += oriented_normal[dim]*derivative;
       }
