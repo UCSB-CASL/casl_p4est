@@ -5295,26 +5295,26 @@ int main(int argc, char** argv) {
         solid_normals.destroy();
         phi_solid.destroy();
 
+
+        // --------------------------------------------------------------------------------------------------------------
+        // Compute the interfacial velocity (Stefan): -- do now so it can be used for NS boundary condition
+        // --------------------------------------------------------------------------------------------------------------
+
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
+          v_interface.destroy();
+          v_interface.create(p4est_np1,nodes_np1);
+
+
+          compute_interfacial_velocity(T_l_n,T_s_n,
+                                       T_l_d,T_s_d,
+                                       jump,v_interface,
+                                       phi,
+                                       p4est_np1,nodes_np1,ngbd_np1,extension_band_extend_);
+
+
+
       } // end of "if solve stefan"
 
-      // --------------------------------------------------------------------------------------------------------------
-      // Compute the interfacial velocity (Stefan): -- do now so it can be used for NS boundary condition
-      // --------------------------------------------------------------------------------------------------------------
-
-      if(solve_stefan){
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
-        v_interface.destroy();
-        v_interface.create(p4est_np1,nodes_np1);
-
-
-        compute_interfacial_velocity(T_l_n,T_s_n,
-                                     T_l_d,T_s_d,
-                                     jump,v_interface,
-                                     phi,
-                                     p4est_np1,nodes_np1,ngbd_np1,extension_band_extend_);
-
-
-        }
 
       // --------------------------------------------------------------------------------------------------------------
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
