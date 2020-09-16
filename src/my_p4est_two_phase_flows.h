@@ -83,7 +83,7 @@ private:
   my_p4est_poisson_jump_cells_t* pressure_guess_solver;
   bool pressure_guess_is_set;
   my_p4est_poisson_jump_cells_t* divergence_free_projector;
-  poisson_jump_cell_solver_tag cell_jump_solver_to_use;
+  jump_solver_tag cell_jump_solver_to_use;
   bool fetch_interface_FD_neighbors_with_second_order_accuracy;
 
   const double *xyz_min, *xyz_max;
@@ -653,7 +653,7 @@ public:
   void solve_for_pressure_guess(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
   void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
 
-  inline void set_projection_solver(const poisson_jump_cell_solver_tag& solver_to_use) { cell_jump_solver_to_use = solver_to_use; }
+  inline void set_projection_solver(const jump_solver_tag& solver_to_use) { cell_jump_solver_to_use = solver_to_use; }
   inline void fetch_interface_points_with_second_order_accuracy() {
     fetch_interface_FD_neighbors_with_second_order_accuracy = true;
     interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);

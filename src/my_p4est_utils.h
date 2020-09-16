@@ -821,6 +821,41 @@ struct bc_sample
   double value;
 };
 
+enum jump_solver_tag {
+  GFM   = 0, // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
+  xGFM  = 1, // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
+  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
+};
+
+const static int multiply_by_sqrt_D = 153;
+const static int divide_by_sqrt_D = 154;
+
+inline std::string convert_to_string(const jump_solver_tag& tag)
+{
+  switch(tag){
+  case GFM:
+    return std::string("GFM");
+    break;
+  case xGFM:
+    return std::string("xGFM");
+    break;
+  case FV:
+    return std::string("FV");
+    break;
+  default:
+    return std::string("unknown type of jump solver");
+    break;
+  }
+}
+
+struct extrapolation_operator_t{
+  linear_combination_of_dof_t n_dot_grad;
+  double dtau;
+  extrapolation_operator_t() {
+    dtau = DBL_MAX; // initialize to a large value, the user needs to set it appropriately at construction
+  }
+};
+
 bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
                                     const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p);
 inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,

@@ -22,7 +22,7 @@ const static string main_description =
     + string("no-slip boundary condition on any of the borders of the computational domain. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020\n");
 
-std::istream& operator>> (std::istream& is, poisson_jump_cell_solver_tag& solver)
+std::istream& operator>> (std::istream& is, jump_solver_tag& solver)
 {
   std::string str;
   is >> str;
@@ -73,7 +73,7 @@ const int default_save_nstates = 0;
 const int default_sl_order = 2;
 const double default_cfl_advection = 1.0;
 const double default_cfl_capillary = 0.5;
-const poisson_jump_cell_solver_tag default_projection = FV;
+const jump_solver_tag default_projection = FV;
 const int default_n_reinit = INT_MAX;
 const bool default_static_interface = true;
 const bool default_save_vtk = true;
@@ -320,7 +320,6 @@ void export_results(const double& nondimensional_tn, const double& magnitude_non
   fprintf(fp_parasitic_current, "%g %g \n", nondimensional_tn, magnitude_nondimensional_parasitic_current);
   fclose(fp_parasitic_current);
 
-
   FILE* fp_volume = fopen(volume_datafile.c_str(), "a");
   if(fp_volume == NULL)
     throw std::invalid_argument("main for static bubble: could not open file for output of volume drift.");
@@ -353,7 +352,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
   const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
   const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
-  const poisson_jump_cell_solver_tag projection_solver_to_use = cmd.get<poisson_jump_cell_solver_tag>("projection", default_projection);
+  const jump_solver_tag projection_solver_to_use = cmd.get<jump_solver_tag>("projection", default_projection);
 
 
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);

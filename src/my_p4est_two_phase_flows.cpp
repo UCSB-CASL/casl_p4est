@@ -656,7 +656,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     PetscInt P4EST_DIM_COPY       = data[idx++];
     if(P4EST_DIM_COPY != P4EST_DIM)
       throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(...): you're trying to load 2D (resp. 3D) data with a 3D (resp. 2D) program...");
-    cell_jump_solver_to_use = (poisson_jump_cell_solver_tag) data[idx++];
+    cell_jump_solver_to_use = (jump_solver_tag) data[idx++];
     fetch_interface_FD_neighbors_with_second_order_accuracy = (bool) data[idx++];
     splitting_criterion->min_lvl  = data[idx++];
     splitting_criterion->max_lvl  = data[idx++];

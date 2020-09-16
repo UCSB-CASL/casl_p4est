@@ -7,41 +7,6 @@
 #include <src/my_p4est_interface_manager.h>
 #endif
 
-enum poisson_jump_cell_solver_tag {
-  GFM   = 0, // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
-  xGFM  = 1, // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
-  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
-};
-
-const static int multiply_by_sqrt_D = 153;
-const static int divide_by_sqrt_D = 154;
-
-inline std::string convert_to_string(const poisson_jump_cell_solver_tag& tag)
-{
-  switch(tag){
-  case GFM:
-    return std::string("GFM");
-    break;
-  case xGFM:
-    return std::string("xGFM");
-    break;
-  case FV:
-    return std::string("FV");
-    break;
-  default:
-    return std::string("unknown type of poisson_jump_cell_solver_tag ");
-    break;
-  }
-}
-
-struct extrapolation_operator_t{
-  linear_combination_of_dof_t n_dot_grad;
-  double dtau;
-  extrapolation_operator_t() {
-    dtau = DBL_MAX; // initialize to a large value, the user needs to set it appropriately a construction
-  }
-};
-
 class my_p4est_poisson_jump_cells_t
 {
 protected:
@@ -168,7 +133,6 @@ protected:
   void pointwise_operation_with_sqrt_of_diag(size_t num_vectors, ...) const;
 
 public:
-
   my_p4est_poisson_jump_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   virtual ~my_p4est_poisson_jump_cells_t();
 

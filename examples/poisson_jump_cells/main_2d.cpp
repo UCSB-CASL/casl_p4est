@@ -55,7 +55,7 @@ const string default_work_folder = "/scratch/regan/poisson_jump_cells";
 const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_cells";
 #endif
 
-std::istream& operator>> (std::istream& is, std::vector<poisson_jump_cell_solver_tag>& solvers_to_test)
+std::istream& operator>> (std::istream& is, std::vector<jump_solver_tag>& solvers_to_test)
 {
   std::string str;
   is >> str;
@@ -83,7 +83,7 @@ std::istream& operator>> (std::istream& is, std::vector<poisson_jump_cell_solver
 struct convergence_analyzer_for_jump_cell_solver_t {
   my_p4est_poisson_jump_cells_t* jump_cell_solver;
   double total_solve_time;
-  const poisson_jump_cell_solver_tag tag;
+  const jump_solver_tag tag;
   std::vector<double> errors_in_solution;
   std::vector<double> errors_in_flux_component[P4EST_DIM];
   std::vector<double> errors_in_derivative_component[P4EST_DIM];
@@ -99,7 +99,7 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
   }
 
-  convergence_analyzer_for_jump_cell_solver_t(const poisson_jump_cell_solver_tag& tag_) : total_solve_time(0.0), tag(tag_), cell_sampled_error(NULL),
+  convergence_analyzer_for_jump_cell_solver_t(const jump_solver_tag& tag_) : total_solve_time(0.0), tag(tag_), cell_sampled_error(NULL),
     cell_sampled_extrapolation_error_minus(NULL), cell_sampled_extrapolation_error_plus(NULL) { }
 
   void add_solve_time(const double& exec_time) { total_solve_time += exec_time; }
@@ -887,8 +887,8 @@ int main (int argc, char* argv[])
   const bool extrapolate_solution       = cmd.get<bool>("extrapolate", default_extrapolation);
   const bool pin_normal_derivatives     = cmd.get<bool>("quad_pinning", default_quad_pinning);
 
-  std::vector<poisson_jump_cell_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
-  const std::vector<poisson_jump_cell_solver_tag> solvers_to_test = cmd.get<std::vector<poisson_jump_cell_solver_tag> >("solver", default_solvers_to_test);
+  std::vector<jump_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
+  const std::vector<jump_solver_tag> solvers_to_test = cmd.get<std::vector<jump_solver_tag> >("solver", default_solvers_to_test);
   if(solvers_to_test.size() > 3)
     throw std::invalid_argument("main for testing my_p4est_poisson_jump_cells : do not duplicate the solvers to test, that is not allowed...");
   std::vector<convergence_analyzer_for_jump_cell_solver_t> solver_analyses;
