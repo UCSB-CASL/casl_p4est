@@ -112,6 +112,7 @@ private:
   vector<p4est_locidx_t> local_layer_face_index[P4EST_DIM]; // local_layer_face_index[dir][k] = local index of the kth local face of orientation dir that is a ghost face for (an)other process(es)
   vector<p4est_locidx_t> local_inner_face_index[P4EST_DIM]; // local_inner_face_index[dir][k] = local index of the kth local face of orientation dir that is NOT a ghost face for any other process
 
+#ifdef P4EST_DEBUG
   inline p4est_bool_t face_neighborhood_is_valid(const u_char& dir, const map_to_uniform_face_ngbd_t::const_iterator& my_iterator) const
   {
     p4est_bool_t to_return = P4EST_TRUE;
@@ -120,7 +121,7 @@ private:
     p4est_topidx_t tree_idx;
     f2q(local_face_idx, dir, quad_idx, tree_idx);
     const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
-    const double logical_quad_size = ((double) (1 << quad->level))/((double) P4EST_ROOT_LEN);
+    const double logical_quad_size = ((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN);
     const double dxyz_local[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_quad_size, tree_dimensions[1]*logical_quad_size, tree_dimensions[2]*logical_quad_size)};
     uniform_face_ngbd face_neighborhood = my_iterator->second;
     double xyz_face[P4EST_DIM]; xyz_fr_f(local_face_idx, dir, xyz_face);
@@ -143,8 +144,24 @@ private:
       else
         to_return = to_return && is_quad_Wall(p4est, tree_idx, quad, k);
     }
+    if(!to_return)
+    {
+      std::cerr << "dxyz_local[0] = " << dxyz_local[0] << ", dxyz_local[1] = " << dxyz_local[1] << std::endl;
+      std::cerr << "non valid uniform face neighborhood found for face " << local_face_idx << " located at (" << xyz_face[0] << ", " << xyz_face[1] ONLY3D(<< ", " << xyz_face[2]) << ") on proc " << p4est->mpirank << std::endl;
+      for (u_char k = 0; k < P4EST_FACES; ++k) {
+        double xyz_other_face[P4EST_DIM];
+        if(face_neighborhood.neighbor_face_idx[k] >= 0)
+        {
+          xyz_fr_f(face_neighborhood.neighbor_face_idx[k], dir, xyz_other_face);
+          std::cerr << "    neighbor face #" << int(k) << " has local face index " << face_neighborhood.neighbor_face_idx[k] << " and is located at (" << xyz_other_face[0] << ", " << xyz_other_face[1] ONLY3D(<< ", " << xyz_other_face[2]) << ")" << std::endl;
+        }
+        else
+          std::cerr << "    neighbor face #" << int(k) << " is a wall of orientation " << (-1 - face_neighborhood.neighbor_face_idx[k]) << " and is_quad_Wall(p4est, tree_idx, quad, " << int(k) << ") = " << (is_quad_Wall(p4est, tree_idx, quad, k) ? "true" : "false") <<  " - [expected result is 'true']" << std::endl;
+      }
+    }
     return to_return;
   }
+#endif
 
   void find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, const u_char& face_dir, const p4est_locidx_t& local_face_idx);
 
@@ -284,6 +301,7 @@ public:
 
   void set_finest_face_neighborhoods();
 
+#ifdef P4EST_DEBUG
   p4est_bool_t finest_face_neighborhoods_are_valid() const
   {
     p4est_bool_t to_return = P4EST_TRUE;
@@ -292,6 +310,7 @@ public:
         to_return = to_return && face_neighborhood_is_valid(dir, my_iterator);
     return  to_return;
   }
+#endif
 
   /*!
    * \brief found_uniform_finest_face_neighborhood: looks for the face neighborhood of a given face (finest faces only).
