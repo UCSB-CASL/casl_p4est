@@ -56,17 +56,6 @@ typedef std::unordered_map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_fac
 typedef std::map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_face_ngbd_t;
 #endif
 
-// Raphael: introducing these "types" for Voronoi cells to make my life easier in two-phase flows...
-enum voro_cell_type
-{
-  dirichlet_wall_face,      // the face is on the wall and associated with Dirichlet BC     --> enforce value
-  nonuniform,               // the Voronoi cell was constructed from a non-uniform neighborhood, without any wall neighbor
-  parallelepiped_no_wall,   // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood, without any wall neighbor
-  parallelepiped_with_wall, // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood, with a wall neighbor
-  not_well_defined,         // the face is irrelevant for computing purposes (based on tag values --> when solving in one domain only (one-phase N-S))
-};
-
-
 class my_p4est_faces_t
 {
   friend class my_p4est_poisson_faces_t;
@@ -91,7 +80,7 @@ private:
   typedef struct faces_comm_1
   {
     p4est_locidx_t local_num;
-    unsigned char dir;
+    u_char dir;
   } faces_comm_1_t;
 
   typedef struct faces_comm_2
@@ -120,21 +109,27 @@ private:
   map_to_uniform_face_ngbd_t uniform_face_neighbors[P4EST_DIM];
 
   bool finest_faces_neighborhoods_are_set;
-  vector<p4est_locidx_t> local_layer_face_index[P4EST_DIM]; // local_layer_face_index[dir][k] = local index of the kth local face of orientation dir that is a ghost face for (an)other(s) process(es)
+  vector<p4est_locidx_t> local_layer_face_index[P4EST_DIM]; // local_layer_face_index[dir][k] = local index of the kth local face of orientation dir that is a ghost face for (an)other process(es)
   vector<p4est_locidx_t> local_inner_face_index[P4EST_DIM]; // local_inner_face_index[dir][k] = local index of the kth local face of orientation dir that is NOT a ghost face for any other process
 
-  inline p4est_bool_t face_neighborhood_is_valid(const unsigned char& dir, const map_to_uniform_face_ngbd_t::const_iterator& my_iterator) const
+  inline p4est_bool_t face_neighborhood_is_valid(const u_char& dir, const map_to_uniform_face_ngbd_t::const_iterator& my_iterator) const
   {
     p4est_bool_t to_return = P4EST_TRUE;
     p4est_locidx_t local_face_idx = my_iterator->first;
+    p4est_locidx_t quad_idx;
+    p4est_topidx_t tree_idx;
+    f2q(local_face_idx, dir, quad_idx, tree_idx);
+    const p4est_quadrant_t *quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
+    const double logical_quad_size = ((double) (1 << quad->level))/((double) P4EST_ROOT_LEN);
+    const double dxyz_local[P4EST_DIM] = {DIM(tree_dimensions[0]*logical_quad_size, tree_dimensions[1]*logical_quad_size, tree_dimensions[2]*logical_quad_size)};
     uniform_face_ngbd face_neighborhood = my_iterator->second;
     double xyz_face[P4EST_DIM]; xyz_fr_f(local_face_idx, dir, xyz_face);
-    for (unsigned char k = 0; to_return && k < P4EST_FACES; ++k) {
+    for (u_char k = 0; to_return && k < P4EST_FACES; ++k) {
       double xyz_other_face[P4EST_DIM];
       if(face_neighborhood.neighbor_face_idx[k] >= 0)
       {
         xyz_fr_f(face_neighborhood.neighbor_face_idx[k], dir, xyz_other_face);
-        for (unsigned char dim = 0; to_return && dim < P4EST_DIM; ++dim)
+        for (u_char dim = 0; to_return && dim < P4EST_DIM; ++dim)
         {
           double dim_distance_between_dof = (xyz_other_face[dim] - xyz_face[dim]);
           if(periodic[dim])
@@ -142,109 +137,16 @@ private:
             const double pp = dim_distance_between_dof/(xyz_max[dim] - xyz_min[dim]);
             dim_distance_between_dof -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
           }
-          to_return = to_return && fabs(dim_distance_between_dof - (k/2 == dim ? (k%2 == 1 ? +1.0:-1.0)*smallest_dxyz[dim] : 0.0)) < 0.01*smallest_dxyz[dim]; // we use 0.01*dxyz_min[dim] as tolerance
+          to_return = to_return && fabs(dim_distance_between_dof - (k/2 == dim ? (k%2 == 1 ? +1.0 : -1.0)*dxyz_local[dim] : 0.0)) < 0.01*dxyz_local[dim]; // we use 0.01*dxyz_local[dim] as tolerance
         }
       }
       else
-      {
-        p4est_locidx_t quad_idx = f2q_[dir][local_face_idx].quad_idx;
-        p4est_topidx_t tree_idx = f2q_[dir][local_face_idx].tree_idx;
-        const p4est_quadrant_t* quad = NULL;
-        if(quad_idx < p4est->local_num_quadrants)
-        {
-          p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-          quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-        }
-        else
-          quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
         to_return = to_return && is_quad_Wall(p4est, tree_idx, quad, k);
-      }
     }
     return to_return;
   }
 
-  void find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree, const unsigned char& face_dir, const p4est_locidx_t& local_face_idx);
-
-  /*!
-   * \brief found_finest_face_neighbor: looks for the (finest) face neighbor of a given face in a cartesian direction if the given face is 'finest' itself.
-   * (This function will search for the desired face neighbor even if finest_faces_neighborhoods_are_set is false)
-   * \param quad              [in]  pointer to the quadrant owning the face of interest
-   * \param quad_idx          [in]  local index of the quadrant owning the face of interest
-   * \param tree_idx          [in]  index of the tree in which the quadrant owning the face lies
-   * \param local_face_idx    [in]  local face index of the face whose neighbor is looked for
-   * \param dir               [in]  cartesian direction of the face normal (dir::x, dir::y or dir::z)
-   * \param oriented_dir      [in]  oriented direction in which the neighbor is search (dir::f_m00, dir::f_p00, dir::f_0m0, etc.)
-   * \param neighbor_face_idx [out] local index of the neighbor face on output if neighbor is found
-   * \return true if the neighbor is found, false otherwise.
-   */
-  inline bool found_finest_face_neighbor(const p4est_quadrant_t* quad, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                         const p4est_locidx_t& local_face_idx, const unsigned char& dir,
-                                         const unsigned char& oriented_dir, p4est_locidx_t& neighbor_face_idx) const
-  {
-    if (quad->level < max_p4est_lvl)
-      return false;
-    const unsigned char face_dir      = (q2f_[2*dir][quad_idx] == local_face_idx ? 2*dir : 2*dir + 1);
-    const unsigned char dual_face_dir = (face_dir%2 == 1 ? face_dir - 1 : face_dir + 1);
-    P4EST_ASSERT(q2f_[face_dir][quad_idx] == local_face_idx);
-    if(oriented_dir/2 == dir)
-    {
-      if(oriented_dir != face_dir)
-      {
-        P4EST_ASSERT(oriented_dir == dual_face_dir);
-        neighbor_face_idx = q2f_[dual_face_dir][quad_idx];
-        return true;
-      }
-      if(is_quad_Wall(p4est, tree_idx, quad, face_dir))
-      {
-        neighbor_face_idx = WALL_idx(face_dir);
-        return true;
-      }
-      set_of_neighboring_quadrants cell_neighbor; cell_neighbor.clear();
-      ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, face_dir);
-      P4EST_ASSERT(cell_neighbor.size() <= 1);
-      if(cell_neighbor.size() > 0 && cell_neighbor.begin()->level == max_p4est_lvl)
-      {
-        P4EST_ASSERT(q2f_[face_dir][cell_neighbor.begin()->p.piggy3.local_num] != NO_VELOCITY && q2f_[dual_face_dir][cell_neighbor.begin()->p.piggy3.local_num] == local_face_idx);
-        neighbor_face_idx = q2f_[face_dir][cell_neighbor.begin()->p.piggy3.local_num];
-        return true;
-      }
-      return false;
-    }
-    if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
-    {
-      neighbor_face_idx = WALL_idx(oriented_dir);
-      return true;
-    }
-    set_of_neighboring_quadrants cell_neighbor; cell_neighbor.clear();
-    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, oriented_dir);
-    P4EST_ASSERT(cell_neighbor.size() <= 1);
-    if(cell_neighbor.size() > 0 && cell_neighbor.begin()->level == max_p4est_lvl)
-    {
-      P4EST_ASSERT(q2f_[face_dir][cell_neighbor.begin()->p.piggy3.local_num] != NO_VELOCITY);
-      neighbor_face_idx = q2f_[face_dir][cell_neighbor.begin()->p.piggy3.local_num];
-      return true;
-    }
-    P4EST_ASSERT(cell_neighbor.size() == 0 || cell_neighbor.begin()->level < max_p4est_lvl);
-    cell_neighbor.clear();
-    char search_dir[P4EST_DIM];
-    for (unsigned char k = 0; k < P4EST_DIM; ++k) {
-      if(dir == k)
-        search_dir[k] = 2*(face_dir%2) - 1;
-      else if (oriented_dir/2 == k)
-        search_dir[k] = 2*(oriented_dir%2) - 1;
-      else
-        search_dir[k] = 0;
-    }
-    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, DIM(search_dir[0], search_dir[1], search_dir[2]));
-    P4EST_ASSERT(cell_neighbor.size()<=1);
-    if(cell_neighbor.size() > 0 && cell_neighbor.begin()->level == max_p4est_lvl)
-    {
-      P4EST_ASSERT(q2f_[dual_face_dir][cell_neighbor.begin()->p.piggy3.local_num] != NO_VELOCITY);
-      neighbor_face_idx = q2f_[dual_face_dir][cell_neighbor.begin()->p.piggy3.local_num];
-      return true;
-    }
-    return false;
-  }
+  void find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, const u_char& face_dir, const p4est_locidx_t& local_face_idx);
 
 public:
 
@@ -303,7 +205,7 @@ public:
    * \param dir the direction of the face, dir::f_m00, dir::f_p00, dir::f_0m0 ...
    * \return the local index of the face of quadrant quad_idx in direction dir, return NO_VELOCITY if there is many small neighbor quadrant in the direction dir
    */
-  inline p4est_locidx_t q2f(p4est_locidx_t quad_idx, const unsigned char &dir) const
+  inline p4est_locidx_t q2f(p4est_locidx_t quad_idx, const u_char &dir) const
   {
     return q2f_[dir][quad_idx];
   }
@@ -314,7 +216,7 @@ public:
    * \param dim the cartesian direction of the face (dir::x, dir::y or dir::z)
    * \return the local index of the neighbor cell and the index of three of that neighbor cell
    */
-  inline void f2q(p4est_locidx_t f_idx, const unsigned char &dim, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
+  inline void f2q(p4est_locidx_t f_idx, const u_char &dim, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
   {
     quad_idx = f2q_[dim][f_idx].quad_idx;
     tree_idx = f2q_[dim][f_idx].tree_idx;
@@ -326,13 +228,13 @@ public:
    * \param dir the cartesian direction of the face (dir::x, dir::y or dir::z)
    * \return the coordinates of the center of face f_idx
    */
-  double x_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const;
-  double y_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const;
+  double x_fr_f(p4est_locidx_t f_idx, const u_char &dir) const;
+  double y_fr_f(p4est_locidx_t f_idx, const u_char &dir) const;
 #ifdef P4_TO_P8
-  double z_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const;
+  double z_fr_f(p4est_locidx_t f_idx, const u_char &dir) const;
 #endif
 
-  void xyz_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, double* xyz) const;
+  void xyz_fr_f(p4est_locidx_t f_idx, const u_char &dir, double* xyz) const;
 
   /*!
    * \brief rel_qxyz_face_fr_node calculates the relative cartesian coordinates between a face and a given grid node (very useful for lsqr interpolation).
@@ -346,7 +248,7 @@ public:
    * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the face and the point in logical units
    * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
    */
-  void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, int64_t* logical_qcoord_diff) const;
+  void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const u_char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, int64_t* logical_qcoord_diff) const;
 
   /*!
    * \brief calculates the area of the face in negative domain
@@ -359,21 +261,21 @@ public:
    * \return the area of the face in negative domain (just the area of the face if the optional inputs are disregarded)
    */
 #ifdef P4_TO_P8
-  double face_area_in_negative_domain(p4est_locidx_t f_idx, const unsigned char &dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL) const;
+  double face_area_in_negative_domain(p4est_locidx_t f_idx, const u_char &dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL) const;
 #else
-  double face_area_in_negative_domain(p4est_locidx_t f_idx, const unsigned char &dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL, const double *phi_dd[] = NULL) const;
+  double face_area_in_negative_domain(p4est_locidx_t f_idx, const u_char &dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL, const double *phi_dd[] = NULL) const;
 #endif
-  double face_area(p4est_locidx_t f_idx, const unsigned char &dir) const {return face_area_in_negative_domain(f_idx, dir);}
+  double face_area(p4est_locidx_t f_idx, const u_char &dir) const {return face_area_in_negative_domain(f_idx, dir);}
 
-  inline size_t get_layer_size(const unsigned char& dir) const { return local_layer_face_index[dir].size(); }
-  inline size_t get_local_size(const unsigned char& dir) const { return local_inner_face_index[dir].size(); }
-  inline p4est_locidx_t get_layer_face(const unsigned char& dir, const size_t& i) const {
+  inline size_t get_layer_size(const u_char& dir) const { return local_layer_face_index[dir].size(); }
+  inline size_t get_local_size(const u_char& dir) const { return local_inner_face_index[dir].size(); }
+  inline p4est_locidx_t get_layer_face(const u_char& dir, const size_t& i) const {
 #ifdef CASL_THROWS
     return local_layer_face_index[dir].at(i);
 #endif
     return local_layer_face_index[dir][i];
   }
-  inline p4est_locidx_t get_local_face(const unsigned char &dir, const size_t& i) const {
+  inline p4est_locidx_t get_local_face(const u_char &dir, const size_t& i) const {
 #ifdef CASL_THROWS
     return local_inner_face_index[dir].at(i);
 #endif
@@ -385,14 +287,14 @@ public:
   p4est_bool_t finest_face_neighborhoods_are_valid() const
   {
     p4est_bool_t to_return = P4EST_TRUE;
-    for (unsigned char dir = 0; to_return && dir < P4EST_DIM; ++dir)
+    for (u_char dir = 0; to_return && dir < P4EST_DIM; ++dir)
       for (map_to_uniform_face_ngbd_t::const_iterator my_iterator = uniform_face_neighbors[dir].begin(); to_return && my_iterator != uniform_face_neighbors[dir].end(); ++my_iterator)
         to_return = to_return && face_neighborhood_is_valid(dir, my_iterator);
     return  to_return;
   }
 
   /*!
-   * \brief found_uniform_face_neighborhood: looks for the face neighborhood of a given face (finest faces only).
+   * \brief found_uniform_finest_face_neighborhood: looks for the face neighborhood of a given face (finest faces only).
    * (This function will NOT search and build the desired face neighborhood if finest_faces_neighborhoods_are_set is false
    * --> relevant only if finest_faces_neighborhoods_are_set == true)
    * \param local_face_idx  [in]  local index of the face whose neighborhood is sought
@@ -400,38 +302,29 @@ public:
    * \param face_ngbd       [out] pointer to the face neighborhood on output if found, NULL on output otherwise
    * \return  true if the neighborhood was found, false otherwise
    */
-  inline bool found_uniform_face_neighborhood(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const uniform_face_ngbd* &face_ngbd) const
+  inline bool found_uniform_finest_face_neighborhood(const p4est_locidx_t& local_face_idx, const u_char& dir, const uniform_face_ngbd* &face_ngbd) const
   {
-    bool to_return = finest_faces_neighborhoods_are_set;
+    if(!finest_faces_neighborhoods_are_set)
+      return false;
     map_to_uniform_face_ngbd_t::const_iterator dummy = uniform_face_neighbors[dir].find(local_face_idx);
-    to_return = to_return && dummy != uniform_face_neighbors[dir].end();
+    bool to_return = dummy != uniform_face_neighbors[dir].end();
     face_ngbd = (to_return ? &(dummy->second) : NULL);
     return  to_return;
   }
 
   /*!
-   * \brief found_finest_face_neighbor: looks for the (finest) face neighbor of a given face in a cartesian direction if the given face is 'finest' itself.
-   * (This function will search for the desired face neighbor even if finest_faces_neighborhoods_are_set is false)
-   * \param local_face_idx    [in]  local index of the face whose neighbor is looked for
+   * \brief found_face_neighbor: looks for the face (uniform-like) neighbor of a given face in a cartesian direction.
+   * \param local_face_idx    [in]  local face index of the face whose (uniform-like) neighbor is looked for
    * \param dir               [in]  cartesian direction of the face normal (dir::x, dir::y or dir::z)
-   * \param oriented_dir      [in]  oriented direction in which the neighbor is search (dir::f_m00, dir::f_p00, dir::f_0m0, etc.)
-   * \param neighbor_face_idx [out] local index of the neighbor face on output if neighbor is found
-   * \return true if the neighbor is found, false otherwise.
+   * \param oriented_dir      [in]  oriented direction in which the (uniform-like) neighbor is search (dir::f_m00, dir::f_p00, dir::f_0m0, etc.)
+   * \param neighbor_face_idx [out] local index of the (uniform-like) neighbor face on output if it is found
+   *                                if negative, the index corresponds to a wall neighbor of oriented direction (-1 - neighbor_face_idx)
+   * \param must_be_finest    [in]  optional control flag, authorizing execution for finest faces only (default is false)
+   * \return true if the (uniform-like) neighbor is found, false otherwise.
    */
-  inline bool found_finest_face_neighbor(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const unsigned char& oriented_dir, p4est_locidx_t& neighbor_face_idx) const
-  {
-    const uniform_face_ngbd* face_neighborhood;
-    if(finest_faces_neighborhoods_are_set && found_uniform_face_neighborhood(local_face_idx, dir, face_neighborhood))
-    {
-      neighbor_face_idx = face_neighborhood->neighbor_face_idx[oriented_dir];
-      return true;
-    }
-    p4est_locidx_t quad_idx;
-    p4est_topidx_t tree_idx;
-    f2q(local_face_idx, dir, quad_idx, tree_idx);
-    const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
-    return found_finest_face_neighbor(quad, quad_idx, tree_idx, local_face_idx, dir, oriented_dir, neighbor_face_idx);
-  }
+  bool found_face_neighbor(const p4est_locidx_t& face_idx, const u_char& dir,
+                           const u_char& oriented_dir, p4est_locidx_t& neighbor_face_idx, const bool& must_be_finest = false) const;
+
 
   /*!
    * \brief global_index calculates the global index of a face
@@ -439,7 +332,7 @@ public:
    * \param dir   [in]  orientation of the face
    * \return the global index of the face
    */
-  inline p4est_gloidx_t global_index(p4est_locidx_t f_idx, const unsigned char &dir) const
+  inline p4est_gloidx_t global_index(p4est_locidx_t f_idx, const u_char &dir) const
   {
     if(f_idx < num_local[dir])
       return f_idx + proc_offset[dir][p4est->mpirank];
@@ -456,7 +349,7 @@ public:
    * \param qp        [inout] the quadrant touching the face in (oriented) direction 2*dir+1
    * NOTE: the p.piggy3 member of qm and qp are filled with the corresponding local quad index and their tree idx (if found, otherwise, both set to -1 and their level too)
    */
-  inline void find_quads_touching_face(const p4est_locidx_t& face_idx, const unsigned char& dir, p4est_quadrant_t& qm, p4est_quadrant_t& qp) const
+  inline void find_quads_touching_face(const p4est_locidx_t& face_idx, const u_char& dir, p4est_quadrant_t& qm, p4est_quadrant_t& qp) const
   {
     set_of_neighboring_quadrants ngbd;
     p4est_locidx_t quad_idx;
@@ -467,7 +360,7 @@ public:
       throw std::invalid_argument("my_p4est_faces::find_quads_touching_face() called for a face that does not touch local quadrant");
 #endif
     p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    const p4est_quadrant_t * quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    const p4est_quadrant_t * quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
     if(q2f(quad_idx, 2*dir) == face_idx)
     {
@@ -504,6 +397,7 @@ public:
         qp.p.piggy3.local_num   = -1;
         qp.p.piggy3.which_tree  = -1;
       }
+      P4EST_ASSERT(q2f(quad_idx, 2*dir + 1) == face_idx);
     }
     P4EST_ASSERT(qm.p.piggy3.local_num != -1 || qp.p.piggy3.local_num != -1);
   }
@@ -520,12 +414,12 @@ public:
   inline const double* get_xyz_min() const { return  xyz_min; }
   inline const double* get_tree_dimensions() const { return  tree_dimensions; }
   inline const bool* get_periodicity() const { return periodic; }
-  inline bool periodicity(const unsigned char &dim) const { P4EST_ASSERT(ORD(dim == dir::x, dim == dir::y, dim == dir::z)); return periodic[dim]; }
+  inline bool periodicity(const u_char &dim) const { P4EST_ASSERT(ORD(dim == dir::x, dim == dir::y, dim == dir::z)); return periodic[dim]; }
 
   size_t memory_estimate() const
   {
     size_t memory = 0;
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     {
       memory += ghost_local_num[dim].size()*sizeof (p4est_locidx_t);
       memory += q2f_[dim].size()*sizeof (p4est_locidx_t);
@@ -549,24 +443,24 @@ public:
   }
 };
 
-PetscErrorCode VecCreateGhostFacesBlock     (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir);
-inline PetscErrorCode VecCreateGhostFaces   (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
+PetscErrorCode VecCreateGhostFacesBlock     (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const u_char &dir);
+inline PetscErrorCode VecCreateGhostFaces   (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const u_char &dir)
 {
   return VecCreateGhostFacesBlock(p4est, faces, 1, v, dir);
 }
-PetscErrorCode VecCreateNoGhostFacesBlock   (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir);
-inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
+PetscErrorCode VecCreateNoGhostFacesBlock   (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const u_char &dir);
+inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const u_char &dir)
 {
   return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
 }
 
-inline bool VecsAreSetForFaces(const Vec v[P4EST_DIM], const my_p4est_faces_t* faces, const unsigned int& blocksize, const bool& ghosted = true)
+inline bool VecsAreSetForFaces(const Vec v[P4EST_DIM], const my_p4est_faces_t* faces, const u_int& blocksize, const bool& ghosted = true)
 {
   P4EST_ASSERT(v != NULL && ANDD(v[0] != NULL, v[1] != NULL, v[2] != NULL));
   P4EST_ASSERT(blocksize > 0);
   PetscInt local_size, ghosted_size;
   int my_test = 1;
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     VecGetLocalAndGhostSizes(v[dim], local_size, ghosted_size, ghosted);
     my_test = my_test && (local_size == (PetscInt) (blocksize*faces->num_local[dim]) && (!ghosted || ghosted_size == (PetscInt) (blocksize*(faces->num_local[dim] + faces->num_ghost[dim]))) ? 1 : 0);
   }
@@ -576,7 +470,7 @@ inline bool VecsAreSetForFaces(const Vec v[P4EST_DIM], const my_p4est_faces_t* f
 
 
 inline bool local_face_is_well_defined(const p4est_locidx_t &f_idx, const my_p4est_faces_t *faces, const my_p4est_interpolation_nodes_t &interp_phi,
-                                       const unsigned char &dir, const BoundaryConditionsDIM &bc_dir)
+                                       const u_char &dir, const BoundaryConditionsDIM &bc_dir)
 {
   double xyz_face[P4EST_DIM];
   faces->xyz_fr_f(f_idx, dir, xyz_face);
@@ -605,20 +499,20 @@ inline bool local_face_is_well_defined(const p4est_locidx_t &f_idx, const my_p4e
   return well_defined;
 }
 /*!
- * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
+ * \brief mark the faces that are well defined, i.e. that are solved for in an implicit Poisson solve with irregular interface.
  * Any face where phi(face) <= 0 is marked well-defined. For Neumann boundary conditions, the control volume of the face must
  * be at least partially in the negative domain. (In case of MIXED boundary conditions, it can be marked well-defined if the at
- * least one corner value of the levelset is negative and at least one cornet boundary condition type is NEUMANN, not necessarily
- * the same cornet).
+ * least one corner value of the levelset is negative and at least one corner boundary condition type is NEUMANN, not necessarily
+ * the same corner).
  * \param [in] faces                  : the faces structure
  * \param [in] dir                    : the cartesian direction treated, dir::x, dir::y or dir::z
  * \param [in] interp_phi             : a node-interpolator for the node-sampled level-set function
  * \param [out] face_is_well_defined  : a face-sampling PetSc Vector for face of orientation dir, to be filled. The values are
  *                                      either 1.0 (if the face is well-defined) or 0.0 (if not).
  */
-void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
+void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const u_char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
                                      const BoundaryConditionsDIM& bc, Vec face_is_well_defined);
-inline void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
+inline void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const u_char &dir,
                                             Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
 {
   my_p4est_interpolation_nodes_t interp_phi(ngbd_n);
@@ -629,10 +523,10 @@ inline void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, m
 }
 
 // NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
-double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
+double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const u_char &dir,
                                       Vec face_is_well_defined = NULL, int order = 2, BoundaryConditionsDIM *bc = NULL, face_interpolator* interpolator_from_faces = NULL);
 
-inline void add_faces_to_set_and_clear_set_of_quad(const my_p4est_faces_t* faces, const p4est_locidx_t& center_face_idx, const unsigned char& dir, std::set<indexed_and_located_face>& set_of_faces, set_of_neighboring_quadrants& quad_ngbd)
+inline void add_faces_to_set_and_clear_set_of_quad(const my_p4est_faces_t* faces, const p4est_locidx_t& center_face_idx, const u_char& dir, std::set<indexed_and_located_face>& set_of_faces, set_of_neighboring_quadrants& quad_ngbd)
 {
   indexed_and_located_face tmp_neighbor_seed;
   for (set_of_neighboring_quadrants::const_iterator it = quad_ngbd.begin(); it != quad_ngbd.end(); ++it) {
@@ -656,7 +550,7 @@ inline void add_all_faces_to_sets_and_clear_set_of_quad(const my_p4est_faces_t* 
 {
   p4est_locidx_t f_tmp;
   for (set_of_neighboring_quadrants::const_iterator it = quad_ngbd.begin(); it != quad_ngbd.end(); ++it) {
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
       f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir);
       if(f_tmp != NO_VELOCITY)
         set_of_faces[dir].insert(f_tmp);
@@ -671,21 +565,21 @@ inline void add_all_faces_to_sets_and_clear_set_of_quad(const my_p4est_faces_t* 
 inline bool no_wall_in_face_neighborhood(const uniform_face_ngbd *face_neighbors)
 {
   bool to_return = true;
-  for (unsigned char dir = 0; dir < P4EST_FACES && to_return; ++dir)
+  for (u_char dir = 0; dir < P4EST_FACES && to_return; ++dir)
     to_return = to_return && face_neighbors->neighbor_face_idx[dir] >= 0;
   return to_return;
 }
 
-inline bool extra_layer_in_tranverse_directon_may_be_required(const unsigned dir, const double *tree_dim)
+inline bool extra_layer_in_tranverse_directon_may_be_required(const u_char dir, const double *tree_dim)
 {
   // [Raphael :]
   // In case of very stretched grid, the standard check for local uniformity may fail
   // For instance, consider in 2D
-  // |---------------------------|-------------|-------------|---------------------------|---------------------------|
-  // |                           |             |             |                           |                           |
-  // |                           |-------------|-------------|---------------------------|---------------------------|
-  // |                           |             x             |                           x                           |
-  // |---------------------------|-------------|-------------|---------------------------|---------------------------|
+  // |---------------------------|-------------|-------------|------------|--------------|------------|--------------|
+  // |                           |             |             |            |              |            |              |
+  // |                           |-------------|-------------|------------|--------------|------------|--------------|
+  // |                           |             x             |            x              |            |              |
+  // |---------------------------|-------------|-------------|------------|--------------|------------|--------------|
   // |                           |                           |                           |                           |
   // |                           |                           |                           |                           |
   // |                           |                           |                           |                           |
@@ -704,7 +598,7 @@ inline bool extra_layer_in_tranverse_directon_may_be_required(const unsigned dir
   // A similar analysis can be done in 3D, it is very tedious and basically impossible to illustrate like the above in
   // a simple comment but, except if I made a mistake, the result here below should be correct.
   //
-  // -->notice that one may need to access THIRD-degree neighbor quadrants in such a case
+  // --> notice that one may need to access THIRD-degree neighbor quadrants in such a case
 
 #ifdef P4_TO_P8
   return (MIN(0.25*21.0*SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir]) - 0.5*SQR(tree_dim[(dir + 2)%P4EST_DIM]/tree_dim[dir]), 0.25*21.0*SQR(tree_dim[(dir + 2)%P4EST_DIM]/tree_dim[dir]) - 0.5*SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir])) < 1.0);
@@ -713,7 +607,7 @@ inline bool extra_layer_in_tranverse_directon_may_be_required(const unsigned dir
 #endif
 }
 
-inline bool check_past_sharing_quad_is_required(const unsigned dir, const double *tree_dim)
+inline bool check_past_sharing_quad_is_required(const u_char dir, const double *tree_dim)
 {
   // [Raphael :]
   // In case of very stretched grid, one may need to fetch neighbor faces past the parallel face across the quadrant sharing the faces,
@@ -749,11 +643,11 @@ inline bool check_past_sharing_quad_is_required(const unsigned dir, const double
 inline bool third_degree_ghost_are_required(const double *tree_dim)
 {
   bool to_return = false;
-  for (unsigned char dir = 0; dir < P4EST_DIM && !to_return; ++dir)
+  for (u_char dir = 0; dir < P4EST_DIM && !to_return; ++dir)
     to_return = to_return || extra_layer_in_tranverse_directon_may_be_required(dir, tree_dim) || check_past_sharing_quad_is_required(dir, tree_dim);
   return to_return;
 }
 
-voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* faces, const p4est_locidx_t &f_idx, const unsigned char & dir, const BoundaryConditionsDIM *bc, const PetscScalar *face_is_well_defined_p);
+void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* faces, const p4est_locidx_t &f_idx, const u_char & dir, const BoundaryConditionsDIM *bc, const PetscScalar *face_is_well_defined_p);
 
 #endif /* MY_P4EST_FACES_H */

@@ -36,8 +36,8 @@ struct VoroNgbd {
   VoroNgbd() : voronoi(NULL), po(NULL) {}
   ~VoroNgbd()
   {
-    if(voronoi!=NULL) delete voronoi;
-    if(po!=NULL) delete po;
+    if(voronoi != NULL) delete voronoi;
+    if(po != NULL) delete po;
   }
 };
 
@@ -85,6 +85,7 @@ private:
   int idx_center_seed;
   vector<ngbd3Dseed> nb_seeds;
   double volume;
+  voro_cell_type type;
 
   /*!
    * \brief add a neighbor seed, WITHOUT making sure there is no repetition
@@ -105,7 +106,10 @@ public:
   /*!
      * \brief default constructor for the Voronoi3D class
      */
-  Voronoi3D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; center_seed.z=DBL_MAX; volume = 0.0; }
+  Voronoi3D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; center_seed.z=DBL_MAX; volume = 0.0; type = unknown; }
+
+  inline void set_type(const voro_cell_type& cell_type) { type = cell_type; }
+  inline voro_cell_type get_type() const {return type; }
 
   /*!
      * \brief reset the Voronoi partition
