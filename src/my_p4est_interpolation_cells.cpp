@@ -145,7 +145,10 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
     results[k] = 0.0;
   }
   if(row_idx == 0) // that means no valid neighbor was found, we can't compute anything...
+  {
+    delete [] p;
     return;
+  }
 
   A.scale_by_maxabs(p, n_functions);
 

@@ -132,6 +132,7 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
           if(face_is_well_defined_dir != NULL){
             ierr = VecRestoreArrayRead(face_is_well_defined_dir, &face_is_well_defined_dir_p); CHKERRXX(ierr);
           }
+          delete [] p;
           return;
         }
 
@@ -193,7 +194,10 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   }
 
   if(row_idx == 0)
+  {
+    delete [] p;
     return;
+  }
 
   A.scale_by_maxabs(p, n_functions);
 

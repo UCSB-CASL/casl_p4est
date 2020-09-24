@@ -658,6 +658,7 @@ int main (int argc, char* argv[])
   delete ns;
   // the brick and the connectivity are deleted within the above destructor...
   delete levelset;
+  delete brick; // not done in the Navier-Stokes destructor
 
   return 0;
 
