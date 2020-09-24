@@ -350,12 +350,15 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const u_char &dir)
 
 #ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */
-      try {
-        clip_voro_cell_by_interface(voro_cell, f_idx, dir);
-      } catch (std::exception e) {
-        // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
-        std::cout<<"Face index is : " << f_idx << " in direction " << dir << " , x = "<<faces->x_fr_f(f_idx,dir) <<", y = "<< faces->y_fr_f(f_idx,dir) << " on process "<<p4est->mpirank<<std::endl;
-        throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+      if(voro_cell.get_type() != parallelepiped) // already taken care of internally if it was found to be a parallelepiped
+      {
+        try {
+          clip_voro_cell_by_interface(voro_cell, f_idx, dir);
+        } catch (std::exception e) {
+          // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
+          std::cout << "Face index is : " << f_idx << " in direction " << int(dir) << " , x = "<< xyz[0] <<", y = "<< xyz[1] << " on process " << p4est->mpirank << std::endl;
+          throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+        }
       }
 #endif
     }
@@ -483,7 +486,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(const u_char &dir)
     {
       compute_voronoi_cell(voro_tmp, faces, f_idx, dir, bc, face_is_well_defined_p);
 #ifndef P4_TO_P8
-      clip_voro_cell_by_interface(voro_tmp, f_idx, dir);
+      if(voro_tmp.get_type() != parallelepiped) // already taken care of internally if it was found to be a parallelepiped
+        clip_voro_cell_by_interface(voro_tmp, f_idx, dir);
 #endif
     }
 

@@ -1156,14 +1156,19 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
       points[idx].n = face_neighbors->neighbor_face_idx[neighbor_dir];
       P4EST_ASSERT(points[idx].n >= 0 || (-1 - points[idx].n == neighbor_dir)); // consistency of wall neighbors, if present
       const bool neighbor_is_your_wall_self = is_wall_face && neighbor_dir == touch_dir;
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-        points[idx].p.xyz(dim) = xyz_face[dim] + (dim == neighbor_dir/2 && !neighbor_is_your_wall_self ? (neighbor_dir%2 ? +1.0 : -1.0)*dxyz[neighbor_dir/2] : 0.0);
+      points[idx].p.x = xyz_face[0];
+      points[idx].p.y = xyz_face[1];
+#ifdef P4_TO_P8
+      points[idx].p.z = xyz_face[2];
+#endif
+      if(!neighbor_is_your_wall_self)
+        points[idx].p.xyz(neighbor_dir/2) += (neighbor_dir%2 ? +1.0 : -1.0)*dxyz[neighbor_dir/2];
 #ifdef P4_TO_P8
       points[idx].s     = (is_wall_face && neighbor_dir/2 != dir ? 0.5 : 1.0)*(neighbor_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (neighbor_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
 #else
       points[idx].theta = (neighbor_dir/2)*M_PI_2 + (1.0 - neighbor_dir%2)*M_PI;
-      partition[idx].x  = points[idx].p.x + (0.5 - (neighbor_dir%2))*dxyz[0];
-      partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(neighbor_dir/2))*(neighbor_dir%2 - 0.5)*dxyz[1];
+      partition[idx].x  = points[idx].p.x + ((neighbor_is_your_wall_self && neighbor_dir/2 == dir::x) ? 0.0 : 1.0)*(0.5 - (neighbor_dir%2))*dxyz[0];
+      partition[idx].y  = points[idx].p.y + ((neighbor_is_your_wall_self && neighbor_dir/2 == dir::y) ? 0.0 : 1.0)*(1.0 - 2.0*(neighbor_dir/2))*(neighbor_dir%2 - 0.5)*dxyz[1];
       if(is_wall_face && ((touch_dir%2 == 0 && partition[idx].xyz(dir) < xyz_face[dir]) || (touch_dir%2 == 1 && partition[idx].xyz(dir) > xyz_face[dir])))
         partition[idx].xyz(dir) = xyz_face[dir];
 #endif
@@ -1308,14 +1313,19 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
       else
         points[idx].n = (wall[neighbor_dir] ? WALL_idx(neighbor_dir) : faces->q2f((neighbor_dir%2 == 0 ? qm.p.piggy3.local_num : qp.p.piggy3.local_num), neighbor_dir));
       const bool neighbor_is_your_wall_self = is_wall_face && neighbor_dir == touch_dir;
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-        points[idx].p.xyz(dim) = xyz_face[dim] + (dim == neighbor_dir/2 && !neighbor_is_your_wall_self ? (neighbor_dir%2 ? +1.0 : -1.0)*dxyz[neighbor_dir/2]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
+      points[idx].p.x = xyz_face[0];
+      points[idx].p.y = xyz_face[1];
 #ifdef P4_TO_P8
-      points[idx].s     = (is_wall_face && && neighbor_dir/2 != dir ? 0.5 : 1.0)*(neighbor_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (neighbor_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+      points[idx].p.z = xyz_face[2];
+#endif
+      if(!neighbor_is_your_wall_self)
+        points[idx].p.xyz(neighbor_dir/2) += (neighbor_dir%2 ? +1.0 : -1.0)*dxyz[neighbor_dir/2]*cell_ratio;
+#ifdef P4_TO_P8
+      points[idx].s     = (is_wall_face && neighbor_dir/2 != dir ? 0.5 : 1.0)*(neighbor_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (neighbor_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
 #else
       points[idx].theta = (neighbor_dir/2)*M_PI_2 + (1.0 - neighbor_dir%2)*M_PI;
-      partition[idx].x  = points[idx].p.x + (0.5 - neighbor_dir%2)*dxyz[0]*cell_ratio;
-      partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(neighbor_dir/2))*(neighbor_dir%2 - 0.5)*dxyz[1]*cell_ratio;
+      partition[idx].x  = points[idx].p.x + ((neighbor_is_your_wall_self && neighbor_dir/2 == dir::x) ? 0.0 : 1.0)*(0.5 - neighbor_dir%2)*dxyz[0]*cell_ratio;
+      partition[idx].y  = points[idx].p.y + ((neighbor_is_your_wall_self && neighbor_dir/2 == dir::y) ? 0.0 : 1.0)*(1.0 - 2.0*(neighbor_dir/2))*(neighbor_dir%2 - 0.5)*dxyz[1]*cell_ratio;
       if(is_wall_face && ((touch_dir%2 == 0 && partition[idx].xyz(dir) < xyz_face[dir]) || (touch_dir%2 == 1 && partition[idx].xyz(dir) > xyz_face[dir])))
         partition[idx].xyz(dir) = xyz_face[dir];
 #endif
