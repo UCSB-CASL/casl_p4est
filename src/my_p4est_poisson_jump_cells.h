@@ -22,7 +22,7 @@ protected:
   const bool *const periodicity;
   // elementary computational grid parameters
   double dxyz_min[P4EST_DIM];
-  inline double diag_min() const { return sqrt(SUMD(SQR(dxyz_min[0]), SQR(dxyz_min[1]), SQR(dxyz_min[2]))); }
+  inline double diag_min() const { return sqrt(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2])); }
 
   // this solver needs an interface manager (and may contribute to building some of its interface cell-specific maps)
   my_p4est_interface_manager_t* interface_manager;
@@ -31,7 +31,11 @@ protected:
   double mu_minus, mu_plus;
   double add_diag_minus, add_diag_plus;
 
-  // Petsc vectors vectors of cell-centered values
+  // Petsc tolerance parameters
+  PetscInt    max_ksp_iterations;
+  PetscScalar relative_tolerance, absolute_tolerance, divergence_tolerance;
+
+  // Petsc vectors of cell-sampled values
   /* ---- NOT OWNED BY THE SOLVER ---- (hence not destroyed at solver's destruction) */
   // one needs to provide the rhs of the problem either as
   // - sharp, cell-sampled value of the continuum rhs
@@ -40,7 +44,6 @@ protected:
   Vec *face_velocity_minus, *face_velocity_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
   const CF_DIM* interp_jump_normal_velocity; // interpolator to the jump in normal velocity value --> considered to be 0.0 if not provided
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
-  my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   inline bool interface_is_set()    const { return interface_manager != NULL; }
   Vec user_initial_guess;
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
@@ -52,12 +55,13 @@ protected:
    * the (appropriate) discretization of the pseudo-time PDE-based extrapolations.
    * For the quadrant of local index quad_idx, if the quad center is in the negative domain,
    * extrapolation_operator_plus will always be defined and
-   * stored therein; extrapolation_step_for_normal_derivative_minus may or may not be --> it may be defined for
+   * stored therein; extrapolation_operator_minus may or may not be --> it may be defined for
    * quadrants close to the interface without enough well-defined cartesian neighbors)
    * (defined and constructed in the "initialization" stage of the abstract extrapolation procedure!)
    */
   std::map<p4est_locidx_t, extrapolation_operator_t> extrapolation_operator_minus, extrapolation_operator_plus;
   Vec rhs; // cell-sampled, discretized rhs of the linear system to invert
+  my_p4est_interpolation_nodes_t *interp_jump_u, *interp_jump_normal_flux; // we may need to interpolate the jumps pretty much anywhere
   /* ---- other PETSc objects ---- */
   Mat A;
   Vec sqrt_reciprocal_diagonal;
@@ -91,10 +95,9 @@ protected:
    *                                        IMPORTANT NOTE: PetSc recommends using GMRES for singular problems
    *                                        --> GMRES is enforces in that case and the provided ksp_type is irrelevant then (i.e. if A_null_space != NULL)
    * \param [in] pc_type                    preconditioner type desired by the user
-   * \param [in] tolerance_on_rel_residual  [optional] tolerance on the relative residual (all other tolerances are PETSC_DEFAULT), default value is 1.0e-12
    * \return a PetscError code to check if anything went wrong
    */
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual = 1.0e-12) const;
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type) const;
   void solve_linear_system();
   inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
@@ -145,6 +148,14 @@ public:
    * \param [in] jump_normal_flux  : node-sampled values of [mu*dot(n, grad u)] = mu^+*dot(n, grad u^+) - mu^-*dot(n, grad u^-).
    */
   virtual void set_jumps(Vec jump_u_, Vec jump_normal_flux_u_);
+
+  inline void set_tolerances(const double& rel_tol, const int& max_ksp_iter = PETSC_DEFAULT, const double& abs_tol = PETSC_DEFAULT, const double& div_tol = PETSC_DEFAULT)
+  {
+    relative_tolerance    = rel_tol;
+    absolute_tolerance    = abs_tol;
+    divergence_tolerance  = div_tol;
+    max_ksp_iterations    = max_ksp_iter;
+  }
 
   inline void set_bc(const BoundaryConditionsDIM& bc_)
   {

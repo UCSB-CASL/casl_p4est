@@ -223,7 +223,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4e
       }
       if(!rhs_is_set)
       {
-        const xgfm_jump& jump_info = get_xgfm_jump_between_quads(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
+        const scalar_field_xgfm_jump& jump_info = get_xgfm_jump_between_quads(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
         rhs_p[quad_idx] += face_area*(oriented_dir%2 == 1 ? +1.0 : -1.0)*cell_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, oriented_dir, (sgn_quad > 0),
                                                                                                                                    jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[oriented_dir/2]);
       }
@@ -254,15 +254,15 @@ void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4e
   return;
 }
 
-const xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
+const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
 {
   couple_of_dofs quad_couple({quad_idx, neighbor_quad_idx});
-  map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+  map_of_scalar_field_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
   if(it != xgfm_jump_between_quads.end())
     return it->second;
 
   // not found in map --> build it and insert in map
-  xgfm_jump to_insert_in_map;
+  scalar_field_xgfm_jump to_insert_in_map;
   double xyz_interface_point[P4EST_DIM];
   double normal[P4EST_DIM];
   interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface_point);
@@ -284,7 +284,7 @@ const xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads
       to_insert_in_map.xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_interface_point, normal, quad_idx, neighbor_quad_idx, oriented_dir/2);
   }
 
-  xgfm_jump_between_quads.insert(std::pair<couple_of_dofs, xgfm_jump>(quad_couple, to_insert_in_map));
+  xgfm_jump_between_quads.insert(std::pair<couple_of_dofs, scalar_field_xgfm_jump>(quad_couple, to_insert_in_map));
   return xgfm_jump_between_quads.at(quad_couple);
 }
 
@@ -323,7 +323,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::solve_for_sharp_solution(const KSPType&
 
   /* Set the linear system, the linear solver and solve it */
   setup_linear_system();
-  ierr = setup_linear_solver(ksp_type, pc_type, xGFM_tolerance_on_rel_residual); CHKERRXX(ierr);
+  ierr = setup_linear_solver(ksp_type, pc_type); CHKERRXX(ierr);
 
   if(!activate_xGFM || mus_are_equal())
   {
@@ -483,7 +483,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_rhs_and_residual(Vec &former_rhs
 
   rhs_is_set = false; // lower this flag in order to update the rhs terms appropriately
   std::set<p4est_locidx_t> already_done; already_done.clear();
-  for (map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.begin(); it != xgfm_jump_between_quads.end(); ++it)
+  for (map_of_scalar_field_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.begin(); it != xgfm_jump_between_quads.end(); ++it)
   {
     if(it->first.local_dof_idx < p4est->local_num_quadrants && already_done.find(it->first.local_dof_idx) == already_done.end())
     {
@@ -612,7 +612,7 @@ void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension(Vec cell_sampled_e
 }
 
 void my_p4est_poisson_jump_cells_xgfm_t::initialize_extension_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                                       const double* solution_p, double* extension_p) const
+                                                                    const double* solution_p, double* extension_p) const
 {
   double xyz_quad[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_quad);
   const double phi_q = interface_manager->phi_at_point(xyz_quad);
@@ -827,11 +827,11 @@ void my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(const p4est_l
 
         const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
         const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
-        map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+        map_of_scalar_field_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
         if(it == xgfm_jump_between_quads.end())
           throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::local_projection_for_face(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
 
-        const xgfm_jump& jump_info = it->second;
+        const scalar_field_xgfm_jump& jump_info = it->second;
 
         double& flux_quad_side = (sgn_q < 0 ? flux_component_minus : flux_component_plus);
         flux_quad_side = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, oriented_dir, in_positive_domain, solution_p[quad_idx], solution_p[neighbor_quad.p.piggy3.local_num],
@@ -974,11 +974,11 @@ void my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(const p4
 
           const FD_interface_neighbor interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, 2*dim + orientation);
           const couple_of_dofs quad_couple({quad_idx, neighbor_quad.p.piggy3.local_num});
-          map_of_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+          map_of_scalar_field_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
           if(it == xgfm_jump_between_quads.end())
             throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::initialize_extrapolation_local(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
 
-          const xgfm_jump& jump_info = it->second;
+          const scalar_field_xgfm_jump& jump_info = it->second;
 
           oriented_sharp_derivative = interface_neighbor.GFM_flux_component(mu_this_side, mu_across, 2*dim + orientation, in_positive_domain, sharp_solution_p[quad_idx], sharp_solution_p[neighbor_quad.p.piggy3.local_num],
               jump_info.jump_field, jump_info.jump_flux_component(extension_p), dxyz_min[dim])/mu_this_side; // actually equal to fetching the interface value and using subcell resolution

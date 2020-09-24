@@ -32,6 +32,18 @@ struct couple_of_dofs
   }
 };
 
+#if __cplusplus >= 201103L
+// hash value for unordered map keys
+struct hash_functor{
+  inline size_t operator()(const couple_of_dofs& key) const
+  {
+    return ((size_t) MIN(key.local_dof_idx, key.neighbor_dof_idx) << 8*sizeof (p4est_locidx_t)) + MAX(key.local_dof_idx, key.neighbor_dof_idx);
+  }
+};
+#endif
+
+const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
+
 /*!
  * \brief The FD_interface_neighbor struct encapsulates the geometric-related data pertaining to finite-difference
  * interface neighbor points, i.e., intersection between the interface and the (cartesian) grid line joining
@@ -138,13 +150,6 @@ struct FD_interface_neighbor
 };
 
 #if __cplusplus >= 201103L
-// hash value for unordered map keys
-struct hash_functor{
-  inline size_t operator()(const couple_of_dofs& key) const
-  {
-    return ((size_t) MIN(key.local_dof_idx, key.neighbor_dof_idx) << 8*sizeof (p4est_locidx_t)) + MAX(key.local_dof_idx, key.neighbor_dof_idx);
-  }
-};
 typedef std::unordered_map<couple_of_dofs, FD_interface_neighbor, hash_functor> map_of_interface_neighbors_t;
 #else
 typedef std::map<couple_of_dofs, FD_interface_neighbor> map_of_interface_neighbors_t;

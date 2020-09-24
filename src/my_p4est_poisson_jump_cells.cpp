@@ -36,6 +36,11 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   extrapolations_are_set = false;
   use_extrapolations_in_sharp_flux_calculations = false;
 
+  relative_tolerance    = 1.0e-12;
+  absolute_tolerance    = PETSC_DEFAULT;
+  divergence_tolerance  = PETSC_DEFAULT;
+  max_ksp_iterations    = PETSC_DEFAULT;
+
   const splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
 
   // Domain and grid parameters
@@ -108,7 +113,6 @@ void my_p4est_poisson_jump_cells_t::set_interface(my_p4est_interface_manager_t* 
 
   matrix_is_set = rhs_is_set = false;
   extrapolations_are_set = false;
-  use_extrapolations_in_sharp_flux_calculations = false;
   return;
 }
 
@@ -333,13 +337,14 @@ void my_p4est_poisson_jump_cells_t::solve_linear_system()
   return;
 }
 
-PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, const double &tolerance_on_rel_residual) const
+PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type) const
 {
   PetscErrorCode ierr;
   ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER); CHKERRQ(ierr);
   // set ksp type
   ierr = KSPSetType(ksp, (A_null_space != NULL ? KSPGMRES : ksp_type)); CHKERRQ(ierr); // PetSc advises GMRES for problems with nullspaces
-  ierr = KSPSetTolerances(ksp, tolerance_on_rel_residual, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRQ(ierr);
+
+  ierr = KSPSetTolerances(ksp, relative_tolerance, absolute_tolerance, divergence_tolerance, max_ksp_iterations); CHKERRQ(ierr);
   ierr = KSPSetFromOptions(ksp); CHKERRQ(ierr);
 
   // set pc type
@@ -347,15 +352,6 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
   ierr = KSPGetPC(ksp, &pc); CHKERRQ(ierr);
   ierr = PCSetType(pc, pc_type); CHKERRQ(ierr);
 
-  /* If using hypre, we can make some adjustments here. The most important parameters to be set are:
-   * 1- Strong Threshold
-   * 2- Coarsennig Type
-   * 3- Truncation Factor
-   *
-   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
-   * summary of HYPRE papers! Also for a complete list of all the options that can be set from PETSc, one can
-   * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
-   */
   if (!strcmp(pc_type, PCHYPRE)){
     // One can find more details about the following parameters in "Parallel Algebraic Multigrid Methods - High
     // Performance Preconditioners", Yang, Ulrike Meier, Numerical solution of partial differential equations
@@ -363,16 +359,19 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
     // --> https://computing.llnl.gov/projects/hypre-scalable-linear-solvers-multigrid-methods/yang1.pdf
 
     // A large value for the following one was found to be more robust for the jump problems, in particular
-    // when using Daniil's FV solver with large ratios of diffusion coefficients.
+    // when using Daniil's FV solver with large ratios of diffusion coefficients. (The analysis was done for
+    // the cell FV solver with no constant coefficient, i.e. for pure Poisson problems)
     // The value of this parameter should be in )0, 1( and HYPRE manual suggests 0.25 for 2D problems, 0.5
     // for 3D. I believe those values are implicitly understood as "when considering the standard discretization
     // of the Laplace operators on uniform grids", though.
-    // I chose to set a value of 0.9 because it seemd to work for all my test cases, even the most extreme ones.
-    // It's basically a threshold determining whether or not offdiagonal terms are to be considered during coarsening
-    // steps in the Algebraic MultiGrid (AMG) methods : it translates into an (algebraic) criterion excluding points
-    // that are "not sufficiently strongly connected" to each other when coarsening.
-    // --> For jump problems with large coefficient ratios, you may actually need to exclude points belonging to the
-    // other subdomain when coarsening your solution for best results...
+    // I found that such low values lead to successful resolution of the linear systems only when scaling the
+    // systems by their diagonals. Otherwise a (very) large value (e.g. 0.9) was required to make it work fine.
+    // (from my understanding of the above paper, this parameter is basically a threshold determining whether or not
+    // offdiagonal terms are to be considered during coarsening steps in the Algebraic MultiGrid (AMG) methods : it
+    // translates into an (algebraic) criterion excluding points that are "not sufficiently strongly connected" to
+    // each other when coarsening. --> For jump problems with large coefficient ratios, you may actually need to exclude
+    // points belonging to the other subdomain when coarsening your solution for best results... Hence the need for a
+    // large (i.e. more selective) threshold value if not scaling the system by its diagonal
 #ifdef P4_TO_P8
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.50"); CHKERRQ(ierr);
 #else
@@ -514,7 +513,7 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
    * the provided RHS vector]
    * --> this is precisely what we want : we need the _unmodified_ RHS thereafter, i.e. as we have
    * built it, and we let PetSc do its magic under the hood every time we call KSPSolve, otherwise
-   * iteratively correcting and updating the RHS would becomes very complex and require extra info
+   * iteratively correcting and updating the RHS would become very complex and require extra info
    * coming from those possibly non-empty nullspace contributions...
    * */
 

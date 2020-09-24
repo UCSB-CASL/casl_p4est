@@ -7,20 +7,17 @@
 #include <src/my_p4est_poisson_jump_cells.h>
 #endif
 
-const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
-
-
 typedef struct {
   double jump_field;
   double known_jump_flux_component;
   linear_combination_of_dof_t xgfm_jump_flux_component_correction;
   inline double jump_flux_component(const double* extension_p = NULL) const { return known_jump_flux_component + (extension_p != NULL  ? xgfm_jump_flux_component_correction(extension_p) : 0.0); }
-} xgfm_jump;
+} scalar_field_xgfm_jump;
 
 #if __cplusplus >= 201103L
-typedef std::unordered_map<couple_of_dofs, xgfm_jump, hash_functor> map_of_xgfm_jumps_t;
+typedef std::unordered_map<couple_of_dofs, scalar_field_xgfm_jump, hash_functor> map_of_scalar_field_xgfm_jumps_t;
 #else
-typedef std::map<couple_of_dofs, xgfm_jump> map_of_xgfm_jumps_t;
+typedef std::map<couple_of_dofs, scalar_field_xgfm_jump> map_of_scalar_field_xgfm_jumps_t;
 #endif
 
 class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
@@ -127,7 +124,7 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
         const double& mu_across     = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
         for (size_t k = 0; k < interface_terms.size(); ++k)
         {
-          const xgfm_jump& jump_info = solver.get_xgfm_jump_between_quads(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
+          const scalar_field_xgfm_jump& jump_info = solver.get_xgfm_jump_between_quads(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
           const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, interface_terms[k].neighbor_quad_idx_across, interface_terms[k].oriented_dir);
           increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, fetch_positive_interface_values,
                                                                                            solution_p[quad_idx], solution_p[interface_terms[k].neighbor_quad_idx_across], jump_info.jump_field, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
@@ -148,10 +145,10 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
   bool extension_operators_are_stored_and_set;
 
   // Memorized jump information for interface-point between quadrants
-  map_of_xgfm_jumps_t xgfm_jump_between_quads;
+  map_of_scalar_field_xgfm_jumps_t xgfm_jump_between_quads;
   linear_combination_of_dof_t build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
                                                                                 const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const;
-  const xgfm_jump& get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir);
+  const scalar_field_xgfm_jump& get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir);
 
 
   // disallow copy ctr and copy assignment
@@ -289,8 +286,8 @@ public:
    * */
   void solve_for_sharp_solution(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE);
 
-  void set_xGFM_absolute_value_threshold(const double& abs_thresh)              { P4EST_ASSERT(abs_thresh > 0.0);           xGFM_absolute_accuracy_threshold  = abs_thresh; }
-  void set_xGFM_relative_residual_threshold(const double& rel_residual_thresh)  { P4EST_ASSERT(rel_residual_thresh > 0.0);  xGFM_tolerance_on_rel_residual    = rel_residual_thresh; }
+  inline void set_xGFM_absolute_value_threshold(const double& abs_thresh)              { P4EST_ASSERT(abs_thresh > 0.0);           xGFM_absolute_accuracy_threshold  = abs_thresh; }
+  inline void set_xGFM_relative_residual_threshold(const double& rel_residual_thresh)  { P4EST_ASSERT(rel_residual_thresh > 0.0);  xGFM_tolerance_on_rel_residual    = rel_residual_thresh; }
 
   inline double get_sharp_integral_solution() const
   {
@@ -335,13 +332,13 @@ public:
     }
   }
 
-  void inline activate_xGFM_corrections(const bool& flag_, const bool& print_xGFM_residuals_and_corrections = false)
+  inline void activate_xGFM_corrections(const bool& flag_, const bool& print_xGFM_residuals_and_corrections = false)
   {
     activate_xGFM = flag_;
     print_residuals_and_corrections_with_solve_info = activate_xGFM && print_xGFM_residuals_and_corrections;
   }
 
-  bool inline uses_xGFM_corrections() const { return activate_xGFM; }
+  inline bool uses_xGFM_corrections() const { return activate_xGFM; }
 
 };
 
