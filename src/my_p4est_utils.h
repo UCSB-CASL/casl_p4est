@@ -234,7 +234,6 @@ const u_char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
 // Raphael: introducing these "types" for Voronoi cells to make my life easier in face-Voronoi tesselation in two-phase flows...
 enum voro_cell_type
 {
-  dirichlet_wall,   // the center seed is on the wall and associated with Dirichlet BC     --> enforce value
   nonuniform,       // the Voronoi cell was constructed from a non-uniform neighborhood, without any wall neighbor
   parallelepiped,   // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood (with or without a wall neighbor)
   not_well_defined, // the face is irrelevant for computing purposes (based on tag values --> when solving in one domain only (one-phase N-S))

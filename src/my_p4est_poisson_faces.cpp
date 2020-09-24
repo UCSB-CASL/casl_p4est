@@ -333,16 +333,20 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const u_char &dir)
     {
       Voronoi_DIM &voro_cell = (compute_partition_on_the_fly ? voro[dir][0] : voro[dir][f_idx]);
       compute_voronoi_cell(voro_cell, faces, f_idx, dir, bc, face_is_well_defined_p);
+      const bool face_is_dirichlet_wall = !periodic[dir] && (fabs(xyz[dir] - xyz_min[dir]) < 0.1*dxyz[dir] || fabs(xyz[dir] - xyz_max[dir]) < 0.1*dxyz[dir]) && bc[dir].wallType(xyz) == DIRICHLET;
 
-      const vector<ngbdDIMseed > *points;
-      voro_cell.get_neighbor_seeds(points);
+      if(!face_is_dirichlet_wall) // if the face is wall dirichlet, the value is enforced there, otherwise, the neighborhood is relevant
+      {
+        const vector<ngbdDIMseed > *points;
+        voro_cell.get_neighbor_seeds(points);
 
-      for(size_t n = 0; n < points->size(); ++n)
-        if((*points)[n].n >= 0)
-        {
-          if((*points)[n].n < num_owned_local)  d_nnz[f_idx]++;
-          else                                  o_nnz[f_idx]++;
-        }
+        for(size_t n = 0; n < points->size(); ++n)
+          if((*points)[n].n >= 0)
+          {
+            if((*points)[n].n < num_owned_local)  d_nnz[f_idx]++;
+            else                                  o_nnz[f_idx]++;
+          }
+      }
 
 #ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */

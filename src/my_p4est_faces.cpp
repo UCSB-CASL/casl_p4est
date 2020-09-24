@@ -1129,14 +1129,8 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
   const u_char touch_dir = 2*dir + (qm.level >= qp.level ? 1 : 0);
   P4EST_ASSERT(faces->q2f(quad.p.piggy3.local_num, touch_dir) == f_idx);
 
-  /* check for DIRICHLET wall faces */
+  /* check if it is a wall face */
   const bool is_wall_face = qm.p.piggy3.local_num == -1 || qp.p.piggy3.local_num == -1;
-  if(is_wall_face && bc[dir].wallType(xyz_face) == DIRICHLET)
-  {
-    voronoi_cell.set_type(dirichlet_wall);
-    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
-    return;
-  }
 
   // check first if the neighbors of the finest faces were stored during construction of faces
   // and if the face of interest is one of the finest quadrants' in the uniform region
@@ -1456,9 +1450,9 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
 #ifndef P4_TO_P8
     const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - MAX(qm.level, qp.level)));
     const u_char other_cartesian_dir = (dir == dir::x ? dir::y : dir::x);
-    if(qm.p.piggy3.local_num == -1 && bc[dir].wallType(xyz_face) == NEUMANN)
+    if(qm.p.piggy3.local_num == -1) // add a virtual boundary -dxyz[dir] away --> the cell will overflow and will need to be clipped
       voronoi_cell.push(WALL_idx(2*dir),   xyz_face[0] - (dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] - (dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
-    if(qp.p.piggy3.local_num == -1 && bc[dir].wallType(xyz_face) == NEUMANN)
+    if(qp.p.piggy3.local_num == -1) // add a virtual boundary +dxyz[dir] away --> the cell will overflow and will need to be clipped
       voronoi_cell.push(WALL_idx(2*dir+1), xyz_face[0] + (dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] + (dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
     if ((qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qm.p.piggy3.which_tree, &qm, 2*other_cartesian_dir)) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qp.p.piggy3.which_tree, &qp, 2*other_cartesian_dir)))
       voronoi_cell.push(WALL_idx(2*other_cartesian_dir),      xyz_face[0] - (other_cartesian_dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] - (other_cartesian_dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
@@ -1472,7 +1466,6 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
     voronoi_cell.construct_partition();
     voronoi_cell.compute_volume();
 #endif
-
 
     /*
      * [Raphael: found in an early attempt to use very stretched grids with dynamically adapted grids for SHS simulations]
