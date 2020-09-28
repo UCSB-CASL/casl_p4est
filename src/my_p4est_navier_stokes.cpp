@@ -1824,27 +1824,18 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
     lsn.perturb_level_set_function(phi_np1, EPS);
   }
 
-  // we can finally slide phi, current phi is no longer needed (IF different than phi_np1)...
-  // we also recalculate the gradients of phi if needed
-  if(phi != phi_np1){
-    ierr = VecDestroy(phi); CHKERRXX(ierr); }
-  if(phi_may_have_changed){
-    ierr = VecDestroy(grad_phi); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &grad_phi); CHKERRXX(ierr);
-    ngbd_np1->first_derivatives_central(phi_np1, grad_phi);
-  }
-  // reset the phi-interpolator tool if needed
-  if(ngbd_n != ngbd_np1)
+  // we also recalculate the gradient of phi if needed
+  Vec grad_phi_np1 = grad_phi; // if phi is unchanged, so is grad_phi
+  if(phi_may_have_changed)
   {
-    delete interp_phi;
-    delete interp_grad_phi;
-    interp_phi      = new my_p4est_interpolation_nodes_t(ngbd_np1);
-    interp_grad_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
+    // if not, build and calculate the new one:
+    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &grad_phi_np1); CHKERRXX(ierr);
+    ngbd_np1->first_derivatives_central(phi_np1, grad_phi_np1);
   }
-  // reset the phi-interpolator input and slide phi!
-  interp_phi->set_input(phi_np1, linear);
-  interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
-  phi = phi_np1;
+  my_p4est_interpolation_nodes_t* interp_phi_np1      = (ngbd_n != ngbd_np1 ? new my_p4est_interpolation_nodes_t(ngbd_np1) : interp_phi);
+  my_p4est_interpolation_nodes_t* interp_grad_phi_np1 = (ngbd_n != ngbd_np1 ? new my_p4est_interpolation_nodes_t(ngbd_np1) : interp_grad_phi);
+  interp_phi_np1->set_input(phi_np1, linear);
+  interp_grad_phi_np1->set_input(grad_phi_np1, linear, P4EST_DIM);
 
   // 2) scalar field vorticity: reset it to the appropriate size if the grid has changed, nothing to do otherwise
   if(!grid_is_unchanged){
@@ -1975,7 +1966,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
 
       ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
       ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
-      check_if_faces_are_well_defined(faces_np1, dir, *interp_phi, bc_v[dir], face_is_well_defined[dir]);
+      check_if_faces_are_well_defined(faces_np1, dir, *interp_phi_np1, bc_v[dir], face_is_well_defined[dir]);
 
       ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
       ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vstar[dir], dir); CHKERRXX(ierr);
@@ -1993,7 +1984,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   {
     // the grid is unchanged but the levelset might have changed, hence possibly affecting the face_is_well_defined vectors --> the solvers cannot be reused safely
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      check_if_faces_are_well_defined(faces_np1, dir, *interp_phi, bc_v[dir], face_is_well_defined[dir]);
+      check_if_faces_are_well_defined(faces_np1, dir, *interp_phi_np1, bc_v[dir], face_is_well_defined[dir]);
   }
 
   /* update the variables */
@@ -2018,6 +2009,21 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   if(faces_n != faces_np1)
     delete faces_n;
   faces_n = faces_np1;
+  // we can finally slide phi, grad phi and reset the interpolators...
+  if(phi != phi_np1){
+    ierr = VecDestroy(phi); CHKERRXX(ierr); }
+  phi = phi_np1;
+  if(grad_phi != grad_phi_np1){
+    ierr = VecDestroy(grad_phi); CHKERRXX(ierr); }
+  grad_phi = grad_phi_np1;
+  // reset the phi-interpolator tools
+  if(interp_phi != interp_phi_np1)
+    delete interp_phi;
+  interp_phi = interp_phi_np1;
+  if(interp_grad_phi != interp_grad_phi_np1)
+    delete interp_grad_phi;
+  interp_grad_phi = interp_grad_phi_np1;
+
 
   semi_lagrangian_backtrace_is_done         = false;
   interpolators_from_face_to_nodes_are_set  = interpolators_from_face_to_nodes_are_set && grid_is_unchanged;
