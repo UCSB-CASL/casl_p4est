@@ -9,10 +9,12 @@
 #include <src/my_p8est_navier_stokes.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_level_set.h>
+#include <src/my_p8est_level_set_cells.h>
 #else
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_level_set_cells.h>
 #endif
 
 #include <src/Parser.h>
@@ -90,6 +92,9 @@ const std::string default_pc_cell             = "sor";
 const std::string default_cell_solver         = "bicgstab";
 const std::string default_pc_face             = "sor";
 const unsigned int default_save_nstates       = 1;
+#ifdef P4_TO_P8
+const unsigned int default_nsurface_points    = 64;
+#endif
 
 struct domain_setup
 {
@@ -149,12 +154,30 @@ struct simulation_setup
   const bool save_timing;
   const bool save_hodge_convergence;
   const bool save_state;
+#ifdef P4_TO_P8
+  const bool save_surface_quantities;
+  const size_t nsurface_points;
+  const size_t nphi = 64;
+#endif
   double dt_save_data;
   const unsigned int n_states;
   int export_vtk, save_data_idx;
-  std::string export_dir, vtk_path, file_snapshot_to_time, file_forces, file_timings, file_hodge_convergence;
+  std::string export_dir, vtk_path, file_snapshot_to_time, file_forces, file_timings, file_hodge_convergence, file_surf_quantities;
   std::map<ns_task, double> global_computational_times;
   std::vector<double> hodge_convergence_checks;
+  // for exportation of surface quantities
+#ifdef P4_TO_P8
+  std::vector<double> inclination_angle;              // inclination angles corresponding to the exported surface quantities, as measured with respect to the  x-axis
+  std::vector< std::vector<double> > sampling_points; // nphi points uniformly distributed around circle cross sections for every inclination angle
+  bool nm1_is_known, n_is_known;                      // flags to activate the calculations of time-integrals using trapezoidal rules
+  double integration_tstart;
+  std::vector<double> pressure_coefficient_nm1;
+  std::vector<double> pressure_coefficient_n;
+  std::vector<double> azimuthal_vorticity_nm1;
+  std::vector<double> azimuthal_vorticity_n;
+  std::vector<double> time_integrated_pressure_coefficient;
+  std::vector<double> time_integrated_azimuthal_vorticity;
+#endif
 
   simulation_setup(const mpi_environment_t&mpi, const cmdParser &cmd) :
     hodge_tol(cmd.get<double>("hodge_tol", default_hodge_tol)),
@@ -178,6 +201,10 @@ struct simulation_setup
     save_timing(cmd.contains("timing")),
     save_hodge_convergence(cmd.contains("track_subloop")),
     save_state(cmd.contains("save_state_dt")),
+  #ifdef P4_TO_P8
+    save_surface_quantities(cmd.contains("export_surface_quantities")),
+    nsurface_points(cmd.get<unsigned int>("nsurface_points", default_nsurface_points)),
+  #endif
     n_states(cmd.get<unsigned int>("save_nstates", default_save_nstates))
   {
     vtk_dt = -1.0;
@@ -236,6 +263,23 @@ struct simulation_setup
     global_computational_times[projection_step] = 0.0;
     global_computational_times[velocity_interpolation] = 0.0;
     hodge_convergence_checks.resize(niter_hodge_max, 0.0);
+
+
+#ifdef P4_TO_P8
+    if(save_surface_quantities)
+    {
+      nm1_is_known = n_is_known = false;
+      integration_tstart = -DBL_MAX;
+      inclination_angle.resize(nsurface_points);
+      sampling_points.resize(nsurface_points); // to be fully initiated after the domain is set
+      pressure_coefficient_nm1.resize(nsurface_points);
+      pressure_coefficient_n.resize(nsurface_points);
+      azimuthal_vorticity_nm1.resize(nsurface_points);
+      azimuthal_vorticity_n.resize(nsurface_points);
+      time_integrated_pressure_coefficient.resize(nsurface_points);
+      time_integrated_azimuthal_vorticity.resize(nsurface_points);
+    }
+#endif
   }
 
   int running_save_data_idx() const { return (int) floor(tn/dt_save_data); }
@@ -370,6 +414,134 @@ struct simulation_setup
     for (unsigned int k = 0; k < niter_hodge_max; ++k)
       hodge_convergence_checks[k] = 0.0;
   }
+
+#ifdef P4_TO_P8
+  void set_sampling_points_for_surface_quantities()
+  {
+    for (size_t k = 0; k < nsurface_points; ++k)
+    {
+      inclination_angle[k] = M_PI/(2*nsurface_points) + k*(M_PI/nsurface_points);
+      sampling_points[k].resize(P4EST_DIM*nphi);
+      for (size_t nn = 0; nn < nphi; ++nn)
+      {
+        sampling_points[k][P4EST_DIM*nn + 0] = domain.xyz_sphere_center(0) - r0*cos(inclination_angle[k]);
+        sampling_points[k][P4EST_DIM*nn + 1] = domain.xyz_sphere_center(1) + r0*sin(inclination_angle[k])*cos(2.0*M_PI*((double) nn)/((double) nphi));
+        sampling_points[k][P4EST_DIM*nn + 2] = domain.xyz_sphere_center(2) + r0*sin(inclination_angle[k])*sin(2.0*M_PI*((double) nn)/((double) nphi));
+      }
+    }
+  }
+
+  void export_surface_quantities(const my_p4est_navier_stokes_t* ns)
+  {
+    // update integration_tstart if we haven't started integrating, yet
+    if(!nm1_is_known || !n_is_known)
+    {
+      integration_tstart = tn - dt;
+      // make sure the time-integrals are 0.0;
+      for (size_t k = 0; k < nsurface_points; ++k) {
+        time_integrated_azimuthal_vorticity[k] = 0.0;
+        time_integrated_pressure_coefficient[k] = 0.0;
+      }
+    }
+    // save tnm1 data, get tn:
+    std::swap(pressure_coefficient_n, pressure_coefficient_nm1);
+    std::swap(azimuthal_vorticity_n, azimuthal_vorticity_nm1);
+    nm1_is_known = n_is_known;
+    n_is_known = true;
+
+    const my_p4est_cell_neighbors_t* ngbd_c = ns->get_ngbd_c();
+    const my_p4est_node_neighbors_t* ngbd_n = ns->get_ngbd_n();
+    Vec const* node_velocities_np1 = ns->get_node_velocities_np1(); // this is called after completion of the time step but before the next grid update...
+    const double *node_velocities_np1_p[P4EST_DIM];
+    Vec azimuthal_vorticity;
+    double *azimuthal_vorticity_p;
+
+    PetscErrorCode ierr;
+    ierr = VecCreateGhostNodes(ngbd_n->get_p4est(), ngbd_n->get_nodes(), &azimuthal_vorticity); CHKERRXX(ierr);
+    ierr = VecGetArray(azimuthal_vorticity, &azimuthal_vorticity_p); CHKERRXX(ierr);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(node_velocities_np1[dim], &node_velocities_np1_p[dim]); CHKERRXX(ierr);
+    }
+    quad_neighbor_nodes_of_node_t qnnn;
+    for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+      const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+      ngbd_n->get_neighbors(node_idx, qnnn);
+      double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, ngbd_n->get_p4est(), ngbd_n->get_nodes(), xyz_node);
+      const double sqrt_y_sqr_plus_z_sqr = sqrt(SQR(xyz_node[1] - domain.xyz_sphere_center(1)) + SQR(xyz_node[2] - domain.xyz_sphere_center(2)));
+      const double azimuthal_angle[P4EST_DIM] = {0.0,
+                                                 -(xyz_node[2] - domain.xyz_sphere_center(2))/sqrt_y_sqr_plus_z_sqr,
+                                                 (xyz_node[1] - domain.xyz_sphere_center(1))/sqrt_y_sqr_plus_z_sqr};
+      const double vorticity[P4EST_DIM] = {qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]),
+                                           qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]),
+                                           qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0])};
+      azimuthal_vorticity_p[node_idx] = SUMD(azimuthal_angle[0]*vorticity[0], azimuthal_angle[1]*vorticity[1], azimuthal_angle[2]*vorticity[2]);
+    }
+    ierr = VecGhostUpdateBegin(azimuthal_vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+      const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+      ngbd_n->get_neighbors(node_idx, qnnn);
+      double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, ngbd_n->get_p4est(), ngbd_n->get_nodes(), xyz_node);
+      const double sqrt_y_sqr_plus_z_sqr = sqrt(SQR(xyz_node[1] - domain.xyz_sphere_center(1)) + SQR(xyz_node[2] - domain.xyz_sphere_center(2)));
+      const double azimuthal_angle[P4EST_DIM] = {0.0,
+                                                 -(xyz_node[2] - domain.xyz_sphere_center(2))/sqrt_y_sqr_plus_z_sqr,
+                                                 (xyz_node[1] - domain.xyz_sphere_center(1))/sqrt_y_sqr_plus_z_sqr};
+      const double vorticity[P4EST_DIM] = {qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]),
+                                           qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]),
+                                           qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0])};
+      azimuthal_vorticity_p[node_idx] = SUMD(azimuthal_angle[0]*vorticity[0], azimuthal_angle[1]*vorticity[1], azimuthal_angle[2]*vorticity[2]);
+    }
+    ierr = VecGhostUpdateEnd(azimuthal_vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(azimuthal_vorticity, &azimuthal_vorticity_p); CHKERRXX(ierr);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(node_velocities_np1[dim], &node_velocities_np1_p[dim]); CHKERRXX(ierr);
+    }
+    // all procs call for the same interpolated values, but whatever (I'm tired of all this)...
+    my_p4est_interpolation_cells_t interp_pressure(ngbd_c, ngbd_n);
+    my_p4est_interpolation_nodes_t interp_azimuthal_vorticity(ngbd_n);
+    BoundaryConditionsDIM fake_bc; fake_bc.setInterfaceType(NOINTERFACE); // we call this after extensions etc --> fake BC to consider all cells in the interpolation
+    interp_pressure.set_input(ns->get_pressure(), ns->get_phi(), &fake_bc);
+    interp_azimuthal_vorticity.set_input(azimuthal_vorticity, linear);
+    std::vector<double> interpolated_pressure(nsurface_points*nphi);
+    std::vector<double> interpolated_azimuthal_vorticity(nsurface_points*nphi);
+    for (size_t k = 0; k < nsurface_points; ++k)
+      for (size_t nn = 0; nn < nphi; ++nn)
+      {
+        interp_pressure.add_point(nphi*k + nn, sampling_points[k].data() + P4EST_DIM*nn);
+        interp_azimuthal_vorticity.add_point(nphi*k + nn, sampling_points[k].data() + P4EST_DIM*nn);
+      }
+
+    interp_pressure.interpolate(interpolated_pressure.data());
+    interp_azimuthal_vorticity.interpolate(interpolated_azimuthal_vorticity.data());
+    for (size_t k = 0; k < nsurface_points; ++k) {
+      pressure_coefficient_n[k] = 0.0;
+      azimuthal_vorticity_n[k] = 0.0;
+      for (size_t nn = 0; nn < nphi; ++nn)
+      {
+        pressure_coefficient_n[k] += (interpolated_pressure[nphi*k + nn]/(0.5*ns->get_rho()*SQR(u0)))/nphi;
+        azimuthal_vorticity_n[k]  += (interpolated_azimuthal_vorticity[nphi*k + nn]/(u0/(2.0*r0)))/nphi;
+      }
+      if(nm1_is_known && n_is_known)
+      {
+        time_integrated_azimuthal_vorticity[k]  += 0.5*dt*(azimuthal_vorticity_nm1[k]   + azimuthal_vorticity_n[k]);
+        time_integrated_pressure_coefficient[k] += 0.5*dt*(pressure_coefficient_nm1[k]  + pressure_coefficient_n[k]);
+      }
+    }
+    ierr = VecDestroy(azimuthal_vorticity); CHKERRXX(ierr);
+
+
+    if(!ns->get_mpirank() && nm1_is_known && n_is_known)
+    {
+      FILE* fp_surface_quantities = fopen(file_surf_quantities.c_str(), "w");
+      fprintf(fp_surface_quantities, "%% integration tstart = %g\n", integration_tstart);
+      fprintf(fp_surface_quantities, "%% integration tend = %g\n", tn);
+      fprintf(fp_surface_quantities, "%% theta | time-averaged C_p | time-averaged (nondimensional) azimuthal vorticity \n");
+      for (size_t k = 0; k < nsurface_points; ++k)
+        fprintf(fp_surface_quantities, "%g %g %g\n", inclination_angle[k], time_integrated_pressure_coefficient[k]/(tn - integration_tstart), time_integrated_azimuthal_vorticity[k]/(tn - integration_tstart));
+      fclose(fp_surface_quantities);
+    }
+  }
+#endif
 
   void print_averaged_timings(const mpi_environment_t &mpi) const
   {
@@ -738,6 +910,43 @@ void initialize_hodge_convergence_output(simulation_setup & setup, const my_p4es
   }
 }
 
+#ifdef P4_TO_P8
+void initialize_surface_quantities_output(simulation_setup & setup, const my_p4est_navier_stokes_t *ns)
+{
+  ostringstream filename;
+  filename << std::fixed << std::setprecision(2);
+  filename << "surf_quantities_" << ns->get_lmin() << "-" << ns->get_lmax() << "_split_threshold_" << ns->get_split_threshold()
+           << "_cfl_" << ns->get_cfl() << "_sl_" << ns->get_sl_order() << ".dat";
+  setup.file_surf_quantities = setup.export_dir + "/" + filename.str();
+  PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Saving surface quantities in ... %s\n", setup.file_surf_quantities.c_str()); CHKERRXX(ierr);
+
+  if(ns->get_mpirank() == 0)
+  {
+    char liveplot_surf_quantities[PATH_MAX];
+    sprintf(liveplot_surf_quantities, "%s/live_surf.gnu", setup.export_dir.c_str());
+    if(!file_exists(liveplot_surf_quantities))
+    {
+      FILE* fp_liveplot_surf_quantities = fopen(liveplot_surf_quantities, "w");
+      if(fp_liveplot_surf_quantities == NULL)
+        throw std::runtime_error("initialize_surface_quantities_output: could not open file for liveplot of surface quantities.");
+      fprintf(fp_liveplot_surf_quantities, "set term wxt 0 noraise\n");
+      fprintf(fp_liveplot_surf_quantities, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "set xlabel \"Inclination angle\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "set ylabel \"Pressure coefficient\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "plot \t \"%s\" using 1:2 title 'pressure coefficient' with lines lw 3\n", filename.str().c_str());
+      fprintf(fp_liveplot_surf_quantities, "set term wxt 1 noraise\n");
+      fprintf(fp_liveplot_surf_quantities, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "set xlabel \"Inclination angle\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "set ylabel \"Non-dimensional azimuthal vorticity\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_surf_quantities, "plot \t \"%s\" using 1:3 title 'azimuthal vorticity' with lines lw 3\n", filename.str().c_str());
+      fprintf(fp_liveplot_surf_quantities, "pause 4\n");
+      fprintf(fp_liveplot_surf_quantities, "reread");
+      fclose(fp_liveplot_surf_quantities);
+    }
+  }
+}
+#endif
+
 void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, BoundaryConditionsDIM bc_v[P4EST_DIM], BoundaryConditionsDIM &bc_p, CF_DIM *external_forces[P4EST_DIM],
                             my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, splitting_criteria_cf_and_uniform_band_t* &data, simulation_setup &setup)
 {
@@ -1003,6 +1212,10 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
     initialize_timing_output(setup, ns);
   if(setup.save_hodge_convergence)
     initialize_hodge_convergence_output(setup, ns);
+#ifdef P4_TO_P8
+  if(setup.save_surface_quantities)
+    initialize_surface_quantities_output(setup, ns);
+#endif
 }
 
 #ifdef P4_TO_P8
@@ -1122,6 +1335,11 @@ int main (int argc, char* argv[])
   cmd.add_option("save_nstates",          "determines how many solver states must be memorized in backup_ folders (default is " +to_string(default_save_nstates));
   cmd.add_option("timing",                "if defined, saves timing information in a file on disk (typically for scaling analysis).");
   cmd.add_option("track_subloop",         "if defined, saves the data corresponding to the inner loops for convergence of the hodge variable (saved in a file on disk).");
+#ifdef P4_TO_P8
+  cmd.add_option("export_surface_quantities",
+                                          "if defined, export the pressure coefficient and azimuthal vorticity along the azimuthal angle at every time step (in a file on disk).");
+  cmd.add_option("nsurface_points",       "number of surface points for exportation of surface quantities. Default is "  + to_string(default_nsurface_points));
+#endif
 
   if (cmd.parse(argc, argv, extra_info))
     return 0;
@@ -1157,6 +1375,8 @@ int main (int argc, char* argv[])
     create_solver_from_scratch(mpi, cmd, bc_v, bc_p, external_forces, ns, brick, data, setup);
 
 #ifdef P4_TO_P8
+  if(setup.save_surface_quantities)
+    setup.set_sampling_points_for_surface_quantities();
   if(setup.check_laminar_drag)
   {
     check_laminar_forces_and_print_errors(ns);
@@ -1247,6 +1467,11 @@ int main (int argc, char* argv[])
     if(setup.save_hodge_convergence)
       setup.export_hodge_convergence(mpi);
 
+#ifdef P4_TO_P8
+    if(setup.save_surface_quantities)
+      setup.export_surface_quantities(ns);
+#endif
+
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
     if(ns->get_max_L2_norm_u() > 200.0)
@@ -1277,7 +1502,8 @@ int main (int argc, char* argv[])
     delete bc_wall_value[dim];
 
   delete ns;
-  // the brick and the connectivity are deleted within the above destructor...
+  // the connectivity is deleted within the above destructor...
+  delete brick;
   delete data;
 
   return 0;

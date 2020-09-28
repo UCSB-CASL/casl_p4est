@@ -844,6 +844,13 @@ public:
 
   void coupled_problem_partial_destructor();
 
+  const my_p4est_cell_neighbors_t* get_ngbd_c() const { return ngbd_c; }
+  const my_p4est_node_neighbors_t* get_ngbd_n() const { return ngbd_n; }
+  Vec get_pressure() const { return pressure; }
+  Vec const* get_node_velocities_nm1() const  { return vnm1_nodes;  }
+  Vec const* get_node_velocities_n() const    { return vn_nodes;    }
+  Vec const* get_node_velocities_np1() const  { return vnp1_nodes;  }
+  Vec get_phi() const { return phi; }
 };
 
 
