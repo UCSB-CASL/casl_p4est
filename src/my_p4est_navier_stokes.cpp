@@ -3164,20 +3164,13 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
 
   PetscErrorCode ierr;
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    Vec from_loc, to_loc;
-    ierr = VecGhostGetLocalForm(vn_nodes[dir], &from_loc); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(vnp1_nodes[dir], &to_loc); CHKERRXX(ierr);
-    ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+    ierr = VecCopyGhost(vn_nodes[dir], vnp1_nodes[dir]); CHKERRXX(ierr);
 
-    ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes_saved[dir]); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(vnm1_nodes[dir], &from_loc); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(vnm1_nodes_saved[dir], &to_loc); CHKERRXX(ierr);
-    ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_nm1_saved, nodes_nm1_saved, &vnm1_nodes_saved[dir]); CHKERRXX(ierr);
+    ierr = VecCopyGhost(vnm1_nodes[dir], vnm1_nodes_saved[dir]); CHKERRXX(ierr);
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
-      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes_saved[dd][dir]); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(second_derivatives_vnm1_nodes[dd][dir], &from_loc); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(second_derivatives_vnm1_nodes_saved[dd][dir], &to_loc); CHKERRXX(ierr);
-      ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_nm1_saved, nodes_nm1_saved, &second_derivatives_vnm1_nodes_saved[dd][dir]); CHKERRXX(ierr);
+      ierr = VecCopyGhost(second_derivatives_vnm1_nodes[dd][dir], second_derivatives_vnm1_nodes_saved[dd][dir]); CHKERRXX(ierr);
     }
   }
   compute_vorticity();

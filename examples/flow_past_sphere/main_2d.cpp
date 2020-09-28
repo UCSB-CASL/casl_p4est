@@ -976,6 +976,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, 
   }
 
   P4EST_ASSERT(brick == NULL);
+  brick = ns->get_brick();
   domain.brick = ns->get_brick();
 
   if (data != NULL) {
