@@ -1,5 +1,6 @@
 //
-// Created by Im YoungMin on 4/30/20.
+// Created by Luis Ángel on 4/30/20.
+// Modified on 9/29/2020.
 //
 
 #ifndef CASL_GEOMETRY_H
@@ -62,6 +63,47 @@ namespace geom
 		double operator()( DIM( double x, double y, double z ) ) const override
 		{
 			return SUMD( SQR( x - _x0 ), SQR( y - _y0 ), SQR( z - _z0 ) ) - SQR( _r );
+		}
+	};
+
+	/**
+	 * A multidimensional plane defined by a normal vector and a point.  The plane extends infinitely in any direction.
+	 * Not a signed distance function.
+	 */
+	class Plane: public CF_DIM
+	{
+	private:
+		PointDIM _n;		// Unit normal vector to plane.
+		PointDIM _p;		// Point on the plane.
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] n Normal vector to plane.
+		 * @param [in] p Point on plane.
+		 */
+		explicit Plane( const PointDIM& n, const PointDIM& p )
+			: _n( n ), _p( p )
+		{
+#ifdef CASL_THROWS
+			if( _n.norm_L2() <= EPS )
+				throw std::domain_error( "[CASL_ERROR]: geom::Plane: Division by zero!" );
+#endif
+			_n = _n.normalize();
+		}
+
+		/**
+		 * Evaluate phi(q), where q=[x,y,z]'.
+		 * @param [in] x Query coordinate along x-axis.
+		 * @param [in] y Query coordinate along y-axis.
+		 * @param [in] z Query coordinate along z-axis.
+		 * @return n'(q-p), where n and p are the normal vector and point on plane, respectively.
+		 */
+		double operator()( DIM( double x, double y, double z ) ) const override
+		{
+			PointDIM q( DIM( x, y, z ) );
+			q = q - _p;
+			return _n.dot( q );
 		}
 	};
 
