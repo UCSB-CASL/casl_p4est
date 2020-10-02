@@ -453,12 +453,12 @@ struct simulation_setup
     const my_p4est_node_neighbors_t* ngbd_n = ns->get_ngbd_n();
     Vec const* node_velocities_np1 = ns->get_node_velocities_np1(); // this is called after completion of the time step but before the next grid update...
     const double *node_velocities_np1_p[P4EST_DIM];
-    Vec azimuthal_vorticity;
-    double *azimuthal_vorticity_p;
+    Vec vorticity;
+    double *vorticity_p;
 
     PetscErrorCode ierr;
-    ierr = VecCreateGhostNodes(ngbd_n->get_p4est(), ngbd_n->get_nodes(), &azimuthal_vorticity); CHKERRXX(ierr);
-    ierr = VecGetArray(azimuthal_vorticity, &azimuthal_vorticity_p); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodesBlock(ngbd_n->get_p4est(), ngbd_n->get_nodes(), P4EST_DIM, &vorticity); CHKERRXX(ierr);
+    ierr = VecGetArray(vorticity, &vorticity_p); CHKERRXX(ierr);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecGetArrayRead(node_velocities_np1[dim], &node_velocities_np1_p[dim]); CHKERRXX(ierr);
     }
@@ -466,60 +466,48 @@ struct simulation_setup
     for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
       const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
       ngbd_n->get_neighbors(node_idx, qnnn);
-      double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, ngbd_n->get_p4est(), ngbd_n->get_nodes(), xyz_node);
-      const double sqrt_y_sqr_plus_z_sqr = sqrt(SQR(xyz_node[1] - domain.xyz_sphere_center(1)) + SQR(xyz_node[2] - domain.xyz_sphere_center(2)));
-      const double azimuthal_angle[P4EST_DIM] = {0.0,
-                                                 -(xyz_node[2] - domain.xyz_sphere_center(2))/sqrt_y_sqr_plus_z_sqr,
-                                                 (xyz_node[1] - domain.xyz_sphere_center(1))/sqrt_y_sqr_plus_z_sqr};
-      const double vorticity[P4EST_DIM] = {qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]),
-                                           qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]),
-                                           qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0])};
-      azimuthal_vorticity_p[node_idx] = SUMD(azimuthal_angle[0]*vorticity[0], azimuthal_angle[1]*vorticity[1], azimuthal_angle[2]*vorticity[2]);
+      vorticity_p[P4EST_DIM*node_idx + 0] = qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]);
+      vorticity_p[P4EST_DIM*node_idx + 1] = qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]);
+      vorticity_p[P4EST_DIM*node_idx + 2] = qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0]);
     }
-    ierr = VecGhostUpdateBegin(azimuthal_vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
       const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
       ngbd_n->get_neighbors(node_idx, qnnn);
-      double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, ngbd_n->get_p4est(), ngbd_n->get_nodes(), xyz_node);
-      const double sqrt_y_sqr_plus_z_sqr = sqrt(SQR(xyz_node[1] - domain.xyz_sphere_center(1)) + SQR(xyz_node[2] - domain.xyz_sphere_center(2)));
-      const double azimuthal_angle[P4EST_DIM] = {0.0,
-                                                 -(xyz_node[2] - domain.xyz_sphere_center(2))/sqrt_y_sqr_plus_z_sqr,
-                                                 (xyz_node[1] - domain.xyz_sphere_center(1))/sqrt_y_sqr_plus_z_sqr};
-      const double vorticity[P4EST_DIM] = {qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]),
-                                           qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]),
-                                           qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0])};
-      azimuthal_vorticity_p[node_idx] = SUMD(azimuthal_angle[0]*vorticity[0], azimuthal_angle[1]*vorticity[1], azimuthal_angle[2]*vorticity[2]);
+      vorticity_p[P4EST_DIM*node_idx + 0] = qnnn.dy_central(node_velocities_np1_p[2]) - qnnn.dz_central(node_velocities_np1_p[1]);
+      vorticity_p[P4EST_DIM*node_idx + 1] = qnnn.dz_central(node_velocities_np1_p[0]) - qnnn.dx_central(node_velocities_np1_p[2]);
+      vorticity_p[P4EST_DIM*node_idx + 2] = qnnn.dx_central(node_velocities_np1_p[1]) - qnnn.dy_central(node_velocities_np1_p[0]);
     }
-    ierr = VecGhostUpdateEnd(azimuthal_vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vorticity, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    ierr = VecRestoreArray(azimuthal_vorticity, &azimuthal_vorticity_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vorticity, &vorticity_p); CHKERRXX(ierr);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecRestoreArrayRead(node_velocities_np1[dim], &node_velocities_np1_p[dim]); CHKERRXX(ierr);
     }
     // all procs call for the same interpolated values, but whatever (I'm tired of all this)...
     my_p4est_interpolation_cells_t interp_pressure(ngbd_c, ngbd_n);
-    my_p4est_interpolation_nodes_t interp_azimuthal_vorticity(ngbd_n);
+    my_p4est_interpolation_nodes_t interp_vorticity(ngbd_n);
     BoundaryConditionsDIM fake_bc; fake_bc.setInterfaceType(NOINTERFACE); // we call this after extensions etc --> fake BC to consider all cells in the interpolation
     interp_pressure.set_input(ns->get_pressure(), ns->get_phi(), &fake_bc);
-    interp_azimuthal_vorticity.set_input(azimuthal_vorticity, linear);
+    interp_vorticity.set_input(vorticity, linear, P4EST_DIM);
     std::vector<double> interpolated_pressure(nsurface_points*nphi);
-    std::vector<double> interpolated_azimuthal_vorticity(nsurface_points*nphi);
+    std::vector<double> interpolated_vorticity(P4EST_DIM*nsurface_points*nphi);
     for (size_t k = 0; k < nsurface_points; ++k)
       for (size_t nn = 0; nn < nphi; ++nn)
       {
         interp_pressure.add_point(nphi*k + nn, sampling_points[k].data() + P4EST_DIM*nn);
-        interp_azimuthal_vorticity.add_point(nphi*k + nn, sampling_points[k].data() + P4EST_DIM*nn);
+        interp_vorticity.add_point(nphi*k + nn, sampling_points[k].data() + P4EST_DIM*nn);
       }
 
     interp_pressure.interpolate(interpolated_pressure.data());
-    interp_azimuthal_vorticity.interpolate(interpolated_azimuthal_vorticity.data());
+    interp_vorticity.interpolate(interpolated_vorticity.data());
     for (size_t k = 0; k < nsurface_points; ++k) {
       pressure_coefficient_n[k] = 0.0;
       azimuthal_vorticity_n[k] = 0.0;
       for (size_t nn = 0; nn < nphi; ++nn)
       {
         pressure_coefficient_n[k] += (interpolated_pressure[nphi*k + nn]/(0.5*ns->get_rho()*SQR(u0)))/nphi;
-        azimuthal_vorticity_n[k]  += (interpolated_azimuthal_vorticity[nphi*k + nn]/(u0/(2.0*r0)))/nphi;
+        azimuthal_vorticity_n[k]  += ((cos(2.0*M_PI*((double) nn)/((double) nphi))*interpolated_vorticity[P4EST_DIM*(nphi*k + nn) + 2] - sin(2.0*M_PI*((double) nn)/((double) nphi))*interpolated_vorticity[P4EST_DIM*(nphi*k + nn) + 1])/(u0/(2.0*r0)))/nphi;
       }
       if(nm1_is_known && n_is_known)
       {
@@ -527,7 +515,7 @@ struct simulation_setup
         time_integrated_pressure_coefficient[k] += 0.5*dt*(pressure_coefficient_nm1[k]  + pressure_coefficient_n[k]);
       }
     }
-    ierr = VecDestroy(azimuthal_vorticity); CHKERRXX(ierr);
+    ierr = VecDestroy(vorticity); CHKERRXX(ierr);
 
 
     if(!ns->get_mpirank() && nm1_is_known && n_is_known)
@@ -535,7 +523,7 @@ struct simulation_setup
       FILE* fp_surface_quantities = fopen(file_surf_quantities.c_str(), "w");
       fprintf(fp_surface_quantities, "%% integration tstart = %g\n", integration_tstart);
       fprintf(fp_surface_quantities, "%% integration tend = %g\n", tn);
-      fprintf(fp_surface_quantities, "%% theta | time-averaged C_p | time-averaged (nondimensional) azimuthal vorticity \n");
+      fprintf(fp_surface_quantities, "%% inclination angle theta | time-averaged C_p | time-averaged (nondimensional) azimuthal vorticity \n");
       for (size_t k = 0; k < nsurface_points; ++k)
         fprintf(fp_surface_quantities, "%g %g %g\n", inclination_angle[k], time_integrated_pressure_coefficient[k]/(tn - integration_tstart), time_integrated_azimuthal_vorticity[k]/(tn - integration_tstart));
       fclose(fp_surface_quantities);
@@ -1338,7 +1326,7 @@ int main (int argc, char* argv[])
   cmd.add_option("track_subloop",         "if defined, saves the data corresponding to the inner loops for convergence of the hodge variable (saved in a file on disk).");
 #ifdef P4_TO_P8
   cmd.add_option("export_surface_quantities",
-                                          "if defined, export the pressure coefficient and azimuthal vorticity along the azimuthal angle at every time step (in a file on disk).");
+                                          "if defined, export the pressure coefficient and azimuthal vorticity along the inclination angle at every time step (in a file on disk).");
   cmd.add_option("nsurface_points",       "number of surface points for exportation of surface quantities. Default is "  + to_string(default_nsurface_points));
 #endif
 
