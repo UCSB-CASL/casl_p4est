@@ -31,7 +31,7 @@ INCLUDEPATH   += $$(TACC_BOOST_INC)
 
 # Intel Math Kernel Library --> blas/lapack(e) optimized for intel architecture
 INCLUDEPATH   += $$(TACC_MKL_INC)
-LIBS          += -L$$(TACC_MKL_LIB) -lmkl_intel_lp64 # seems to be enough, replace by -lmkl_intel_ilp64 if using 64 bits integers...
+LIBS          += -L$$(TACC_MKL_LIB) -lmkl_intel_lp64 # seems to be enough, even for 64-bit integers (just load the appropriate 64-bit version of petsc in that case)
 
 QMAKE_CC      = /opt/apps/intel18/impi/18.0.2/bin/mpicc
 QMAKE_CXX     = /opt/apps/intel18/impi/18.0.2/bin/mpicxx
