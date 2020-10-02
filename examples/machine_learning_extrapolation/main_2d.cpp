@@ -30,6 +30,7 @@
 #endif
 
 #include <src/casl_geometry.h>
+#include <random>
 
 using namespace std;
 
@@ -62,6 +63,7 @@ int main(int argc, char** argv)
 	const int EXTENSION_NUM_ITER = 50;		// Number of iterations to solve PDE for extrapolation.
 	const int EXTENSION_ORDER = 2;			// Order of extrapolation (0: constant, 1: linear, 2: quadratic).
 	const int EXTENSION_BAND_WIDTH = 2;		// Band around interface (in diagonal lengths) to check for extension accuracy.
+	const int SAMPLING_BAND_WIDTH = 4;		// Number of grid points to sample in Omega- and along Gamma for learning.
 
 	// Prepare parallel enviroment, although we enforce just a single processor to avoid race conditions when generating
 	// datasets.
@@ -69,6 +71,11 @@ int main(int argc, char** argv)
 	mpi.init( argc, argv );
 	if( mpi.rank() > 1 )
 		throw std::runtime_error( "Only a single process is allowed!" );
+
+	// Random-number generator.
+//	std::random_device rd;  				// Will be used to obtain a seed for the random number engine.
+	std::mt19937 gen( 5489u );
+	std::uniform_real_distribution<double> uniformDistribution;
 
 	// Stopwatch.
 	parStopWatch watch;
@@ -89,7 +96,11 @@ int main(int argc, char** argv)
 	connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 	// Definining the non-signed distance level-set function to be reinitialized.
-	geom::Plane plane( PointDIM( DIM( 1, 1, 1 ) ), PointDIM( DIM( 0.25, 0.25, 0.25 ) ) );
+	const double THETA = -M_PI_4;				// To vary between [-pi/2, pi/2).
+	const double R_THETA = M_PI_2 + THETA;		// Defines the rotation of the local coordinate system for plane.
+	const Point2 N( cos( R_THETA ), sin( R_THETA ) );	// Plane normal and center (i.e. point on plane).
+	Point2 C( 0.001, 0.001 );					// A point on plane defining the center of local coodinate system.
+	geom::Plane plane( N, C );
 	splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, REFINEMENT_MAX_LEVEL, &plane, REFINEMENT_BAND_WIDTH );
 
 	// Scalar field to extend.
@@ -115,9 +126,9 @@ int main(int argc, char** argv)
 
 	// Smallest quadrant features.
 	double dxyz[P4EST_DIM]; 			// Dimensions.
-	double dxyzMin;        				// Minimum side length of the smallest quadrant.
+	double H;        					// Minimum side length of the smallest quadrant (i.e. H).
 	double diagMin;        				// Diagonal length of the smallest quadrant.
-	get_dxyz_min( p4est, dxyz, dxyzMin, diagMin );
+	get_dxyz_min( p4est, dxyz, H, diagMin );
 
 	// A ghosted parallel PETSc vector to store level-set function values.
 	Vec phi;
@@ -160,7 +171,7 @@ int main(int argc, char** argv)
 	// Perform extrapolation using all derivatives (from Daniil's paper).
 	ls.extend_Over_Interface_TVD_Full( phi, extField, EXTENSION_NUM_ITER, EXTENSION_ORDER );
 
-	// Calculate extrapolation errors in a band around Gamma, within Omega+.
+	// Calculate extrapolation errors in a band around Gamma, in Omega+.
 	Vec errorExtField;			// Extension error parallel vector.
 	ierr = VecDuplicate( phi, &errorExtField );
 	CHKERRXX( ierr );
@@ -177,6 +188,65 @@ int main(int argc, char** argv)
 	{
 		if( phiReadPtr[n] > 0 && phiReadPtr[n] < EXTENSION_BAND_WIDTH * diagMin )
 			errorExtFieldPtr[n] = ABS( exactFieldReadPtr[n] - extFieldPtr[n] );
+	}
+
+	// Prepare bilinear interpolation of scalar field.
+	my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
+	interpolation.set_input( extField, linear );
+
+	// When we created the plane level-set, we defined a local coordinate system centered at the point C and with a
+	// rotation angle R_THETA.  This effectively creates a coordinate system where the plane's normal vector coincides
+	// with the local coordinate system x-axis.
+	// Next, we need to collect points that make up samples in the learning process.  For this, consider the following:
+	//                    p *                       p = query point (having local x-coordinate > 0).
+	//                      ^ n                     n = normal to interface (plane).
+	//  k3             y_c  ║ x_c              k2   x_c = x-axis in local coordinate system.
+	//   ┌─┬─┬─┬─┬─┬─<══════o.......─┬─┬─┬─┬─┬─┐    y_c = y-axis in local coordinate system.
+	//   ├─┼─┼─┼─┼─┼─...............─┼─┼─┼─┼─┼─┤    o = reference point in local coordinates.
+	//   ├─┼─┼─┼─┼─┼─...............─┼─┼─┼─┼─┼─┤    ki = corner points in local coordinate system.
+	//   ├─┼─┼─┼─┼─┼─...............─┼─┼─┼─┼─┼─┤
+	//   ├─┼─┼─┼─┼─┼─...............─┼─┼─┼─┼─┼─┤
+	//   └─┴─┴─┴─┴─┴─...............─┴─┴─┴─┴─┴─┘
+	//  k1                                     k0
+	Point2 p_c( 0.1, MIN_D + 2 * ABS( MIN_D ) * uniformDistribution( gen ) );		// Random point generated in local coordinates w.r.t. plane.
+	Point2 projP_c( 0, p_c.y );						// This is basically the 'o' reference point in the above diagram.
+	const double STENCIL_WIDTH = SAMPLING_BAND_WIDTH * H;
+	Point2 corners_c[4] = {							// The four corners above determine if we have a well defined
+		projP_c + Point2( 0, -STENCIL_WIDTH ),		// stencil for sampling.
+		projP_c + Point2( 0, +STENCIL_WIDTH ),
+		projP_c + Point2( -STENCIL_WIDTH, -STENCIL_WIDTH ),
+		projP_c + Point2( -STENCIL_WIDTH, +STENCIL_WIDTH )
+	};
+	for( const auto& corner_c : corners_c )			// Check that the stencil is fully contained in Omega.
+	{
+		double x_w = cos( R_THETA ) * corner_c.x - sin( R_THETA ) * corner_c.y + C.x;	// Get x and y components of
+		double y_w = sin( R_THETA ) * corner_c.x + cos( R_THETA ) * corner_c.y + C.y;	// corner in world coordinates.
+		assert( x_w >= MIN_D && x_w <= -MIN_D && MIN_D <= y_w && y_w <= -MIN_D );
+	}
+
+	// Collect sample for query point p by using interpolation of exact values of field at the nodes in Omega-, and of
+	// the extended field values values at the adjacent nodes to Gamma in Omega+.
+	// Features gro from k0 to k3 above, where x varies slower than y.
+	std::vector<double> sample;
+	sample.reserve( (SAMPLING_BAND_WIDTH + 1) * (2 * (SAMPLING_BAND_WIDTH + 1) - 1) );
+	for( int i = -SAMPLING_BAND_WIDTH; i <= 0; i++ )
+	{
+		double x_c = projP_c.x + i * H;
+		for( int j = -SAMPLING_BAND_WIDTH; j <= SAMPLING_BAND_WIDTH; j++ )
+		{
+			// Getting coordinates in world coordinate system.
+			double y_c = projP_c.y + j * H;
+			double x_w = cos( R_THETA ) * x_c - sin( R_THETA ) * y_c + C.x;
+			double y_w = sin( R_THETA ) * x_c + cos( R_THETA ) * y_c + C.y;
+
+			// Interpolating scalar field.
+			sample.push_back( interpolation( x_w, y_w ) );
+
+			// Some stats.
+			std::cout << "plot(" << x_w << "," << y_w << ", 'b.'); "
+					  << sample.back() << "; "
+					  << ABS( sample.back() - field( x_w, y_w ) ) << ";" << std::endl;
+		}
 	}
 
 	// Save the grid into vtk
