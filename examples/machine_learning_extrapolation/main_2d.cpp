@@ -93,15 +93,15 @@ int main(int argc, char** argv)
 {
 	const double MIN_D = -1;				// Minimum value for domain (in x, y, and z).  Domain is symmetric.
 	const int NUM_TREES_PER_DIM = 2;		// Number of trees per dimension: each with same width and height.
-	const int REFINEMENT_MAX_LEVEL = 7;		// Maximum level of refinement.
+	const int REFINEMENT_MAX_LEVEL = 6;		// Maximum level of refinement.
 	const double H = 1 / pow( 2, REFINEMENT_MAX_LEVEL );	// Minimum cell width.
 	const int REFINEMENT_BAND_WIDTH = 5;	// Band around interface for grid refinement.
 	const int REINIT_NUM_ITER = 10;			// Number of iterations to solve PDE for reinitialization.
-	const int EXTENSION_NUM_ITER = 50;		// Number of iterations to solve PDE for extrapolation.
+	const int EXTENSION_NUM_ITER = 25;		// Number of iterations to solve PDE for extrapolation.
 	const int EXTENSION_ORDER = 2;			// Order of extrapolation (0: constant, 1: linear, 2: quadratic).
 	const int SAMPLING_BAND_WIDTH = 4;		// Number of grid points to sample in Omega- and along Gamma for learning.
-	const int SAMPLING_MIN_P_BAND = 3;		// When sampling, a query point P is considered, and this has to lie in this
-	const int SAMPLING_MAX_P_BAND = 6;		// range (in multiples of H) into Omega+.
+	const int SAMPLING_MIN_P_BAND = 5;		// When sampling, a query point P is considered, and this has to lie in this
+	const int SAMPLING_MAX_P_BAND = 8;		// range (in multiples of H) into Omega+.
 
 	// Prepare parallel enviroment, although we enforce just a single processor to avoid race conditions when generating
 	// datasets.
