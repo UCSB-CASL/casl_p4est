@@ -410,7 +410,7 @@ int main (int argc, char* argv[])
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + std::to_string(default_sl_order));
   cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx, default is " + std::to_string(default_uniform_band));
   cmd.add_option("steady", "deactivates time variations in the analytical solution if present");
-  cmd.add_option("no_interface", "deactivates the existance of the interface (to check handling of wall boundary conditions)");
+  cmd.add_option("no_interface", "deactivates the existence of the interface (to check handling of wall boundary conditions)");
   cmd.add_option("cfl", "upper bound on CFL number, default is " + std::to_string(default_cfl));
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
   cmd.add_option("no_print", "deactives intermediary prints (hodge convergence and progress) if present");
@@ -652,7 +652,7 @@ int main (int argc, char* argv[])
     {
       ns.copy_dxyz_hodge(dxyz_hodge_old);
       ns.solve_viscosity(face_solver, (face_solver != NULL));
-      convergence_check_on_dxyz_hodge = ns.solve_projection(cell_solver, (cell_solver != NULL), KSPCG, PCHYPRE, false, dxyz_hodge_old, uvw_components);
+      convergence_check_on_dxyz_hodge = ns.solve_projection(cell_solver, (cell_solver != NULL), KSPCG, PCHYPRE, false, NULL, dxyz_hodge_old, uvw_components);
       if(!no_print){
         ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, max correction in \\nabla Hodge = %e\n", iter_hodge, convergence_check_on_dxyz_hodge); CHKERRXX(ierr);
       }
