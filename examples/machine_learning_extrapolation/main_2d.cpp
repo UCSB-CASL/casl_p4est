@@ -85,6 +85,7 @@ public:
 		{
 			case 0: return "cos( M_PI * x ) * sin( M_PI * y )";
 			case 1: return "cos( M_PI * x ) + sin( M_PI * y )";
+			case 2: return "2x^2 + xy + 2y^2 + x + y + 1";
 			default: throw std::invalid_argument( "Invalid scalar function choice!" );
 		}
 	}
