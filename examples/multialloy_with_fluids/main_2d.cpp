@@ -339,8 +339,8 @@ void set_geometry(){
     }
     case DENDRITE_TEST:{
       // Domain size:
-      xmin = 0.; xmax = 2.;
-      ymin = 0.; ymax = 2.;
+      xmin = 0.; xmax = 1.;
+      ymin = 0.; ymax = 1.;
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
@@ -350,8 +350,8 @@ void set_geometry(){
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.1;
-      d_seed = (3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+      r0 = 0.01;
+      d_seed = 10.e-6;//(3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
       // physical property paper ""
       break;
     }
@@ -515,7 +515,7 @@ double Re_v; // reynolds number in y direction
 double outflow_u;
 double outflow_v;
 double hodge_percentage_of_max_u;
-int hodge_max_it = 30;
+int hodge_max_it = 100;
 double T_l_IC_band = 2.0;
 bool ramp_T_l_IC_space = false;
 double dt_NS;
@@ -556,7 +556,7 @@ void set_NS_info(){
       v0 = 1.0;
       break;
     case DENDRITE_TEST:
-      Re = 0.22;
+      Re = 10.0;
       u0 = 0.;
       v0 = -1.;
       break;
@@ -604,22 +604,25 @@ double time_nondim_to_dim;
 double vel_nondim_to_dim;
 void set_nondimensional_groups(){
    if(stefan_condition_type==NONDIM_YES_FLUID){
+     double d_length_scale = 0.;
+     if(example_ == ICE_AROUND_CYLINDER){
+       d_length_scale=d_cyl;
+     }
+     else if (example_ == DENDRITE_TEST){
+       d_length_scale = d_seed;
+     }
+
+
      if(Re_overwrite>0.) Re = Re_overwrite;
 
      Pr = mu_l/(alpha_l*rho_l);
      Pe = Re*Pr;
      St = cp_s*fabs(deltaT)/L;
 
-     if(example_==DENDRITE_TEST){
-       u_inf=Re*mu_l/rho_l/(d_seed);
-       vel_nondim_to_dim = u_inf;
-       time_nondim_to_dim=d_seed/u_inf;
-     }
-     else{
-       u_inf=Re*mu_l/rho_l/d_cyl;
-       vel_nondim_to_dim = u_inf;
-       time_nondim_to_dim = d_cyl/u_inf;
-     }
+     u_inf= Re*mu_l/rho_l/d_length_scale;
+     vel_nondim_to_dim = u_inf;
+     time_nondim_to_dim = d_length_scale/u_inf;
+
    }
    else if(stefan_condition_type==NONDIM_NO_FLUID){
      double d_length_scale = 0.;
@@ -696,7 +699,8 @@ void simulation_time_info(){
       tstart=0.0;
       break;
     case DENDRITE_TEST:
-      tfinal =(1.0e-4/*0.5*60.*/)/(time_nondim_to_dim); // half a minute(commented), one millisecond -- active
+      double tau = 3.2e-7;
+      tfinal =(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
       tstart=0.;
       dt_max_allowed = 1.e-2;
 
@@ -709,7 +713,7 @@ void simulation_time_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-double v_int_max_allowed = 50.0;
+double v_int_max_allowed = 500.0e9;
 // Variables used for advection:
 double advection_alpha_coeff= 0.0;
 double advection_beta_coeff =0.0;
