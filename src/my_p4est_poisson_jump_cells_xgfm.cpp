@@ -37,7 +37,6 @@ my_p4est_poisson_jump_cells_xgfm_t::~my_p4est_poisson_jump_cells_xgfm_t()
   PetscErrorCode ierr;
   if (extension != NULL)  { ierr = VecDestroy(extension); CHKERRXX(ierr); }
   if (residual  != NULL)  { ierr = VecDestroy(residual);  CHKERRXX(ierr); }
-  if (solution  != NULL)  { ierr = VecDestroy(solution);  CHKERRXX(ierr); }
   if (grad_jump != NULL)  { ierr = VecDestroy(grad_jump); CHKERRXX(ierr); }
   if (interp_grad_jump != NULL)
     delete interp_grad_jump;
