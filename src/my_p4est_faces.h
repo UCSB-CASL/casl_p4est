@@ -669,4 +669,7 @@ inline bool third_degree_ghost_are_required(const double *tree_dim)
 
 void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* faces, const p4est_locidx_t &f_idx, const u_char & dir, const BoundaryConditionsDIM *bc, const PetscScalar *face_is_well_defined_p);
 
+
+void get_lsqr_face_gradient_operator_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& is_point_face_center, const p4est_locidx_t& idx_of_face_center = -1);
 #endif /* MY_P4EST_FACES_H */

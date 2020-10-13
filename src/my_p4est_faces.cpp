@@ -1543,3 +1543,75 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
   ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
+
+void get_lsqr_face_gradient_operator_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& is_point_face_center, const p4est_locidx_t& idx_of_face_center)
+{
+  P4EST_ASSERT(ngbd_of_faces.size() > 0);
+  P4EST_ASSERT(!is_point_face_center || idx_of_face_center >= 0);
+#ifdef CASL_THROWS
+  if(ngbd_of_faces.size() < 1 + P4EST_DIM)
+    throw std::invalid_argument("get_lsqr_face_gradient_operator_at_point() : not enough neighbor cells to build a gradient");
+#endif
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    grad_operator[dim].clear();
+
+  matrix_t A(ngbd_of_faces.size() - (is_point_face_center ? 1 : 0), (is_point_face_center ? 0 : 1 ) + P4EST_DIM);
+
+  const double* xyz_max = faces->get_xyz_max();
+  const double* xyz_min = faces->get_xyz_min();
+
+  int row_idx = 0;
+  for(std::set<indexed_and_located_face>::const_iterator it = ngbd_of_faces.begin(); it != ngbd_of_faces.end(); ++it)
+  {
+    if(is_point_face_center && it->face_idx == idx_of_face_center)
+      continue; // done at the very end for that term
+    double xyz_t[P4EST_DIM] = {DIM(it->xyz_face[0] - xyz_point[0], it->xyz_face[1] - xyz_point[1], it->xyz_face[2] - xyz_point[2])};
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      if(faces->periodicity(dir))
+      {
+        const double pp = xyz_t[dir]/(xyz_max[dir] - xyz_min[dir]);
+        xyz_t[dir] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dir] - xyz_min[dir]);
+      }
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      grad_operator[dim].add_term(it->face_idx, 1.0);
+
+    // constant term
+    u_char col_idx = 0;
+    if(!is_point_face_center)
+      A.set_value(row_idx, col_idx++, 1.0);
+    // linear terms
+    for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+      A.set_value(row_idx, col_idx++, xyz_t[uu]/scaling);
+
+    row_idx++;
+  }
+
+  matrix_t AtA, inv_AtA;
+  A.mtm_product(AtA);
+  const bool is_inversion_successful = solve_cholesky(AtA, NULL, NULL, 0, 1e4, NULL, &inv_AtA);
+
+  if(!is_inversion_successful)
+    throw std::runtime_error("get_lsqr_face_gradient_operator_at_point : the inversion of the lsqr system failed.");
+
+  matrix_t operator_coeffs;
+  A.matrix_product(inv_AtA, operator_coeffs);
+
+  double sum_of_coeffs[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
+
+  for (int term = 0; term < A.num_rows(); ++term)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      grad_operator[dim][term].weight = operator_coeffs.get_value(term, (is_point_face_center ? 0 : 1) + dim)/scaling;
+      sum_of_coeffs[dim] += grad_operator[dim][term].weight;
+    }
+
+  if(is_point_face_center)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      grad_operator[dim].add_term(idx_of_face_center, -sum_of_coeffs[dim]);
+
+  return;
+}
+
