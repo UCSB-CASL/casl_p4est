@@ -678,7 +678,7 @@ void simulation_time_info(){
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
       tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
-      dt_max_allowed = save_every_dt;
+      dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
       break;
 
@@ -3000,9 +3000,9 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   bool out = false;
   if(save_to_vtk){
     if(save_using_dt){
-        out= (((int) floor(tn_/save_every_dt) ) !=out_idx) && (!is_load_step);
+        out= ((int (floor(tn_/save_every_dt) )) !=out_idx) && (!is_load_step);
         if(get_new_outidx){
-          out_idx = ((int) floor(tn_/save_every_dt) );
+          out_idx = int (floor(tn_/save_every_dt) );
         }
       }
     else if (save_using_iter){
@@ -3538,7 +3538,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
         throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK");
       }
 
-    PetscPrintf(mpi_comm,"Saving to vtk...\n");
+    PetscPrintf(mpi_comm,"Saving to vtk, outidx = %d ...\n",out_idx);
 
     if(example_==ICE_AROUND_CYLINDER){
       // Create the cylinder just for visualization purposes, then destroy after saving
@@ -4665,7 +4665,7 @@ int main(int argc, char** argv) {
                            "Save state every iter = %d \n"
                            "Save to vtk? %s \n"
                            "Save using %s \n"
-                           "Save every dt = %0.2f [nondim] = %0.2f [seconds]\n"
+                           "Save every dt = %0.5e [nondim] = %0.2f [seconds]\n"
                            "Save every iter = %d \n",loading_from_previous_state?"Yes":"No",
                           tstep,
                           save_state_every_iter,
@@ -4982,8 +4982,8 @@ int main(int argc, char** argv) {
       // Print iteration information:
       // ------------------------------------------------------------
       ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                    "Iteration %d , Time: %0.2f [nondim] = Time: %0.3e [nondim] = %0.2f [sec] = %0.2f [min],"
-                                    " Timestep: %0.3e [nondim] = %0.1g [sec],"
+                                    "Iteration %d , Time: %0.5e [nondim] = Time: %0.3e [nondim] = %0.2f [sec] = %0.2f [min],"
+                                    " Timestep: %0.5e [nondim] = %0.1g [sec],"
                                     " Percent Done : %0.2f %"
                                     " \n ------------------------------------------- \n",
                                     tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
