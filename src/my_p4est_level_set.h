@@ -209,7 +209,7 @@ class my_p4est_level_set_t {
   const my_p4est_node_neighbors_t *ngbd;
   const double tree_dimensions[P4EST_DIM], zero_distance_threshold;
 
-  void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM]) const;
+  void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM], const u_int& blocksize = 1) const;
 
   /*!
    * \brief reinitialize_one_iteration performs one forward pseudotime-step of the reinitialization
@@ -688,13 +688,13 @@ public:
                                                                std::vector<double>& qi_00m, std::vector<double>& qi_00p,
                                                              #endif
                                                                std::vector<double>& s_m00, std::vector<double>& s_p00,
-                                                               std::vector<double>& s_0m0, std::vector<double>& s_0p0
+                                                               std::vector<double>& s_0m0, std::vector<double>& s_0p0,
                                                              #ifdef P4_TO_P8
-                                                               , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                               std::vector<double>& s_00m, std::vector<double>& s_00p,
                                                              #endif
-                                                               ) const;
+                                                               const u_int& blocksize) const;
   void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL,
-                                                 Vec grad_phi_in = NULL) const;
+                                                 Vec grad_phi_in = NULL, const u_int& blocksize = 1) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;

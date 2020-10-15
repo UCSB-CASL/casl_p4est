@@ -159,6 +159,7 @@ typedef struct node_linear_combination
 const double zero_threshold_qnnn = EPS;
 
 class quad_neighbor_nodes_of_node_t {
+  friend class my_p4est_level_set_t;
 private:
   static inline bool check_if_zero(const double& value) { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
   // very elementary operations in the most synthetic forms
@@ -686,6 +687,7 @@ private:
   }
 
 
+  // results are serialized as follows: result associated with the kth component of the jth field is indexed by 'bs*j + k'
   inline void ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
