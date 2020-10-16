@@ -128,14 +128,15 @@ protected:
   // ELYCE TRYING SOMETHING:
   void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx, p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn);
 
+  double uniform_band;
   bool refine_only_inside;
 public:
-  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2, double uniform_band_ = -1.0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), uniform_band(uniform_band_), refine_only_inside(false)
   {
   }
-  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_)
-    : splitting_criteria_t(*splitting_criteria_), refine_only_inside(false)
+  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_, double uniform_band_ = -1.0)
+    : splitting_criteria_t(*splitting_criteria_), uniform_band(uniform_band_), refine_only_inside(false)
   {
   }
 
