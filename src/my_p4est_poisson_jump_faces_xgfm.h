@@ -33,9 +33,18 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   Vec residual[P4EST_DIM];  // face-sampled, residual = A*solution - rhs(jump_u, jump_normal_flux_u, extension_of_interface_defined_values)
   Vec grad_jump_u_dot_n;    // node-sampled, P4EST_DIM block-structure, gradient of jump_u_dot_n, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   Vec extension[P4EST_DIM]; // face-sampled, extension of interface-defined component values
+
   my_p4est_interpolation_nodes_t *interp_grad_jump_u_dot_n;
   bool activate_xGFM, print_residuals_and_corrections_with_solve_info, use_face_dofs_only_in_extrapolations;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
+
+  // - BEGIN validation data only -
+  Vec validation_jump_u;          // node-sampled, P4EST_DIM block-structure, jump in every component of the solution defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
+  Vec validation_jump_mu_grad_u;  // node-sampled, P4EST_DIM block-structure, jump in every component of mu*grad(u) defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
+  my_p4est_interpolation_nodes_t *interp_validation_jump_u;
+  my_p4est_interpolation_nodes_t *interp_validation_jump_mu_grad_u;
+  bool set_for_testing_backbone;
+  // - END validation data only -
 
   inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
 
@@ -159,6 +168,65 @@ public:
         }
       }
     }
+  }
+
+  inline void set_jumps_for_validation(Vec validation_jump_u_, Vec validation_jump_mu_grad_u_)
+  {
+    PetscErrorCode ierr;
+    // make sure there is no interference with jumps set another way, first
+    if(jump_u_dot_n != NULL)
+      jump_u_dot_n = NULL;
+    if(jump_tangential_stress != NULL)
+      jump_tangential_stress = NULL;
+    if(grad_jump_u_dot_n != NULL) {
+      ierr = delete_and_nullify_vector(grad_jump_u_dot_n); CHKERRXX(ierr); }
+
+    if(interp_jump_u_dot_n != NULL)
+      delete interp_jump_u_dot_n;
+    if(interp_grad_jump_u_dot_n != NULL)
+      delete interp_grad_jump_u_dot_n;
+    if(interp_jump_tangential_stress != NULL)
+      delete interp_jump_tangential_stress;
+
+    if(!interface_is_set())
+      throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::set_jumps_for_validation(): the interface manager must be set before the jumps");
+    const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
+#ifdef P4EST_DEBUG
+    P4EST_ASSERT(validation_jump_u_         == NULL || VecIsSetForNodes(validation_jump_u_,         interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, P4EST_DIM));
+    P4EST_ASSERT(validation_jump_mu_grad_u_ == NULL || VecIsSetForNodes(validation_jump_mu_grad_u_, interface_capturing_ngbd_n.get_nodes(), interface_capturing_ngbd_n.get_p4est()->mpicomm, SQR_P4EST_DIM));
+#endif
+
+    // fetch the validation input data and set the solver for validation purposes
+    validation_jump_u = validation_jump_u_;
+    validation_jump_mu_grad_u = validation_jump_mu_grad_u_;
+
+    if(interp_validation_jump_u != NULL && validation_jump_u == NULL){
+      delete interp_validation_jump_u;
+      interp_validation_jump_u = NULL;
+    }
+    if(interp_validation_jump_u == NULL && validation_jump_u != NULL){
+      interp_validation_jump_u = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
+    }
+    if(validation_jump_u != NULL)
+      interp_validation_jump_u->set_input(validation_jump_u, linear, P4EST_DIM);
+
+    if(interp_validation_jump_mu_grad_u != NULL && validation_jump_mu_grad_u == NULL){
+      delete interp_validation_jump_mu_grad_u;
+      interp_validation_jump_mu_grad_u = NULL;
+    }
+    if(interp_validation_jump_mu_grad_u == NULL && validation_jump_mu_grad_u != NULL){
+      interp_validation_jump_mu_grad_u = new my_p4est_interpolation_nodes_t(&interface_capturing_ngbd_n);
+    }
+    if(validation_jump_mu_grad_u != NULL)
+      interp_validation_jump_mu_grad_u->set_input(validation_jump_mu_grad_u, linear, SQR_P4EST_DIM);
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      rhs_is_set[dim] = false;
+
+    extrapolations_are_set = false;
+    set_for_testing_backbone = true;
+
+    return;
   }
 
   inline Vec* get_extended_interface_values()                         { make_sure_extensions_are_defined();     return extension; }

@@ -16,7 +16,6 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
   interp_jump_u_dot_n = interp_jump_tangential_stress = NULL;
   user_initial_guess = NULL;
 
-
   max_ksp_iterations    = PETSC_DEFAULT;
   relative_tolerance    = 1.0e-12;
   absolute_tolerance    = PETSC_DEFAULT;

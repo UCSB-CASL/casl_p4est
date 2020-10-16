@@ -15,6 +15,12 @@ my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_
   print_residuals_and_corrections_with_solve_info = false;
   scale_systems_by_diagonals = false;
   use_face_dofs_only_in_extrapolations = false;
+
+  validation_jump_u = NULL;
+  validation_jump_mu_grad_u = NULL;
+  interp_validation_jump_u = NULL;
+  interp_validation_jump_mu_grad_u = NULL;
+  set_for_testing_backbone = false;
 }
 
 my_p4est_poisson_jump_faces_xgfm_t::~my_p4est_poisson_jump_faces_xgfm_t()
@@ -29,6 +35,11 @@ my_p4est_poisson_jump_faces_xgfm_t::~my_p4est_poisson_jump_faces_xgfm_t()
     if (residual[dim]  != NULL)  { ierr = VecDestroy(residual[dim]);  CHKERRXX(ierr); }
     if (solution[dim]  != NULL)  { ierr = VecDestroy(solution[dim]);  CHKERRXX(ierr); }
   }
+
+  if(interp_validation_jump_u != NULL)
+    delete interp_validation_jump_u;
+  if(interp_validation_jump_mu_grad_u != NULL)
+    delete interp_validation_jump_mu_grad_u;
 }
 
 void my_p4est_poisson_jump_faces_xgfm_t::get_numbers_of_faces_involved_in_equation_for_face(const u_char& dir, const p4est_locidx_t& face_idx,
@@ -180,10 +191,24 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
           const bool is_in_positive_domain = (sgn_face > 0);
           offdiag_coeff = -face_interface_neighbor.GFM_mu_jump(mu_this_side, mu_across)*neighbor_area/dxyz_local[ff/2];
           if(!rhs_is_set[dir])
-            rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, 0.0, 0.0, dxyz_local[ff/2]);
+          {
+            if(set_for_testing_backbone)
+            {
+              double xyz_interface[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+              xyz_interface[ff/2] += (ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.theta*dxyz_local[ff/2];
+              if(periodicity[ff/2])
+                xyz_interface[ff/2] = xyz_interface[ff/2] - floor((xyz_interface[ff/2] - xyz_min[ff/2])/(xyz_max[ff/2] - xyz_min[ff/2]))*(xyz_max[ff/2] - xyz_min[ff/2]);
+              rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain,
+                                                                                                                                       (*interp_validation_jump_u).operator()(xyz_interface, dir),
+                                                                                                                                       (*interp_validation_jump_mu_grad_u).operator()(xyz_interface, P4EST_DIM*dir + (ff/2)),
+                                                                                                                                       dxyz_local[ff/2]);
+            }
+            else
+              rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, 0.0, 0.0, dxyz_local[ff/2]);
+          }
         }
         else
-          offdiag_coeff = -(sgn_face ? mu_minus : mu_plus)*neighbor_area/dxyz_local[ff/2];
+          offdiag_coeff = -(sgn_face < 0 ? mu_minus : mu_plus)*neighbor_area/dxyz_local[ff/2];
 
         // check if the neighbor face is a wall (to subtract it from the RHS right away if it is a Dirichlet BC and keep a symmetric matrix for CG)
         // the neigbor face is a wall, if
@@ -235,7 +260,19 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
             {
               offdiag_coeff = -face_interface_neighbor.GFM_mu_jump(mu_this_side, mu_across)*neighbor_area/(0.5*dxyz_min[ff/2]);
               if(!rhs_is_set[dir])
-                rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, 0.0, 0.0, 0.5*dxyz_min[ff/2]);
+              {
+                if(set_for_testing_backbone)
+                {
+                  double xyz_interface[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+                  xyz_interface[ff/2] += (ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.theta*0.5*dxyz_local[ff/2]; // can't be out of the domain, by definition in such a case
+                  rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain,
+                                                                                                                                           (*interp_validation_jump_u).operator()(xyz_interface, dir),
+                                                                                                                                           (*interp_validation_jump_mu_grad_u).operator()(xyz_interface, P4EST_DIM*dir + (ff/2)),
+                                                                                                                                           0.5*dxyz_local[ff/2]);
+                }
+                else
+                  rhs_dir_p[face_idx] += neighbor_area*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain, 0.0, 0.0, 0.5*dxyz_local[ff/2]);
+              }
               if(!matrix_is_set[dir]) {
                 ierr = MatSetValue(matrix[dir], global_face_idx, global_face_idx, -offdiag_coeff, ADD_VALUES); CHKERRXX(ierr); }
               *nullspace_contains_constant_vector = 0; // no nullspace in this case...
@@ -351,7 +388,19 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
             const bool is_in_positive_domain = (sgn_face > 0);
             offdiag_coeff = -surface*face_interface_neighbor.GFM_mu_jump(mu_this_side, mu_across)/(0.5*distance_to_neighbor);
             if(!rhs_is_set[dir])
-              rhs_dir_p[face_idx] += surface*(wall_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, wall_orientation, is_in_positive_domain, 0.0, 0.0, 0.5*distance_to_neighbor);
+            {
+              if(set_for_testing_backbone)
+              {
+                double xyz_interface[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+                xyz_interface[wall_orientation/2] += (wall_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.theta*0.5*distance_to_neighbor; // can't be out of the domain, by definition in such a case
+                rhs_dir_p[face_idx] += surface*(wall_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, wall_orientation, is_in_positive_domain,
+                                                                                                                                                 (*interp_validation_jump_u).operator()(xyz_interface, dir),
+                                                                                                                                                 (*interp_validation_jump_mu_grad_u).operator()(xyz_interface, P4EST_DIM*dir + (wall_orientation/2)),
+                                                                                                                                                 0.5*distance_to_neighbor);
+              }
+              else
+                rhs_dir_p[face_idx] += surface*(wall_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, wall_orientation, is_in_positive_domain, 0.0, 0.0, 0.5*distance_to_neighbor);
+            }
           }
           if(nullspace_contains_constant_vector != NULL)
             *nullspace_contains_constant_vector = 0;
@@ -397,7 +446,21 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
           const bool is_in_positive_domain = (sgn_face > 0);
           offdiag_coeff = surface*face_interface_neighbor.GFM_mu_jump(mu_this_side, mu_across)/distance_to_neighbor;
           if(!rhs_is_set[dir])
-            rhs_dir_p[face_idx] += surface*(neighbor_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, neighbor_orientation, is_in_positive_domain, 0.0, 0.0, distance_to_neighbor);
+          {
+            if(set_for_testing_backbone)
+            {
+              double xyz_interface[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+              xyz_interface[neighbor_orientation/2] += (neighbor_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.theta*distance_to_neighbor;
+              if(periodicity[neighbor_orientation/2])
+                xyz_interface[neighbor_orientation/2] = xyz_interface[neighbor_orientation/2] - floor((xyz_interface[neighbor_orientation/2] - xyz_min[neighbor_orientation/2])/(xyz_max[neighbor_orientation/2] - xyz_min[neighbor_orientation/2]))*(xyz_max[neighbor_orientation/2] - xyz_min[neighbor_orientation/2]);
+              rhs_dir_p[face_idx] += surface*(neighbor_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, neighbor_orientation, is_in_positive_domain,
+                                                                                                                                                   (*interp_validation_jump_u).operator()(xyz_interface, dir),
+                                                                                                                                                   (*interp_validation_jump_mu_grad_u).operator()(xyz_interface, P4EST_DIM*dir + (neighbor_orientation/2)),
+                                                                                                                                                   0.5*distance_to_neighbor);
+            }
+            else
+              rhs_dir_p[face_idx] += surface*(neighbor_orientation%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, neighbor_orientation, is_in_positive_domain, 0.0, 0.0, distance_to_neighbor);
+          }
         }
         if(!matrix_is_set[dir]){
           // we do not add the off-diagonal element to the matrix if the neighbor is a Dirichlet wall face
@@ -437,7 +500,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
     ierr = setup_linear_solver(dir, ksp_type, pc_type); CHKERRXX(ierr);
   }
 
-  if(!activate_xGFM || mus_are_equal())
+  if(!activate_xGFM || mus_are_equal() || set_for_testing_backbone)
   {
     solve_linear_systems();
 //    solver_monitor.log_iteration(0.0, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
