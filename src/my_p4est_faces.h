@@ -667,6 +667,63 @@ inline bool third_degree_ghost_are_required(const double *tree_dim)
   return to_return;
 }
 
+/*!
+ * \brief compute_voronoi_cell : builds the local voronoi cell associated with a face.
+ * \param voronoi_cell            [inout] : the voronoi cell to be built
+ * \param faces                   [in]    : the face face data structure
+ * \param f_idx                   [in]    : the index of the face on which the Voronoi cell needs to be built
+ * \param dir                     [in]    : the Cartesian orientation of the face normal (dir::x, dir::y or dir::z)
+ * \param bc                      [in]    : the boundary condition associated with the face-sampled (vector component) field (relevant only if playing with stretched grids)
+ * \param face_is_well_defined_p  [in]    : markers of well-definedness for the faces (as relevant for one-sided problems : no construction is done where the face is _not_ well-defined)
+ * Details of implementation:
+ * - If the face is not marked as "well-defined", the voronoi cell is not constructed and its type is set as "not_well_defined"
+ * - Otherwise,
+ * A) the two quadrants sharing the face are fetched (qp and qm) if possible (i.e. if not considering a wall face) and the algorithm first checks if
+ * a (valid) uniform neighborhod is found
+ *  a) by looking into the map of finest neighbors in the face structure (if used)
+ *  b) or by fetching all the tranverse neighbors of the two quadrants sharing the face of interest (and extra checks in case of stretched grids)
+ *     and checking that no smaller second-degree neighbor invalidates local uniformity.
+ * --> if uniformity is found to be applicable, the cell is built "by hand" (and clipped to the domain "by hand" as well, in case of wall face, if
+ * the domain not periodic).
+ * B) Otherwise, the cell needs to be constructed using general procedures, from a set of nonuniform neighbors.
+ * In case of regular grids (no weird aspect ratio),
+ *  1) the routine considers qm (resp. qp) and checks if the neighbor cells across qm (resp. qp) in the direction opposite to the face of interest '#'
+ *     are found to be smaller than qm (resp. qp). If so, these smaller neighbor cells in face-normal negative (resp. positive) direction are fetched
+ *     and added to a set of neighboring quads. (In presence of stretched grids, one can also show that such neighbors _may_ be required even if they're
+ *     not smaller than qm (resp. qp) and internal aspect ratio checks activate such extra procedures);
+ *  2) the routine fetches an extra layer of cells layering the quadrants that share the face in all "diagonal" directions (for instance, it will
+ *     fetch Q1 and Q2 from qp that shares the face of interest '#' with qm in the diagram here below). These diagonally-oriented neighbors of qp (and
+ *     qm's counterparts) are also added to the set of neighboring quads;
+ *  3) The direct tranverse neighbors previously fetched in the context of the early uniformity check  (e.g. Q3 and Q4 in case of qp here below) are
+ *     also added to the list of neighboring quads. (In presence of stretched grids, one can show that more neighboring cells may be required in some
+ *     cases and internal aspect ratio checks activate those extra procedures);
+ * All the relevant faces indexed by these quadrants in the list of neighbors are then added as potential neighbor Voronoi seeds for the Voronoi cell
+ * being constructed and the internal construction procedure is then invoked (in-house in 2D, voro++ in 3D).
+ *
+ * -------------------------------------
+ * |                 |        |        |
+ * |                 |        |        |
+ * |                 |        |        |
+ * |       Q1        |--------|--------|
+ * |                 |        |        |
+ * |                 |        |   Q2   |
+ * |                 |        |        |
+ * |-----------------|--------|--------|
+ * |                 |        |        |
+ * |                 |   qp   |   Q4   |
+ * |                 |        |        |
+ * |       Q3        |---#----|--------|
+ * |                 |        |        |
+ * |                 |   qm   |        |
+ * |                 |        |        |
+ * ------------------------------------
+ *
+ * IMPORTANT NOTE 1 : it is essential that all relevant neighbor seeds are found and gathered before calling the relevant voronoi cosntruction
+ * procedure. If a neighbor is missing, the construction will not miraculously find it!
+ *
+ * IMPORTANT NOTE 2: the procedure here above is reliable only on graded grids, use at your own risk on non-graded grids (but, better: don't use
+ * it on non-graded grids).
+ */
 void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* faces, const p4est_locidx_t &f_idx, const u_char & dir, const BoundaryConditionsDIM *bc, const PetscScalar *face_is_well_defined_p);
 
 
