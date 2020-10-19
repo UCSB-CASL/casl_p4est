@@ -718,3 +718,17 @@ void my_p4est_poisson_jump_faces_t::extrapolate_normal_derivatives_local(const u
   return;
 }
 
+void my_p4est_poisson_jump_faces_t::print_partition_VTK(const char *file, const u_char &dir)
+{
+  if(voronoi_on_the_fly)
+    throw std::invalid_argument("my_p4est_poisson_jump_faces_t::print_partition_VTK: can't operate with voronoi_on_the_fly.");
+  else
+  {
+#ifdef P4_TO_P8
+    bool periodic[] = {0, 0, 0};
+    Voronoi3D::print_VTK_format(voronoi_cell[dir], file, xyz_min, xyz_max, periodic);
+#else
+    Voronoi2D::print_VTK_format(voronoi_cell[dir], file);
+#endif
+  }
+}

@@ -379,6 +379,9 @@ public:
       }
     }
   }
+
+  void print_partition_VTK(const char *file, const u_char &dir);
+
 };
 
 #endif // MY_P4EST_POISSON_JUMP_FACES_H
