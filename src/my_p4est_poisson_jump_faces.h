@@ -331,6 +331,7 @@ public:
   inline const p4est_t* get_p4est()                             const { return p4est;                                 }
   inline const p4est_ghost_t* get_ghost()                       const { return ghost;                                 }
   inline const p4est_nodes_t* get_nodes()                       const { return nodes;                                 }
+  inline const my_p4est_faces_t* get_faces()                    const { return faces;                                 }
   inline const my_p4est_cell_neighbors_t* get_cell_ngbd()       const { return faces->get_ngbd_c();                   }
   inline const my_p4est_hierarchy_t* get_hierarchy()            const { return faces->get_ngbd_c()->get_hierarchy();  }
   inline const double* get_smallest_dxyz()                      const { return dxyz_min;                              }

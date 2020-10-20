@@ -250,6 +250,8 @@ public:
 
   inline bool uses_xGFM_corrections() const { return activate_xGFM; }
 
+  inline Vec get_validation_jump() const { return validation_jump_u; }
+
 };
 
 #endif // MY_P4EST_POISSON_JUMP_FACES_XGFM_H

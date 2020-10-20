@@ -713,9 +713,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
       tmp.xyz_face[comp] = xyz_face[comp];
 
     std::set<indexed_and_located_face> all_neighbors;           all_neighbors.insert(tmp);
-//    std::set<indexed_and_located_face> neighbors_for_this_side; neighbors_for_this_side.insert(tmp);
     std::set<indexed_and_located_face> neighbors_for_across;    neighbors_for_across.insert(tmp);
-//    double max_dist_this_side = 0.0; double min_dist_this_side  = DBL_MAX;
     double max_dist_across  = 0.0;
     double min_dist         = DBL_MAX;
     double min_dist_across  = DBL_MAX;
@@ -723,7 +721,10 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     for (size_t k = 0; k < neighbor_seeds->size(); ++k) {
       tmp.face_idx = (*neighbor_seeds)[k].n;
       if((*neighbor_seeds)[k].n < 0)
+      {
+//        continue;
         throw std::runtime_error("initialize_extrapolation_local: alright man, you have work to do, here");
+      }
 
       double inner_product = 0.0;
       double neighbor_distance = 0.0;
@@ -735,12 +736,6 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
       }
       neighbor_distance = sqrt(neighbor_distance);
       inner_product /= neighbor_distance;
-//      if(inner_product <= 1.0e-6)
-//      {
-//        neighbors_for_this_side.insert(tmp);
-//        max_dist_this_side = MAX(max_dist_this_side, neighbor_distance);
-//        min_dist_this_side = MIN(min_dist_this_side, neighbor_distance);
-//      }
       if(inner_product >= -1.0e-6)
       {
         neighbors_for_across.insert(tmp);
@@ -751,19 +746,15 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
       min_dist = MIN(min_dist, neighbor_distance);
     }
 
-    linear_combination_of_dof_t lsqr_face_grad_operator[P4EST_DIM], lsqr_face_grad_operator_across[P4EST_DIM]; //lsqr_face_grad_operator_this_side[P4EST_DIM],
+    linear_combination_of_dof_t lsqr_face_grad_operator[P4EST_DIM], lsqr_face_grad_operator_across[P4EST_DIM];
     get_lsqr_face_gradient_operator_at_point(xyz_face, faces, all_neighbors, min_dist, lsqr_face_grad_operator, true, face_idx);
-//    get_lsqr_face_gradient_operator_at_point(xyz_face, faces, neighbors_for_this_side,  min_dist_this_side, lsqr_face_grad_operator_this_side,  true, face_idx);
     get_lsqr_face_gradient_operator_at_point(xyz_face, faces, neighbors_for_across,     min_dist_across,    lsqr_face_grad_operator_across,     true, face_idx);
 
-//    extrapolation_operator_this_side.n_dot_grad.clear();
     extrapolation_operator_across.n_dot_grad.clear();
     for (u_char comp = 0; comp < P4EST_DIM; ++comp)
     {
       n_dot_grad_u += lsqr_face_grad_operator[comp](sharp_solution_p[dim])*oriented_normal[comp];
-//      extrapolation_operator_this_side.n_dot_grad.add_operator_on_same_dofs(lsqr_face_grad_operator_this_side[comp], oriented_normal[comp]);
       extrapolation_operator_across.n_dot_grad.add_operator_on_same_dofs(lsqr_face_grad_operator_across[comp], -oriented_normal[comp]);
-//      extrapolation_operator_this_side.dtau = max_dist_this_side/P4EST_DIM;
       extrapolation_operator_across.dtau    = max_dist_across/P4EST_DIM;
     }
   }
