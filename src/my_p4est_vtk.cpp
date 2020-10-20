@@ -2192,31 +2192,31 @@ void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nod
                                           const std::vector<Vec_for_vtk_export_t> *cell_vector_fields_by_block)
 {
 
-  std::vector<const double*>* node_scalar_data  = (node_scalar_fields != NULL ? new std::vector<const double*>(node_scalar_fields->size())  : NULL);
-  std::vector<std::string>* node_scalar_names   = (node_scalar_fields != NULL ? new std::vector<std::string>(node_scalar_fields->size())    : NULL);
-  if (node_scalar_fields != NULL)
+  std::vector<const double*>* node_scalar_data  = (node_scalar_fields != NULL && node_scalar_fields->size() > 0 ? new std::vector<const double*>(node_scalar_fields->size())  : NULL);
+  std::vector<std::string>* node_scalar_names   = (node_scalar_fields != NULL && node_scalar_fields->size() > 0 ? new std::vector<std::string>(node_scalar_fields->size())    : NULL);
+  if (node_scalar_fields != NULL && node_scalar_fields->size() > 0)
     for (size_t k = 0; k < node_scalar_fields->size(); ++k) {
       (*node_scalar_data)[k]  = (*node_scalar_fields)[k].ptr;
       (*node_scalar_names)[k] = (*node_scalar_fields)[k].name;
     }
-  std::vector<const double*>* node_vector_block_data          = (node_vector_fields_by_block != NULL  ? new std::vector<const double*>(node_vector_fields_by_block->size()) : NULL);
-  std::vector<std::string>* node_vector_block_names           = (node_vector_fields_by_block != NULL  ? new std::vector<std::string>(node_vector_fields_by_block->size())   : NULL);
-  if(node_vector_fields_by_block != NULL)
+  std::vector<const double*>* node_vector_block_data  = (node_vector_fields_by_block != NULL && node_vector_fields_by_block->size() > 0 ? new std::vector<const double*>(node_vector_fields_by_block->size()) : NULL);
+  std::vector<std::string>* node_vector_block_names   = (node_vector_fields_by_block != NULL && node_vector_fields_by_block->size() > 0 ? new std::vector<std::string>(node_vector_fields_by_block->size())   : NULL);
+  if(node_vector_fields_by_block != NULL && node_vector_fields_by_block->size() > 0)
     for (size_t k = 0; k < node_vector_fields_by_block->size(); ++k) {
       (*node_vector_block_data)[k]  = (*node_vector_fields_by_block)[k].ptr;
       (*node_vector_block_names)[k] = (*node_vector_fields_by_block)[k].name;
     }
 
-  std::vector<const double*>* cell_scalar_data  = (cell_scalar_fields != NULL ? new std::vector<const double*>(cell_scalar_fields->size())  : NULL);
-  std::vector<std::string>* cell_scalar_names   = (cell_scalar_fields != NULL ? new std::vector<std::string>(cell_scalar_fields->size())    : NULL);
-  if (cell_scalar_fields != NULL)
+  std::vector<const double*>* cell_scalar_data  = (cell_scalar_fields != NULL && cell_scalar_fields->size() > 0 ? new std::vector<const double*>(cell_scalar_fields->size())  : NULL);
+  std::vector<std::string>* cell_scalar_names   = (cell_scalar_fields != NULL && cell_scalar_fields->size() > 0 ? new std::vector<std::string>(cell_scalar_fields->size())    : NULL);
+  if (cell_scalar_fields != NULL && cell_scalar_fields->size() > 0 )
     for (size_t k = 0; k < cell_scalar_fields->size(); ++k) {
       (*cell_scalar_data)[k]  = (*cell_scalar_fields)[k].ptr;
       (*cell_scalar_names)[k] = (*cell_scalar_fields)[k].name;
     }
-  std::vector<const double*>* cell_vector_block_data          = (cell_vector_fields_by_block != NULL  ? new std::vector<const double*>(cell_vector_fields_by_block->size()) : NULL);
-  std::vector<std::string>* cell_vector_block_names           = (cell_vector_fields_by_block != NULL  ? new std::vector<std::string>(cell_vector_fields_by_block->size())   : NULL);
-  if(cell_vector_fields_by_block != NULL)
+  std::vector<const double*>* cell_vector_block_data  = (cell_vector_fields_by_block != NULL && cell_vector_fields_by_block->size() > 0 ? new std::vector<const double*>(cell_vector_fields_by_block->size()) : NULL);
+  std::vector<std::string>* cell_vector_block_names   = (cell_vector_fields_by_block != NULL && cell_vector_fields_by_block->size() > 0 ? new std::vector<std::string>(cell_vector_fields_by_block->size())   : NULL);
+  if(cell_vector_fields_by_block != NULL && cell_vector_fields_by_block->size() > 0 )
     for (size_t k = 0; k < cell_vector_fields_by_block->size(); ++k) {
       (*cell_vector_block_data)[k]  = (*cell_vector_fields_by_block)[k].ptr;
       (*cell_vector_block_names)[k] = (*cell_vector_fields_by_block)[k].name;
