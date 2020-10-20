@@ -1056,6 +1056,9 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(jump_u); CHKERRXX(ierr);
     ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
 
+    ierr = VecDestroy(sharp_rhs_minus); CHKERRXX(ierr);
+    ierr = VecDestroy(sharp_rhs_plus); CHKERRXX(ierr);
+
     delete data;
     if(subrefined_data != NULL)
       delete subrefined_data;
