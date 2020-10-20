@@ -1837,7 +1837,7 @@ my_p4est_vtk_write_footer (const p4est_t * p4est, const char *filename)
 
     char vtu_sourcename[BUFSIZ];
     /* scan the filename in reverse to get the first '/' char */
-    size_t pv_end = strlen(filename)+1;
+    size_t pv_end = strlen(filename); // [Raphael] originally "size_t pv_end = strlen(filename) + 1 ;" but that generates an invalid read in memcopy hereblow (read one character past the termination character)
     size_t pv_beg = pv_end;
     while(pv_beg>0 && filename[pv_beg-1] != '/')
       --pv_beg;
