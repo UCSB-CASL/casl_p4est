@@ -1,5 +1,11 @@
 #include "my_p4est_poisson_jump_faces.h"
 
+//#ifdef P4_TO_P8
+//#include <src/my_p8est_vtk.h>
+//#else
+//#include <src/my_p4est_vtk.h>
+//#endif
+
 my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_faces_t *faces_, const p4est_nodes_t* nodes_)
   : faces(faces_), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()), nodes(nodes_),
     xyz_min(faces_->get_p4est()->connectivity->vertices + 3*faces_->get_p4est()->connectivity->tree_to_vertex[0]),
@@ -492,8 +498,6 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
     ierr = VecGetArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(tmp_minus[dim], &tmp_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(tmp_plus[dim], &tmp_plus_p[dim]); CHKERRXX(ierr);
   }
   // normal derivatives of the solution (required if degree >= 1)
   Vec normal_derivative_of_solution_minus[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
@@ -551,8 +555,6 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecRestoreArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(tmp_minus[dim], &tmp_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(tmp_plus[dim], &tmp_plus_p[dim]); CHKERRXX(ierr);
     if(degree >= 1)
     {
       ierr = VecRestoreArray(normal_derivative_of_solution_minus[dim], &normal_derivative_of_solution_minus_p[dim]); CHKERRXX(ierr);
@@ -668,6 +670,39 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
       std::swap(tmp_plus[dim], extrapolation_plus[dim]);
     }
   }
+
+//  {
+//    Vec normal_derivative_of_solution_minus_on_cells, normal_derivative_of_solution_plus_on_cells;
+//    double *normal_derivative_of_solution_minus_on_cells_p, *normal_derivative_of_solution_plus_on_cells_p;
+//    ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &normal_derivative_of_solution_minus_on_cells); CHKERRXX(ierr);
+//    ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &normal_derivative_of_solution_plus_on_cells); CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_derivative_of_solution_minus_on_cells, &normal_derivative_of_solution_minus_on_cells_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(normal_derivative_of_solution_plus_on_cells, &normal_derivative_of_solution_plus_on_cells_p); CHKERRXX(ierr);
+
+
+//    for (p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx) {
+//      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+//        normal_derivative_of_solution_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = normal_derivative_of_solution_minus_read_p[dim][faces->q2f(quad_idx, 2*dim)];
+//        normal_derivative_of_solution_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = normal_derivative_of_solution_plus_read_p[dim][faces->q2f(quad_idx, 2*dim)];
+//      }
+//    }
+//    ierr = VecGhostUpdateBegin(normal_derivative_of_solution_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(normal_derivative_of_solution_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(normal_derivative_of_solution_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(normal_derivative_of_solution_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    std::vector<Vec_for_vtk_export_t> to_export;
+//    to_export.push_back(Vec_for_vtk_export_t(normal_derivative_of_solution_minus_on_cells, "normal_derivative_minus"));
+//    to_export.push_back(Vec_for_vtk_export_t(normal_derivative_of_solution_plus_on_cells, "normal_derivative_plus"));
+
+//    my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_FALSE, P4EST_FALSE, "/home/regan/workspace/projects/poisson_jump_faces/circle_shape_2D/vtu/standard/normal_derivatives", NULL, NULL, NULL, &to_export);
+//    to_export.clear();
+
+//    ierr = VecRestoreArray(normal_derivative_of_solution_minus_on_cells, &normal_derivative_of_solution_minus_on_cells_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(normal_derivative_of_solution_plus_on_cells, &normal_derivative_of_solution_plus_on_cells_p); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(normal_derivative_of_solution_minus_on_cells); CHKERRXX(ierr);
+//    ierr = delete_and_nullify_vector(normal_derivative_of_solution_plus_on_cells); CHKERRXX(ierr);
+//  }
 
   // restore data pointers and delete locally created vectors
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)

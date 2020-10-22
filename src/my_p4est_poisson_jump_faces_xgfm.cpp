@@ -335,7 +335,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
       }
     } /* end of going through uniform neighbors in face order, taking care of jump conditions, where needed */
   }
-  else // "regular" stuff --> FV on voronoi cell, no neighbor across so let's roll!
+  else // "regular" stuff --> FV on voronoi cell!
   {
     for(size_t m = 0; m < points->size(); ++m)
     {
@@ -554,12 +554,24 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
   if(sgn_face < 0)
   {
     extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx];
-    extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx] /*  + jump at xyz_face */; // rough initialization to (hopefully) speed up the convergence in pseudo-time
+    if(!set_for_testing_backbone)
+    {
+      throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local : not done yet!");
+      // rough initialization to (hopefully) speed up the convergence in pseudo-time
+    }
+    else
+      extrapolation_plus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] + (*interp_validation_jump_u).operator()(xyz_face, dim);
   }
   else
   {
     extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx];
-    extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx] /*  - jump at xyz_face */; // rough initialization to (hopefully) speed up the convergence in pseudo-time
+    if(!set_for_testing_backbone)
+    {
+      throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local : not done yet!");
+      // rough initialization to (hopefully) speed up the convergence in pseudo-time
+    }
+    else
+      extrapolation_minus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] - (*interp_validation_jump_u).operator()(xyz_face, dim);
   }
 
   double oriented_normal[P4EST_DIM]; // to calculate the normal derivative of the solution (in the local subdomain) --> the opposite of that vector is required when extrapolating the solution from across the interface
@@ -704,6 +716,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
   }
   else
   {
+    // must be far in one of the two subdomains, we build only one of the extrapolation operators
     const Voronoi_DIM& voro_cell = get_voronoi_cell(face_idx, dim);
     const vector<ngbdDIMseed>* neighbor_seeds;
     voro_cell.get_neighbor_seeds(neighbor_seeds);

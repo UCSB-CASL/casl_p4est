@@ -41,6 +41,7 @@ static const bool default_subrefinement = false;
 static const bool default_use_second_order_theta = false;
 static const bool default_extrapolation = false;
 const interpolation_method default_interp_method_phi = linear;
+const double default_extrapolation_band_check = 3.0;
 
 #if defined(STAMPEDE)
 const string default_work_folder = "/scratch/04965/tg842642/poisson_jump_faces";
@@ -65,7 +66,7 @@ public:
   {
     switch (shape) {
     case CIRCLE:
-      return r0 - ABSD(x - xyz_c[0], y - xyz_c[1], z - xyz_c[2]);
+      return ABSD(x - xyz_c[0], y - xyz_c[1], z - xyz_c[2]) - r0;
       break;
     case FLOWER:
     {
@@ -104,23 +105,24 @@ public:
 };
 
 class EXACT_SOLUTION{
+  double mu_minus, mu_plus;
 public:
   inline double u_minus(const double *xyz) const
   {
-    return MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]))/mu_minus;
   }
   inline double du_minus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return MULTD(cos(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+      return MULTD(cos(xyz[0]), cos(xyz[1]), sin(xyz[2]))/mu_minus;
       break;
     case dir::y:
-      return MULTD(sin(xyz[0]), -sin(xyz[1]), sin(xyz[2]));
+      return MULTD(sin(xyz[0]), -sin(xyz[1]), sin(xyz[2]))/mu_minus;
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      return MULTD(sin(xyz[0]), cos(xyz[1]), cos(xyz[2]));
+      return MULTD(sin(xyz[0]), cos(xyz[1]), cos(xyz[2]))/mu_minus;
       break;
 #endif
     default:
@@ -130,25 +132,25 @@ public:
   }
   inline double laplace_u_minus(const double *xyz) const
   {
-    return -((double) P4EST_DIM)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return -((double) P4EST_DIM)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]))/mu_minus;
   }
   inline double v_minus(const double *xyz) const
   {
-    return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
+    return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5))/mu_minus;
   }
 
   inline double dv_minus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return (9.0*SQR(xyz[0]) - 2.5*pow(xyz[0], 4))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
+      return (9.0*SQR(xyz[0]) - 2.5*pow(xyz[0], 4))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5))/mu_minus;
       break;
     case dir::y:
-      return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*xyz[1]/(1.0 + SQR(xyz[1])))ONLY3D(*atan(xyz[2]/2.5));
+      return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*xyz[1]/(1.0 + SQR(xyz[1])))ONLY3D(*atan(xyz[2]/2.5))/mu_minus;
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*(1.0/2.5)/(1.0 + SQR(xyz[2]/2.5)));
+      return (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*(1.0/2.5)/(1.0 + SQR(xyz[2]/2.5)))/mu_minus;
       break;
 #endif
     default:
@@ -161,50 +163,57 @@ public:
     return ((18.0*xyz[0] - 10*pow(xyz[0], 3.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5))
         + (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*(1.0 - SQR(xyz[1]))/(SQR(1.0 + SQR(xyz[1]))))ONLY3D(*atan(xyz[2]/2.5))
         ONLY3D(+ (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))*(-2.0*xyz[2]/(pow(2.5, 3.0)))/(SQR(1.0 + SQR(xyz[2]/2.5))))
-        );
+        )/mu_minus;
   }
 
 #ifdef P4_TO_P8
   inline double w_minus(const double *xyz) const
   {
-    return sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2]));
+    return sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2]))/mu_minus;
   }
   inline double dw_minus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return (0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(sin(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2])));
+      return (0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(sin(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2])))/mu_minus;
       break;
     case dir::y:
-      return sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*cos(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2]));
+      return sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*cos(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2]))/mu_minus;
       break;
     case dir::z:
-      return (-0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(-cos(xyz[0] + xyz[1])*(1.0/(1.0 + SQR(xyz[2])))));
+      return (-0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(-cos(xyz[0] + xyz[1])*(1.0/(1.0 + SQR(xyz[2])))))/mu_minus;
       break;
     default:
       throw std::invalid_argument("EXACT_SOLUTION::dw_minus_d : unknown differentiation direction");
       break;
     }
   }
+
+  inline double laplace_w_minus(const double *xyz) const
+  {
+    return ((-0.25*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + cos(0.5*(xyz[0] - xyz[2]))*(sin(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*atan(xyz[2])) // dxx
+        + (sin(0.5*(xyz[0] - xyz[2]))*(-xyz[0]*sin(xyz[1]) + cos(xyz[0] + xyz[1])*atan(xyz[2]))) // dyy
+        + (-0.25*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + cos(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*(1.0/(1.0 + SQR(xyz[2]))) + sin(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*(2.0*xyz[2]/SQR(1.0 + SQR(xyz[2])))))/mu_minus; // dzz
+  }
 #endif
 
   inline double u_plus(const double *xyz) const
   {
-    return (pow((xyz[1] - xyz[0])/2.5, 3.0) + cos(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(xyz[2] - 2.0*xyz[0] + cos(3.0*xyz[2] - xyz[1]))));
+    return (pow((xyz[1] - xyz[0])/2.5, 3.0) + cos(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(xyz[2] - 2.0*xyz[0] + cos(3.0*xyz[2] - xyz[1]))))/mu_plus;
   }
 
   inline double du_plus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return (-3.0*SQR((xyz[1] - xyz[0])/2.5)*(1.0/2.5) - 2.0*sin(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(-2.0)));
+      return (-3.0*SQR((xyz[1] - xyz[0])/2.5)*(1.0/2.5) - 2.0*sin(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(-2.0)))/mu_plus;
       break;
     case dir::y:
-      return (3.0*SQR((xyz[1] - xyz[0])/2.5)*(1.0/2.5) + sin(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*sin(3.0*xyz[2] - xyz[1])));
+      return (3.0*SQR((xyz[1] - xyz[0])/2.5)*(1.0/2.5) + sin(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*sin(3.0*xyz[2] - xyz[1])))/mu_plus;
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      return (5.0/3.0)*(1.0 - 3.0*sin(3.0*xyz[2] - xyz[1]));
+      return (5.0/3.0)*(1.0 - 3.0*sin(3.0*xyz[2] - xyz[1]))/mu_plus;
       break;
 #endif
     default:
@@ -214,26 +223,26 @@ public:
   }
   inline double laplace_u_plus(const double *xyz) const
   {
-    return (12.0*SQR(1.0/2.5)*((xyz[1] - xyz[0])/2.5) - (SQR(2.0) + SQR(1.0))*cos(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(-(SQR(3.0) + SQR(1.0))*cos(3.0*xyz[2] - xyz[1]))));
+    return (12.0*SQR(1.0/2.5)*((xyz[1] - xyz[0])/2.5) - (SQR(2.0) + SQR(1.0))*cos(2.0*xyz[0] - xyz[1]) ONLY3D( + (5.0/3.0)*(-(SQR(3.0) + SQR(1.0))*cos(3.0*xyz[2] - xyz[1]))))/mu_plus;
   }
 
   inline double v_plus(const double *xyz) const
   {
-    return (sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])));
+    return (sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])))/mu_plus;
   }
 
   inline double dv_plus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return (3.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + (-2.0*1.2*(0.5*xyz[1] - 1.2*xyz[0]))/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + 0.3*sin(1.7*xyz[2] - 0.3*xyz[0])));
+      return (3.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + (-2.0*1.2*(0.5*xyz[1] - 1.2*xyz[0]))/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + 0.3*sin(1.7*xyz[2] - 0.3*xyz[0])))/mu_plus;
       break;
     case dir::y:
-      return (-2.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + 2.0*0.5*(0.5*xyz[1] - 1.2*xyz[0])/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])));
+      return (-2.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + 2.0*0.5*(0.5*xyz[1] - 1.2*xyz[0])/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])))/mu_plus;
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      return (- 1.7*sin(1.7*xyz[2] - 0.3*xyz[0]));
+      return (- 1.7*sin(1.7*xyz[2] - 0.3*xyz[0]))/mu_plus;
       break;
 #endif
     default:
@@ -245,25 +254,25 @@ public:
   {
     return ((-SQR(3.0) - SQR(-2.0))*sin(3.0*xyz[0] - 2.0*xyz[1]) +
         (2.0*(SQR(-1.2) + SQR(0.5))*(1.0 - SQR(0.5*xyz[1] - 1.2*xyz[0])))/(SQR(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])))
-        ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*xyz[2] - 0.3*xyz[0])));
+        ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*xyz[2] - 0.3*xyz[0])))/mu_plus;
   }
 
 #ifdef P4_TO_P8
   inline double w_plus(const double *xyz) const
   {
-    return (0.1*xyz[0]*xyz[0]*xyz[0]*xyz[1] + 2.0*xyz[2]*cos(xyz[1]) - xyz[1]*sin(xyz[0] + xyz[2]));
+    return (0.1*xyz[0]*xyz[0]*xyz[0]*xyz[1] + 2.0*xyz[2]*cos(xyz[1]) - xyz[1]*sin(xyz[0] + xyz[2]))/mu_plus;
   }
   inline double dw_plus_d(const u_char& der, const double *xyz) const
   {
     switch (der) {
     case dir::x:
-      return (0.3*xyz[0]*xyz[0]*xyz[1] - xyz[1]*cos(xyz[0] + xyz[2]));
+      return (0.3*xyz[0]*xyz[0]*xyz[1] - xyz[1]*cos(xyz[0] + xyz[2]))/mu_plus;
       break;
     case dir::y:
-      return (0.1*xyz[0]*xyz[0]*xyz[0] - 2.0*xyz[2]*sin(xyz[1]) - sin(xyz[0] + xyz[2]));
+      return (0.1*xyz[0]*xyz[0]*xyz[0] - 2.0*xyz[2]*sin(xyz[1]) - sin(xyz[0] + xyz[2]))/mu_plus;
       break;
     case dir::z:
-      return (2.0*cos(xyz[1]) - xyz[1]*cos(xyz[0] + xyz[2]));
+      return (2.0*cos(xyz[1]) - xyz[1]*cos(xyz[0] + xyz[2]))/mu_plus;
       break;
     default:
       throw std::invalid_argument("EXACT_SOLUTION::dw_plus_d : unknown differentiation direction");
@@ -275,11 +284,17 @@ public:
   {
     return ((0.6*xyz[0]*xyz[1] + xyz[1]*sin(xyz[0] + xyz[2])) // dxx
         + (-2.0*xyz[2]*cos(xyz[1])) // dyy
-        + (xyz[1]*sin(xyz[0] + xyz[2])));
+        + (xyz[1]*sin(xyz[0] + xyz[2])))/mu_plus;
   }
 #endif
 
   EXACT_SOLUTION() {}
+
+  inline void set_viscosities(const double& mu_minus_, const double& mu_plus_)
+  {
+    mu_minus = mu_minus_;
+    mu_plus = mu_plus_;
+  }
 
   inline double solution(const char& sign, const u_char& comp, const double* xyz) const
   {
@@ -421,6 +436,7 @@ struct convergence_analyzer_for_jump_face_solver_t {
   std::vector<double> errors_in_extrapolated_solution_minus[P4EST_DIM];
   std::vector<double> errors_in_extrapolated_solution_plus[P4EST_DIM];
   Vec sharp_error[P4EST_DIM], extrapolation_error_minus[P4EST_DIM], extrapolation_error_plus[P4EST_DIM];
+  double extrapolation_band_check_to_diag;
 
   void delete_and_nullify_face_sampled_errors_if_needed()
   {
@@ -433,15 +449,19 @@ struct convergence_analyzer_for_jump_face_solver_t {
   }
 
   convergence_analyzer_for_jump_face_solver_t(const jump_solver_tag& tag_) : tag(tag_), sharp_error{DIM(NULL, NULL, NULL)},
-    extrapolation_error_minus{DIM(NULL, NULL, NULL)}, extrapolation_error_plus{DIM(NULL, NULL, NULL)} { }
+    extrapolation_error_minus{DIM(NULL, NULL, NULL)}, extrapolation_error_plus{DIM(NULL, NULL, NULL)}, extrapolation_band_check_to_diag(default_extrapolation_band_check) { }
+
+  void set_extrapolation_band_check(const double& desired_band_to_diag)
+  {
+    extrapolation_band_check_to_diag = desired_band_to_diag;
+  }
 
   void measure_errors(const my_p4est_faces_t* faces)
   {
     PetscErrorCode ierr;
     const p4est_t* p4est = jump_face_solver->get_p4est();
     const my_p4est_interface_manager_t* interface_manager = jump_face_solver->get_interface_manager();
-    const double band_to_diag = 3.0;
-    const double band = band_to_diag*sqrt(SUMD(SQR(jump_face_solver->get_smallest_dxyz()[0]), SQR(jump_face_solver->get_smallest_dxyz()[1]), SQR(jump_face_solver->get_smallest_dxyz()[2])));
+    const double band = extrapolation_band_check_to_diag*sqrt(SUMD(SQR(jump_face_solver->get_smallest_dxyz()[0]), SQR(jump_face_solver->get_smallest_dxyz()[1]), SQR(jump_face_solver->get_smallest_dxyz()[2])));
 
 
     const double *sharp_solution_p[P4EST_DIM];
@@ -595,10 +615,10 @@ struct convergence_analyzer_for_jump_face_solver_t {
       {
         if(iter_idx > 0)
           sprintf(convergence_order_info, ", order = %g", -log(errors_in_extrapolated_solution_minus[dim][iter_idx]/errors_in_extrapolated_solution_minus[dim][iter_idx - 1])/log(2.0));
-        ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for minus solution component %d (within %.2g*diag, on cells):\t%.5e%s \n", int(dim), band_to_diag, errors_in_extrapolated_solution_minus[dim].back(), convergence_order_info); CHKERRXX(ierr);
+        ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for minus solution component %d (within %.2g*diag, on faces):\t%.5e%s \n", int(dim), extrapolation_band_check_to_diag, errors_in_extrapolated_solution_minus[dim].back(), convergence_order_info); CHKERRXX(ierr);
         if(iter_idx > 0)
           sprintf(convergence_order_info, ", order = %g", -log(errors_in_extrapolated_solution_plus[dim][iter_idx]/errors_in_extrapolated_solution_plus[dim][iter_idx - 1])/log(2.0));
-        ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for plus solution component %d (within %.2g*diag, on cells):\t%.5e%s \n", int(dim), band_to_diag, errors_in_extrapolated_solution_plus[dim].back(), convergence_order_info); CHKERRXX(ierr);
+        ierr = PetscPrintf(p4est->mpicomm, "Extrapolation error for plus solution component %d (within %.2g*diag, on faces):\t%.5e%s \n", int(dim), extrapolation_band_check_to_diag, errors_in_extrapolated_solution_plus[dim].back(), convergence_order_info); CHKERRXX(ierr);
       }
     }
   }
@@ -1048,11 +1068,34 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(analyzer.jump_face_solver->get_jump_u_dot_n(), "jump_u_dot_n"));
   if(analyzer.jump_face_solver->get_jump_in_tangential_stress() != NULL)
     interface_capturing_node_vector_fields->push_back(Vec_for_vtk_export_t(analyzer.jump_face_solver->get_jump_in_tangential_stress(), "jump_tangential_stress"));
+  Vec jump_flux_component[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
   if(dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(analyzer.jump_face_solver) != NULL)
   {
     my_p4est_poisson_jump_faces_xgfm_t* xgfm_solver = dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(analyzer.jump_face_solver);
     if(xgfm_solver->get_validation_jump() != NULL)
       interface_capturing_node_vector_fields->push_back(Vec_for_vtk_export_t(xgfm_solver->get_validation_jump(), "jump_u_validation"));
+    if(xgfm_solver->get_validation_jump_mu_grad_u() != NULL)
+    {
+      double *jump_flux_component_p[P4EST_DIM];
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecCreateGhostNodesBlock(interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_manager->get_interface_capturing_ngbd_n().get_nodes(), P4EST_DIM, &jump_flux_component[dim]); CHKERRXX(ierr);
+        ierr = VecGetArray(jump_flux_component[dim], &jump_flux_component_p[dim]); CHKERRXX(ierr);
+      }
+      const double *jump_flux_component_tensor_block_p;
+      ierr = VecGetArrayRead(xgfm_solver->get_validation_jump_mu_grad_u(), &jump_flux_component_tensor_block_p); CHKERRXX(ierr);
+      for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_nodes()->indep_nodes.elem_count; ++k) {
+        for (u_char comp = 0; comp < P4EST_DIM; ++comp) {
+          for (int der = 0; der < P4EST_DIM; ++der) {
+            jump_flux_component_p[comp][P4EST_DIM*k + der] = jump_flux_component_tensor_block_p[SQR_P4EST_DIM*k + P4EST_DIM*comp + der];
+          }
+        }
+      }
+      ierr = VecRestoreArrayRead(xgfm_solver->get_validation_jump_mu_grad_u(), &jump_flux_component_tensor_block_p); CHKERRXX(ierr);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecRestoreArray(jump_flux_component[dim], &jump_flux_component_p[dim]); CHKERRXX(ierr);
+        interface_capturing_node_vector_fields->push_back(Vec_for_vtk_export_t(jump_flux_component[dim], "jump_validation_flux_" + to_string(dim)));
+      }
+    }
   }
   interface_capturing_node_vector_fields->push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
   if(interface_manager->subcell_resolution() > 0)
@@ -1090,6 +1133,9 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     delete interface_capturing_cell_scalar_fields;
     delete interface_capturing_cell_vector_fields;
   }
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = delete_and_nullify_vector(jump_flux_component[dim]); CHKERRXX(ierr);
+  }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());
   return;
@@ -1116,6 +1162,7 @@ int main (int argc, char* argv[])
   cmd.add_option("subrefinement", "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement.");
   cmd.add_option("second_order_ls", "activate second order interface localization if present. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("extrapolate", "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation.");
+  cmd.add_option("bandcheck", "band check (in number of smallest diagonals) in which the extrapolation accuracy is checked. Default (if not specified) is " + to_string(default_extrapolation_band_check) + " smallest diagonals.");
   // exportation control
   cmd.add_option("save_vtk",      "saves vtk visualization files if present (default is " + string(default_save_vtk ? "" : "not ") + "saved)");
   cmd.add_option("work_dir",      "exportation directory, if not defined otherwise in the environment variable OUT_DIR. \n\
@@ -1140,7 +1187,7 @@ int main (int argc, char* argv[])
 
   if(save_vtk && create_directory(root_export_dir.c_str(), mpi.rank(), mpi.comm()))
   {
-    char error_msg[1024];
+    char error_msg[BUFSIZ];
     sprintf(error_msg, "main for poisson jump faces: could not create the main exportation directory %s", root_export_dir.c_str());
     throw std::runtime_error(error_msg);
   }
@@ -1150,6 +1197,9 @@ int main (int argc, char* argv[])
   const double xyz_min [P4EST_DIM]  = { DIM(-0.5*default_length, -0.5*default_length, -0.5*default_length) };
   const double xyz_max [P4EST_DIM]  = { DIM(0.5*default_length, 0.5*default_length, 0.5*default_length) };
   const int periodic[P4EST_DIM]     = { DIM(0, 0, 0) };
+  const double mu_minus = cmd.get<double>("mu_minus", default_mu_m);
+  const double mu_plus  = cmd.get<double>("mu_plus", default_mu_p);
+  exact_solution.set_viscosities(mu_minus, mu_plus);
 
   LEVEL_SET levelset(xyz_min, xyz_max);
   levelset.set_shape(ls_shape);
@@ -1164,8 +1214,6 @@ int main (int argc, char* argv[])
 
   int lmin = cmd.get<int>("lmin", default_lmin);
   int lmax = cmd.get<int>("lmax", default_lmax);
-  const double mu_minus = cmd.get<double>("mu_minus", default_mu_m);
-  const double mu_plus  = cmd.get<double>("mu_plus", default_mu_p);
   const int ngrids = cmd.get<int>("ngrids", default_ngrids);
   const bool use_subrefinement = cmd.get<bool>("subrefinement", default_subrefinement);
   const bool use_second_order_theta = cmd.get<bool>("second_order_ls", default_use_second_order_theta);
@@ -1186,6 +1234,8 @@ int main (int argc, char* argv[])
   my_p4est_faces_t              *faces      = NULL;
   my_p4est_interface_manager_t  *interface_manager = NULL;
   convergence_analyzer_for_jump_face_solver_t analyzer(xGFM);
+  if(cmd.contains("bandcheck"))
+    analyzer.set_extrapolation_band_check(cmd.get<double>("bandcheck", default_extrapolation_band_check));
 
   for (int k_grid = 0; k_grid < ngrids; ++k_grid) {
     if(k_grid > 0)
@@ -1252,12 +1302,12 @@ int main (int argc, char* argv[])
     jump_solver_faces->set_jumps_for_validation(jump_solution, jump_flux_components);
     jump_solver_faces->set_compute_partition_on_the_fly(default_voro_fly || cmd.contains("voro_on_the_fly"));
     jump_solver_faces->set_rhs(rhs_minus, rhs_plus);
-    jump_solver_faces->solve_for_sharp_solution(KSPCG, PCSOR);
+    jump_solver_faces->solve_for_sharp_solution();
 
     if(extrapolate_solution)
     {
       jump_solver_faces->set_validity_of_interface_neighbors_for_extrapolation(false);
-      jump_solver_faces->extrapolate_solution_from_either_side_to_the_other(20);
+      jump_solver_faces->extrapolate_solution_from_either_side_to_the_other((int) ceil(10*analyzer.extrapolation_band_check_to_diag));
     }
 
     analyzer.jump_face_solver = jump_solver_faces;

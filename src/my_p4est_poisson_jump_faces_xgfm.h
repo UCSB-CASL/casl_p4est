@@ -251,6 +251,7 @@ public:
   inline bool uses_xGFM_corrections() const { return activate_xGFM; }
 
   inline Vec get_validation_jump() const { return validation_jump_u; }
+  inline Vec get_validation_jump_mu_grad_u() const { return validation_jump_mu_grad_u; }
 
 };
 

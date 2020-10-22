@@ -1286,6 +1286,107 @@ public:
   }
 } xGFM_example_full_periodic_2D;
 
+static class comparison_test_2D_t : public test_case_for_scalar_jump_problem_t
+{
+public:
+  comparison_test_2D_t()
+  {
+    mu_m = 1.0;
+    mu_p = 20.0;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      domain.xyz_min[dim]     = -1.25;
+      domain.xyz_max[dim]     = +1.25;
+      domain.periodicity[dim] = 0;
+    }
+    const double center[2]  = {0.5*domain.xyz_min[0] + 0.5*domain.xyz_max[0],
+                               0.5*domain.xyz_min[1] + 0.5*domain.xyz_max[1]};
+    level_set = new level_set_sphere(domain, center, 0.5, true);
+    solution_integral = NAN; // calculated on a 14/14 grid (1X1 macromesh) on stampede...
+
+    description =
+        std::string("* domain = [-2.5, 2.5] X [-2.5, 2.5] \n")
+        + std::string("* interface = circle centered in the domain, radius 0.5,\n")
+        + std::string("negative inside, positive outside (no periodicity) \n")
+        + std::string("* mu_m = 1.0; \n")
+        + std::string("* mu_p = 1.0; \n")
+        + std::string("* u_m  = sin(x)*cos(y); \n")
+        + std::string("* u_p  = sin(x)*cos(y); \n")
+        + std::string("* no periodicity \n")
+        + std::string("Example for copmarison with face solver's extrapolation (by R. Egan)");
+    test_name = "comparison_with_face_x";
+  }
+
+  double solution_minus(const double &x, const double &y) const
+  {
+    return sin(x)*cos(y);
+  }
+
+  double first_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
+  {
+    switch (der) {
+    case dir::x:
+      return cos(x)*cos(y);
+      break;
+    case dir::y:
+      return -sin(x)*sin(y);
+      break;
+    default:
+      throw  std::invalid_argument("comparison_test_2D_t::first_derivative_solution_minus(): unknown differentiation direction");
+      break;
+    }
+  }
+
+  double second_derivative_solution_minus(const u_char &der, const double &x, const double &y) const
+  {
+    switch (der) {
+    case dir::x:
+      return -sin(x)*cos(y);
+      break;
+    case dir::y:
+      return -sin(x)*cos(y);
+      break;
+    default:
+      throw  std::invalid_argument("comparison_test_2D_t::second_derivative_solution_minus(): unknown differentiation direction");
+      break;
+    }
+  }
+
+  double solution_plus(const double &x, const double &y) const
+  {
+    return (pow((y - x)/2.5, 3.0) + cos(2.0*x - y));
+  }
+
+  double first_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
+  {
+    switch (der) {
+    case dir::x:
+      return -3.0*SQR((y - x)/2.5)/2.5 - 2.0*sin(2.0*x - y);
+      break;
+    case dir::y:
+      return 3.0*SQR((y - x)/2.5)/2.5 + sin(2.0*x - y);
+      break;
+    default:
+      throw  std::invalid_argument("comparison_test_2D_t::first_derivative_solution_plus(): unknown differentiation direction");
+      break;
+    }
+  }
+
+  double second_derivative_solution_plus(const u_char &der, const double &x, const double &y) const
+  {
+    switch (der) {
+    case dir::x:
+      return 6.0*((y - x)/2.5)*SQR(1.0/2.5) - SQR(2.0)*cos(2.0*x - y);
+      break;
+    case dir::y:
+      return 6.0*((y - x)/2.5)*SQR(1.0/2.5) - SQR(1.0)*cos(2.0*x - y);
+      break;
+    default:
+      throw std::invalid_argument("comparison_test_2D_t::second_derivative_solution_plus(): unknown differentiation direction");
+      break;
+    }
+  }
+} comparison_test_2D;
+
 #else
 
 static class GFM_example_4_t : public test_case_for_scalar_jump_problem_t
@@ -1882,6 +1983,7 @@ public:
     list_of_test_problems.push_back(&xGFM_example_random_bubbles);
     list_of_test_problems.push_back(&xGFM_example_x_periodic_2D);
     list_of_test_problems.push_back(&xGFM_example_full_periodic_2D);
+    list_of_test_problems.push_back(&comparison_test_2D);
 #endif
   }
 
