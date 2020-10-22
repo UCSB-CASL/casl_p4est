@@ -5,6 +5,7 @@
  */
 
 #include <src/my_p4est_utils.h>
+#include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_tools.h>
@@ -67,24 +68,10 @@ public:
 	{
 		switch( _choice )
 		{
-			case 0: return "sin( M_PI * x ) * cos( M_PI * y )";
-			case 1: return "sin( M_PI * x ) + cos( M_PI * y )";
+			case 0: return "sin(πx)cos(πy)";
+			case 1: return "sin(πx) + cos(πy)";
 			default: throw std::invalid_argument( "Invalid scalar function choice!" );
 		}
-	}
-};
-
-
-/**
- * Comparator for multiset of known values, which are kept in a balanced binary tree.
- */
-struct NodeComparator
-{
-	static const double *phiPtr;
-
-	bool operator()( const p4est_locidx_t& lhs, const p4est_locidx_t& rhs ) const
-	{
-		return phiPtr[lhs] < phiPtr[rhs];
 	}
 };
 
@@ -197,6 +184,8 @@ int main(int argc, char** argv)
 		double diagMin;        							// Diagonal length of the smallest quadrant.
 		get_dxyz_min( p4est, dxyz, dxyzMin, diagMin );
 		assert( ABS( H - dxyzMin ) < EPS );				// Right mesh size?
+		const double RBF_LOCAL_RADIUS = REFINEMENT_BAND_WIDTH * H + EPS;	// When doing RBF extrapolation, we look at this maximum radial distance.
+		const double EXTENSION_DISTANCE = 2 * diagMin;	// We are interested in extending and measuring error up to this distance.
 
 		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
@@ -223,14 +212,12 @@ int main(int argc, char** argv)
 		ierr = VecDuplicate( phi, &exactField );
 		CHKERRXX( ierr );
 
-		// Multiset datastructure.
-//		NodeComparator::phiPtr = phiReadPtr;
-//		std::multiset<p4est_locidx_t, NodeComparator> visitedNodesSet;
-
+		// Multiset datastructures for visited and pending nodes.
 		auto nodeComparator = [phiReadPtr](const p4est_locidx_t& lhs, const p4est_locidx_t& rhs) -> bool{
 			return phiReadPtr[lhs] < phiReadPtr[rhs];
 		};
 		std::multiset<p4est_locidx_t, decltype( nodeComparator )> visitedNodesSet( nodeComparator );
+		std::multiset<p4est_locidx_t, decltype( nodeComparator )> pendingNodesSet( nodeComparator );
 
 		// Evaluate exact field everywhere and copy only the known region (i.e. inside the interface) to the RBF and PDE versions.
 		sample_cf_on_nodes( p4est, nodes, field, exactField );
@@ -247,21 +234,62 @@ int main(int argc, char** argv)
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
+			// For those nodes outside the interface, reset their extrapolation value and add those we are interested in
+			// computing their extrapolation to a binary tree for efficient access.
 			if( phiReadPtr[n] > 0 )
+			{
 				pdeFieldPtr[n] = rbfFieldPtr[n] = 0;
-			else	// Adding those nodes that lie inside the interface.
+				if( phiReadPtr[n] <= EXTENSION_DISTANCE )		// Don't attempt extension beyond it's needed.
+					pendingNodesSet.insert( n );
+			}
+			else if( ABS( phiReadPtr[n] ) <= RBF_LOCAL_RADIUS )
+			{
+				// Adding those nodes that lie inside the interface within a band of RBF_LOCAL_RADIUS to efficient set
+				// of known/fixed nodes.
 				visitedNodesSet.insert( n );
+			}
 		}
 
 		// Perform extrapolation using all derivatives (from Daniil's paper).
 		levelSet.extend_Over_Interface_TVD_Full( phi, pdeField, EXTENSION_NUM_ITER, EXTENSION_ORDER );
 
 		// Testing that nodes are sorted by their distance to the interface using the multiset above.
-		for( auto it = visitedNodesSet.begin(); it != visitedNodesSet.end(); it++ )
-			std::cout << "[" << *it << "] " << phiReadPtr[*it] << std::endl;
+		double nodesStatus[nodes->num_owned_indeps];
+		for( auto& n : nodesStatus )
+			n = 0;
+
+		std::cout << "** Visited nodes **" << std::endl;
+		for( const auto& n : visitedNodesSet )
+		{
+			std::cout << "[" << n << "] " << phiReadPtr[n] << std::endl;
+			nodesStatus[n] = -1;
+		}
+
+		std::cout<< "** Pending nodes **" << std::endl;
+		for( const auto& n : pendingNodesSet )
+		{
+			std::cout << "[" << n << "] " << phiReadPtr[n] << std::endl;
+			nodesStatus[n] = +1;
+		}
+
+		const double *exactFieldReadPtr;
+		ierr = VecGetArrayRead( exactField, &exactFieldReadPtr );
+		CHKERRXX( ierr );
+
+		std::string vtkOutput = "machineLearningExtrapolation_" + std::to_string( REFINEMENT_MAX_LEVEL );
+		my_p4est_vtk_write_all( p4est, nodes, ghost,
+						  P4EST_TRUE, P4EST_TRUE,
+						  5, 0, vtkOutput.c_str(),
+						  VTK_POINT_DATA, "phi", phiReadPtr,
+						  VTK_POINT_DATA, "nodes_status", nodesStatus,
+						  VTK_POINT_DATA, "f_exact", exactFieldReadPtr,
+						  VTK_POINT_DATA, "f_pde", pdeFieldPtr,
+						  VTK_POINT_DATA, "f_rbf", rbfFieldPtr );
 
 		// Cleaning up.
 		ierr = VecRestoreArrayRead( phi, &phiReadPtr );			// Restoring vector pointers.
+		CHKERRXX( ierr );
+		ierr = VecRestoreArrayRead( exactField, &exactFieldReadPtr );
 		CHKERRXX( ierr );
 		ierr = VecRestoreArray( rbfField, &rbfFieldPtr );
 		CHKERRXX( ierr );
@@ -282,8 +310,6 @@ int main(int argc, char** argv)
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
-
-
 	}
 
 	std::cout << "## Done in " <<  watch.get_duration_current() << " secs. " << std::endl;
