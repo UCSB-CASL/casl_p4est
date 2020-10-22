@@ -15,6 +15,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_level_set.h>
 
+#include <Accelerate/Accelerate.h>
 #include <src/casl_geometry.h>
 #include <set>
 
@@ -125,6 +126,46 @@ int main(int argc, char** argv)
 	// Stopwatch.
 	parStopWatch watch;
 	watch.start();
+
+	// Let's test solving a system Ax = b.
+	// B_mat from python for multiquadric RBF:
+	// [0.35              0.350348598719904 0.351392319921765 0.353125			0.355536566333197 1.                1.125            ]
+	// [0.350348598719904 0.35              0.350348598719904 0.351392319921765	0.353125          1.                1.140625         ]
+	// [0.351392319921765 0.350348598719904 0.35              0.350348598719904	0.351392319921765 1.                1.15625          ]
+	// [0.353125          0.351392319921765 0.350348598719904 0.35				0.350348598719904 1.                1.171875         ]
+	// [0.355536566333197 0.353125          0.351392319921765 0.350348598719904	0.35              1.                1.1875           ]
+	// [1.                1.                1.                1.				1.                0.                0.               ]
+	// [1.125             1.140625          1.15625           1.171875			1.1875            0.                0.               ]
+	// g_vec
+	// [ 0.477386012997069  0.184164955225999 -0.084489035619419 -0.298707763002317 -0.429941383271424  0.  0. ]
+	// v_vec = np.linalg.solve( B_mat, g_vec )
+	// [ 6.010136361463575e+04 -1.282893822730500e+04 -3.370441094007218e+05  4.721695790248159e+05 -1.823978950114248e+05 -4.598814523195510e+01  4.847912980855345e+01]
+
+	// From LU factorization using LAPACK.
+	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
+	// http://www.netlib.org/lapack/explore-html/d7/d3b/group__double_g_esolve_ga5ee879032a8365897c3ba91e3dc8d512.html
+	// First a small example.
+	// x - y = 2
+	// x + y = 0
+	char transposed = 'T';		// This sets row-major order, as is common in C/C++.
+	int dim = 2;
+	int nrhs = 1;
+	int LDA = dim;
+	int LDB = dim;
+	int info;
+
+	// Given in major-column order!
+	double A[] = { 1, -1, 1, 1 };
+	double b[] = { 2, 0 };
+	int ipiv[2];
+
+	dgetrf_( &dim, &dim, A, &LDA, ipiv, &info );
+	dgetrs_( &transposed, &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );
+//	dgesv_( &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );		// This solves column-major order.
+
+	std::cout << "solution is:";
+	std::cout << "[" << b[0] << ", " << b[1] << "]" << std::endl;
+	std::cout << "Info = " << info << std::endl;
 
 	// Domain information.
 	const int n_xyz[] = { NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM };
@@ -258,19 +299,11 @@ int main(int argc, char** argv)
 		for( auto& n : nodesStatus )
 			n = 0;
 
-		std::cout << "** Visited nodes **" << std::endl;
 		for( const auto& n : visitedNodesSet )
-		{
-			std::cout << "[" << n << "] " << phiReadPtr[n] << std::endl;
 			nodesStatus[n] = -1;
-		}
 
-		std::cout<< "** Pending nodes **" << std::endl;
 		for( const auto& n : pendingNodesSet )
-		{
-			std::cout << "[" << n << "] " << phiReadPtr[n] << std::endl;
 			nodesStatus[n] = +1;
-		}
 
 		const double *exactFieldReadPtr;
 		ierr = VecGetArrayRead( exactField, &exactFieldReadPtr );

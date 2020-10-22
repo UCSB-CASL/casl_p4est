@@ -31,6 +31,8 @@ set( CMAKE_CXX_COMPILER mpicxx )
 
 find_package( MPI REQUIRED )
 find_package( Boost COMPONENTS filesystem REQUIRED )
+find_package( BLAS REQUIRED )
+find_package( LAPACK REQUIRED )
 
 # Library linking directories.
 link_directories(
@@ -44,7 +46,9 @@ link_libraries(
 		p4est
 		sc
 		voro++
-		${Boost_FILESYSTEM_LIBRARY} )
+		${Boost_FILESYSTEM_LIBRARY}
+		lapack
+		blas )
 
 include_directories(
 		.
