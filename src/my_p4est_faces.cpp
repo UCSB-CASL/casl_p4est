@@ -1544,20 +1544,37 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
   return;
 }
 
-void get_lsqr_face_gradient_operator_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
-                                              linear_combination_of_dof_t grad_operator[], const bool& is_point_face_center, const p4est_locidx_t& idx_of_face_center)
+void get_lsqr_face_gradient_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
+                                     linear_combination_of_dof_t* grad_operator, double* field_gradient, const bool gradient_component_is_known[P4EST_DIM], const double known_gradient_value[P4EST_DIM],
+                                     const bool& is_point_face_center, const p4est_locidx_t& idx_of_face_center)
 {
   P4EST_ASSERT(ngbd_of_faces.size() > 0);
   P4EST_ASSERT(!is_point_face_center || idx_of_face_center >= 0);
+  P4EST_ASSERT(grad_operator != NULL || field_gradient != NULL);
 #ifdef CASL_THROWS
-  if(ngbd_of_faces.size() < 1 + P4EST_DIM)
+  if (ngbd_of_faces.size() < 1 + P4EST_DIM - SUMD(gradient_component_is_known[0] ? 1 : 0, gradient_component_is_known[1] ? 1 : 0, gradient_component_is_known[2] ? 1 : 0))
     throw std::invalid_argument("get_lsqr_face_gradient_operator_at_point() : not enough neighbor cells to build a gradient");
 #endif
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    grad_operator[dim].clear();
+    if(!gradient_component_is_known[dim])
+    {
+      if(grad_operator != NULL)
+        grad_operator[dim].clear();
+      if(field_gradient != NULL)
+        field_gradient[dim] = 0.0;
+    }
 
-  matrix_t A(ngbd_of_faces.size() - (is_point_face_center ? 1 : 0), (is_point_face_center ? 0 : 1 ) + P4EST_DIM);
+  matrix_t A(ngbd_of_faces.size() - (is_point_face_center ? 1 : 0), (is_point_face_center ? 0 : 1 ) + P4EST_DIM - SUMD(gradient_component_is_known[0] ? 1 : 0, gradient_component_is_known[1] ? 1 : 0, gradient_component_is_known[2] ? 1 : 0));
+  std::vector<double>* rhs = NULL;
+  std::vector<double>* At_rhs = NULL;
+  std::vector<double>* lsqr_solution = NULL;
+  if(field_gradient != NULL)
+  {
+    rhs = new std::vector<double>(A.num_rows());
+    At_rhs = new std::vector<double>(A.num_cols());
+    lsqr_solution = new std::vector<double>(A.num_cols());
+  }
 
   const double* xyz_max = faces->get_xyz_max();
   const double* xyz_min = faces->get_xyz_min();
@@ -1575,8 +1592,14 @@ void get_lsqr_face_gradient_operator_at_point(const double xyz_point[P4EST_DIM],
         xyz_t[dir] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dir] - xyz_min[dir]);
       }
 
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      grad_operator[dim].add_term(it->face_idx, 1.0);
+    if(grad_operator != NULL)
+    {
+      for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+        if(!gradient_component_is_known[dim]) // assumed homogeneous if known, as an operator!
+          grad_operator[dim].add_term(it->face_idx, 1.0);
+    }
+    if(field_gradient != NULL)
+      (*rhs)[row_idx] = it->field_value - SUMD(gradient_component_is_known[0] ? known_gradient_value[0]*xyz_t[0] : 0.0, gradient_component_is_known[1] ? known_gradient_value[1]*xyz_t[1] : 0.0, gradient_component_is_known[2] ? known_gradient_value[2]*xyz_t[2] : 0.0);
 
     // constant term
     u_char col_idx = 0;
@@ -1584,33 +1607,65 @@ void get_lsqr_face_gradient_operator_at_point(const double xyz_point[P4EST_DIM],
       A.set_value(row_idx, col_idx++, 1.0);
     // linear terms
     for (u_char uu = 0; uu < P4EST_DIM; ++uu)
-      A.set_value(row_idx, col_idx++, xyz_t[uu]/scaling);
+      if(!gradient_component_is_known[uu])
+        A.set_value(row_idx, col_idx++, xyz_t[uu]/scaling);
 
     row_idx++;
   }
 
   matrix_t AtA, inv_AtA;
   A.mtm_product(AtA);
-  const bool is_inversion_successful = solve_cholesky(AtA, NULL, NULL, 0, 1e4, NULL, &inv_AtA);
+  if(rhs != NULL)
+    A.tranpose_matvec(*rhs, *At_rhs);
+
+  const bool is_inversion_successful = solve_cholesky(AtA, At_rhs, lsqr_solution, (field_gradient != NULL  ? 1 : 0), 1e4, NULL, &inv_AtA);
+
+  if(rhs != NULL)
+    delete rhs;
+  if(At_rhs != NULL)
+    delete At_rhs;
 
   if(!is_inversion_successful)
-    throw std::runtime_error("get_lsqr_face_gradient_operator_at_point : the inversion of the lsqr system failed.");
+  {
+    if(lsqr_solution != NULL)
+      delete lsqr_solution;
+    throw std::runtime_error("get_lsqr_face_gradient_at_point : the inversion of the lsqr system failed.");
+  }
+
+  if(field_gradient != NULL)
+  {
+    P4EST_ASSERT(lsqr_solution != NULL);
+    u_char sol_idx = (is_point_face_center ? 0 : 1);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      if(!gradient_component_is_known[dim])
+        field_gradient[dim] = (*lsqr_solution)[sol_idx++];
+  }
+  if(lsqr_solution != NULL)
+    delete lsqr_solution;
+
+  if(grad_operator == NULL)
+    return;
 
   matrix_t operator_coeffs;
   A.matrix_product(inv_AtA, operator_coeffs);
 
-  double sum_of_coeffs[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
-
-  for (int term = 0; term < A.num_rows(); ++term)
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+  u_char col_idx = (is_point_face_center ? 0 : 1);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    if(gradient_component_is_known[dim])
+      continue;
+    double sum_of_coeffs = 0.0;
+    for (int term = 0; term < A.num_rows(); ++term)
     {
-      grad_operator[dim][term].weight = operator_coeffs.get_value(term, (is_point_face_center ? 0 : 1) + dim)/scaling;
-      sum_of_coeffs[dim] += grad_operator[dim][term].weight;
+      grad_operator[dim][term].weight = operator_coeffs.get_value(term, col_idx)/scaling;
+      sum_of_coeffs += grad_operator[dim][term].weight;
     }
 
-  if(is_point_face_center)
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      grad_operator[dim].add_term(idx_of_face_center, -sum_of_coeffs[dim]);
+    if(is_point_face_center)
+      grad_operator[dim].add_term(idx_of_face_center, -sum_of_coeffs);
+
+    col_idx++;
+  }
 
   return;
 }

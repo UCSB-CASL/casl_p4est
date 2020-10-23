@@ -282,6 +282,7 @@ struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-inte
 {
   double xyz_face[P4EST_DIM];
   p4est_locidx_t face_idx;
+  double field_value;
   bool operator < (const indexed_and_located_face& other_one) const
   {
     return (face_idx < other_one.face_idx);
