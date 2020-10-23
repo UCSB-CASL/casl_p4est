@@ -730,6 +730,10 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     double min_dist         = DBL_MAX;
     double upwind_min_dist  = DBL_MAX;
 
+    bool grad_component_is_known[P4EST_DIM] = {DIM(false, false, false)}; // to avoid lsqr routines to fail if not enough real neighbors, you need to constrain it with what you may know from wall boundary conditions
+    double lsqr_face_gradient[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)}; // that's what we're after for initialization purposes
+    bool homogeneous_grad_component_for_extrapolation[P4EST_DIM] = {DIM(false, false, false)}; // for exrapolation purposes, if upwind direction corresponds to a wall for some reason, it will be a homogeneous Neumann boundary condition
+
     for (size_t k = 0; k < neighbor_seeds->size(); ++k) {
       P4EST_ASSERT((*neighbor_seeds)[k].n != face_idx);
       tmp.face_idx = (*neighbor_seeds)[k].n;
@@ -746,7 +750,18 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
             tmp.xyz_face[comp] = MIN(MAX(xyz_face[comp] + lambda*((*points)[k].p.xyz(comp) - xyz_face[comp]), xyz_min[comp] + 2.0*EPS*(xyz_max[comp] - xyz_min[comp])), xyz_max[comp] - 2.0*EPS*(xyz_max[comp] - xyz_min[comp])); // make sure it's indeed inside, just to be safe in case the bc object needs that
         }
         wall_bc = bc[dim].wallType(tmp.xyz_face);
-        throw std::runtime_error("alright, more work to do here...");
+        if(wall_bc == DIRICHLET)
+          tmp.field_value = bc[dim].wallValue(tmp.xyz_face);
+        if(wall_bc == NEUMANN)
+        {
+          if(wall_orientation == touch_dir)
+          {
+            grad_component_is_known[wall_orientation/2] = true;
+            lsqr_face_gradient[wall_orientation/2] = (wall_orientation%2 == 1 ? +1.0 : -1.0)*bc[dim].wallValue(tmp.xyz_face);
+          }
+          else
+            tmp.field_value = sharp_solution_p[dim][face_idx] + bc[dim].wallValue(tmp.xyz_face)*(tmp.xyz_face[wall_orientation/2] - xyz_face[wall_orientation/2]); // build the sample value
+        }
       }
       else
       {
@@ -764,7 +779,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
       }
       neighbor_distance = sqrt(neighbor_distance);
       inner_product /= neighbor_distance;
-      if(inner_product >= -1.0e-6)
+      if(inner_product >= -1.0e-6) // use a small negative threshold instead of strictly 0.0 here
       {
         if(tmp.face_idx >= 0) // regular neighbor, not the same
         {
@@ -772,19 +787,17 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
           upwind_min_dist = MIN(upwind_min_dist, neighbor_distance);
         }
         else
-        {
-        }
+          homogeneous_grad_component_for_extrapolation[(-1 - tmp.face_idx)/2] = true;
       }
+      if(tmp.face_idx < 0 && tmp.face_idx == WALL_idx(touch_dir) && wall_bc == DIRICHLET)
+        continue; // equivalent to center-seed (although it's a "wall neighbor") --> don't add it to the lsqr stencil, that would lead to singular entries
       all_neighbors.insert(tmp);
       min_dist = MIN(min_dist, neighbor_distance);
     }
 
-    double lsqr_face_gradient[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
-    bool grad_component_is_known[P4EST_DIM] = {DIM(false, false, false)};
-    double known_grad_component[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
-    linear_combination_of_dof_t /*lsqr_face_grad_operator[P4EST_DIM],*/ upwind_lsqr_face_grad_operator[P4EST_DIM];
-    get_lsqr_face_gradient_at_point(xyz_face, faces, all_neighbors,    min_dist,         NULL, lsqr_face_gradient, grad_component_is_known, known_grad_component,        true, face_idx);
-    get_lsqr_face_gradient_at_point(xyz_face, faces, upwind_neighbors, upwind_min_dist,  upwind_lsqr_face_grad_operator, NULL, grad_component_is_known, known_grad_component, true, face_idx);
+    linear_combination_of_dof_t upwind_lsqr_face_grad_operator[P4EST_DIM];
+    get_lsqr_face_gradient_at_point(xyz_face, faces, all_neighbors,    min_dist,         NULL,                          lsqr_face_gradient, grad_component_is_known,                      true, face_idx);
+    get_lsqr_face_gradient_at_point(xyz_face, faces, upwind_neighbors, upwind_min_dist,  upwind_lsqr_face_grad_operator, NULL,              homogeneous_grad_component_for_extrapolation, true, face_idx);
 
     extrapolation_operator_across.n_dot_grad.clear();
     extrapolation_operator_across.dtau  = upwind_min_dist/P4EST_DIM;

@@ -728,6 +728,6 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
 
 
 void get_lsqr_face_gradient_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
-                                     linear_combination_of_dof_t* grad_operator, double* field_gradient, const bool gradient_component_is_known[P4EST_DIM], const double known_gradient_value[P4EST_DIM],
+                                     linear_combination_of_dof_t* grad_operator, double* field_gradient, const bool gradient_component_is_known[P4EST_DIM],
                                      const bool& is_point_face_center = false, const p4est_locidx_t& idx_of_face_center = -1);
 #endif /* MY_P4EST_FACES_H */

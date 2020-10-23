@@ -1545,14 +1545,14 @@ void compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* fac
 }
 
 void get_lsqr_face_gradient_at_point(const double xyz_point[P4EST_DIM], const my_p4est_faces_t* faces, const std::set<indexed_and_located_face> &ngbd_of_faces, const double &scaling,
-                                     linear_combination_of_dof_t* grad_operator, double* field_gradient, const bool gradient_component_is_known[P4EST_DIM], const double known_gradient_value[P4EST_DIM],
+                                     linear_combination_of_dof_t* grad_operator, double* field_gradient, const bool gradient_component_is_known[P4EST_DIM],
                                      const bool& is_point_face_center, const p4est_locidx_t& idx_of_face_center)
 {
   P4EST_ASSERT(ngbd_of_faces.size() > 0);
   P4EST_ASSERT(!is_point_face_center || idx_of_face_center >= 0);
   P4EST_ASSERT(grad_operator != NULL || field_gradient != NULL);
 #ifdef CASL_THROWS
-  if (ngbd_of_faces.size() < 1 + P4EST_DIM - SUMD(gradient_component_is_known[0] ? 1 : 0, gradient_component_is_known[1] ? 1 : 0, gradient_component_is_known[2] ? 1 : 0))
+  if (ngbd_of_faces.size() + SUMD(gradient_component_is_known[0] ? 1 : 0, gradient_component_is_known[1] ? 1 : 0, gradient_component_is_known[2] ? 1 : 0) < 1 + P4EST_DIM)
     throw std::invalid_argument("get_lsqr_face_gradient_operator_at_point() : not enough neighbor cells to build a gradient");
 #endif
 
@@ -1599,7 +1599,7 @@ void get_lsqr_face_gradient_at_point(const double xyz_point[P4EST_DIM], const my
           grad_operator[dim].add_term(it->face_idx, 1.0);
     }
     if(field_gradient != NULL)
-      (*rhs)[row_idx] = it->field_value - SUMD(gradient_component_is_known[0] ? known_gradient_value[0]*xyz_t[0] : 0.0, gradient_component_is_known[1] ? known_gradient_value[1]*xyz_t[1] : 0.0, gradient_component_is_known[2] ? known_gradient_value[2]*xyz_t[2] : 0.0);
+      (*rhs)[row_idx] = it->field_value - SUMD(gradient_component_is_known[0] ? field_gradient[0]*xyz_t[0] : 0.0, gradient_component_is_known[1] ? field_gradient[1]*xyz_t[1] : 0.0, gradient_component_is_known[2] ? field_gradient[2]*xyz_t[2] : 0.0);
 
     // constant term
     u_char col_idx = 0;

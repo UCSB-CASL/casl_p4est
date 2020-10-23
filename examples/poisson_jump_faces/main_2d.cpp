@@ -362,35 +362,56 @@ public:
 } exact_solution;
 
 struct BCWALLTYPE_U : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
+  const double *xyz_min, *xyz_max;
+  BCWALLTYPE_U(const double *xyz_min_, const double *xyz_max_) : xyz_min(xyz_min_), xyz_max(xyz_max_) {}
+  BoundaryConditionType operator()(DIM(double, double y, double)) const
   {
-    return DIRICHLET;
+    return (fabs(y - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? NEUMANN : DIRICHLET);
   }
-} bc_wall_type_u;
+};
 
 struct BCWALLTYPE_V : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
+  const double *xyz_min, *xyz_max;
+  BCWALLTYPE_V(const double *xyz_min_, const double *xyz_max_) : xyz_min(xyz_min_), xyz_max(xyz_max_) {}
+  BoundaryConditionType operator()(DIM(double x, double, double)) const
   {
-    return DIRICHLET;
+    return (fabs(x - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? NEUMANN : DIRICHLET);
   }
-} bc_wall_type_v;
+};
 
 
 #ifdef P4_TO_P8
 struct BCWALLTYPE_W : WallBC3D {
-  BoundaryConditionType operator()(double, double, double) const
+  const double *xyz_min, *xyz_max;
+  BCWALLTYPE_W(const double *xyz_min_, const double *xyz_max_) : xyz_min(xyz_min_), xyz_max(xyz_max_) {}
+  BoundaryConditionType operator()(double x, double, double) const
   {
-    return DIRICHLET;
+    return (fabs(x - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? NEUMANN : DIRICHLET);
   }
-} bc_wall_type_w;
+};
 #endif
 
 struct BCWALLVALUE_U : CF_DIM {
   const LEVEL_SET& ls;
-  BCWALLVALUE_U(const LEVEL_SET& ls_) : ls(ls_) {}
+  const BCWALLTYPE_U& bc_type;
+  const double *xyz_min, *xyz_max;
+  BCWALLVALUE_U(const LEVEL_SET& ls_, const BCWALLTYPE_U& bc_type_, const double *xyz_min_, const double *xyz_max_) :
+    ls(ls_), bc_type(bc_type_), xyz_min(xyz_min_), xyz_max(xyz_max_) {}
   double operator()(const double *xyz) const
   {
-    return (ls(xyz) <= 0.0 ? exact_solution.u_minus(xyz) : exact_solution.u_plus(xyz));
+    if(bc_type(DIM(xyz[0], xyz[1], xyz[2])) == DIRICHLET)
+      return (ls(xyz) <= 0.0 ? exact_solution.u_minus(xyz) : exact_solution.u_plus(xyz));
+    else
+    {
+      const double nn[P4EST_DIM] = {DIM(
+                                    (fabs(xyz[0] - xyz_min[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? -1.0 : (fabs(xyz[0] - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[1] - xyz_min[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? -1.0 : (fabs(xyz[1] - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[2] - xyz_min[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? -1.0 : (fabs(xyz[2] - xyz_max[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? +1.0 : 0.0)))};
+      if(ls(xyz) <= 0.0)
+        return SUMD(nn[0]*exact_solution.du_minus_d(0, xyz), nn[1]*exact_solution.du_minus_d(1, xyz), nn[2]*exact_solution.du_minus_d(2, xyz));
+      else
+        return SUMD(nn[0]*exact_solution.du_plus_d(0, xyz), nn[1]*exact_solution.du_plus_d(1, xyz), nn[2]*exact_solution.du_plus_d(2, xyz));
+    }
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -401,10 +422,25 @@ struct BCWALLVALUE_U : CF_DIM {
 
 struct BCWALLVALUE_V : CF_DIM {
   const LEVEL_SET& ls;
-  BCWALLVALUE_V(const LEVEL_SET& ls_) : ls(ls_) {}
+  const BCWALLTYPE_V& bc_type;
+  const double *xyz_min, *xyz_max;
+  BCWALLVALUE_V(const LEVEL_SET& ls_, const BCWALLTYPE_V& bc_type_, const double *xyz_min_, const double *xyz_max_) :
+    ls(ls_), bc_type(bc_type_), xyz_min(xyz_min_), xyz_max(xyz_max_) {}
   double operator()(const double *xyz) const
   {
-    return (ls(xyz) <= 0.0 ? exact_solution.v_minus(xyz) : exact_solution.v_plus(xyz));
+    if(bc_type(DIM(xyz[0], xyz[1], xyz[2])) == DIRICHLET)
+      return (ls(xyz) <= 0.0 ? exact_solution.v_minus(xyz) : exact_solution.v_plus(xyz));
+    else
+    {
+      const double nn[P4EST_DIM] = {DIM(
+                                    (fabs(xyz[0] - xyz_min[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? -1.0 : (fabs(xyz[0] - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[1] - xyz_min[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? -1.0 : (fabs(xyz[1] - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[2] - xyz_min[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? -1.0 : (fabs(xyz[2] - xyz_max[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? +1.0 : 0.0)))};
+      if(ls(xyz) <= 0.0)
+        return SUMD(nn[0]*exact_solution.dv_minus_d(0, xyz), nn[1]*exact_solution.dv_minus_d(1, xyz), nn[2]*exact_solution.dv_minus_d(2, xyz));
+      else
+        return SUMD(nn[0]*exact_solution.dv_plus_d(0, xyz), nn[1]*exact_solution.dv_plus_d(1, xyz), nn[2]*exact_solution.dv_plus_d(2, xyz));
+    }
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -416,10 +452,25 @@ struct BCWALLVALUE_V : CF_DIM {
 #ifdef P4_TO_P8
 struct BCWALLVALUE_W : CF_3 {
   const LEVEL_SET& ls;
-  BCWALLVALUE_W(const LEVEL_SET& ls_) : ls(ls_) {}
+  const BCWALLTYPE_W& bc_type;
+  const double *xyz_min, *xyz_max;
+  BCWALLVALUE_W(const LEVEL_SET& ls_, const BCWALLTYPE_W& bc_type_, const double *xyz_min_, const double *xyz_max_) :
+    ls(ls_), bc_type(bc_type_), xyz_min(xyz_min_), xyz_max(xyz_max_) {}
   double operator()(const double *xyz) const
   {
-    return (ls(xyz) <= 0.0 ? exact_solution.w_minus(xyz) : exact_solution.w_plus(xyz));
+    if(bc_type(DIM(xyz[0], xyz[1], xyz[2])) == DIRICHLET)
+      return (ls(xyz) <= 0.0 ? exact_solution.w_minus(xyz) : exact_solution.w_plus(xyz));
+    else
+    {
+      const double nn[P4EST_DIM] = {DIM(
+                                    (fabs(xyz[0] - xyz_min[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? -1.0 : (fabs(xyz[0] - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[1] - xyz_min[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? -1.0 : (fabs(xyz[1] - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]) ? +1.0 : 0.0)),
+                                    (fabs(xyz[2] - xyz_min[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? -1.0 : (fabs(xyz[2] - xyz_max[2]) < EPS*(xyz_max[2] - xyz_min[2]) ? +1.0 : 0.0)))};
+      if(ls(xyz) <= 0.0)
+        return SUMD(nn[0]*exact_solution.dw_minus_d(0, xyz), nn[1]*exact_solution.dw_minus_d(1, xyz), nn[2]*exact_solution.dw_minus_d(2, xyz));
+      else
+        return SUMD(nn[0]*exact_solution.dw_plus_d(0, xyz), nn[1]*exact_solution.dw_plus_d(1, xyz), nn[2]*exact_solution.dw_plus_d(2, xyz));
+    }
   }
   double operator()(double x, double y, double z) const
   {
@@ -1206,10 +1257,10 @@ int main (int argc, char* argv[])
 
   BoundaryConditionsDIM bc_v[P4EST_DIM];
 
-  bc_v[0].setWallTypes(bc_wall_type_u); BCWALLVALUE_U bc_wall_value_u(levelset); bc_v[0].setWallValues(bc_wall_value_u);
-  bc_v[1].setWallTypes(bc_wall_type_v); BCWALLVALUE_V bc_wall_value_v(levelset); bc_v[1].setWallValues(bc_wall_value_v);
+  BCWALLTYPE_U wall_type_u(xyz_min, xyz_max); BCWALLVALUE_U wall_value_u(levelset, wall_type_u, xyz_min, xyz_max); bc_v[0].setWallTypes(wall_type_u); bc_v[0].setWallValues(wall_value_u);
+  BCWALLTYPE_V wall_type_v(xyz_min, xyz_max); BCWALLVALUE_V wall_value_v(levelset, wall_type_v, xyz_min, xyz_max); bc_v[1].setWallTypes(wall_type_v); bc_v[1].setWallValues(wall_value_v);
 #ifdef P4_TO_P8
-  bc_v[2].setWallTypes(bc_wall_type_w); BCWALLVALUE_W bc_wall_value_w(levelset); bc_v[2].setWallValues(bc_wall_value_w);
+  BCWALLTYPE_W wall_type_w(xyz_min, xyz_max); BCWALLVALUE_W wall_value_w(levelset, wall_type_w, xyz_min, xyz_max); bc_v[2].setWallTypes(wall_type_w); bc_v[2].setWallValues(wall_value_w);
 #endif
 
   int lmin = cmd.get<int>("lmin", default_lmin);
