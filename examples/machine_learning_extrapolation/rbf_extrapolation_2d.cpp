@@ -18,6 +18,8 @@
 #include <Accelerate/Accelerate.h>
 #include <src/casl_geometry.h>
 #include <set>
+#include <map>
+#include <random>
 
 /**
  * Scalar fields to extend over the interface and into Omega+.
@@ -127,45 +129,31 @@ int main(int argc, char** argv)
 	parStopWatch watch;
 	watch.start();
 
-	// Let's test solving a system Ax = b.
-	// B_mat from python for multiquadric RBF:
-	// [0.35              0.350348598719904 0.351392319921765 0.353125			0.355536566333197 1.                1.125            ]
-	// [0.350348598719904 0.35              0.350348598719904 0.351392319921765	0.353125          1.                1.140625         ]
-	// [0.351392319921765 0.350348598719904 0.35              0.350348598719904	0.351392319921765 1.                1.15625          ]
-	// [0.353125          0.351392319921765 0.350348598719904 0.35				0.350348598719904 1.                1.171875         ]
-	// [0.355536566333197 0.353125          0.351392319921765 0.350348598719904	0.35              1.                1.1875           ]
-	// [1.                1.                1.                1.				1.                0.                0.               ]
-	// [1.125             1.140625          1.15625           1.171875			1.1875            0.                0.               ]
-	// g_vec
-	// [ 0.477386012997069  0.184164955225999 -0.084489035619419 -0.298707763002317 -0.429941383271424  0.  0. ]
-	// v_vec = np.linalg.solve( B_mat, g_vec )
-	// [ 6.010136361463575e+04 -1.282893822730500e+04 -3.370441094007218e+05  4.721695790248159e+05 -1.823978950114248e+05 -4.598814523195510e+01  4.847912980855345e+01]
-
 	// From LU factorization using LAPACK.
 	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
 	// http://www.netlib.org/lapack/explore-html/d7/d3b/group__double_g_esolve_ga5ee879032a8365897c3ba91e3dc8d512.html
-	// First a small example.
-	// x - y = 2
-	// x + y = 0
 	char transposed = 'T';		// This sets row-major order, as is common in C/C++.
-	int dim = 2;
+	int dim = 7;
 	int nrhs = 1;
 	int LDA = dim;
 	int LDB = dim;
 	int info;
 
 	// Given in major-column order!
-	double A[] = { 1, -1, 1, 1 };
-	double b[] = { 2, 0 };
-	int ipiv[2];
+	double A[] = {
+		0.35,              0.350348598719904, 0.351392319921765, 0.353125,          0.355536566333197, 1., 1.125,
+		0.350348598719904, 0.35,              0.350348598719904, 0.351392319921765, 0.353125,          1., 1.140625,
+		0.351392319921765, 0.350348598719904, 0.35,              0.350348598719904, 0.351392319921765, 1., 1.15625,
+		0.353125,          0.351392319921765, 0.350348598719904, 0.35,              0.350348598719904, 1., 1.171875,
+		0.355536566333197, 0.353125,          0.351392319921765, 0.350348598719904, 0.35,              1., 1.1875,
+		1.,                1.,                1.,                1.,                1.,                0., 0.,
+		1.125,             1.140625,          1.15625,           1.171875,          1.1875,            0., 0.
+	};
+	double b[] = { 0.477386012997069, 0.184164955225999, -0.084489035619419, -0.298707763002317, -0.429941383271424, 0., 0. };
+	int ipiv[dim];
 
-	dgetrf_( &dim, &dim, A, &LDA, ipiv, &info );
-	dgetrs_( &transposed, &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );
-//	dgesv_( &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );		// This solves column-major order.
-
-	std::cout << "solution is:";
-	std::cout << "[" << b[0] << ", " << b[1] << "]" << std::endl;
-	std::cout << "Info = " << info << std::endl;
+	dgetrf_( &dim, &dim, A, &LDA, ipiv, &info );							// Solution is placed in b.
+	dgetrs_( &transposed, &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );		// See dgesv_ for column order, one-shot solution.
 
 	// Domain information.
 	const int n_xyz[] = { NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM };
@@ -173,7 +161,12 @@ int main(int argc, char** argv)
 	const double xyz_max[] = { -MIN_D, -MIN_D, -MIN_D };
 	const int periodic[] = { 0, 0, 0 };
 
-	// Scalar field to extend (defaults to f(x,y) = sin(pi*x) * cos(pi*x)).
+	// Sampling randomness.
+	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
+	std::mt19937 gen{}; 						// Standard mersenne_twister_engine seeded with rd().
+	std::normal_distribution<double> normalDistribution( 0., sqrt( REFINEMENT_BAND_WIDTH ) );
+
+	// Scalar field to extend (defaults to f(x,y) = sin(πx)cos(πy).
 	Field field;
 
 	std::cout << "###### Extending scalar function '" << field.toString() << "' in 2D ######" << std::endl;
@@ -253,12 +246,14 @@ int main(int argc, char** argv)
 		ierr = VecDuplicate( phi, &exactField );
 		CHKERRXX( ierr );
 
-		// Multiset datastructures for visited and pending nodes.
+		// Multiset datastructure for pending nodes.
 		auto nodeComparator = [phiReadPtr](const p4est_locidx_t& lhs, const p4est_locidx_t& rhs) -> bool{
 			return phiReadPtr[lhs] < phiReadPtr[rhs];
 		};
-		std::multiset<p4est_locidx_t, decltype( nodeComparator )> visitedNodesSet( nodeComparator );
 		std::multiset<p4est_locidx_t, decltype( nodeComparator )> pendingNodesSet( nodeComparator );
+
+		// A vector of booleans to keep track of visited nodes.
+		bool visitedNodes[nodes->num_owned_indeps];
 
 		// Evaluate exact field everywhere and copy only the known region (i.e. inside the interface) to the RBF and PDE versions.
 		sample_cf_on_nodes( p4est, nodes, field, exactField );
@@ -275,6 +270,8 @@ int main(int argc, char** argv)
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
+			visitedNodes[n] = false;
+
 			// For those nodes outside the interface, reset their extrapolation value and add those we are interested in
 			// computing their extrapolation to a binary tree for efficient access.
 			if( phiReadPtr[n] > 0 )
@@ -285,22 +282,105 @@ int main(int argc, char** argv)
 			}
 			else if( ABS( phiReadPtr[n] ) <= RBF_LOCAL_RADIUS )
 			{
-				// Adding those nodes that lie inside the interface within a band of RBF_LOCAL_RADIUS to efficient set
-				// of known/fixed nodes.
-				visitedNodesSet.insert( n );
+				// Mark those nodes that lie inside the interface within a band of RBF_LOCAL_RADIUS as visited.
+				visitedNodes[n] = true;
 			}
 		}
 
 		// Perform extrapolation using all derivatives (from Daniil's paper).
 		levelSet.extend_Over_Interface_TVD_Full( phi, pdeField, EXTENSION_NUM_ITER, EXTENSION_ORDER );
 
-		// Testing that nodes are sorted by their distance to the interface using the multiset above.
+		// Perform extrapolation using a radial basis function network augmented with a polynomial p(x,y) of first degree.
 		double nodesStatus[nodes->num_owned_indeps];
-		for( auto& n : nodesStatus )
-			n = 0;
+		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+			nodesStatus[n] = (visitedNodes[n])? -1 : 0;
 
-		for( const auto& n : visitedNodesSet )
-			nodesStatus[n] = -1;
+		double xyz[P4EST_DIM];
+		char distCStr[16];
+		auto pendingNodeIt = pendingNodesSet.begin();
+		while( pendingNodeIt != pendingNodesSet.end() )
+		{
+			// Pop next closest node to interface.
+			p4est_locidx_t pendingNodeIdx = *pendingNodeIt;
+			pendingNodesSet.erase( pendingNodeIt );
+			node_xyz_fr_n( pendingNodeIdx, p4est, nodes, xyz );
+			Point2 p( xyz[0], xyz[1] );
+
+			// Retrieved visited nodes that lie within a given radius from the current node.
+			std::map<std::string, std::vector<p4est_locidx_t>> bins;	// Build a histogram by placing the node IDs at each bin.
+			int totalPointsInRange = 0;
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+			{
+				if( visitedNodes[n] )		// We get information only from visited/fixed nodes.
+				{
+					node_xyz_fr_n( n, p4est, nodes, xyz );
+					Point2 q( xyz[0], xyz[1] );
+					double d = (p - q).norm_L2();
+					if( d <= RBF_LOCAL_RADIUS )				// Within view field?  Build histogram.
+					{
+						sprintf( distCStr, "%.6f", d / H );	// Find the bin according to its multiplicity of H.
+						std::string binKey = std::string( distCStr );
+						std::vector<p4est_locidx_t>& nodeIds = bins[binKey];
+						nodeIds.push_back( n );
+						totalPointsInRange++;
+					}
+				}
+			}
+
+			// Place nodal index vectors from each bin in an array for sampling.
+			std::vector<std::vector<p4est_locidx_t>*> binsVectors;
+			binsVectors.reserve( bins.size() );
+			for( auto& bin : bins )
+			{
+				std::cout << "[" << bin.first << "]: ";
+				binsVectors.push_back( &(bin.second) );
+				for( auto n : *binsVectors.back() )
+					std::cout << n << " ";
+				std::cout << std::endl;
+			}
+
+			// Use a normal distribution to select samples.
+			std::cout << "Window samples:" << std::endl;
+			const int N_SAMPLES_PER_WINDOW = bins.size();			// Number of samples per interpolation window.
+			std::vector<p4est_locidx_t> window;						// Nodal indices.
+			window.reserve( N_SAMPLES_PER_WINDOW );
+			const double INTERVAL_WIDTH = REFINEMENT_BAND_WIDTH / (double)bins.size();
+			int s = 0;
+			while( s < N_SAMPLES_PER_WINDOW )
+			{
+				double r = normalDistribution( gen );
+				int idx = MIN( (unsigned long)floor( ABS( r ) / INTERVAL_WIDTH ), bins.size() - 1 );
+				if( !binsVectors[idx]->empty() )
+				{
+					window.push_back( binsVectors[idx]->back() );	// Remove them from the hash map and add them
+					binsVectors[idx]->pop_back();					// to the sliding window.
+					s++;
+
+					std::cout << window.back() << " ";
+					nodesStatus[window.back()] = -2;
+				}
+			}
+			std::cout << std::endl;
+
+			// Verifying which nodes are left in the hashmap and which ones were picked for sampling.
+			std::cout << "After sampling:" << std::endl;
+			std::cout << "Hashmap:" << std::endl;
+			for( auto& bin : bins )
+			{
+				std::cout << "[" << bin.first << "]: ";
+				for( const auto& n : bin.second )
+					std::cout << n << " ";
+				std::cout << std::endl;
+			}
+
+			// Build interpolation matrix.
+
+			// Post-evaluation tasks.
+			nodesStatus[pendingNodeIdx] = +2;
+			visitedNodes[pendingNodeIdx] = true;
+
+			break;
+		}
 
 		for( const auto& n : pendingNodesSet )
 			nodesStatus[n] = +1;
