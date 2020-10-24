@@ -173,15 +173,15 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	}
 
 	// Debugging: Matrix A.
-	/*printf( "[" );
-	for( int i = 0; i < DIM; i++ )
-	{
-		printf( "[" );
-		for( int j = 0; j < DIM; j++ )
-			printf( "%.15g, ", A[i * DIM + j] );
-		printf( "],\n" );
-	}
-	printf( "]\n" );*/
+//	printf( "[" );
+//	for( int i = 0; i < DIM; i++ )
+//	{
+//		printf( "[" );
+//		for( int j = 0; j < DIM; j++ )
+//			printf( "%.15g, ", A[i * DIM + j] );
+//		printf( "],\n" );
+//	}
+//	printf( "]\n" );
 
 	// Bulding the right-hand side vector b.
 	//     |   f0   |
@@ -198,10 +198,10 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 		b[i] = 0;
 
 	// Debugging: printing vector b.
-	/*printf( "\n[" );
-	for( int i = 0; i < DIM; i++ )
-		printf( "%.15g, ", b[i] );
-	printf( "]\n" );*/
+//	printf( "\n[" );
+//	for( int i = 0; i < DIM; i++ )
+//		printf( "%.15g, ", b[i] );
+//	printf( "]\n" );
 
 	// Solving Ax = b with LU factorization from LAPACK.
 	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
@@ -214,10 +214,10 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	assert( info == 0 );
 
 	// Debugging: printing solution vector.
-	/*printf( "\n[" );
-	for( int i = 0; i < DIM; i++ )
-		printf( "%.15g, ", b[i] );
-	printf( "]\n" );*/
+//	printf( "\n[" );
+//	for( int i = 0; i < DIM; i++ )
+//		printf( "%.15g, ", b[i] );
+//	printf( "]\n" );
 
 	// Using computed weights to extrapolate to target node.
 	double s = 0;
@@ -445,17 +445,10 @@ int main(int argc, char** argv)
 			std::vector<std::vector<p4est_locidx_t>*> binsVectors;
 			binsVectors.reserve( bins.size() );
 			for( auto& bin : bins )
-			{
-				std::cout << "[" << bin.first << "]: ";
 				binsVectors.push_back( &(bin.second) );
-				for( auto n : *binsVectors.back() )
-					std::cout << n << " ";
-				std::cout << std::endl;
-			}
 
 			// Use a normal distribution to select samples.
-			std::cout << "Window samples:" << std::endl;
-			const int N_SAMPLES_PER_WINDOW = bins.size();			// Number of samples per interpolation window.
+			const int N_SAMPLES_PER_WINDOW = 25;					// Number of samples per interpolation window.
 			std::vector<p4est_locidx_t> window;						// Nodal indices.
 			window.reserve( N_SAMPLES_PER_WINDOW );
 			const double INTERVAL_WIDTH = REFINEMENT_BAND_WIDTH / (double)bins.size();
@@ -470,21 +463,8 @@ int main(int argc, char** argv)
 					binsVectors[idx]->pop_back();					// to the sliding window.
 					s++;
 
-					std::cout << window.back() << " ";
 					nodesStatus[window.back()] = -2;
 				}
-			}
-			std::cout << std::endl;
-
-			// Debugging: verify which nodes are left in the hashmap and which ones were picked for sampling.
-			std::cout << "After sampling:" << std::endl;
-			std::cout << "Hashmap:" << std::endl;
-			for( auto& bin : bins )
-			{
-				std::cout << "[" << bin.first << "]: ";
-				for( const auto& n : bin.second )
-					std::cout << n << " ";
-				std::cout << std::endl;
 			}
 
 			// Extrapolation.
@@ -493,12 +473,8 @@ int main(int argc, char** argv)
 			// Post-evaluation tasks.
 			nodesStatus[pendingNodeIdx] = +2;
 			visitedNodes[pendingNodeIdx] = true;
-
-			break;
+			pendingNodeIt = pendingNodesSet.begin();				// Next pending node closest to the interface.
 		}
-
-		for( const auto& n : pendingNodesSet )
-			nodesStatus[n] = +1;
 
 		// Storing errors at nodes within a band from the interface.
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
