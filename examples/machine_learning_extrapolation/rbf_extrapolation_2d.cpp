@@ -110,6 +110,129 @@ public:
 };
 
 
+/**
+ * Extrapolate the scalar field using radial basis functions and the information coming from visited nodes.
+ * @param [in] atNodeIdx Target node index.
+ * @param [in] window Neighboring nodes to be considered in the extrapolation.
+ * @param [in] rbf Radial basis function.
+ * @param [in] p4est Pointer to the p4est struct.
+ * @param [in] nodes Pointer to nodes struct.
+ * @param [in,out] rbfFieldPtr A parallel vector with the extrapolation information to also be updated.
+ */
+void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window, const MultiquadricRBF& rbf,
+				  const p4est_t *p4est, const p4est_nodes_t *nodes, double *rbfFieldPtr )
+{
+	// Retrieve spatial information for standing node.
+	double xyz[P4EST_DIM];
+	node_xyz_fr_n( atNodeIdx, p4est, nodes, xyz );
+	Point2 p( xyz[0], xyz[1] );
+
+	// Retrieve spatial information for neighborhood.
+	const int N = window.size();
+	std::vector<Point2> windowPositions;
+	windowPositions.reserve( N );
+	for( const auto& n : window )
+	{
+		node_xyz_fr_n( n, p4est, nodes, xyz );
+		windowPositions.emplace_back( xyz[0], xyz[1] );
+	}
+
+	// Preparing the matrix and vectors we need.
+	const int NUM_COEFFS = 3;		// We need a first degree polynomial p(x,y) = c0 + c1*x + c2*y to augment the RBF.
+	int DIM = N + NUM_COEFFS;		// Effective matrix and vector dimension.
+	int LDA = DIM;					// Leading dimension of A matrix.
+	int LDB = DIM;					// Leading dimension of b vector.
+	int N_RHS = 1;					// Number of right-hand sides.
+	char TRANSPOSE = 'T';			// We'll provide the matrix A in row-major order.
+
+	// Building the A matrix to solve the system Ax = b.
+	//     | Phi   |  v1   vx   vy |
+	//     | ----------------------|
+	// A = | v1^T  |  0    0    0  |,  where Phi is an NxN matrix, and v1, vx, and vy are a Nx1 vectors.
+	//     | vx^T  |  0    0    0  |   v1 has just 1's, and vx and vy hold the x and y coordinates of the nodes.
+	//     | vy^T  |  0    0    0  |
+	double A[DIM * DIM];						// In this case, A is symmetric.
+	for( int i = 0; i < N; i++ )
+	{
+		A[i * DIM + i] = rbf( 0 );				// Diagonal elements for Phi.
+		for( int j = i + 1; j < N; j++ )
+		{
+			double d = Point2::norm_L2( windowPositions[i], windowPositions[j] );
+			A[i * DIM + j] = A[j * DIM + i] = rbf( d );		// Phi off-diagonal elements.
+		}
+		A[i * DIM + N] = A[N * DIM + i] = 1;				// v1 and v1^T.
+		A[i * DIM + (N + 1)] = A[(N + 1) * DIM + i] = windowPositions[i].x;		// vx and vx^T.
+		A[i * DIM + (N + 2)] = A[(N + 2) * DIM + i] = windowPositions[i].y;		// vy and vy^T.
+	}
+
+	for( int i = N; i < DIM; i++ )				// Complete the zeros in A.
+	{
+		A[i * DIM + i] = 0;						// Diagonal.
+		for( int j = i + 1; j < DIM; j++ )		// Off diagonal elements.
+			A[i * DIM + j] = A[j * DIM + i] = 0;
+	}
+
+	// Debugging: Matrix A.
+	/*printf( "[" );
+	for( int i = 0; i < DIM; i++ )
+	{
+		printf( "[" );
+		for( int j = 0; j < DIM; j++ )
+			printf( "%.15g, ", A[i * DIM + j] );
+		printf( "],\n" );
+	}
+	printf( "]\n" );*/
+
+	// Bulding the right-hand side vector b.
+	//     |   f0   |
+	//     |   f1   |, where fi is known scalar field at ith node.  The remaining DIM - N components of the vector are
+	//     |    :   |  zeroed out to meet the miminimization conditions.
+	// b = | f{N-1} |
+	//     |    0   |
+	//     |    0   |
+	//     |    0   |
+	double b[DIM];
+	for( int i = 0; i < N; i++ )				// Scalar field known values from visited nodes.
+		b[i] = rbfFieldPtr[window[i]];
+	for( int i = N; i < DIM; i++ )				// Complete the zeros in b.
+		b[i] = 0;
+
+	// Debugging: printing vector b.
+	/*printf( "\n[" );
+	for( int i = 0; i < DIM; i++ )
+		printf( "%.15g, ", b[i] );
+	printf( "]\n" );*/
+
+	// Solving Ax = b with LU factorization from LAPACK.
+	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
+	// http://www.netlib.org/lapack/explore-html/d7/d3b/group__double_g_esolve_ga5ee879032a8365897c3ba91e3dc8d512.html
+	int info;
+	int ipiv[DIM];
+	dgetrf_( &DIM, &DIM, A, &LDA, ipiv, &info );							// Solution is placed in b.
+	dgetrs_( &TRANSPOSE, &DIM, &N_RHS, A, &LDA, ipiv, b, &LDB, &info );		// See dgesv_ for column order, one-shot solution.
+
+	assert( info == 0 );
+
+	// Debugging: printing solution vector.
+	/*printf( "\n[" );
+	for( int i = 0; i < DIM; i++ )
+		printf( "%.15g, ", b[i] );
+	printf( "]\n" );*/
+
+	// Using computed weights to extrapolate to target node.
+	double s = 0;
+	for( int i = 0; i < N; i++ )		// RBF contributions.
+	{
+		double d = Point2::norm_L2( windowPositions[i], p );
+		s += b[i] * rbf( d );
+	}
+	s += b[N];							// Polynomial contributions.
+	s += b[N + 1] * p.x;
+	s += b[N + 2] * p.y;
+	rbfFieldPtr[atNodeIdx] = s;
+}
+
+
 int main(int argc, char** argv)
 {
 	const double MIN_D = -1;					// Minimum value for domain (in x and y).  Domain is symmetric.
@@ -128,32 +251,6 @@ int main(int argc, char** argv)
 	// Stopwatch.
 	parStopWatch watch;
 	watch.start();
-
-	// From LU factorization using LAPACK.
-	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
-	// http://www.netlib.org/lapack/explore-html/d7/d3b/group__double_g_esolve_ga5ee879032a8365897c3ba91e3dc8d512.html
-	char transposed = 'T';		// This sets row-major order, as is common in C/C++.
-	int dim = 7;
-	int nrhs = 1;
-	int LDA = dim;
-	int LDB = dim;
-	int info;
-
-	// Given in major-column order!
-	double A[] = {
-		0.35,              0.350348598719904, 0.351392319921765, 0.353125,          0.355536566333197, 1., 1.125,
-		0.350348598719904, 0.35,              0.350348598719904, 0.351392319921765, 0.353125,          1., 1.140625,
-		0.351392319921765, 0.350348598719904, 0.35,              0.350348598719904, 0.351392319921765, 1., 1.15625,
-		0.353125,          0.351392319921765, 0.350348598719904, 0.35,              0.350348598719904, 1., 1.171875,
-		0.355536566333197, 0.353125,          0.351392319921765, 0.350348598719904, 0.35,              1., 1.1875,
-		1.,                1.,                1.,                1.,                1.,                0., 0.,
-		1.125,             1.140625,          1.15625,           1.171875,          1.1875,            0., 0.
-	};
-	double b[] = { 0.477386012997069, 0.184164955225999, -0.084489035619419, -0.298707763002317, -0.429941383271424, 0., 0. };
-	int ipiv[dim];
-
-	dgetrf_( &dim, &dim, A, &LDA, ipiv, &info );							// Solution is placed in b.
-	dgetrs_( &transposed, &dim, &nrhs, A, &LDA, ipiv, b, &LDB, &info );		// See dgesv_ for column order, one-shot solution.
 
 	// Domain information.
 	const int n_xyz[] = { NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM };
@@ -246,6 +343,19 @@ int main(int argc, char** argv)
 		ierr = VecDuplicate( phi, &exactField );
 		CHKERRXX( ierr );
 
+		// Allocating vectors to store extrapolation errors.
+		Vec rbfError, pdeError;
+		ierr = VecDuplicate( phi, &rbfError );
+		CHKERRXX( ierr );
+		ierr = VecDuplicate( phi, &pdeError );
+		CHKERRXX( ierr );
+
+		double *rbfErrorPtr, *pdeErrorPtr;
+		ierr = VecGetArray( rbfError, &rbfErrorPtr );
+		CHKERRXX( ierr );
+		ierr = VecGetArray( pdeError, &pdeErrorPtr );
+		CHKERRXX( ierr );
+
 		// Multiset datastructure for pending nodes.
 		auto nodeComparator = [phiReadPtr](const p4est_locidx_t& lhs, const p4est_locidx_t& rhs) -> bool{
 			return phiReadPtr[lhs] < phiReadPtr[rhs];
@@ -266,6 +376,10 @@ int main(int argc, char** argv)
 		ierr = VecGetArray( rbfField, &rbfFieldPtr );
 		CHKERRXX( ierr );
 		ierr = VecGetArray( pdeField, &pdeFieldPtr );
+		CHKERRXX( ierr );
+
+		const double *exactFieldReadPtr;
+		ierr = VecGetArrayRead( exactField, &exactFieldReadPtr );
 		CHKERRXX( ierr );
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
@@ -316,7 +430,7 @@ int main(int argc, char** argv)
 					node_xyz_fr_n( n, p4est, nodes, xyz );
 					Point2 q( xyz[0], xyz[1] );
 					double d = (p - q).norm_L2();
-					if( d <= RBF_LOCAL_RADIUS )				// Within view field?  Build histogram.
+					if( d <= RBF_LOCAL_RADIUS )				// Within range?  Build histogram.
 					{
 						sprintf( distCStr, "%.6f", d / H );	// Find the bin according to its multiplicity of H.
 						std::string binKey = std::string( distCStr );
@@ -362,7 +476,7 @@ int main(int argc, char** argv)
 			}
 			std::cout << std::endl;
 
-			// Verifying which nodes are left in the hashmap and which ones were picked for sampling.
+			// Debugging: verify which nodes are left in the hashmap and which ones were picked for sampling.
 			std::cout << "After sampling:" << std::endl;
 			std::cout << "Hashmap:" << std::endl;
 			for( auto& bin : bins )
@@ -373,7 +487,8 @@ int main(int argc, char** argv)
 				std::cout << std::endl;
 			}
 
-			// Build interpolation matrix.
+			// Extrapolation.
+			extrapolate( pendingNodeIdx, window, rbf, p4est, nodes, rbfFieldPtr );
 
 			// Post-evaluation tasks.
 			nodesStatus[pendingNodeIdx] = +2;
@@ -385,19 +500,35 @@ int main(int argc, char** argv)
 		for( const auto& n : pendingNodesSet )
 			nodesStatus[n] = +1;
 
-		const double *exactFieldReadPtr;
-		ierr = VecGetArrayRead( exactField, &exactFieldReadPtr );
-		CHKERRXX( ierr );
+		// Storing errors at nodes within a band from the interface.
+		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+		{
+			if( phiReadPtr[n] > 0 && phiReadPtr[n] <= EXTENSION_DISTANCE )
+			{
+				rbfErrorPtr[n] = ABS( exactFieldReadPtr[n] - rbfFieldPtr[n] );
+				pdeErrorPtr[n] = ABS( exactFieldReadPtr[n] - pdeFieldPtr[n] );
+
+				// Keep track of max error.
+				rbfMaxError = MAX( rbfMaxError, rbfErrorPtr[n] );
+				pdeMaxError = MAX( pdeMaxError, pdeErrorPtr[n] );
+			}
+		}
+
+		// Outputting stats.
+		printf( "RBF max error: %.8g\n", rbfMaxError );
+		printf( "PDE max error: %.8g\n", pdeMaxError );
 
 		std::string vtkOutput = "machineLearningExtrapolation_" + std::to_string( REFINEMENT_MAX_LEVEL );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 						  P4EST_TRUE, P4EST_TRUE,
-						  5, 0, vtkOutput.c_str(),
+						  7, 0, vtkOutput.c_str(),
 						  VTK_POINT_DATA, "phi", phiReadPtr,
 						  VTK_POINT_DATA, "nodes_status", nodesStatus,
 						  VTK_POINT_DATA, "f_exact", exactFieldReadPtr,
 						  VTK_POINT_DATA, "f_pde", pdeFieldPtr,
-						  VTK_POINT_DATA, "f_rbf", rbfFieldPtr );
+						  VTK_POINT_DATA, "f_rbf", rbfFieldPtr,
+						  VTK_POINT_DATA, "error_rbf", rbfErrorPtr,
+						  VTK_POINT_DATA, "error_pde", pdeErrorPtr );
 
 		// Cleaning up.
 		ierr = VecRestoreArrayRead( phi, &phiReadPtr );			// Restoring vector pointers.
@@ -408,6 +539,10 @@ int main(int argc, char** argv)
 		CHKERRXX( ierr );
 		ierr = VecRestoreArray( pdeField, &pdeFieldPtr );
 		CHKERRXX( ierr );
+		ierr = VecRestoreArray( rbfError, &rbfErrorPtr );
+		CHKERRXX( ierr );
+		ierr = VecRestoreArray( pdeError, &pdeErrorPtr );
+		CHKERRXX( ierr );
 
 		ierr = VecDestroy( phi );								// Freeing memory.
 		CHKERRXX( ierr );
@@ -416,6 +551,10 @@ int main(int argc, char** argv)
 		ierr = VecDestroy( rbfField );
 		CHKERRXX( ierr );
 		ierr = VecDestroy( pdeField );
+		CHKERRXX( ierr );
+		ierr = VecDestroy( rbfError );
+		CHKERRXX( ierr );
+		ierr = VecDestroy( pdeError );
 		CHKERRXX( ierr );
 
 		// Destroy the structures.
