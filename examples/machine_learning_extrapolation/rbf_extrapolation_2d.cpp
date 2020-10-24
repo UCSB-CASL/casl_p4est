@@ -20,6 +20,7 @@
 #include <set>
 #include <map>
 #include <random>
+#include "radial_basis_functions.h"
 
 /**
  * Scalar fields to extend over the interface and into Omega+.
@@ -80,37 +81,6 @@ public:
 
 
 /**
- * Multiquadric RBF given by rbf(r) = sqrt( r^2 + a^2 ), where r >= 0, and a > 0 is shape parameter.
- */
-class MultiquadricRBF
-{
-private:
-	double _a;		// Shape parameter.
-
-public:
-	/**
-	 * Constructor.
-	 * @param [in] a Positive shape parameter.
-	 */
-	explicit MultiquadricRBF( double a = 0.001 )
-	{
-		assert( a > 0 );
-		_a = a;
-	}
-
-	/**
-	 * Evaluate radial basis function.
-	 * @param [in] r Distance parameter.
-	 * @return rbf(r).
-	 */
-	[[nodiscard]] double operator()( double r ) const
-	{
-		return sqrt( SQR( r ) + SQR( _a ) );
-	}
-};
-
-
-/**
  * Extrapolate the scalar field using radial basis functions and the information coming from visited nodes.
  * @param [in] atNodeIdx Target node index.
  * @param [in] window Neighboring nodes to be considered in the extrapolation.
@@ -119,7 +89,7 @@ public:
  * @param [in] nodes Pointer to nodes struct.
  * @param [in,out] rbfFieldPtr A parallel vector with the extrapolation information to also be updated.
  */
-void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window, const MultiquadricRBF& rbf,
+void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window, const RBF& rbf,
 				  const p4est_t *p4est, const p4est_nodes_t *nodes, double *rbfFieldPtr )
 {
 	// Retrieve spatial information for standing node.
@@ -173,15 +143,18 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	}
 
 	// Debugging: Matrix A.
-//	printf( "[" );
-//	for( int i = 0; i < DIM; i++ )
+//	if( atNodeIdx == 2859 )
 //	{
 //		printf( "[" );
-//		for( int j = 0; j < DIM; j++ )
-//			printf( "%.15g, ", A[i * DIM + j] );
-//		printf( "],\n" );
+//		for( int i = 0; i < DIM; i++ )
+//		{
+//			printf( "[" );
+//			for( int j = 0; j < DIM; j++ )
+//				printf( "%.15g, ", A[i * DIM + j] );
+//			printf( "],\n" );
+//		}
+//		printf( "]\n" );
 //	}
-//	printf( "]\n" );
 
 	// Bulding the right-hand side vector b.
 	//     |   f0   |
@@ -198,10 +171,13 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 		b[i] = 0;
 
 	// Debugging: printing vector b.
-//	printf( "\n[" );
-//	for( int i = 0; i < DIM; i++ )
-//		printf( "%.15g, ", b[i] );
-//	printf( "]\n" );
+//	if( atNodeIdx == 2859 )
+//	{
+//		printf( "\n[" );
+//		for( int i = 0; i < DIM; i++ )
+//			printf( "%.15g, ", b[i] );
+//		printf( "]\n" );
+//	}
 
 	// Solving Ax = b with LU factorization from LAPACK.
 	// https://stackoverflow.com/questions/10112135/understanding-lapack-calls-in-c-with-a-simple-example
