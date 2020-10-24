@@ -88,9 +88,10 @@ public:
  * @param [in] p4est Pointer to the p4est struct.
  * @param [in] nodes Pointer to nodes struct.
  * @param [in,out] rbfFieldPtr A parallel vector with the extrapolation information to also be updated.
+ * @param [in] usingPolynomial Whether or not augment the radial basis function with a first-degree polynomial.
  */
 void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window, const RBF& rbf,
-				  const p4est_t *p4est, const p4est_nodes_t *nodes, double *rbfFieldPtr )
+				  const p4est_t *p4est, const p4est_nodes_t *nodes, double *rbfFieldPtr, bool usingPolynomial = true )
 {
 	// Retrieve spatial information for standing node.
 	double xyz[P4EST_DIM];
@@ -108,7 +109,7 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	}
 
 	// Preparing the matrix and vectors we need.
-	const int NUM_COEFFS = 3;		// We need a first degree polynomial p(x,y) = c0 + c1*x + c2*y to augment the RBF.
+	const int NUM_COEFFS = (usingPolynomial)? 3 : 0;		// If needed, we use degree polynomial p(x,y) = c0 + c1*x + c2*y to augment the RBF.
 	int DIM = N + NUM_COEFFS;		// Effective matrix and vector dimension.
 	int LDA = DIM;					// Leading dimension of A matrix.
 	int LDB = DIM;					// Leading dimension of b vector.
@@ -130,16 +131,23 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 			double d = Point2::norm_L2( windowPositions[i], windowPositions[j] );
 			A[i * DIM + j] = A[j * DIM + i] = rbf( d );		// Phi off-diagonal elements.
 		}
-		A[i * DIM + N] = A[N * DIM + i] = 1;				// v1 and v1^T.
-		A[i * DIM + (N + 1)] = A[(N + 1) * DIM + i] = windowPositions[i].x;		// vx and vx^T.
-		A[i * DIM + (N + 2)] = A[(N + 2) * DIM + i] = windowPositions[i].y;		// vy and vy^T.
+
+		if( usingPolynomial )
+		{
+			A[i * DIM + N] = A[N * DIM + i] = 1;									// v1 and v1^T.
+			A[i * DIM + (N + 1)] = A[(N + 1) * DIM + i] = windowPositions[i].x;		// vx and vx^T.
+			A[i * DIM + (N + 2)] = A[(N + 2) * DIM + i] = windowPositions[i].y;		// vy and vy^T.
+		}
 	}
 
-	for( int i = N; i < DIM; i++ )				// Complete the zeros in A.
+	if( usingPolynomial )
 	{
-		A[i * DIM + i] = 0;						// Diagonal.
-		for( int j = i + 1; j < DIM; j++ )		// Off diagonal elements.
-			A[i * DIM + j] = A[j * DIM + i] = 0;
+		for( int i = N; i < DIM; i++ )				// Complete the zeros in A.
+		{
+			A[i * DIM + i] = 0;						// Diagonal.
+			for( int j = i + 1; j < DIM; j++ )		// Off diagonal elements.
+				A[i * DIM + j] = A[j * DIM + i] = 0;
+		}
 	}
 
 	// Debugging: Matrix A.
@@ -167,8 +175,11 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	double b[DIM];
 	for( int i = 0; i < N; i++ )				// Scalar field known values from visited nodes.
 		b[i] = rbfFieldPtr[window[i]];
-	for( int i = N; i < DIM; i++ )				// Complete the zeros in b.
-		b[i] = 0;
+	if( usingPolynomial )
+	{
+		for( int i = N; i < DIM; i++ )			// Complete the zeros in b.
+			b[i] = 0;
+	}
 
 	// Debugging: printing vector b.
 //	if( atNodeIdx == 2859 )
@@ -202,9 +213,13 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 		double d = Point2::norm_L2( windowPositions[i], p );
 		s += b[i] * rbf( d );
 	}
-	s += b[N];							// Polynomial contributions.
-	s += b[N + 1] * p.x;
-	s += b[N + 2] * p.y;
+
+	if( usingPolynomial )
+	{
+		s += b[N];						// Polynomial contributions.
+		s += b[N + 1] * p.x;
+		s += b[N + 2] * p.y;
+	}
 	rbfFieldPtr[atNodeIdx] = s;
 }
 
@@ -213,7 +228,7 @@ int main(int argc, char** argv)
 {
 	const double MIN_D = -1;					// Minimum value for domain (in x and y).  Domain is symmetric.
 	const int NUM_TREES_PER_DIM = 2;			// Number of trees per dimension: each with same width and height.
-	const int REFINEMENT_MAX_LEVELS[] = { 6 };	// Maximum levels of refinement.
+	const int REFINEMENT_MAX_LEVELS[] = { 8 };	// Maximum levels of refinement.
 	const int REFINEMENT_BAND_WIDTH = 5;		// Band around interface for grid refinement.
 	const int EXTENSION_NUM_ITER = 25;			// Number of iterations to solve PDE for extrapolation.
 	const int EXTENSION_ORDER = 2;				// Order of extrapolation (0: constant, 1: linear, 2: quadratic).
@@ -444,7 +459,7 @@ int main(int argc, char** argv)
 			}
 
 			// Extrapolation.
-			extrapolate( pendingNodeIdx, window, rbf, p4est, nodes, rbfFieldPtr );
+			extrapolate( pendingNodeIdx, window, rbf, p4est, nodes, rbfFieldPtr, false );
 
 			// Post-evaluation tasks.
 			nodesStatus[pendingNodeIdx] = +2;
