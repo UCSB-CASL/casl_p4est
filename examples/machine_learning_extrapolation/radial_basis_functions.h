@@ -26,22 +26,22 @@ public:
 
 
 /**
- * Gaussian RBF: rbf(r) = exp(-(r/sigma)^2).
+ * Gaussian RBF: rbf(r) = exp(-(ar)^2).
  */
 class GaussianRBF : public RBF
 {
 private:
-	double _sigma;		// Shape (width) parameter.
+	double _a;		// Shape parameter.
 
 public:
 	/**
 	 * Constructor.
-	 * @param [in] sigma Positive shape/width parameter.
+	 * @param [in] a Positive shape parameter.
 	 */
-	explicit GaussianRBF( double sigma = 1 )
+	explicit GaussianRBF( double a = 1 )
 	{
-		assert( sigma > 0 );
-		_sigma = sigma;
+		assert( a > 0 );
+		_a = a;
 	}
 
 	/**
@@ -51,7 +51,7 @@ public:
 	 */
 	[[nodiscard]] double operator()( double r ) const override
 	{
-		return exp( -SQR( r / _sigma ) );
+		return exp( -SQR( _a * r ) );
 	}
 };
 
@@ -113,7 +113,7 @@ public:
 
 
 /**
- * Multiquadric RBF given by rbf(r) = sqrt( r^2 + a^2 ), where r >= 0, and a > 0 is shape parameter.
+ * Multiquadric RBF given by rbf(r) = sqrt( 1 + (ar)^2 ), where r >= 0, and a > 0 is shape parameter.
  */
 class MultiquadricRBF : public RBF
 {
@@ -138,7 +138,7 @@ public:
 	 */
 	[[nodiscard]] double operator()( double r ) const override
 	{
-		return sqrt( SQR( r ) + SQR( _a ) );
+		return sqrt( 1 + SQR( _a * r ) );
 	}
 };
 

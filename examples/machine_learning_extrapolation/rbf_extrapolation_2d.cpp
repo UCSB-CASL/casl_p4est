@@ -267,7 +267,10 @@ int main(int argc, char** argv)
 		double pdeMaxError = 0;
 
 		// Radial basis function.
-		MultiquadricRBF rbf( 70 * 0.32 * H );
+//		MultiquadricRBF rbf( 70 * 0.32 * H )
+//		MultiquadricRBF rbf( 0.815 * H );
+//		MultiquadricRBF rbf( 10 * REFINEMENT_BAND_WIDTH * H / (0.8 * sqrt( 25 )) );
+		MultiquadricRBF rbf( 0.05 / H );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -379,9 +382,11 @@ int main(int argc, char** argv)
 		}
 
 		// Perform extrapolation using all derivatives (from Daniil's paper).
+		double pdeExtrapolationDuration = watch.get_duration_current();
 		levelSet.extend_Over_Interface_TVD_Full( phi, pdeField, EXTENSION_NUM_ITER, EXTENSION_ORDER );
+		pdeExtrapolationDuration = watch.get_duration_current() - pdeExtrapolationDuration;
 
-		// Perform extrapolation using a radial basis function network augmented with a polynomial p(x,y) of first degree.
+		// Perform extrapolation using a radial basis function network augmented with a polynomial p(x,y).
 		double nodesStatus[nodes->num_owned_indeps];
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 			nodesStatus[n] = (visitedNodes[n])? -1 : 0;
@@ -389,6 +394,7 @@ int main(int argc, char** argv)
 		double xyz[P4EST_DIM];
 		char distCStr[16];
 		auto pendingNodeIt = pendingNodesSet.begin();
+		double rbfExtrapolationDuration = watch.get_duration_current();
 		while( pendingNodeIt != pendingNodesSet.end() )
 		{
 			// Pop next closest node to interface.
@@ -452,6 +458,7 @@ int main(int argc, char** argv)
 			visitedNodes[pendingNodeIdx] = true;
 			pendingNodeIt = pendingNodesSet.begin();				// Next pending node closest to the interface.
 		}
+		rbfExtrapolationDuration = watch.get_duration_current() - rbfExtrapolationDuration;
 
 		// Storing errors at nodes within a band from the interface.
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
@@ -468,8 +475,8 @@ int main(int argc, char** argv)
 		}
 
 		// Outputting stats.
-		printf( "RBF max error: %.8g\n", rbfMaxError );
-		printf( "PDE max error: %.8g\n", pdeMaxError );
+		printf( "RBF max error: %.8g (%g secs)\n", rbfMaxError, rbfExtrapolationDuration );
+		printf( "PDE max error: %.8g (%g secs)\n", pdeMaxError, pdeExtrapolationDuration );
 
 		std::string vtkOutput = "machineLearningExtrapolation_" + std::to_string( REFINEMENT_MAX_LEVEL );
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
