@@ -214,9 +214,9 @@ int main(int argc, char** argv)
 {
 	const double MIN_D = -1;					// Minimum value for domain (in x and y).  Domain is symmetric.
 	const int NUM_TREES_PER_DIM = 2;			// Number of trees per dimension: each with same width and height.
-	const int REFINEMENT_MAX_LEVELS[] = { 6 };	// Maximum levels of refinement.
+	const int REFINEMENT_MAX_LEVELS[] = { 5, 6, 7, 8 };	// Maximum levels of refinement.
 	const int REFINEMENT_BAND_WIDTH = 5;		// Band around interface for grid refinement.
-	const int EXTENSION_NUM_ITER = 25;			// Number of iterations to solve PDE for extrapolation.
+	const int EXTENSION_NUM_ITER = 50;			// Number of iterations to solve PDE for extrapolation.
 	const int EXTENSION_ORDER = 2;				// Order of extrapolation (0: constant, 1: linear, 2: quadratic).
 
 	// Prepare parallel enviroment, although we enforce just a single processor for testing.
@@ -235,11 +235,6 @@ int main(int argc, char** argv)
 	const double xyz_max[] = { -MIN_D, -MIN_D, -MIN_D };
 	const int periodic[] = { 0, 0, 0 };
 
-	// Sampling randomness.
-	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen{}; 						// Standard mersenne_twister_engine seeded with rd().
-	std::normal_distribution<double> normalDistribution( 0., sqrt( REFINEMENT_BAND_WIDTH ) );
-
 	// Scalar field to extend (defaults to f(x,y) = sin(πx)cos(πy).
 	Field field;
 
@@ -248,8 +243,13 @@ int main(int argc, char** argv)
 	// We iterate over each scalar field and collect samples from it.
 	for( const auto& REFINEMENT_MAX_LEVEL : REFINEMENT_MAX_LEVELS )
 	{
+		// Sampling randomness.
+		std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
+		std::mt19937 gen{}; 						// Standard mersenne_twister_engine seeded with rd().
+		std::normal_distribution<double> normalDistribution( 0., sqrt( REFINEMENT_BAND_WIDTH ) );
+
 		const double H = 1. / pow( 2., REFINEMENT_MAX_LEVEL );		// Mesh size.
-		std::cout << "## MAX LEVEL OF REFINEMENT = " << REFINEMENT_MAX_LEVEL << ".  H = " << H << " ##" << std::endl;
+		std::cout << "\n## MAX LEVEL OF REFINEMENT = " << REFINEMENT_MAX_LEVEL << ".  H = " << H << " ##" << std::endl;
 
 		// p4est variables.
 		p4est_t *p4est;
@@ -267,10 +267,8 @@ int main(int argc, char** argv)
 		double pdeMaxError = 0;
 
 		// Radial basis function.
-//		MultiquadricRBF rbf( 70 * 0.32 * H )
-//		MultiquadricRBF rbf( 0.815 * H );
-//		MultiquadricRBF rbf( 10 * REFINEMENT_BAND_WIDTH * H / (0.8 * sqrt( 25 )) );
-		MultiquadricRBF rbf( 0.05 / H );
+		MultiquadricRBF rbf( 0.08 / H );
+//		GaussianRBF rbf( 0.05 / H );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
