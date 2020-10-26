@@ -18,8 +18,6 @@
 #include <Accelerate/Accelerate.h>
 #include <src/casl_geometry.h>
 #include <set>
-#include <map>
-#include <random>
 #include "radial_basis_functions.h"
 
 /**
@@ -83,37 +81,28 @@ public:
 /**
  * Extrapolate the scalar field using radial basis functions and the information coming from visited nodes.
  * @param [in] atNodeIdx Target node index.
+ * @param [in] p Target node position.
  * @param [in] window Neighboring nodes to be considered in the extrapolation.
+ * @param [in] windowPositions Neighboring nodes' locations.
  * @param [in] rbf Radial basis function.
- * @param [in] p4est Pointer to the p4est struct.
- * @param [in] nodes Pointer to nodes struct.
  * @param [in,out] rbfFieldPtr A parallel vector with the extrapolation information to also be updated.
- * @param [in] usingPolynomial Whether or not augment the radial basis function with a first-degree polynomial.
+ * @param [in] usingPolynomial Whether or not augment the radial basis function with a polynomial (-1 for no polynomial).
  */
-void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window, const RBF& rbf,
-				  const p4est_t *p4est, const p4est_nodes_t *nodes, double *rbfFieldPtr, bool usingPolynomial = true )
+void extrapolate( p4est_locidx_t atNodeIdx, Point2& p, std::vector<p4est_locidx_t>& window, std::vector<Point2>& windowPositions,
+				  const RBF& rbf, double *rbfFieldPtr, int usingPolynomial = -1 )
 {
-	// Retrieve spatial information for standing node.
-	double xyz[P4EST_DIM];
-	node_xyz_fr_n( atNodeIdx, p4est, nodes, xyz );
-	Point2 p( xyz[0], xyz[1] );
-
-	// Retrieve spatial information for neighborhood.
-	const int N = window.size();
-	std::vector<Point2> windowPositions;
-	windowPositions.reserve( N );
-	for( const auto& n : window )
-	{
-		node_xyz_fr_n( n, p4est, nodes, xyz );
-		windowPositions.emplace_back( xyz[0], xyz[1] );
-	}
+	const int N = window.size();	// Number of samples in neighborhood.
 
 	// Preparing the matrix and vectors we need.
-	const int NUM_COEFFS = (usingPolynomial)? 1 : 0;	// If needed, we use degree polynomial p(x,y) = c0 + c1*x + c2*y
-														// to augment the RBF.
-														// For MQ, this polynomial is p(x,y) = c because MQ RBFs are
-														// conditionally strictly positive definite functions of order 1;
-														// this implies the augmenting polynomial should be of degree 0.
+	// If needed, we use degree polynomial p(x,y) = c0 + c1*x + c2*y to augment the RBF.
+	// For MQ, this polynomial should be p(x,y) = c because MQ RBFs are conditionally strictly positive definite
+	// functions of order 1; this implies the augmenting polynomial should be of degree 0.
+	int NUM_COEFFS = 0;
+	if( usingPolynomial == 0 )		// Degree 0?
+		NUM_COEFFS = 1;
+	else if( usingPolynomial == 1 )	// Degree 1?
+		NUM_COEFFS = 3;
+
 	int DIM = N + NUM_COEFFS;		// Effective matrix and vector dimension.
 	int LDA = DIM;					// Leading dimension of A matrix.
 	int LDB = DIM;					// Leading dimension of b vector.
@@ -136,12 +125,26 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 			A[i * DIM + j] = A[j * DIM + i] = rbf( d );		// Phi off-diagonal elements.
 		}
 
-		if( usingPolynomial )
-			A[i * DIM + N] = A[N * DIM + i] = 1;			// v1 and v1^T.
+		if( NUM_COEFFS >= 1 )
+		{
+			A[i * DIM + N] = A[N * DIM + i] = 1;									// v1 and v1^T.
+			if( NUM_COEFFS > 1 )
+			{
+				A[i * DIM + (N + 1)] = A[(N + 1) * DIM + i] = windowPositions[i].x;	// vx and vx^T.
+				A[i * DIM + (N + 2)] = A[(N + 2) * DIM + i] = windowPositions[i].y;	// vy and vy^T.
+			}
+		}
 	}
 
-	if( usingPolynomial )
-		A[N * DIM + N] = 0;						// Complete the zero diagonal element.
+	if( NUM_COEFFS >= 1 )
+	{
+		for( int i = N; i < DIM; i++ )				// Complete the zeros in A.
+		{
+			A[i * DIM + i] = 0;						// Diagonal.
+			for( int j = i + 1; j < DIM; j++ )		// Off diagonal elements.
+				A[i * DIM + j] = A[j * DIM + i] = 0;
+		}
+	}
 
 	// Debugging: Matrix A.
 //	if( atNodeIdx == 2859 )
@@ -166,10 +169,13 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 	//     |    0   |
 	//     |    0   |
 	double b[DIM];
-	for( int i = 0; i < N; i++ )	// Scalar field known values from visited nodes.
+	for( int i = 0; i < N; i++ )				// Scalar field known values from visited nodes.
 		b[i] = rbfFieldPtr[window[i]];
-	if( usingPolynomial )
-		b[N] = 0;					// Complete the zeros in b.
+	if( NUM_COEFFS >= 1 )
+	{
+		for( int i = N; i < DIM; i++ )			// Complete the zeros in b.
+			b[i] = 0;
+	}
 
 	// Debugging: printing vector b.
 //	if( atNodeIdx == 2859 )
@@ -204,8 +210,15 @@ void extrapolate( p4est_locidx_t atNodeIdx, std::vector<p4est_locidx_t>& window,
 		s += b[i] * rbf( d );
 	}
 
-	if( usingPolynomial )				// Polynomial contributions.
-		s += b[N];
+	if( NUM_COEFFS >= 1 )
+	{
+		s += b[N];						// Polynomial contributions.
+		if( NUM_COEFFS > 1 )
+		{
+			s += b[N + 1] * p.x;
+			s += b[N + 2] * p.y;
+		}
+	}
 	rbfFieldPtr[atNodeIdx] = s;
 }
 
@@ -243,11 +256,6 @@ int main(int argc, char** argv)
 	// We iterate over each scalar field and collect samples from it.
 	for( const auto& REFINEMENT_MAX_LEVEL : REFINEMENT_MAX_LEVELS )
 	{
-		// Sampling randomness.
-		std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-		std::mt19937 gen{}; 						// Standard mersenne_twister_engine seeded with rd().
-		std::normal_distribution<double> normalDistribution( 0., sqrt( REFINEMENT_BAND_WIDTH ) );
-
 		const double H = 1. / pow( 2., REFINEMENT_MAX_LEVEL );		// Mesh size.
 		std::cout << "\n## MAX LEVEL OF REFINEMENT = " << REFINEMENT_MAX_LEVEL << ".  H = " << H << " ##" << std::endl;
 
@@ -267,7 +275,7 @@ int main(int argc, char** argv)
 		double pdeMaxError = 0;
 
 		// Radial basis function.
-		MultiquadricRBF rbf( 0.08 / H );
+		MultiquadricRBF rbf( 0.075 / H );
 //		GaussianRBF rbf( 0.05 / H );
 
 		// Create the forest using a level set as refinement criterion.
@@ -390,7 +398,6 @@ int main(int argc, char** argv)
 			nodesStatus[n] = (visitedNodes[n])? -1 : 0;
 
 		double xyz[P4EST_DIM];
-		char distCStr[16];
 		auto pendingNodeIt = pendingNodesSet.begin();
 		double rbfExtrapolationDuration = watch.get_duration_current();
 		while( pendingNodeIt != pendingNodesSet.end() )
@@ -402,8 +409,11 @@ int main(int argc, char** argv)
 			Point2 p( xyz[0], xyz[1] );
 
 			// Retrieved visited nodes that lie within a given radius from the current node.
-			std::map<std::string, std::vector<p4est_locidx_t>> bins;	// Build a histogram by placing the node IDs at each bin.
 			int totalPointsInRange = 0;
+			std::vector<p4est_locidx_t> window;							// Nodal indices.
+			window.reserve( SQR( 2 * REFINEMENT_BAND_WIDTH - 1 ) );
+			std::vector<Point2> windowPositions;						// Nodal positions.
+			windowPositions.reserve( SQR( 2 * REFINEMENT_BAND_WIDTH - 1 ) );
 			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 			{
 				if( visitedNodes[n] )		// We get information only from visited/fixed nodes.
@@ -411,45 +421,17 @@ int main(int argc, char** argv)
 					node_xyz_fr_n( n, p4est, nodes, xyz );
 					Point2 q( xyz[0], xyz[1] );
 					double d = (p - q).norm_L2();
-					if( d <= RBF_LOCAL_RADIUS )				// Within range?  Build histogram.
+					if( d <= RBF_LOCAL_RADIUS )				// Within range?  Add point to samples.
 					{
-						sprintf( distCStr, "%.6f", d / H );	// Find the bin according to its multiplicity of H.
-						std::string binKey = std::string( distCStr );
-						std::vector<p4est_locidx_t>& nodeIds = bins[binKey];
-						nodeIds.push_back( n );
+						window.push_back( n );
+						windowPositions.emplace_back( q );
 						totalPointsInRange++;
 					}
 				}
 			}
 
-			// Place nodal index vectors from each bin in an array for sampling.
-			std::vector<std::vector<p4est_locidx_t>*> binsVectors;
-			binsVectors.reserve( bins.size() );
-			for( auto& bin : bins )
-				binsVectors.push_back( &(bin.second) );
-
-			// Use a normal distribution to select samples.
-			const int N_SAMPLES_PER_WINDOW = 25;					// Number of samples per interpolation window.
-			std::vector<p4est_locidx_t> window;						// Nodal indices.
-			window.reserve( N_SAMPLES_PER_WINDOW );
-			const double INTERVAL_WIDTH = REFINEMENT_BAND_WIDTH / (double)bins.size();
-			int s = 0;
-			while( s < N_SAMPLES_PER_WINDOW )
-			{
-				double r = normalDistribution( gen );
-				int idx = MIN( (unsigned long)floor( ABS( r ) / INTERVAL_WIDTH ), bins.size() - 1 );
-				if( !binsVectors[idx]->empty() )
-				{
-					window.push_back( binsVectors[idx]->back() );	// Remove them from the hash map and add them
-					binsVectors[idx]->pop_back();					// to the sliding window.
-					s++;
-
-					nodesStatus[window.back()] = -2;
-				}
-			}
-
 			// Extrapolation.
-			extrapolate( pendingNodeIdx, window, rbf, p4est, nodes, rbfFieldPtr, true );
+			extrapolate( pendingNodeIdx, p, window, windowPositions, rbf, rbfFieldPtr, 0 );
 
 			// Post-evaluation tasks.
 			nodesStatus[pendingNodeIdx] = +2;
