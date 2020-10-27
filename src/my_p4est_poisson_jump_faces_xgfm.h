@@ -8,7 +8,7 @@
 #endif
 
 typedef struct {
-  double jump;
+  double jump_component;
   double known_jump_flux;
   linear_combination_of_dof_t xgfm_jump_flux_correction[P4EST_DIM];
   inline double jump_flux_component(const double* extension_p[P4EST_DIM] = NULL) const
@@ -46,13 +46,65 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   bool set_for_testing_backbone;
   // - END validation data only -
 
+  // Extension-related objects (extension operators are memorized)
   inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
+  struct interface_extension_neighbor
+  {
+    double weight;
+    p4est_locidx_t neighbor_face_idx_across;
+    u_char oriented_dir;
+  };
+  struct extension_increment_operator
+  {
+    p4est_locidx_t face_idx;
+    linear_combination_of_dof_t               regular_terms;
+    std::vector<interface_extension_neighbor> interface_terms;
+    double dtau;
+    bool in_band, in_positive_domain;
+    inline void clear()
+    {
+      regular_terms.clear();
+      interface_terms.clear();
+    }
+
+    inline double operator()(const u_char dim, // face orientation == vector component of interest
+                             const double* extension_n_p[P4EST_DIM], // input for regular neighbor terms (same side of the interface)
+                             const double* solution_p[P4EST_DIM], const double* current_extension_p[P4EST_DIM], my_p4est_poisson_jump_faces_xgfm_t& solver, // input for evaluating interface-defined values
+                             const bool& fetch_positive_interface_values, double& max_correction_in_band, // inout control parameter
+                             const double *normal_derivative_p[P4EST_DIM] = NULL) const  // for 1st-degree extrapolation (avoiding redundant storage of operators, if possible)
+    {
+      double increment = regular_terms(extension_n_p[dim]);
+      if(interface_terms.size() > 0)
+      {
+        const double& mu_this_side  = (in_positive_domain ? solver.mu_plus   : solver.mu_minus);
+        const double& mu_across     = (in_positive_domain ? solver.mu_minus  : solver.mu_plus);
+        for (size_t k = 0; k < interface_terms.size(); ++k)
+        {
+          const vector_field_component_xgfm_jump& jump_info = solver.get_xgfm_jump_between_faces(dim, face_idx, interface_terms[k].neighbor_face_idx_across, interface_terms[k].oriented_dir);
+          const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_face_FD_interface_neighbor_for(face_idx, interface_terms[k].neighbor_face_idx_across, dim, interface_terms[k].oriented_dir);
+          increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, fetch_positive_interface_values,
+                                                                                           solution_p[dim][face_idx], solution_p[dim][interface_terms[k].neighbor_face_idx_across], jump_info.jump_component, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
+        }
+      }
+
+      if(normal_derivative_p != NULL)
+        increment += dtau*normal_derivative_p[dim][face_idx];
+
+      if(in_band)
+        max_correction_in_band = MAX(fabs(increment), max_correction_in_band);
+
+      return increment;
+    }
+  };
+  std::vector<extension_increment_operator> pseudo_time_step_increment_operator[P4EST_DIM];
+  const extension_increment_operator& get_extension_increment_operator_for(const u_char& dim, const p4est_locidx_t& face_idx, const double& control_band);
+  bool extension_operators_are_stored_and_set[P4EST_DIM];
 
   // Memorized jump information for interface-point between quadrants
   map_of_vector_field_component_xgfm_jumps_t xgfm_jump_between_faces[P4EST_DIM];
   void build_xgfm_jump_flux_correction_operators_at_point(const double* xyz, const double* normal,
                                                           const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& flux_orientation) const;
-  const vector_field_component_xgfm_jump& get_xgfm_jump_between_faces(const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir);
+  const vector_field_component_xgfm_jump& get_xgfm_jump_between_faces(const u_char& dir, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_jump_faces_xgfm_t(const my_p4est_poisson_jump_faces_xgfm_t& other);
@@ -149,6 +201,11 @@ public:
     {
       if(jump_u_dot_n != NULL)
       {
+        if(!interface_manager->is_curvature_set())
+          interface_manager->set_curvature();
+        if(!interface_manager->is_gradient_of_normal_set())
+          interface_manager->set_gradient_of_normal();
+
         const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
         if(grad_jump_u_dot_n == NULL){
           PetscErrorCode ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), P4EST_DIM, &grad_jump_u_dot_n); CHKERRXX(ierr); }

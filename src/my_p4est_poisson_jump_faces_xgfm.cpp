@@ -11,6 +11,8 @@ my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     residual[dim] = extension[dim] = NULL;
     xgfm_jump_between_faces[dim].clear();
+    pseudo_time_step_increment_operator[dim].resize(faces->num_local[dim]);
+    extension_operators_are_stored_and_set[dim] = false;
   }
   print_residuals_and_corrections_with_solve_info = false;
   scale_systems_by_diagonals = false;
@@ -484,6 +486,78 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
       ierr = VecRestoreArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
 }
 
+const vector_field_component_xgfm_jump& my_p4est_poisson_jump_faces_xgfm_t::get_xgfm_jump_between_faces(const u_char& dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir)
+{
+  couple_of_dofs face_couple({face_idx, neighbor_face_idx});
+  map_of_vector_field_component_xgfm_jumps_t::const_iterator it = xgfm_jump_between_faces[dim].find(face_couple);
+  if(it != xgfm_jump_between_faces[dim].end())
+    return it->second;
+
+  // not found in map --> build it and insert in map
+  vector_field_component_xgfm_jump to_insert_in_map;
+  double xyz_interface_point[P4EST_DIM];
+  double normal[P4EST_DIM];
+  interface_manager->get_coordinates_of_FD_interface_point_between_faces(dim, face_idx, neighbor_face_idx, oriented_dir, xyz_interface_point);
+  interface_manager->normal_vector_at_point(xyz_interface_point, normal);
+
+  const double jump_normal_velocity_at_interface_point = (interp_jump_u_dot_n != NULL ? (*interp_jump_u_dot_n)(xyz_interface_point) : 0.0);
+
+  to_insert_in_map.jump_component   = jump_normal_velocity_at_interface_point*normal[dim];
+  to_insert_in_map.known_jump_flux  = 0.0;
+  if (interp_jump_tangential_stress != NULL)
+  {
+    double interface_stress[P4EST_DIM];
+    (*interp_jump_tangential_stress)(xyz_interface_point, interface_stress);
+    for (u_char dd = 0; dd < P4EST_DIM; ++dd)
+      to_insert_in_map.known_jump_flux += ((dim == dd ? 1.0 : 0.0) - normal[dim]*normal[dd])*interface_stress[dd]*normal[oriented_dir/2];
+  }
+  if(activate_xGFM)
+  {
+    if(interp_grad_jump_u_dot_n != NULL)
+    {
+      double local_grad_jump_u_dot_n[P4EST_DIM], local_grad_normal[SQR_P4EST_DIM];
+      (*interp_grad_jump_u_dot_n)(xyz_interface_point, local_grad_jump_u_dot_n);
+      interface_manager->gradient_of_normal_vector_at_point(xyz_interface_point, local_grad_normal);
+      const double local_curvature = interface_manager->curvature_at_point(xyz_interface_point);
+
+      const double& mu_bar = (extend_negative_interface_values() ? mu_plus : mu_minus);
+      for (u_char k = 0 ; k < P4EST_DIM; ++k)
+      {
+        to_insert_in_map.known_jump_flux += mu_bar*((oriented_dir/2 == k ? 1.0 : 0.0) - normal[oriented_dir/2]*normal[k])*(local_grad_jump_u_dot_n[k]*normal[dim] + jump_normal_velocity_at_interface_point*local_grad_normal[P4EST_DIM*dim + k]);
+        to_insert_in_map.known_jump_flux -= mu_bar*((dim == k ? 1.0 : 0.0)            - normal[dim]*normal[k]           )*(local_grad_jump_u_dot_n[k]*normal[oriented_dir/2]);
+      }
+      to_insert_in_map.known_jump_flux -= normal[dim]*normal[oriented_dir/2]*local_curvature*jump_normal_velocity_at_interface_point;
+    }
+
+    if(!mus_are_equal())
+      to_insert_in_map.xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_interface_point, normal, quad_idx, neighbor_quad_idx, oriented_dir/2);
+  }
+
+  xgfm_jump_between_faces[dim].insert(std::pair<couple_of_dofs, vector_field_component_xgfm_jump>(face_couple, to_insert_in_map));
+  return xgfm_jump_between_faces[dim].at(face_couple);
+}
+
+//linear_combination_of_dof_t my_p4est_poisson_jump_cells_xgfm_t::build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
+//                                                                                                     const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const
+//{
+//  const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
+//  const p4est_quadrant_t neighbor_quad  = get_quad(neighbor_quad_idx, p4est, ghost, true);
+//  set_of_neighboring_quadrants nearby_cell_neighbors;
+//  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
+//  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(quad, nearby_cell_neighbors));
+//  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(neighbor_quad, nearby_cell_neighbors));
+//  const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
+
+//  linear_combination_of_dof_t lsqr_cell_grad_operator[P4EST_DIM];
+//  get_lsqr_cell_gradient_operator_at_point(xyz, cell_ngbd, nearby_cell_neighbors, scaling_distance, lsqr_cell_grad_operator);
+
+//  linear_combination_of_dof_t xgfm_flux_correction;
+//  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+//    xgfm_flux_correction.add_operator_on_same_dofs(lsqr_cell_grad_operator[dim], get_jump_in_mu()*((flux_component == dim ? 1.0 : 0.0) - normal[flux_component]*normal[dim]));
+
+//  return xgfm_flux_correction;
+//}
+
 void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)
 {
   PetscErrorCode ierr;
@@ -541,7 +615,6 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
 
   return;
 }
-
 
 void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                                                         double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
@@ -870,7 +943,6 @@ void my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local(const u_char
 
 //    if(extension != NULL){
 //      ierr = VecRestoreArrayRead(extension, &extension_p); CHKERRXX(ierr); }
-
 
     throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local: not done yet!");
   }
