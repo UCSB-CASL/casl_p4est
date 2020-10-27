@@ -2029,6 +2029,84 @@ public:
   }
 
   /*!
+   * \brief get_gradient_of_normal evaluates the local gradient of the normal vector as (nabla (nabla phi/(magnitude of nabla of phi))).
+   * The user MUST provide nabla of phi (either by component or block-structued) to enable local calculation!
+   * \param [inout] grad_normal_p   : pointer to the data of a SQR_P4EST_DIM node-sampled vector storing the node-sampled result (values of gradient of normal)
+   * \param [in] phi_p              : pointer to the data of a node-sampled vector storing the values of phi
+   * \param [in] grad_phi_block_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
+   * \param [in] grad_phi_p         : pointer to an array of size P4EST_DIM for the components of the gradient of phi.
+   * \param [in] phi_xxyyzz_block_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * \param [in] phi_xxyyzz_p       : pointer to an array of size P4EST_DIM for the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * NOTE 1: if phi_xxyyzz_block_p or phi_xxyyzz_p is provided, the second derivatives of phi are read from that it and phi_p is disregarded.
+   * If they are not provided, they are calculated from phi_p.
+   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned
+   * value is set to 0.0, by default.
+   * NOTE 3: The result is structured as follows:
+   * The gradient along cartesian direction k of the ith component of the normal vector is stored in memory location
+   * [SQR_P4EST_DIM*node_000 + P4EST_DIM*i + k].
+   */
+  inline void get_gradient_of_normal(double *grad_normal_p,
+                                     const double *phi_p,
+                                     const double *grad_phi_block_p, const double *grad_phi_p[P4EST_DIM],
+                                     const double *phi_xxyyzz_block_p, const double *phi_xxyyzz_p[P4EST_DIM]) const
+  {
+    P4EST_ASSERT((grad_phi_block_p != NULL && grad_phi_p == NULL) || (grad_phi_block_p == NULL && grad_phi_p != NULL)); // must provide the gradient, one way or the other
+    P4EST_ASSERT(phi_p != NULL || phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL);
+    // fetch first derivatives
+
+    double local_grad[P4EST_DIM];
+    double mag_of_grad = 0.0;
+    local_grad[0] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 0] : grad_phi_p[0][node_000]); mag_of_grad += SQR(local_grad[0]);
+    local_grad[1] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 1] : grad_phi_p[1][node_000]); mag_of_grad += SQR(local_grad[1]);
+#ifdef P4_TO_P8
+    local_grad[2] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 2] : grad_phi_p[2][node_000]); mag_of_grad += SQR(local_grad[2]);
+#endif
+    mag_of_grad = sqrt(mag_of_grad);
+
+    if(mag_of_grad > EPS)
+    {
+      double local_hessian[SQR_P4EST_DIM];
+      if(grad_phi_block_p != NULL)
+        gradient_all_components(grad_phi_block_p, local_hessian, P4EST_DIM);
+      else
+        gradient(grad_phi_p, DIM(local_hessian, (local_hessian + P4EST_DIM), (local_hessian + 2*P4EST_DIM)), P4EST_DIM); // the result is technically the transposed of the above in this case
+      // compute second derivatives
+      double dxxyyzz[P4EST_DIM];
+      if(phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL){
+        for (u_char der = 0; der < P4EST_DIM; ++der)
+          dxxyyzz[der] = (phi_xxyyzz_block_p != NULL ? phi_xxyyzz_block_p[P4EST_DIM*node_000 + der] : phi_xxyyzz_p[der][node_000]);
+      }
+      else
+        laplace(phi_p, dxxyyzz);
+
+      // make Hessian symmetric for sure (as it should be)
+      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+      {
+        local_hessian[P4EST_DIM*uu + uu] = dxxyyzz[uu]; // diagonal terms are second derivatives along Cartesian directions
+        for (u_char vv = uu + 1; vv < P4EST_DIM; ++vv) { // symmeterize off-diagonal terms
+          const double tmp = 0.5*(local_hessian[P4EST_DIM*uu + vv] + local_hessian[P4EST_DIM*vv + uu]);
+          local_hessian[P4EST_DIM*uu + vv] = local_hessian[P4EST_DIM*vv + uu] = tmp;
+        }
+      }
+
+      // fill result (i.e. grad of normal) in block-vectored output
+      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
+        {
+          grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] = local_hessian[P4EST_DIM*uu + vv]/mag_of_grad;
+          for (u_char ww = 0; ww < P4EST_DIM; ++ww)
+            grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] -= local_grad[uu]*local_hessian[P4EST_DIM*vv + ww]*local_grad[ww]/pow(mag_of_grad, 3.0);
+        }
+    }
+    else
+      for (u_char k = 0; k < SQR_P4EST_DIM; ++k)
+        grad_normal_p[SQR_P4EST_DIM*node_000 + k] = 0.0; // nothing better to suggest for now, sorry
+    return;
+  }
+
+  /*!
    * \brief get_curvature evaluates the local mean curvature as divergence of (nabla phi/(magnitude of nabla of phi)).
    * The user MUST provide nabla of phi (either by component or block-structued) to enable local calculation!
    * \param [in] phi_p              : pointer to the data of a node-sampled vector storing the values of phi

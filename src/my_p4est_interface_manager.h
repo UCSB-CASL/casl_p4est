@@ -171,7 +171,8 @@ class my_p4est_interface_manager_t
   my_p4est_interpolation_nodes_t  *interp_grad_phi;
   my_p4est_interpolation_nodes_t  *interp_curvature;
   my_p4est_interpolation_nodes_t  *interp_phi_xxyyzz;
-  Vec                             grad_phi_local, phi_xxyyzz_local, curvature_local;
+  my_p4est_interpolation_nodes_t  *interp_gradient_of_normal;
+  Vec                             grad_phi_local, phi_xxyyzz_local, curvature_local, gradient_of_normal_local;
   const int                       max_level_p4est;
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
@@ -193,6 +194,7 @@ class my_p4est_interface_manager_t
   void build_grad_phi_locally();
   void build_phi_xxyyzz_locally();
   void build_curvature_locally();
+  void build_grad_normal_locally();
 
   // disallow copy ctr and copy assignment
   my_p4est_interface_manager_t(const my_p4est_interface_manager_t& other);
@@ -286,15 +288,28 @@ public:
   /*!
    * \brief set_curvature sets the vector of node-sampled curvature values of the interface-capturing levelset function.
    * If provided by the user, this object doesn't take ownership, otherwise, it will build it and compute it internally.
-   * \param [in] curavture_in:                  [optional] curvature of your levelset function or NULL pointer. If not NULL,
+   * \param [in] curvature_in:                  [optional] curvature of your levelset function or NULL pointer. If not NULL,
    *                                            the vector must be sampled on the nodes of the interface-capturing grid, i.e.,
    *                                            on the nodes of interpolation_node_ngbd_n. If NULL (or disregarded), this method
    *                                            will calculate them internally (and own them).
    * NOTE : the curvature of the levelset function will be interpolated with linear interpolation, where needed (other methods of
    * interpolation would required 4th order derivatives of phi, which would probably be as good as a white noise signal input, anyways)
    */
-  void set_curvature(Vec curavture_in = NULL);
+  void set_curvature(Vec curvature_in = NULL);
   inline bool is_curvature_set() const { return interp_curvature != NULL; }
+
+  /*!
+   * \brief set_gradient_of_normal sets the vector of node-sampled gradients of normal vectors of the interface-capturing levelset function.
+   * If provided by the user, this object doesn't take ownership, otherwise, it will build it and compute it internally.
+   * \param [in] grad_normal_in:                [optional] gradient of normal vectors associated with your levelset function or NULL pointer.
+   *                                            If not NULL, the vector must be SQR_P4EST_DIM block-structured and sampled on the nodes of
+   *                                            the interface-capturing grid, i.e., on the nodes of interpolation_node_ngbd_n.
+   *                                            If NULL (or disregarded), this method will calculate them internally (and own them).
+   * NOTE : the gradient of the normal vector will be interpolated with linear interpolation, where needed (other methods of interpolation
+   * would required 4th order derivatives of phi, which would probably be as good as a white noise signal input, anyways)
+*/
+  void set_gradient_of_normal(Vec grad_normal_in = NULL);
+  inline bool is_gradient_of_normal_set() const { return interp_gradient_of_normal != NULL; }
 
   /*!
    * \brief set_under_resolved_levelset self-explanatory. The values of the levelset function on the nodes of your computational grids
@@ -387,6 +402,7 @@ public:
   const FD_interface_neighbor& get_face_FD_interface_neighbor_for(const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& dim, const u_char& oriented_dir) const;
 
   void get_coordinates_of_FD_interface_point_between_cells(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir, double *xyz) const;
+  void get_coordinates_of_FD_interface_point_between_faces(const u_char&dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir, double *xyz) const;
 
   /*!
    * \brief get_cell_FD_interface_neighbors self-explanatory
@@ -505,6 +521,23 @@ public:
       xyz_projected[dim] = xyz[dim] - signed_distance*grad_phi[dim]/mag_grad_phi;
 
     return signed_distance;
+  }
+
+  /*!
+   * \brief gradient_of_normal_vector_at_point evaluates the gradient of the normal vector at a given point.
+   * \param [in]  xyz:    coordinates of the point where the gradient of the normal vector of the levelset function is desired
+   * \param [out] grad_normal: the computed gradient of the normal vector (must be allocated for SQR_P4EST_DIM components)
+   *                     (--> grad_normal[P4EST_DIM*u + v] == derivative of uth component of normal vector along Cartesian direction v)
+   * [NOTE :] if the gradient is locally ill-defined, i.e., if the magnitude of the gradient of phi is below EPS, the result is set to 0.0
+   */
+  inline void gradient_of_normal_vector_at_point(const double *xyz, double* grad_normal) const
+  {
+#ifdef CASL_THROWS
+    if(interp_gradient_of_normal == NULL)
+      throw std::runtime_error("my_p4est_interface_manager_t::gradient_of_normal_vector_at_point() called but interp_gradient_of_normal is not available...");
+#endif
+    (*interp_gradient_of_normal)(xyz, grad_normal);
+    return;
   }
 
   /*!
