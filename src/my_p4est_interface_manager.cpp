@@ -450,6 +450,20 @@ void my_p4est_interface_manager_t::get_coordinates_of_FD_interface_point_between
   return;
 }
 
+void my_p4est_interface_manager_t::get_coordinates_of_FD_interface_point_between_faces(const u_char& dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir, double *xyz) const
+{
+  const FD_interface_neighbor& interface_point = get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dim, oriented_dir);
+  faces->xyz_fr_f(face_idx, dim, xyz);
+  xyz[oriented_dir/2] += (oriented_dir%2 == 1 ? +1.0 : -1.0)*interface_point.theta*dxyz_min[oriented_dir/2];
+  if(interpolation_node_ngbd->get_hierarchy()->get_periodicity()[oriented_dir/2]) // do the periodic wrapping if necessary
+  {
+    const my_p4est_brick_t* brick = c_ngbd->get_brick();
+    const double x_min = brick->xyz_min[oriented_dir/2];
+    const double x_max = brick->xyz_max[oriented_dir/2];
+    xyz[oriented_dir/2] -= floor((xyz[oriented_dir/2] - x_min)/(x_max - x_min))*(x_max - x_min);
+  }
+  return;
+}
 
 void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const
 {
