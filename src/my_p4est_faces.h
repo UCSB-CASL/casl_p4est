@@ -570,12 +570,31 @@ inline void add_all_faces_to_sets_and_clear_set_of_quad(const my_p4est_faces_t* 
   p4est_locidx_t f_tmp;
   for (set_of_neighboring_quadrants::const_iterator it = quad_ngbd.begin(); it != quad_ngbd.end(); ++it) {
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir);
-      if(f_tmp != NO_VELOCITY)
-        set_of_faces[dir].insert(f_tmp);
-      f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir + 1);
-      if(f_tmp != NO_VELOCITY)
-        set_of_faces[dir].insert(f_tmp);
+      for (u_char touch = 0; touch < 2; ++touch) {
+        f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir + touch);
+        if(f_tmp != NO_VELOCITY)
+          set_of_faces[dir].insert(f_tmp);
+      }
+    }
+  }
+  quad_ngbd.clear();
+}
+
+// some redundancy with the above here below: I'm sorry but I'm way past that point, now and it seems like no one else cares anyways...
+inline void add_all_faces_to_sets_and_clear_set_of_quad(const my_p4est_faces_t* faces, std::set<indexed_and_located_face> set_of_faces[P4EST_DIM], set_of_neighboring_quadrants& quad_ngbd)
+{
+  indexed_and_located_face f_tmp;
+  for (set_of_neighboring_quadrants::const_iterator it = quad_ngbd.begin(); it != quad_ngbd.end(); ++it) {
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      for (u_char touch = 0; touch < 2; ++touch) {
+        f_tmp.face_idx = faces->q2f(it->p.piggy3.local_num, 2*dir + touch);
+        if(f_tmp.face_idx != NO_VELOCITY)
+        {
+          faces->xyz_fr_f(f_tmp.face_idx, dir, f_tmp.xyz_face);
+          f_tmp.field_value = NAN; // undefined and/or not needed
+          set_of_faces[dir].insert(f_tmp);
+        }
+      }
     }
   }
   quad_ngbd.clear();

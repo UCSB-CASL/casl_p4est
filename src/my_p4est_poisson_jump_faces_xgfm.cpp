@@ -530,33 +530,69 @@ const vector_field_component_xgfm_jump& my_p4est_poisson_jump_faces_xgfm_t::get_
     }
 
     if(!mus_are_equal())
-      to_insert_in_map.xgfm_jump_flux_component_correction = build_xgfm_jump_flux_correction_operator_at_point(xyz_interface_point, normal, quad_idx, neighbor_quad_idx, oriented_dir/2);
+      build_xgfm_jump_flux_correction_operators_at_point(to_insert_in_map, xyz_interface_point, normal, dim, face_idx, neighbor_face_idx, oriented_dir);
   }
 
   xgfm_jump_between_faces[dim].insert(std::pair<couple_of_dofs, vector_field_component_xgfm_jump>(face_couple, to_insert_in_map));
   return xgfm_jump_between_faces[dim].at(face_couple);
 }
 
-//linear_combination_of_dof_t my_p4est_poisson_jump_cells_xgfm_t::build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
-//                                                                                                     const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const
-//{
-//  const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
-//  const p4est_quadrant_t neighbor_quad  = get_quad(neighbor_quad_idx, p4est, ghost, true);
-//  set_of_neighboring_quadrants nearby_cell_neighbors;
-//  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
-//  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(quad, nearby_cell_neighbors));
-//  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(neighbor_quad, nearby_cell_neighbors));
-//  const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
+// I hope I did it right here below: if you want more details, check out my very own EquationsAndJumps.pdf document
+// long story short: derivations valid only for two-sided solenoidal vector field, mass flux only and no tangential slip
+void my_p4est_poisson_jump_faces_xgfm_t::build_xgfm_jump_flux_correction_operators_at_point(vector_field_component_xgfm_jump& xgfm_jump_data,
+                                                                                            const double* xyz, const double* normal,
+                                                                                            const u_char& dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir) const
+{
+  p4est_quadrant_t qm, qp;
+  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
+  faces->find_quads_touching_face(face_idx, dim, qm, qp);
+  set_of_neighboring_quadrants nearby_cell_neighbors;
+  if(oriented_dir/2 == dim)
+  {
+    const p4est_quadrant_t& middle_quad = (oriented_dir%2 == 1 ? qp : qm);
+    P4EST_ASSERT(faces->q2f(middle_quad.p.piggy3.local_num, (oriented_dir%2 == 1 ? oriented_dir - 1 : oriented_dir + 1)) == face_idx
+                 && faces->q2f(middle_quad.p.piggy3.local_num, oriented_dir) == neighbor_face_idx);
+    logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, ngbd_c->gather_neighbor_cells_of_cell(middle_quad, nearby_cell_neighbors));
+  }
+  else
+  {
+    set_of_neighboring_quadrants closest_cells;
+    if(qm.p.piggy3.local_num != -1)
+    {
+      closest_cells.insert(qm);
+      ngbd_c->find_neighbor_cells_of_cell(closest_cells, qm.p.piggy3.local_num, qm.p.piggy3.which_tree, oriented_dir);
+    }
+    if(qp.p.piggy3.local_num != -1)
+    {
+      closest_cells.insert(qp);
+      ngbd_c->find_neighbor_cells_of_cell(closest_cells, qp.p.piggy3.local_num, qp.p.piggy3.which_tree, oriented_dir);
+    }
+    for (set_of_neighboring_quadrants::const_iterator it = closest_cells.begin(); it != closest_cells.end(); ++it)
+      logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, ngbd_c->gather_neighbor_cells_of_cell(*it, nearby_cell_neighbors));
+  }
+  const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
+  std::set<indexed_and_located_face> set_of_neighbor_faces[P4EST_DIM];
+  add_all_faces_to_sets_and_clear_set_of_quad(faces, set_of_neighbor_faces, nearby_cell_neighbors);
+  const bool grad_is_known[P4EST_DIM] = {DIM(false, false, false)};
+  linear_combination_of_dof_t gradient_of_face_sampled_field[P4EST_DIM][P4EST_DIM]; // we neeed the gradient of all vector components <--> stress balance across the interface!
+  for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+  {
+    get_lsqr_face_gradient_at_point(xyz, faces, set_of_neighbor_faces[comp], scaling_distance, gradient_of_face_sampled_field[comp], NULL, grad_is_known);
+    xgfm_jump_data.xgfm_jump_flux_tangential_correction[comp].clear();
+    xgfm_jump_data.xgfm_jump_flux_normal_correction[comp].clear();
+  }
 
-//  linear_combination_of_dof_t lsqr_cell_grad_operator[P4EST_DIM];
-//  get_lsqr_cell_gradient_operator_at_point(xyz, cell_ngbd, nearby_cell_neighbors, scaling_distance, lsqr_cell_grad_operator);
-
-//  linear_combination_of_dof_t xgfm_flux_correction;
-//  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-//    xgfm_flux_correction.add_operator_on_same_dofs(lsqr_cell_grad_operator[dim], get_jump_in_mu()*((flux_component == dim ? 1.0 : 0.0) - normal[flux_component]*normal[dim]));
-
-//  return xgfm_flux_correction;
-//}
+  const double jump_in_mu = get_jump_in_mu();
+  const u_char j = oriented_dir/2; // in my EquationsAndJumps.pdf document, i == dim, j == oriented_dir/2
+  for (u_char k = 0; k < P4EST_DIM; ++k) {
+    xgfm_jump_data.xgfm_jump_flux_tangential_correction[dim].add_operator_on_same_dofs(gradient_of_face_sampled_field[dim][k], jump_in_mu*((j == k ? 1.0 : 0.0) - normal[j]*normal[k]));
+    for (u_char r = 0; r < P4EST_DIM; ++r) {
+      xgfm_jump_data.xgfm_jump_flux_tangential_correction[k].add_operator_on_same_dofs(gradient_of_face_sampled_field[k][r], -jump_in_mu*normal[j]*((dim == r ? 1.0 : 0.0) - normal[dim]*normal[r])*normal[k]);
+      xgfm_jump_data.xgfm_jump_flux_normal_correction[k].add_operator_on_same_dofs(gradient_of_face_sampled_field[k][r], jump_in_mu*normal[r]*normal[k]*normal[dim]*normal[j]);
+    }
+  }
+  return;
+}
 
 void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)
 {

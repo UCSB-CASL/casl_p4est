@@ -7,7 +7,7 @@
 //#endif
 
 my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_faces_t *faces_, const p4est_nodes_t* nodes_)
-  : faces(faces_), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()), nodes(nodes_),
+  : faces(faces_), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()), nodes(nodes_), ngbd_c(faces_->get_ngbd_c()),
     xyz_min(faces_->get_p4est()->connectivity->vertices + 3*faces_->get_p4est()->connectivity->tree_to_vertex[0]),
     xyz_max(faces_->get_p4est()->connectivity->vertices + 3*faces_->get_p4est()->connectivity->tree_to_vertex[P4EST_CHILDREN*(faces_->get_p4est()->trees->elem_count - 1) + P4EST_CHILDREN - 1]),
     tree_dimensions(faces_->get_tree_dimensions()), periodicity(faces_->get_periodicity())

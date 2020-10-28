@@ -16,6 +16,7 @@ protected:
   const p4est_t           *p4est;
   const p4est_ghost_t     *ghost;
   const p4est_nodes_t     *nodes;
+  const my_p4est_cell_neighbors_t *ngbd_c;
   // computational domain parameters (fetched from the above objects at construction)
   const double *const xyz_min;
   const double *const xyz_max;

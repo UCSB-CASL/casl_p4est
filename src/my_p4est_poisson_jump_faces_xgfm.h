@@ -10,10 +10,13 @@
 typedef struct {
   double jump_component;
   double known_jump_flux;
-  linear_combination_of_dof_t xgfm_jump_flux_correction[P4EST_DIM];
-  inline double jump_flux_component(const double* extension_p[P4EST_DIM] = NULL) const
+  linear_combination_of_dof_t xgfm_jump_flux_tangential_correction[P4EST_DIM];
+  linear_combination_of_dof_t xgfm_jump_flux_normal_correction[P4EST_DIM];
+  inline double jump_flux_component(const double* extension_p[P4EST_DIM] = NULL, const double* extrapolation_p[P4EST_DIM] = NULL) const
   {
-    return known_jump_flux + (extension_p != NULL  ? SUMD(xgfm_jump_flux_correction[0](extension_p[0]), xgfm_jump_flux_correction[1](extension_p[1]), xgfm_jump_flux_correction[2](extension_p[2])) : 0.0);
+    return known_jump_flux
+        + (extension_p != NULL      ? SUMD(xgfm_jump_flux_tangential_correction[0](extension_p[0]), xgfm_jump_flux_tangential_correction[1](extension_p[1]),  xgfm_jump_flux_tangential_correction[2](extension_p[2])) : 0.0)
+        + (extrapolation_p != NULL  ? SUMD(xgfm_jump_flux_normal_correction[0](extrapolation_p[0]), xgfm_jump_flux_normal_correction[1](extrapolation_p[1]),  xgfm_jump_flux_normal_correction[2](extrapolation_p[2])) : 0.0);
   }
 } vector_field_component_xgfm_jump;
 
@@ -102,8 +105,9 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
 
   // Memorized jump information for interface-point between quadrants
   map_of_vector_field_component_xgfm_jumps_t xgfm_jump_between_faces[P4EST_DIM];
-  void build_xgfm_jump_flux_correction_operators_at_point(const double* xyz, const double* normal,
-                                                          const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& flux_orientation) const;
+  void build_xgfm_jump_flux_correction_operators_at_point(vector_field_component_xgfm_jump& xgfm_jump_data,
+                                                          const double* xyz, const double* normal,
+                                                          const u_char& dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir) const;
   const vector_field_component_xgfm_jump& get_xgfm_jump_between_faces(const u_char& dir, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir);
 
   // disallow copy ctr and copy assignment
