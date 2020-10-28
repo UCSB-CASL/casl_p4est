@@ -63,7 +63,7 @@ int main ( int argc, char* argv[] )
 	const double MAX_RADIUS = HALF_D - 2 * H;
 	const int N_CIRCLES = (int)(ceil( (N_GRID_POINTS - 8.2) / 2 ) + 1);		// Number of circles is proportional to finest resolution.
 	const int TOTAL_RANDOMNESS = 5;											// How many different circles of same radius we generate.
-	const int ITERS[] = { 5, 10, 15, 20 };
+	const int ITERS[] = { 0, 5, 10, 15, 20 };								// 0 iterations means use the exact signed distance function.
 
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/LSCurvatureML/updated_data_ihk/";
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
@@ -88,9 +88,6 @@ int main ( int argc, char* argv[] )
 		std::cout << "Collecting samples from level-set function with spherical interface..." << std::endl;
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
-
-		bool sdfDone = false;	// Allows to write signed distance function samples just once rather than every time we
-								// change number of iterations for reinitialization.
 
 		// Domain information, applicable to all spherical interfaces.
 		int n_xyz[] = { N_GRID_POINTS - 1, N_GRID_POINTS - 1 };	// Number of cells in the macromesh per dimension.
@@ -126,7 +123,7 @@ int main ( int argc, char* argv[] )
 		for( int i = 0; i < N_CIRCLES; i++ )
 			spread[i] = (double)( i ) / (N_CIRCLES - 1);	// Uniform distribution from 0 to 1, with N_CIRCLES steps, inclusive, to spread distances.
 
-		for( const int& nIters : ITERS )	// Collect samples for picked number of iterations.
+		for( const int& nIters : ITERS )	// Collect samples for several number of iterations.
 		{
 			parStopWatch watch;
 			printf( ">> Beginning to generate dataset for %i circles, %i grid points, %i iterations, and h = %f, in a [0,1]^2 domain\n",
@@ -137,33 +134,25 @@ int main ( int argc, char* argv[] )
 			std::mt19937 gen{};
 			std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
 
-			// Prepare samples files.
-			std::ofstream sdfFile;
-			if( !sdfDone )
-			{
-				std::string sdfFileName = DATA_PATH + "Distance Function/circlesDataset_" + std::to_string( N_GRID_POINTS ) + ".csv";
-				sdfFile.open( sdfFileName, std::ofstream::trunc );
-				if( !sdfFile.is_open() )
-					throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
-				sdfFile.precision( 15 );						// Precision for floating point numbers.
-			}
+			// Prepare samples file.
+			std::ofstream outFile;
+			std::string outFileName;
+			if( nIters <= 0 )
+				outFileName = DATA_PATH + "Distance Function/circlesDataset_" + std::to_string( N_GRID_POINTS ) + ".csv";
+			else
+				outFileName = DATA_PATH + "Non Distance Function/iter" + std::to_string( nIters ) + "/reinitDataset_m" + std::to_string( N_GRID_POINTS ) + ".csv";
 
-			std::ofstream rlsFile;
-			std::string rlsFileName = DATA_PATH + "Non Distance Function/iter" + std::to_string( nIters ) +
-									  "/reinitDataset_m" + std::to_string( N_GRID_POINTS ) + ".csv";
-			rlsFile.open( rlsFileName, std::ofstream::trunc );
-			if( !rlsFile.is_open() )
-				throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
-			rlsFile.precision( 15 );							// Precision for floating point numbers.
+			outFile.open( outFileName, std::ofstream::trunc );
+			if( !outFile.is_open() )
+				throw std::runtime_error( "Output file " + outFileName + " couldn't be opened!" );
+			outFile.precision( 15 );							// Precision for floating point numbers.
 
 			// Write column headers: enforcing strings by adding quotes around them.
 			std::ostringstream headerStream;
 			for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 				headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 			headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-			if( !sdfDone )
-				sdfFile << headerStream.str() << std::endl;
-			rlsFile << headerStream.str() << std::endl;
+			outFile << headerStream.str() << std::endl;
 
 			int nSamples = 0;
 			int nc = 0;					// Keeps track of number of circles whose samples has been collected.
@@ -171,8 +160,7 @@ int main ( int argc, char* argv[] )
 			{
 				const double R = MIN_RADIUS + spread[nc] * distance;	// Circle radius to be evaluated.
 				const double H_KAPPA = H / R;							// Expected dimensionless curvature: h*kappa = h/r.
-				std::vector<std::vector<double>> rlsSamples;
-				std::vector<std::vector<double>> sdfSamples;			// Only used once.
+				std::vector<std::vector<double>> samples;
 
 				// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
 				// reach a given maximum.
@@ -185,12 +173,12 @@ int main ( int argc, char* argv[] )
 						HALF_D + uniformDistribution( gen )		// around the center of the grid.
 					};
 
-					// Definining the non-signed distance level-set function to be reinitialized and the exact signed
-					// distance function.  (No need to create a splitting_criteria_cf_t).
-					geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
-					geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
+					// Definining the non-signed distance level-set function to be reinitialized if needed, and always
+					// the exact signed distance function to check errors.  (No need to create a splitting_criteria_cf_t).
+					geom::SphereNSD sphereNsd( C[0], C[1], R );
+					geom::Sphere sphere( C[0], C[1], R );
 
-					// Ghosted parallel PETSc vectors to store level-set function values.
+					// Ghosted parallel PETSc vectors to store level-set function values.  If nIters <= 0, rlsPhi = sdfPhi.
 					Vec sdfPhi, rlsPhi;
 					ierr = VecCreateGhostNodes( p4est, nodes, &sdfPhi );
 					CHKERRXX( ierr );
@@ -209,11 +197,18 @@ int main ( int argc, char* argv[] )
 
 					// Calculate the level-set function values for all independent nodes.
 					sample_cf_on_nodes( p4est, nodes, sphere, sdfPhi );
-					sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
+					if( nIters <= 0 )
+						sample_cf_on_nodes( p4est, nodes, sphere, rlsPhi );
+					else
+						sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
 
-					// Reinitialize level-set function using PDE equation.
-					my_p4est_level_set_t ls( &nodeNeighbors );
-					ls.reinitialize_2nd_order( rlsPhi, nIters );
+					// Reinitialize level-set function using PDE equation only if we are not basing calculations on the
+					// exact signed distance function.
+					if( nIters > 0 )
+					{
+						my_p4est_level_set_t ls( &nodeNeighbors );
+						ls.reinitialize_2nd_order( rlsPhi, nIters );
+					}
 
 					// Compute curvature with reinitialized data, which will be interpolated at the interface.
 					compute_normals( nodeNeighbors, rlsPhi, normal );
@@ -239,43 +234,34 @@ int main ( int argc, char* argv[] )
 					for( auto n : indices )
 					{
 						std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
-						std::vector<double> sdfDataPve;			// Phi and h*kappa results in positive form.
-						std::vector<double> rlsDataPve;
-						sdfDataPve.reserve( NUM_COLUMNS );		// Efficientize containers.
-						rlsDataPve.reserve( NUM_COLUMNS );
+						std::vector<double> rlsDataPve;			// Phi and h*kappa results in positive form.
+						rlsDataPve.reserve( NUM_COLUMNS );		// Efficientize container.
 						try
 						{
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
 								for( auto s : stencil )
 								{
-									// First the signed distance function.
-									sdfDataPve.push_back( sdfPhiReadPtr[s] );
-
-									// Then the reinitialized data.
 									rlsDataPve.push_back( rlsPhiReadPtr[s] );
 
 									// Error.
 									double error = ABS( sdfPhiReadPtr[s] - rlsPhiReadPtr[s] ) / H;
-									maxRE = MAX( maxRE, error );
+									maxRE = MAX( maxRE, error );	// Should be zero when rlsPhi == sdfPhi.
 								}
 
 								// Fixing the order of columns for backwards compatibility.
 								// Expected: (i-1,j+1), (i,j+1), (i+1,j+1), (i-1,j), (i,j), (i+1,j), (i-1,j-1), (i,j-1), (i+1,j-1)
 								//           mp       , 0p     , pp       , m0     , 00   , p0     , mm       , 0m     , pm
 								// Obtained: mm       , m0     , mp       , 0m     , 00   , 0p     , pm       , p0     , pp
-								std::vector<double> copySdfDataPve( sdfDataPve );
 								std::vector<double> copyRlsDataPve( rlsDataPve );
 								int j = 2;
 								for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 								{
-									sdfDataPve[i] = copySdfDataPve[j % 10];
 									rlsDataPve[i] = copyRlsDataPve[j % 10];
 									j += 3;
 								}
 
 								// Appending the target h*kappa.
-								sdfDataPve.push_back( H_KAPPA );
 								rlsDataPve.push_back( H_KAPPA );
 
 								// Appending the interpolated h*kappa.
@@ -291,26 +277,16 @@ int main ( int argc, char* argv[] )
 									xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// we need to interpolate numerical curvature.
 
 								double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
-								rlsDataPve.push_back( iHKappa );	// Attach interpolated h*kappa to reinit. data only.
-								sdfDataPve.push_back( 0 );			// For signed distance function data, add dummy 0's.
+								rlsDataPve.push_back( iHKappa );	// Attach interpolated h*kappa.
 
 								// Getting negative version of samples.
-								std::vector<double> sdfDataNve( NUM_COLUMNS );
 								std::vector<double> rlsDataNve( NUM_COLUMNS );
 								for( int i = 0; i < NUM_COLUMNS; i++ )
-								{
-									sdfDataNve[i] = -sdfDataPve[i];
 									rlsDataNve[i] = -rlsDataPve[i];
-								}
 
 								// Accumulating samples.
-								if( !sdfDone )
-								{
-									sdfSamples.push_back( sdfDataPve );
-									sdfSamples.push_back( sdfDataNve );
-								}
-								rlsSamples.push_back( rlsDataPve );
-								rlsSamples.push_back( rlsDataNve );
+								samples.push_back( rlsDataPve );
+								samples.push_back( rlsDataNve );
 							}
 						}
 						catch( std::exception &e )
@@ -346,37 +322,24 @@ int main ( int argc, char* argv[] )
 				}
 
 				// Write all samples collected for all circles with the same radius but randomized center content to files.
-				if( !sdfDone )
+				for( const auto& row : samples )
 				{
-					for( const auto& row : sdfSamples )
-					{
-						std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
-						sdfFile << row.back() << std::endl;
-					}
-				}
-
-				for( const auto& row : rlsSamples )
-				{
-					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
-					rlsFile << row.back() << std::endl;
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( outFile, "," ) );	// Inner elements.
+					outFile << row.back() << std::endl;
 				}
 
 				nc++;
-				nSamples += rlsSamples.size();
+				nSamples += samples.size();
 
 				std::cout << "     (" << nc << ") Done with radius = " << R
 						  << ".  Maximum relative error = " << maxRE
-						  << ".  Samples = " << rlsSamples.size() << ";" << std::endl;
+						  << ".  Samples = " << samples.size() << ";" << std::endl;
 
 				if( nc % 10 == 0 )
 					printf( "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
 			}
 
-			if( !sdfDone )
-				sdfFile.close();
-			rlsFile.close();
-
-			sdfDone = true;		// Important!  This allows to write the SDF file just once.
+			outFile.close();
 
 			printf( "<< Finished generating %i circles and %i samples in %f secs.\n", nc, nSamples, watch.get_duration_current() );
 			watch.stop();
