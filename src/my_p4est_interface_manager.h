@@ -523,15 +523,6 @@ public:
     return signed_distance;
   }
 
-  inline double curvature_at_point(const double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(interp_curvature == NULL)
-      throw std::runtime_error("my_p4est_interface_manager_t::get_curvature_at_point() called but interp_curvature is not available...");
-#endif
-    return (*interp_curvature)(xyz);
-  }
-
   /*!
    * \brief gradient_of_normal_vector_at_point evaluates the gradient of the normal vector at a given point.
    * \param [in]  xyz:    coordinates of the point where the gradient of the normal vector of the levelset function is desired
