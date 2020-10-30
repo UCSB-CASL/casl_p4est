@@ -88,8 +88,8 @@ param_t<int> DIM( nx (pl, 1, "nx", "number of trees in x-dimension"),
 param_t<int> lmin (pl, 5, "lmin", "min level of trees");
 param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 5, "lmin", "min level of trees");
-param_t<int> lmax (pl, 5, "lmax", "max level of trees");
+param_t<int> lmin (pl, 4, "lmin", "min level of trees");
+param_t<int> lmax (pl, 4, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.2, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
@@ -99,7 +99,7 @@ param_t<bool>   refine_only_inside (pl, 1, "refine_only_inside", "Refine only in
 //param_t<int>    ladd (pl, 0, "lmax", "max level of trees");
 
 // advection parameters
-param_t<double> cfl                     (pl, 1.0,    "cfl", "CFL number");
+param_t<double> cfl                     (pl, 1.5,    "cfl", "CFL number");
 param_t<double> cfl_v_min               (pl, 0.1,   "cfl_v_min", "");
 param_t<double> cfl_v_max               (pl, 0.75,   "cfl_v_max", "");
 param_t<double> cfl_w_min               (pl, 0.1,   "cfl_w_min", "");
@@ -109,7 +109,7 @@ param_t<bool>   use_neumann             (pl, 1,      "use_neumann", "Impose cont
 param_t<bool>   compute_exact           (pl, 0,      "compute_exact", "Compute exact final shape (only for pure-curvature) 0/1");
 param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special");
 param_t<int>    volume_corrections      (pl, 2,      "volume_corrections", "Number of volume correction after each move");
-param_t<int>    max_iterations          (pl, 1000,   "max_iterations", "Maximum number of advection steps");
+param_t<int>    max_iterations          (pl, 500,   "max_iterations", "Maximum number of advection steps");
 param_t<double> tolerance               (pl, 1.0e-8, "tolerance", "Stopping criteria");
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
@@ -117,12 +117,14 @@ interpolation_method interpolation_between_grids = quadratic_non_oscillatory_con
 // scft parameters
 param_t<bool>   use_scft               (pl, 1,   "use_scft", "Turn on/off SCFT 0/1");
 param_t<int>    max_scft_iterations    (pl, 100, "max_scft_iterations", "Maximum SCFT iterations");
-param_t<int>    num_scft_subiterations (pl, 2,   "max_scft_iterations", "Maximum SCFT iterations");
+param_t<int>    num_scft_subiterations (pl, 2,   "num_scft_subiterations", "Maximum SCFT iterations");
 param_t<double> scft_tol               (pl, 1.e-4, "scft_tol", "Tolerance for SCFT");
+param_t<int>    num_pre_iterations     (pl, 100,   "num_pre_iterations", "Maximum SCFT iterations");
+param_t<bool>   smart_bc               (pl, 1,   "smart_bc", "");
 
 // polymer
-param_t<double> box_size (pl, 4.0, "box_size", "Box size in units of Rg");
-param_t<double> f        (pl, .5, "f", "Fraction of polymer A");
+param_t<double> box_size (pl, 10, "box_size", "Box size in units of Rg");
+param_t<double> f        (pl, .3, "f", "Fraction of polymer A");
 param_t<double> XN       (pl, 30, "XN", "Flory-Higgins interaction parameter");
 param_t<int>    ns       (pl, 60, "ns", "Discretization of polymer chain");
 
@@ -134,58 +136,62 @@ param_t<int>  save_every_dn   (pl, 1, "save_every_dn", ""); // for vtk
 
 // problem setting
 
-param_t<int>    geometry_ptcl (pl, 0, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
-param_t<int>    geometry_free (pl, 1, "geometry_free", "Initial polymer shape: 0 - drop, 1 - film, 2 - combination");
-param_t<int>    geometry_wall (pl, 0, "geometry_wall", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
+param_t<int>    geometry_ptcl (pl, 0, "geometry_ptcl", "Initial placement of particles: 1 - one particle, 2 - ...");
+param_t<int>    geometry_free (pl, 1, "geometry_free", "Initial polymer shape: 1 - drop, 2 - film, 3 - combination");
+param_t<int>    geometry_wall (pl, 0, "geometry_wall", "Wall geometry: 0 - no wall, 1 - wall, 2 - well");
 
-param_t<bool>   minimize  (pl, 0, "minimize", "Turn on/off energy minimization (0/1)");
+param_t<bool>   minimize  (pl, 1, "minimize", "Turn on/off energy minimization (0/1)");
 param_t<int>    ptcl_velo (pl, 3, "ptcl_velo", "Predifined velocity field for particles in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
 param_t<int>    ptcl_rotn (pl, 1, "ptcl_rotn", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
 param_t<int>    free_velo (pl, 1, "free_velo", "Predifined velocity field for free surface in case of minimize=0: 0 - nothing, 1 - oscillations");
 
 param_t<int>    wall_pattern (pl, 0, "wall_pattern", "Wall chemical pattern: 0 - no pattern");
-param_t<int>    n_seed       (pl, 3, "n_seed", "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots");
-param_t<int>    n_example    (pl, 0, "n_example", "Number of predefined example");
+param_t<int>    n_seed       (pl, 1, "n_seed", "Seed: 0 - zero, "
+                                               "1 - random, "
+                                               "2 - vertical stripes, "
+                                               "3 - horizontal stripes, "
+                                               "4 - dots, "
+                                               "5 - spheres");
+param_t<int>    n_example    (pl, 20, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
 param_t<double> pairwise_potential_mag   (pl, 2.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
 param_t<double> pairwise_potential_width (pl, 3, "pairwise_potential_width", "Width of pairwise potential");
 
 // surface energies
-param_t<int> wall_energy_type (pl, 1, "wall_energy_type", "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) (pl, 1 - through contact angles (i.e. convert angles to XN)");
+param_t<double> sqrtXN_free_avg     (pl, 1.0, "sqrtXN_free_avg",     "Polymer-air surface energy strength: average");
+param_t<double> sqrtXN_free_dif     (pl, 0.5, "sqrtXN_free_dif",     "Polymer-air surface energy strength: difference");
+param_t<double> sqrtXN_ptcl_dif_max (pl, 1.0, "sqrtXN_ptcl_dif_max", "Polymer-particle surface energy strength: difference");
+param_t<double> sqrtXN_ptcl_dif_min (pl,-1.0, "sqrtXN_ptcl_dif_min", "Polymer-particle surface energy strength: difference");
+param_t<double> sqrtXN_wall_dif_max (pl, 0.5, "sqrtXN_wall_dif_max", "Polymer-wall surface energy strength: difference");
+param_t<double> sqrtXN_wall_dif_min (pl, 0.5, "sqrtXN_wall_dif_min", "Polymer-wall surface energy strength: difference");
+param_t<double> sqrtXN_wall_avg     (pl, 1.0, "sqrtXN_wall_avg", "Polymer-wall surface energy strength: difference");
 
-param_t<double> XN_free_avg     (pl, 5.0, "XN_free_avg", "Polymer-air surface energy strength: average");
-param_t<double> XN_free_dif     (pl, 0.5, "XN_free_dif", "Polymer-air surface energy strength: difference");
-param_t<double> XN_ptcl_dif_max (pl, 25.0, "XN_ptcl_dif_max", "Polymer-particle surface energy strength: difference");
-param_t<double> XN_ptcl_dif_min (pl,-25.0, "XN_ptcl_dif_min", "Polymer-particle surface energy strength: difference");
 
-param_t<double> angle_A_min (pl, 170, "angle_A_min", "Minimum contact angle for A-block");
-param_t<double> angle_A_max (pl, 170, "angle_A_max", "Maximum contact angle for A-block");
-param_t<double> angle_B_min (pl, 170, "angle_B_min", "Minimum contact angle for B-block");
-param_t<double> angle_B_max (pl, 170, "angle_B_max", "Maximum contact angle for B-block");
+param_t<int> air_wall_energy_type (pl, 1, "air_energy_type", "Method for setting wall surface energy: "
+                                                        "0 - based on A block, "
+                                                        "1 - based on B block, "
+                                                        "2 - based on weighted average of A and B blocks");
 
-param_t<double> XN_wall_A_min (pl, 5, "XN_wall_A_min", "Minimum Polymer-wall interaction strength for A-block");
-param_t<double> XN_wall_A_max (pl, 5, "XN_wall_A_max", "Maximum Polymer-wall interaction strength for A-block");
-param_t<double> XN_wall_B_min (pl, 8, "XN_wall_B_min", "Minimum Polymer-wall interaction strength for B-block");
-param_t<double> XN_wall_B_max (pl, 8, "XN_wall_B_max", "Maximum Polymer-wall interaction strength for B-block");
+param_t<double> contact_angle (pl, 75, "contact_angle" , "Contact angle");
 
 // geometry parameters
-param_t<double> drop_r      (pl, 2.55111,  "drop_r", "");
-param_t<double> DIM(drop_x  (pl, .0079,  "drop_x", ""),
-                    drop_y  (pl, -.013,  "drop_y", ""),
-                    drop_z  (pl, .0,     "drop_z", "") );
-param_t<double> drop_r0     (pl, 0.4,    "drop_r0", "");
-param_t<double> drop_k      (pl, 5,      "drop_k", "");
-param_t<double> drop_deform (pl, 0.0,    "drop_deform", "");
+param_t<double> drop_r      (pl, 2.55111, "drop_r", "");
+param_t<double> DIM(drop_x  (pl, .0079,   "drop_x", ""),
+                    drop_y  (pl, -.013,   "drop_y", ""),
+                    drop_z  (pl, .0,      "drop_z", "") );
+param_t<double> drop_r0     (pl, 0.4,     "drop_r0", "");
+param_t<double> drop_k      (pl, 5,       "drop_k", "");
+param_t<double> drop_deform (pl, 0.0,     "drop_deform", "");
 
 param_t<double> film_eps     (pl, -0.0, "film_eps", ""); // curvature
 param_t<double> DIM( film_nx (pl, 0,    "film_nx", ""),
                      film_ny (pl, 1,    "film_ny", ""),
                      film_nz (pl, 0,    "film_nz", "") );
 param_t<double> DIM( film_x  (pl, .0,   "film_x", ""),
-                     film_y  (pl, .0,   "film_y", ""),
+                     film_y  (pl, 1.03,   "film_y", ""),
                      film_z  (pl, .0,   "film_z", "") );
-param_t<double> film_perturb (pl, .1,   "film_perturb", "");
+param_t<double> film_perturb (pl, 1.e-4,   "film_perturb", "");
 
 param_t<double> wall_eps     (pl, -0.0, "wall_eps", ""); // curvature
 param_t<double> DIM( wall_nx (pl, -0,   "wall_nx", ""),
@@ -197,28 +203,28 @@ param_t<double> DIM( wall_x  (pl, .0,   "wall_x", ""),
 param_t<double> wall_r       (pl, 2.5,   "wall_r", "");
 
 param_t<double> DIM( well_x  (pl, 0.00,   "well_x", "Well geometry: center"),
-                     well_y  (pl, 0.0053, "well_z", "Well geometry: position"),
+                     well_y  (pl, 2.24, "well_y", "Well geometry: position"),
                      well_z  (pl, 0.00,   "well_z", "") );
-param_t<double> well_h (pl, .50,    "well_h", "Well geometry: depth");
-param_t<double> well_w (pl, 0.77,   "well_w", "Well geometry: width");
+param_t<double> well_h (pl, 3.50,    "well_h", "Well geometry: depth");
+param_t<double> well_w (pl, 10.77,   "well_w", "Well geometry: width");
 param_t<double> well_r (pl, 0.10,   "well_r", "Well geometry: corner smoothing");
+
+param_t<int> num_cyls (pl, 5,   "num_cyls", "Number of cylinders in the well");
 
 param_t<int> DIM( num_ptcl_x (pl, 4, "num_ptcl_x", ""),
                   num_ptcl_y (pl, 4, "num_ptcl_y", ""),
                   num_ptcl_z (pl, 1, "num_ptcl_z", "") );
-param_t<double> initial_rotation (pl, 0.25*PI, "initial_rotation", "");
+param_t<double> initial_rotation (pl, -0.25*PI, "initial_rotation", "");
+param_t<double> initial_rotation_rand (pl, -0.25*PI, "initial_rotation_rand", "");
 param_t<double> rod_radius (pl, 0.1, "rod_radius", "");
 param_t<double> rod_length (pl, 0.5, "rod_length", "");
-
-param_t<double> dt_max_velo (pl, 10.0, "dt_max_velo", "");
-param_t<double> dt_max_rot  (pl, 10.0, "dt_max_velo", "");
 
 param_t<bool> DIM( restrict_motion_x (pl, 0, "restrict_motion_x", ""),
                    restrict_motion_y (pl, 0, "restrict_motion_y", ""),
                    restrict_motion_z (pl, 0, "restrict_motion_z", "") );
 param_t<bool> restrict_rotation (pl, 0, "restrict_rotation", "");
 
-param_t<int> num_submotions (pl, 1, "num_submotions", "");
+param_t<int> num_submotions (pl, 10, "num_submotions", "");
 
 inline double lam_bulk_period()
 {
@@ -228,23 +234,10 @@ inline double lam_bulk_period()
 
 void set_wall_surface_energies()
 {
-  switch (wall_energy_type()) {
-    case 0:
-
-      angle_A_min.val = 180.*acos( SIGN(XN_wall_A_max.val) * sqrt(XN_wall_A_max.val / (XN_free_avg.val+XN_free_dif.val)) )/PI;
-      angle_A_max.val = 180.*acos( SIGN(XN_wall_A_min.val) * sqrt(XN_wall_A_min.val / (XN_free_avg.val+XN_free_dif.val)) )/PI;
-      angle_B_min.val = 180.*acos( SIGN(XN_wall_B_max.val) * sqrt(XN_wall_B_max.val / (XN_free_avg.val-XN_free_dif.val)) )/PI;
-      angle_B_max.val = 180.*acos( SIGN(XN_wall_B_min.val) * sqrt(XN_wall_B_min.val / (XN_free_avg.val-XN_free_dif.val)) )/PI;
-
-      break;
-    case 1:
-
-      XN_wall_A_max.val = (XN_free_avg.val+XN_free_dif.val)*SIGN(cos(angle_A_min.val*PI/180.))*SQR(cos(angle_A_min.val*PI/180.));
-      XN_wall_A_min.val = (XN_free_avg.val+XN_free_dif.val)*SIGN(cos(angle_A_max.val*PI/180.))*SQR(cos(angle_A_max.val*PI/180.));
-      XN_wall_B_max.val = (XN_free_avg.val-XN_free_dif.val)*SIGN(cos(angle_B_min.val*PI/180.))*SQR(cos(angle_B_min.val*PI/180.));
-      XN_wall_B_min.val = (XN_free_avg.val-XN_free_dif.val)*SIGN(cos(angle_B_max.val*PI/180.))*SQR(cos(angle_B_max.val*PI/180.));
-
-      break;
+  switch (air_wall_energy_type()) {
+    case 0: sqrtXN_wall_avg.val = -cos(contact_angle()*PI/180.)*(sqrtXN_free_avg() + .5*sqrtXN_free_dif()) - .5*sqrtXN_wall_dif_min(); break;
+    case 1: sqrtXN_wall_avg.val = -cos(contact_angle()*PI/180.)*(sqrtXN_free_avg() - .5*sqrtXN_free_dif()) + .5*sqrtXN_wall_dif_min(); break;
+    case 2: sqrtXN_wall_avg.val = -cos(contact_angle()*PI/180.)*(sqrtXN_free_avg()); break;
     default:
       throw std::invalid_argument("Invalid method for setting wall surface energies");
   }
@@ -254,8 +247,312 @@ void set_parameters()
 {
   switch (n_example())
   {
-    case 0:
+    case 0: // periodic lamellar phase
       break;
+    case 1: // periodic cylindrical phase
+      break;
+    case 2: // droplet
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .3;
+      XN.val       = 30;
+      ns.val       = 60;
+
+      break;
+    case 3: // droplet on substrate with horizontal lamellae
+    {
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 1;
+
+      n_seed.val = 3;
+
+      xmin.val = -1; xmax.val = 1; px.val = 1; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 100;
+
+      f.val   = .5;
+      XN.val  = 30;
+      ns.val  = 60;
+
+      sqrtXN_free_avg.val     = 15.0;
+      sqrtXN_free_dif.val     =  1.0;
+      sqrtXN_wall_dif_max.val =  -1.0;
+      sqrtXN_wall_dif_min.val =  -1.0;
+
+      air_wall_energy_type.val = 0;
+      contact_angle.val = 30;
+
+      double h = 10;
+
+      film_nx.val = 0;
+      film_ny.val = 1;
+
+      film_x.val = 0;
+      film_y.val = 0.03;
+
+      drop_r.val      = h/(1.-cos(contact_angle.val/180*PI));
+      drop_x.val      = 0.02;
+      drop_y.val      = film_y.val - drop_r.val + h;
+      drop_r0.val     = 2.5;
+      drop_k.val      = 5;
+      drop_deform.val = 0;
+    }
+
+      break;
+    case 4: // droplet on substrate with vertical lamellae
+      break;
+    case 5: // droplet on substrate with cylinders
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 1;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .3;
+      XN.val       = 30;
+      ns.val       = 60;
+      break;
+    case 6: // film with cylinders in a groove
+      geometry_ptcl.val = 0;
+      geometry_free.val = 2;
+      geometry_wall.val = 2;
+
+      n_seed.val = 5;
+
+      xmin.val = -1; xmax.val = 1; px.val = 1; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .3;
+      XN.val       = 30;
+      ns.val       = 60;
+      well_x.val   = 0.00;
+      well_y.val   = 5.03;
+      well_h.val   = 10;
+      well_w.val   = 3.5*5;
+      well_r.val   = 0.5;
+
+      film_y.val   = well_y.val-well_h.val + 3.5;
+
+      sqrtXN_free_avg.val     =  5.0;
+      sqrtXN_free_dif.val     =  2.0;
+      sqrtXN_wall_dif_max.val =  2.0;
+      sqrtXN_wall_dif_min.val =  2.0;
+
+      air_wall_energy_type.val = 1;
+      contact_angle.val = 30;
+
+
+      num_cyls.val = 5;
+
+      break;
+    case 7: // film with lamellae in a groove
+      geometry_ptcl.val = 0;
+      geometry_free.val = 2;
+      geometry_wall.val = 2;
+
+      n_seed.val = 2;
+
+      xmin.val = -1; xmax.val = 1; px.val = 1; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 15;
+      f.val        = .5;
+      XN.val       = 30;
+      ns.val       = 60;
+      well_x.val   = 0.00;
+      well_y.val   = 5.03;
+      well_h.val   = 10;
+      well_w.val   = 3.3*6;
+      well_r.val   = 0.5;
+
+      film_y.val   = well_y.val-well_h.val + 4.5;
+
+      sqrtXN_free_avg.val     = 10.0;
+      sqrtXN_free_dif.val     =  0.0;
+      sqrtXN_wall_dif_max.val =  0.0;
+      sqrtXN_wall_dif_min.val =  0.0;
+
+      air_wall_energy_type. val = 1;
+      contact_angle.val = 120;
+
+      num_cyls.val = 4;
+
+      break;
+    case 10: // one rod
+      xmin.val = -1; xmax.val = 1; px.val = 1; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+      box_size.val = .9;
+
+      f.val        = .5;
+      XN.val       = 30;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 4;
+      geometry_free.val = 0;
+      geometry_wall.val = 0;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 0;
+      rod_radius.val = 0.1;
+      rod_length.val = 0.5;
+
+      restrict_motion_x.val = 1;
+      restrict_motion_y.val = 0;
+//      restrict_motion_z.val = ;
+      restrict_rotation.val = 0;
+      num_submotions.val = 10;
+
+      n_seed.val = 3;
+
+      num_ptcl_x.val = 1;
+      num_ptcl_y.val = 1;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 0;
+      pairwise_potential_width.val = 3;
+
+      sqrtXN_ptcl_dif_max.val =  5;
+      sqrtXN_ptcl_dif_min.val = -5;
+
+      num_pre_iterations.val = 0;
+      break;
+    case 20: // flower-shaped simple scft test
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .33;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      sqrtXN_free_avg.val     = 0.0;
+      sqrtXN_free_dif.val     = 1.0;
+
+      drop_r.val      = 5.;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.3;
+
+      max_scft_iterations.val = 4000;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 1;
+    break;
+    case 21: // simple scft test
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 4;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .33;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      sqrtXN_free_avg.val     = 0.0;
+      sqrtXN_free_dif.val     = 1.0;
+
+      wall_pattern.val = 1;
+      sqrtXN_wall_avg.val = 0;
+      sqrtXN_wall_dif_max.val =-1;
+      sqrtXN_wall_dif_min.val =-1;
+
+      drop_r.val      = 6.5;
+      drop_x.val      = 0.01;
+      drop_y.val      =-0.02;
+      drop_k.val      = 15;
+      drop_deform.val = 0.00;
+
+      wall_x.val =  0.01;
+      wall_y.val = -0.02;
+      wall_eps.val = 0.0;
+      wall_nx.val = 0;
+      wall_ny.val = 1;
+
+      well_w.val = 8;
+
+      max_scft_iterations.val = 4000;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 1;
+    break;
+    case 22: // drop on corrugated surface simple scft test
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 3;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .33;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      sqrtXN_free_avg.val     = 0.0;
+      sqrtXN_free_dif.val     = 1.0;
+
+      wall_pattern.val = 1;
+      sqrtXN_wall_avg.val = 0;
+      sqrtXN_wall_dif_max.val =-5;
+      sqrtXN_wall_dif_min.val = 5;
+
+      drop_r.val      = 6.5;
+      drop_x.val      = 0.1;
+      drop_y.val      = 2.1;
+      drop_k.val      = 15;
+      drop_deform.val = 0.00;
+
+      wall_y.val = 0.01;
+      wall_eps.val = 0.25;
+
+      max_scft_iterations.val = 4000;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 1;
+    break;
     default:
       throw std::invalid_argument("Invalid exmaple number.\n");
   }
@@ -266,7 +563,7 @@ class gamma_Aa_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_free_avg()+.5*XN_free_dif());
+    return sqrtXN_free_avg()+.5*sqrtXN_free_dif();
   }
 } gamma_Aa_cf;
 
@@ -275,7 +572,7 @@ class gamma_Ba_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_free_avg()-.5*XN_free_dif());
+    return sqrtXN_free_avg()-.5*sqrtXN_free_dif();
   }
 } gamma_Ba_cf;
 
@@ -286,7 +583,9 @@ public:
   {
     switch (wall_pattern())
     {
-      case 0: return SIGN(XN_wall_A_min())*sqrt(fabs(XN_wall_A_min()));
+      case 0: return sqrtXN_wall_avg()+.5*sqrtXN_wall_dif_min();
+      case 1: return sqrtXN_wall_avg()+.25*(sqrtXN_wall_dif_min() + sqrtXN_wall_dif_max())
+            + .25*(sqrtXN_wall_dif_max()-sqrtXN_wall_dif_min())*cos(2.*PI*(x-wall_x())/lam_bulk_period());
       default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
     }
   }
@@ -299,16 +598,18 @@ public:
   {
     switch (wall_pattern())
     {
-      case 0: return SIGN(XN_wall_B_min())*sqrt(fabs(XN_wall_B_min()));
+      case 0: return sqrtXN_wall_avg()-.5*sqrtXN_wall_dif_min();
+      case 1: return sqrtXN_wall_avg()-.25*(sqrtXN_wall_dif_min() + sqrtXN_wall_dif_max())
+            - .25*(sqrtXN_wall_dif_max()-sqrtXN_wall_dif_min())*cos(2.*PI*(x-wall_x())/lam_bulk_period());
       default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
     }
   }
 } gamma_Bw_cf;
 
-double gamma_Ap_max() { return sqrt( MAX(0.0,  XN_ptcl_dif_max()) ); }
-double gamma_Ap_min() { return sqrt( MAX(0.0,  XN_ptcl_dif_min()) ); }
-double gamma_Bp_max() { return sqrt( MAX(0.0, -XN_ptcl_dif_max()) ); }
-double gamma_Bp_min() { return sqrt( MAX(0.0, -XN_ptcl_dif_min()) ); }
+double gamma_Ap_max() { return MAX(0.0,  sqrtXN_ptcl_dif_max()); }
+double gamma_Ap_min() { return MAX(0.0,  sqrtXN_ptcl_dif_min()); }
+double gamma_Bp_max() { return MAX(0.0, -sqrtXN_ptcl_dif_max()); }
+double gamma_Bp_min() { return MAX(0.0, -sqrtXN_ptcl_dif_min()); }
 
 class gamma_aw_cf_t : public CF_DIM
 {
@@ -329,7 +630,7 @@ public:
     switch (geometry_wall())
     {
       case 0: return -1;
-      case 1:
+      case 1: // possibly curved wall
         {
           double norm = ABSD(wall_nx(), wall_ny(), wall_nz());
           return - SUMD( (x-wall_x())*((x-wall_x())*wall_eps() - 2.*wall_nx() / norm),
@@ -339,7 +640,7 @@ public:
                         (y-wall_y())*wall_eps() - wall_ny() / norm,
                         (z-wall_z())*wall_eps() - wall_nz() / norm)  + 1. );
         }
-      case 2:
+      case 2: // well/groove
         {
           double phi_top   = well_y() - y;
           double phi_bot   = well_y()-well_h() - y;
@@ -347,6 +648,16 @@ public:
 
           return smooth_max(phi_bot, smooth_min(phi_top, phi_walls, well_r()), well_r());
         }
+      case 3: // corrugated wall
+      {
+        return -(y-wall_y()) + wall_eps()*cos(2.*PI*(x-wall_x())/lam_bulk_period());
+      }
+      case 4: // slit
+        return fabs(SUMD((x-wall_x())*wall_nx(), (y-wall_y())*wall_ny(), (z-wall_z())*wall_nz()))
+            / ABSD(wall_nx(), wall_ny(), wall_nz()) - .5*well_w();
+
+//        double phi_walls = MAX(x-well_x()-.5*well_w(), -(x-well_x())-.5*well_w());
+//        return MAX(
       default:
         throw;
     }
@@ -374,8 +685,8 @@ public:
                       (z-film_z())*film_eps() - film_nz() / norm)  + 1. )
              + film_perturb()*cos(PI*x*(lmax()-2));
       }
-      case 3: return MAX( cos((angle_A_max()-90)*PI/180)*(x-drop_x()) + sin((angle_A_max()-90)*PI/180)*(y-drop_y()-drop_r()),
-                         -cos((angle_A_max()-90)*PI/180)*(x-drop_x()) + sin((angle_A_max()-90)*PI/180)*(y-drop_y()-drop_r()));
+      case 3: return MAX( cos((contact_angle()-90)*PI/180)*(x-drop_x()) + sin((contact_angle()-90)*PI/180)*(y-drop_y()-drop_r()),
+                         -cos((contact_angle()-90)*PI/180)*(x-drop_x()) + sin((contact_angle()-90)*PI/180)*(y-drop_y()-drop_r()));
       case 4: return MIN( (y-wall_y()-.5*lam_bulk_period()),
                           MAX((y-wall_y()-1.*lam_bulk_period()), fabs(x-.5*(xmax()+xmin())) - .25*(xmax()-xmin())),
                           MAX((y-wall_y()-1.5*lam_bulk_period()), fabs(x-.5*(xmax()+xmin())) - .125*(xmax()-xmin())));
@@ -393,7 +704,7 @@ public:
     switch (n_seed())
     {
       case 0: return 0;
-      case 1: return 0.01*XN()*(double)(rand()%1000)/1000.;
+      case 1: return 0.1*XN()*(2.*double(rand())/double(RAND_MAX)-1.);
       case 2: {
         double nx = (xmax()-xmin())/lam_bulk_period(); if (px() == 1) nx = round(nx);
         return .5*XN()*cos(2.*PI*x/(xmax()-xmin())*nx);
@@ -412,6 +723,20 @@ public:
                               cos(2.*PI*y/(ymax()-ymin())*ny),
                               cos(2.*PI*z/(zmax()-zmin())*nz));
         }
+      case 5:
+      {
+        double rc = 1;
+        double yc = .5*(film_y.val+(well_y.val-well_h.val));
+        double dx = well_w.val/double(num_cyls());
+
+        if (num_cyls.val%2==0) x += dx/2.;
+
+        double xc = round(x/dx)*dx;
+
+
+        return .5*XN()*tanh((rc - ABS2(x-xc, y-yc))*sqrt(XN()));
+      }
+
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -574,7 +899,6 @@ public:
   }
 };
 
-
 // this class constructs the 'particles_number' field (indicates for every (x,y) coordinate, which particle is the closest)
 // it is needed for the energy minimization of multiple particles
 class particles_number_cf_t : public CF_DIM
@@ -619,7 +943,6 @@ double pairwise_potential(double r)
     default: throw;
   }
 }
-
 
 double pairwise_force(double r)
 {
@@ -808,6 +1131,8 @@ void initalize_ptcl(std::vector<particle_t> &particles)
                   space_y = (ny.val == 1 ? (ymax()-ymin())/double(m) : (ymax()-ymin())/double(m)),
                   space_z = (nz.val == 1 ? (zmax()-zmin())/double(l) : (zmax()-zmin())/double(l)) );
 
+      srand(246246);
+
       for (int i = 0; i < n; ++i)
         for (int j = 0; j < m; ++j)
           ONLY3D( for (int k = 0; k < l; ++k))
@@ -815,7 +1140,7 @@ void initalize_ptcl(std::vector<particle_t> &particles)
             EXECD( p.xyz[0] = .5*(xmin()+xmax()) + double(i-n/2)*space_x + double(1-n%2)*.5*space_x,
                    p.xyz[1] = .5*(ymin()+ymax()) + double(j-m/2)*space_y + double(1-m%2)*.5*space_y,
                    p.xyz[2] = .5*(zmin()+zmax()) + double(k-l/2)*space_z + double(1-l%2)*.5*space_z );
-            p.rot = initial_rotation.val;
+            p.rot = initial_rotation.val + initial_rotation_rand.val*double(rand())/double(RAND_MAX);
             particles.push_back(p);
           }
     }
@@ -978,6 +1303,8 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   pl.initialize_parser(cmd);
   cmd.parse(argc, argv);
+  n_example.set_from_cmd(cmd);
+  set_parameters();
   pl.set_from_cmd_all(cmd);
 
   set_wall_surface_energies();
@@ -1033,7 +1360,10 @@ int main (int argc, char* argv[])
     ierr = PetscFPrintf(mpi.comm(), file_conv, "iteration "
                                                "energy "
                                                "energy_change_predicted "
-                                               "energy_change_effective\n"); CHKERRXX(ierr);
+                                               "energy_change_effective "
+                                               "ptcl_x "
+                                               "ptcl_y "
+                                               "ptcl_t\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
   }
 
@@ -1107,11 +1437,15 @@ int main (int argc, char* argv[])
   Vec     phi_ptcl;
   double *phi_ptcl_ptr;
 
+  Vec     shape_grad;
+  double *shape_grad_ptr;
+
   ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &mu_p);                CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &phi_free);            CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &phi_wall);            CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &phi_ptcl);            CHKERRXX(ierr);
+  ierr = VecDuplicate(mu_m, &shape_grad);          CHKERRXX(ierr);
 
   // ------------------------------------------------------------------------------------------------------------------
   // initialize fields
@@ -1122,6 +1456,8 @@ int main (int argc, char* argv[])
   sample_cf_on_nodes(p4est, nodes, phi_free_cf, phi_free);
   sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
   sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
+
+  ierr = VecSetGhost(shape_grad, 0); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
   if (geometry_free() != 0) ls.reinitialize_1st_order(phi_free, 20);
@@ -1287,10 +1623,11 @@ int main (int argc, char* argv[])
         interp.add_point(n, xyz);
       }
 
-      interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_m,     NULL, interpolation_between_grids);
-      interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_p,     mu_m, interpolation_between_grids);
-      interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_wall, mu_m, interpolation_between_grids);
-      interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_free, mu_m, interpolation_between_grids);
+      interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_m,       NULL, interpolation_between_grids);
+      interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_p,       mu_m, interpolation_between_grids);
+      interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_wall,   mu_m, interpolation_between_grids);
+      interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_free,   mu_m, interpolation_between_grids);
+      interpolate_between_grids(interp, p4est_np1, nodes_np1, shape_grad, mu_m, interpolation_between_grids);
 
       ierr = VecDestroy(phi_ptcl); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_free, &phi_ptcl); CHKERRXX(ierr);
@@ -1476,93 +1813,125 @@ int main (int argc, char* argv[])
     // ------------------------------------------------------------------------------------------------------------------
     // get density field and non-curvature shape gradient
     // ------------------------------------------------------------------------------------------------------------------
-    double rho_avg = 1;
+    double rho_avg = rho_old;
     double energy  = 0;
 
     bool adaptive = false;
 
-    if (use_scft())
+//    if (iteration == 0 || iteration > num_pre_iterations.val)
+    if (iteration % (num_pre_iterations.val+1) == 0)
     {
-      my_p4est_scft_t scft(ngbd, ns());
+      if (use_scft())
+      {
+        my_p4est_scft_t scft(ngbd, ns());
 
-      // set geometry
-      scft.add_boundary(phi_free, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
-      scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
-      scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf);
+        // set geometry
+        scft.add_boundary(phi_free, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
+        scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
+        if (iteration != 0 || num_pre_iterations.val == 0) scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf);
 
-      scft.set_scaling(scaling);
-      scft.set_polymer(f(), XN());
-      scft.set_rho_avg(rho_old);
+        scft.set_scaling(scaling);
+        scft.set_polymer(f(), XN());
+        scft.set_rho_avg(rho_avg);
 
-      // initialize potentials
-      Vec mu_m_tmp = scft.get_mu_m();
-      Vec mu_p_tmp = scft.get_mu_p();
+        // initialize potentials
+        Vec mu_m_tmp = scft.get_mu_m();
+        Vec mu_p_tmp = scft.get_mu_p();
 
-      ierr = VecCopyGhost(mu_m, mu_m_tmp); CHKERRXX(ierr);
-      ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+        Vec rho_a_tmp = scft.get_rho_a();
+        Vec rho_b_tmp = scft.get_rho_b();
 
-      // initialize diffusion solvers for propagators
-      scft.initialize_solvers();
-      scft.initialize_bc_smart(iteration != 0);
+        ierr = VecCopyGhost(mu_m, mu_m_tmp); CHKERRXX(ierr);
+        //      ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
+        ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
 
-      // main loop for solving SCFT equations
-      int    scft_iteration = 0;
-      double scft_error     = 2.*scft_tol()+1.;
-      while (scft_iteration < max_scft_iterations() && scft_error > scft_tol()) {
-        for (int i = num_scft_subiterations();i--;) {
-          scft.initialize_bc_smart(adaptive); adaptive = true;
-          scft.solve_for_propogators();
-          scft.calculate_densities();
+        ierr = VecCopyGhost(mu_m, rho_a_tmp); CHKERRXX(ierr);
+        ierr = VecCopyGhost(mu_m, rho_b_tmp); CHKERRXX(ierr);
+
+        ierr = VecScaleGhost(rho_a_tmp,  1./XN()); CHKERRXX(ierr);
+        ierr = VecScaleGhost(rho_b_tmp, -1./XN()); CHKERRXX(ierr);
+
+        ierr = VecShiftGhost(rho_a_tmp, .5*rho_avg); CHKERRXX(ierr);
+        ierr = VecShiftGhost(rho_b_tmp, .5*rho_avg); CHKERRXX(ierr);
+
+        // initialize diffusion solvers for propagators
+        scft.initialize_solvers();
+        //      scft.initialize_bc_smart(iteration != 0);
+        if (!smart_bc.val) {
+          scft.initialize_bc_simple();
+//          scft.initialize_bc_smart(false, 0);
+        }
+
+        // main loop for solving SCFT equations
+        int    scft_iteration = 0;
+        double scft_error     = 2.*scft_tol()+1.;
+        while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol())) {
+          //      while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol()) || (iteration == 0 && scft_iteration < 200)) {
+          for (int i = 0; i < num_scft_subiterations(); i++) {
+//            scft.save_VTK(scft_iteration*num_scft_subiterations()+i);
+            //          scft.initialize_bc_smart(adaptive); adaptive = true;
+            if (smart_bc.val) {
+              scft.initialize_bc_smart(true);
+            }
+
+            scft.solve_for_propogators();
+            scft.calculate_densities();
+            ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+                               scft_iteration,
+                               scft.get_energy(),
+                               scft.get_pressure_force(),
+                               scft.get_exchange_force()); CHKERRXX(ierr);
+          }
+
+          if (scft_iteration == 100) {
+            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+          }
+
+          // do an SCFT step
+          scft.update_potentials();
+          if (scft_iteration % 100 == 0) {
+            scft.sync_and_extend();
+            scft.save_VTK(scft_iteration);
+          }
+
           ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
                              scft_iteration,
                              scft.get_energy(),
                              scft.get_pressure_force(),
                              scft.get_exchange_force()); CHKERRXX(ierr);
+
+          scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
+          scft_iteration++;
         }
 
-        // do an SCFT step
-        scft.update_potentials();
-        scft.save_VTK(scft_iteration);
+        energy  = scft.get_energy();
+        rho_avg = scft.get_rho_avg();
+        rho_old = rho_avg;
 
-        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
-                           scft_iteration,
-                           scft.get_energy(),
-                           scft.get_pressure_force(),
-                           scft.get_exchange_force()); CHKERRXX(ierr);
+        scft.sync_and_extend();
+        scft.compute_energy_shape_derivative(0, shape_grad);
 
-        scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
-        scft_iteration++;
+        ierr = VecCopyGhost(mu_m_tmp, mu_m); CHKERRXX(ierr);
+        ierr = VecCopyGhost(mu_p_tmp, mu_p); CHKERRXX(ierr);
       }
-
-      energy  = scft.get_energy();
-      rho_avg = scft.get_rho_avg();
-      rho_old = rho_avg;
-
-      scft.sync_and_extend();
-      if (geometry_free() != 0) {
-        scft.compute_energy_shape_derivative(0, shape_grad_free);
-        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, mu_m, 50, phi_wall);
-      } else {
-        ierr = VecSetGhost(shape_grad_free, 0); CHKERRXX(ierr);
+      else
+      {
+        sample_cf_on_nodes(p4est, nodes, mu_cf, mu_m);
+        ierr = VecSetGhost(mu_p, 0); CHKERRXX(ierr);
+        ierr = VecSetGhost(shape_grad, 0);      CHKERRXX(ierr);
       }
-
-      if (geometry_ptcl() != 0) {
-        scft.compute_energy_shape_derivative(2, shape_grad_ptcl);
-        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_ptcl, shape_grad_ptcl, mu_m, 50, phi_wall);
-      } else {
-        ierr = VecSetGhost(shape_grad_ptcl, 0); CHKERRXX(ierr);
-      }
-
-      ierr = VecScaleGhost(shape_grad_free, -1); CHKERRXX(ierr);
-
-      ierr = VecCopyGhost(mu_m_tmp, mu_m); CHKERRXX(ierr);
-      ierr = VecCopyGhost(mu_p_tmp, mu_p); CHKERRXX(ierr);
     }
-    else
-    {
-      sample_cf_on_nodes(p4est, nodes, mu_cf, mu_m);
-      ierr = VecSetGhost(mu_p, 0); CHKERRXX(ierr);
+
+    if (geometry_free() != 0) {
+      ls.extend_from_interface_to_whole_domain_TVD(phi_free, shape_grad, shape_grad_free, 50, phi_wall);
+    } else {
       ierr = VecSetGhost(shape_grad_free, 0); CHKERRXX(ierr);
+    }
+    ierr = VecScaleGhost(shape_grad_free, -1); CHKERRXX(ierr);
+
+    if (geometry_ptcl() != 0) {
+      ls.extend_from_interface_to_whole_domain_TVD(phi_ptcl, shape_grad, shape_grad_ptcl, 50, phi_wall);
+    } else {
       ierr = VecSetGhost(shape_grad_ptcl, 0); CHKERRXX(ierr);
     }
 
@@ -1719,9 +2088,9 @@ int main (int argc, char* argv[])
         double s_min = MIN(DIM(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m)));
 
         dt_free = MIN(dt_free, cfl()*fabs(s_min/velo_free_ptr[n]));
-        dt_free = MIN(dt_free, cfl()*fabs(s_min/velo_free_full_ptr[n]));
+//        dt_free = MIN(dt_free, cfl()*fabs(s_min/velo_free_full_ptr[n]));
         vmax = MAX(vmax, fabs(velo_free_ptr[n]));
-        vmax = MAX(vmax, fabs(velo_free_full_ptr[n]));
+//        vmax = MAX(vmax, fabs(velo_free_full_ptr[n]));
       }
 
       ierr = VecRestoreArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
@@ -2452,8 +2821,6 @@ int main (int argc, char* argv[])
           dt_ptcl_v[j] = delta_tv;
           dt_ptcl_w[j] = delta_tw;
         }
-        dt_ptcl_v[j] = MIN(dt_ptcl_v[j], dt_max_velo());
-        dt_ptcl_w[j] = MIN(dt_ptcl_w[j], dt_max_rot());
       }
       v_old = v;
       w_old = w;
@@ -2864,10 +3231,32 @@ int main (int argc, char* argv[])
     // ------------------------------------------------------------------------------------------------------------------
     ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
 
+    double ptcl_x_avg = 0;
+    double ptcl_y_avg = 0;
+    double ptcl_t_avg = 0;
+    for (int j = 0; j < np; ++j) {
+      ptcl_x_avg += particles[j].xyz[0];
+      ptcl_y_avg += particles[j].xyz[1];
+      ptcl_t_avg += particles[j].rot;
+    }
+
+    if (np > 0) {
+      ptcl_x_avg /= np;
+      ptcl_y_avg /= np;
+      ptcl_t_avg /= np;
+    }
+
     if (save_data())
     {
       ierr = PetscFOpen  (mpi.comm(), file_conv_name, "a", &file_conv); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e\n", (int) round(iteration), energy, energy_change_predicted, energy-energy_old); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e %e %e %e\n",
+                          (int) round(iteration),
+                          energy,
+                          energy_change_predicted,
+                          energy-energy_old,
+                          ptcl_x_avg,
+                          ptcl_y_avg,
+                          ptcl_t_avg); CHKERRXX(ierr);
       ierr = PetscFClose (mpi.comm(), file_conv); CHKERRXX(ierr);
     }
 
@@ -2881,6 +3270,7 @@ int main (int argc, char* argv[])
 
       double correction_total = 0;
 
+//      std::cout << dt_free;
       int splits = 1;
       for (int i = 0; i < splits; ++i)
       {
@@ -2954,6 +3344,7 @@ int main (int argc, char* argv[])
     energy_old = energy;
   }
 
+  ierr = VecDestroy(shape_grad); CHKERRXX(ierr);
   ierr = VecDestroy(phi_free); CHKERRXX(ierr);
   ierr = VecDestroy(phi_wall); CHKERRXX(ierr);
   ierr = VecDestroy(phi_ptcl); CHKERRXX(ierr);

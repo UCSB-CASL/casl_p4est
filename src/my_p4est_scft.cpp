@@ -71,7 +71,6 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   integration_order   = 2;
   cube_refinement     = 1;
   time_discretization = 1;
-  bc_scheme           = 0;
 
   /* auxiliary variables */
   num_surfaces = 0;
@@ -206,6 +205,7 @@ void my_p4est_scft_t::initialize_solvers()
   solver_a.set_use_taylor_correction(true);
   solver_a.set_kink_treatment(true);
   solver_a.set_use_sc_scheme(true);
+  solver_a.set_use_sc_scheme(0);
   solver_a.set_store_finite_volumes(true);
   solver_a.set_cube_refinement(1);
   solver_a.set_integration_order(2);
@@ -222,6 +222,7 @@ void my_p4est_scft_t::initialize_solvers()
   solver_b.set_use_taylor_correction(true);
   solver_b.set_kink_treatment(true);
   solver_b.set_use_sc_scheme(true);
+  solver_b.set_use_sc_scheme(0);
   solver_b.set_store_finite_volumes(true);
   solver_b.set_cube_refinement(1);
   solver_b.set_integration_order(2);
@@ -282,7 +283,7 @@ void my_p4est_scft_t::initialize_bc_simple()
   }
 }
 
-void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
+void my_p4est_scft_t::initialize_bc_smart(bool adaptive, int bc_scheme)
 {
   switch (bc_scheme) {
     case 0:
@@ -421,8 +422,8 @@ void my_p4est_scft_t::solve_for_propogators()
   {
     if (mask_ptr[n] < 0.)
     {
-      exp_w_a_ptr[n] = 1./ds_a + (mu_p_ptr[n]-mu_m_ptr[n]);
-      exp_w_b_ptr[n] = 1./ds_b + (mu_p_ptr[n]+mu_m_ptr[n]);
+      exp_w_a_ptr[n] = 1./ds_a + (mu_p_ptr[n]-mu_m_ptr[n] + energy_singular_part/volume);
+      exp_w_b_ptr[n] = 1./ds_b + (mu_p_ptr[n]+mu_m_ptr[n] + energy_singular_part/volume);
     } else {
       exp_w_a_ptr[n] = 0;
       exp_w_b_ptr[n] = 0;
@@ -616,7 +617,7 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
     ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
     mu_p_avg = integrate_over_domain_fast(mu_p)/volume;
     ierr = VecShiftGhost(mu_p, -mu_p_avg); CHKERRXX(ierr);
-    ierr = VecShiftGhost(mu_p, energy_singular_part/volume*pow(scaling, P4EST_DIM)); CHKERRXX(ierr);
+//    ierr = VecShiftGhost(mu_p, energy_singular_part/volume*pow(scaling, P4EST_DIM)); CHKERRXX(ierr);
 //    ierr = VecShiftGhost(mu_p, energy_singular_part/volume); CHKERRXX(ierr);
   }
 

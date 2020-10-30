@@ -119,7 +119,7 @@ param_t<int>  save_parameters (pl, 1, "save_parameters", "");
 param_t<int>  save_every_dn   (pl, 1, "save_every_dn", "");
 
 // problem setting
-param_t<int> num_target  (pl, 1, "num_target", "Target design: "
+param_t<int> num_target  (pl, 17, "num_target", "Target design: "
                                                    "0 - no target (for testing), "
                                                    "1 - one circle, "
                                                    "2 - two circles, "
@@ -139,7 +139,7 @@ param_t<int> design_check_iterations (pl, 200, "design_check_iterations", "");
 
 // geometry parameters
 param_t<double> r0               (pl, 1, "r0", "Radius of target wells");
-param_t<double> guess_margin     (pl, 2.5, "guess_margin", "");
+param_t<double> guess_margin     (pl, 1.0, "guess_margin", "");
 param_t<double> target_smoothing (pl, sqrt(XN.val), "target_smoothing", "");
 param_t<double> mask_smoothing   (pl, 0.2, "mask_smoothing", "");
 
@@ -149,7 +149,7 @@ param_t<double> XN_wall_del (pl, 0.0, "XN.val_wall_del", "Polymer-air surface en
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
 
-param_t<double> dist  (pl, 3.3, "dist", "Characteristic distance between wells");
+param_t<double> dist  (pl, 3.5, "dist", "Characteristic distance between wells");
 param_t<double> angle (pl, 120, "angle", "Characteristic distance between wells");
 
 /* target morphology */
@@ -355,6 +355,127 @@ public:
         xc[3] =  0.*dist.val; yc[3] =  1.*dist.val; rc[3] = r0.val;
         xc[4] =  1.*dist.val; yc[4] =  1.*dist.val; rc[4] = r0.val;
         xc[5] =  2.*dist.val; yc[5] =  1.*dist.val; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 13: // U
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 8;
+        double xc[num], yc[num], rc[num];
+        xc[0] = -(.5+dx)*dist.val; yc[0] =  (1.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (.5+dx)*dist.val; yc[1] =  (1.   )*dist.val; rc[1] = r0.val;
+        xc[2] = -(.5+dx)*dist.val; yc[2] =  (0.   )*dist.val; rc[2] = r0.val;
+        xc[3] =  (.5+dx)*dist.val; yc[3] =  (0.   )*dist.val; rc[3] = r0.val;
+        xc[4] = -(.5+dx)*dist.val; yc[4] = -(1.   )*dist.val; rc[4] = r0.val;
+        xc[5] =  (.5+dx)*dist.val; yc[5] = -(1.   )*dist.val; rc[5] = r0.val;
+        xc[6] = -(.5   )*dist.val; yc[6] = -(1.+dx)*dist.val; rc[6] = r0.val;
+        xc[7] =  (.5   )*dist.val; yc[7] = -(1.+dx)*dist.val; rc[7] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 14: // C
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (.5+dx)*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] = -(.5+dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (1.   )*dist.val; yc[2] =  (.5+dx)*dist.val; rc[2] = r0.val;
+        xc[3] =  (1.   )*dist.val; yc[3] = -(.5+dx)*dist.val; rc[3] = r0.val;
+        xc[4] = -(0.+dx)*dist.val; yc[4] =  (.5   )*dist.val; rc[4] = r0.val;
+        xc[5] = -(0.+dx)*dist.val; yc[5] = -(.5   )*dist.val; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 15: // S
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 7;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (0.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] =  (2.*dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (0.   )*dist.val; yc[2] = -(2.*dx)*dist.val; rc[2] = r0.val;
+        xc[3] =  (1.*dx)*dist.val; yc[3] = -(1.*dx)*dist.val; rc[3] = r0.val;
+        xc[4] = -(1.*dx)*dist.val; yc[4] =  (1.*dx)*dist.val; rc[4] = r0.val;
+        xc[5] =  (1.   )*dist.val; yc[5] =  (2.*dx)*dist.val; rc[5] = r0.val;
+        xc[6] = -(1.   )*dist.val; yc[6] = -(2.*dx)*dist.val; rc[6] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 16: // B
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 9;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (0.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] =  (2.*dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (0.   )*dist.val; yc[2] = -(2.*dx)*dist.val; rc[2] = r0.val;
+        xc[3] = -(1.   )*dist.val; yc[3] =  (2.*dx)/3.*dist.val; rc[3] = r0.val;
+        xc[8] = -(1.   )*dist.val; yc[8] = -(2.*dx)/3.*dist.val; rc[8] = r0.val;
+        xc[4] = -(1.   )*dist.val; yc[4] =  (2.*dx)*dist.val; rc[4] = r0.val;
+        xc[5] = -(1.   )*dist.val; yc[5] = -(2.*dx)*dist.val; rc[5] = r0.val;
+        xc[6] =  (0.+dx)*dist.val; yc[6] =  (0.+dx)*dist.val; rc[6] = r0.val;
+        xc[7] =  (0.+dx)*dist.val; yc[7] = -(0.+dx)*dist.val; rc[7] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 17: // A
+      {
+        int num = 9;
+        double xc[num], yc[num], rc[num];
+        xc[0] = 0.0 *dist.val; yc[0] = 0.0 *dist.val; rc[0] = r0.val;
+        xc[1] = 0.0 *dist.val; yc[1] = 2.0 *dist.val; rc[1] = r0.val;
+        xc[2] = 1.0 *dist.val; yc[2] =-1.0 *dist.val; rc[2] = r0.val;
+        xc[3] = 1.0 *dist.val; yc[3] = 0.0 *dist.val; rc[3] = r0.val;
+        xc[4] = 1.0 *dist.val; yc[4] = 1.0 *dist.val; rc[4] = r0.val;
+        xc[5] = 1.0 *dist.val; yc[5] = 2.0 *dist.val; rc[5] = r0.val;
+        xc[6] =-0.5 *dist.val; yc[6] = 1.0 *dist.val; rc[6] = r0.val;
+        xc[7] =-1.0 *dist.val; yc[7] = 0.0 *dist.val; rc[7] = r0.val;
+        xc[8] =-1.5 *dist.val; yc[8] =-1.0 *dist.val; rc[8] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 18: // L
+      {
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  -1. *dist.val; yc[0] =  2. *dist.val; rc[0] = r0.val;
+        xc[1] =  -1. *dist.val; yc[1] =  1. *dist.val; rc[1] = r0.val;
+        xc[2] =  -1. *dist.val; yc[2] =  0. *dist.val; rc[2] = r0.val;
+        xc[3] =  -1. *dist.val; yc[3] = -1. *dist.val; rc[3] = r0.val;
+        xc[4] =   0. *dist.val; yc[4] = -1. *dist.val; rc[4] = r0.val;
+        xc[5] =   1. *dist.val; yc[5] = -1. *dist.val; rc[5] = r0.val;
 
         double result = 100;
         for (int i = 0; i < num; ++i) {

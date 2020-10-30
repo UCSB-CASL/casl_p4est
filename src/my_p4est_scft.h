@@ -113,7 +113,6 @@ class my_p4est_scft_t
   int time_discretization;
   int integration_order;
   int cube_refinement;
-  int bc_scheme; // 0 - using rho's, using mu_m (assumes scft covergence)
 
   std::vector<Vec*> normal;
   std::vector<Vec>  kappa;
@@ -132,7 +131,7 @@ public:
 
   void initialize_solvers();
   void initialize_bc_simple(); // a naive method that produces singularities in the pressure field
-  void initialize_bc_smart(bool adaptive = true);  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
+  void initialize_bc_smart(bool adaptive = true, int bc_scheme=0);  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
 
   void   diffusion_step(my_p4est_poisson_nodes_mls_t &solver, double ds, Vec &sol, Vec &sol_nm1);
   void   solve_for_propogators();

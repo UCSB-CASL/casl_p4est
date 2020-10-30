@@ -121,6 +121,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   atol_   = 1.0e-16;
   rtol_   = 1.0e-16;
   dtol_   = PETSC_DEFAULT;
+//  dtol_   = 1.0e14;
   itmax_  = 100;
 
   // Tolerances for solving nonlinear equations
@@ -518,7 +519,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.1"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.25"); CHKERRXX(ierr);
 //    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.93"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
@@ -532,8 +533,8 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
-//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.5"); CHKERRXX(ierr);
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0."); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.5"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0."); CHKERRXX(ierr);
 
     // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
     if (nullspace_main_ && nullspace_diag_ && nullspace_robin_){
