@@ -546,20 +546,16 @@ double my_p4est_poisson_jump_cells_xgfm_t::set_solver_state_minimizing_L2_norm_o
   ierr = VecGetArray(residual, &residual_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(former_solution, &former_solution_p); CHKERRXX(ierr);
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
-  const p4est_nodes_t* interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
   double max_correction = 0.0;
-  for (size_t idx = 0; idx < MAX(p4est->local_num_quadrants + ghost->ghosts.elem_count, interface_capturing_nodes->indep_nodes.elem_count); ++idx) {
+  for (size_t idx = 0; idx < p4est->local_num_quadrants + ghost->ghosts.elem_count; ++idx) {
     if(idx < (size_t) p4est->local_num_quadrants) // cell-sampled field without ghosts
     {
       max_correction    = MAX(max_correction, fabs(step_size*(solution_p[idx] - former_solution_p[idx])));
       residual_p[idx]   = (1.0 - step_size)*former_residual_p[idx] + step_size*residual_p[idx];
       rhs_p[idx]        = (1.0 - step_size)*former_rhs_p[idx] + step_size*rhs_p[idx];
     }
-    if(idx < p4est->local_num_quadrants + ghost->ghosts.elem_count)
-    {
-      solution_p[idx]   = (1.0 - step_size)*former_solution_p[idx] + step_size*solution_p[idx];
-      extension_p[idx]  = (1.0 - step_size)*former_extension_p[idx] + step_size*extension_p[idx];
-    }
+    solution_p[idx]   = (1.0 - step_size)*former_solution_p[idx] + step_size*solution_p[idx];
+    extension_p[idx]  = (1.0 - step_size)*former_extension_p[idx] + step_size*extension_p[idx];
   }
   ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(former_solution, &former_solution_p); CHKERRXX(ierr);

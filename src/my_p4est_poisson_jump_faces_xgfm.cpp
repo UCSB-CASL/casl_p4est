@@ -651,31 +651,34 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
   }
   else
   {
-    throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution() : not implemented yet!");
-//    // We will need to memorize former solver's states for the xgfm iterative procedure
-//    Vec former_rhs, former_solution, former_extension, former_residual;
-//    former_rhs = former_solution = former_extension = former_residual = NULL; // the procedure will adequately determine/create them
+    // We will need to memorize former solver's states for the xgfm iterative procedure
+    Vec former_rhs[P4EST_DIM], former_solution[P4EST_DIM], former_extension[P4EST_DIM], former_extrapolation_minus[P4EST_DIM], former_extrapolation_plus[P4EST_DIM], former_residual[P4EST_DIM];
+    double max_correction[P4EST_DIM];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      former_rhs[dim] = former_solution[dim] = former_extension[dim] = former_extrapolation_minus[dim] = former_extrapolation_plus[dim] = former_residual[dim] = NULL; // the procedure will adequately determine/create them
 
-//    while(update_solution(former_solution))
-//    {
-//      // fix-point update
-//      update_extension_of_interface_values(former_extension);
-//      update_rhs_and_residual(former_rhs, former_residual);
-//      // linear combination of the last two solver's states to minimize minimize L2 residual:
-//      const double max_correction = set_solver_state_minimizing_L2_norm_of_residual(former_solution, former_extension, former_rhs, former_residual);
-//      solver_monitor.log_iteration(max_correction, this);
-//      // check if good enough, yet
-//      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual))
-//        break;
-//    }
-//    if(former_solution != NULL){
-//      ierr = VecDestroy(former_solution); CHKERRXX(ierr); }
-//    if(former_extension != NULL){
-//      ierr = VecDestroy(former_extension); CHKERRXX(ierr); }
-//    if(former_rhs != NULL){
-//      ierr = VecDestroy(former_rhs); CHKERRXX(ierr); }
-//    if(former_residual != NULL){
-//      ierr = VecDestroy(former_residual); CHKERRXX(ierr); }
+    while(update_solution(former_solution))
+    {
+      // fix-point update
+      update_extensions_and_extrapolations(former_extension, former_extrapolation_minus, former_extrapolation_plus);
+      update_rhs_and_residual(former_rhs, former_residual);
+      // linear combination of the last two solver's states to minimize minimize L2 residual:
+      set_solver_state_minimizing_L2_norm_of_residual(former_solution, former_extension, former_extrapolation_minus, former_extrapolation_plus,
+                                                      former_rhs, former_residual, max_correction);
+      solver_monitor.log_iteration(max_correction, this);
+      // check if good enough, yet
+      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual))
+        break;
+    }
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = delete_and_nullify_vector(former_rhs[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(former_solution[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(former_extension[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(former_extrapolation_minus[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(former_extrapolation_plus[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(former_residual[dim]); CHKERRXX(ierr);
+    }
   }
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -684,6 +687,33 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
+}
+
+bool my_p4est_poisson_jump_faces_xgfm_t::update_solution(Vec former_solution[P4EST_DIM])
+{
+  PetscErrorCode ierr;
+
+  // save current solution needed by xgfm iterative procedure
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim){
+    std::swap(former_solution[dim], solution[dim]); // save former solution
+    if(solution[dim] == NULL){
+      ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr); }
+    if(former_solution[dim] != NULL || (user_initial_guess != NULL && user_initial_guess[dim] != NULL)){
+      ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_TRUE); CHKERRXX(ierr);
+      if(former_solution[dim] != NULL){ // former solution has precedence as initial guess, if defined
+        ierr = VecCopyGhost(former_solution[dim], solution[dim]); CHKERRXX(ierr); }
+      else{ // copy the given initial guess
+        ierr = VecCopyGhost(user_initial_guess[dim], solution[dim]); CHKERRXX(ierr); }
+    }
+  }
+  solve_linear_systems();
+
+  PetscInt nksp_iteration[P4EST_DIM];
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = KSPGetIterationNumber(ksp[dim], &nksp_iteration[dim]); CHKERRXX(ierr);
+  }
+
+  return SUMD(nksp_iteration[0], nksp_iteration[1], nksp_iteration[2]) != 0; // if the ksp solver did at least one iteration, there was an update
 }
 
 void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Vec former_extension[P4EST_DIM], Vec former_extrapolation_minus[P4EST_DIM], Vec former_extrapolation_plus[P4EST_DIM],
@@ -887,7 +917,155 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
   return;
 }
 
+void my_p4est_poisson_jump_faces_xgfm_t::update_rhs_and_residual(Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM])
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
+  P4EST_ASSERT(solution != NULL && rhs != NULL);
 
+  // update the rhs in the faces that are affected by the new jumps in flux components (because of new extension and extrapolations)
+  // save the current rhs first
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    std::swap(former_rhs[dim], rhs[dim]);
+    // create a new vector if needed
+    if(rhs[dim] == NULL){
+      ierr = VecCreateNoGhostFaces(p4est, faces, &rhs[dim], dim); CHKERRXX(ierr);
+      ierr = VecCopy(former_rhs[dim], rhs[dim]); CHKERRXX(ierr);
+    }
+    rhs_is_set[dim] = false; // lower this flag in order to update the rhs terms appropriately
+  }
+
+  std::set<p4est_locidx_t> already_done[P4EST_DIM];
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    already_done[dim].clear();
+    for (map_of_vector_field_component_xgfm_jumps_t::const_iterator it = xgfm_jump_between_faces[dim].begin();
+         it != xgfm_jump_between_faces[dim].end(); ++it)
+    {
+      if(it->first.local_dof_idx < faces->num_local[dim] && already_done[dim].find(it->first.local_dof_idx) == already_done[dim].end())
+      {
+        build_discretization_for_face(dim, it->first.local_dof_idx);
+        already_done[dim].insert(it->first.local_dof_idx);
+      }
+      if(it->first.neighbor_dof_idx < faces->num_local[dim] && already_done[dim].find(it->first.neighbor_dof_idx) == already_done[dim].end())
+      {
+        build_discretization_for_face(dim, it->first.neighbor_dof_idx);
+        already_done[dim].insert(it->first.neighbor_dof_idx);
+      }
+    }
+    rhs_is_set[dim] = true; // rise the flag up again since you're done
+  }
+
+
+  // save the current residuals
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    std::swap(former_residual[dim], residual[dim]);
+    // create a new vector if needed:
+    if(residual[dim] == NULL){
+      ierr = VecCreateNoGhostFaces(p4est, faces, &residual[dim], dim); CHKERRXX(ierr); }
+    // calculate the fix-point residual
+    if(scale_systems_by_diagonals)
+      pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], multiply_by_sqrt_D, rhs[dim], divide_by_sqrt_D);
+
+    ierr = VecAXPBY(residual[dim], -1.0, 0.0, rhs[dim]); CHKERRXX(ierr);
+    ierr = MatMultAdd(matrix[dim], solution[dim], residual[dim], residual[dim]); CHKERRXX(ierr);
+    if(scale_systems_by_diagonals)
+      pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], divide_by_sqrt_D, rhs[dim], multiply_by_sqrt_D);
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
+  return;
+}
+
+void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution[P4EST_DIM],
+                                                                                         Vec former_extension[P4EST_DIM], Vec former_extrapoltion_minus[P4EST_DIM], Vec former_extrapoltion_plus[P4EST_DIM],
+                                                                                         Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM],
+                                                                                         double max_correction[P4EST_DIM])
+{
+  P4EST_ASSERT(ANDD(solution[0] != NULL,      solution[1] != NULL,            solution[2] != NULL           )
+      && ANDD(extension[0] != NULL,           extension[1] != NULL,           extension[2] != NULL          )
+      && ANDD(extrapolation_minus[0] != NULL, extrapolation_minus[1] != NULL, extrapolation_minus[2] != NULL)
+      && ANDD(extrapolation_plus[0] != NULL,  extrapolation_plus[1] != NULL,  extrapolation_plus[2] != NULL )
+      && ANDD(rhs[0] != NULL,                 rhs[1] != NULL,                 rhs[2] != NULL                )
+      && ANDD(residual[0] != NULL,            residual[1] != NULL,            residual[2] != NULL           ));
+
+  if(ANDD(former_residual[0] == NULL, former_residual[1] == NULL, former_residual[2] == NULL))
+  {
+    P4EST_ASSERT(ANDD(former_solution[0] == NULL,     former_solution[1] == NULL,           former_solution[2] == NULL)
+        && ANDD(former_extension[0] == NULL,          former_extension[1] == NULL,          former_extension[2] == NULL)
+        && ANDD(former_extrapoltion_minus[0] == NULL, former_extrapoltion_minus[1] == NULL, former_extrapoltion_minus[2] == NULL)
+        && ANDD(former_extrapoltion_plus[0] == NULL,  former_extrapoltion_plus[1] == NULL,  former_extrapoltion_plus[2] == NULL)); // otherwise, something went wrong...
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      max_correction[dim] = 0.0;
+
+    return; // if the former residual is not known (0th step), we can't do anything and we need to leave the solver's state as is (0.0 returned because no actual "correction")
+  }
+
+  PetscErrorCode ierr;
+
+  PetscReal former_residual_dot_residual, L2_norm_residual;
+  former_residual_dot_residual = L2_norm_residual = 0.0;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    PetscReal tmp;
+    ierr = VecDot(former_residual[dim], residual[dim], &tmp); CHKERRXX(ierr);
+    former_residual_dot_residual += tmp;
+    ierr = VecNorm(residual[dim], NORM_2, &tmp); CHKERRXX(ierr);
+    L2_norm_residual += SQR(tmp);
+  }
+  L2_norm_residual = sqrt(L2_norm_residual);
+  const double step_size = (SQR(solver_monitor.latest_L2_norm_of_residual()) - former_residual_dot_residual)/(SQR(solver_monitor.latest_L2_norm_of_residual()) - 2.0*former_residual_dot_residual + SQR(L2_norm_residual));
+
+  // doing the state update of relevant internal variable all at once and knowingly avoiding separate Petsc operations that would multiply the number of such loops
+  const double *former_rhs_p[P4EST_DIM], *former_extension_p[P4EST_DIM], *former_extrapolation_minus_p[P4EST_DIM], *former_extrapolation_plus_p[P4EST_DIM], *former_solution_p[P4EST_DIM], *former_residual_p[P4EST_DIM];
+  double *rhs_p[P4EST_DIM], *extension_p[P4EST_DIM], *extrapolation_minus_p[P4EST_DIM], *extrapolation_plus_p[P4EST_DIM], *solution_p[P4EST_DIM], *residual_p[P4EST_DIM];
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArrayRead(former_rhs[dim], &former_rhs_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs[dim], &rhs_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_extension[dim], &former_extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_extrapoltion_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_extrapoltion_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_solution[dim], &former_solution_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_residual[dim], &former_residual_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(residual[dim], &residual_p[dim]); CHKERRXX(ierr);
+  }
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    max_correction[dim] = 0.0;
+    for (p4est_locidx_t idx = 0; idx < faces->num_local[dim] + faces->num_ghost[dim]; ++idx) {
+      if(idx < faces->num_local[dim]) // face-sampled field without ghosts
+      {
+        max_correction[dim]   = MAX(max_correction[dim], fabs(step_size*(solution_p[dim][idx] - former_solution_p[dim][idx])));
+        residual_p[dim][idx]  = (1.0 - step_size)*former_residual_p[dim][idx] + step_size*residual_p[dim][idx];
+        rhs_p[dim][idx]       = (1.0 - step_size)*former_rhs_p[dim][idx] + step_size*rhs_p[dim][idx];
+      }
+
+      solution_p[dim][idx]    = (1.0 - step_size)*former_solution_p[dim][idx] + step_size*solution_p[dim][idx];
+      extension_p[dim][idx]   = (1.0 - step_size)*former_extension_p[dim][idx] + step_size*extension_p[dim][idx];
+      extrapolation_minus_p[dim][idx] = (1.0 - step_size)*former_extrapolation_minus_p[dim][idx] + step_size*extrapolation_minus_p[dim][idx];
+      extrapolation_plus_p[dim][idx]  = (1.0 - step_size)*former_extrapolation_plus_p[dim][idx] + step_size*extrapolation_plus_p[dim][idx];
+    }
+  }
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(former_rhs[dim], &former_rhs_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs[dim], &rhs_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_extension[dim], &former_extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_extrapoltion_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_extrapoltion_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_solution[dim], &former_solution_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_residual[dim], &former_residual_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(residual[dim], &residual_p[dim]); CHKERRXX(ierr);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, max_correction, P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+  return;
+}
 
 const my_p4est_poisson_jump_faces_xgfm_t::extension_increment_operator&
 my_p4est_poisson_jump_faces_xgfm_t::get_extension_increment_operator_for(const u_char& dim, const p4est_locidx_t& face_idx, const double& control_band)

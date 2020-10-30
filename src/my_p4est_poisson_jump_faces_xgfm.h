@@ -49,6 +49,83 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   bool set_for_testing_backbone;
   // - END validation data only -
 
+  class solver_monitor_t {
+    friend class my_p4est_poisson_jump_faces_xgfm_t;
+    typedef struct
+    {
+      PetscInt n_ksp_iterations;
+      PetscReal L2_norm_residual;
+      PetscReal L2_norm_rhs;
+      double max_correction[P4EST_DIM];
+    } solver_iteration_log;
+    std::vector<solver_iteration_log> logger;
+  public:
+    void clear() { logger.clear(); }
+    void log_iteration(const double max_correction[P4EST_DIM], const my_p4est_poisson_jump_faces_xgfm_t* solver)
+    {
+      PetscErrorCode ierr;
+      solver_iteration_log log_entry;
+      log_entry.n_ksp_iterations = 0;
+      log_entry.L2_norm_residual = 0.0;
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        PetscInt latest_nksp_dim;
+        PetscReal L2_norm_latest_residual_dim, L2_norm_latest_rhs;
+        ierr = KSPGetIterationNumber(solver->ksp[dim], &latest_nksp_dim); CHKERRXX(ierr);
+        if(solver->residual[dim] != NULL){
+          ierr = VecNorm(solver->residual[dim], NORM_2, &L2_norm_latest_residual_dim); CHKERRXX(ierr);
+          log_entry.L2_norm_residual += SQR(L2_norm_latest_residual_dim);
+        }
+        else
+          log_entry.L2_norm_residual = NAN; // can't be computed (should happen only when logging the only iteration in standard GFM use)
+        ierr = VecNorm(solver->rhs[dim], NORM_2, &L2_norm_latest_rhs); CHKERRXX(ierr);
+
+        log_entry.L2_norm_rhs += SQR(L2_norm_latest_rhs);
+
+        log_entry.n_ksp_iterations += latest_nksp_dim;
+        log_entry.max_correction[dim] = max_correction[dim];
+      }
+      if(!ISNAN(log_entry.L2_norm_residual))
+        log_entry.L2_norm_residual = sqrt(log_entry.L2_norm_residual);
+      log_entry.L2_norm_rhs = sqrt(log_entry.L2_norm_rhs);
+
+      logger.push_back(log_entry);
+    }
+    size_t nsteps() const { return logger.size(); }
+    size_t last_step() const { P4EST_ASSERT(nsteps() > 0); return nsteps() - 1; }
+    double relative_residual(const size_t& k) const { return logger[k].L2_norm_residual/logger[k].L2_norm_rhs; }
+    double latest_L2_norm_of_residual() const { return logger[last_step()].L2_norm_residual; }
+    double latest_relative_residual() const { return relative_residual(last_step()); }
+    size_t get_number_of_xGFM_corrections() const { return nsteps() - 1; }
+    std::vector<PetscInt> get_n_ksp_iterations() const {
+      std::vector<PetscInt> nksp_iter(nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        nksp_iter[k] = logger[k].n_ksp_iterations;
+      return nksp_iter;
+    }
+    std::vector<double> get_max_corrections() const
+    {
+      std::vector<double> max_corrections(P4EST_DIM*nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+          max_corrections[P4EST_DIM*k + dim] = logger[k].max_correction[dim];
+      return max_corrections;
+    }
+    std::vector<double> get_relative_residuals() const {
+      std::vector<double> relative_residuals(nsteps());
+      for (size_t k = 0; k < nsteps(); ++k)
+        relative_residuals[k] = relative_residual(k);
+      return relative_residuals;
+    }
+
+    bool reached_convergence_within_desired_bounds(const double& absolute_accuracy_threshold, const double& tolerance_on_rel_residual) const
+    {
+      const size_t last_step_idx = last_step();
+      return ANDD(logger[last_step_idx].max_correction[0] < absolute_accuracy_threshold, logger[last_step_idx].max_correction[1] < absolute_accuracy_threshold , logger[last_step_idx].max_correction[2] < absolute_accuracy_threshold) && // the latest max_correction must be below the desired absolute accuracy requirement AND
+          (relative_residual(last_step_idx) < tolerance_on_rel_residual || // either the latest relative residual is below the desired threshold as well OR
+          (last_step_idx != 0 && fabs(relative_residual(last_step_idx) - relative_residual(last_step_idx - 1)) < 1.0e-6*MAX(relative_residual(last_step_idx), relative_residual(last_step_idx - 1)))); // or we have done at least two solves and we have reached a fixed-point for which the relative residual is above the desired threshold but can't really be made any smaller, apparently
+    }
+  } solver_monitor;
+
   // Extension-related objects (extension operators are memorized)
   inline bool extend_negative_interface_values() const { return mu_minus >= mu_plus; }
   struct interface_extension_neighbor
@@ -161,19 +238,22 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
    * minimize the L2 norm of the residual. If no former state is actually known (i.e., if it is the very first pass through the
    * procedure, meaning that former_residual, former_solution and former_extension are all NULL), then the current state is left
    * unchanged.
-   * \param [in] former_solution  : solution as known by the solver before the fixpoint update
-   * \param [in] former_extension : extension of the relevant interface-defined values, as known by the solver before the fixpoint update
-   * \param [in] former_rhs       : discretized rhs, as known by the solver before the fixpoint update
-   * \param [in] former_residual  : (fixpoint) residual of the targeted jump problem, as known by the solver before the fixpoint update
-   * \return the maximum of the absolute value of the correction to "former_solution" defining the new solver's solution (if a
-   * former_solution was provided, 0.0 otherwise)
+   * \param [in]  former_solution   : solution as known by the solver before the fixpoint update
+   * \param [in]  former_extension  : extension of the relevant interface-defined values, as known by the solver before the fixpoint update
+   * \param [in]  former_extrapolation_minus : (linear) extrapolation of the solution from the negative domain, as known by the solver before the fixpoint update
+   * \param [in]  former_extrapolation_plus  : (linear) extrapolation of the solution from the positive domain, as known by the solver before the fixpoint update
+   * \param [in]  former_rhs        : discretized rhs, as known by the solver before the fixpoint update
+   * \param [in]  former_residual   : (fixpoint) residual of the targeted jump problem, as known by the solver before the fixpoint update
+   * \param [out] max_correction    : maximum absolute values of the corrections to "former_solution" (by component) defining the new solver's
+   *                                  solution (if a former_solution was provided, 0.0 otherwise)
    */
-  double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution[P4EST_DIM], Vec former_extension[P4EST_DIM], Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM]);
+  void set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution[P4EST_DIM],
+                                                       Vec former_extension[P4EST_DIM], Vec former_extrapoltion_minus[P4EST_DIM], Vec former_extrapoltion_plus[P4EST_DIM],
+                                                       Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM],
+                                                       double max_correction[P4EST_DIM]);
 
   void initialize_extensions_and_extrapolations(Vec extension[P4EST_DIM], Vec extrapolation_minus[P4EST_DIM], Vec extrapolation_plus[P4EST_DIM],
                                                 Vec normal_derivative_minus[P4EST_DIM], Vec normal_derivative_plus[P4EST_DIM]);
-  void initialize_extensions_and_extrapolations_local(const u_char& dir, const p4est_locidx_t& face_idx,
-                                                      const double* solution_p[P4EST_DIM], double* extension_p[P4EST_DIM]) const;
 
   void build_discretization_for_face(const u_char& dir, const p4est_locidx_t& face_idx, int *nullspace_contains_constant_vector = NULL);
 
