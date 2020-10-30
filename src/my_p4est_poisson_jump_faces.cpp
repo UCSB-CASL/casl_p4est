@@ -43,6 +43,7 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
     dxyz_min[dim] = tree_dimensions[dim]/(double) (1 << data->max_lvl);
     voronoi_cell[dim].resize(faces->num_local[dim]); // default behavior is *NOT* on the fly
     all_voronoi_cells_are_set[dim] = false;
+    extrapolation_operators_are_stored_and_set[dim] = false;
   }
   bc = NULL;
   scale_systems_by_diagonals = false;
@@ -515,8 +516,11 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
       ierr = VecCreateGhostFaces(p4est, faces, &normal_derivative_of_solution_plus[dim], dim); CHKERRXX(ierr);
       ierr = VecGetArray(normal_derivative_of_solution_minus[dim], &normal_derivative_of_solution_minus_p[dim]); CHKERRXX(ierr);
       ierr = VecGetArray(normal_derivative_of_solution_plus[dim], &normal_derivative_of_solution_plus_p[dim]); CHKERRXX(ierr);
-      extrapolation_operator_minus[dim].clear();
-      extrapolation_operator_plus[dim].clear();
+      if(!extrapolation_operators_are_stored_and_set[dim])
+      {
+        extrapolation_operator_minus[dim].clear();
+        extrapolation_operator_plus[dim].clear();
+      }
     }
   }
   // INITIALIZE extrapolation
@@ -550,6 +554,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
       ierr = VecGhostUpdateEnd(normal_derivative_of_solution_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd(normal_derivative_of_solution_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     }
+    extrapolation_operators_are_stored_and_set[dim] = true; // if they were not known yet, now they are!
   }
   // restore pointers
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -592,7 +597,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
         for (size_t k = 0; k < faces->get_local_size(dim); ++k)
           extrapolate_normal_derivatives_local(dim, faces->get_local_face(dim, k),
                                                tmp_minus_p, tmp_plus_p, normal_derivative_of_solution_minus_read_p, normal_derivative_of_solution_plus_read_p);
-        // start updates
+        // finish updates
         ierr = VecGhostUpdateEnd(tmp_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(tmp_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       }
@@ -728,6 +733,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_normal_derivatives_local(const u
                                                                          const double* normal_derivative_of_solution_minus_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_p[P4EST_DIM]) const
 {
   tmp_minus_p[dim][face_idx] = normal_derivative_of_solution_minus_p[dim][face_idx];
+  P4EST_ASSERT(extrapolation_operators_are_stored_and_set[dim]);
   std::map<p4est_locidx_t, extrapolation_operator_t>::const_iterator it = extrapolation_operator_minus[dim].find(face_idx);
 #ifdef P4EST_DEBUG
   bool found_one = false;

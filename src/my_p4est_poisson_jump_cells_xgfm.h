@@ -171,12 +171,12 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
    * \brief update_extension_of_interface_values computes the new extension of relevant interface-defined values, which are function of the current
    * solution and jump conditions (which depend on the currently known extension). Then the currently known extension is saved and return to calling
    * procedure via "former_extension" and the internal "extension" is updated with the newly calculated results.
-   * The extension is Aslam's PDE extendion, with first order in pseudo-time forward Euler integration and subcell resolution close to the interface.
+   * The extension is Aslam's PDE extension, with first order in pseudo-time forward Euler integration and subcell resolution close to the interface.
    * The derivatives of the cell-sampled extension are evaluated consistently with the derivatives defined for stable projection operators, away from
    * the interface. (The result of the extension must be a linear function of the interface-defined values to ensure convergence of the xgfm iterative
    * procedure)
    * \param [out] former_extension  : extension of relevant interface-defined values, as known by the solver before this call
-   * \param [in] threshold          : [optional] absolute threshold value to abort stop the pseudo-time procedure: if the interface-extended values do
+   * \param [in] threshold          : [optional] absolute threshold value to stop the pseudo-time procedure: if the interface-extended values do
    *                                  not change by more than this threshold over one pseudo-time step in a band of 3 diag from the interface, it is
    *                                  assumed that convergence is reached. Default value is 1e-10
    * \param [in] niter_max          : [optional] maximum number of pseudo time steps for the extension. Default value is 20.

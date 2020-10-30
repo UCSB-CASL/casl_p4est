@@ -56,11 +56,12 @@ protected:
    * the (appropriate) discretization of the pseudo-time PDE-based extrapolations.
    * For the face of orientation dim and local index face_idx, if the face center is in the negative
    * domain, extrapolation_operator_plus[dim][face_idx] will always be defined and stored therein;
-   * extrapolation_operator_minus may or may not be --> it may be defined for faces close to the
+   * (extrapolation_operator_minus may or may not be --> it may be defined for faces close to the
    * interface without enough well-defined cartesian neighbors)
    * (defined and constructed in the "initialization" stage of the abstract extrapolation procedure!)
    */
   std::map<p4est_locidx_t, extrapolation_operator_t> extrapolation_operator_minus[P4EST_DIM], extrapolation_operator_plus[P4EST_DIM];
+  bool extrapolation_operators_are_stored_and_set[P4EST_DIM];
   // we may need to interpolate the jumps pretty much anywhere
   my_p4est_interpolation_nodes_t *interp_jump_u_dot_n, *interp_jump_tangential_stress;
   Mat matrix[P4EST_DIM];

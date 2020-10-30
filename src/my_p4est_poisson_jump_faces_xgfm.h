@@ -10,13 +10,13 @@
 typedef struct {
   double jump_component;
   double known_jump_flux;
-  linear_combination_of_dof_t xgfm_jump_flux_tangential_correction[P4EST_DIM];
-  linear_combination_of_dof_t xgfm_jump_flux_normal_correction[P4EST_DIM];
-  inline double jump_flux_component(const double* extension_p[P4EST_DIM] = NULL, const double* extrapolation_p[P4EST_DIM] = NULL) const
+  linear_combination_of_dof_t xgfm_jump_flux_tangential_correction[P4EST_DIM];  // works on extensions
+  linear_combination_of_dof_t xgfm_jump_flux_normal_correction[P4EST_DIM];      // works on extrapolations
+  inline double jump_flux_component(const double* extension_p[P4EST_DIM], const double* extrapolation_p[P4EST_DIM]) const
   {
     return known_jump_flux
-        + (extension_p != NULL      ? SUMD(xgfm_jump_flux_tangential_correction[0](extension_p[0]), xgfm_jump_flux_tangential_correction[1](extension_p[1]),  xgfm_jump_flux_tangential_correction[2](extension_p[2])) : 0.0)
-        + (extrapolation_p != NULL  ? SUMD(xgfm_jump_flux_normal_correction[0](extrapolation_p[0]), xgfm_jump_flux_normal_correction[1](extrapolation_p[1]),  xgfm_jump_flux_normal_correction[2](extrapolation_p[2])) : 0.0);
+        + (ANDD(extension_p[0] != NULL,     extension_p[1] != NULL,     extension_p[2] != NULL)     ? SUMD(xgfm_jump_flux_tangential_correction[0](extension_p[0]), xgfm_jump_flux_tangential_correction[1](extension_p[1]),  xgfm_jump_flux_tangential_correction[2](extension_p[2])) : 0.0)
+        + (ANDD(extrapolation_p[0] != NULL, extrapolation_p[1] != NULL, extrapolation_p[2] != NULL) ? SUMD(xgfm_jump_flux_normal_correction[0](extrapolation_p[0]), xgfm_jump_flux_normal_correction[1](extrapolation_p[1]),  xgfm_jump_flux_normal_correction[2](extrapolation_p[2])) : 0.0);
   }
 } vector_field_component_xgfm_jump;
 
@@ -70,9 +70,9 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
       interface_terms.clear();
     }
 
-    inline double operator()(const u_char dim, // face orientation == vector component of interest
+    inline double operator()(const u_char& dim, // face orientation == vector component of interest
                              const double* extension_n_p[P4EST_DIM], // input for regular neighbor terms (same side of the interface)
-                             const double* solution_p[P4EST_DIM], const double* current_extension_p[P4EST_DIM], my_p4est_poisson_jump_faces_xgfm_t& solver, // input for evaluating interface-defined values
+                             const double* solution_p[P4EST_DIM], const double* current_extension_p[P4EST_DIM], const double* current_viscous_extrapolation_p[P4EST_DIM], my_p4est_poisson_jump_faces_xgfm_t& solver, // input for evaluating interface-defined values
                              const bool& fetch_positive_interface_values, double& max_correction_in_band, // inout control parameter
                              const double *normal_derivative_p[P4EST_DIM] = NULL) const  // for 1st-degree extrapolation (avoiding redundant storage of operators, if possible)
     {
@@ -86,7 +86,7 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
           const vector_field_component_xgfm_jump& jump_info = solver.get_xgfm_jump_between_faces(dim, face_idx, interface_terms[k].neighbor_face_idx_across, interface_terms[k].oriented_dir);
           const FD_interface_neighbor& FD_interface_neighbor = solver.interface_manager->get_face_FD_interface_neighbor_for(face_idx, interface_terms[k].neighbor_face_idx_across, dim, interface_terms[k].oriented_dir);
           increment += interface_terms[k].weight*FD_interface_neighbor.GFM_interface_value(mu_this_side, mu_across, interface_terms[k].oriented_dir, in_positive_domain, fetch_positive_interface_values,
-                                                                                           solution_p[dim][face_idx], solution_p[dim][interface_terms[k].neighbor_face_idx_across], jump_info.jump_component, jump_info.jump_flux_component(current_extension_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
+                                                                                           solution_p[dim][face_idx], solution_p[dim][interface_terms[k].neighbor_face_idx_across], jump_info.jump_component, jump_info.jump_flux_component(current_extension_p, current_viscous_extrapolation_p), solver.dxyz_min[interface_terms[k].oriented_dir/2]);
         }
       }
 
@@ -121,26 +121,31 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   // methods involved in the xgfm iterative procedure, minimizing the residual
   /*!
    * \brief update_solution saves the currently known solution and solves the current linear system with the best available initial guess
-   * \param [out] former_solution   : solution as known by the solver before this call
+   * \param [out] former_solution : solution as known by the solver before this call
    * \return true if there was indeed an update in the solution (otherwise, it means that a fix-point was found)
    */
   bool update_solution(Vec former_solution[P4EST_DIM]);
 
   /*!
-   * \brief update_extension_of_interface_values computes the new extension of relevant interface-defined values, which are function of the current
-   * solution and jump conditions (which depend on the currently known extension). Then the currently known extension is saved and return to calling
-   * procedure via "former_extension" and the internal "extension" is updated with the newly calculated results.
-   * The extension is Aslam's PDE extendion, with first order in pseudo-time forward Euler integration and subcell resolution close to the interface.
-   * The derivatives of the face-sampled extension are evaluated consistently with the derivatives defined for stable projection operators, away from
-   * the interface. (The result of the extension must be a linear function of the interface-defined values to ensure convergence of the xgfm iterative
+   * \brief update_extensions_and_extrapolations computes the new
+   * 1) extension of relevant interface-defined values (function of the current solution and jump conditions);
+   * 2) extrapolations of the solution from either side to the other.
+   * The currently known extensions and extrapolations are saved and returned to calling procedure via "former_extensions",
+   * "former_extrapolation_minus" and "former_extrapolation_plus" and the internal equivalent are updated with the newly calculated results.
+   * The extension and extrapolation are Aslam's PDE extension, with first order in pseudo-time forward Euler integration and subcell
+   * resolution close to the interface.
+   * (The result of the extension must be a linear function of the interface-defined values to ensure convergence of the xgfm iterative
    * procedure)
    * \param [out] former_extension  : extension of relevant interface-defined values, as known by the solver before this call
-   * \param [in] threshold          : [optional] absolute threshold value to abort stop the pseudo-time procedure: if the interface-extended values do
-   *                                  not change by more than this threshold over one pseudo-time step in a band of 3 diag from the interface, it is
-   *                                  assumed that convergence is reached. Default value is 1e-10
-   * \param [in] niter_max          : [optional] maximum number of pseudo time steps for the extension. Default value is 20.
+   * \param [out] former_extrapolation_minus : extrapolation of the soution from the minus side, as known by the solver before this call
+   * \param [out] former_extrapolation_plus : extrapolation of the soution from the plus side, as known by the solver before this call
+   * \param [in] threshold  : [optional] absolute threshold value to stop the pseudo-time procedure(s): if the extended/extrapolated values do
+   *                           not change by more than this threshold over one pseudo-time step in a band of 3 diag from the interface, it is
+   *                           assumed that convergence is reached. Default value is 1e-10
+   * \param [in] niter_max  : [optional] maximum number of pseudo time steps for the extension. Default value is 20.
    */
-  void update_extension_of_interface_values(Vec former_extension[P4EST_DIM], const double& threshold = 1.0e-10, const uint& niter_max = 20);
+  void update_extensions_and_extrapolations(Vec former_extension[P4EST_DIM], Vec former_extrapolation_minus[P4EST_DIM], Vec former_extrapolation_plus[P4EST_DIM],
+                                            const double& threshold = 1.0e-10, const uint& niter_max = 20);
 
   /*!
    * \brief update_rhs_and_residual saves the currently known (discretized) rhs and residual and updates them thereafter (given the current "extension"
@@ -165,24 +170,12 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
    */
   double set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution[P4EST_DIM], Vec former_extension[P4EST_DIM], Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM]);
 
-  void initialize_extension(Vec face_sampled_extension[P4EST_DIM]);
-  void initialize_extension_local(const u_char& dir, const p4est_locidx_t& face_idx,
-                                  const double* solution_p[P4EST_DIM], double* extension_p[P4EST_DIM]) const;
+  void initialize_extensions_and_extrapolations(Vec extension[P4EST_DIM], Vec extrapolation_minus[P4EST_DIM], Vec extrapolation_plus[P4EST_DIM],
+                                                Vec normal_derivative_minus[P4EST_DIM], Vec normal_derivative_plus[P4EST_DIM]);
+  void initialize_extensions_and_extrapolations_local(const u_char& dir, const p4est_locidx_t& face_idx,
+                                                      const double* solution_p[P4EST_DIM], double* extension_p[P4EST_DIM]) const;
 
   void build_discretization_for_face(const u_char& dir, const p4est_locidx_t& face_idx, int *nullspace_contains_constant_vector = NULL);
-
-  inline void make_sure_extensions_are_defined()
-  {
-    if(ANDD(solution[0], solution[1], solution[2]))
-      solve_for_sharp_solution();
-    if(ANDD(extension[0] == NULL, extension[1] == NULL, extension[2] == NULL))
-    {
-      P4EST_ASSERT(!activate_xGFM || mus_are_equal()); // those are the (only) conditions under which the extension on cells can possibly be not defined
-      Vec dummy[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-      update_extension_of_interface_values(dummy); // argument is dummy in that case...
-    }
-    return;
-  }
 
   void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                       double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
@@ -290,7 +283,7 @@ public:
     return;
   }
 
-  inline Vec* get_extended_interface_values()                         { make_sure_extensions_are_defined();     return extension; }
+//  inline Vec* get_extended_interface_values()                         { make_sure_extensions_are_defined();     return extension; }
 //  inline int get_number_of_xGFM_corrections()                   const { return solver_monitor.get_number_of_xGFM_corrections();   }
 //  inline std::vector<PetscInt> get_numbers_of_ksp_iterations()  const { return solver_monitor.get_n_ksp_iterations();             }
 //  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();              }
