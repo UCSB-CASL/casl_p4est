@@ -53,27 +53,23 @@ int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
-	const double MIN_D = 0, MAX_D = 1;										// The canonical space is [0,1]^{P4EST_DIM}.
-	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
-	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
-	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-
+	const int MAX_REFINEMENT_LEVEL = 5;						// Always take H from unit squares with this maximum
+	const double H = 1. / pow( 2, MAX_REFINEMENT_LEVEL );	// level of refinement.
+	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
 	const double FLAT_LIM_HK = 0.04;						// Flatness limit for dimensionless curvature.
-	const double MIN_RADIUS = 1.5 * H;									// Ensures at least 4 nodes inside smallest circle.
-//	const double MAX_RADIUS = MIN( H / FLAT_LIM_HK, HALF_D - 2 * H );	// Prevents sampling interface nodes with invalid full uniform stencils.
-	const double MAX_RADIUS = HALF_D - 2 * H;
+	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
+	const double MAX_RADIUS = H / FLAT_LIM_HK;				// Ensures we can cover h*kappa up to 0.04.
+	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: domain is [-DIM, +DIM]^{P4EST_DIM}
 	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to finest resolution.
 																				// Originally, 2 circles per finest quad/oct.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/";		// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;				// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
 
 	try
@@ -94,7 +90,7 @@ int main ( int argc, char* argv[] )
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i spheres with maximum refinement level of %i and finest h = %f\n",
+		printf( ">> Began to generate datasets for %i spheres with maximum refinement level of %i and finest h = %g\n",
 			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
@@ -129,35 +125,35 @@ int main ( int argc, char* argv[] )
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
 
 		// Domain information, applicable to all spherical interfaces.
-		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
-		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
-		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
-		int periodic[] = {0, 0, 0};							// Non-periodic domain.
+		int n_xyz[] = { 2 * (int)DIM, 2 * (int)DIM, 2 * (int)DIM };	// One tree per dimension.
+		double xyz_min[] = { -DIM, -DIM, -DIM };			// Squared domain.
+		double xyz_max[] = { DIM, DIM, DIM };
+		int periodic[] = { 0, 0, 0 };						// Non-periodic domain.
 
 		int nSamples = 0;
-		int nc = 0;								// Keeps track of number of circles whose samples has been collected.
-												// Number of samples per radius is approximated by 5 times 2 samples per
-												// h^2, which comes from the area difference of largest circle and second
-												// to largest circle.
+		int nc = 0;							// Keeps track of number of circles whose samples has been collected.
+											// Number of samples per radius is approximated by 5 times 2 samples per
+											// h^2, which comes from the area difference of largest circle and second
+											// to largest circle.
 		const int MAX_SAMPLES_PER_RADIUS = (int)( 10 * M_PI / SQR( H ) * (SQR( MAX_RADIUS ) - SQR( MAX_RADIUS - H )) );
 		while( nc < NUM_CIRCLES )
 		{
 			const double KAPPA = 1 / MIN_RADIUS + linspace[nc] * kappaDistance;
 			const double R = 1 / KAPPA;			// Circle radius to be evaluated.
-			const double H_KAPPA = H * KAPPA;	// Expected dimensionless curvature: h\kappa = h/r.
+			const double H_KAPPA = H * KAPPA;	// Expected dimensionless curvature: h*kappa = h/r.
 			std::vector<std::vector<double>> rlsSamples;
 			std::vector<std::vector<double>> sdfSamples;
 
 			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
 			// reach a given maximum.
-			double maxRE = 0;										// Maximum relative error.
+			double maxRE = 0;							// Maximum relative error.
 			int nSamplesForSameRadius = 0;
 			while( nSamplesForSameRadius < MAX_SAMPLES_PER_RADIUS )
 			{
 				const double C[] = {
-					DIM( HALF_D + uniformDistribution( gen ),		// Center coords are randomly chosen
-						 HALF_D + uniformDistribution( gen ),		// around the center of the grid.
-						 HALF_D + uniformDistribution( gen ) )
+					DIM( uniformDistribution( gen ),	// Center coords are randomly chosen
+						 uniformDistribution( gen ),	// around the origin of the grid.
+						 uniformDistribution( gen ) )
 				 };
 
 				// p4est variables and data structures: these change with every single circle because we must refine the
@@ -192,6 +188,13 @@ int main ( int argc, char* argv[] )
 				nodeNeighbors.init_neighbors(); 	// This is not mandatory, but it can only help performance given
 													// how much we'll neeed the node neighbors.
 
+				// Validation.
+				double dxyz[P4EST_DIM]; 			// Dimensions of the smallest quadrants.
+				double dxyz_min;        			// Minimum side length of the smallest quadrants.
+				double diag_min;        			// Diagonal length of the smallest quadrants.
+				get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+				assert( ABS( dxyz_min - H ) <= EPS );
+
 				// Ghosted parallel PETSc vectors to store level-set function values.
 				Vec sdfPhi, rlsPhi;
 				ierr = VecCreateGhostNodes( p4est, nodes, &sdfPhi );
@@ -215,7 +218,7 @@ int main ( int argc, char* argv[] )
 
 				// Reinitialize level-set function using PDE equation.
 				my_p4est_level_set_t ls( &nodeNeighbors );
-				ls.reinitialize_2nd_order( rlsPhi, 10 );
+				ls.reinitialize_2nd_order( rlsPhi, NUM_REINIT_ITERS );
 
 				// Compute curvature with reinitialized data, which will be interpolated at the interface.
 				compute_normals( nodeNeighbors, rlsPhi, normal );
