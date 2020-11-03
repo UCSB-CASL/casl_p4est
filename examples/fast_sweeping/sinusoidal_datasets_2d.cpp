@@ -4,7 +4,7 @@
  * The level-set function is implemented as an arc-length parameterized sine wave function that is transformed with an
  * affine transformation to allow for pattern variations.  See arclength_parameterized_sin_2d.h for more details.
  *
- * To avoid a disproportionate ratio of h\kappa ~ 0 samples, we collect samples that are close to zero using a
+ * To avoid a disproportionate ratio of h*kappa ~ 0 samples, we collect samples that are close to zero using a
  * probabilistic approach.  Seek the [SAMPLING] subsection in this file.
  *
  * This approach is currently implemented for 2D level-set functions.
@@ -48,8 +48,8 @@
 
 
 /**
- * Generate the sample row of level-set function values and target h\kappa for a node that has been found next to the
- * sine wave interface.  We assume that this query node is effectively adjacent to \Gamma.
+ * Generate the sample row of level-set function values and target h*kappa for a node that has been found next to the
+ * sine wave interface.  We assume that this query node is effectively adjacent to Gamma.
  * @param [in] nodeIdx Query node adjancent or on the interface.
  * @param [in] NUM_COLUMNS Number of columns in output file.
  * @param [in] H Spacing (smallest quad/oct side-length).
@@ -73,9 +73,9 @@
 	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances,
 	double& xOnGamma, double& yOnGamma )
 {
-	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h*kappa.
 	distances.clear();
-	distances.reserve( NUM_COLUMNS );					// Include h\kappa as well.
+	distances.reserve( NUM_COLUMNS );					// Include h*kappa as well.
 
 	int s;												// Index to fill in the sample vector.
 	double grad[P4EST_DIM];
@@ -108,9 +108,9 @@
 		// Transform point on interface to sine-wave canonical coordinates.
 		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
 		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
-		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on \Gamma.
+		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on Gamma.
 
-		// Compute current distance to \Gamma using the improved y.
+		// Compute current distance to Gamma using the improved y.
 		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
@@ -127,7 +127,8 @@
 		if( newDistance - distances[s] > EPS )
 		{
 			std::ostringstream stream;
-			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+			stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
+				   << ".  Val. of Der: " << std::scientific << valOfDerivative
 				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
 				   << ".  Old dist: " << distances[s];
 			throw std::runtime_error( stream.str() );
@@ -142,7 +143,7 @@
 			centerU = u;
 	}
 
-	sample[s] = H * sine.curvature( centerU );			// Last column holds h\kappa.
+	sample[s] = H * sine.curvature( centerU );			// Last column holds h*kappa.
 	distances.push_back( sample[s] );
 
 	return sample;
@@ -153,35 +154,35 @@ int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
+	const int NUM_REINIT_ITERS = 10;			// Number of iterations for PDE reintialization.
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
+	const int MAX_REFINEMENT_LEVEL = 5;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 	const int NUM_AMPLITUDES = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;	// Number different sine wave amplitudes.
 
 	const double MIN_A = 1.5 * H;				// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
-	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h\kappa (used for discriminating
+	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h*kappa (used for discriminating
 	const double MAX_HKAPPA_UB = 2.0 / 3.0;		// which samples to keep -- see below for details).
 	const double MAX_HKAPPA_MIDPOINT = ( MAX_HKAPPA_LB + MAX_HKAPPA_UB ) / 2;
 
 	const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
 
 	const double MIN_THETA = -M_PI_4;			// For each amplitude, we vary the rotation of the wave with respect
-	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4.
-	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;
+	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4, without the end point.
+	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;		// The last 2 is to account for skipping +pi/4.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/";	// Destination folder.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
-	std::uniform_real_distribution<double> uniformDistribution;				// Used for collecting low h\kappa values.
+	std::uniform_real_distribution<double> uniformDistribution;				// Used for collecting low h*kappa values.
 	std::normal_distribution<double> normalDistribution;					// Used for bracketing and root finding.
 
 	try
@@ -201,7 +202,7 @@ int main ( int argc, char* argv[] )
 		//////////////////////////////////////////// Generating the datasets ///////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i distinct amplitudes with maximum refinement level of %i and finest h = %f\n",
+		printf( ">> Began to generate datasets for %i distinct amplitudes with maximum refinement level of %i and finest h = %g\n",
 			NUM_AMPLITUDES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
@@ -233,14 +234,14 @@ int main ( int argc, char* argv[] )
 		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5H, 0.5-2H], inclusive.
 		double linspaceA[NUM_AMPLITUDES];
 		for( int i = 0; i < NUM_AMPLITUDES; i++ )			// Uniform linear space from 0 to 1, with NUM_AMPLITUDES steps.
-			linspaceA[i] = (double)( i ) / ( NUM_AMPLITUDES - 1.0 );
+			linspaceA[i] = (double)( i ) / (NUM_AMPLITUDES - 1.0);
 
 		// Variables to control the spread of ratation angles per amplitude, which must vary uniformly from MIN_THETA to
 		// MAX_THETA, in a finite number of steps.
-		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/4, +pi/4].
+		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/4, +pi/4).
 		double linspaceTheta[NUM_THETAS];
 		for( int i = 0; i < NUM_THETAS; i++ )				// Uniform linear space from 0 to 1, with NUM_TETHAS steps.
-			linspaceTheta[i] = (double)( i ) / ( NUM_THETAS - 1.0 );
+			linspaceTheta[i] = (double)( i ) / (NUM_THETAS - 1.0);
 
 		// Domain information, applicable to all sinusoidal interfaces.
 		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
@@ -258,7 +259,7 @@ int main ( int argc, char* argv[] )
 			const double A = MIN_A + linspaceA[na] * A_DIST;			// Amplitude to be evaluated.
 
 			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );	// Range of frequencies to ensure that the max
-			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h\kappa is in the range of [1/6, 2/3].
+			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h*kappa is in the range of [1/6, 2/3].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * ( 1 / MIN_OMEGA - 1 / MAX_OMEGA );	// Distance between u-values with highest peaks.
 			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H ) + 1;				// Num. of omegas per amplitude.
@@ -273,8 +274,8 @@ int main ( int argc, char* argv[] )
 				double maxRE = 0;							// Maximum relative error for verification.
 
 				const double OMEGA = MIN_OMEGA + linspaceOmega[no] * OMEGA_DIST;
-				for( int nt = 0; nt < NUM_THETAS; nt++ )	// Various rotation angles for same amplitude and frequency.
-				{
+				for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same amplitude and frequency
+				{												// (skipping last endpoint because we do augmentation).
 					const double THETA = MIN_THETA + linspaceTheta[nt] * THETA_DIST;	// Rotation of main sine axis.
 					const double T[] = {
 						( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen ),	// Translate origin coords by a random
@@ -330,7 +331,7 @@ int main ( int argc, char* argv[] )
 
 					// Reinitialize level-set function.
 					my_p4est_level_set_t ls( &nodeNeighbors );
-					ls.reinitialize_2nd_order( phi, 10 );
+					ls.reinitialize_2nd_order( phi, NUM_REINIT_ITERS );
 
 					// Compute curvature with reinitialized data, which will be interpolated at the interface.
 					compute_normals( nodeNeighbors, phi, normal );
@@ -351,7 +352,7 @@ int main ( int argc, char* argv[] )
 					ierr = VecGetArrayRead( phi, &phiReadPtr );
 					CHKERRXX( ierr );
 
-					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h\kappa.
+					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h*kappa.
 					for( auto n : indices )
 					{
 						double xyz[P4EST_DIM];						// Position of node at the center of the stencil.
@@ -372,12 +373,12 @@ int main ( int argc, char* argv[] )
 									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
 									xOnGamma, yOnGamma );
 
-//								if( ABS( data[NUM_COLUMNS - 2] ) <= 0.04 )		// Skip flat surfaces.
-//									continue;
+								if( ABS( data[NUM_COLUMNS - 2] ) < 0.04 )		// Skip flat surfaces.
+									continue;
 
-								// Accumulating samples: we always take samples with h\kappa > midpoint; for those with
-								// h\kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
-								// where Pr(h\kappa = midpoint) = 1 and Pr(h\kappa = 0) = 0.05.
+								// Accumulating samples: we always take samples with h*kappa > midpoint; for those with
+								// h*kappa <= midpoint, we take them with an easing-off probability from 1 to 0.05,
+								// where Pr(h*kappa = midpoint) = 1 and Pr(h*kappa = 0) = 0.05.
 								if( ABS( data[NUM_COLUMNS - 2] ) > MAX_HKAPPA_MIDPOINT ||
 									uniformDistribution( gen ) <= 0.05 + ( sin( -M_PI_2 + ABS( data[NUM_COLUMNS - 2] )
 									* M_PI / MAX_HKAPPA_MIDPOINT ) + 1 ) * 0.95 / 2  )

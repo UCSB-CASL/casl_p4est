@@ -41,17 +41,17 @@
 
 /**
  * Define a sinusoidal wave level-set function that is parameterized by arc-length as in [6] page 83, in order to
- * approximate the distance from points in \Omega to the \Gamma.
- * The sinusoidal wave is subjected to an afine transformation.  Given its parameter u \in [uBegin, uEnd], the interface
+ * approximate the distance from points in Omega to the Gamma.
+ * The sinusoidal wave is subjected to an afine transformation.  Given its parameter u in [uBegin, uEnd], the interface
  * can be computed as:
  *
- *      | x |   | 1  0  Tx |   | cos(\theta)  -sin(\theta)  0 |   |          u            |
- *      | y | = | 0  1  Ty | * | sin(\theta)   cos(\theta)  0 | * | a * sin( \omega * u ) |
- *      | 1 |   | 0  0  1  |   |      0            0        1 |   |          1            |
+ *      | x |   | 1  0  Tx |   | cos(theta)  -sin(theta)  0 |   |          u           |
+ *      | y | = | 0  1  Ty | * | sin(theta)   cos(theta)  0 | * | a * sin( omega * u ) |
+ *      | 1 |   | 0  0  1  |   |     0           0        1 |   |          1           |
  * or
- *        q = T(Tx, Ty) * R(\theta) * p(u),        p, q \in R^2
+ *        q = T(Tx, Ty) * R(theta) * p(u),        p, q in R^2
  *
- * in homogeneous coordinates, where [Tx, Ty] is the translation in x and y, and \theta is the rotation angle.
+ * in homogeneous coordinates, where [Tx, Ty] is the translation in x and y, and theta is the rotation angle.
  */
 class ArcLengthParameterizedSine : public CF_2
 {
@@ -232,7 +232,7 @@ public:
 	[[nodiscard]] Point2 at( double u ) const
 	{
 #ifdef CASL_THROWS
-		assert( u >= _uBegin && u <= _uEnd );	// Check for u \in [uBegin, uEnd].
+		assert( u >= _uBegin && u <= _uEnd );	// Check for u in [uBegin, uEnd].
 #endif
 		double x = u;							// Coordinates to be transformed.
 		double y = _a * sin( _omega * u );
@@ -261,7 +261,7 @@ public:
 
 	/**
 	 * Retrieve sine wave frequency.
-	 * @return \omega.
+	 * @return omega.
 	 */
 	[[nodiscard]] double getOmega() const
 	{
@@ -394,7 +394,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 	std::vector<double> checkpoints;						// U values/locations of extrema of first derivative.
 	for( const double& u0 : arcSinValues )
 	{
-		int kMin = floor( ( U_LOWER_B - u0 ) / ( 2 * M_PI ) );	// Trying to find a range for u* = 2k\pi + u0, where
+		int kMin = floor( ( U_LOWER_B - u0 ) / ( 2 * M_PI ) );	// Trying to find a range for u* = 2k*pi + u0, where
 		int kMax = ceil( ( U_UPPER_B - u0 ) / ( 2 * M_PI ) );	// u* is the parameter that minimizes our function.
 		for( int k = kMin; k <= kMax; k++ )
 		{
