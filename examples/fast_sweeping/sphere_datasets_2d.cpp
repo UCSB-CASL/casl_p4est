@@ -60,7 +60,7 @@ int main ( int argc, char* argv[] )
 	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
 	const double MAX_RADIUS = H / FLAT_LIM_HK;				// Ensures we can cover h*kappa up to 0.04.
 	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: domain is [-DIM, +DIM]^{P4EST_DIM}
-	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to finest resolution.
+	const int NUM_CIRCLES = (int)(3 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to radii difference.
 																				// Originally, 2 circles per finest quad/oct.
 
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
@@ -119,7 +119,7 @@ int main ( int argc, char* argv[] )
 		rlsFile.precision( 15 );
 
 		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
-		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
+		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, H/0.04], inclusive.
 		double linspace[NUM_CIRCLES];
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
@@ -131,7 +131,7 @@ int main ( int argc, char* argv[] )
 		int periodic[] = { 0, 0, 0 };						// Non-periodic domain.
 
 		int nSamples = 0;
-		int nc = 0;							// Keeps track of number of circles whose samples has been collected.
+		int nc = 0;							// Keeps track of number of circles whose samples have been collected.
 											// Number of samples per radius is approximated by 5 times 2 samples per
 											// h^2, which comes from the area difference of largest circle and second
 											// to largest circle.
