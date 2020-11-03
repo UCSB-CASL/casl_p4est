@@ -1109,7 +1109,7 @@ my_p4est_poisson_jump_faces_xgfm_t::get_extension_increment_operator_for(const u
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
       {
         const double xyz_diff = (xyz_neighbor[comp] - xyz_face[comp]) - (periodicity[dim] ? floor((xyz_neighbor[comp] - xyz_face[comp])/(xyz_max[comp] - xyz_min[comp]))*(xyz_max[comp] - xyz_min[comp]) : 0.0);
-        if(fabs(xyz_diff) < 0.1*dxyz_min[comp])
+        if(fabs(xyz_diff) > 0.1*dxyz_min[comp])
         {
           P4EST_ASSERT(oriented_dir == UCHAR_MAX); // if not, you're not considering a Cartesian neighbor across and you're F*****
           oriented_dir = 2*comp + (xyz_diff > 0.0 ? 1 : 0);
@@ -1216,6 +1216,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     ierr = VecGhostUpdateEnd(extrapolation_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(normal_derivative_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(normal_derivative_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    extrapolation_operators_are_stored_and_set[dim] = true; // if they were not known yet, now they are!
   }
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {

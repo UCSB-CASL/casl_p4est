@@ -63,12 +63,12 @@ my_p4est_poisson_jump_faces_t::~my_p4est_poisson_jump_faces_t()
     ierr = delete_and_nullify_vector(sqrt_reciprocal_diagonal[dim]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(my_own_nullspace_vector[dim]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(rhs[dim]); CHKERRXX(ierr);
-    if(interp_jump_u_dot_n != NULL)           { delete interp_jump_u_dot_n;                                   }
-    if(interp_jump_tangential_stress != NULL) { delete interp_jump_tangential_stress;                         }
     if(matrix[dim] != NULL)                   { ierr = MatDestroy(matrix[dim]);               CHKERRXX(ierr); }
     if(null_space[dim] != NULL)               { ierr = MatNullSpaceDestroy(null_space[dim]);  CHKERRXX(ierr); }
     if(ksp[dim] != NULL)                      { ierr = KSPDestroy(ksp[dim]);                  CHKERRXX(ierr); }
   }
+  if(interp_jump_u_dot_n != NULL)           { delete interp_jump_u_dot_n;           }
+  if(interp_jump_tangential_stress != NULL) { delete interp_jump_tangential_stress; }
 }
 
 void my_p4est_poisson_jump_faces_t::preallocate_matrix(const u_char& dim)
