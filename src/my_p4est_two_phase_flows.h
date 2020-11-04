@@ -110,7 +110,7 @@ private:
   // -------------------------------------------------------------------
   // scalar fields
   Vec phi;
-  Vec mass_flux; // mass_flux <-> jump in velocity
+  Vec jump_normal_velocity; // jump_in_normal_velocity <-> mass_flux*(jump in inverse mass density)
   Vec pressure_jump;
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_xxyyzz, interface_stress;
@@ -173,7 +173,9 @@ private:
 
   inline double jump_mass_density() const { return (rho_plus - rho_minus); }
   inline double jump_inverse_mass_density() const { return (1.0/rho_plus - 1.0/rho_minus); }
+  inline bool mass_densities_are_equal() const { return fabs(rho_minus - rho_plus) < EPS*MAX(fabs(rho_minus), fabs(rho_plus)); }
   inline double jump_viscosity() const { return (mu_plus - mu_minus); }
+  inline bool viscosities_are_equal() const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
 
   void interpolate_velocities_at_node(const p4est_locidx_t &node_idx, double *vnp1_nodes_minus_p, double *vnp1_nodes_plus_p,
                                       const double *vnp1_face_minus_p[P4EST_DIM], const double *vnp1_face_plus_p[P4EST_DIM]);
@@ -188,7 +190,7 @@ private:
   void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1);
   void compute_vorticities();
 
-  void set_interface_velocity();
+  void set_interface_velocity_np1();
 
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths

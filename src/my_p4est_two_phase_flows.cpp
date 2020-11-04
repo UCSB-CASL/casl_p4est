@@ -228,9 +228,9 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi           = NULL;
-  pressure_jump = NULL;
-  mass_flux     = NULL;
+  phi                   = NULL;
+  pressure_jump         = NULL;
+  jump_normal_velocity  = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_xxyyzz  = NULL;
   interface_stress = NULL;
@@ -319,9 +319,9 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi           = NULL;
-  pressure_jump = NULL;
-  mass_flux     = NULL;
+  phi                   = NULL;
+  pressure_jump         = NULL;
+  jump_normal_velocity  = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_xxyyzz  = NULL;
   interface_stress = NULL;
@@ -748,29 +748,29 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   PetscErrorCode ierr;
   // if using subcell resolution, you'll want to take care of this separately
   if(phi_on_computational_nodes != phi) {
-    ierr = delete_and_nullify_vector(phi_on_computational_nodes);     CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(phi_on_computational_nodes);       CHKERRXX(ierr); }
   // node-sampled fields on the interface-capturing grid
-  ierr = delete_and_nullify_vector(phi);                            CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(pressure_jump);                  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(mass_flux);                      CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(phi_xxyyzz);                     CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_stress);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(phi);                                CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(pressure_jump);                      CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(phi_xxyyzz);                         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_stress);                   CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
-  ierr = delete_and_nullify_vector(vorticity_magnitude_minus);      CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vorticity_magnitude_plus);       CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnp1_nodes_minus);               CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnp1_nodes_plus);                CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vn_nodes_minus);                 CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vn_nodes_plus);                  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_np1);         CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);          CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);           CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_nodes_minus);                   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_nodes_plus);                    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_minus);                     CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_plus);                      CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_np1);             CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);              CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);      CHKERRXX(ierr);
   // node-sampled fields on the computational grids nm1
-  ierr = delete_and_nullify_vector(vnm1_nodes_minus);               CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_plus);                CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);        CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus);                   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus);                    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);            CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);             CHKERRXX(ierr);
   // face-sampled fields, computational grid n
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
@@ -998,7 +998,7 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
 
   // compute n_cdot_grad_u_minus_cdot_n and n_cdot_grad_u_minus_cdot_n if needed
   Vec n_cdot_grad_u_minus_cdot_n = NULL, n_cdot_grad_u_plus_cdot_n = NULL;
-  if(fabs(mu_plus - mu_minus) > EPS*MAX(fabs(mu_plus), fabs(mu_minus)))
+  if(!viscosities_are_equal())
   {
     if(vnp1_nodes_minus == NULL || vnp1_nodes_plus == NULL)
       throw std::runtime_error("my_p4est_two_phase_flows_t::compute_pressure_jump() : the (n + 1) node velocities would be required to evaluate some terms in the pressure jump (have you interpolated at the nodes after the viscosity step?)");
@@ -1073,11 +1073,11 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
     interp_n_cdot_grad_u_plus_cdot_n  = new my_p4est_interpolation_nodes_t(ngbd_n); interp_n_cdot_grad_u_plus_cdot_n->set_input(n_cdot_grad_u_plus_cdot_n, linear);
   }
   const double* curvature_p = NULL;
-  const double* mass_flux_p = NULL;
+  const double* jump_normal_velocity_p = NULL;
 
-  if(mass_flux != NULL && fabs(rho_minus - rho_plus) > EPS*MAX(fabs(rho_minus), fabs(rho_plus))){
-    ierr = VecGetArrayRead(mass_flux, &mass_flux_p); CHKERRXX(ierr); }
-  if(fabs(surface_tension) > EPS || mass_flux_p != NULL)
+  if(jump_normal_velocity != NULL && !mass_densities_are_equal()){
+    ierr = VecGetArrayRead(jump_normal_velocity, &jump_normal_velocity_p); CHKERRXX(ierr); }
+  if(fabs(surface_tension) > EPS || jump_normal_velocity_p != NULL)
   {
     if(!interface_manager->is_curvature_set())
       interface_manager->set_curvature(); // Maybe we'd want to flatten it...
@@ -1096,10 +1096,10 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
     pressure_jump_p[node_idx] = 0.0;
     if(curvature_p != NULL)
       pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
-    if(mass_flux_p != NULL)
-      pressure_jump_p[node_idx] -= SQR(mass_flux_p[node_idx])*jump_inverse_mass_density();
-    if(curvature_p != NULL && mass_flux_p != NULL)
-      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*mass_flux_p[node_idx]*jump_inverse_mass_density();
+    if(jump_normal_velocity_p != NULL)
+      pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
+    if(curvature_p != NULL && jump_normal_velocity_p != NULL)
+      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*jump_normal_velocity_p[node_idx];
     if(interp_n_cdot_grad_u_minus_cdot_n != NULL && interp_n_cdot_grad_u_plus_cdot_n != NULL)
     {
       node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
@@ -1112,10 +1112,10 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
     pressure_jump_p[node_idx] = 0.0;
     if(curvature_p != NULL)
       pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
-    if(mass_flux_p != NULL)
-      pressure_jump_p[node_idx] -= SQR(mass_flux_p[node_idx])*jump_inverse_mass_density();
-    if(curvature_p != NULL && mass_flux_p != NULL)
-      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*mass_flux_p[node_idx]*jump_inverse_mass_density();
+    if(jump_normal_velocity_p != NULL)
+      pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
+    if(curvature_p != NULL && jump_normal_velocity_p != NULL)
+      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*jump_normal_velocity_p[node_idx];
     if(interp_n_cdot_grad_u_minus_cdot_n != NULL && interp_n_cdot_grad_u_plus_cdot_n != NULL)
     {
       node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
@@ -1127,8 +1127,8 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
   ierr = VecRestoreArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(pressure_jump, &pressure_jump_p); CHKERRXX(ierr);
 
-  if(mass_flux_p != NULL){
-    ierr = VecRestoreArrayRead(mass_flux, &mass_flux_p); CHKERRXX(ierr); }
+  if(jump_normal_velocity_p != NULL){
+    ierr = VecRestoreArrayRead(jump_normal_velocity, &jump_normal_velocity_p); CHKERRXX(ierr); }
   if(curvature_p != NULL){
     ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr); }
 
@@ -1223,15 +1223,22 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
   divergence_free_projector->set_bc(bc_hodge);
   divergence_free_projector->set_jumps(NULL, NULL);
 
-  if(mass_flux != NULL)
-    throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection : you have more work to do here when considering a nonzero mass flux");
-  divergence_free_projector->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, NULL /* mass_flux times jump of inverse mass density */);
+  my_p4est_interpolation_nodes_t* interp_jump_normal_velocity = NULL;
+  if(jump_normal_velocity != NULL)
+  {
+    interp_jump_normal_velocity = new my_p4est_interpolation_nodes_t(ngbd_n);
+    interp_jump_normal_velocity->set_input(jump_normal_velocity, linear);
+  }
+  divergence_free_projector->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, interp_jump_normal_velocity);
   divergence_free_projector->solve(ksp, pc);
 
   // extrapolate the solutions from either side so that the projection can be done for ghost-values velocities, as well
   const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
   divergence_free_projector->extrapolate_solution_from_either_side_to_the_other(niter);
   divergence_free_projector->project_face_velocities(faces_n);
+
+  if(interp_jump_normal_velocity != NULL)
+    delete interp_jump_normal_velocity;
 
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_projection, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
@@ -2268,7 +2275,7 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
   return;
 }
 
-void my_p4est_two_phase_flows_t::set_interface_velocity()
+void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
 {
   PetscErrorCode ierr;
   if(interface_velocity_np1 == NULL){
@@ -2276,11 +2283,11 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
   }
 
   double *interface_velocity_np1_p  = NULL;
-  my_p4est_interpolation_nodes_t *interp_mass_flux = NULL;
-  if(mass_flux != NULL)
+  my_p4est_interpolation_nodes_t *interp_jump_normal_velocity = NULL;
+  if(jump_normal_velocity != NULL)
   {
-    interp_mass_flux = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
-    interp_mass_flux->set_input(mass_flux, linear);
+    interp_jump_normal_velocity = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
+    interp_jump_normal_velocity->set_input(jump_normal_velocity, linear);
   }
   const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
   ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
@@ -2290,24 +2297,32 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
   double local_normal_vector[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)}; // initialize it so that there is no weird shit going on in case mass_flux == NULL
   for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
-    node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-    const double local_mass_flux = (interp_mass_flux != NULL ? (*interp_mass_flux)(xyz_node) : 0.0);
-    if(interp_mass_flux != NULL)
+    double local_mass_flux = 0.0;
+    if(interp_jump_normal_velocity != NULL)
+    {
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      local_mass_flux = (*interp_jump_normal_velocity)(xyz_node)/jump_inverse_mass_density();
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
+    }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_minus + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_plus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
   }
   ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
     const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
-    node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-    const double local_mass_flux = (interp_mass_flux != NULL ? (*interp_mass_flux)(xyz_node) : 0.0);
-    if(interp_mass_flux != NULL)
+    double local_mass_flux = 0.0;
+    if(interp_jump_normal_velocity != NULL)
+    {
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      local_mass_flux = (*interp_jump_normal_velocity)(xyz_node)/jump_inverse_mass_density();
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
+    }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = ((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)*mu_minus + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus)*mu_plus)/(mu_minus + mu_plus);
+      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // Maybe better to flatten it here, before finalizing stuff?
 
   if(interface_velocity_np1_xxyyzz == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
@@ -2317,10 +2332,8 @@ void my_p4est_two_phase_flows_t::set_interface_velocity()
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
-  if(interp_mass_flux != NULL)
-    delete interp_mass_flux;
-
-  // now extend from interface to flatten that?
+  if(interp_jump_normal_velocity != NULL)
+    delete interp_jump_normal_velocity;
 
   return;
 }
@@ -2433,7 +2446,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   dt_updated = false;
 
   if(!static_interface)
-    set_interface_velocity();
+    set_interface_velocity_np1();
 
   // find the np1 computational grid
   splitting_criteria_computational_grid_two_phase_t criterion_computational_grid(this);
@@ -2750,7 +2763,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
    * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
    * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
 
-  ierr = delete_and_nullify_vector(mass_flux); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_normal_velocity); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_jump);  CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_stress); CHKERRXX(ierr);
   // on computational grid at time nm1, just "slide" fields and grids in discrete time
