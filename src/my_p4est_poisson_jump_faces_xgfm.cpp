@@ -585,7 +585,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_xgfm_jump_flux_correction_operato
   {
     const p4est_quadrant_t& middle_quad = (oriented_dir%2 == 1 ? qp : qm);
     P4EST_ASSERT(faces->q2f(middle_quad.p.piggy3.local_num, (oriented_dir%2 == 1 ? oriented_dir - 1 : oriented_dir + 1)) == face_idx
-                 && faces->q2f(middle_quad.p.piggy3.local_num, oriented_dir) == neighbor_face_idx);
+                 && faces->q2f(middle_quad.p.piggy3.local_num, oriented_dir) == neighbor_face_idx); (void) neighbor_face_idx; // to avoid compiler's complain
     logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, ngbd_c->gather_neighbor_cells_of_cell(middle_quad, nearby_cell_neighbors));
   }
   else
