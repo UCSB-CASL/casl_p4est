@@ -53,18 +53,21 @@ int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
-	const int MAX_REFINEMENT_LEVEL = 5;						// Always take H from unit squares with this maximum
+	const int MAX_REFINEMENT_LEVEL = 7;						// Always take H from unit squares with this maximum
 	const double H = 1. / pow( 2, MAX_REFINEMENT_LEVEL );	// level of refinement.
 	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
-	const double FLAT_LIM_HK = 0.04;						// Flatness limit for dimensionless curvature.
+	const double FLAT_LIM_HK = 0.004;						// Flatness limit for dimensionless curvature.
 	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
-	const double MAX_RADIUS = H / FLAT_LIM_HK;				// Ensures we can cover h*kappa up to 0.04.
+	const double MAX_RADIUS = H / FLAT_LIM_HK;				// Ensures we can cover h*kappa up to FLAT_LIM_HK.
+	const double HK_04_RADIUS = H / 0.04;					// Radius at which we have h*kappa = 0.04 (used for hybrid method).
 	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: domain is [-DIM, +DIM]^{P4EST_DIM}
-	const int NUM_CIRCLES = (int)(3 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));		// Number of circles is proportional to radii difference.
-																				// Originally, 2 circles per finest quad/oct.
-
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;				// Number of columns in resulting dataset.
+	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));	// Number of circles is proportional to radii difference.
+																			// Originally, 2 circles per finest quad/oct.
+	char strFlatLimHk[10];
+	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
+		+ std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
@@ -85,12 +88,13 @@ int main ( int argc, char* argv[] )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		// Collect samples from signed distance function and from reinitialized level-set.
-		std::cout << "Collecting samples from level-set function with spherical interface..." << std::endl;
+		std::cout << "Collecting samples from level-set function with circular interface [hk_radius = "
+				  << HK_04_RADIUS << "]" << std::endl;
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i spheres with maximum refinement level of %i and finest h = %g\n",
+		printf( ">> Began to generate datasets for %i circles with maximum refinement level of %i and finest h = %g\n",
 			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
@@ -119,7 +123,7 @@ int main ( int argc, char* argv[] )
 		rlsFile.precision( 15 );
 
 		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
-		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, H/0.04], inclusive.
+		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, H/FLAT_LIM_HK], inclusive.
 		double linspace[NUM_CIRCLES];
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
@@ -132,10 +136,11 @@ int main ( int argc, char* argv[] )
 
 		int nSamples = 0;
 		int nc = 0;							// Keeps track of number of circles whose samples have been collected.
-											// Number of samples per radius is approximated by 5 times 2 samples per
-											// h^2, which comes from the area difference of largest circle and second
-											// to largest circle.
-		const int MAX_SAMPLES_PER_RADIUS = (int)( 10 * M_PI / SQR( H ) * (SQR( MAX_RADIUS ) - SQR( MAX_RADIUS - H )) );
+											// Number of samples per radius is approximated by 5 times 1 sample per
+											// h^2, which comes from the area difference of circle for which h*kappa = 0.04
+											// and second to that circle.  This ensures that when we compare hybrid vs
+											// network-only models, we have the same amount of samples for training.
+		const int MAX_SAMPLES_PER_RADIUS = (int)( 5 * M_PI / SQR( H ) * (SQR( HK_04_RADIUS ) - SQR( HK_04_RADIUS - H )) );
 		while( nc < NUM_CIRCLES )
 		{
 			const double KAPPA = 1 / MIN_RADIUS + linspace[nc] * kappaDistance;
@@ -154,7 +159,7 @@ int main ( int argc, char* argv[] )
 					DIM( uniformDistribution( gen ),	// Center coords are randomly chosen
 						 uniformDistribution( gen ),	// around the origin of the grid.
 						 uniformDistribution( gen ) )
-				 };
+				};
 
 				// p4est variables and data structures: these change with every single circle because we must refine the
 				// trees according to the new circle's center and radius.
@@ -165,17 +170,22 @@ int main ( int argc, char* argv[] )
 				p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 				// Definining the non-signed distance level-set function to be reinitialized and the exact signed
-				// distance function.  The non-signed distance function is used for partitioning and refinement.
+				// distance function.  The signed distance function is used for partitioning and refinement and get a
+				// band of uniform cells around Gamma.  The latter only works if the level-set function is close to being
+				// an exact signed distance function.  If no analytic form is given, we must work around it by reinitia-
+				// lizing a non-signed distance function, and then using interpolation.  Here, there's no need for the
+				// this because we have an analytic form of the signed distance function with a circular inteface.  This
+				// is also way faster.
 				geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
 				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
-				splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sphereNsd );
+				splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sphere, 6.0 );
 
 				// Create the forest using a level set as refinement criterion.
 				p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-				p4est->user_pointer = ( void * ) ( &levelSetSC );
+				p4est->user_pointer = (void *)( &levelSetSC );
 
 				// Refine and recursively partition forest.
-				my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+				my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf_and_uniform_band, nullptr );
 				my_p4est_partition( p4est, P4EST_TRUE, nullptr );
 
 				// Create the ghost (cell) and node structures.
@@ -235,7 +245,7 @@ int main ( int argc, char* argv[] )
 				nodesAlongInterface.getIndices( &rlsPhi, indices );
 
 				// Getting the full uniform stencils of interface points.
-				const double * sdfPhiReadPtr, *rlsPhiReadPtr;
+				const double *sdfPhiReadPtr, *rlsPhiReadPtr;
 				ierr = VecGetArrayRead( sdfPhi, &sdfPhiReadPtr );
 				CHKERRXX( ierr );
 				ierr = VecGetArrayRead( rlsPhi, &rlsPhiReadPtr );
@@ -291,8 +301,6 @@ int main ( int argc, char* argv[] )
 
 							// Counting samples.
 							nSamplesForSameRadius++;				// Negatives only for a given interface node.
-							if( nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
-								break;
 						}
 					}
 					catch( std::exception &e )
@@ -331,25 +339,40 @@ int main ( int argc, char* argv[] )
 				p4est_connectivity_destroy( connectivity );
 			}
 
+			// Collect randomly as many samples as we need.
+			if( nSamplesForSameRadius > MAX_SAMPLES_PER_RADIUS )
+			{
+				std::shuffle( sdfSamples.begin(), sdfSamples.end(), gen );
+				std::shuffle( rlsSamples.begin(), rlsSamples.end(), gen );
+			}
+
 			// Write all samples collected for all circles with the same radius but randomized center content to files.
+			nSamplesForSameRadius = 0;
 			for( const auto& row : sdfSamples )
 			{
 				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
 				sdfFile << row.back() << std::endl;
+
+				if( ++nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
+					break;
 			}
 
+			nSamplesForSameRadius = 0;
 			for( const auto& row : rlsSamples )
 			{
 				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
 				rlsFile << row.back() << std::endl;
+
+				if( ++nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
+					break;
 			}
 
 			nc++;
-			nSamples += sdfSamples.size();
+			nSamples += nSamplesForSameRadius;
 
 			std::cout << "     (" << nc << ") Done with radius = " << R
 					  << ".  Maximum relative error = " << maxRE
-					  << ".  Samples = " << sdfSamples.size() << ";" << std::endl;
+					  << ".  Samples = " << nSamplesForSameRadius << ";" << std::endl;
 
 			if( nc % 10 == 0 )
 				printf( "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
