@@ -777,6 +777,8 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);             CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);              CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]);         CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);          CHKERRXX(ierr);
   }
 
   if(interface_manager != NULL)
@@ -821,6 +823,8 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete pressure_guess_solver;
   if(divergence_free_projector != NULL)
     delete divergence_free_projector;
+  if(viscosity_solver != NULL)
+    delete viscosity_solver;
 }
 
 void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method, Vec phi_on_computational_nodes_)
@@ -2557,7 +2561,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = delete_and_nullify_vector(vorticity_magnitude_np1_minus); CHKERRXX(ierr); }
   if(vorticity_magnitude_np1_plus != vorticity_magnitude_plus){
     ierr = delete_and_nullify_vector(vorticity_magnitude_np1_plus); CHKERRXX(ierr); }
-  // we do not need the vorticities anymore
+  // we do not need the vorticities anymore (only need them for grid construction)
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus); CHKERRXX(ierr);
 
@@ -2587,7 +2591,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
       advect_interface(p4est_np1, nodes_np1, phi_on_computational_nodes_np1, known_nodes_np1, known_phi_on_computational_nodes_np1);
     else
       sample_static_levelset_on_nodes(p4est_np1, nodes_np1, phi_on_computational_nodes_np1);
-    // destroy what you saved
+    // destroy what you had saved
     p4est_nodes_destroy(known_nodes_np1);
     ierr = delete_and_nullify_vector(known_phi_on_computational_nodes_np1); CHKERRXX(ierr);
   }
@@ -2790,8 +2794,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
       node_xyz_fr_n(k, p4est_np1, nodes_np1, xyz);
       interp_nodes.add_point(k, xyz);
     }
-    Vec inputs[2]   = {vnp1_nodes_minus, vnp1_nodes_plus};
-    Vec outputs[2]  = {vn_nodes_minus, vn_nodes_plus};
+    Vec inputs[2]   = {vnp1_nodes_minus,  vnp1_nodes_plus};
+    Vec outputs[2]  = {vn_nodes_minus,    vn_nodes_plus};
     interp_nodes.set_input(inputs, quadratic, 2, P4EST_DIM);
     interp_nodes.interpolate(outputs);
     // clear those
@@ -2861,10 +2865,14 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);  CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir],  dir); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);  CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_plus[dir],  dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir],  dir); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_minus[dir], dir); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_plus[dir],  dir); CHKERRXX(ierr);
   }
 
   if(divergence_free_projector != NULL)
