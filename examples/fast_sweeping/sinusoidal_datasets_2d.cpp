@@ -157,7 +157,8 @@ int main ( int argc, char* argv[] )
 	const int NUM_REINIT_ITERS = 10;			// Number of iterations for PDE reintialization.
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const int MAX_REFINEMENT_LEVEL = 5;										// Maximum level of refinement.
+	const double FLAT_LIM_HK = 0.004;										// Flatness limit for dimensionless curvature.
+	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 	const int NUM_AMPLITUDES = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;	// Number different sine wave amplitudes.
@@ -174,7 +175,10 @@ int main ( int argc, char* argv[] )
 	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4, without the end point.
 	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;		// The last 2 is to account for skipping +pi/4.
 
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
+	char strFlatLimHk[10];
+	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
+								  + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -296,7 +300,7 @@ int main ( int argc, char* argv[] )
 
 					// Create the forest using a level-set as refinement criterion.
 					p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-					p4est->user_pointer = ( void * ) ( &levelSetSC );
+					p4est->user_pointer = (void *)( &levelSetSC );
 
 					// Refine and recursively partition forest.
 					my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
@@ -373,7 +377,7 @@ int main ( int argc, char* argv[] )
 									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
 									xOnGamma, yOnGamma );
 
-								if( ABS( data[NUM_COLUMNS - 2] ) < 0.04 )		// Skip flat surfaces.
+								if( ABS( data[NUM_COLUMNS - 2] ) < FLAT_LIM_HK )	// Skip flat surfaces.
 									continue;
 
 								// Accumulating samples: we always take samples with h*kappa > midpoint; for those with
