@@ -83,7 +83,7 @@ const double default_cfl_visco_capillary = 0.95;
 const double default_cfl_capillary = 0.95;
 const jump_solver_tag default_projection = FV;
 const int default_n_reinit = INT_MAX;
-const bool default_static_interface = true;
+const bool default_static_interface = false;
 const bool default_save_vtk = true;
 
 #if defined(STAMPEDE)
