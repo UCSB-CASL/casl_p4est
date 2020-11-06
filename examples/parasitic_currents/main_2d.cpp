@@ -15,11 +15,18 @@
 using namespace std;
 
 const static string main_description =
-    string("In this example, we test the ability of the two-phase flow solver to capture a static bubble in a stable and accurate way. \n")
-    + string("The static bubble is initialized at the center of a (square/cube) computational domain, in a quiescent environment, and \n")
-    + string("no external force is considered. The two fluids have the same mass densities and viscosities, this test is a sanity check for\n")
-    + string("the ability of the solver to capture stationary Laplace solutions. The user can choose between periodic boundary conditions or \n")
-    + string("no-slip boundary condition on any of the borders of the computational domain. \n")
+    string("This example main file is designed to evaluate and assess the performance of the (incompressible) two-phase flow solver\n")
+    + string("regarding parasitic currents: this tests the ability of the solver to capture stationary Laplace solutions and show \n")
+    + string("vanishing currents with increasing grid refinement. For this specific example, we restrict the usage to identical fluid \n")
+    + string("parameters for either fluids, i.e. same mass density and dynamic viscosity on either side of the interface. Under these \n")
+    + string("conditions, a velocity scale gamma/mu emerges from the dimensional analysis and the test case is entirely characterized by \n")
+    + string("the nondimensional Ohnesorge number Oh = \\mu/\\sqrt(\\rho\\gamma D) where \\mu is the dynamic viscosity, \\rho is the \n")
+    + string("mass density, \\gamma is the surface tension and D is the diameter of the spherical interface separating the two fluids.\n")
+    + string("The solver is initialized with a spherical interface of diameter D in a quiescent environment without external body force,\n")
+    + string("the fluid densities and dynamic viscosities are both set equal in each phase and the surface tension is set to the desired \n")
+    + string("value. The maximum value of the (nondimensional) velocity magnitude is tracked and monitored throughout the simulation along with the\n")
+    + string("(inside) volume of the interface.\n")
+    + string("The user can choose between periodic boundary conditions or no-slip boundary condition on any of the borders of the computational domain. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020\n");
 
 std::istream& operator>> (std::istream& is, jump_solver_tag& solver)
@@ -56,7 +63,7 @@ const int default_lmin = 4;
 const int default_lmax = 4;
 const int default_ntree = 1;
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
-const bool default_use_second_order_theta = false;
+const bool default_use_second_order_theta = false; // relevant only if using (x)GFM cell solver
 const bool default_subrefinement = false;
 const double default_box_size = 2.5;
 const bool default_periodic[P4EST_DIM] = {DIM(false, false, false)};
@@ -80,11 +87,11 @@ const bool default_static_interface = true;
 const bool default_save_vtk = true;
 
 #if defined(STAMPEDE)
-const string default_work_folder = "/scratch/04965/tg842642/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "D";
+const string default_work_folder = "/scratch/04965/tg842642/two_phase_flow/parasitic_currents/" + to_string(P4EST_DIM) + "D";
 #elif defined(POD_CLUSTER)
-const string default_work_folder = "/scratch/regan/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "D";
+const string default_work_folder = "/scratch/regan/two_phase_flow/parasitic_currents/" + to_string(P4EST_DIM) + "D";
 #else
-const string default_work_folder = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "D";
+const string default_work_folder = "/home/regan/workspace/projects/two_phase_flow/parasitic_currents/" + to_string(P4EST_DIM) + "D";
 #endif
 
 class LEVEL_SET: public CF_DIM {
@@ -556,9 +563,9 @@ int main (int argc, char* argv[])
   splitting_criteria_t* subrefined_data = (two_phase_flow_solver->get_fine_p4est_n() != NULL ? (splitting_criteria_t*) two_phase_flow_solver->get_fine_p4est_n()->user_pointer : NULL); // same, to delete it appropriately, eventually
 
   // make sure we're doing consistent stuff
-  if(fabs(two_phase_flow_solver->get_mu_minus() - two_phase_flow_solver->get_mu_plus()) > 1e-6*MIN(fabs(two_phase_flow_solver->get_mu_minus()), fabs(two_phase_flow_solver->get_mu_plus())))
+  if(!two_phase_flow_solver->viscosities_are_equal())
     throw std::runtime_error("main for static bubble: this test is designed for mu_minus == mu_plus");
-  if(fabs(two_phase_flow_solver->get_rho_minus() - two_phase_flow_solver->get_rho_plus()) > 1e-6*MIN(fabs(two_phase_flow_solver->get_rho_minus()), fabs(two_phase_flow_solver->get_rho_plus())))
+  if(!two_phase_flow_solver->mass_densities_are_equal())
     throw std::runtime_error("main for static bubble: this test is designed for rho_minus == rho_plus");
 
   const double bubble_radius        = cmd.get<double> ("radius", default_bubble_radius);
@@ -594,7 +601,7 @@ int main (int argc, char* argv[])
   if(create_directory(export_dir.c_str(), mpi.rank(), mpi.comm()))
     throw std::runtime_error("main for static bubble: could not create exportation directory " + export_dir);
   if(create_directory(results_dir.c_str(), mpi.rank(), mpi.comm()))
-    throw std::runtime_error("main for static bubble: could not create exportation directory " + results_dir);
+    throw std::runtime_error("main for static bubble: could not create directory for exportation of results, i.e., " + results_dir);
   if(save_vtk && create_directory(vtk_dir, mpi.rank(), mpi.comm()))
     throw std::runtime_error("main for static bubble: could not create directory for visualization files, i.e., " + vtk_dir);
 
