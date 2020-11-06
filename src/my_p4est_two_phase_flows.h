@@ -92,7 +92,7 @@ private:
   double max_L2_norm_velocity_minus, max_L2_norm_velocity_plus;
   double uniform_band_minus, uniform_band_plus;
   double threshold_split_cell;
-  double cfl_advection, cfl_surface_tension;
+  double cfl_advection, cfl_visco_capillary, cfl_capillary;
   bool   dt_updated;
   interpolation_method levelset_interpolation_method;
 
@@ -243,8 +243,8 @@ private:
    */
   void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion,
                                save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
-  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double& tn);
-  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
+  void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
@@ -255,20 +255,22 @@ public:
 
   inline double get_capillary_dt() const
   {
-    return cfl_surface_tension*sqrt((rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(M_PI*surface_tension));
+    return sqrt(cfl_capillary*(rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(4.0*M_PI*surface_tension));
   }
 
-  inline double get_advection_dt(const double &min_value_for_u_max) const
+  inline double get_visco_capillary_dt() const
   {
-    const double max_L2_norm_u_overall = MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
-    return MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
+    return cfl_visco_capillary*MIN(mu_minus, mu_plus)*MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/surface_tension;
   }
 
-  inline void compute_dt(const double &min_value_for_u_max = 1.0)
+  inline double get_advection_dt() const
+  {
+    return cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
+  }
+  inline void compute_dt()
   {
     dt_nm1 = dt_n;
-    dt_n = get_advection_dt(min_value_for_u_max);
-    dt_n = MIN(dt_n, get_capillary_dt());
+    dt_n = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
 
     dt_updated = true;
   }
@@ -328,12 +330,13 @@ public:
     threshold_split_cell = thresh_;
   }
 
-  inline void set_cfls(const double& cfl_adv, const double& cfl_surf_tens)
+  inline void set_cfls(const double& cfl_advection_, const double& cfl_visco_capillary_, const double& cfl_capillary_)
   {
-    cfl_advection = cfl_adv;
-    cfl_surface_tension = cfl_surf_tens;
+    cfl_advection = cfl_advection_;
+    cfl_visco_capillary = cfl_visco_capillary_;
+    cfl_capillary = cfl_capillary_;
   }
-  inline void set_cfl(const double& cfl) { set_cfls(cfl, cfl); }
+  inline void set_cfl(const double& cfl) { set_cfls(cfl, cfl, cfl); } // all the same values: YOLO!
 
   inline void set_dt(double dt_nm1_, double dt_n_)
   {

@@ -72,7 +72,8 @@ const double default_save_state_dt_nondimensional = 10.0;
 const int default_save_nstates = 0;
 const int default_sl_order = 2;
 const double default_cfl_advection = 1.0;
-const double default_cfl_capillary = 0.5;
+const double default_cfl_visco_capillary = 0.95;
+const double default_cfl_capillary = 0.95;
 const jump_solver_tag default_projection = FV;
 const int default_n_reinit = INT_MAX;
 const bool default_static_interface = true;
@@ -350,6 +351,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
   const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
   const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
+  const double cfl_visco_capillary      = cmd.get<double> ("cfl_visco_capillary",default_cfl_visco_capillary);
   const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
   const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
   const jump_solver_tag projection_solver_to_use = cmd.get<jump_solver_tag>("projection", default_projection);
@@ -417,7 +419,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_surface_tension(surface_tension);
   solver->set_uniform_bands(uniform_band_in_dxmin, uniform_band_in_dxmin);
   solver->set_vorticity_split_threshold(vorticity_threshold);
-  solver->set_cfls(cfl_advection, cfl_capillary);
+  solver->set_cfls(cfl_advection, cfl_visco_capillary, cfl_capillary);
   solver->set_semi_lagrangian_order(sl_order);
   solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
 
@@ -495,6 +497,8 @@ int main (int argc, char* argv[])
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 or 2, default is " + to_string(default_sl_order));
   streamObj.str(""); streamObj << default_cfl_advection;
   cmd.add_option("cfl_advection", "desired advection CFL number, default is " + streamObj.str());
+  streamObj.str(""); streamObj << default_cfl_visco_capillary;
+  cmd.add_option("cfl_visco_capillary", "desired visco-capillary CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_capillary;
   cmd.add_option("cfl_capillary", "desired capillary-wave CFL number, default is " + streamObj.str());
   cmd.add_option("projection", "cell-based solver to use for projection step, possible choices are 'GFM', 'xGFM' or 'FV'. Default is " + convert_to_string(default_projection));
@@ -543,7 +547,9 @@ int main (int argc, char* argv[])
   {
     create_solver_from_scratch(mpi, cmd, two_phase_flow_solver, brick, connectivity);
     tn = 0.0;// no restart for now, so we assume we start from 0.0
-    dt = two_phase_flow_solver->get_capillary_dt();
+    two_phase_flow_solver->compute_dt();
+    dt = two_phase_flow_solver->get_dt();
+    two_phase_flow_solver->set_dt(dt, dt);
   }
 
   splitting_criteria_t* data            = (splitting_criteria_t*) (two_phase_flow_solver->get_p4est_n()->user_pointer); // to delete it appropriately, eventually

@@ -200,7 +200,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   uniform_band_minus = uniform_band_plus = 0.0;
   threshold_split_cell = 0.04;
   cfl_advection = 1.0;
-  cfl_surface_tension = 0.5;
+  cfl_visco_capillary = 0.95;
+  cfl_capillary = 0.95;
   dt_updated = false;
   max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
 
@@ -552,7 +553,7 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double &tn)
+void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t *splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double &tn)
 {
   size_t idx = 0;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -601,7 +602,8 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       data[idx++] = uniform_band_plus;
       data[idx++] = threshold_split_cell;
       data[idx++] = cfl_advection;
-      data[idx++] = cfl_surface_tension;
+      data[idx++] = cfl_visco_capillary;
+      data[idx++] = cfl_capillary;
       data[idx++] = splitting_criterion->lip;
       data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip);
       break;
@@ -622,7 +624,8 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       uniform_band_plus = data[idx++];
       threshold_split_cell = data[idx++];
       cfl_advection = data[idx++];
-      cfl_surface_tension = data[idx++];
+      cfl_visco_capillary = data[idx++];
+      cfl_capillary = data[idx++];
       splitting_criterion->lip = data[idx++];
       (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip) = data[idx++];
       break;
@@ -632,10 +635,10 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       break;
     }
   }
-  P4EST_ASSERT(idx == 2*P4EST_DIM + 17);
+  P4EST_ASSERT(idx == data.size());
 }
 
-void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt *data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion)
+void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion)
 {
   size_t idx = 0;
   switch (flag) {
@@ -673,7 +676,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_integer_data: unknown flag value");
     break;
   }
-  P4EST_ASSERT(idx == 10);
+  P4EST_ASSERT(idx == data.size());
 }
 
 void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
@@ -681,13 +684,15 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   PetscErrorCode ierr;
   // tree_dimension, dxyz_smallest_quad, surface_tension, mu_minus, mu_plus, rho_minus, rho_plus,
   // tn, dt_n, dt_nm1, max_L2_norm_velocity_minus, max_L2_norm_velocity_plus, uniform_band_minus, uniform_band_plus,
-  // threshold_split_cell, cfl_advection, cfl_surface_tension, splitting_criterion->lip, fine_splitting_criterion->lip
-  // that makes 2*P4EST_DIM + 17 doubles to save
-  PetscReal double_parameters[2*P4EST_DIM + 17];
+  // threshold_split_cell, cfl_advection, cfl_visco_capillary, cfl_capillary, splitting_criterion->lip, fine_splitting_criterion->lip
+  // that makes 2*P4EST_DIM + 18 doubles to save
+  const size_t ndouble_values =  2*P4EST_DIM + 18;
+  std::vector<PetscReal> double_parameters(ndouble_values);
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
   // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, voronoi_on_the_fly
   // that makes 10 integers
-  PetscInt integer_parameters[10];
+  const size_t ninteger_values = 10;
+  std::vector<PetscInt> integer_parameters(ninteger_values);
   int fd;
   char diskfilename[PATH_MAX];
   switch (flag) {
@@ -698,13 +703,13 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       sprintf(diskfilename, "%s_integers", filename);
       fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, integer_parameters, 10, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters.data(), integer_parameters.size(), PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
       // Then we save the double parameters
       sprintf(diskfilename, "%s_doubles", filename);
       fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, double_parameters, 2*P4EST_DIM + 17, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters.data(), double_parameters.size(), PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
     break;
@@ -717,10 +722,10 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
     if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, integer_parameters, 10, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters.data(), integer_parameters.size(), PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
-    int mpiret = MPI_Bcast(integer_parameters, 10, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
+    int mpiret = MPI_Bcast(integer_parameters.data(), ninteger_values, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
     // Then we save the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
@@ -729,10 +734,10 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
     if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, double_parameters, 2*P4EST_DIM + 17, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters.data(), double_parameters.size(), PETSC_DOUBLE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
-    mpiret = MPI_Bcast(double_parameters, 2*P4EST_DIM + 17, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Bcast(double_parameters.data(), ndouble_values, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
     break;
   }
