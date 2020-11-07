@@ -461,7 +461,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 				minU = uResult;
 			}
 
-			if( verbose && iterations > 20 )
+			if( verbose && iterations > 200 )
 				std::cerr << "Node " << n << ":  High number of convergence iterations " << iterations << std::endl;
 		}
 

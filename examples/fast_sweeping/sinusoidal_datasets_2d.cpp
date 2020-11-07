@@ -45,6 +45,48 @@
 #include <fstream>
 #include "arclength_parameterized_sine_2d.h"
 #include "local_utils.h"
+#include <unordered_map>
+
+
+/**
+ * An interpolation-based level-set function with a sinusoidal interface.
+ * It's built on top of a coarse representation of the Arc-length parameterized sine level-set function.
+ * Its purpose is to reduce the computational cost of evaluating the look-up table sine function on very fine grids.
+ */
+class InterpolatedSine: public CF_2
+{
+private:
+	const my_p4est_interpolation_nodes_t *_interpolation;
+	const ArcLengthParameterizedSine *_sine;
+
+public:
+	/**
+	 * Constructor.
+	 * @param [in] interpolation An interpolation object defined in the coarse grid.
+	 * @param [in] sine Arc-length parameterized sine wave.
+	 */
+	explicit InterpolatedSine( const my_p4est_interpolation_nodes_t *interpolation, const ArcLengthParameterizedSine *sine )
+		: _interpolation( interpolation ), _sine( sine )
+	{}
+
+	/**
+	 * Level set evaluation at a given point.
+	 * @param [in] x Point x-coordinate.
+	 * @param [in] y Point y-coordinate.
+	 * @return phi(x,y).
+	 */
+	double operator()( double x, double y ) const override
+	{
+		double distance = ABS( (*_interpolation)( x, y ) );
+		_sine->toCanonicalCoordinates( x, y );			// Sine-wave canonical coordinates.
+
+		// Fix sign in canonical coords: points above sine wave are negative, points below are positive.
+		double comparativeY = _sine->getA() * sin( _sine->getOmega() * x );
+		if( y > comparativeY )
+			distance *= -1.;
+		return distance;
+	}
+};
 
 
 /**
@@ -64,6 +106,7 @@
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
+ * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
  * @return Vector with sampled phi values and target dimensionless curvature.
  * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
@@ -71,7 +114,7 @@
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
 	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances,
-	double& xOnGamma, double& yOnGamma )
+	double& xOnGamma, double& yOnGamma, std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h*kappa.
 	distances.clear();
@@ -116,22 +159,31 @@
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
-		valOfDerivative = 1;
-		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
-
-//		if( s == 4 )
-//		{
-//			double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
-//		}
-
-		if( newDistance - distances[s] > EPS )
+		if( visitedNodes.find( stencil[s] ) != visitedNodes.end() )		// Speed up queries.
 		{
-			std::ostringstream stream;
-			stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
-				   << ".  Val. of Der: " << std::scientific << valOfDerivative
-				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-				   << ".  Old dist: " << distances[s];
-			throw std::runtime_error( stream.str() );
+			u = visitedNodes[stencil[s]].x;				// First component is the parameter u.
+			newDistance = visitedNodes[stencil[s]].y;	// Second component is the distance to Gamma.
+		}
+		else
+		{
+			valOfDerivative = 1;
+			u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
+			visitedNodes[stencil[s]] = Point2( u, newDistance );		// Memorize information for visited node.
+
+//			if( s == 4 )
+//			{
+//				double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
+//			}
+
+			if( newDistance - distances[s] > EPS )
+			{
+				std::ostringstream stream;
+				stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
+					   << ".  Val. of Der: " << std::scientific << valOfDerivative
+					   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
+					   << ".  Old dist: " << distances[s];
+				throw std::runtime_error( stream.str() );
+			}
 		}
 
 		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
@@ -161,7 +213,7 @@ int main ( int argc, char* argv[] )
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-	const int NUM_AMPLITUDES = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 1;	// Number different sine wave amplitudes.
+	const int NUM_AMPLITUDES = 33;				// Originally: (int)pow( 2, 5 ) + 1; tumber different sine wave amplitudes.
 
 	const double MIN_A = 1.5 * H;				// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
@@ -173,7 +225,8 @@ int main ( int argc, char* argv[] )
 
 	const double MIN_THETA = -M_PI_4;			// For each amplitude, we vary the rotation of the wave with respect
 	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4, without the end point.
-	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;		// The last 2 is to account for skipping +pi/4.
+	const int NUM_THETAS = 34;					// Originally: (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;
+												// where the last 2 is to account for skipping +pi/4.
 
 	char strFlatLimHk[10];
 	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
@@ -254,7 +307,7 @@ int main ( int argc, char* argv[] )
 		int periodic[] = {0, 0, 0};							// Non-periodic domain.
 
 		// Printing header for log.
-		std::cout << "Amplitude Idx, Omega Idx, Amplitude Val, Omega Val, Max Rel Error, Num Samples, Time" << std::endl;
+		std::cout << "Amplitude Idx, Omega Idx, Amplitude Val, Omega Val, Max Rel Error, Min Rel Error, Num Samples, Time" << std::endl;
 
 		int nSamples = 0;
 		int na = 0;
@@ -275,7 +328,8 @@ int main ( int argc, char* argv[] )
 			{
 				std::vector<std::vector<double>> rlsSamples;	// Reinitialized level-set function samples.
 				std::vector<std::vector<double>> sdfSamples;	// Exact signed-distance function samples.
-				double maxRE = 0;							// Maximum relative error for verification.
+				double maxRE = 0;								// Maximum relative error for verification.
+				double minRE = PETSC_MAX_REAL;					// Minimum relative error.
 
 				const double OMEGA = MIN_OMEGA + linspaceOmega[no] * OMEGA_DIST;
 				for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same amplitude and frequency
@@ -286,6 +340,81 @@ int main ( int argc, char* argv[] )
 						( MIN_D + MAX_D ) / 2 + uniformDistributionH_2( gen )	// perturbation from grid's midpoint.
 					};
 
+					// Since evaluating the level-set function using a look-up table is quite expensive, we'll create
+					// two grids.  The first one will be coarse and will use root-finding to get the level-set
+					// values at its nodes.  A second grid will have the finest/desired resolution, but instead of
+					// reading level-set function values off the look-up table, it'll use the coarser resolution plus
+					// interpolation.  This will be used for refining and partitioning the second grid too.  As soon as
+					// we don't need the coarser grid we can just delete it.
+					const int COARSE_MAX_REFINEMENT_LEVEL = MAX_REFINEMENT_LEVEL - 1;
+					const double COARSE_H = 1. / pow( 2., COARSE_MAX_REFINEMENT_LEVEL );
+
+					// Definining the level-set function, common to both grids, but used for straight access by coarse grid.
+					// Note that we use the coarse H.  H is used only to build the look-up table and for the () operator,
+					// so it won't affect the sine calculations with finest resolution afterwards.
+					ArcLengthParameterizedSine sine( A, OMEGA, T[0], T[1], THETA, COARSE_H, HALF_AXIS_LEN );
+
+					/// Coarser resolution ///
+					// p4est variables.
+					p4est_t *coarseP4est;
+					p4est_nodes_t *coarseNodes;
+					my_p4est_brick_t coarseBrick;
+					p4est_ghost_t *coarseGhost;
+					p4est_connectivity_t *coarseConnectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &coarseBrick, periodic );
+
+					// Splitting criterion: notice the coarse resolution.
+					splitting_criteria_cf_t coarseLevelSetSC( 1, COARSE_MAX_REFINEMENT_LEVEL, &sine );
+
+					// Create the forest using a level-set as refinement criterion.
+					coarseP4est = my_p4est_new( mpi.comm(), coarseConnectivity, 0, nullptr, nullptr );
+					coarseP4est->user_pointer = (void *)( &coarseLevelSetSC );
+
+					// Refine coarse grid recursively and partition forest.  This operation should be the most expensive
+					// one for the whole process because it uses the look-up table.
+					my_p4est_refine( coarseP4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+					my_p4est_partition( coarseP4est, P4EST_TRUE, nullptr );
+
+					// Create the ghost (cell) and node structures.
+					coarseGhost = my_p4est_ghost_new( coarseP4est, P4EST_CONNECT_FULL );
+					coarseNodes = my_p4est_nodes_new( coarseP4est, coarseGhost );
+
+					// Initialize the neighbor nodes structure.
+					my_p4est_hierarchy_t coarseHierarchy( coarseP4est, coarseGhost, &coarseBrick );
+					my_p4est_node_neighbors_t coarseNodeNeighbors( &coarseHierarchy, coarseNodes );
+					coarseNodeNeighbors.init_neighbors();
+
+					// A ghosted parallel PETSc vector to store coarse level-set function values.
+					Vec coarsePhi;
+					ierr = VecCreateGhostNodes( coarseP4est, coarseNodes, &coarsePhi );
+					CHKERRXX( ierr );
+
+					// Calculate the coarse *exact* level-set function values for each independent node.
+					// This bypasses any renitialization of the base, coarse grid points.
+					double *coarsePhiPtr;
+					ierr = VecGetArray( coarsePhi, &coarsePhiPtr );
+					CHKERRXX( ierr );
+					for( p4est_locidx_t n = 0; n < coarseNodes->num_owned_indeps; n++ )		// Find exact distance on coarse nodes.
+					{
+						double xyz[P4EST_DIM];
+						node_xyz_fr_n( n, coarseP4est, coarseNodes, xyz );		// World coordinates.
+						sine.toCanonicalCoordinates( xyz[0], xyz[1] );			// Sine-wave canonical coordinates.
+						double valOfDerivative = 1;
+						distThetaDerivative( n, xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, coarsePhiPtr[n] );
+
+						// Fix sign in canonical coords: points above sine wave are negative, points below are positive.
+						double comparativeY = sine.getA() * sin( sine.getOmega() * xyz[0] );
+						if( xyz[1] > comparativeY )
+							coarsePhiPtr[n] *= -1;
+					}
+
+					// Prepare interpolation object that will be used for level-set function in finest resolution.
+					my_p4est_interpolation_nodes_t coarseInterpolation( &coarseNodeNeighbors );
+					coarseInterpolation.set_input( coarsePhi, quadratic );		// With quadratic interpolation.
+
+					// Interpolation-based sinusoidal-interface level-set function.
+					InterpolatedSine interpolatedSine( &coarseInterpolation, &sine );
+
+					/// Finer resolution ///
 					// p4est variables and data structures: these change with every sine wave because we must refine the
 					// trees according to the new waves's origin and amplitude.
 					p4est_t *p4est;
@@ -294,17 +423,18 @@ int main ( int argc, char* argv[] )
 					p4est_ghost_t *ghost;
 					p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-					// Definining the level-set function to be reinitialized.
-					ArcLengthParameterizedSine sine( A, OMEGA, T[0], T[1], THETA, H, HALF_AXIS_LEN );
-					splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
+					// Splitting criterion: notice the fine resolution.
+					splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &interpolatedSine );
 
-					// Create the forest using a level-set as refinement criterion.
+					// Create the forest using interpolation-based sinusoid-interface level-set as refinement criterion.
 					p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 					p4est->user_pointer = (void *)( &levelSetSC );
 
 					// Refine and recursively partition forest.
+					double timing = watch.get_duration_current();
 					my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
 					my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+//					std::cout << "Refinement and partition: " << watch.get_duration_current() - timing << std::endl;
 
 					// Create the ghost (cell) and node structures.
 					ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -331,7 +461,9 @@ int main ( int argc, char* argv[] )
 					}
 
 					// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
-					sample_cf_on_nodes( p4est, nodes, sine, phi );
+					timing = watch.get_duration_current();
+					sample_cf_on_nodes( p4est, nodes, interpolatedSine, phi );
+//					std::cout << "Sampling level-set functon: " << watch.get_duration_current() - timing << std::endl;
 
 					// Reinitialize level-set function.
 					my_p4est_level_set_t ls( &nodeNeighbors );
@@ -357,6 +489,8 @@ int main ( int argc, char* argv[] )
 					CHKERRXX( ierr );
 
 					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h*kappa.
+					timing = watch.get_duration_current();
+					std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
 					for( auto n : indices )
 					{
 						double xyz[P4EST_DIM];						// Position of node at the center of the stencil.
@@ -369,13 +503,18 @@ int main ( int argc, char* argv[] )
 
 						try
 						{
+							// Randomly deciding if we proceed with these node or not.  Otherwise, we'll get enourmous
+							// data sets for resolutions higher than the base of max refinement level of 7.
+							if( uniformDistribution( gen ) > 128. * H )
+								continue;
+
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
 								double xOnGamma, yOnGamma;
 								std::vector<double> distances;		// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
 									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
-									xOnGamma, yOnGamma );
+									xOnGamma, yOnGamma, visitedNodes );
 
 								if( ABS( data[NUM_COLUMNS - 2] ) < FLAT_LIM_HK )	// Skip flat surfaces.
 									continue;
@@ -413,6 +552,7 @@ int main ( int argc, char* argv[] )
 									{
 										double error = ( distances[i] - data[i] ) / H;
 										maxRE = MAX( maxRE, ABS( error ) );
+										minRE = MIN( minRE, ABS( error ) );
 									}
 								}
 							}
@@ -423,6 +563,7 @@ int main ( int argc, char* argv[] )
 									  << e.what() << std::endl;
 						}
 					}
+//					std::cout << "Collecting training samples: " << watch.get_duration_current() - timing << std::endl;
 
 					ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 					CHKERRXX( ierr );
@@ -445,6 +586,19 @@ int main ( int argc, char* argv[] )
 					p4est_ghost_destroy( ghost );
 					p4est_destroy( p4est );
 					p4est_connectivity_destroy( connectivity );
+
+					/// Destroy coarse grid structs ///
+
+					ierr = VecRestoreArray( coarsePhi, &coarsePhiPtr );
+					CHKERRXX( ierr );
+
+					ierr = VecDestroy( coarsePhi );
+					CHKERRXX( ierr );
+
+					p4est_nodes_destroy( coarseNodes );
+					p4est_ghost_destroy( coarseGhost );
+					p4est_destroy( coarseP4est );
+					p4est_connectivity_destroy( coarseConnectivity );
 				}
 
 				// Write to file samples collected for all sines with the same amplitude and same frequency but
@@ -468,7 +622,8 @@ int main ( int argc, char* argv[] )
 
 				// Log output.
 				std::cout << na + 1 << ", " << no + 1 << ", " << A << ", " << OMEGA << ", " << maxRE << ", "
-						  << rlsSamples.size() << ", " << watch.get_duration_current() << ";" << std::endl;
+						  << minRE << ", " << rlsSamples.size() << ", " << watch.get_duration_current() << ";"
+						  << std::endl;
 			}
 		}
 
