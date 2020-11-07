@@ -2597,7 +2597,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     else
       sample_static_levelset_on_nodes(p4est_np1, nodes_np1, phi_on_computational_nodes_np1);
     // destroy what you had saved
-    p4est_nodes_destroy(known_nodes_np1);
+    if(known_nodes_np1 != nodes_n)
+      p4est_nodes_destroy(known_nodes_np1);
     ierr = delete_and_nullify_vector(known_phi_on_computational_nodes_np1); CHKERRXX(ierr);
   }
 
