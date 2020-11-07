@@ -2267,7 +2267,10 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
 
       if(force_per_unit_mass[dir] != NULL)
       {
-        double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz_face);
+        double xyz_face[P4EST_DIM];
+        if(dynamic_cast<const cf_const_t*>(force_per_unit_mass[dir]) == NULL){
+          faces_n->xyz_fr_f(f_idx, dir, xyz_face); // get coordinates only if not a stupid constant function...
+        }
         viscosity_rhs_minus_dir_p[f_idx]  += rho_minus*(*force_per_unit_mass[dir])(xyz_face);
         viscosity_rhs_plus_dir_p[f_idx]   += rho_plus*(*force_per_unit_mass[dir])(xyz_face);
       }

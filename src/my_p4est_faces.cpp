@@ -1629,7 +1629,8 @@ void get_lsqr_face_gradient_at_point(const double xyz_point[P4EST_DIM], const my
   {
     if(lsqr_solution != NULL)
       delete lsqr_solution;
-    throw std::runtime_error("get_lsqr_face_gradient_at_point : the inversion of the lsqr system failed.");
+    std::ostringstream os; os << "x = " << xyz_point[0] << ", y = " << xyz_point[1] ONLY3D( << ", z = " << xyz_point[2]);
+    throw std::runtime_error("get_lsqr_face_gradient_at_point: the inversion of the lsqr system failed for point located at " + os.str() + ".");
   }
 
   if(field_gradient != NULL)
