@@ -2,6 +2,10 @@
 // Created by Im YoungMin on 5/28/20.
 //
 
+/**
+ * TODO: Source code needs further refactoring now that we discarded the look-up table approach.
+ */
+
 #ifndef FAST_SWEEPING_ARCLENGTH_PARAMETERIZED_SINE_2D_H
 #define FAST_SWEEPING_ARCLENGTH_PARAMETERIZED_SINE_2D_H
 
@@ -39,11 +43,17 @@
 #include <boost/math/tools/roots.hpp>
 #include <limits>
 
+
+class ArcLengthParameterizedSine;
+
+double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
+							std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
+							double& valOfDerivative, double& minDistance, bool verbose = true );
+
 /**
- * Define a sinusoidal wave level-set function that is parameterized by arc-length as in [6] page 83, in order to
- * approximate the distance from points in Omega to the Gamma.
- * The sinusoidal wave is subjected to an afine transformation.  Given its parameter u in [uBegin, uEnd], the interface
- * can be computed as:
+ * Define a signed-distance level-set function with a sinusoidal interface.
+ * The interface is parameterized by a parameter u and is subjected to an affine transformation.
+ * Given its parameter u in [uBegin, uEnd], the interface can be computed as:
  *
  *      | x |   | 1  0  Tx |   | cos(theta)  -sin(theta)  0 |   |          u           |
  *      | y | = | 0  1  Ty | * | sin(theta)   cos(theta)  0 | * | a * sin( omega * u ) |
@@ -60,31 +70,10 @@ private:
 	double _omega;			// Frequency.
 	Point2 _trans;			// Translation (disturbance) from the origin.
 	double _theta;			// Rotation angle around the z-axis with respect to horizontal x-axis.
-	double _delta;			// Local step size that depends on grid minimum spacing.
 	double _uBegin;			// Lower and upper bound for parameter u.
 	double _uEnd;
-	std::vector<std::pair<double, double>> _arcLengthTable;
-
-	/**
-	 * Create the arc length table which is used for parametrization.
-	 */
-	void _buildArcLengthTable()
-	{
-		const auto N = (size_t)ceil( ( _uEnd - _uBegin ) / _delta ) + 1;	// Number of points.
-		_arcLengthTable.clear();
-		_arcLengthTable.reserve( N );
-		Point2 p;											// Keep track of last point visited.
-		for( size_t i = 0; i < N; i++ )
-		{
-			double u = MIN( _uBegin + i * _delta, _uEnd );	// We clamp the last parameter u value to expected end.
-			double d = 0;									// Distance from previous point.
-			Point2 q( u, _a * sin( _omega * u ) );			// Calculations in canonical coordinate system.
-			if( i > 0 )
-				d = (q - p).norm_L2() + _arcLengthTable[i - 1].second;
-			_arcLengthTable.emplace_back( u, d );
-			p = q;
-		}
-	}
+	std::normal_distribution<double>& _normalDistribution;
+	std::mt19937& _gen;
 
 public:
 
@@ -95,29 +84,27 @@ public:
 	 * @param [in] tx Translation of origin in the x-direction.
 	 * @param [in] ty Translation of origin in the y-direction.
 	 * @param [in] theta Angle of rotation around the z-axis, with respect to positive x-direction.
-	 * @param [in] h Minimum space interval in domain.
 	 * @param [in] halfAxisLen Half of horizontal axis length.  Parameter u will go from -halfAxisLen to +halfAxisLen.
-	 * @throws Runtime exception if beginning and end values for parameter u are not a minimum grading spacing apart.
+	 * @param [in] gen Mersenne twister engine to generate random numbers used when finding closest point.
+	 * @param [in] normalDistribution A standard normal distribution sampler used when finding the closest point.
+	 * @throws Runtime exception if beginning and end values for parameter u overlap.
 	 */
-	explicit ArcLengthParameterizedSine( double a, double omega, double tx, double ty, double theta, double h,
-										 double halfAxisLen )
-		: _a( a ), _omega( omega ), _theta( theta ), _delta( h / 25 ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen )
+	explicit ArcLengthParameterizedSine( double a, double omega, double tx, double ty, double theta, double halfAxisLen,
+									     std::mt19937& gen, std::normal_distribution<double>& normalDistribution )
+		: _a( a ), _omega( omega ), _theta( theta ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen ),
+		_gen( gen ), _normalDistribution( normalDistribution )
 	{
 #ifdef CASL_THROWS
-		if( _uBegin + h >= _uEnd )
+		if( _uBegin >= _uEnd )
 			throw std::runtime_error( "[CASL_ERROR] ArcLengthParameterizedSine::ArcLengthParameterizedSine: "
 							 		  "Not room enough for parameter u!" );
 #endif
 		_trans = Point2( tx, ty );
-		_buildArcLengthTable();
 	}
 
 	/**
 	 * Level set evaluation at a given point.
-	 * This method uses the arc-length table to find the closest point in the transformed sine wave to the query (x,y)
-	 * coordinate.  To make the computation efficient, we "undo" the transformation of the input query point to align
-	 * it to the canonical coordinate system of the sine wave function.  Then, distance is computed by linear search
-	 * with equally-long steps along the sine wave (thus the arc-length table).
+	 * The method uses bisection followed by Newton-Raphson to find the closest point on the interface to a query point.
 	 * @param [in] x: Point x-coordinate.
 	 * @param [in] y: Point y-coordinate.
 	 * @return phi(x,y).
@@ -126,75 +113,16 @@ public:
 	{
 		// Place query point in terms of the canonical coordinate system of the transformed sine wave.
 		toCanonicalCoordinates( x, y );
-		Point2 q( x, y );
 
-		// Now, we can calculate distances to equally-spaced nodes along the (untransformed) sine wave.  We'll take
-		// steps of size h, using interpolation to approximate the parameter u between nodes.
-		const size_t LAST_IDX = _arcLengthTable.size() - 1;
-		double minDistance = PETSC_MAX_INT;
-		double minU = 0;
-		Point2 minP;
-		double d = 0;									// Start at the extreme _uBegin.
-		size_t idx = 0;									// Index of closest parametric value in the _arcLength table.
-		while( d < _arcLengthTable[LAST_IDX].second )
-		{
-			double segmentLength = _arcLengthTable[idx + 1].second - _arcLengthTable[idx].second;
-			double fraction = ( d - _arcLengthTable[idx].second ) / segmentLength;
-			double u = _arcLengthTable[idx].first + fraction * _delta;	// The difference between successive u's is _delta.
-
-			Point2 p( u, _a * sin( _omega * u ) );		// Point at interpolated parameter u.
-			double distance = ( p - q ).norm_L2();
-			if( distance < minDistance )
-			{
-				minDistance = distance;
-				minU = u;
-				minP = p;
-			}
-
-			d += _delta;								// Move on curve one spacing step.
-			if( d >= _arcLengthTable[idx + 1].second )
-				idx++;
-		}
-
-		// Check last node on the sine wave.
-		Point2 p( _arcLengthTable[LAST_IDX].first, _a * sin( _omega * _arcLengthTable[LAST_IDX].first ) );
-		double distance = ( p - q ).norm_L2();
-		if( distance < minDistance )
-		{
-			minDistance = distance;
-			minU = _arcLengthTable[LAST_IDX].first;
-			minP = p;
-		}
-
-		// Now that we know the parametric value u that yields the minimum distance, improve by looking at neighbors and
-		// find the minimum distance to the left and right line segments.
-		double u;
-		Point2 closestP;
-		if( minU > _arcLengthTable[0].first )			// Can we look at the left?
-		{
-			u = minU - _delta;
-			Point2 pLeft( u, _a * sin( _omega * u) );
-			closestP = geom::findClosestPointOnLineSegmentToPoint( q, pLeft, minP );
-			distance = ( q - closestP ).norm_L2();
-			if( distance < minDistance )
-				minDistance = distance;
-		}
-		if( minU < _arcLengthTable[LAST_IDX].first )	// Can we look at the right?
-		{
-			u = minU + _delta;
-			Point2 pRight( u, _a * sin( _omega * u ) );
-			closestP = geom::findClosestPointOnLineSegmentToPoint( q, minP, pRight );
-			distance = ( q - closestP ).norm_L2();
-			if( distance < minDistance )
-				minDistance = distance;
-		}
+		// Retrieve the exact distance to the zero level set.
+		double valOfDerivative = 1, distance;
+		distThetaDerivative( -1, x, y, *this, _gen, _normalDistribution, valOfDerivative, distance );
+		double comparativeY = _a * sin( _omega * x );
 
 		// Fix sign: points above sine wave are negative, points below are positive.
-		double comparativeY = _a * sin( _omega * x );
 		if( y > comparativeY )
-			minDistance *= -1;
-
-		return minDistance;
+			distance *= -1;
+		return distance;
 	}
 
 	/**
@@ -360,7 +288,7 @@ public:
  */
 double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
 	std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
-	double& valOfDerivative, double& minDistance, bool verbose = true )
+	double& valOfDerivative, double& minDistance, bool verbose )
 {
 	using namespace boost::math::tools;						// For bisect and newton_raphson_iterate.
 
@@ -440,7 +368,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 			while( vOfD > 1e-8 )							// For standing interval, keep iterating until convergence.
 			{												// Now that we have a narrow bracket, use Newton-Raphson's.
 				uResult = ( uPair.first + uPair.second ) / 2;	// Normally-randomize initial guess around midpoint.
-				uResult += normalDistribution( gen ) * ( uRange / 6 );
+				uResult += normalDistribution( gen ) * ( uRange / 2 );
 				uResult = MAX( uPair.first, MIN( uResult, uPair.second ) );
 				it = MAX_IT;
 				uResult = newton_raphson_iterate( distThetaFunctorDerivativeNR, uResult, uPair.first, uPair.second, get_digits, it );

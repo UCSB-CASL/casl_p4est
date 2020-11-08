@@ -177,7 +177,7 @@ int main ( int argc, char* argv[] )
 		const double A = MAX_A;
 		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );
 		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );
-		ArcLengthParameterizedSine sine( A, MAX_OMEGA, T[0], T[1], 0, H, HALF_AXIS_LEN );
+		ArcLengthParameterizedSine sine( A, MAX_OMEGA, T[0], T[1], 0, HALF_AXIS_LEN, gen, normalDistribution );
 		splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
 
 		// Create the forest using a level-set as refinement criterion.
