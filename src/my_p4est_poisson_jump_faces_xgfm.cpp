@@ -1504,8 +1504,64 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     }
 
     linear_combination_of_dof_t upwind_lsqr_face_grad_operator[P4EST_DIM];
-    get_lsqr_face_gradient_at_point(xyz_face, faces, all_neighbors,    min_dist,         NULL,                          lsqr_face_gradient, grad_component_is_known,                      true, face_idx);
-    get_lsqr_face_gradient_at_point(xyz_face, faces, upwind_neighbors, upwind_min_dist,  upwind_lsqr_face_grad_operator, NULL,              homogeneous_grad_component_for_extrapolation, true, face_idx);
+    get_lsqr_face_gradient_at_point(xyz_face, faces, all_neighbors, min_dist, NULL, lsqr_face_gradient, grad_component_is_known, true, face_idx);
+    try {
+      get_lsqr_face_gradient_at_point(xyz_face, faces, upwind_neighbors, upwind_min_dist, upwind_lsqr_face_grad_operator, NULL, homogeneous_grad_component_for_extrapolation, true, face_idx);
+    } catch (std::exception& e) {
+      // probably not enough upwind neighbors and/or messed-up normal with respect to grid adaptivity
+      // --> consider an extended set of face neighbors and do it again (hopefully, that will work)
+      set_of_neighboring_quadrants enlarged_set_of_quad_neighbors;
+      p4est_quadrant_t qm, qp;
+      faces->find_quads_touching_face(face_idx, dim, qm, qp);
+      if(qm.p.piggy3.local_num >= 0)
+        ngbd_c->gather_neighbor_cells_of_cell(qm, enlarged_set_of_quad_neighbors, true);
+      if(qp.p.piggy3.local_num >= 0)
+        ngbd_c->gather_neighbor_cells_of_cell(qp, enlarged_set_of_quad_neighbors, true);
+
+      for (set_of_neighboring_quadrants::const_iterator it = enlarged_set_of_quad_neighbors.begin();
+           it != enlarged_set_of_quad_neighbors.end(); ++it) {
+        for (u_char touch = 0; touch < 2; ++touch) {
+          tmp.face_idx = faces->q2f(it->p.piggy3.local_num, 2*dim + touch);
+          if(tmp.face_idx != NO_VELOCITY && (upwind_neighbors.find(tmp) == upwind_neighbors.end()) && (all_neighbors.find(tmp) == all_neighbors.end())) // well-defined face and not considered yet
+          {
+            faces->xyz_fr_f(tmp.face_idx, dim, tmp.xyz_face);
+            if(ORD(periodicity[0], periodicity[1], periodicity[2]))
+              for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+                if(periodicity[comp])
+                {
+                  const double pp = (tmp.xyz_face[comp] - xyz_face[comp])/(xyz_max[comp] - xyz_min[comp]);
+                  tmp.xyz_face[comp] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[comp] - xyz_min[comp]);
+                }
+
+            double inner_product = 0.0;
+            double neighbor_distance = 0.0;
+            for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+            {
+              inner_product += oriented_normal[comp]*(tmp.xyz_face[comp] - xyz_face[comp]);
+              neighbor_distance += SQR(tmp.xyz_face[comp] - xyz_face[comp]);
+            }
+            neighbor_distance = sqrt(neighbor_distance);
+            inner_product /= neighbor_distance;
+            if(inner_product >= -1.0e-6) // use a small negative threshold instead of strictly 0.0 here
+            {
+              upwind_neighbors.insert(tmp);
+              upwind_min_dist = MIN(upwind_min_dist, neighbor_distance);
+            }
+          }
+        }
+      }
+
+      try {
+        get_lsqr_face_gradient_at_point(xyz_face, faces, upwind_neighbors, upwind_min_dist, upwind_lsqr_face_grad_operator, NULL, homogeneous_grad_component_for_extrapolation, true, face_idx);
+      } catch (std::exception& e){
+        std::ostringstream os;
+        os << "x = " << xyz_face[0] << ", y = " << xyz_face[1] ONLY3D( << ", z = " << xyz_face[2]);
+        throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(): \n"
+                                 "\tcouldn't construct an upwind face-sampled gradient, even with an extended neighborhood, \n"
+                                 "\tfor face located at" + os.str() +". Giving up here!");
+        throw e;
+      }
+    }
 
     if(!extrapolation_operators_are_stored_and_set[dim])
     {
