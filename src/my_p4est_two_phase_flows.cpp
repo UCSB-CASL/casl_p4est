@@ -206,6 +206,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
 
   sl_order = 2;
+  sl_order_interface = 2;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
@@ -657,6 +658,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl);
     data[idx++] = (PetscInt) levelset_interpolation_method;
     data[idx++] = sl_order;
+    data[idx++] = sl_order_interface;
     data[idx++] = (PetscInt) voronoi_on_the_fly;
     break;
   }
@@ -673,6 +675,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl) = data[idx++];
     levelset_interpolation_method = (interpolation_method) data[idx++];
     sl_order = data[idx++];
+    sl_order_interface = data[idx++];
     voronoi_on_the_fly = (bool) data[idx++];
     break;
   }
@@ -693,9 +696,9 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   const size_t ndouble_values =  2*P4EST_DIM + 18;
   std::vector<PetscReal> double_parameters(ndouble_values);
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
-  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, voronoi_on_the_fly
-  // that makes 10 integers
-  const size_t ninteger_values = 10;
+  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, voronoi_on_the_fly
+  // that makes 11 integers
+  const size_t ninteger_values = 11;
   std::vector<PetscInt> integer_parameters(ninteger_values);
   int fd;
   char diskfilename[PATH_MAX];
@@ -1599,7 +1602,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   if(sl_order == 1)
     viscosity_solver->set_diagonals(rho_minus/dt_n, rho_plus/dt_n);
   else
-    viscosity_solver->set_diagonals(BDF_alpha()*rho_minus/dt_n, BDF_alpha()*rho_plus/dt_n);
+    viscosity_solver->set_diagonals(BDF_advection_alpha()*rho_minus/dt_n, BDF_advection_alpha()*rho_plus/dt_n);
   viscosity_solver->solve(KSPCG);
   const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
   viscosity_solver->extrapolate_solution_from_either_side_to_the_other(niter);
@@ -2265,10 +2268,10 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
       }
       else
       {
-        viscosity_rhs_minus_dir_p[f_idx] = rho_minus*(BDF_alpha()/dt_n - BDF_beta()/dt_nm1)*backtraced_vn_faces_minus[dir][f_idx]
-            + rho_minus*(BDF_beta()/dt_nm1)*backtraced_vnm1_faces_minus[dir][f_idx];
-        viscosity_rhs_plus_dir_p[f_idx]   = rho_plus*(BDF_alpha()/dt_n - BDF_beta()/dt_nm1)*backtraced_vn_faces_plus[dir][f_idx]
-            + rho_plus*(BDF_beta()/dt_nm1)*backtraced_vnm1_faces_plus[dir][f_idx];
+        viscosity_rhs_minus_dir_p[f_idx] = rho_minus*(BDF_advection_alpha()/dt_n - BDF_advection_beta()/dt_nm1)*backtraced_vn_faces_minus[dir][f_idx]
+            + rho_minus*(BDF_advection_beta()/dt_nm1)*backtraced_vnm1_faces_minus[dir][f_idx];
+        viscosity_rhs_plus_dir_p[f_idx]   = rho_plus*(BDF_advection_alpha()/dt_n - BDF_advection_beta()/dt_nm1)*backtraced_vn_faces_plus[dir][f_idx]
+            + rho_plus*(BDF_advection_beta()/dt_nm1)*backtraced_vnm1_faces_plus[dir][f_idx];
       }
 
       if(force_per_unit_mass[dir] != NULL)
@@ -2340,7 +2343,7 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  // Maybe better to flatten it here, before finalizing stuff?
+  // Maybe better to flatten the interface velocity here, before finalization?
 
   if(interface_velocity_np1_xxyyzz == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
@@ -2361,8 +2364,15 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
 {
   PetscErrorCode ierr;
 
-  my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time...
+  my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time and we actually are determining phi_np2 on p4est_np1 (since "phi" is actually phi_np1 at all times...)
   interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
+  const bool second_order = (sl_order_interface == 2 && interface_velocity_n != NULL);
+  my_p4est_interpolation_nodes_t* interp_n = NULL;
+  if(second_order){
+    interp_n = new my_p4est_interpolation_nodes_t(ngbd_nm1);
+    interp_n->set_input(interface_velocity_n, interface_velocity_n_xxyyzz, quadratic, P4EST_DIM);
+  }
+  P4EST_ASSERT(!second_order || interp_n != NULL);
 
   std::vector<size_t> already_known;
   p4est_locidx_t origin_local_idx;
@@ -2409,16 +2419,47 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
       known_idx++;
       continue;
     }
-    double xyz_d[P4EST_DIM];
-    node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_d);
+    double xyz_star[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_star);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      xyz_d[dir] -= dt_n*interface_velocity_np1_buffer[P4EST_DIM*to_compute + dir];
-    clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
+      xyz_star[dir] -= (second_order ? 0.5 : 1.0)*dt_n*interface_velocity_np1_buffer[P4EST_DIM*to_compute + dir];
+    clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
 
-    interp_phi_n.add_point(node_idx, xyz_d);
+    if(second_order){
+      interp_np1.add_point(to_compute, xyz_star);
+      interp_n->add_point(to_compute, xyz_star);
+    }
+    else
+      interp_phi_n.add_point(node_idx, xyz_star);
     to_compute++;
   }
   P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->num_owned_indeps);
+
+  if(second_order)
+  {
+    interp_np1.interpolate(interface_velocity_np1_buffer.data()); interp_np1.clear();
+    std::vector<double> interface_velocity_n_buffer(P4EST_DIM*to_compute);
+    interp_n->interpolate(interface_velocity_n_buffer.data()); interp_n->clear();
+    known_idx = 0;
+    to_compute = 0;
+
+    for (size_t node_idx = 0; node_idx < (size_t) nodes_np1->num_owned_indeps; ++node_idx)
+    {
+      if(known_phi_np1_p != NULL && known_idx < already_known.size() && node_idx == already_known[known_idx])
+      {
+        known_idx++;
+        continue;
+      }
+      double xyz_d[P4EST_DIM];
+      node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_d);
+      for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+        xyz_d[dir] -= dt_n*((1.0 + 0.5*dt_n/dt_nm1)*interface_velocity_np1_buffer[P4EST_DIM*to_compute + dir] - 0.5*(dt_n/dt_nm1)*interface_velocity_n_buffer[P4EST_DIM*to_compute + dir]);
+      clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
+      interp_phi_n.add_point(node_idx, xyz_d);
+      to_compute++;
+    }
+    P4EST_ASSERT(to_compute + known_idx == (size_t) nodes_np1->num_owned_indeps);
+  }
 
   if(known_phi_np1 != NULL)
   {
@@ -2429,6 +2470,9 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   interp_phi_n.interpolate(phi_np1); interp_phi_n.clear();
   ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  if(interp_n != NULL)
+    delete interp_n;
 
   return;
 }

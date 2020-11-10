@@ -96,7 +96,7 @@ private:
   bool   dt_updated;
   interpolation_method levelset_interpolation_method;
 
-  int sl_order;
+  int sl_order, sl_order_interface;
 
   const double threshold_dbl_max;
 
@@ -123,11 +123,13 @@ private:
   // vector fields and/or other P4EST_DIM-block-structured
   Vec vnp1_nodes_minus,  vnp1_nodes_plus;
   Vec vn_nodes_minus,    vn_nodes_plus;
-  Vec interface_velocity_np1; // yes, np1, yes! (used right after compute_dt in update_from_n_to_np1, so it looks like n but it's actually np1)
-  Vec interface_velocity_n;   // yes, n, yes!   (used right after compute_dt in update_from_n_to_np1, so it looks like nm1 but it's actually n)
+  // the "np1" interface velocitiy is determined and used right after compute_dt in update_from_n_to_np1 but
+  // _BEFORE_ final data update, so it is actually a function of np1 velocities _BEFORE_ those are eventually
+  // slid in time. (yet used as "n" and "nm1" respectively when advecting the interface)
+  Vec interface_velocity_np1;
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vn_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_n
-  Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz, interface_velocity_n_xxyyzz;
+  Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -140,6 +142,8 @@ private:
   // -------------------------------------------------------------------------
   // vector fields, P4EST_DIM-block-structured
   Vec vnm1_nodes_minus,  vnm1_nodes_plus;
+  Vec interface_velocity_n;
+  Vec interface_velocity_n_xxyyzz;
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vnm1_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n-1, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_nm1
   Vec vnm1_nodes_minus_xxyyzz, vnm1_nodes_plus_xxyyzz;
@@ -169,8 +173,8 @@ private:
     return (interface_manager->phi_at_point(xyz_f) <= 0.0 ? -1 : +1);
   }
 
-  inline double BDF_alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
-  inline double BDF_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
+  inline double BDF_advection_alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
+  inline double BDF_advection_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
 
   inline double jump_mass_density() const { return (rho_plus - rho_minus); }
   inline double jump_inverse_mass_density() const { return (1.0/rho_plus - 1.0/rho_minus); }
@@ -204,6 +208,7 @@ private:
    * - fine_data->max_lvl (value exported is the same as data->max_lvl if not using subrefinement)
    * - levelset_interpolation_method
    * - sl_order
+   * - sl_order_interface
    * - voronoi_on_the_fly
    * The double parameters/variables that are saved/loaded are (in this order):
    * - tree_dimension[0 : P4EST_DIM - 1]
@@ -311,9 +316,13 @@ public:
   void compute_second_derivatives_of_n_velocities();
   void compute_second_derivatives_of_nm1_velocities();
 
-  inline void set_semi_lagrangian_order(const int& sl_)
+  inline void set_semi_lagrangian_order_advection(const int& sl_)
   {
     sl_order = sl_;
+  }
+  inline void set_semi_lagrangian_order_interface(const int& sl_)
+  {
+    sl_order_interface = sl_;
   }
 
   inline void set_uniform_bands(const double& uniform_band_m_, const double&uniform_band_p_)
@@ -517,8 +526,9 @@ public:
       std::cout << "vnp1_nodes_plus = " << std::endl;
     ierr = VecView(vnp1_nodes_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
   }
-  inline int get_sl_order()         const { return sl_order; }
-  inline double get_advection_cfl() const { return cfl_advection; }
+  inline int get_sl_order()           const { return sl_order; }
+  inline int get_sl_order_interface() const { return sl_order_interface; }
+  inline double get_advection_cfl()   const { return cfl_advection; }
 
 };
 
