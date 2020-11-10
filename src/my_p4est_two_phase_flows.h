@@ -124,9 +124,10 @@ private:
   Vec vnp1_nodes_minus,  vnp1_nodes_plus;
   Vec vn_nodes_minus,    vn_nodes_plus;
   Vec interface_velocity_np1; // yes, np1, yes! (used right after compute_dt in update_from_n_to_np1, so it looks like n but it's actually np1)
+  Vec interface_velocity_n;   // yes, n, yes!   (used right after compute_dt in update_from_n_to_np1, so it looks like nm1 but it's actually n)
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vn_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_n
-  Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz;
+  Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz, interface_velocity_n_xxyyzz;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------

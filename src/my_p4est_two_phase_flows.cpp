@@ -248,10 +248,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   vn_nodes_minus                = NULL;
   vn_nodes_plus                 = NULL;
   interface_velocity_np1        = NULL;
+  interface_velocity_n          = NULL;
   // tensor/matrix fields
   vn_nodes_minus_xxyyzz         = NULL;
   vn_nodes_plus_xxyyzz          = NULL;
   interface_velocity_np1_xxyyzz = NULL;
+  interface_velocity_n_xxyyzz   = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -339,10 +341,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   vn_nodes_minus                = NULL;
   vn_nodes_plus                 = NULL;
   interface_velocity_np1        = NULL;
+  interface_velocity_n          = NULL;
   // tensor/matrix fields
   vn_nodes_minus_xxyyzz         = NULL;
   vn_nodes_plus_xxyyzz          = NULL;
   interface_velocity_np1_xxyyzz = NULL;
+  interface_velocity_n_xxyyzz   = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -768,9 +772,11 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(vn_nodes_minus);                     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_plus);                      CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_np1);             CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_n);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);              CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);      CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);        CHKERRXX(ierr);
   // node-sampled fields on the computational grids nm1
   ierr = delete_and_nullify_vector(vnm1_nodes_minus);                   CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_plus);                    CHKERRXX(ierr);
@@ -2788,9 +2794,13 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   vnm1_nodes_plus   = vn_nodes_plus;
   vnm1_nodes_minus_xxyyzz = vn_nodes_minus_xxyyzz;
   vnm1_nodes_plus_xxyyzz  = vn_nodes_plus_xxyyzz;
-  // no longer need the interface velocity
-  ierr = delete_and_nullify_vector(interface_velocity_np1); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
+  // no longer need the n interface velocity
+  ierr = delete_and_nullify_vector(interface_velocity_n); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz); CHKERRXX(ierr);
+  interface_velocity_n        = interface_velocity_np1;
+  interface_velocity_n_xxyyzz = interface_velocity_np1_xxyyzz;
+  interface_velocity_np1 = NULL; // will need to be determined after completion of the next time step
+  interface_velocity_np1_xxyyzz = NULL; // will need to be determined after completion of the next time step
   // on computational grid at time n, we will need to interpolate things...
   // we will need to interpolate for vnp1 to vn (and then we'll take their derivatives)
   if(p4est_np1 != p4est_n)
