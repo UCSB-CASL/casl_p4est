@@ -1707,8 +1707,8 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
       if(is_node_Wall(p4est_n, node, is_wall) && bc_velocity[dir].wallType(xyz_node) == NEUMANN)
         for (u_char dd = 0; dd < P4EST_DIM; ++dd)
         {
-          neumann_wall[dir] = (is_wall[2*dd] ? -1 : (is_wall[2*dd + 1] ? +1 : 0));
-          nb_neumann_walls += abs(neumann_wall[dir]);
+          neumann_wall[dd] = (is_wall[2*dd] ? -1 : (is_wall[2*dd + 1] ? +1 : 0));
+          nb_neumann_walls += abs(neumann_wall[dd]);
         }
       const double min_w = 1e-6;
       const double inv_max_w = 1e-6;
