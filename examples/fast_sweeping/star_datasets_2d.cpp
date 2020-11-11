@@ -81,13 +81,15 @@
  * @param [out] distances A vector of "true" distances from all of 9 stencil points to the star-shaped level-set.
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
+ * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
  * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
 	std::normal_distribution<double>& normalDistribution,
-	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances, double& xOnGamma, double& yOnGamma )
+	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances, double& xOnGamma, double& yOnGamma,
+	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// Level-set function values and target h*kappa.
 	distances.clear();
@@ -143,26 +145,38 @@
 		// Find theta that yields "a" minimum distance between stencil point and star using Newton-Raphson's method.
 		if( distances.back() > EPS )
 		{
-			valOfDerivative = 1;
-			theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
-										 valOfDerivative, newDistance );
-
-//		if( s == 4 )
-//		{
-//			r = star.r( theta );						// Recalculating closest point on interface.
-//			xOnGamma = r * cos( theta );
-//			yOnGamma = r * sin( theta );
-//			std::cout << std::setprecision( 15 )
-//					  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
-//		}
-
-			if( newDistance - distances[s] > EPS )		// Verify that new point is closest than previous approximmation.
+			if( visitedNodes.find( stencil[s] ) != visitedNodes.end() )		// Speed up queries.
 			{
-				std::ostringstream stream;
-				stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
-					   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-					   << ".  Old dist: " << distances[s];
-				throw std::runtime_error( stream.str() );
+				theta = visitedNodes[stencil[s]].x;			// First component is the angular parameter.
+				newDistance = visitedNodes[stencil[s]].y;	// Second component is the distance to Gamma.
+			}
+			else
+			{
+				valOfDerivative = 1;
+				theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
+											 valOfDerivative, newDistance );
+
+//				if( s == 4 )
+//				{
+//					r = star.r( theta );					// Recalculating closest point on interface.
+//					xOnGamma = r * cos( theta );
+//					yOnGamma = r * sin( theta );
+//					std::cout << std::setprecision( 15 )
+//							  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
+//				}
+
+				double relDist = (newDistance - distances[s]) / distances[s];
+				if( relDist > 1e-8  )					// Verify that new point is closer than previous approximation.
+				{
+					std::ostringstream stream;
+					stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
+						   << std::scientific << std::setprecision( 15 ) << ".  New dist: " << newDistance
+						   << ".  Old dist: " << distances[s]
+						   << ".  Rel dist: " << relDist;
+					throw std::runtime_error( stream.str() );
+				}
+
+				visitedNodes[stencil[s]] = Point2( theta, newDistance );		// Memorize information for visited node.
 			}
 
 			distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
@@ -197,15 +211,19 @@ int main ( int argc, char* argv[] )
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
+	const double FLAT_LIM_HK = 0.004;			// [ATTENTION] Flatness limit for dimensionless curvature must match the
+												// one used in sinusoidal and circular data sets.
 
-	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/star_" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";	// Destination folder.
+	char strFlatLimHk[10];
+	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
+							+ std::to_string( MAX_REFINEMENT_LEVEL ) + "/star/";		// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen( rd() ); 					// Standard mersenne_twister_engine seeded with rd().
+	std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 	std::normal_distribution<double> normalDistribution;					// Used for bracketing and root finding.
 
 	try
@@ -224,8 +242,8 @@ int main ( int argc, char* argv[] )
 
 		// [CHANGE] Change these values to modify the shape of star interface.
 		// Using a=0.075 and b=0.350 for smooth star, and a=0.120 and b=0.305 for sharp star.
-		const double A = 0.075;
-		const double B = 0.350;
+		const double A = 0.120;
+		const double B = 0.305;
 		const int P = 5;
 		geom::Star star( A, B, P );
 		const double STAR_SIDE_LENGTH = star.getInscribingSquareSideLength();
@@ -234,7 +252,7 @@ int main ( int argc, char* argv[] )
 
 		//////////////////////////////////////////// Prepare output files //////////////////////////////////////////////
 
-		// Check for output directory, e.g. "data/star_7/a_0.075/b_0.350/".  If it doesn't exist, create it.
+		// Check for output directory, e.g. "data/star/a_0.075/b_0.350/".  If it doesn't exist, create it.
 		char auxA[10], auxB[10];
 		sprintf( auxA, "%.3f", A );
 		DATA_PATH += "a_" + std::string( auxA ) + "/";
@@ -356,14 +374,14 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Definining the non-signed distance level-set function to be reinitialized.
-		splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &star, 2 );
+		splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &star, 4 );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = ( void * ) ( &levelSetSC );
 
 		// Refine and recursively partition forest.
-		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf_and_uniform_band, nullptr );
 		my_p4est_partition( p4est, P4EST_TRUE, nullptr );
 
 		// Create the ghost (cell) and node structures.
@@ -445,7 +463,7 @@ int main ( int argc, char* argv[] )
 			else							// PDE-based?
 			{
 				my_p4est_level_set_t ls( &nodeNeighbors );
-				ls.reinitialize_2nd_order( reinitPhis[key], std::stoi( key.substr( 4 ) ) );		// 5, 10, 15 iterations.
+				ls.reinitialize_2nd_order( reinitPhis[key], std::stoi( key.substr( 4 ) ) );		// 5, 10, 20 iterations.
 			}
 
 			// Compute curvature with reinitialized data, which will be interpolated at the interface.
@@ -474,6 +492,7 @@ int main ( int argc, char* argv[] )
 			const quad_neighbor_nodes_of_node_t *qnnnPtr;
 			double grad[P4EST_DIM];
 			double gradError;
+			std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
 			for( auto n : indices )
 			{
 				std::vector<p4est_locidx_t> stencil;	// Contains 9 nodal indices in 2D.
@@ -485,7 +504,7 @@ int main ( int argc, char* argv[] )
 						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
 							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, normalDistribution,
-							pointsFilesMap[key], anglesFilesMap[key], distances, xOnGamma, yOnGamma );
+							pointsFilesMap[key], anglesFilesMap[key], distances, xOnGamma, yOnGamma, visitedNodes );
 						sample[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
 						distances.push_back( 0 );											// Dummy column.
 						samples.push_back( sample );

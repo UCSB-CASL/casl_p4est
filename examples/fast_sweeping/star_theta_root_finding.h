@@ -121,7 +121,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const geom::St
 	const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
 	int get_digits = static_cast<int>( digits * 0.75 );		// Accuracy doubles with each step, so stop when we have
 															// just over half the digits correct.
-	const boost::uintmax_t MAX_IT = 20;						// Maximum number of iterations for bracketing and root finding.
+	const boost::uintmax_t MAX_IT = 30;						// Maximum number of iterations for bracketing and root finding.
 	boost::uintmax_t it = MAX_IT;
 	DistThetaFunctorDerivative distThetaFunctorDerivative( u, v, star );    // Used for bisection (narrowing intervals).
 	DistThetaFunctorDerivativeNR distThetaFunctorDerivativeNR( distThetaFunctorDerivative );	// Used for Newton-Raphson's method.
@@ -163,7 +163,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const geom::St
 			while( vOfD > 1e-8 )					// For standing interval, keep iterating until convergence.
 			{										// Now that we have a narrow bracket, use Newton-Raphson's.
 				tResult = (tPair.first + tPair.second) / 2;	// Normally-randomize initial guess around midpoint.
-				tResult += normalDistribution( gen ) * (tRange / 6);
+				tResult += normalDistribution( gen ) * (tRange / 4);
 				tResult = MAX( tPair.first, MIN( tResult, tPair.second ) );
 				it = MAX_IT;
 				tResult = newton_raphson_iterate( distThetaFunctorDerivativeNR, tResult, tPair.first, tPair.second,
