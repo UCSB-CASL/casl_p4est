@@ -54,28 +54,32 @@ const int default_ntree[P4EST_DIM] = {DIM(1, 4, 1)};
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
 const bool default_use_second_order_theta = false; // relevant only if using (x)GFM cell solver
 const bool default_subrefinement = false;
-const double default_domain[P4EST_DIM] = {DIM(0.1, 0.4, 0.1)};
+// set 3 parameters: initial bubble diamater, outer mass density and outer viscosity
+const double initial_bubble_diameter  = 1.0;
+const double rho_plus                 = 1.0;
+const double mu_plus                  = 1.0;
+// other simulation parameters
+const double default_domain[P4EST_DIM] = {DIM(10.0, 40.0, 10.0)};
 const bool default_periodic[P4EST_DIM] = {DIM(false, false, false)};
-const double default_body_force[P4EST_DIM] = {DIM(0.0, -9.81, 0.0)};
-const double default_bubble_radius = 0.01;
-const double default_vorticity_threshold = DBL_MAX;
+// the 4 nondimensional setup parameters that may be set
+const double default_ratio_rho  = 100.0;
+const double default_ratio_mu   = 1.0;
+const double default_Eotvos     = 8.67; // case a) in Figure 1 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
+const double default_Morton     = 711;  // case a) in Figure 1 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
+// grid-related
+const double default_vorticity_threshold    = DBL_MAX;
 const double default_uniform_band_to_radius = 0.15;
-const double default_rho_minus  = 1.0;
-const double default_rho_plus   = 10.0;
-const double default_mu_minus   = 0.001;
-const double default_mu_plus    = 0.001;
-const double default_surface_tension  = 1.0/12000.0;
-const double default_duration         = 1.0;
-const double default_vtk_dt           = 0.05;
-const double default_save_state_dt    = 0.1;
-const int default_save_nstates = 0;
-const int default_sl_order = 2;
-const int default_sl_order_itfc = 2;
-const double default_cfl_advection = 1.0;
+const double default_duration       = 10.0;
+const double default_vtk_dt         = 1.0;
+const double default_save_state_dt  = 0.1;
+const int default_save_nstates      = 0;
+const int default_sl_order          = 2;
+const int default_sl_order_itfc     = 2;
+const double default_cfl_advection  = 1.0;
 const double default_cfl_visco_capillary = 0.95;
 const double default_cfl_capillary = 0.95;
 const jump_solver_tag default_projection = FV;
-const int default_n_reinit = 10;
+const int default_n_reinit = 1;
 const bool default_save_vtk = true;
 
 #if defined(STAMPEDE)
@@ -86,40 +90,46 @@ const string default_work_folder = "/scratch/regan/two_phase_flow/buoyant_bubble
 const string default_work_folder = "/home/regan/workspace/projects/two_phase_flow/buoyant_bubble/" + to_string(P4EST_DIM) + "D";
 #endif
 
-class LEVEL_SET: public CF_DIM {
-  const double bubble_radius;
+class initial_level_set_t: public CF_DIM {
 public:
-  LEVEL_SET(const double& bubble_radius_) : bubble_radius(bubble_radius_) { lip = 1.2; }
+  initial_level_set_t() { lip = 1.2; }
   double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(SUMD(SQR(x), SQR(y), SQR(z))) - bubble_radius;
+    return sqrt(SUMD(SQR(x), SQR(y), SQR(z))) - 0.5*initial_bubble_diameter;
   }
-};
+} initial_level_set;
 
-struct BCWALLTYPE_P : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
+class pressure_wall_bc_type_t : public WallBCDIM {
+private:
+  const double *xyz_min, *xyz_max;
+public:
+  pressure_wall_bc_type_t(const double* xyz_min_, const double* xyz_max_) : xyz_min(xyz_min_), xyz_max(xyz_max_) {}
+  BoundaryConditionType operator()(DIM(double x, double y, double z)) const
   {
+    bool top_wall   = fabs(y - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]);
+    bool top_corner = top_wall && (fabs(x - xyz_min[0]) < EPS*(xyz_max[0] - xyz_min[0]) || fabs(x - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]))
+        ONLY3D(&& (fabs(z - xyz_min[2]) < EPS*(xyz_max[2] - xyz_min[2]) || fabs(z - xyz_max[2]) < EPS*(xyz_max[2] - xyz_min[2])));
+//    return (top_wall && !top_corner ? DIRICHLET : NEUMANN);
     return NEUMANN;
   }
-} bc_wall_type_p;
+};
 
-struct BCWALLTYPE_VELOCITY : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
+class velocity_wall_bc_type_t : public WallBCDIM {
+private:
+  const double *xyz_min, *xyz_max;
+public:
+  velocity_wall_bc_type_t(const double* xyz_min_, const double* xyz_max_) : xyz_min(xyz_min_), xyz_max(xyz_max_) {}
+  BoundaryConditionType operator()(DIM(double x, double y, double z)) const
   {
+    bool top_wall   = fabs(y - xyz_max[1]) < EPS*(xyz_max[1] - xyz_min[1]);
+    bool top_corner = top_wall && (fabs(x - xyz_min[0]) < EPS*(xyz_max[0] - xyz_min[0]) || fabs(x - xyz_max[0]) < EPS*(xyz_max[0] - xyz_min[0]))
+        ONLY3D(&& (fabs(z - xyz_min[2]) < EPS*(xyz_max[2] - xyz_min[2]) || fabs(z - xyz_max[2]) < EPS*(xyz_max[2] - xyz_min[2])));
+//    return (top_wall && !top_corner ? NEUMANN : DIRICHLET);
     return DIRICHLET;
-  }
-} bc_walltype_velocity;
-
-struct CONSTANT_BODY_FORCE_T : CF_DIM {
-  const double value;
-  CONSTANT_BODY_FORCE_T(const double& val_) : value(val_) {}
-  double operator()(DIM(double, double, double)) const
-  {
-    return value;
   }
 };
 
-void build_computational_grids(const mpi_environment_t &mpi, my_p4est_brick_t *brick, p4est_connectivity_t* connectivity, const splitting_criteria_cf_and_uniform_band_t* data, const LEVEL_SET& level_set,
+void build_computational_grids(const mpi_environment_t &mpi, my_p4est_brick_t *brick, p4est_connectivity_t* connectivity, const splitting_criteria_cf_and_uniform_band_t* data,
                                p4est_t* &p4est_nm1, p4est_ghost_t* &ghost_nm1, p4est_nodes_t* &nodes_nm1, my_p4est_hierarchy_t* &hierarchy_nm1, my_p4est_node_neighbors_t* &ngbd_nm1,
                                p4est_t* &p4est_n, p4est_ghost_t* &ghost_n, p4est_nodes_t* &nodes_n, my_p4est_hierarchy_t* &hierarchy_n, my_p4est_node_neighbors_t* &ngbd_n,
                                my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces, Vec &phi)
@@ -186,10 +196,10 @@ void build_computational_grids(const mpi_environment_t &mpi, my_p4est_brick_t *b
   P4EST_ASSERT(faces->finest_face_neighborhoods_are_valid());
 
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
+  sample_cf_on_nodes(p4est_n, nodes_n, initial_level_set, phi);
 }
 
-void build_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, const splitting_criteria_cf_t* subrefined_data, const LEVEL_SET& level_set,
+void build_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, const splitting_criteria_cf_t* subrefined_data,
                                     p4est_t* &subrefined_p4est, p4est_ghost_t* &subrefined_ghost, p4est_nodes_t* &subrefined_nodes,
                                     my_p4est_hierarchy_t* &subrefined_hierarchy, my_p4est_node_neighbors_t* &subrefined_ngbd_n, Vec &subrefined_phi)
 {
@@ -220,7 +230,7 @@ void build_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, c
   subrefined_ngbd_n = new my_p4est_node_neighbors_t(subrefined_hierarchy, subrefined_nodes); subrefined_ngbd_n->init_neighbors();
 
   ierr = VecCreateGhostNodes(subrefined_p4est, subrefined_nodes, &subrefined_phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(subrefined_p4est, subrefined_nodes, level_set, subrefined_phi);
+  sample_cf_on_nodes(subrefined_p4est, subrefined_nodes, initial_level_set, subrefined_phi);
   return;
 }
 
@@ -257,61 +267,54 @@ void truncate_exportation_file_up_to_tstart(const double& tstart, const string &
   if(read_line)
     free(read_line);
   if(truncate(filename.c_str(), size_to_keep))
-    throw std::runtime_error("simulation_setup::truncate_exportation_file: couldn't truncate " + filename);
+    throw std::runtime_error("truncate_exportation_file_up_to_tstart: couldn't truncate " + filename);
 }
 
-void initialize_exportations(const double &tstart, const mpi_environment_t& mpi, const string& results_dir,
-                             string& datafile_parasitic_current, string& datafile_volume_bubble)
+void initialize_exportations(const double &tstart, const mpi_environment_t& mpi, const string& results_dir, string& datafile)
 {
-//  datafile_parasitic_current  = results_dir + "/magnitude_parasitic_current.dat";
-  datafile_volume_bubble      = results_dir + "/volume_bubble.dat";
+  datafile = results_dir + "/monitoring_results.dat";
   PetscErrorCode ierr;
-//  ierr = PetscPrintf(mpi.comm(), "Saving magnitude of parasitic currents in ... %s\n", datafile_parasitic_current.c_str()); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), "Saving bubble volume in ... %s\n", datafile_volume_bubble.c_str()); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Saving raw results in ... %s\n", datafile.c_str()); CHKERRXX(ierr);
 
   if(mpi.rank() == 0)
   {
-//    if(!file_exists(datafile_parasitic_current))
-//    {
-//      FILE* fp_parasitic_currents = fopen(datafile_parasitic_current.c_str(), "w");
-//      if(fp_parasitic_currents == NULL)
-//        throw std::runtime_error("initialize_exportations: could not open file for output of magnitude of parasitic current.");
-//      fprintf(fp_parasitic_currents, "%% tn | nondimensional parasitic current \n");
-//      fclose(fp_parasitic_currents);
-//    }
-//    else
-//      truncate_exportation_file_up_to_tstart(tstart, datafile_parasitic_current, 1);
-
-    if(!file_exists(datafile_volume_bubble))
+    if(!file_exists(datafile))
     {
-      FILE* fp_bubble_voume = fopen(datafile_volume_bubble.c_str(), "w");
-      if(fp_bubble_voume == NULL)
-        throw std::runtime_error("initialize_exportations: could not open file for output of bubble volume drift.");
-      fprintf(fp_bubble_voume, "%% tn | volume \n");
-      fclose(fp_bubble_voume);
+      FILE* fp_results = fopen(datafile.c_str(), "w");
+      if(fp_results == NULL)
+        throw std::runtime_error("initialize_exportations: could not open file for output of raw results.");
+      fprintf(fp_results, "%% tn | Re | We | volume \n");
+      fclose(fp_results);
     }
     else
-      truncate_exportation_file_up_to_tstart(tstart, datafile_volume_bubble, 1);
+      truncate_exportation_file_up_to_tstart(tstart, datafile, 3);
 
     char liveplot[PATH_MAX];
-    sprintf(liveplot, "%s/liveplot.gnu", results_dir.c_str());
+    sprintf(liveplot, "%s/live_monitor.gnu", results_dir.c_str());
     if(!file_exists(liveplot))
     {
       FILE* fp_liveplot = fopen(liveplot, "w");
       if(fp_liveplot == NULL)
         throw std::runtime_error("initialize_exportations: could not open file for liveplot.");
-//      fprintf(fp_liveplot, "set term wxt 0 noraise\n");
-//      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
-//      fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
-//      fprintf(fp_liveplot, "set ylabel \"Nondimensional U\" font \"Arial,14\"\n");
-//      fprintf(fp_liveplot, "set logscale y\n");
-//      fprintf(fp_liveplot, "plot \"magnitude_parasitic_current.dat\" using 1:2 title 'parasitic currents' with lines lw 3\n");
-      fprintf(fp_liveplot, "set term wxt 0 noraise\n");
+      fprintf(fp_liveplot, "set term wxt 0 position 0,50 noraise\n");
       fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot, "set ylabel \"Error in bubble volume (%%)\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot, "unset logscale y\n");
-      fprintf(fp_liveplot, "plot  \"volume_bubble.dat\" using 1:(100 * $2) title 'bubble volume error' with lines lw 3\n");
+      fprintf(fp_liveplot, "set ylabel \"Rising-velocity Reynolds number \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot \"monitoring_results.dat\" using 1:2 notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 1 position 800,50 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Rising-velocity Weber number \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:3 notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 2 position 1600,50 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Relative difference in bubble volume (in %%)\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "col = 4\n");
+      fprintf(fp_liveplot, "row = 1\n");
+      fprintf(fp_liveplot, "stats 'monitoring_results.dat' every ::row::row using col nooutput\n");
+      fprintf(fp_liveplot, "original_volume = STATS_min\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:(100 * ($4 - original_volume)/original_volume) with lines lw 3\n");
       fprintf(fp_liveplot, "pause 4\n");
       fprintf(fp_liveplot, "reread");
       fclose(fp_liveplot);
@@ -320,28 +323,21 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
   return;
 }
 
-void export_results(const double& nondimensional_tn, const double& magnitude_nondimensional_parasitic_current, const double& error_bubble_volume,
-                    const string& parasitic_current_datafile, const string& volume_datafile)
+void export_results(const double& nondimensional_tn, const double& Re, const double& We, const double& bubble_volume, const string& datafile)
 {
-//  FILE* fp_parasitic_current = fopen(parasitic_current_datafile.c_str(), "a");
-//  if(fp_parasitic_current == NULL)
-//    throw std::invalid_argument("main for static bubble: could not open file for output of parasitic current.");
-//  fprintf(fp_parasitic_current, "%g %g \n", nondimensional_tn, magnitude_nondimensional_parasitic_current);
-//  fclose(fp_parasitic_current);
-
-  FILE* fp_volume = fopen(volume_datafile.c_str(), "a");
-  if(fp_volume == NULL)
-    throw std::invalid_argument("main for static bubble: could not open file for output of volume drift.");
-  fprintf(fp_volume, "%g %g \n", nondimensional_tn, error_bubble_volume);
-  fclose(fp_volume);
+  FILE* fp_data = fopen(datafile.c_str(), "a");
+  if(fp_data == NULL)
+    throw std::invalid_argument("main for buoyant bubble: could not open file for output of raw results.");
+  fprintf(fp_data, "%g %g %g %g \n", nondimensional_tn, Re, We, bubble_volume);
+  fclose(fp_data);
 }
 
 void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
                                 my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity)
 {
-  const int lmin                        = cmd.get<int>    ("lmin",              default_lmin);
-  const int lmax                        = cmd.get<int>    ("lmax",              default_lmax);
-  const double vorticity_threshold      = cmd.get<double> ("thresh",            default_vorticity_threshold);
+  const int lmin                        = cmd.get<int>    ("lmin",   default_lmin);
+  const int lmax                        = cmd.get<int>    ("lmax",   default_lmax);
+  const double vorticity_threshold      = cmd.get<double> ("thresh", default_vorticity_threshold);
   const int ntree_xyz[P4EST_DIM]        = {DIM(cmd.get<int>("ntree_x", default_ntree[0]),
                                            cmd.get<int>("ntree_y", default_ntree[1]),
                                            cmd.get<int>("ntree_z", default_ntree[2]))};
@@ -354,13 +350,12 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
                                             cmd.get<bool>("yperiodic", default_periodic[1]),
                                             cmd.get<bool>("zperiodic", default_periodic[2]))};
   const double dxmin                    = MIN(DIM(domain_size[0]/ntree_xyz[0], domain_size[1]/ntree_xyz[1], domain_size[2]/ntree_xyz[2]))/((double) (1 << lmax));
-  const double bubble_radius            = cmd.get<double> ("radius",            default_bubble_radius);
-  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*bubble_radius/dxmin);
-  const double rho_minus                = cmd.get<double> ("rho_minus",         default_rho_minus);
-  const double rho_plus                 = cmd.get<double> ("rho_plus",          default_rho_plus);
-  const double mu_minus                 = cmd.get<double> ("mu_minus",          default_mu_minus);
-  const double mu_plus                  = cmd.get<double> ("mu_plus",           default_mu_plus);
-  const double surface_tension          = cmd.get<double> ("surface_tension",   default_surface_tension);
+  const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*initial_bubble_diameter*0.5/dxmin);
+  const double rho_minus                = rho_plus/cmd.get<double>("ratio_rho", default_ratio_rho);
+  const double mu_minus                 = mu_plus/cmd.get<double> ("ratio_mu",  default_ratio_mu);
+  const double Morton                   = cmd.get<double> ("Morton", default_Morton);
+  const double Eotvos                   = cmd.get<double> ("Eotvos", default_Eotvos);
+  const double surface_tension          = (SQR(mu_plus)/(rho_plus*initial_bubble_diameter))*sqrt(Eotvos/Morton);
   const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
   const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
   const int sl_order_interface          = cmd.get<int>    ("sl_order_itfc",     default_sl_order_itfc);
@@ -374,9 +369,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
 
-  if(2.0*bubble_radius > MIN(DIM(domain_size[0], domain_size[1], domain_size[2])))
-    throw std::invalid_argument("main for buoyant bubble: create_solver_from_scratch: invalid bubble radius (the bubble is larger than the computational domain).");
-  LEVEL_SET level_set(bubble_radius);
+  if(initial_bubble_diameter > MIN(DIM(domain_size[0], domain_size[1], domain_size[2])))
+    throw std::invalid_argument("main for buoyant bubble: create_solver_from_scratch: invalid bubble radius (the bubble is larger than the computational domain in some direction).");
 
   if(brick != NULL && brick->nxyz_to_treeid != NULL)
   {
@@ -394,7 +388,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     p4est_connectivity_destroy(connectivity); connectivity = NULL;
   }
   connectivity = my_p4est_brick_new(ntree_xyz, xyz_min, xyz_max, brick, periodic);
-  splitting_criteria_cf_and_uniform_band_t* data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band_in_dxmin);
+  splitting_criteria_cf_and_uniform_band_t* data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &initial_level_set, uniform_band_in_dxmin);
   p4est_t                       *p4est_nm1      = NULL, *p4est_n      = NULL, *subrefined_p4est     = NULL;
   p4est_ghost_t                 *ghost_nm1      = NULL, *ghost_n      = NULL, *subrefined_ghost     = NULL;
   p4est_nodes_t                 *nodes_nm1      = NULL, *nodes_n      = NULL, *subrefined_nodes     = NULL;
@@ -404,7 +398,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   my_p4est_cell_neighbors_t                             *ngbd_c       = NULL;
   my_p4est_faces_t                                      *faces        = NULL;
 
-  build_computational_grids(mpi, brick, connectivity, data, level_set,
+  build_computational_grids(mpi, brick, connectivity, data,
                             p4est_nm1, ghost_nm1, nodes_nm1, hierarchy_nm1, ngbd_nm1,
                             p4est_n, ghost_n, nodes_n, hierarchy_n, ngbd_n,
                             ngbd_c, faces, phi);
@@ -413,8 +407,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   if(use_subrefinement)
   {
     // build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
-    splitting_criteria_cf_t* subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &level_set);
-    build_interface_capturing_grid(p4est_n, brick, subrefined_data, level_set,
+    splitting_criteria_cf_t* subrefined_data = new splitting_criteria_cf_t(data->min_lvl, data->max_lvl + 1, &initial_level_set);
+    build_interface_capturing_grid(p4est_n, brick, subrefined_data,
                                    subrefined_p4est, subrefined_ghost, subrefined_nodes, subrefined_hierarchy, subrefined_ngbd_n, subrefined_phi);
     interface_capturing_phi = subrefined_phi;
   }
@@ -455,7 +449,6 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, 
     delete solver; solver = NULL; }
   P4EST_ASSERT(solver == NULL);
   solver = new my_p4est_two_phase_flows_t(mpi, backup_directory.c_str(), tn);
-
 
   if (brick != NULL && brick->nxyz_to_treeid != NULL)
   {
@@ -507,26 +500,14 @@ int main (int argc, char* argv[])
   cmd.add_option("zperiodic", "flag activating periodicity along z, if set to true or 1, deactivating periodicity along z if set to false or 0. Default is " + string(default_periodic[2] ? "" : "not") + " z-periodic.");
 #endif
   // physical parameters for the simulations
-  streamObj.str(""); streamObj << default_bubble_radius;
-  cmd.add_option("radius", "The (initial) radius of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_rho_minus;
-  cmd.add_option("rho_minus", "The mass density of the inside of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_rho_plus;
-  cmd.add_option("rho_plus", "The mass density of the outside of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_mu_minus;
-  cmd.add_option("mu_minus", "The viscosity of the inside of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_mu_plus;
-  cmd.add_option("mu_plus", "The viscosity of the outside of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_surface_tension;
-  cmd.add_option("surface_tension", "The surface tension viscosity of the two fluids to be considered. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_body_force[0];
-  cmd.add_option("body_force_x", "Default force per unit mass along x. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_body_force[1];
-  cmd.add_option("body_force_y", "Default force per unit mass along y. Default value is " + streamObj.str());
-#ifdef P4_TO_P8
-  streamObj.str(""); streamObj << default_body_force[2];
-  cmd.add_option("body_force_z", "Default force per unit mass along z. Default value is " + streamObj.str());
-#endif
+  streamObj.str(""); streamObj << default_ratio_rho;
+  cmd.add_option("ratio_rho", "The ratio of mass densities (outer fluid to inner fluid). Default value is " + streamObj.str());
+  streamObj.str(""); streamObj << default_ratio_mu;
+  cmd.add_option("ratio_mu", "The ratio of dynamic viscosities (outer fluid to inner fluid). Default value is " + streamObj.str());
+  streamObj.str(""); streamObj << default_Eotvos;
+  cmd.add_option("Eotvos", "The desired Eotvos number Eo = rho_plus*SQR(initial_bubble_diameter)*gravity/surface_tension. Default value is " + streamObj.str());
+  streamObj.str(""); streamObj << default_Morton;
+  cmd.add_option("Morton", "The desired Morton number Mo = gravity*pow(mu_plus, 4.0)/(rho_plus*pow(surface_tension, 3.0)). Default value is " + streamObj.str());
   streamObj.str(""); streamObj << default_duration;
   cmd.add_option("duration", "The overall duration of the simulation (absolute time). Default duration is " + streamObj.str());
   // method-related parameters
@@ -557,16 +538,10 @@ int main (int argc, char* argv[])
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
-  const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
-  const int niter_reinit                = cmd.get<int>    ("n_reinit",          default_n_reinit);
+  const string root_export_folder = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
+  const int niter_reinit = cmd.get<int> ("n_reinit", default_n_reinit);
 
   PetscErrorCode ierr;
-
-  BoundaryConditionsDIM bc_v[P4EST_DIM];
-  BoundaryConditionsDIM bc_p; bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(zero_cf);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    bc_v[dim].setWallTypes(bc_walltype_velocity); bc_v[dim].setWallValues(zero_cf);
-  }
 
   my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
   my_p4est_brick_t *brick                           = NULL;
@@ -586,10 +561,21 @@ int main (int argc, char* argv[])
     dt = two_phase_flow_solver->get_dt();
     two_phase_flow_solver->set_dt(dt, dt);
   }
-  cf_const_t body_force_x(cmd.get<double>("body_force_x", default_body_force[0]));
-  cf_const_t body_force_y(cmd.get<double>("body_force_y", default_body_force[1]));
+
+  const double* xyz_min = two_phase_flow_solver->get_brick()->xyz_min;
+  const double* xyz_max = two_phase_flow_solver->get_brick()->xyz_max;
+  BoundaryConditionsDIM bc_v[P4EST_DIM];
+  pressure_wall_bc_type_t pressure_wall_type(xyz_min, xyz_max);
+  velocity_wall_bc_type_t velocity_wall_type(xyz_min, xyz_max);
+  BoundaryConditionsDIM bc_p; bc_p.setWallTypes(pressure_wall_type); bc_p.setWallValues(zero_cf);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    bc_v[dim].setWallTypes(velocity_wall_type); bc_v[dim].setWallValues(zero_cf);
+  }
+
+  cf_const_t body_force_x(0.0);
+  cf_const_t body_force_y(-cmd.get<double>("Morton", default_Morton)*two_phase_flow_solver->get_rho_plus()*pow(two_phase_flow_solver->get_surface_tension(), 3.0)/pow(two_phase_flow_solver->get_mu_plus(), 4.0));
 #ifdef P4_TO_P8
-  cf_const_t body_force_z(cmd.get<double>("body_force_z", default_body_force[2]));
+  cf_const_t body_force_z(0.0);
 #endif
   CF_DIM* body_force[P4EST_DIM] = {DIM(&body_force_x, &body_force_y, &body_force_z)};
   two_phase_flow_solver->set_external_forces_per_unit_mass(body_force);
@@ -602,16 +588,6 @@ int main (int argc, char* argv[])
   if(!two_phase_flow_solver->viscosities_are_equal())
     throw std::runtime_error("main for static bubble: this test is designed for mu_minus == mu_plus");
 
-  const double bubble_radius        = cmd.get<double> ("radius", default_bubble_radius);
-#ifdef P4_TO_P8
-  const double exact_bubble_volume  = (4.0/3.0)*M_PI*pow(bubble_radius, 3.0);
-#else
-  const double exact_bubble_volume  = M_PI*SQR(bubble_radius);
-#endif
-
-  const double viscosity        = two_phase_flow_solver->get_mu_minus();
-  const double mass_density     = two_phase_flow_solver->get_rho_minus();
-  const double surface_tension  = two_phase_flow_solver->get_surface_tension();
   const double duration   = cmd.get<double> ("duration",      default_duration);
   const double vtk_dt     = cmd.get<double> ("vtk_dt",        default_vtk_dt);
   const bool save_vtk     = cmd.get<bool>   ("save_vtk",      default_save_vtk);
@@ -625,28 +601,34 @@ int main (int argc, char* argv[])
     two_phase_flow_solver->set_dt(dt, dt);
   }
 
-  const double inv_Oh_square = surface_tension*mass_density*2.0*bubble_radius/SQR(viscosity);
-  streamObj.str(""); streamObj << inv_Oh_square;
   const splitting_criteria_t* sp = (splitting_criteria_t*) two_phase_flow_solver->get_p4est_n()->user_pointer;
-  const string export_dir = root_export_folder + (root_export_folder.back() == '/' ? "" : "/") + "inv_Oh_squared_" + streamObj.str() + "/lmin_" + to_string(sp->min_lvl) + "_lmax_" + to_string(sp->max_lvl);
-  const string vtk_dir    = export_dir + "/vtu";
-  const string results_dir   = export_dir + "/results";
+  streamObj.str("");
+  streamObj << "mu_ratio_" << two_phase_flow_solver->get_mu_plus()/two_phase_flow_solver->get_mu_minus()
+            << "_rho_ratio_" << two_phase_flow_solver->get_rho_plus()/two_phase_flow_solver->get_rho_minus()
+            << "_Eotvos_" << two_phase_flow_solver->get_rho_plus()*SQR(initial_bubble_diameter)*fabs(body_force_y(0.0, 0.0))/two_phase_flow_solver->get_surface_tension()
+            << "_Morton_" << fabs(body_force_y(0.0, 0.0))*pow(two_phase_flow_solver->get_mu_plus(), 4.0)/(two_phase_flow_solver->get_rho_plus()*pow(two_phase_flow_solver->get_surface_tension(), 3.0));
+  const string export_dir   = root_export_folder + (root_export_folder.back() == '/' ? "" : "/") + streamObj.str() + "/lmin_" + to_string(sp->min_lvl) + "_lmax_" + to_string(sp->max_lvl);
+  const string vtk_dir      = export_dir + "/vtu";
+  const string results_dir  = export_dir + "/results";
   if(create_directory(export_dir.c_str(), mpi.rank(), mpi.comm()))
-    throw std::runtime_error("main for static bubble: could not create exportation directory " + export_dir);
+    throw std::runtime_error("main for buoyant bubble: could not create exportation directory " + export_dir);
   if(create_directory(results_dir.c_str(), mpi.rank(), mpi.comm()))
-    throw std::runtime_error("main for static bubble: could not create directory for exportation of results, i.e., " + results_dir);
+    throw std::runtime_error("main for buoyant bubble: could not create directory for exportation of results, i.e., " + results_dir);
   if(save_vtk && create_directory(vtk_dir, mpi.rank(), mpi.comm()))
-    throw std::runtime_error("main for static bubble: could not create directory for visualization files, i.e., " + vtk_dir);
+    throw std::runtime_error("main for buoyant bubble: could not create directory for visualization files, i.e., " + vtk_dir);
 
-  string parasitic_current_datafile, volume_datafile;
-  initialize_exportations(tn, mpi, results_dir, parasitic_current_datafile, volume_datafile);
+  string datafile;
+  initialize_exportations(tn, mpi, results_dir, datafile);
+
   int iter = 0;
-  int vtk_idx = (cmd.contains("restart") ? (int) floor(tn/vtk_dt)  : -1);
+  int vtk_idx = (cmd.contains("restart") ? (int) floor(tn/vtk_dt)  : 0);
   int backup_time_idx = (int) floor(tn/save_state_dt);
-  double dummy = NAN;
-  double error_nondimensional_volume = (exact_bubble_volume - two_phase_flow_solver->volume_in_negative_domain())/exact_bubble_volume;
   if(mpi.rank() == 0 && !cmd.contains("restart"))
-    export_results(tn, dummy, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
+#ifdef P4_TO_P8
+    export_results(tn, 0.0, 0.0, M_PI*pow(initial_bubble_diameter, 3.0)/6.0, datafile);
+#else
+    export_results(tn, 0.0, 0.0, M_PI*0.25*SQR(initial_bubble_diameter), datafile);
+#endif
 
   while(tn + 0.01*dt < duration)
   {
@@ -656,14 +638,6 @@ int main (int argc, char* argv[])
       dt = two_phase_flow_solver->get_dt();
       two_phase_flow_solver->update_from_tn_to_tnp1(iter%niter_reinit == 0);
     }
-
-    if(save_vtk && (int) floor((tn)/vtk_dt) != vtk_idx)
-    {
-      vtk_idx = (int) floor((tn)/vtk_dt);
-      if(iter > 0)
-        two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx);
-    }
-
 
     if(save_nstates > 0 && (int) floor(tn/save_state_dt) != backup_time_idx)
     {
@@ -678,29 +652,30 @@ int main (int argc, char* argv[])
 //    if(save_vtk && (int) floor((tn + dt)/vtk_dt) != vtk_idx)
 //    {
 //      vtk_idx = (int) floor((tn + dt)/vtk_dt);
-//      two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx);
+      two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx++);
 //    }
 
-    if(two_phase_flow_solver->get_max_velocity() > 1.0)
+    if(two_phase_flow_solver->get_max_velocity() > 100.0)
     {
       if(save_vtk)
         two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx);
-      ierr = PetscPrintf(mpi.comm(), "The simulation blew up... Maximum (non-dimensional) velocity found to be %g\n", two_phase_flow_solver->get_max_velocity()*viscosity/surface_tension); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "The simulation blew up... Maximum velocity found to be %g\n", two_phase_flow_solver->get_max_velocity()); CHKERRXX(ierr);
       break;
     }
 
     tn += dt;
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
                        iter, tn, 100*tn/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
+    double avg_itfc_velocity[P4EST_DIM] = {DIM(0.0, 1.0, 0.0)};
+    const double bubble_volume = two_phase_flow_solver->volume_in_negative_domain();
 //    magnitude_nondimensional_parasitic_current = two_phase_flow_solver->get_max_velocity()*viscosity/surface_tension;
-    error_nondimensional_volume = (exact_bubble_volume - two_phase_flow_solver->volume_in_negative_domain())/exact_bubble_volume;
     if(mpi.rank() == 0)
-      export_results(tn, dummy, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
-//    max_nondimensional_velocity_overall = MAX(max_nondimensional_velocity_overall, magnitude_nondimensional_parasitic_current);
-
+      export_results(tn, avg_itfc_velocity[1]*two_phase_flow_solver->get_rho_plus()*initial_bubble_diameter/two_phase_flow_solver->get_mu_plus(),
+          two_phase_flow_solver->get_rho_plus()*SQR(avg_itfc_velocity[1])*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension(),
+          bubble_volume, datafile);
     iter++;
   }
-//  ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_nondimensional_velocity_overall);
+  ierr = PetscPrintf(mpi.comm(), "Gracefully finishing up now\n");
 
   delete two_phase_flow_solver;
   my_p4est_brick_destroy(connectivity, brick);
