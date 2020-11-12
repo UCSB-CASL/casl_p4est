@@ -2929,8 +2929,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
 
   delete interface_manager;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_np1);
-  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   set_phi((fine_ngbd_n != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1), levelset_interpolation_method, phi_on_computational_nodes_np1); // memory handled therein!
+  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
