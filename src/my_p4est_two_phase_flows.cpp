@@ -2506,6 +2506,48 @@ void my_p4est_two_phase_flows_t::sample_static_levelset_on_nodes(const p4est_t *
   return;
 }
 
+void my_p4est_two_phase_flows_t::get_average_interface_velocity(double avg_itfc_velocity[P4EST_DIM])
+{
+  if(interface_velocity_np1 != NULL)
+    set_interface_velocity_np1();
+
+  my_p4est_interpolation_nodes_t interp_itfc_velocity(ngbd_n);
+  interp_itfc_velocity.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
+
+  double integral_velocity_and_surface[P4EST_DIM + 1] = {DIM(0.0, 0.0, 0.0), 0.0};
+
+  for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, NULL))
+      {
+        double xyz_quad[P4EST_DIM];
+        const double *tree_xyz_min, *tree_xyz_max;
+        const p4est_quadrant_t* quad;
+        fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est_n, ghost_n);
+        xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad);
+        my_p4est_finite_volume_t fv = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
+        P4EST_ASSERT(fv.interfaces.size() <= 1);
+        for (size_t k = 0; k < fv.interfaces.size(); ++k) {
+          const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + fv.interfaces[k].centroid[0], xyz_quad[1] + fv.interfaces[k].centroid[1], xyz_quad[2] + fv.interfaces[k].centroid[2])};
+          double interface_velocity_at_quadrature_point[P4EST_DIM];
+          interp_itfc_velocity(xyz_interface_quadrature, interface_velocity_at_quadrature_point);
+          for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+            integral_velocity_and_surface[dim] += interface_velocity_at_quadrature_point[dim]*fv.interfaces[k].area;
+          integral_velocity_and_surface[P4EST_DIM] += fv.interfaces[k].area;
+        }
+      }
+    }
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, integral_velocity_and_surface, 1 + P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    avg_itfc_velocity[dim] = integral_velocity_and_surface[dim]/integral_velocity_and_surface[P4EST_DIM];
+
+  return;
+}
 
 void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset, const bool& static_interface)
 {

@@ -397,6 +397,8 @@ public:
 
   inline double volume_in_negative_domain() const { return interface_manager->volume_in_negative_domain(); }
 
+  void get_average_interface_velocity(double avg_itfc_velocity[P4EST_DIM]);
+
   inline int get_rank() const { return p4est_n->mpirank; }
 
   /*!
