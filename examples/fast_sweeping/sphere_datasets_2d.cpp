@@ -52,27 +52,50 @@
 int main ( int argc, char* argv[] )
 {
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
+	// Modified to allow comparison between different levels of refinement.  Instead of considering h*kappa, we need
+	// to base our computations on kappa only.
+	// We depart from our previous calculations with h = 1 / 2^7.
 
 	const int MAX_REFINEMENT_LEVEL = 7;						// Always take H from unit squares with this maximum
 	const double H = 1. / pow( 2, MAX_REFINEMENT_LEVEL );	// level of refinement.
+	const double H_BASE = 1. / pow( 2, 7 );					// To avoid data explosion, the number of samples depends on
+															// a base value for mesh size (equiv. to max. lvl. = 7).
 	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
-	const double FLAT_LIM_HK = 0.004;						// Flatness limit for dimensionless curvature.
-	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
-	const double MAX_RADIUS = H / FLAT_LIM_HK;				// Ensures we can cover h*kappa up to FLAT_LIM_HK.
-	const double HK_04_RADIUS = H / 0.04;					// Radius at which we have h*kappa = 0.04 (used for hybrid method).
-	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: domain is [-DIM, +DIM]^{P4EST_DIM}
-	const int NUM_CIRCLES = (int)(2 * ((MAX_RADIUS - MIN_RADIUS) / H + 1));	// Number of circles is proportional to radii difference.
-																			// Originally, 2 circles per finest quad/oct.
-	char strFlatLimHk[10];
-	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
-		+ std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
+	const double MIN_KAPPA = 0.5;							// Minimum and maximum curvature values.  Computed by
+	const double MAX_KAPPA = 85. + 1 / 3.;					// considering H_BASE: hk_max = h/(1.5h), and hk_min = 0.5h.
+	const double MIN_RADIUS = 1. / MAX_KAPPA;				// All resolutions must meet these radius constraints.
+	const double MAX_RADIUS = 1. / MIN_KAPPA;
+	const double FLAT_LIM_KAPPA = 5;						// Flatness limit for triggering hybrid method.
+	const double FLAT_LIM_RADIUS = 1. / FLAT_LIM_KAPPA;		// All resolutions adhere to this constraint.  Then, the
+															// hybrid model is used whenever:
+															// h7 * kLim  = 0.0390625,  (for max lvl of ref = 7),
+															// h8 * kLim  = 0.01953125,
+															// h9 * kLim  = 0.009765625,
+															// h10 * kLim = 0.0048828125.
+	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
+
+	// Number of circles is proportional to radii difference and to H_BASE ration to H.
+	// Originally, 2 circles per finest quad/oct.
+	const int NUM_CIRCLES = ceil( 2 * ((MAX_RADIUS - MIN_RADIUS) / H_BASE + 1) * (log2( H_BASE / H ) + 1) );
+
+	// Expected number of samples per distinct radius.
+	// First, we allow to generate a tentative number of samples.  Then, we randomly collect only the expected number
+	// that we would get if we had used H_BASE instead.  This allows varying the origin of the circles, and then pick
+	// a smaller subset that encompasses samples from several configurations.
+	// Number of samples per radius is approximated by 5 times 1 sample per h^2, which comes from the area difference of
+	// the largest circle and the second to that circle.  This ensures that each radius gets the same number of samples.
+	// By doing this, we are reducing the data sets for very small spacing.
+	const int SAMPLES_PER_RADIUS = ceil( 5 * M_PI / SQR( H ) * (SQR( FLAT_LIM_RADIUS ) - SQR( FLAT_LIM_RADIUS - H )) );
+	const int MAX_SAMPLES_PER_RADIUS = ceil( 5 * M_PI / SQR( H_BASE ) * (SQR( FLAT_LIM_RADIUS ) - SQR( FLAT_LIM_RADIUS - H_BASE )) );
+
+	// Destination folder.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
-	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
-	generateColumnHeaders( COLUMN_NAMES );
+	std::string COLUMN_NAMES[NUM_COLUMNS];					// Column headers following the x-y truth table of
+	generateColumnHeaders( COLUMN_NAMES );					// 3-state variables.
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
+	std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
 	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
 
 	try
@@ -87,14 +110,10 @@ int main ( int argc, char* argv[] )
 		if( mpi.rank() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
-		// Collect samples from signed distance function and from reinitialized level-set.
-		std::cout << "Collecting samples from level-set function with circular interface [hk_radius = "
-				  << HK_04_RADIUS << "]" << std::endl;
-
-		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
+		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i circles with maximum refinement level of %i and finest h = %g\n",
+		printf( ">> Began to generate datasets for %i circles with maximum level of refinement = %i and finest h = %g\n",
 			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
@@ -122,42 +141,41 @@ int main ( int argc, char* argv[] )
 		sdfFile.precision( 15 );							// Precision for floating point numbers.
 		rlsFile.precision( 15 );
 
-		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
-		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, H/FLAT_LIM_HK], inclusive.
+		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
+
+		// Variables to control the spread of circles' radii.
+		// These must vary depending on the uniform spread of curvature.
+		double kappaDistance = MIN_KAPPA - MAX_KAPPA;		// Circles' radii are in [1/MAX_KAPPA, 1/MIN_KAPPA].
 		double linspace[NUM_CIRCLES];
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
 
 		// Domain information, applicable to all spherical interfaces.
-		int n_xyz[] = { 2 * (int)DIM, 2 * (int)DIM, 2 * (int)DIM };	// One tree per dimension.
+		int n_xyz[] = { 2 * (int)DIM, 2 * (int)DIM, 2 * (int)DIM };		// Symmetric num. of trees in +ve and -ve axes.
 		double xyz_min[] = { -DIM, -DIM, -DIM };			// Squared domain.
 		double xyz_max[] = { DIM, DIM, DIM };
 		int periodic[] = { 0, 0, 0 };						// Non-periodic domain.
 
 		int nSamples = 0;
 		int nc = 0;							// Keeps track of number of circles whose samples have been collected.
-											// Number of samples per radius is approximated by 5 times 1 sample per
-											// h^2, which comes from the area difference of circle for which h*kappa = 0.04
-											// and second to that circle.  This ensures that when we compare hybrid vs
-											// network-only models, we have the same amount of samples for training.
-		const int MAX_SAMPLES_PER_RADIUS = (int)( 5 * M_PI / SQR( H ) * (SQR( HK_04_RADIUS ) - SQR( HK_04_RADIUS - H )) );
 		while( nc < NUM_CIRCLES )
 		{
-			const double KAPPA = 1 / MIN_RADIUS + linspace[nc] * kappaDistance;
-			const double R = 1 / KAPPA;			// Circle radius to be evaluated.
-			const double H_KAPPA = H * KAPPA;	// Expected dimensionless curvature: h*kappa = h/r.
+			const double KAPPA = MAX_KAPPA + linspace[nc] * kappaDistance;
+			const double R = 1 / KAPPA;						// Circle radius to be evaluated.
+			const double H_KAPPA = H * KAPPA;				// Expected dimensionless curvature: h*kappa = h/r.
 			std::vector<std::vector<double>> rlsSamples;
 			std::vector<std::vector<double>> sdfSamples;
 
 			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
-			// reach a given maximum.
-			double maxRE = 0;							// Maximum relative error.
+			// reach a given maximum for current H.  Then, filter out samples by using the expected max number from
+			// using H_BASE.
+			double maxRE = 0;								// Maximum relative error.
 			int nSamplesForSameRadius = 0;
-			while( nSamplesForSameRadius < MAX_SAMPLES_PER_RADIUS )
+			while( nSamplesForSameRadius < SAMPLES_PER_RADIUS )
 			{
 				const double C[] = {
-					DIM( uniformDistribution( gen ),	// Center coords are randomly chosen
-						 uniformDistribution( gen ),	// around the origin of the grid.
+					DIM( uniformDistribution( gen ),		// Center coords are randomly chosen around the origin.
+						 uniformDistribution( gen ),
 						 uniformDistribution( gen ) )
 				};
 
@@ -171,7 +189,7 @@ int main ( int argc, char* argv[] )
 
 				// Definining the non-signed distance level-set function to be reinitialized and the exact signed
 				// distance function.  The signed distance function is used for partitioning and refinement and get a
-				// band of uniform cells around Gamma.  The latter only works if the level-set function is close to being
+				// band of uniform cells around Gamma.  The latter only works if the level-set function is close to
 				// an exact signed distance function.  If no analytic form is given, we must work around it by reinitia-
 				// lizing a non-signed distance function, and then using interpolation.  Here, there's no need for the
 				// this because we have an analytic form of the signed distance function with a circular inteface.  This
@@ -288,8 +306,8 @@ int main ( int argc, char* argv[] )
 							qnnnPtr->gradient( rlsPhiReadPtr, grad );
 							double gradNorm = sqrt( SUMD( SQR( grad[0] ), SQR( grad[1] ), SQR( grad[2] ) ) );	// Get the unit gradient.
 
-							for( int i = 0; i < P4EST_DIM; i++ )					// Translation: this is the location where
-								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// we need to interpolate numerical curvature.
+							for( int i = 0; i < P4EST_DIM; i++ )	// Translation: this is where we need to interpolate
+								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// the numerical curvature.
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
 							rlsDataNve.push_back( -iHKappa );		// Attach interpolated h*kappa to reinit. data only.
@@ -342,8 +360,11 @@ int main ( int argc, char* argv[] )
 			// Collect randomly as many samples as we need.
 			if( nSamplesForSameRadius > MAX_SAMPLES_PER_RADIUS )
 			{
-				std::shuffle( sdfSamples.begin(), sdfSamples.end(), gen );
-				std::shuffle( rlsSamples.begin(), rlsSamples.end(), gen );
+				std::mt19937 gen2{}; 			// NOLINT In order to keep correlated sdf and rls samples, use the same
+												// sampling generator and reset its seed.
+				std::shuffle( sdfSamples.begin(), sdfSamples.end(), gen2 );
+				gen2.seed();					// NOLINT.
+				std::shuffle( rlsSamples.begin(), rlsSamples.end(), gen2 );
 			}
 
 			// Write all samples collected for all circles with the same radius but randomized center content to files.
