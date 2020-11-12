@@ -193,8 +193,6 @@ private:
   void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1);
   void compute_vorticities();
 
-  void set_interface_velocity_np1();
-
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
    * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
@@ -389,6 +387,7 @@ public:
   }
 
   void compute_velocities_at_nodes();
+  void set_interface_velocity_np1();
   void save_vtk(const std::string& vtk_directory, const int& index) const;
   void update_from_tn_to_tnp1(const bool& reinitialize_levelset = true, const bool& static_interface = false);
 

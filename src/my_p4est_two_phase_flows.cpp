@@ -1016,73 +1016,73 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
 
   // compute n_cdot_grad_u_minus_cdot_n and n_cdot_grad_u_minus_cdot_n if needed
   Vec n_cdot_grad_u_minus_cdot_n = NULL, n_cdot_grad_u_plus_cdot_n = NULL;
-  if(!viscosities_are_equal())
-  {
-    if(vnp1_nodes_minus == NULL || vnp1_nodes_plus == NULL)
-      throw std::runtime_error("my_p4est_two_phase_flows_t::compute_pressure_jump() : the (n + 1) node velocities would be required to evaluate some terms in the pressure jump (have you interpolated at the nodes after the viscosity step?)");
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_minus_cdot_n);  CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_plus_cdot_n);   CHKERRXX(ierr);
-    double *n_cdot_grad_u_minus_cdot_n_p, *n_cdot_grad_u_plus_cdot_n_p;
-    ierr = VecGetArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
-    ierr = VecGetArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
+//  if(!viscosities_are_equal())
+//  {
+//    if(vnp1_nodes_minus == NULL || vnp1_nodes_plus == NULL)
+//      throw std::runtime_error("my_p4est_two_phase_flows_t::compute_pressure_jump() : the (n + 1) node velocities would be required to evaluate some terms in the pressure jump (have you interpolated at the nodes after the viscosity step?)");
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_minus_cdot_n);  CHKERRXX(ierr);
+//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_plus_cdot_n);   CHKERRXX(ierr);
+//    double *n_cdot_grad_u_minus_cdot_n_p, *n_cdot_grad_u_plus_cdot_n_p;
+//    ierr = VecGetArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
+//    ierr = VecGetArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
 
-    const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
-    ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-    double xyz_node[P4EST_DIM], normal_vector[P4EST_DIM];
-    double grad_u_minus[SQR_P4EST_DIM], grad_u_plus[SQR_P4EST_DIM];
-    const double *inputs[2] = {vnp1_nodes_minus_p, vnp1_nodes_plus_p};
-    double* outputs[2] = {grad_u_minus, grad_u_plus};
-    quad_neighbor_nodes_of_node_t qnnn_buf;
-    const quad_neighbor_nodes_of_node_t* qnnn_p = (ngbd_n->neighbors_are_initialized() ? NULL : &qnnn_buf);
-    for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
-      const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
-      if(ngbd_n->neighbors_are_initialized())
-        ngbd_n->get_neighbors(node_idx, qnnn_p);
-      else
-        ngbd_n->get_neighbors(node_idx, qnnn_buf);
+//    const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
+//    ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
+//    double xyz_node[P4EST_DIM], normal_vector[P4EST_DIM];
+//    double grad_u_minus[SQR_P4EST_DIM], grad_u_plus[SQR_P4EST_DIM];
+//    const double *inputs[2] = {vnp1_nodes_minus_p, vnp1_nodes_plus_p};
+//    double* outputs[2] = {grad_u_minus, grad_u_plus};
+//    quad_neighbor_nodes_of_node_t qnnn_buf;
+//    const quad_neighbor_nodes_of_node_t* qnnn_p = (ngbd_n->neighbors_are_initialized() ? NULL : &qnnn_buf);
+//    for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+//      const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+//      if(ngbd_n->neighbors_are_initialized())
+//        ngbd_n->get_neighbors(node_idx, qnnn_p);
+//      else
+//        ngbd_n->get_neighbors(node_idx, qnnn_buf);
 
-      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
-      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
-      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
-      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
-      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
-        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
-        {
-          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
-          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
-        }
-    }
-    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
-      const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
-      if(ngbd_n->neighbors_are_initialized())
-        ngbd_n->get_neighbors(node_idx, qnnn_p);
-      else
-        ngbd_n->get_neighbors(node_idx, qnnn_buf);
+//      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+//      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
+//      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
+//      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
+//      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
+//      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+//        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
+//        {
+//          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
+//          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
+//        }
+//    }
+//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+//      const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+//      if(ngbd_n->neighbors_are_initialized())
+//        ngbd_n->get_neighbors(node_idx, qnnn_p);
+//      else
+//        ngbd_n->get_neighbors(node_idx, qnnn_buf);
 
-      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
-      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
-      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
-      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
-      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
-        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
-        {
-          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
-          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
-        }
-    }
-    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+//      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
+//      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
+//      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
+//      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
+//      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+//        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
+//        {
+//          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
+//          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
+//        }
+//    }
+//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-    ierr = VecRestoreArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
-  }
+//    ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
+//    ierr = VecRestoreArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
+//  }
   // let's use (linear) interpolators since we may need to do that at subresolved nodes
   my_p4est_interpolation_nodes_t *interp_n_cdot_grad_u_minus_cdot_n = NULL, *interp_n_cdot_grad_u_plus_cdot_n = NULL;
   if(n_cdot_grad_u_minus_cdot_n != NULL && n_cdot_grad_u_plus_cdot_n != NULL)
@@ -2012,6 +2012,8 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_minus, "vnp1_minus"));
   if(vnp1_nodes_plus != NULL)
     node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_plus, "vnp1_plus"));
+  if(interface_velocity_np1 != NULL)
+    node_vector_fields.push_back(Vec_for_vtk_export_t(interface_velocity_np1, "itfc_vnp1"));
   if(interface_manager->subcell_resolution() == 0)
   {
     node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
@@ -2021,15 +2023,15 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   Vec projection_variable = divergence_free_projector->get_solution();
   if(projection_variable != NULL)
     cell_scalar_fields.push_back(Vec_for_vtk_export_t(projection_variable, "projection_variable"));
-  Vec discretized_div_u_star = NULL;
-  if(divergence_free_projector->get_rhs() != NULL)
-  {
-    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
-    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
-  }
+//  Vec discretized_div_u_star = NULL;
+//  if(divergence_free_projector->get_rhs() != NULL)
+//  {
+//    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
+//    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
+//  }
   Vec pressure_guess = (pressure_guess_solver != NULL ? pressure_guess_solver->get_solution() : NULL);
   if(pressure_guess != NULL)
     cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_guess, "pressure_guess"));
@@ -2055,7 +2057,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   node_scalar_fields.clear();
   node_vector_fields.clear();
   cell_scalar_fields.clear();
-  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
+//  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
   return;
@@ -2342,8 +2344,15 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
       interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
 
   // Maybe better to flatten the interface velocity here, before finalization?
+  my_p4est_level_set_t ls(ngbd_n);
+  Vec flat_interface_velocity_np1;
+  ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &flat_interface_velocity_np1); CHKERRXX(ierr);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_on_computational_nodes, interface_velocity_np1, flat_interface_velocity_np1, 20, NULL, 2, 10, NULL, interface_manager->get_grad_phi(), P4EST_DIM);
+  ierr = delete_and_nullify_vector(interface_velocity_np1); CHKERRXX(ierr);
+  interface_velocity_np1 = flat_interface_velocity_np1;
 
   if(interface_velocity_np1_xxyyzz == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, SQR_P4EST_DIM, &interface_velocity_np1_xxyyzz); CHKERRXX(ierr);
@@ -2352,7 +2361,6 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
 
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-  ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
   if(interp_jump_normal_velocity != NULL)
     delete interp_jump_normal_velocity;
 
@@ -2370,6 +2378,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   my_p4est_interpolation_nodes_t* interp_n = NULL;
   if(second_order){
     interp_n = new my_p4est_interpolation_nodes_t(ngbd_nm1);
+    P4EST_ASSERT(VecIsSetForNodes(interface_velocity_n, ngbd_nm1->get_nodes(), ngbd_nm1->get_p4est()->mpicomm, P4EST_DIM));
     interp_n->set_input(interface_velocity_n, interface_velocity_n_xxyyzz, quadratic, P4EST_DIM);
   }
   P4EST_ASSERT(!second_order || interp_n != NULL);
@@ -2507,7 +2516,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     compute_dt();
   dt_updated = false;
 
-  if(!static_interface)
+  if(!static_interface && interface_velocity_np1 == NULL)
     set_interface_velocity_np1();
 
   // find the np1 computational grid
