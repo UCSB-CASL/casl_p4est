@@ -71,8 +71,6 @@
  * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
- * @param [in] gen Random number generator.
- * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
@@ -83,8 +81,8 @@
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
-	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances,
-	double& xOnGamma, double& yOnGamma, std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
+	std::vector<double>& distances, double& xOnGamma, double& yOnGamma,
+	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h*kappa.
 	distances.clear();
@@ -96,7 +94,7 @@
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, valOfDerivative, centerU;
+	double u, centerU;
 	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
@@ -129,37 +127,29 @@
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
-		if( visitedNodes.find( stencil[s] ) != visitedNodes.end() )		// Speed up queries.
-		{
-			u = visitedNodes[stencil[s]].x;				// First component is the parameter u.
-			newDistance = visitedNodes[stencil[s]].y;	// Second component is the distance to Gamma.
-		}
-		else
-		{
-			valOfDerivative = 1;
-			u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
-			visitedNodes[stencil[s]] = Point2( u, newDistance );		// Memorize information for visited node.
+		// We should have this information in the memoization map.
+		assert( visitedNodes.find( stencil[s] ) != visitedNodes.end() );
 
-//			if( s == 4 )
-//			{
-//				double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
-//			}
+		u = visitedNodes[stencil[s]].x;				// First component is the parameter u (in local coordinate system).
+		newDistance = visitedNodes[stencil[s]].y;	// Second component is the signed distance to Gamma.
 
-			if( newDistance - distances[s] > EPS )
-			{
-				std::ostringstream stream;
-				stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
-					   << ".  Val. of Der: " << std::scientific << valOfDerivative
-					   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-					   << ".  Old dist: " << distances[s];
-				throw std::runtime_error( stream.str() );
-			}
+//		if( s == 4 )
+//		{
+//			double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
+//		}
+
+		double diff = ABS( newDistance ) - distances[s];
+		if( diff > 1e-14  )								// Verify that new point is closer than previous approximation.
+		{
+			std::ostringstream stream;
+			stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
+				   << std::scientific << std::setprecision( 15 ) << ".  New dist: " << ABS( newDistance )
+				   << ".  Old dist: " << distances[s]
+				   << ".  Dist: " << diff;
+			throw std::runtime_error( stream.str() );
 		}
 
 		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
-
-		if( sample[s] < 0 )								// Fix sign.
-			distances[s] *= -1;
 
 		if( s == 4 )									// For center node we need the parameter u to yield curvature.
 			centerU = u;
@@ -179,16 +169,17 @@ int main ( int argc, char* argv[] )
 	const int NUM_REINIT_ITERS = 10;			// Number of iterations for PDE reintialization.
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const double FLAT_LIM_HK = 0.004;										// Flatness limit for dimensionless curvature.
 	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
-	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
-	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-	const int NUM_AMPLITUDES = 33;				// Originally: (int)pow( 2, 5 ) + 1; tumber different sine wave amplitudes.
+	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes/dim.
+	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Mesh size.
+	const double FLAT_LIM_HK = 0.5 * H;			// Flatness limit for h*kappa (note it depends now on H).
+	const int NUM_AMPLITUDES = 33;				// Originally: (int)pow( 2, 5 ) + 1; number of distinct sine amplitudes.
+	const double H_BASE = 1. / pow( 2, 7 );		// Base sampling on the mesh size for a max lvl of ref = 7.
 
-	const double MIN_A = 1.5 * H;				// An almost flat wave.
+	const double MIN_A = 1.5 * H_BASE;			// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
-	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h*kappa (used for discriminating
-	const double MAX_HKAPPA_UB = 2.0 / 3.0;		// which samples to keep -- see below for details).
+	const double MAX_HKAPPA_LB = H * (21. + 1 / 3.);	// Lower and upper bounds for maximum h*kappa (used for
+	const double MAX_HKAPPA_UB = H * (85. + 1 / 3.);	// discriminating samples --see below for details).
 	const double MAX_HKAPPA_MIDPOINT = ( MAX_HKAPPA_LB + MAX_HKAPPA_UB ) / 2;
 
 	const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
@@ -198,10 +189,8 @@ int main ( int argc, char* argv[] )
 	const int NUM_THETAS = 34;					// Originally: (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;
 												// where the last 2 is to account for skipping +pi/4.
 
-	char strFlatLimHk[10];
-	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
-								  + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";		// Destination folder.
+	// Destination folder.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
 	generateColumnHeaders( COLUMN_NAMES );
@@ -209,8 +198,7 @@ int main ( int argc, char* argv[] )
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
-	std::uniform_real_distribution<double> uniformDistribution;				// Used for collecting low h*kappa values.
-	std::normal_distribution<double> normalDistribution;					// Used for bracketing and root finding.
+	std::uniform_real_distribution<double> uniformDistribution;
 
 	try
 	{
@@ -258,7 +246,7 @@ int main ( int argc, char* argv[] )
 		sdfFile.precision( 15 );
 
 		// Variables to control the spread of sine waves' amplitudes, which must vary uniformly from MIN_A to MAX_A.
-		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5H, 0.5-2H], inclusive.
+		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5/H_BASE, 0.5], inclusive.
 		double linspaceA[NUM_AMPLITUDES];
 		for( int i = 0; i < NUM_AMPLITUDES; i++ )			// Uniform linear space from 0 to 1, with NUM_AMPLITUDES steps.
 			linspaceA[i] = (double)( i ) / (NUM_AMPLITUDES - 1.0);
@@ -271,10 +259,10 @@ int main ( int argc, char* argv[] )
 			linspaceTheta[i] = (double)( i ) / (NUM_THETAS - 1.0);
 
 		// Domain information, applicable to all sinusoidal interfaces.
-		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
-		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
-		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
-		int periodic[] = {0, 0, 0};							// Non-periodic domain.
+		int n_xyz[] = { 1, 1, 1 };							// One tree per dimension.
+		double xyz_min[] = { MIN_D, MIN_D, MIN_D };			// Square domain.
+		double xyz_max[] = { MAX_D, MAX_D, MAX_D };
+		int periodic[] = { 0, 0, 0 };						// Non-periodic domain.
 
 		// Printing header for log.
 		std::cout << "Amplitude Idx, Omega Idx, Amplitude Val, Omega Val, Max Rel Error, Min Rel Error, Num Samples, Time" << std::endl;
@@ -289,7 +277,7 @@ int main ( int argc, char* argv[] )
 			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h*kappa is in the range of [1/6, 2/3].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * ( 1 / MIN_OMEGA - 1 / MAX_OMEGA );	// Distance between u-values with highest peaks.
-			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H ) + 1;				// Num. of omegas per amplitude.
+			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H_BASE ) + 1;			// Num. of omegas per amplitude.
 			double linspaceOmega[NUM_OMEGAS];
 			for( int i = 0; i < NUM_OMEGAS; i++ )			// Uniform linear space from 0 to 1, with NUM_OMEGA steps.
 				linspaceOmega[i] = (double)( i ) / ( NUM_OMEGAS - 1.0 );
@@ -311,7 +299,7 @@ int main ( int argc, char* argv[] )
 					};
 
 					// Level-set function with a sinusoidal interface.
-					ArcLengthParameterizedSine sine( A, OMEGA, T[0], T[1], THETA, HALF_AXIS_LEN, gen, normalDistribution );
+					ArcLengthParameterizedSine sine( A, OMEGA, T[0], T[1], THETA, HALF_AXIS_LEN, gen, uniformDistribution );
 
 					// p4est variables and data structures: these change with every sine wave because we must refine the
 					// trees according to the new waves's origin and amplitude.
@@ -329,10 +317,8 @@ int main ( int argc, char* argv[] )
 					p4est->user_pointer = (void *)( &levelSetSC );
 
 					// Refine and recursively partition forest.
-//					double timing = watch.get_duration_current();
 					my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
 					my_p4est_partition( p4est, P4EST_TRUE, nullptr );
-//					std::cout << "Refinement and partition: " << watch.get_duration_current() - timing << std::endl;
 
 					// Create the ghost (cell) and node structures.
 					ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -358,10 +344,34 @@ int main ( int argc, char* argv[] )
 						CHKERRXX( ierr );
 					}
 
-					// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
-//					timing = watch.get_duration_current();
-					sample_cf_on_nodes( p4est, nodes, sine, phi );
-//					std::cout << "Sampling level-set functon: " << watch.get_duration_current() - timing << std::endl;
+					// Calculate the level-set function values for each independent node (i.e. locally owned and ghost
+					// nodes).  Save the exact signed distance to the sine interface at the same time to avoid double
+					// work (wasted iterations for bisection/Newton-Raphson).
+					double *phiPtr;
+					ierr = VecGetArray( phi, &phiPtr );
+					CHKERRXX( ierr );
+
+					std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
+					for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+					{
+						double xyz[P4EST_DIM];
+						node_xyz_fr_n( n, p4est, nodes, xyz );
+						sine.toCanonicalCoordinates( xyz[0], xyz[1] );		// Change of coordinates.
+						double valOfDerivative = 1, distance;
+						double u = distThetaDerivative( n, xyz[0], xyz[1], sine, gen, uniformDistribution, valOfDerivative, distance );
+						double comparativeY = sine.getA() * sin( sine.getOmega() * xyz[0] );
+
+						// Fix sign: points above sine wave are negative, points below are positive.
+						if( xyz[1] > comparativeY )
+							distance *= -1;
+
+						// Save values.
+						phiPtr[n] = distance;						// To be reinitialized.
+						visitedNodes[n] = Point2( u, distance );	// Memorize information for visited node.
+					}
+
+					ierr = VecRestoreArray( phi, &phiPtr );
+					CHKERRXX( ierr );
 
 					// Reinitialize level-set function.
 					my_p4est_level_set_t ls( &nodeNeighbors );
@@ -387,8 +397,6 @@ int main ( int argc, char* argv[] )
 					CHKERRXX( ierr );
 
 					// [SAMPLING] Now, collect samples with reinitialized level-set function values and target h*kappa.
-//					timing = watch.get_duration_current();
-					std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
 					for( auto n : indices )
 					{
 						double xyz[P4EST_DIM];						// Position of node at the center of the stencil.
@@ -403,7 +411,7 @@ int main ( int argc, char* argv[] )
 						{
 							// Randomly deciding if we proceed with these node or not.  Otherwise, we'll get enourmous
 							// data sets for resolutions higher than the base of max refinement level of 7.
-							if( uniformDistribution( gen ) > 128. * H )
+							if( uniformDistribution( gen ) > H / H_BASE )
 								continue;
 
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
@@ -411,8 +419,7 @@ int main ( int argc, char* argv[] )
 								double xOnGamma, yOnGamma;
 								std::vector<double> distances;		// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
-									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances,
-									xOnGamma, yOnGamma, visitedNodes );
+									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, distances, xOnGamma, yOnGamma, visitedNodes );
 
 								if( ABS( data[NUM_COLUMNS - 2] ) < FLAT_LIM_HK )	// Skip flat surfaces.
 									continue;
@@ -461,7 +468,6 @@ int main ( int argc, char* argv[] )
 									  << e.what() << std::endl;
 						}
 					}
-//					std::cout << "Collecting training samples: " << watch.get_duration_current() - timing << std::endl;
 
 					ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 					CHKERRXX( ierr );

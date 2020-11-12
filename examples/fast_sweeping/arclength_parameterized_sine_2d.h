@@ -47,7 +47,7 @@
 class ArcLengthParameterizedSine;
 
 double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
-							std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
+							std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution,
 							double& valOfDerivative, double& minDistance, bool verbose = true );
 
 /**
@@ -72,7 +72,7 @@ private:
 	double _theta;			// Rotation angle around the z-axis with respect to horizontal x-axis.
 	double _uBegin;			// Lower and upper bound for parameter u.
 	double _uEnd;
-	std::normal_distribution<double>& _normalDistribution;
+	std::uniform_real_distribution<double>& _uniformDistribution;
 	std::mt19937& _gen;
 
 public:
@@ -86,13 +86,13 @@ public:
 	 * @param [in] theta Angle of rotation around the z-axis, with respect to positive x-direction.
 	 * @param [in] halfAxisLen Half of horizontal axis length.  Parameter u will go from -halfAxisLen to +halfAxisLen.
 	 * @param [in] gen Mersenne twister engine to generate random numbers used when finding closest point.
-	 * @param [in] normalDistribution A standard normal distribution sampler used when finding the closest point.
+	 * @param [in] uniformDistribution A uniform distribution sampler used when finding the closest point.
 	 * @throws Runtime exception if beginning and end values for parameter u overlap.
 	 */
 	explicit ArcLengthParameterizedSine( double a, double omega, double tx, double ty, double theta, double halfAxisLen,
-									     std::mt19937& gen, std::normal_distribution<double>& normalDistribution )
+									     std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution )
 		: _a( a ), _omega( omega ), _theta( theta ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen ),
-		_gen( gen ), _normalDistribution( normalDistribution )
+		_gen( gen ), _uniformDistribution( uniformDistribution )
 	{
 #ifdef CASL_THROWS
 		if( _uBegin >= _uEnd )
@@ -116,7 +116,7 @@ public:
 
 		// Retrieve the exact distance to the zero level set.
 		double valOfDerivative = 1, distance;
-		distThetaDerivative( -1, x, y, *this, _gen, _normalDistribution, valOfDerivative, distance );
+		distThetaDerivative( -1, x, y, *this, _gen, _uniformDistribution, valOfDerivative, distance );
 		double comparativeY = _a * sin( _omega * x );
 
 		// Fix sign: points above sine wave are negative, points below are positive.
@@ -280,14 +280,14 @@ public:
  * @param [in] v Y-coordinate of query point.
  * @param [in] sine Reference to arclength-parameterized sine wave object.
  * @param [in] gen Random number generator.
- * @param [in] normalDistribution A normal random distribution generator.
+ * @param [in] uniformDistribution A uniform random distribution generator.
  * @param [out] valOfDerivative Value of the derivative given the best theta angle (expected ~ 0).
  * @param [out] minDistance Minimum distance found between query point and sinusoid.
  * @param [in] verbose Whether to show debugging message or not.
  * @return Angle value that minimizes the distance from sine-wave and query point (u,v).
  */
-double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengthParameterizedSine& sine,
-	std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
+double distThetaDerivative( p4est_locidx_t n, const double u, const double v, const ArcLengthParameterizedSine& sine,
+	std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution,
 	double& valOfDerivative, double& minDistance, bool verbose )
 {
 	using namespace boost::math::tools;						// For bisect and newton_raphson_iterate.
@@ -295,7 +295,7 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 	const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
 	int get_digits = static_cast<int>( digits * 0.75 );    	// Accuracy doubles with each step, so stop when we have
 															// just over half the digits correct.
-	const boost::uintmax_t MAX_IT = 20;						// Maximum number of iterations for bracketing and root finding.
+	const boost::uintmax_t MAX_IT = 30;						// Maximum number of iterations for bracketing and root finding.
 	boost::uintmax_t it = MAX_IT;
 	const double A = sine.getOmega() * sine.getA();			// Convert constants for simpler f(x) = A * sin(x).
 	const double U = u * sine.getOmega();
@@ -367,8 +367,8 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const ArcLengt
 
 			while( vOfD > 1e-8 )							// For standing interval, keep iterating until convergence.
 			{												// Now that we have a narrow bracket, use Newton-Raphson's.
-				uResult = ( uPair.first + uPair.second ) / 2;	// Normally-randomize initial guess around midpoint.
-				uResult += normalDistribution( gen ) * ( uRange / 2 );
+				uResult = uPair.first;
+				uResult += uniformDistribution( gen ) * uRange;
 				uResult = MAX( uPair.first, MIN( uResult, uPair.second ) );
 				it = MAX_IT;
 				uResult = newton_raphson_iterate( distThetaFunctorDerivativeNR, uResult, uPair.first, uPair.second, get_digits, it );
