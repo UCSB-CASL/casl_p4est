@@ -138,14 +138,14 @@
 //			double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
 //		}
 
-		double diff = ABS( newDistance ) - distances[s];
-		if( diff > 1e-14  )								// Verify that new point is closer than previous approximation.
+		double relDiff = (ABS( newDistance ) - distances[s]) / distances[s];
+		if( relDiff > 1e-4  )							// Verify that new point is closer than previous approximation.
 		{
 			std::ostringstream stream;
 			stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
 				   << std::scientific << std::setprecision( 15 ) << ".  New dist: " << ABS( newDistance )
 				   << ".  Old dist: " << distances[s]
-				   << ".  Dist: " << diff;
+				   << ".  Rel diff: " << relDiff;
 			throw std::runtime_error( stream.str() );
 		}
 
@@ -277,7 +277,8 @@ int main ( int argc, char* argv[] )
 			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h*kappa is in the range of [1/6, 2/3].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * ( 1 / MIN_OMEGA - 1 / MAX_OMEGA );	// Distance between u-values with highest peaks.
-			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H_BASE ) + 1;			// Num. of omegas per amplitude.
+			const double LIN_PROPORTION = 1. + log2( H_BASE / H ) / 3.;					// Linearly from 1 to 2 as max lvl of ref goes from 7 to 10.
+			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H_BASE * LIN_PROPORTION ) + 1;	// Num. of omegas per amplitude.
 			double linspaceOmega[NUM_OMEGAS];
 			for( int i = 0; i < NUM_OMEGAS; i++ )			// Uniform linear space from 0 to 1, with NUM_OMEGA steps.
 				linspaceOmega[i] = (double)( i ) / ( NUM_OMEGAS - 1.0 );
