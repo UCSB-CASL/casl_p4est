@@ -1596,7 +1596,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
     viscosity_solver = new my_p4est_poisson_jump_faces_xgfm_t(faces_n, nodes_n);
   viscosity_solver->set_interface(interface_manager);
   viscosity_solver->set_mus(mu_minus, mu_plus);
-  viscosity_solver->set_validity_of_interface_neighbors_for_extrapolation(false);
+//  viscosity_solver->set_validity_of_interface_neighbors_for_extrapolation(false);
   viscosity_solver->set_bc(bc_velocity);
   viscosity_solver->set_jumps(NULL, NULL);
   viscosity_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
