@@ -263,6 +263,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     grad_p_guess_over_rho_minus[dir]  = NULL;
     grad_p_guess_over_rho_plus[dir]   = NULL;
     vnp1_face_minus[dir]  = NULL;
+    vnp1_face_minus_star[dir] = NULL;
     vnp1_face_plus[dir]   = NULL;
     viscosity_rhs_minus[dir]  = NULL;
     viscosity_rhs_plus[dir]   = NULL;
@@ -356,6 +357,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
     grad_p_guess_over_rho_minus[dir]  = NULL;
     grad_p_guess_over_rho_plus[dir]   = NULL;
     vnp1_face_minus[dir]  = NULL;
+    vnp1_face_minus_star[dir]  = NULL;
     vnp1_face_plus[dir]   = NULL;
     viscosity_rhs_minus[dir]  = NULL;
     viscosity_rhs_plus[dir]   = NULL;
@@ -790,6 +792,7 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);             CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_minus_star[dir]);        CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);              CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]);         CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);          CHKERRXX(ierr);
@@ -1607,6 +1610,12 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
   viscosity_solver->extrapolate_solution_from_either_side_to_the_other(niter);
   viscosity_solver->return_ownership_of_extrapolations(vnp1_face_minus, vnp1_face_plus);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    if(vnp1_face_minus_star[dim] == NULL){
+      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus_star[dim], dim); CHKERRXX(ierr);
+    }
+    ierr = VecCopyGhost(vnp1_face_minus[dim], vnp1_face_minus_star[dim]); CHKERRXX(ierr);
+  }
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
@@ -2006,6 +2015,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   std::vector<Vec_for_vtk_export_t> node_scalar_fields;
   std::vector<Vec_for_vtk_export_t> node_vector_fields;
   std::vector<Vec_for_vtk_export_t> cell_scalar_fields;
+  std::vector<Vec_for_vtk_export_t> cell_vector_fields;
   if(phi_on_computational_nodes != NULL)
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_on_computational_nodes, "phi"));
   if(vnp1_nodes_minus != NULL)
@@ -2023,15 +2033,114 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   Vec projection_variable = divergence_free_projector->get_solution();
   if(projection_variable != NULL)
     cell_scalar_fields.push_back(Vec_for_vtk_export_t(projection_variable, "projection_variable"));
-//  Vec discretized_div_u_star = NULL;
-//  if(divergence_free_projector->get_rhs() != NULL)
-//  {
-//    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
-//    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
-//  }
+
+  Vec extrapolated_Phi_minus = divergence_free_projector->get_extrapolated_solution_minus();
+  if(extrapolated_Phi_minus != NULL)
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_Phi_minus, "extrapolation_phi_minus"));
+
+
+  Vec sharp_vnp1_on_cells = NULL;
+  Vec vnp1_minus_on_cells = NULL;
+  Vec vnp1_minus_star_on_cells = NULL;
+  if(ANDD(vnp1_face_minus[0] != NULL, vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL))
+  {
+    const double *vnp1_face_minus_p[P4EST_DIM], *sharp_vnp1_face_p[P4EST_DIM], *vnp1_face_minus_star_p[P4EST_DIM];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(vnp1_face_minus_star[dim], &vnp1_face_minus_star_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(viscosity_solver->get_solution()[dim], &sharp_vnp1_face_p[dim]); CHKERRXX(ierr);
+    }
+
+    double *vnp1_minus_on_cells_p, *sharp_vnp1_on_cells_p, *vnp1_minus_star_on_cells_p;
+    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_on_cells); CHKERRXX(ierr);
+    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &sharp_vnp1_on_cells); CHKERRXX(ierr);
+    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_star_on_cells); CHKERRXX(ierr);
+    ierr = VecGetArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
+    ierr = VecGetArray(sharp_vnp1_on_cells, &sharp_vnp1_on_cells_p); CHKERRXX(ierr);
+    ierr = VecGetArray(vnp1_minus_star_on_cells, &vnp1_minus_star_on_cells_p); CHKERRXX(ierr);
+    for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_layer_size(); ++k) {
+      p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_layer_quadrant(k);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
+        if(face_idx != NO_VELOCITY){
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
+          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_face_p[dim][face_idx];
+          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_star_p[dim][face_idx];
+        }
+        else
+        {
+          set_of_neighboring_quadrants nb_quad;
+          ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+          for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
+            vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+            sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] += sharp_vnp1_face_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+            vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_star_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+          }
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+        }
+      }
+    }
+
+    ierr = VecGhostUpdateBegin(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(sharp_vnp1_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(vnp1_minus_star_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_inner_size(); ++k) {
+      p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_inner_quadrant(k);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
+        if(face_idx != NO_VELOCITY){
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
+          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_face_p[dim][face_idx];
+          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_star_p[dim][face_idx];
+        }
+        else
+        {
+          set_of_neighboring_quadrants nb_quad;
+          ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+          for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
+            vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+            sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] += sharp_vnp1_face_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+            vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_star_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
+          }
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
+        }
+      }
+    }
+
+    ierr = VecGhostUpdateEnd(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(sharp_vnp1_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(vnp1_minus_star_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sharp_vnp1_on_cells, &sharp_vnp1_on_cells_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_minus_star_on_cells, &vnp1_minus_star_on_cells_p); CHKERRXX(ierr);
+
+
+    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_on_cells, "vnp1_minus"));
+    cell_vector_fields.push_back(Vec_for_vtk_export_t(sharp_vnp1_on_cells, "sharp_vnp1"));
+    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_star_on_cells, "vnp1_minus_star"));
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(vnp1_face_minus_star[dim], &vnp1_face_minus_star_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(viscosity_solver->get_solution()[dim], &sharp_vnp1_face_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  Vec discretized_div_u_star = NULL;
+  if(divergence_free_projector->get_rhs() != NULL)
+  {
+    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
+    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
+  }
   Vec pressure_guess = (pressure_guess_solver != NULL ? pressure_guess_solver->get_solution() : NULL);
   if(pressure_guess != NULL)
     cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_guess, "pressure_guess"));
@@ -2039,7 +2148,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   my_p4est_vtk_write_all_general_lists(p4est_n, nodes_n, ghost_n,
                                        P4EST_TRUE, P4EST_TRUE,
                                        (vtk_directory + "/snapshot_" + std::to_string(index)).c_str(),
-                                       &node_scalar_fields, &node_vector_fields, &cell_scalar_fields, NULL);
+                                       &node_scalar_fields, &node_vector_fields, &cell_scalar_fields, &cell_vector_fields);
 
   if(interface_manager->subcell_resolution() > 0)
   {
@@ -2057,7 +2166,10 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   node_scalar_fields.clear();
   node_vector_fields.clear();
   cell_scalar_fields.clear();
-//  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
+  cell_vector_fields.clear();
+  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_minus_on_cells); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(sharp_vnp1_on_cells); CHKERRXX(ierr);
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
   return;
@@ -2978,6 +3090,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_minus_star[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);  CHKERRXX(ierr);

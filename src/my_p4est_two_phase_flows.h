@@ -136,6 +136,7 @@ private:
   // vector fields
   Vec grad_p_guess_over_rho_minus[P4EST_DIM], grad_p_guess_over_rho_plus[P4EST_DIM];
   Vec vnp1_face_minus[P4EST_DIM], vnp1_face_plus[P4EST_DIM];
+  Vec vnp1_face_minus_star[P4EST_DIM];
   Vec viscosity_rhs_minus[P4EST_DIM], viscosity_rhs_plus[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
