@@ -29,10 +29,10 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     {
       return jump_dependent_terms + solution_dependent_terms(sharp_solution_p);
     }
-    bool use_fast_side;
+    bool not_reliable;
     correction_function_t() {
       solution_dependent_terms.clear();
-      use_fast_side = false;
+      not_reliable = false;
     }
   };
 
