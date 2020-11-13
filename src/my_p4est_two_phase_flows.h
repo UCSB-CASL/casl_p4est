@@ -97,6 +97,7 @@ private:
   interpolation_method levelset_interpolation_method;
 
   int sl_order, sl_order_interface;
+  int n_xGFM_viscous_iterations;
 
   const double threshold_dbl_max;
 
@@ -208,6 +209,7 @@ private:
    * - levelset_interpolation_method
    * - sl_order
    * - sl_order_interface
+   * - n_xGFM_viscous_iterations
    * - voronoi_on_the_fly
    * The double parameters/variables that are saved/loaded are (in this order):
    * - tree_dimension[0 : P4EST_DIM - 1]
@@ -323,6 +325,7 @@ public:
   {
     sl_order_interface = sl_;
   }
+  inline void set_n_xGFM_viscous_iterations(const int& nn) { n_xGFM_viscous_iterations = nn; }
 
   inline void set_uniform_bands(const double& uniform_band_m_, const double&uniform_band_p_)
   {
@@ -530,6 +533,7 @@ public:
   }
   inline int get_sl_order()           const { return sl_order; }
   inline int get_sl_order_interface() const { return sl_order_interface; }
+  inline int get_n_xGFM_viscous_iterations() const { return n_xGFM_viscous_iterations; }
   inline double get_advection_cfl()   const { return cfl_advection; }
 
 };

@@ -40,6 +40,7 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   my_p4est_interpolation_nodes_t *interp_grad_jump_u_dot_n;
   bool activate_xGFM, print_residuals_and_corrections_with_solve_info, use_face_dofs_only_in_extrapolations;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
+  int max_xGFM_iter;
 
   // - BEGIN validation data only -
   Vec validation_jump_u;          // node-sampled, P4EST_DIM block-structure, jump in every component of the solution defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
@@ -369,6 +370,7 @@ public:
 //  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();              }
 //  inline std::vector<double> get_relative_residuals()           const { return solver_monitor.get_relative_residuals();           }
   inline bool is_using_xGFM()                                   const { return activate_xGFM;                                     }
+  inline void set_max_number_of_iter(const int& nn) { max_xGFM_iter = nn; }
 
   void solve_for_sharp_solution(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE);
   inline void set_xGFM_absolute_value_threshold(const double& abs_thresh)              { P4EST_ASSERT(abs_thresh > 0.0);           xGFM_absolute_accuracy_threshold  = abs_thresh; }

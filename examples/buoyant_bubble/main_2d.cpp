@@ -72,6 +72,7 @@ const double default_uniform_band_to_radius   = 0.15;
 const double default_nondimensional_duration  = 10.0;
 const double default_nondimensional_vtk_dt    = 0.5;
 const double default_nondimensional_save_state_dt  = 0.1;
+const int default_n_xGFM_iter_viscous = INT_MAX;
 const int default_save_nstates      = 0;
 const int default_sl_order          = 2;
 const int default_sl_order_itfc     = 2;
@@ -359,6 +360,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
   const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
   const int sl_order_interface          = cmd.get<int>    ("sl_order_itfc",     default_sl_order_itfc);
+  const int n_xGFM_iter_viscous         = cmd.get<int>    ("n_xGFM_iter_viscous", default_n_xGFM_iter_viscous);
   const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
   const double cfl_visco_capillary      = cmd.get<double> ("cfl_visco_capillary",default_cfl_visco_capillary);
   const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
@@ -430,6 +432,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_cfls(cfl_advection, cfl_visco_capillary, cfl_capillary);
   solver->set_semi_lagrangian_order_advection(sl_order);
   solver->set_semi_lagrangian_order_interface(sl_order_interface);
+  solver->set_n_xGFM_viscous_iterations(n_xGFM_iter_viscous);
   solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
 
   solver->set_projection_solver(projection_solver_to_use);
@@ -514,6 +517,7 @@ int main (int argc, char* argv[])
   cmd.add_option("second_order_ls", "flag activating second order F-D interface fetching if set to true or 1. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("sl_order", "the order for the semi lagrangian advection terms, either 1 or 2, default is " + to_string(default_sl_order));
   cmd.add_option("sl_order_itfc", "the order for the semi lagrangian interface advection, either 1 or 2, default is " + to_string(default_sl_order_itfc));
+  cmd.add_option("n_xGFM_iter_viscous", "the max number of xGFM iterations for viscous solver, default is " + to_string(default_n_xGFM_iter_viscous));
   streamObj.str(""); streamObj << default_cfl_advection;
   cmd.add_option("cfl_advection", "desired advection CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_visco_capillary;

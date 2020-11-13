@@ -5,6 +5,7 @@ my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_
 {
   xGFM_absolute_accuracy_threshold  = 1e-8;   // default value
   xGFM_tolerance_on_rel_residual    = 1e-12;  // default value
+  max_xGFM_iter = INT_MAX;                    // default is "no limit" on number of internal iterations
 
   grad_jump_u_dot_n = NULL;
   interp_grad_jump_u_dot_n = NULL;
@@ -647,7 +648,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
   if(!activate_xGFM || mus_are_equal() || set_for_testing_backbone)
   {
     solve_linear_systems();
-//    solver_monitor.log_iteration(0.0, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
+    const double dummy_input[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
+    solver_monitor.log_iteration(dummy_input, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
   }
   else
   {
@@ -657,6 +659,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       former_rhs[dim] = former_solution[dim] = former_extension[dim] = former_extrapolation_minus[dim] = former_extrapolation_plus[dim] = former_residual[dim] = NULL; // the procedure will adequately determine/create them
 
+    int xGFM_iter = 0;
     while(update_solution(former_solution))
     {
       // fix-point update
@@ -667,8 +670,9 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
                                                       former_rhs, former_residual, max_correction);
       solver_monitor.log_iteration(max_correction, this);
       // check if good enough, yet
-      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual))
+      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual) || xGFM_iter >= max_xGFM_iter)
         break;
+      xGFM_iter ++;
     }
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -759,7 +763,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
   const double *normal_derivative_minus_n_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
   const double *normal_derivative_plus_n_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
   /* EXTRAPOLATE normal derivatives of solution */
-  for (u_int iter = 0; iter < niter_max; ++iter) {
+  for (uint iter = 0; iter < niter_max; ++iter) {
     // get pointers
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     {

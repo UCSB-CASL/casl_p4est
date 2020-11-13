@@ -207,6 +207,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   sl_order = 2;
   sl_order_interface = 2;
+  n_xGFM_viscous_iterations = INT_MAX;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
@@ -661,6 +662,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = (PetscInt) levelset_interpolation_method;
     data[idx++] = sl_order;
     data[idx++] = sl_order_interface;
+    data[idx++] = n_xGFM_viscous_iterations;
     data[idx++] = (PetscInt) voronoi_on_the_fly;
     break;
   }
@@ -678,6 +680,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     levelset_interpolation_method = (interpolation_method) data[idx++];
     sl_order = data[idx++];
     sl_order_interface = data[idx++];
+    n_xGFM_viscous_iterations = data[idx++];
     voronoi_on_the_fly = (bool) data[idx++];
     break;
   }
@@ -698,9 +701,10 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   const size_t ndouble_values =  2*P4EST_DIM + 18;
   std::vector<PetscReal> double_parameters(ndouble_values);
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
-  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, voronoi_on_the_fly
-  // that makes 11 integers
-  const size_t ninteger_values = 11;
+  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, n_xGFM_viscous_iterations
+  // voronoi_on_the_fly
+  // that makes 12 integers
+  const size_t ninteger_values = 12;
   std::vector<PetscInt> integer_parameters(ninteger_values);
   int fd;
   char diskfilename[PATH_MAX];
@@ -1601,6 +1605,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   viscosity_solver->set_jumps(NULL, NULL);
   viscosity_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
   viscosity_solver->set_rhs(viscosity_rhs_minus, viscosity_rhs_plus);
+  viscosity_solver->set_max_number_of_iter(n_xGFM_viscous_iterations);
 
   if(sl_order == 1)
     viscosity_solver->set_diagonals(rho_minus/dt_n, rho_plus/dt_n);
