@@ -284,11 +284,11 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
       FILE* fp_results = fopen(datafile.c_str(), "w");
       if(fp_results == NULL)
         throw std::runtime_error("initialize_exportations: could not open file for output of raw results.");
-      fprintf(fp_results, "%% tn | Re | We | volume \n");
+      fprintf(fp_results, "%% tn | Re | We | volume | dt/dt_visc | dt/dt_capillar \n");
       fclose(fp_results);
     }
     else
-      truncate_exportation_file_up_to_tstart(tstart, datafile, 3);
+      truncate_exportation_file_up_to_tstart(tstart, datafile, 5);
 
     char liveplot[PATH_MAX];
     sprintf(liveplot, "%s/live_monitor.gnu", results_dir.c_str());
@@ -315,7 +315,17 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
       fprintf(fp_liveplot, "row = 1\n");
       fprintf(fp_liveplot, "stats 'monitoring_results.dat' every ::row::row using col nooutput\n");
       fprintf(fp_liveplot, "original_volume = STATS_min\n");
-      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:(100 * ($4 - original_volume)/original_volume) with lines lw 3\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:(100 * ($4 - original_volume)/original_volume) notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 3 position 2400,50 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Delta t/Delta t_visc \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:5 notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 4 position 3200,50 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Nondimensional Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Delta t/Delta t_cap. \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:6 notitle with lines lw 3\n");
       fprintf(fp_liveplot, "pause 4\n");
       fprintf(fp_liveplot, "reread");
       fclose(fp_liveplot);
@@ -324,12 +334,13 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
   return;
 }
 
-void export_results(const double& nondimensional_tn, const double& Re, const double& We, const double& bubble_volume, const string& datafile)
+void export_results(const double& nondimensional_tn, const double& Re, const double& We, const double& bubble_volume,
+                    const double& dt_to_dt_visc, const double& dt_to_dt_capillary, const string& datafile)
 {
   FILE* fp_data = fopen(datafile.c_str(), "a");
   if(fp_data == NULL)
     throw std::invalid_argument("main for buoyant bubble: could not open file for output of raw results.");
-  fprintf(fp_data, "%g %g %g %g \n", nondimensional_tn, Re, We, bubble_volume);
+  fprintf(fp_data, "%g %g %g %g %g %g \n", nondimensional_tn, Re, We, bubble_volume, dt_to_dt_visc, dt_to_dt_capillary);
   fclose(fp_data);
 }
 
@@ -629,11 +640,14 @@ int main (int argc, char* argv[])
   int iter = 0;
   int vtk_idx = (cmd.contains("restart") ? (int) floor(tn/vtk_dt) : -1);
   int backup_time_idx = (int) floor(tn/save_state_dt);
+  const double nu_minus = two_phase_flow_solver->get_mu_minus()/two_phase_flow_solver->get_rho_minus();
+  const double nu_plus  = two_phase_flow_solver->get_mu_plus()/two_phase_flow_solver->get_rho_plus();
+  const double dt_visc = 1.0/(MAX(nu_minus, nu_plus)*(SUMD(2.0/SQR((brick->xyz_max[0] - brick->xyz_min[0])/(brick->nxyztrees[0]*(1 << sp->max_lvl))), 2.0/SQR((brick->xyz_max[1] - brick->xyz_min[1])/(brick->nxyztrees[1]*(1 << sp->max_lvl))), 2.0/SQR((brick->xyz_max[2] - brick->xyz_min[2])/(brick->nxyztrees[2]*(1 << sp->max_lvl))))));
   if(mpi.rank() == 0 && !cmd.contains("restart"))
 #ifdef P4_TO_P8
-    export_results(tn, 0.0, 0.0, M_PI*pow(initial_bubble_diameter, 3.0)/6.0, datafile);
+    export_results(tn, 0.0, 0.0, M_PI*pow(initial_bubble_diameter, 3.0)/6.0, dt/dt_visc, dt/two_phase_flow_solver->get_capillary_dt(), datafile);
 #else
-    export_results(tn, 0.0, 0.0, M_PI*0.25*SQR(initial_bubble_diameter), datafile);
+    export_results(tn, 0.0, 0.0, M_PI*0.25*SQR(initial_bubble_diameter), dt/dt_visc, dt/two_phase_flow_solver->get_capillary_dt(), datafile);
 #endif
 
   while(tn + 0.01*dt < duration)
@@ -680,7 +694,10 @@ int main (int argc, char* argv[])
     if(mpi.rank() == 0)
       export_results(tn/time_unit, avg_itfc_velocity[1]*two_phase_flow_solver->get_rho_plus()*initial_bubble_diameter/two_phase_flow_solver->get_mu_plus(),
           two_phase_flow_solver->get_rho_plus()*SQR(avg_itfc_velocity[1])*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension(),
-          bubble_volume, datafile);
+          bubble_volume,
+          dt/dt_visc,
+          dt/two_phase_flow_solver->get_capillary_dt(),
+          datafile);
     iter++;
   }
   ierr = PetscPrintf(mpi.comm(), "Gracefully finishing up now\n");
