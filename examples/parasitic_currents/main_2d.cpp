@@ -18,14 +18,14 @@ const static string main_description =
     string("This example main file is designed to evaluate and assess the performance of the (incompressible) two-phase flow solver\n")
     + string("regarding parasitic currents: this tests the ability of the solver to capture stationary Laplace solutions and show \n")
     + string("vanishing currents with increasing grid refinement. For this specific example, we restrict the usage to identical fluid \n")
-    + string("parameters for either fluids, i.e. same mass density and dynamic viscosity on either side of the interface. Under these \n")
+    + string("parameters for either fluid, i.e. same mass density and dynamic viscosity on either side of the interface. Under these \n")
     + string("conditions, a velocity scale gamma/mu emerges from the dimensional analysis and the test case is entirely characterized by \n")
     + string("the nondimensional Ohnesorge number Oh = \\mu/\\sqrt(\\rho\\gamma D) where \\mu is the dynamic viscosity, \\rho is the \n")
     + string("mass density, \\gamma is the surface tension and D is the diameter of the spherical interface separating the two fluids.\n")
     + string("The solver is initialized with a spherical interface of diameter D in a quiescent environment without external body force,\n")
     + string("the fluid densities and dynamic viscosities are both set equal in each phase and the surface tension is set to the desired \n")
-    + string("value. The maximum value of the (nondimensional) velocity magnitude is tracked and monitored throughout the simulation along with the\n")
-    + string("(inside) volume of the interface.\n")
+    + string("value. The maximum value of the (nondimensional) velocity magnitude is tracked and monitored throughout the simulation along \n")
+    + string("with the (inside) volume of the interface.\n")
     + string("The user can choose between periodic boundary conditions or no-slip boundary condition on any of the borders of the computational domain. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020\n");
 
@@ -70,19 +70,18 @@ const bool default_periodic[P4EST_DIM] = {DIM(false, false, false)};
 const double default_bubble_radius = 0.5;
 const double default_vorticity_threshold = DBL_MAX;
 const double default_uniform_band_to_radius = 0.15;
-const double default_mass_density = 1.0;
-const double default_viscosity = 1.0/12000.0;
-const double default_surface_tension = 1.0/12000.0;
+const double default_inv_Oh_squared = 12000; // rho*gamma*bubble_diameter/mu^2
 const double default_duration_nondimensional = 250.0;
-const double default_vtk_dt_nondimensional = 1.0;
+const double default_vtk_dt_nondimensional = 10.0;
 const double default_save_state_dt_nondimensional = 10.0;
 const int default_save_nstates = 0;
 const int default_sl_order = 2;
+const int default_sl_order_itfc = 2;
 const double default_cfl_advection = 1.0;
 const double default_cfl_visco_capillary = 0.95;
 const double default_cfl_capillary = 0.95;
 const jump_solver_tag default_projection = FV;
-const int default_n_reinit = INT_MAX;
+const int default_n_reinit = 1;
 const bool default_static_interface = false;
 const bool default_save_vtk = true;
 
@@ -352,11 +351,13 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const double dxmin                    = box_size/(((double) ntree)*((double) (1 << lmax)));
   const double bubble_radius            = cmd.get<double> ("radius",            default_bubble_radius);
   const double uniform_band_in_dxmin    = cmd.get<double> ("uniform_band",      default_uniform_band_to_radius*bubble_radius/dxmin);
-  const double mass_density             = cmd.get<double> ("mass_density",      default_mass_density);
-  const double viscosity                = cmd.get<double> ("viscosity",         default_viscosity);
-  const double surface_tension          = cmd.get<double> ("surface_tension",   default_surface_tension);
+  const double mass_density             = 1.0;
+  const double desired_inv_Oh_squared   = cmd.get<double> ("inv_Oh_squared",    default_inv_Oh_squared);
+  const double viscosity                = mass_density*2.0*bubble_radius/desired_inv_Oh_squared;
+  const double surface_tension          = viscosity;
   const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
   const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
+  const int sl_order_itfc               = cmd.get<int>    ("sl_order_itfc",     default_sl_order_itfc);
   const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
   const double cfl_visco_capillary      = cmd.get<double> ("cfl_visco_capillary",default_cfl_visco_capillary);
   const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
@@ -427,7 +428,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_uniform_bands(uniform_band_in_dxmin, uniform_band_in_dxmin);
   solver->set_vorticity_split_threshold(vorticity_threshold);
   solver->set_cfls(cfl_advection, cfl_visco_capillary, cfl_capillary);
-  solver->set_semi_lagrangian_order(sl_order);
+  solver->set_semi_lagrangian_order_advection(sl_order);
+  solver->set_semi_lagrangian_order_interface(sl_order_itfc);
   solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
 
   solver->set_projection_solver(projection_solver_to_use);
@@ -491,17 +493,14 @@ int main (int argc, char* argv[])
   // physical parameters for the simulations
   streamObj.str(""); streamObj << default_bubble_radius;
   cmd.add_option("radius", "The (initial) radius of the bubble. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_mass_density;
-  cmd.add_option("mass_density", "The mass density of the two fluids to be considered. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_viscosity;
-  cmd.add_option("viscosity", "The viscosity of the two fluids to be considered. Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_surface_tension;
-  cmd.add_option("surface_tension", "The surface tension viscosity of the two fluids to be considered. Default value is " + streamObj.str());
+  streamObj.str(""); streamObj << default_inv_Oh_squared;
+  cmd.add_option("inv_Oh_squared", "The desired invrse of the square of the Ohnesorge number. Default value is " + streamObj.str());
   streamObj.str(""); streamObj << default_duration_nondimensional;
   cmd.add_option("duration", "The overall duration of the simulation in characteristic time units (D*mu/gamma). Default duration is " + streamObj.str());
   // method-related parameters
   cmd.add_option("second_order_ls", "flag activating second order F-D interface fetching if set to true or 1. Default is " + string(default_use_second_order_theta ? "true" : "false"));
-  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 or 2, default is " + to_string(default_sl_order));
+  cmd.add_option("sl_order", "the order for the semi lagrangian for advection terms, either 1 or 2, default is " + to_string(default_sl_order));
+  cmd.add_option("sl_order_itfc", "the order for the semi lagrangian for interface advection, either 1 or 2, default is " + to_string(default_sl_order_itfc));
   streamObj.str(""); streamObj << default_cfl_advection;
   cmd.add_option("cfl_advection", "desired advection CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_visco_capillary;
