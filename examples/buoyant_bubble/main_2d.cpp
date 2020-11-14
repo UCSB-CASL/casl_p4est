@@ -622,8 +622,8 @@ int main (int argc, char* argv[])
   streamObj.str("");
   streamObj << "mu_ratio_" << two_phase_flow_solver->get_mu_plus()/two_phase_flow_solver->get_mu_minus()
             << "_rho_ratio_" << two_phase_flow_solver->get_rho_plus()/two_phase_flow_solver->get_rho_minus()
-            << "_Eotvos_" << two_phase_flow_solver->get_rho_plus()*SQR(initial_bubble_diameter)*fabs(body_force_y(0.0, 0.0))/two_phase_flow_solver->get_surface_tension()
-            << "_Morton_" << fabs(body_force_y(0.0, 0.0))*pow(two_phase_flow_solver->get_mu_plus(), 4.0)/(two_phase_flow_solver->get_rho_plus()*pow(two_phase_flow_solver->get_surface_tension(), 3.0));
+            << "_Eotvos_" << two_phase_flow_solver->get_rho_plus()*SQR(initial_bubble_diameter)*fabs(body_force_y(DIM(0.0, 0.0, 0.0)))/two_phase_flow_solver->get_surface_tension()
+            << "_Morton_" << fabs(body_force_y(DIM(0.0, 0.0, 0.0)))*pow(two_phase_flow_solver->get_mu_plus(), 4.0)/(two_phase_flow_solver->get_rho_plus()*pow(two_phase_flow_solver->get_surface_tension(), 3.0));
   const string export_dir   = root_export_folder + (root_export_folder.back() == '/' ? "" : "/") + streamObj.str() + "/lmin_" + to_string(sp->min_lvl) + "_lmax_" + to_string(sp->max_lvl);
   const string vtk_dir      = export_dir + "/vtu";
   const string results_dir  = export_dir + "/results";
