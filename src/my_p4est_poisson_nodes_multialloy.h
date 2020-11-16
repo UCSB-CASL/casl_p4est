@@ -342,10 +342,7 @@ private:
   bool   use_superconvergent_robin_;
   bool   use_superconvergent_jump_; // not used atm
   bool   use_points_on_interface_;
-  bool   zero_negative_velocity_;
   bool   poisson_use_nonzero_guess_;
-  bool   flatten_front_values_;
-  bool   always_use_centroid_;
   bool   extension_use_nonzero_guess_;
   bool   verbose_;
 
@@ -360,7 +357,8 @@ private:
   int    num_extend_iterations_;
   int    cube_refinement_;
   int    integration_order_;
-  int    iteration_scheme_; // 0 - old, 1 - new, 2 - new (two stage)
+  int    iteration_scheme_; // 0 - fp, 1 - old, 2 - new, 3 - new (two stage)
+  int    dirichlet_scheme_; // 0 - sw, 1 - gf (modified and extended)
 
   enum var_scheme_t
   {
@@ -381,10 +379,9 @@ public:
   inline void set_use_superconvergent_robin (bool         value) { use_superconvergent_robin_ = value; }
   inline void set_use_superconvergent_jump  (bool         value) { use_superconvergent_jump_  = value; }
   inline void set_use_points_on_interface   (bool         value) { use_points_on_interface_   = value; }
-  inline void set_zero_negative_velocity    (bool         value) { zero_negative_velocity_    = value; }
-  inline void set_flatten_front_values      (bool         value) { flatten_front_values_      = value; }
   inline void set_scheme                    (var_scheme_t value) { var_scheme_                = value; }
   inline void set_verbose_mode              (bool         value) { verbose_                   = value; }
+  inline void set_dirichlet_scheme          (int          value) { dirichlet_scheme_          = value; }
 
   inline void set_tolerance(double bc_tolerance, int max_iterations = 10)
   {

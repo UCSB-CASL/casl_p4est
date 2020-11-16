@@ -85,7 +85,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -97,15 +97,15 @@ param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-param_t<bool> use_points_on_interface   (pl, 0, "use_points_on_interface", "");
-param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
+param_t<bool> use_points_on_interface   (pl, 1, "use_points_on_interface", "");
+param_t<bool> use_superconvergent_robin (pl, 0, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
-param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
+param_t<int>    order_in_time   (pl, 1,     "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
 param_t<double> cfl_number      (pl, 0.4,   "cfl_number",      "");
-param_t<double> base_cfl        (pl, 0.2,   "base_cfl",      "");
+param_t<double> base_cfl        (pl, 0.1111,   "base_cfl",      "");
 
 param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
 param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
@@ -203,7 +203,7 @@ double* part_coeff_all[] = { &part_coeff_0.val,
                              &part_coeff_2.val,
                              &part_coeff_3.val };
 
-param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
+param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -216,7 +216,7 @@ param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity        (pl, 0.1,  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity        (pl, 0.001*SQR(32.),  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
 param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
@@ -231,10 +231,10 @@ param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 //param_t<int>    step_limit           (pl, 300, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, 8, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
+param_t<double> init_perturb         (pl, 1.e-2,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
-param_t<double> front_location         (pl, 0.1,     "front_location",         "");
+param_t<double> front_location         (pl, 0.100,     "front_location",         "");
 param_t<double> front_location_final   (pl, 0.25,     "front_location_final",   "");
 param_t<double> container_radius_inner (pl, 0.1,     "container_radius_inner", "");
 param_t<double> container_radius_outer (pl, 0.45,     "container_radius_outer", "");
@@ -244,7 +244,7 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.007, "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.07/32., "box_size", "Physical width (in x) of the box in cm");
 
 param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
@@ -337,7 +337,7 @@ void set_alloy_parameters()
       initial_conc_1.val   = 0.094;    // at frac.
 
       eps_c.val = 1.0e-5;
-      eps_v.val = 2.e-2;
+      eps_v.val = 0*2.e-2;
       eps_a.val = 0*0.05;
       symmetry.val = 4;
 
@@ -372,7 +372,7 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.094;    // at frac.
       initial_conc_1.val   = 0.107;    // at frac.
 
-      eps_c.val = 1.0e-5;
+      eps_c.val = 0*1.0e-5;
       eps_v.val = 0*2.e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;

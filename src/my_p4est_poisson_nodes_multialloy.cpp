@@ -106,9 +106,6 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   use_superconvergent_jump_  = false;
   update_c0_robin_           = 0;
   use_points_on_interface_   = true;
-  zero_negative_velocity_    = false;
-  flatten_front_values_      = true;
-  always_use_centroid_       = false;
   verbose_                   = false;
 
   liquidus_value_ = NULL;
@@ -136,6 +133,8 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   poisson_use_nonzero_guess_ = false;
 
   iteration_scheme_ = 2;
+
+  dirichlet_scheme_ = 0;
 }
 
 my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
@@ -471,14 +470,6 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     ierr = PetscPrintf(p4est_->mpicomm, "Iteration %d: max bc error = %2.3e, avg bc error = %2.3e, max velo = %2.5e\n", iteration, bc_error_max_, bc_error_avg_, velo_max_); CHKERRXX(ierr);
   }
 
-
-  if (zero_negative_velocity_)
-  {
-    c0n_gamma_.get_array();
-    foreach_node(n, nodes_) { if (c0n_gamma_.ptr[n] < 0) c0n_gamma_.ptr[n] = 0; }
-    c0n_gamma_.restore_array();
-  }
-
   if (update_c0_robin_ == 1)
   {
     compute_pw_bc_values(0, 1);
@@ -554,10 +545,20 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_conc_leading_->set_cube_refinement(cube_refinement_);
   solver_conc_leading_->set_use_sc_scheme(use_superconvergent_robin_);
   solver_conc_leading_->set_integration_order(integration_order_);
-  solver_conc_leading_->set_dirichlet_scheme(1);
-  solver_conc_leading_->set_gf_order(2);
-  solver_conc_leading_->set_gf_thresh(-0.1);
-  solver_conc_leading_->set_gf_stabilized(2);
+
+  switch (dirichlet_scheme_) {
+    case 0:
+      solver_conc_leading_->set_dirichlet_scheme(0);
+    break;
+    case 1:
+      solver_conc_leading_->set_dirichlet_scheme(1);
+      solver_conc_leading_->set_gf_order(2);
+      solver_conc_leading_->set_gf_thresh(-0.1);
+      solver_conc_leading_->set_gf_stabilized(2);
+    break;
+    default:
+      throw;
+  }
 
   if (contr_phi_.vec != NULL)
   {
@@ -871,20 +872,25 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-//  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
-//  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
-//      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
-//      liquid_normal_.vec, NULL, bc,
-//      false, c_d_[0].vec, c_dd_[0].vec.data());
-
-//  VecShiftGhost(solver_conc_leading_->get_mask(), .5);
-
-  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
-      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
-      liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
-      false, c_d_[0].vec, c_dd_[0].vec.data());
-
-//  VecShiftGhost(solver_conc_leading_->get_mask(), -.5);
+  switch (dirichlet_scheme_) {
+    case 0:
+    {
+      boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
+          extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+          liquid_normal_.vec, NULL, bc,
+          false, c_d_[0].vec, c_dd_[0].vec.data());
+      break;
+    }
+    case 1:
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
+          extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
+          false, c_d_[0].vec, c_dd_[0].vec.data());
+    break;
+    default:
+      throw;
+  }
 
 //  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
 //      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
@@ -1040,16 +1046,25 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
   ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-//  boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
-//  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
-//      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
-//      liquid_normal_.vec, NULL, bc,
-//      false, psi_c_d_[0].vec);
-
-  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
-      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
-      liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
-      false, psi_c_d_[0].vec);
+  switch (dirichlet_scheme_) {
+    case 0:
+    {
+      boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
+          extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+          liquid_normal_.vec, NULL, bc,
+          false, psi_c_d_[0].vec);
+      break;
+    }
+    case 1:
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
+          extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
+          false, psi_c_d_[0].vec);
+    break;
+    default:
+      throw;
+  }
 
 //  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
 //      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
