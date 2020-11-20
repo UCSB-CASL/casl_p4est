@@ -1422,7 +1422,9 @@ public:
     }
   }
   double Gibbs_Thomson(double sigma_,double T0, double dval,DIM(double x, double y, double z)) const {
-    return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
+    return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
+
+        //(theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
   }
   double operator()(DIM(double x, double y, double z)) const
   {
