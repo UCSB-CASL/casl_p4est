@@ -65,7 +65,8 @@ enum:int {
   COUPLED_PROBLEM_EXAMPLE = 3,
   ICE_AROUND_CYLINDER = 4,
   FLOW_PAST_CYLINDER = 5,
-  DENDRITE_TEST = 6
+  DENDRITE_TEST = 6,
+  MELTING_ICE_SPHERE = 7
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -75,7 +76,9 @@ DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
                                    "2 - work in progress \n"
                                    "3 - Coupled problem example for verification \n"
                                    "4 - Ice solidifying around a cooled cylinder \n"
-                                   "5 - Flow past a cylinder (WIP) (Navier Stokes only)\n"
+                                   "5 - Flow past a cylinder (Navier Stokes only)\n"
+                                   "6 - dendrite solidification test (WIP) \n"
+                                   "7 - melting of an ice sphere \n"
                                    "default: 4");
 
 // ---------------------------------------
@@ -138,6 +141,7 @@ void select_solvers(){
 
       do_advection = false;
       break;
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       if(!no_flow){
         solve_stefan = true;
@@ -175,7 +179,7 @@ void select_solvers(){
 
 // Refinement options:
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
-DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-6,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
 // ---------------------------------------
 // Geometry options:
@@ -200,8 +204,6 @@ double r0;
 // For frank sphere:
 double s0;
 double T_inf;
-
-
 
 // For stefan fluids coupled problems:
 DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
@@ -235,7 +237,7 @@ double x0_lsf;
 double y0_lsf;
 
 unsigned int num_fields_interp = 0;
-
+double d0; // for dendrite w convection case
 void set_geometry(){
   switch(example_){
     case FRANK_SPHERE: {
@@ -292,6 +294,24 @@ void set_geometry(){
       //d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
       // d_cyl gets set by the user (default is 35 e-3)
       break;}
+    case MELTING_ICE_SPHERE:{
+      // Domain size:
+      xmin = 0.0; xmax = 30.0;
+      ymin = 0.0; ymax = 15.0;
+
+      // Number of trees:
+      nx =10.0;
+      ny =5.0;
+
+      // Periodicity:
+      px = 0;
+      py = 1;
+
+      uniform_band = 6.0;
+      // Problem geometry:
+      r0 = 0.5;     // Computational radius of the cylinder
+      break;
+    }
 
     case NS_GIBOU_EXAMPLE: {// Navier Stokes Validation case from Gibou 2015
       // Domain size:
@@ -339,8 +359,8 @@ void set_geometry(){
     }
     case DENDRITE_TEST:{
       // Domain size:
-      xmin = 0.; xmax = 1.;
-      ymin = 0.; ymax = 1.;
+      xmin = 0.; xmax = 10.;
+      ymin = 0.; ymax = 10.;
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
@@ -350,8 +370,9 @@ void set_geometry(){
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.01;
-      d_seed = 10.e-6;//(3.48e-6)*2.; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+      r0 = 0.1;//0.5;
+      d0 = 2.517e-9;
+      d_seed = 250.*d0/*50.*(1.3e-8)*/; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
       // physical property paper ""
       break;
     }
@@ -404,18 +425,18 @@ double mu_l;
 void set_physical_properties(){
   double nu;
   switch(example_){
-    case FRANK_SPHERE:
-      alpha_s = 1.0;
-      alpha_l = 1.0;
-      k_s = 1.0;
-      k_l = 1.0;
-      L = 1.0;
-      rho_l = 1.0;
-      rho_s = 1.0;
-      break;
-
+    case FRANK_SPHERE:{
+    alpha_s = 1.0;
+    alpha_l = 1.0;
+    k_s = 1.0;
+    k_l = 1.0;
+    L = 1.0;
+    rho_l = 1.0;
+    rho_s = 1.0;
+    break;
+    }
     case FLOW_PAST_CYLINDER:
-    case ICE_AROUND_CYLINDER:
+    case ICE_AROUND_CYLINDER:{
       alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
       alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
 
@@ -445,9 +466,42 @@ void set_physical_properties(){
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
 
       break;
+      }
+
+    case MELTING_ICE_SPHERE:{
+      // For first pass, I will just use properties from Okada. But may need to change since water is at a higher temp  11-4-20
+      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
+      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
+
+      k_s = 2.22; // W/[m*K]
+      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+
+      rho_l = 1000.0;// kg/m^3
+      rho_s = 920.; //[kg/m^3]
+
+      mu_l = 0.001730725; // [Pa * s]
+      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+
+      L = 334.e3;  // J/kg
+      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
+
+      // Boundary condition info:
+      Twall = 273.15 + 16.0;    // Physical wall temp [K] (aka T_infty)
+      Tinterface = 273.15; // Physical interface temp [K]
+
+      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
+
+      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
+      theta_wall = 1.0; // Non dim temp at wall
+      theta_cyl = 0.0; // Non dim temp at cylinder
+
+      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
+
+      break;
+    }
 
     case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_PROBLEM_EXAMPLE:{
       alpha_s = 1.0;
       alpha_l = 1.0;
       k_s = 1.;
@@ -457,12 +511,14 @@ void set_physical_properties(){
       rho_s = 1.0;
       mu_l = 1.0;
       break;
-    case NS_GIBOU_EXAMPLE:
+    }
+    case NS_GIBOU_EXAMPLE:{
       rho_l = 1.0;
       mu_l = 1.0;
       Re = 1.0;
       break;
-    case DENDRITE_TEST:
+    }
+    case DENDRITE_TEST:{
       cp_s = 1913.; // Specific heat of solid, [J/kgK]
 
       alpha_l = 1.16e-7;
@@ -483,21 +539,20 @@ void set_physical_properties(){
       double gamma_sl = 8.9e-3; //[J/m^2 = same as N/m]
       sigma = gamma_sl/(rho_s*L); // relation from alban email [m], modified using relation from Dantzig book
 
-//      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma/2.);
+      //      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma/2.);
       // BC info:
       double delta = -0.55;//-0.55;
       Tinterface = 331.23;
       Twall = delta*(L/cp_s) + Tinterface;
       deltaT = Twall-Tinterface;
 
-      printf("deltaT is %0.2f \n",deltaT);
-
       theta_wall=0.;
       theta_interface = 1.;
 
       break;
-
     }
+
+    } // end of switch cases
 }
 
 //-----------------------------------------
@@ -510,7 +565,6 @@ double v0;
 
 double Re_u; // reynolds number in x direction
 double Re_v; // reynolds number in y direction
-
 
 double outflow_u;
 double outflow_v;
@@ -535,37 +589,42 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case FLOW_PAST_CYLINDER:
-    case ICE_AROUND_CYLINDER:
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER:{
       Re = 201.;
       u0 = 1; // computational freestream velocity
       v0 = 0;
+      hodge_percentage_of_max_u = 1.e-3;
       break;
-    case NS_GIBOU_EXAMPLE:
+    }
+    case NS_GIBOU_EXAMPLE:{
       Re = 1.0;
 
       u0 = 1.0;
       v0 = 1.0;
 
       u_inf=1.0;
+      hodge_percentage_of_max_u = 1.e-3;
       break;
-
+    }
     case COUPLED_TEST_2:
-    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_PROBLEM_EXAMPLE:{
       Re = 1.0;
       u0 = 1.0;
       v0 = 1.0;
-      break;
-    case DENDRITE_TEST:
-      Re = 10.0;
-      u0 = 0.;
-      v0 = -1.;
+      hodge_percentage_of_max_u = 1.e-3;
       break;
     }
-
+    case DENDRITE_TEST:{
+      Re = 1.0; // 10
+      u0 = 0.;
+      v0 = -1.;
+      hodge_percentage_of_max_u = 1.e-2;
+      break;
+    }
+  }
   outflow_u = 0.0;
   outflow_v = 0.0;
-
-  hodge_percentage_of_max_u = 1.e-3;
 }
 
 
@@ -573,6 +632,13 @@ void set_NS_info(){
 enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL};
 int stefan_condition_type;
 int select_stefan_formulation(){
+  if(solve_navier_stokes){
+    return NONDIM_YES_FLUID;
+  }
+  else{
+    return NONDIM_NO_FLUID;
+  }
+  /*
   switch(example_){
   case FRANK_SPHERE:
     return NONDIM_NO_FLUID;
@@ -596,7 +662,7 @@ int select_stefan_formulation(){
     else{
       return NONDIM_NO_FLUID;
     }
-  }
+  } */
 };
 
 // For defining appropriate nondimensional groups:
@@ -604,8 +670,8 @@ double time_nondim_to_dim;
 double vel_nondim_to_dim;
 void set_nondimensional_groups(){
    if(stefan_condition_type==NONDIM_YES_FLUID){
-     double d_length_scale = 0.;
-     if(example_ == ICE_AROUND_CYLINDER){
+     double d_length_scale = 1.; // set it as 1 if not one of the following examples:
+     if(example_ == ICE_AROUND_CYLINDER || example_ == FLOW_PAST_CYLINDER || example_ == MELTING_ICE_SPHERE){
        d_length_scale=d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
@@ -670,41 +736,54 @@ void simulation_time_info(){
   t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
   save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
   switch(example_){
-    case FRANK_SPHERE:
+    case FRANK_SPHERE:{
       tfinal = 1.30;
       dt_max_allowed = 0.1;
       tstart = 1.0;
       break;
+    }
     case FLOW_PAST_CYLINDER:
-    case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
+    case ICE_AROUND_CYLINDER: {
+      // ice solidifying around isothermally cooled cylinder
       tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
       dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
       break;
+    }
+    case MELTING_ICE_SPHERE:{
+      tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
+      dt_max_allowed = 0.9*save_every_dt;
+      tstart = 0.0;
+      break;
+    }
 
-    case NS_GIBOU_EXAMPLE:
+    case NS_GIBOU_EXAMPLE:{
       tfinal = PI/3.;
       dt_max_allowed = 1.e-2;
       tstart = 0.0;
       break;
+    }
 
-    case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_PROBLEM_EXAMPLE:{
       tfinal = PI/3.;//PI/2.;
       dt_max_allowed = 1.0e-1;
       tstart = 0.0;
       break;
-    case COUPLED_TEST_2:
+    }
+    case COUPLED_TEST_2:{
       tfinal = 0.75;//1.;
       dt_max_allowed=1.0e-1;
       tstart=0.0;
       break;
-    case DENDRITE_TEST:
-      double tau = 3.2e-7;
-      tfinal =(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
+    }
+    case DENDRITE_TEST:{
+      double tau =5.46e-11;// 3.2e-7;
+      double tf_tau = 2.e4;
+      tfinal =(tau*tf_tau)/(time_nondim_to_dim);//(1./10.)*(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
       tstart=0.;
-      dt_max_allowed = 1.e-2;
-
+      dt_max_allowed = tfinal/100;
       break;
+    }
 
     }
   if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)/(time_nondim_to_dim); // convert input in minutes to nondimensional time
@@ -1233,6 +1312,7 @@ public:
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y));
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE:
@@ -1289,6 +1369,7 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
       break;
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_temp = DIRICHLET; 
       break;
@@ -1306,6 +1387,7 @@ void inner_interface_bc(){ //-- Call this function before setting interface bc i
     case COUPLED_PROBLEM_EXAMPLE:
     case COUPLED_TEST_2:
     case DENDRITE_TEST:
+    case MELTING_ICE_SPHERE:
     case FRANK_SPHERE:{
         throw std::invalid_argument("This option may not be used for the particular example being called");
     }
@@ -1329,7 +1411,7 @@ private:
 
 
   std::vector<double> theta0 = {0., PI/2.,-PI,-PI/2.};
-  double eps4 = 0.05;
+  double eps4 = 0.005;//0.05;
 
 public:
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
@@ -1340,7 +1422,7 @@ public:
     }
   }
   double Gibbs_Thomson(double sigma_,double T0, double dval,DIM(double x, double y, double z)) const {
-    return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday
+    return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -1350,6 +1432,12 @@ public:
         }
       case DENDRITE_TEST:{
         double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
+
+//        double As = 0.75;
+//        double m = 4.0;
+//        double theta0 = 0.;
+//        double sigma_ = sigma*(1 - As*cos(m*(theta - theta0)));
+
         double min_theta = 2*PI;
         int min_idx = -1;
         for(int i=0;i<4;i++){
@@ -1363,6 +1451,7 @@ public:
         double sigma_ = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
         return Gibbs_Thomson(sigma_,Tinterface,d_seed,DIM(x,y,z));
       }
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: {
         double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
 
@@ -1412,6 +1501,7 @@ public:
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
       case DENDRITE_TEST:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: return 1.0;
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -1487,7 +1577,11 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     case FRANK_SPHERE:{
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
      }
-    case DENDRITE_TEST:
+    case DENDRITE_TEST:{
+      // Dirichlet on both x walls, and y upper wall (where bulk flow is incoming)
+      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
@@ -1496,8 +1590,6 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     }
     case COUPLED_TEST_2:{
       return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)));
-
-//      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
   }
 };
@@ -1508,6 +1600,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
@@ -1565,6 +1658,7 @@ public:
         break;
       }
       case DENDRITE_TEST:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
           return theta_wall;
@@ -1617,6 +1711,19 @@ public:
         }
         else{
           return theta_interface;
+        }
+      }
+      case MELTING_ICE_SPHERE:{
+        switch(dom){
+          case LIQUID_DOMAIN:{
+            return theta_wall;
+          }
+          case SOLID_DOMAIN:{
+            return 0.0; // coolest temp
+          }
+          default:{
+            throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
+          }
         }
       }
       case ICE_AROUND_CYLINDER:{ // TO-DO: is this best initial condition? might be missing on serious initial interface growth...
@@ -1685,6 +1792,7 @@ public:
       }
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
             if(ramp_bcs){
@@ -1751,6 +1859,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
     case FLOW_PAST_CYLINDER:
     case DENDRITE_TEST:
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
@@ -1787,6 +1896,7 @@ public:
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case FLOW_PAST_CYLINDER:
       case DENDRITE_TEST:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
         else{
@@ -1829,6 +1939,7 @@ struct INITIAL_VELOCITY : CF_DIM
     switch(example_){
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs) return 0.;
         else{
@@ -1886,6 +1997,7 @@ public:
                                     "compatible with this example, please choose another \n");
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
       }
@@ -1921,6 +2033,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case COUPLED_PROBLEM_EXAMPLE:
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
+    case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
       break;
@@ -1935,6 +2048,7 @@ public:
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
 
@@ -2385,12 +2499,26 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
     global_max_vnorm = 1.5;
   }
   else {
+
     // Check the values of v_interface locally:
     v_interface.get_array();
     phi.get_array();
     foreach_local_node(n,nodes){
       if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
         max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
+// For checking dendrite tip velocity case:
+//        double xyz_[P4EST_DIM];
+//        node_xyz_fr_n(n,p4est,nodes,xyz_);
+//        bool is_xaxis = (fabs(xyz_[0] - (xmax - xmin)/2.)<dxyz_close_to_interface);
+//        bool is_yaxis = (fabs(xyz_[1] - (ymax - ymin)/2.)<dxyz_close_to_interface);
+//        bool is_tip = (is_xaxis && !is_yaxis) || (!is_xaxis && is_yaxis);
+//        if(is_tip){
+
+//          double vnorm = sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n]));
+//          double Pe_tip = vnorm*vel_nondim_to_dim*d0/alpha_s;
+//          printf("Pe_tip = %0.4f \n",Pe_tip);
+//        }
+
       }
     }
     v_interface.restore_array();
@@ -4541,13 +4669,20 @@ int main(int argc, char** argv) {
                            "St = %f \n"
                            "With: \n"
                            "u_inf = %0.3e [m/s]\n"
-                           "delta T = %0.2f [K]\n\n", Re, Pr, Pe, St,u_inf,deltaT);
+                           "delta T = %0.2f [K]\n"
+                           "sigma = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,sigma/d_seed);
 
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
     PetscPrintf(mpi.comm(),"Example number %d \n",example_);
-    PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
+    if(example_==DENDRITE_TEST){
+          PetscPrintf(mpi.comm(),"Sim time: %0.3e [sec] = %0.3e [nondim]\n",tfinal*time_nondim_to_dim,tfinal);
+    }
+    else{
+      PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
+    }
+
     PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
     PetscPrintf(mpi.comm(),"Ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds]",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
     // -----------------------------------------------
@@ -4933,6 +5068,7 @@ int main(int argc, char** argv) {
           break;
         }
       case FLOW_PAST_CYLINDER:
+      case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(save_fluid_forces){
           // Output file for NS test case errors:
@@ -4981,14 +5117,31 @@ int main(int argc, char** argv) {
       // ------------------------------------------------------------
       // Print iteration information:
       // ------------------------------------------------------------
-      ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                    "Iteration %d , Time: %0.5e [nondim] = Time: %0.3e [nondim] = %0.2f [sec] = %0.2f [min],"
-                                    " Timestep: %0.5e [nondim] = %0.1g [sec],"
-                                    " Percent Done : %0.2f %"
-                                    " \n ------------------------------------------- \n",
-                                    tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
-                                    dt, dt*(time_nondim_to_dim),
-                                    ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
+      if(example_ == DENDRITE_TEST){
+        ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+                                      "Iteration %d , Time: %0.4e [nondim] "
+                                      "= Time: %0.4e [nondim] "
+                                      "= %0.4e [sec], "
+                                      " Timestep: %0.4e [nondim] = %0.4e [sec],"
+                                      " Percent Done : %0.2f %"
+                                      " \n ------------------------------------------- \n",
+                                      tstep,tn,tn,tn*time_nondim_to_dim,
+                                      dt, dt*(time_nondim_to_dim),
+                                      ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
+      }
+      else{
+        ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+                                      "Iteration %d , Time: %0.3f [nondim] "
+                                      "= Time: %0.3f [nondim] "
+                                      "= %0.3f [sec] "
+                                      "= %0.2f [min],"
+                                      " Timestep: %0.3e [nondim] = %0.3e [sec],"
+                                      " Percent Done : %0.2f %"
+                                      " \n ------------------------------------------- \n",
+                           tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+                           dt, dt*(time_nondim_to_dim),
+                           ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
+      }
 
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
@@ -5079,7 +5232,7 @@ int main(int argc, char** argv) {
         my_p4est_level_set_t ls_new_new(ngbd_np1);
 
         // Feed the curvature computed to the interfacial boundary condition:
-        if((example_ ==ICE_AROUND_CYLINDER) || (example_ == DENDRITE_TEST)){
+        if((example_ ==ICE_AROUND_CYLINDER) ||(example_ == MELTING_ICE_SPHERE) || (example_ == DENDRITE_TEST)){
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
 
@@ -5187,7 +5340,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed
         // -------------------------------
-        if((example_ == ICE_AROUND_CYLINDER)|| (example_ == DENDRITE_TEST)){
+        if((example_ == ICE_AROUND_CYLINDER)||(example_ == MELTING_ICE_SPHERE) || (example_ == DENDRITE_TEST)){
           for(unsigned char d=0;d<2;++d){
             bc_interface_val_temp[d]->clear();
             if(example_ == DENDRITE_TEST){
@@ -5329,7 +5482,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Setup velocity conditions
         for(unsigned char d=0;d<P4EST_DIM;d++){
-          if((example_ == ICE_AROUND_CYLINDER) || (example_ ==DENDRITE_TEST)){
+          if((example_ == ICE_AROUND_CYLINDER) ||(example_ == MELTING_ICE_SPHERE) || (example_ ==DENDRITE_TEST)){
             bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
           }
           bc_interface_value_velocity[d]->t = tn;
@@ -5439,7 +5592,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear out the interfacial BC for the next timestep, if needed
         // -------------------------------
-        if((example_ == ICE_AROUND_CYLINDER)|| (example_ ==DENDRITE_TEST)){
+        if((example_ == ICE_AROUND_CYLINDER)||(example_ == MELTING_ICE_SPHERE) || (example_ ==DENDRITE_TEST)){
           for(unsigned char d=0;d<P4EST_DIM;d++){
             bc_interface_value_velocity[d]->clear();
             }
@@ -5614,7 +5767,8 @@ int main(int argc, char** argv) {
       }
 
       if(tstep!=last_tstep){
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n");
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
+                                                     "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
 
         // --------------------------------
         // Destroy p4est at n and slide grids:
