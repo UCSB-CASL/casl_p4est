@@ -150,8 +150,8 @@ param_t<double> thermal_cond_s (pl, 6.07e-1, "thermal_cond_s", "Thermal conducti
 
 param_t<double> latent_heat  (pl, 2350, "latent_heat",  "Latent heat of fusion (pl, J.cm-3");
 
-param_t<bool>   linearized_liquidus (pl, 1, "linearized_liquidus", "Use linearized liquidus surface or true one");
-param_t<bool>   const_part_coeff    (pl, 1, "const_part_coeff",    "Use averaged partition coefficients or true ones");
+param_t<bool>   linearized_liquidus (pl, 0, "linearized_liquidus", "Use linearized liquidus surface or true one");
+param_t<bool>   const_part_coeff    (pl, 0, "const_part_coeff",    "Use averaged partition coefficients or true ones");
 
 param_t<int>    num_comps (pl, 1, "num_comps", "Number of solutes");
 
@@ -203,7 +203,7 @@ double* part_coeff_all[] = { &part_coeff_0.val,
                              &part_coeff_2.val,
                              &part_coeff_3.val };
 
-param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
+param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -212,11 +212,13 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "", "
                                     "7: a made-up penta-alloy");
 
+double scale = 1000;
+
 //-------------------------------------
 // problem parameters
 //-------------------------------------
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
-param_t<double> cooling_velocity        (pl, 0.001*SQR(32.),  "cooling_velocity", "Cooling velocity (pl, cm/s");
+param_t<double> cooling_velocity        (pl, 0.001*scale,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
 param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
@@ -228,7 +230,7 @@ param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRIC
 param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
-//param_t<int>    step_limit           (pl, 300, "step_limit",   "");
+//param_t<int>    step_limit           (pl, 200, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
 param_t<double> growth_limit         (pl, 8, "growth_limit", "");
 param_t<double> init_perturb         (pl, 1.e-2,  "init_perturb",         "");
@@ -244,7 +246,7 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.07/32., "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.05/sqrt(scale), "box_size", "Physical width (in x) of the box in cm");
 
 param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
@@ -337,8 +339,8 @@ void set_alloy_parameters()
       initial_conc_1.val   = 0.094;    // at frac.
 
       eps_c.val = 1.0e-5;
-      eps_v.val = 0*2.e-2;
-      eps_a.val = 0*0.05;
+      eps_v.val = 1.0e-2;
+      eps_a.val = 0.05;
       symmetry.val = 4;
 
       // linearized phase diagram
@@ -372,8 +374,8 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.094;    // at frac.
       initial_conc_1.val   = 0.107;    // at frac.
 
-      eps_c.val = 0*1.0e-5;
-      eps_v.val = 0*2.e-2;
+      eps_c.val = 1.0e-5;
+      eps_v.val = 1.0e-2;
       eps_a.val = 0.05;
       symmetry.val = 4;
 
@@ -562,8 +564,8 @@ double liquidus_value(double *c)
       }
       case 3: // Co-Al-W
       {
-        double c0 = 100.*c[0];
-        double c1 = 100.*c[1];
+        double c0 = 100.*c[1];
+        double c1 = 100.*c[0];
         static double p00 =  1.767e+03;
         static double p01 =  2.369e+00;
         static double p10 =  1.771e+00;
@@ -638,7 +640,7 @@ double liquidus_slope(int which_comp, double *c)
                        + p10*1.*pow(c0,0)*pow(c1,0) + p01*0.*pow(c0,0)*pow(c1,1)
                        + p20*2.*pow(c0,1)*pow(c1,0) + p11*1.*pow(c0,0)*pow(c1,1) + p02*0.*pow(c0,0)*pow(c1,2)
                        + p30*3.*pow(c0,2)*pow(c1,0) + p21*2.*pow(c0,1)*pow(c1,1) + p12*1.*pow(c0,0)*pow(c1,2) + p03*0.*pow(c0,0)*pow(c1,3)
-                       + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,1)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4));
+                       + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,0)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4));
           case 1:
           return 100.*(0.
                        + p10*0.*pow(c0,1)*pow(c1,0) + p01*1.*pow(c0,0)*pow(c1,0)
@@ -650,8 +652,8 @@ double liquidus_slope(int which_comp, double *c)
       }
       case 3: // Co-Al-W
       {
-        double c0 = 100.*c[0];
-        double c1 = 100.*c[1];
+        double c0 = 100.*c[1];
+        double c1 = 100.*c[0];
         static double p01 =  2.369e+00;
         static double p10 =  1.771e+00;
         static double p02 = -2.238e-01;
@@ -668,18 +670,18 @@ double liquidus_slope(int which_comp, double *c)
         static double p40 = -1.866e-04;
         switch (which_comp)
         {
-          case 0:
-          return 0.
-              + p10*1.*pow(c0,0)*pow(c1,0) + p01*0.*pow(c0,0)*pow(c1,1)
-              + p20*2.*pow(c0,1)*pow(c1,0) + p11*1.*pow(c0,0)*pow(c1,1) + p02*0.*pow(c0,0)*pow(c1,2)
-              + p30*3.*pow(c0,2)*pow(c1,0) + p21*2.*pow(c0,1)*pow(c1,1) + p12*1.*pow(c0,0)*pow(c1,2) + p03*0.*pow(c0,0)*pow(c1,3)
-              + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,1)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4);
           case 1:
-          return 0
-              + p10*0.*pow(c1,1)*pow(c0,0) + p01*1.*pow(c1,0)*pow(c0,0)
-              + p20*0.*pow(c1,2)*pow(c0,0) + p11*1.*pow(c1,1)*pow(c0,0) + p02*2.*pow(c1,0)*pow(c0,1)
-              + p30*0.*pow(c1,3)*pow(c0,0) + p21*1.*pow(c1,2)*pow(c0,0) + p12*2.*pow(c1,1)*pow(c0,1) + p03*3.*pow(c1,0)*pow(c0,2)
-              + p40*0.*pow(c1,4)*pow(c0,0) + p31*1.*pow(c1,3)*pow(c0,0) + p22*2.*pow(c1,2)*pow(c0,1) + p13*3.*pow(c1,1)*pow(c0,2) + p04*4.*pow(c1,0)*pow(c0,3);
+          return 100.*(0.
+                       + p10*1.*pow(c0,0)*pow(c1,0) + p01*0.*pow(c0,0)*pow(c1,1)
+                       + p20*2.*pow(c0,1)*pow(c1,0) + p11*1.*pow(c0,0)*pow(c1,1) + p02*0.*pow(c0,0)*pow(c1,2)
+                       + p30*3.*pow(c0,2)*pow(c1,0) + p21*2.*pow(c0,1)*pow(c1,1) + p12*1.*pow(c0,0)*pow(c1,2) + p03*0.*pow(c0,0)*pow(c1,3)
+                       + p40*4.*pow(c0,3)*pow(c1,0) + p31*3.*pow(c0,2)*pow(c1,1) + p22*2.*pow(c0,1)*pow(c1,2) + p13*1.*pow(c0,0)*pow(c1,3) + p04*0.*pow(c0,0)*pow(c1,4));
+          case 0:
+          return 100.*(0.
+                       + p10*0.*pow(c0,1)*pow(c1,0) + p01*1.*pow(c0,0)*pow(c1,0)
+                       + p20*0.*pow(c0,2)*pow(c1,0) + p11*1.*pow(c0,1)*pow(c1,0) + p02*2.*pow(c0,0)*pow(c1,1)
+                       + p30*0.*pow(c0,3)*pow(c1,0) + p21*1.*pow(c0,2)*pow(c1,0) + p12*2.*pow(c0,1)*pow(c1,1) + p03*3.*pow(c0,0)*pow(c1,2)
+                       + p40*0.*pow(c0,4)*pow(c1,0) + p31*1.*pow(c0,3)*pow(c1,0) + p22*2.*pow(c0,2)*pow(c1,1) + p13*3.*pow(c0,1)*pow(c1,2) + p04*4.*pow(c0,0)*pow(c1,3));
           default: throw std::invalid_argument("\n");
         }
       }
@@ -768,50 +770,50 @@ double part_coeff(int which_comp, double *c)
       case 3: // Co-Al-W
         switch (which_comp)
         {
-          case 0:
+          case 1:
           {
-            double c0 = 100.*c[0];
-            double c1 = 100.*c[1];
+            double c0 = 100.*c[1];
+            double c1 = 100.*c[0];
             static double p00 =  1.135e+00;
-            static double p01 = -3.118e-02;
-            static double p10 =  2.239e-03;
-            static double p02 =  1.463e-03;
+            static double p10 = -3.118e-02;
+            static double p01 =  2.239e-03;
+            static double p20 =  1.463e-03;
             static double p11 = -1.917e-03;
-            static double p20 =  1.135e-03;
-            static double p03 = -4.768e-05;
-            static double p12 =  9.953e-05;
-            static double p21 =  4.394e-05;
-            static double p30 = -6.706e-05;
-            static double p04 =  8.710e-07;
-            static double p13 = -2.235e-06;
+            static double p02 =  1.135e-03;
+            static double p30 = -4.768e-05;
+            static double p21 =  9.953e-05;
+            static double p12 =  4.394e-05;
+            static double p03 = -6.706e-05;
+            static double p40 =  8.710e-07;
+            static double p31 = -2.235e-06;
             static double p22 = -5.952e-07;
-            static double p31 = -3.904e-07;
-            static double p40 =  1.545e-06;
+            static double p13 = -3.904e-07;
+            static double p04 =  1.545e-06;
             return p00
                 + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
                 + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
                 + p30*pow(c0,3)*pow(c1,0) + p21*pow(c0,2)*pow(c1,1) + p12*pow(c0,1)*pow(c1,2) + p03*pow(c0,0)*pow(c1,3)
                 + p40*pow(c0,4)*pow(c1,0) + p31*pow(c0,3)*pow(c1,1) + p22*pow(c0,2)*pow(c1,2) + p13*pow(c0,1)*pow(c1,3) + p04*pow(c0,0)*pow(c1,4);
           }
-          case 1:
+          case 0:
           {
-            double c0 = 100.*c[0];
-            double c1 = 100.*c[1];
+            double c0 = 100.*c[1];
+            double c1 = 100.*c[0];
             static double p00 =  1.114e+00;
-            static double p01 = -9.187e-03;
-            static double p10 = -4.804e-02;
-            static double p02 =  1.733e-03;
+            static double p10 = -9.187e-03;
+            static double p01 = -4.804e-02;
+            static double p20 =  1.733e-03;
             static double p11 = -1.406e-04;
-            static double p20 =  4.313e-03;
-            static double p03 = -5.248e-05;
-            static double p12 = -8.236e-05;
-            static double p21 =  2.716e-05;
-            static double p30 = -2.159e-04;
-            static double p04 =  5.841e-07;
-            static double p13 =  9.961e-07;
+            static double p02 =  4.313e-03;
+            static double p30 = -5.248e-05;
+            static double p21 = -8.236e-05;
+            static double p12 =  2.716e-05;
+            static double p03 = -2.159e-04;
+            static double p40 =  5.841e-07;
+            static double p31 =  9.961e-07;
             static double p22 =  1.741e-06;
-            static double p31 = -9.305e-07;
-            static double p40 =  4.122e-06;
+            static double p13 = -9.305e-07;
+            static double p04 =  4.122e-06;
             return p00
                 + p10*pow(c0,1)*pow(c1,0) + p01*pow(c0,0)*pow(c1,1)
                 + p20*pow(c0,2)*pow(c1,0) + p11*pow(c0,1)*pow(c1,1) + p02*pow(c0,0)*pow(c1,2)
