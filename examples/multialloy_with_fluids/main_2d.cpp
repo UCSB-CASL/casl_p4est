@@ -2387,6 +2387,75 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   P4EST_ASSERT(i==num_fields_interp);
 } // end of interpolate_values_onto_new_grid
 
+void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
+
+  vec_and_ptr_t curvature_tmp;
+  curvature_tmp.create(curvature.vec);
+
+  // Get arrays needed:
+  curvature_tmp.get_array();
+  normal.get_array();
+  // Define the qnnn object to help compute the derivatives of the normal:
+  quad_neighbor_nodes_of_node_t qnnn;
+
+  // Compute curvature on layer nodes:
+  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+      ngbd->get_neighbors(n,qnnn);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
+    }
+
+  // Begin ghost update:
+  VecGhostUpdateBegin(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+  // Compute curvature on local nodes:
+  for(size_t i = 0; i<ngbd->get_local_size(); i++){
+      p4est_locidx_t n = ngbd->get_local_node(i);
+      ngbd->get_neighbors(n,qnnn);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
+    }
+
+  // End ghost update:
+  VecGhostUpdateEnd(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+  // Restore arrays needed:
+  curvature_tmp.restore_array();
+  normal.restore_array();
+
+  // Now go ahead and extend the curvature values to the whole domain -- Will be used to apply the pointwise Dirichlet condition, dependent on curvature
+  LS.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
+
+  // Destroy temp now:
+  curvature_tmp.destroy();
+
+}
+
+
+double interfacial_velocity_expression(double Tl_d, double Ts_d, double kappa,double dval){
+
+  switch(stefan_condition_type){
+    case NONDIM_YES_FLUID:{
+    /*
+      printf("Kappa is %0.4f \n"
+             "dval is %0.4e \n"
+             "Sigma is %0.4e \n"
+             "Sigma/dval is %0.4e \n",kappa,dval,sigma,sigma/dval);
+      printf("Curvature factor --> divide by %0.10f \n \n",(1+sigma*kappa/dval));
+      */
+
+      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d))/(1 + sigma*kappa/dval);
+    }
+    case NONDIM_NO_FLUID:{
+      return ((St)*(Ts_d - (k_l/k_s)*Tl_d))/(1 + sigma*kappa/dval);
+    }
+    case DIMENSIONAL:{
+      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s*(1 + sigma*kappa));
+    }
+    default:{
+      throw std::invalid_argument("interfacial_velocity_expression: Unrecognized stefan condition type case \n");
+    }
+  }
+}
 
 void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                                   vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d,
@@ -2396,26 +2465,60 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                                   double extension_band){
 
   if(!force_interfacial_velocity_to_zero){
-    // Get the first derivatives to compute the jump
-    T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
-    ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
-    ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
 
-    // Create vector to hold the jump values:
-    jump.create(p4est,nodes);
+      // Get the first derivatives to compute the jump
+      T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
+      ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
+      ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+
+
+      // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
+      my_p4est_level_set_t ls(ngbd);
+
+      // Compute the curvature of the solid, used for Stefan condition:
+      vec_and_ptr_t kappa;
+      vec_and_ptr_dim_t normal_s;
+
+      kappa.create(p4est,nodes);
+      normal_s.create(p4est,nodes);
+
+      // --> first, scale phi by -1 to get solid phi, then compute those normals, then scale back
+      VecScaleGhost(phi.vec,-1.0);
+      // --> compute normals of solid interface
+      compute_normals(*ngbd,phi.vec,normal_s.vec);
+      // --> compute curvature of solid interface
+      compute_curvature(phi,normal_s,kappa,ngbd,ls);
+      // --> now scale level set values back to LSF of the fluid, to be used for the rest of the function
+      VecScaleGhost(phi.vec,-1.0);
+
+      // Determine characteristic length scale if this is a non-dim problem:
+      double dval = 1.;
+      if(example_ == DENDRITE_TEST){
+        dval = d_seed;
+      }
+      else{
+        dval = d_cyl;
+      }
+
+      // Create vector to hold the jump values:
+      jump.create(p4est,nodes);
 
       // Get arrays:
       jump.get_array();
       T_l_d.get_array();
       T_s_d.get_array();
       phi.get_array();
+      kappa.get_array();
 
+      double kappa_=1.0; // leave as is for now, will eventually actually add curvature arguments
       // First, compute jump in the layer nodes:
       for(size_t i=0; i<ngbd->get_layer_size();i++){
         p4est_locidx_t n = ngbd->get_layer_node(i);
 
         if(fabs(phi.ptr[n])<extension_band){ // TO-DO: should be nondim for ALL cases
             foreach_dimension(d){
+                jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n],kappa.ptr[n],dval);
+                /*
                 if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
                     jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
                     //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
@@ -2426,6 +2529,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                 else{
                     jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
                 }
+                */
             } // end of loop over dimensions
         }
        }
@@ -2440,6 +2544,9 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
           p4est_locidx_t n = ngbd->get_local_node(i);
           if(fabs(phi.ptr[n])<extension_band){
               foreach_dimension(d){
+                  jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n],kappa.ptr[n],dval);
+
+                /*
                 if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
                     jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
                     //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
@@ -2450,6 +2557,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                 else{
                     jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
                 }
+                */
               } // end over loop on dimensions
           }
         }
@@ -2463,8 +2571,8 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       jump.restore_array();
       T_l_d.restore_array();
       T_s_d.restore_array();
+      kappa.restore_array();
 
-      my_p4est_level_set_t ls(ngbd);
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
       foreach_dimension(d){
          ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
@@ -2481,11 +2589,15 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_l_d.destroy();
       T_s_d.destroy();
       jump.destroy();
+
+      // Destroy the curvature and normals that we created:
+      normal_s.destroy();
+      kappa.destroy();
   }
   else{ // Case where we are forcing interfacial velocity to zero
-    foreach_dimension(d){
-        VecScaleGhost(v_interface.vec[d],0.0);
-    }
+      foreach_dimension(d){
+          VecScaleGhost(v_interface.vec[d],0.0);
+      }
   }
 }
 
@@ -2544,48 +2656,6 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   v_interface_max_norm = global_max_vnorm;
 }
 
-void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
-
-  vec_and_ptr_t curvature_tmp;
-  curvature_tmp.create(curvature.vec);
-
-  // Get arrays needed:
-  curvature_tmp.get_array();
-  normal.get_array();
-  // Define the qnnn object to help compute the derivatives of the normal:
-  quad_neighbor_nodes_of_node_t qnnn;
-
-  // Compute curvature on layer nodes:
-  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-      p4est_locidx_t n = ngbd->get_layer_node(i);
-      ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
-    }
-
-  // Begin ghost update:
-  VecGhostUpdateBegin(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-  // Compute curvature on local nodes:
-  for(size_t i = 0; i<ngbd->get_local_size(); i++){
-      p4est_locidx_t n = ngbd->get_local_node(i);
-      ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
-    }
-
-  // End ghost update:
-  VecGhostUpdateEnd(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-  // Restore arrays needed:
-  curvature_tmp.restore_array();
-  normal.restore_array();
-
-  // Now go ahead and extend the curvature values to the whole domain -- Will be used to apply the pointwise Dirichlet condition, dependent on curvature
-  LS.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
-
-  // Destroy temp now:
-  curvature_tmp.destroy();
-
-}
 
 void prepare_refinement_fields(vec_and_ptr_t phi, vec_and_ptr_t vorticity, vec_and_ptr_t vorticity_refine, vec_and_ptr_dim_t T_l_dd, my_p4est_node_neighbors_t* ngbd){
   PetscErrorCode ierr;
