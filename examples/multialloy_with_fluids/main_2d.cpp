@@ -2434,9 +2434,10 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 }
 
 
-double interfacial_velocity_expression(double Tl_d, double Ts_d, double kappa,double dval){
+double interfacial_velocity_expression(double Tl_d, double Ts_d/*, double kappa,double dval*/){
 
   switch(stefan_condition_type){
+  // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
     case NONDIM_YES_FLUID:{
     /*
       printf("Kappa is %0.4f \n"
@@ -2446,13 +2447,13 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d, double kappa,do
       printf("Curvature factor --> divide by %0.10f \n \n",(1+sigma*kappa/dval));
       */
 
-      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d))/(1 + sigma*kappa/dval);
+      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d))/*/(1 + sigma*kappa/dval)*/;
     }
     case NONDIM_NO_FLUID:{
-      return ((St)*(Ts_d - (k_l/k_s)*Tl_d))/(1 + sigma*kappa/dval);
+      return ((St)*(Ts_d - (k_l/k_s)*Tl_d))/*/(1 + sigma*kappa/dval)*/;
     }
     case DIMENSIONAL:{
-      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s*(1 + sigma*kappa));
+      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s/**(1 + sigma*kappa)*/);
     }
     default:{
       throw std::invalid_argument("interfacial_velocity_expression: Unrecognized stefan condition type case \n");
@@ -2478,6 +2479,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
       my_p4est_level_set_t ls(ngbd);
 
+      /*
       // Compute the curvature of the solid, used for Stefan condition:
       vec_and_ptr_t kappa;
       vec_and_ptr_dim_t normal_s;
@@ -2503,6 +2505,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
         dval = d_cyl;
       }
 
+      */
       // Create vector to hold the jump values:
       jump.create(p4est,nodes);
 
@@ -2511,7 +2514,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_l_d.get_array();
       T_s_d.get_array();
       phi.get_array();
-      kappa.get_array();
+      //kappa.get_array();
 
       double kappa_=1.0; // leave as is for now, will eventually actually add curvature arguments
       // First, compute jump in the layer nodes:
@@ -2520,7 +2523,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
 
         if(fabs(phi.ptr[n])<extension_band){ // TO-DO: should be nondim for ALL cases
             foreach_dimension(d){
-                jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n],kappa.ptr[n],dval);
+                jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
                 /*
                 if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
                     jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
@@ -2547,7 +2550,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
           p4est_locidx_t n = ngbd->get_local_node(i);
           if(fabs(phi.ptr[n])<extension_band){
               foreach_dimension(d){
-                  jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n],kappa.ptr[n],dval);
+                  jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
 
                 /*
                 if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
@@ -2574,7 +2577,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       jump.restore_array();
       T_l_d.restore_array();
       T_s_d.restore_array();
-      kappa.restore_array();
+      //kappa.restore_array();
 
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
       foreach_dimension(d){
@@ -2594,8 +2597,8 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       jump.destroy();
 
       // Destroy the curvature and normals that we created:
-      normal_s.destroy();
-      kappa.destroy();
+      //normal_s.destroy();
+      //kappa.destroy();
   }
   else{ // Case where we are forcing interfacial velocity to zero
       foreach_dimension(d){
