@@ -103,6 +103,8 @@ DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before clo
 
 // Option to compute and save fluid forces to a file:
 DEFINE_PARAMETER(pl,bool,save_fluid_forces,false,"Saves fluid forces if true (default: false) \n");
+DEFINE_PARAMETER(pl,double,save_fluid_forces_every_dt,0.01,"Saves fluid forces every dt amount of time in seconds of dimensional time (default is 1.0) \n");
+
 
 // Save state options
 DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
@@ -470,20 +472,21 @@ void set_physical_properties(){
 
     case MELTING_ICE_SPHERE:{
       // For first pass, I will just use properties from Okada. But may need to change since water is at a higher temp  11-4-20
-      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
-      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
+      alpha_s = (1.221e-6); // calculated from values on engineering toolbox at - 10 C//(1.18e-6); //ice - [m^2]/s // 1.1
+      alpha_l = (0.138e-6);//value of water at 10 C //(0.13275e-6); //water- [m^2]/s
 
-      k_s = 2.22; // W/[m*K]
-      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+      k_s = 2.30; // value at -10 C (engineering toolbox) //2.22; // W/[m*K]
+      k_l = 578.64e-3; // value of water at 10 C (chose based on paper data at 8 C) //558.61e-3; // W/[m*K]
 
-      rho_l = 1000.0;// kg/m^3
+      rho_l = 999.8; // calculated for water at 16 C from engineering toolbox //1000.0;// kg/m^3
       rho_s = 920.; //[kg/m^3]
 
-      mu_l = 0.001730725; // [Pa * s]
+      mu_l = 1.3873e-3; // Value at 8 C based on paper data //0.001730725; // Dynamic viscosity [Pa * s]
       cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
 
       L = 334.e3;  // J/kg
-      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
+
+      sigma = 2.1e-10;//(4.20e-10); // [m] // changed from original 2.10e-10 by alban
 
       // Boundary condition info:
       Twall = 273.15 + 16.0;    // Physical wall temp [K] (aka T_infty)
@@ -3074,7 +3077,7 @@ void poisson_step(Vec phi, Vec phi_solid,
 
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
-                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM], Vec vorticity,Vec press_nodes,
+                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM], Vec vorticity,Vec press_nodes, Vec phi,
                         KSPType face_solver_type, PCType pc_face,
                         KSPType cell_solver_type, PCType pc_cell,
                         my_p4est_faces_t* faces_np1, bool compute_pressure_,
@@ -3144,9 +3147,31 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   if(save_fluid_forces && compute_pressure_){
     double forces[P4EST_DIM];
     ns->compute_forces(forces);
-    PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g \n",tn+dt,forces[0],forces[1]);
+
+    // If ice on cylinder case, let's compute the area of the ice, and store that as well:
+    double ice_area = 0.0;
+    if(example_ == ICE_AROUND_CYLINDER){
+      // ELYCE DEBUGGING HERE
+      // Get total solid domain
+      // (including the cylinder bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
+
+      // --> First, need to scale phi
+      VecScaleGhost(phi,-1.0);
+
+      // --> Compute area of negative domain (aka ice bulk)
+      ice_area = area_in_negative_domain(p4est_np1,nodes_np1,phi);
+
+      //--> Scale phi back to normal:
+      VecScaleGhost(phi,-1.0);
+
+    }
+
+
+
+    PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn+dt,forces[0],forces[1],ice_area);
     ierr = PetscFOpen(mpi_comm,name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi_comm,fich_fluid_forces,"%g %g %g \n",tn+dt,forces[0],forces[1]);CHKERRXX(ierr);
+
+    ierr = PetscFPrintf(mpi_comm,fich_fluid_forces,"%g %g %g %g\n",tn+dt,forces[0],forces[1],ice_area);CHKERRXX(ierr);
     ierr = PetscFClose(mpi_comm,fich_fluid_forces); CHKERRXX(ierr);
     PetscPrintf(mpi_comm,"forces saved \n");
 
@@ -3210,6 +3235,17 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
         if(get_new_outidx) {
           out_idx = ((int) floor(tstep_/save_every_iter) );
         }
+      }
+  }
+  return out;
+}
+
+bool are_we_saving_fluid_forces(double tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
+  bool out = false;
+  if(save_fluid_forces){
+      out= ((int (floor(tn_/save_fluid_forces_every_dt) )) !=out_idx) && (!is_load_step);
+      if(get_new_outidx){
+        out_idx = int (floor(tn_/save_fluid_forces_every_dt) );
       }
   }
   return out;
@@ -4884,6 +4920,7 @@ int main(int argc, char** argv) {
 
     // Initialize output file numbering:
     int out_idx = -1;
+    int pressure_save_out_idx = -1;
 
     // ------------------------------------------------------------
     // Initialize relevant fields:
@@ -5513,8 +5550,17 @@ int main(int argc, char** argv) {
                                             cyl_normals.vec, NULL, NULL,
                                             false, NULL, NULL);
 
+          // ELYCE DEBUGGING HERE
+          /*
+          double phi_cyl_area;
+          VecScaleGhost(phi_cylinder.vec,-1.0);
+          phi_cyl_area = area_in_negative_domain(p4est_np1,nodes_np1,phi_cylinder.vec);
+          PetscPrintf(mpi.comm(),"phi cyl area is %0.6f \n",phi_cyl_area);
+          */
+
           cyl_normals.destroy();
           phi_cylinder.destroy();
+
         }
 
         // -------------------------------
@@ -5645,12 +5691,16 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes solution step... \n");
 
         bool compute_pressure_to_save = false;
-        compute_pressure_to_save = are_we_saving_vtk(tstep,tn, false,out_idx,false);
+        compute_pressure_to_save =
+            are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
+            are_we_saving_fluid_forces(tn,false,pressure_save_out_idx,true);
+
         compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)|| (example_ == NS_GIBOU_EXAMPLE);
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
         navier_stokes_step(ns,p4est_np1,nodes_np1,
                            v_n.vec,v_nm1.vec,vorticity.vec,press_nodes.vec,
+                           phi.vec,
                            face_solver_type,pc_face,cell_solver_type,pc_cell,
                            faces_np1, compute_pressure_to_save,
                            save_fluid_forces? name_fluid_forces:NULL,
