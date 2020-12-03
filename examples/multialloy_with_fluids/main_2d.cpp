@@ -372,9 +372,13 @@ void set_geometry(){
       uniform_band = 4.;
 
       // level set size (initial seed size)
-      r0 = 0.1;//0.5;
-      d0 = 2.517e-9;
-      d_seed = 250.*d0/*50.*(1.3e-8)*/; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+      r0 = 0.5; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
+      //d0 = 2.517e-9;
+      //d_seed = 250.*d0/*50.*(1.3e-8)*/; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
+
+      // Updated 11-24-20:
+      d0 = 1.3e-8;
+      d_seed = 27.*d0;
       // physical property paper ""
       break;
     }
@@ -471,6 +475,8 @@ void set_physical_properties(){
       }
 
     case MELTING_ICE_SPHERE:{
+      // For cases with higher water temperature:
+      /*
       // For first pass, I will just use properties from Okada. But may need to change since water is at a higher temp  11-4-20
       alpha_s = (1.221e-6); // calculated from values on engineering toolbox at - 10 C//(1.18e-6); //ice - [m^2]/s // 1.1
       alpha_l = (0.138e-6);//value of water at 10 C //(0.13275e-6); //water- [m^2]/s
@@ -487,9 +493,30 @@ void set_physical_properties(){
       L = 334.e3;  // J/kg
 
       sigma = 2.1e-10;//(4.20e-10); // [m] // changed from original 2.10e-10 by alban
-
+      */
       // Boundary condition info:
-      Twall = 273.15 + 16.0;    // Physical wall temp [K] (aka T_infty)
+
+      // For water ~ 4 degrees C
+      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
+      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
+
+      k_s = 2.22; // W/[m*K]
+      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+
+      rho_l = 1000.0;// kg/m^3
+      rho_s = 920.; //[kg/m^3]
+
+
+      mu_l = 0.0017; // [Pa * s]
+      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+
+      L = 334.e3;  // J/kg
+      sigma = (2.10e-10); // [m] // changed from original 2.10e-10 by alban
+
+
+      // T_cyl = 258.150 for this case --> set in executable arguments
+
+      Twall = 273.15 + 4.0; // + 16    // Physical wall temp [K] (aka T_infty)
       Tinterface = 273.15; // Physical interface temp [K]
 
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
@@ -540,9 +567,11 @@ void set_physical_properties(){
 
       // TO-DO gamma_sl units should be N/m
       double gamma_sl = 8.9e-3; //[J/m^2 = same as N/m]
-      sigma = gamma_sl/(rho_s*L); // relation from alban email [m], modified using relation from Dantzig book
+      //sigma = gamma_sl/(rho_s*L); // relation from alban email [m], modified using relation from Dantzig book
+      sigma = (5.46e-8);
+      //sigma*=100.;
 
-      //      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma/2.);
+      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma);
       // BC info:
       double delta = -0.55;//-0.55;
       Tinterface = 331.23;
@@ -619,7 +648,7 @@ void set_NS_info(){
       break;
     }
     case DENDRITE_TEST:{
-      Re = 1.0; // 10
+      Re = .01507; // 10
       u0 = 0.;
       v0 = -1.;
       hodge_percentage_of_max_u = 1.e-2;
@@ -780,9 +809,14 @@ void simulation_time_info(){
       break;
     }
     case DENDRITE_TEST:{
-      double tau =5.46e-11;// 3.2e-7;
-      double tf_tau = 2.e4;
-      tfinal =(tau*tf_tau)/(time_nondim_to_dim);//(1./10.)*(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
+      //double tau =5.46e-11;// 3.2e-7;
+      //double tf_tau = 2.e4;
+      //tfinal =(tau*tf_tau)/(time_nondim_to_dim);//(1./10.)*(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
+
+
+      // Modifications (11-24-20):
+      double tau = 3.12e-7;
+      tfinal = (100.*tau)/(time_nondim_to_dim);
       tstart=0.;
       dt_max_allowed = tfinal/100;
       break;
@@ -4781,7 +4815,7 @@ int main(int argc, char** argv) {
                            "With: \n"
                            "u_inf = %0.3e [m/s]\n"
                            "delta T = %0.2f [K]\n"
-                           "sigma = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,sigma/d_seed);
+                           "sigma = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,sigma/d_cyl);
 
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
