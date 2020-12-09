@@ -361,11 +361,11 @@ void set_geometry(){
     }
     case DENDRITE_TEST:{
       // Domain size:
-      xmin = 0.; xmax = 10.;
-      ymin = 0.; ymax = 10.;
+      xmin = 0.; xmax = 30.;
+      ymin = 0.; ymax = 40.;
 
       // Number of trees and periodicity:
-      nx = 2; ny = 2;
+      nx = 3; ny = 4;
       px = 1; py = 0;
 
       // band:
@@ -378,7 +378,8 @@ void set_geometry(){
 
       // Updated 11-24-20:
       d0 = 1.3e-8;
-      d_seed = 27.*d0;
+      //d_seed = 30.*d0;
+      d_seed = 60.*d0;
       // physical property paper ""
       break;
     }
@@ -415,6 +416,7 @@ DEFINE_PARAMETER(pl,double,Pr,0.,"Prandtl number - computed from mu_l, alpha_l, 
 DEFINE_PARAMETER(pl,double,Pe,0.,"Peclet number - computed from Re and Pr \n");
 DEFINE_PARAMETER(pl,double,St,0.,"Stefan number - computed from cp_s, deltaT, L \n");
 
+DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
 // ---------------------------------------
 // Physical properties:
 // ---------------------------------------
@@ -496,12 +498,14 @@ void set_physical_properties(){
       */
       // Boundary condition info:
 
+      /*
       // For water ~ 4 degrees C
+
       alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
       alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
 
       k_s = 2.22; // W/[m*K]
-      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+      k_l = 558.61e-3;//0.608; // W/[m*K]
 
       rho_l = 1000.0;// kg/m^3
       rho_s = 920.; //[kg/m^3]
@@ -526,6 +530,34 @@ void set_physical_properties(){
       theta_cyl = 0.0; // Non dim temp at cylinder
 
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
+      */
+      alpha_s = 1.;
+      alpha_l = 1.;
+
+      k_s = 1.;
+      k_l = 1.;
+
+      rho_l = 1.;
+      rho_s = 1.;
+
+
+      mu_l = 1.;
+      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+
+      L = 1.;
+      sigma = 1.e-3;
+
+      Twall = 1.;
+      Tinterface = T_cyl; // Solid will be same as interface temp
+
+      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
+
+      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
+      theta_wall = 1.0; // Non dim temp at wall
+      theta_cyl = 0.0; // Non dim temp at cylinder
+
+      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
+
 
       break;
     }
@@ -551,8 +583,8 @@ void set_physical_properties(){
     case DENDRITE_TEST:{
       cp_s = 1913.; // Specific heat of solid, [J/kgK]
 
-      alpha_l = 1.16e-7;
-      alpha_s = 1.12e-7;
+      alpha_l = 1.12e-7;
+      alpha_s = 1.16e-7;
 
       k_l = 0.223; // [W /(m K)]
       k_s = 0.225;
@@ -565,11 +597,7 @@ void set_physical_properties(){
       nu = 2.6e-6;
       mu_l = nu*rho_l; // [Pa s]
 
-      // TO-DO gamma_sl units should be N/m
-      double gamma_sl = 8.9e-3; //[J/m^2 = same as N/m]
-      //sigma = gamma_sl/(rho_s*L); // relation from alban email [m], modified using relation from Dantzig book
-      sigma = (5.46e-8);
-      //sigma*=100.;
+      sigma = 1.6393e-10;
 
       printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma);
       // BC info:
@@ -648,7 +676,7 @@ void set_NS_info(){
       break;
     }
     case DENDRITE_TEST:{
-      Re = .01507; // 10
+      Re = 0.15;//.01507; // 10
       u0 = 0.;
       v0 = -1.;
       hodge_percentage_of_max_u = 1.e-2;
@@ -708,6 +736,8 @@ void set_nondimensional_groups(){
      }
      else if (example_ == DENDRITE_TEST){
        d_length_scale = d_seed;
+
+       printf("sigma/d_seed = %0.4e \n",sigma/d_seed);
      }
 
 
@@ -783,8 +813,10 @@ void simulation_time_info(){
       break;
     }
     case MELTING_ICE_SPHERE:{
-      tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      dt_max_allowed = 0.9*save_every_dt;
+      //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
+      tfinal = 1000.0; // 1000 in nondim time for refinement test
+      //dt_max_allowed = 0.9*save_every_dt;
+      dt_max_allowed = 1e-2;
       tstart = 0.0;
       break;
     }
@@ -816,9 +848,9 @@ void simulation_time_info(){
 
       // Modifications (11-24-20):
       double tau = 3.12e-7;
-      tfinal = (100.*tau)/(time_nondim_to_dim);
+      tfinal = (30.*tau)/(time_nondim_to_dim);
       tstart=0.;
-      dt_max_allowed = tfinal/100;
+      dt_max_allowed = tfinal/(1000);
       break;
     }
 
@@ -829,7 +861,7 @@ void simulation_time_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-double v_int_max_allowed = 500.0e9;
+double v_int_max_allowed = 50.0;
 // Variables used for advection:
 double advection_alpha_coeff= 0.0;
 double advection_beta_coeff =0.0;
@@ -1364,7 +1396,11 @@ public:
         return -1.*(rval - (R)  - (pow(y - y0,5.) + 5.*(pow(x-x0,4.))*(y-y0) - 10.*SQR(x-x0)*pow(y-y0,3.))/(3.*pow(rval,5.) + 1e-5));
       }
       case DENDRITE_TEST:{
-        return r0 - sqrt(SQR(x - xmax/2.) + SQR(y - ymax/2.));
+        double noise = 0.3;
+        double xc =xmax/2.0;
+        double yc =2.*ymax/3.0;
+        double theta = atan2(y-yc,x-xc);
+        return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
       }
     default: throw std::invalid_argument("You must choose an example type\n");
     }
@@ -1434,6 +1470,7 @@ void inner_interface_bc(){ //-- Call this function before setting interface bc i
     }
 }
 
+bool print_stuff;
 class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp is initialized
 private:
   // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
@@ -1447,10 +1484,11 @@ private:
   my_p4est_interpolation_nodes_t* ny_interp;
 
 
+
   std::vector<double> theta0 = {0., PI/2.,-PI,-PI/2.};
-  double eps4 = 0.005;//0.05;
 
 public:
+
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
   {
     if(ngbd!=NULL){
@@ -1458,7 +1496,10 @@ public:
       kappa_interp->set_input(kappa,linear);
     }
   }
-  double Gibbs_Thomson(double sigma_,double T0, double dval,DIM(double x, double y, double z)) const {
+  double Gibbs_Thomson(double sigma_, double dval,DIM(double x, double y, double z)) const {
+    //printf("theta_interface = %0.4f, kappa = %0.4f, sigma = %0.4e, dval = %0.4e,sigma/dval = %0.4e \n",theta_interface*(1.0 - (sigma_/dval)*((*kappa_interp)(x,y))),(*kappa_interp)(x,y),sigma_,dval,sigma_/dval);
+    if(print_stuff){printf("Tint : %0.4f \n",theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y))));}
+
     return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
 
         //(theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
@@ -1470,29 +1511,50 @@ public:
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
         }
       case DENDRITE_TEST:{
-        double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
+        double xc = xmax/2.;
+        double yc = ymax/2.;
+        // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
+        //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
+
+        // Trying something:
+        //double theta = atan2(y-yc,x-xc); // not sure why exactly i was using normals instead of just angle based on location, may need to revisit
+        double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
+
 
 //        double As = 0.75;
 //        double m = 4.0;
 //        double theta0 = 0.;
 //        double sigma_ = sigma*(1 - As*cos(m*(theta - theta0)));
 
-        double min_theta = 2*PI;
-        int min_idx = -1;
-        for(int i=0;i<4;i++){
-          min_theta = min(min_theta,fabs(theta-theta0[i]));
 
-          if(min_theta == fabs(theta - theta0[i])){
-            min_idx = i; // grab the index of whatever is the closest theta val
+        double min_theta = 2*PI;
+        unsigned long min_idx = 10;
+        for(unsigned long i=0;i<4;i++){
+          if(fabs(theta - theta0[i])<min_theta){
+            min_theta = fabs(theta - theta0[i]);
+            min_idx = i; // grab index corresponding to the closest axis of preferred crystal growth direction
           }
         }
-        P4EST_ASSERT(min_idx>-1 && min_idx<4);
-        double sigma_ = sigma*(1 + eps4*cos(4.*(theta - theta0[min_idx])));
-        return Gibbs_Thomson(sigma_,Tinterface,d_seed,DIM(x,y,z));
+
+        P4EST_ASSERT(min_idx<4);
+        double sigma_ =
+            //sigma*(1 + Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
+            //sigma*(1. - 15.*Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
+            sigma*(1. + Gibbs_eps4*cos(4.*theta));
+
+
+        print_stuff = false;
+//        if(fabs(fabs(theta)-PI/4)<0.1 || fabs(fabs(theta)-PI/2)<0.1){
+//          print_stuff=true;
+//          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
+
+        //double sigma_ = sigma;
+        return Gibbs_Thomson(sigma_,d_seed,DIM(x,y,z));
+        //return theta_interface;
       }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: {
-        double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
+        double interface_val = Gibbs_Thomson(sigma,d_cyl,DIM(x,y,z));
 
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
@@ -2426,6 +2488,8 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
 
 void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
 
+  compute_mean_curvature(*ngbd,normal.vec,curvature.vec);
+  /*
   vec_and_ptr_t curvature_tmp;
   curvature_tmp.create(curvature.vec);
 
@@ -2464,6 +2528,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 
   // Destroy temp now:
   curvature_tmp.destroy();
+*/
 
 }
 
@@ -3710,6 +3775,21 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
  * smoke -TAKEN OUT
  * */
 
+
+  // Calculate curvature:
+
+  vec_and_ptr_t kappa;
+  vec_and_ptr_dim_t normal;
+
+  kappa.create(p4est,nodes);
+  normal.create(p4est,nodes);
+
+  VecScaleGhost(phi.vec,-1.0);
+  compute_normals(*ngbd,phi.vec,normal.vec);
+  compute_mean_curvature(*ngbd,normal.vec,kappa.vec);
+
+  VecScaleGhost(phi.vec,-1.0);
+
   // Get arrays:
   phi.get_array();
   if(example_ == ICE_AROUND_CYLINDER) phi_2.get_array();
@@ -3723,6 +3803,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     press.get_array();
     vorticity.get_array();
   }
+  kappa.get_array();
 
 
   // Save data:
@@ -3731,6 +3812,9 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   // phi
   point_names.push_back("phi");
   point_data.push_back(phi.ptr);
+
+  point_names.push_back("kappa");
+  point_data.push_back(kappa.ptr);
 
   //phi cylinder
   if(example_ == ICE_AROUND_CYLINDER){
@@ -3790,6 +3874,11 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     press.restore_array();
     vorticity.restore_array();
   }
+
+  kappa.restore_array();
+  kappa.destroy();
+  normal.destroy();
+
 }
 
 void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
@@ -5379,6 +5468,7 @@ int main(int argc, char** argv) {
 
         // Feed the curvature computed to the interfacial boundary condition:
         if((example_ ==ICE_AROUND_CYLINDER) ||(example_ == MELTING_ICE_SPHERE) || (example_ == DENDRITE_TEST)){
+          ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
 
@@ -6003,7 +6093,7 @@ int main(int argc, char** argv) {
         }
 
         if(example_ == DENDRITE_TEST){
-          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi);
+          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
 //          ls.perturb_level_set_function(phi.vec,EPS);
         }
 
