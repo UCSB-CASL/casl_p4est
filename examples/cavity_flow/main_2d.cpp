@@ -38,6 +38,139 @@ const string default_export_dir  = "/home/raphael/workspace/projects/cavity_flow
 const string default_export_dir  = "/home/regan/workspace/projects/cavity_flow";
 #endif
 
+void get_ertuk_results(const double& Re, vector<pair<double, double>>& u_data, vector<pair<double, double>>& v_data)
+{
+  // results from "Numerical solutions of 2-D steady incompressible driven cavity flow at high Reynolds number",
+  // E. ERTURK, T. C. CORKE AND C. GOKCOL, Int. J. Numer. Meth. Fluids 2005; 48:747–774
+  const double Reynolds[10] = {1000, 2500, 5000, 7500, 10000, 12500, 15000, 17500, 20000, 21000}; // from the paper, common to both
+  u_data.clear();
+  v_data.clear();
+  int col_idx = -1;
+  for(int k = 0; k < 10; k++)
+    if(fabs(Reynolds[k] - Re) < 0.0001*MAX(fabs(Reynolds[k]), fabs(Re)))
+      col_idx = k;
+  if(col_idx == -1)
+    return;
+
+  string directory = string(__FILE__);
+  while (directory.back() != '/')
+    directory.pop_back();
+  FILE *file;
+  string path_to_file = directory + "u_profiles_data_points_ertuk.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ertuk_results: impossible to open data file " + path_to_file);
+
+  double y_raw_data[23];
+  double u_raw_data[23][10];
+  int ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 10){
+      int count = fscanf(file," %lf", &u_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ertuk_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 23; i++)
+    u_data.push_back(pair<double, double>(y_raw_data[i], u_raw_data[i][col_idx]));
+
+  path_to_file = directory + "v_profiles_data_points_ertuk.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ertuk_results: impossible to open data file " + path_to_file);
+
+  double v_raw_data[23][10];
+  ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 10){
+      int count = fscanf(file," %lf", &v_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ertuk_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 23; i++)
+    v_data.push_back(pair<double, double>(y_raw_data[i], v_raw_data[i][col_idx]));
+
+  return;
+}
+
+void get_ghia_results(const double& Re, vector<pair<double, double>>& u_data, vector<pair<double, double>>& v_data)
+{
+  // results from "High-Re Solutions for Incompressible Flow Using the Navier-Stokes Equations and a Multigrid Method",
+  // U. Ghia, K.N. Ghia, amd C.T. Shin, Journal of Computational Physics 48, 387-411 (1982)
+  const double Reynolds[10] = {100, 400, 1000, 3200, 5000, 7500, 10000}; // from the paper, common to both
+  u_data.clear();
+  v_data.clear();
+  int col_idx = -1;
+  for(int k = 0; k < 7; k++)
+    if(fabs(Reynolds[k] - Re) < 0.0001*MAX(fabs(Reynolds[k]), fabs(Re)))
+      col_idx = k;
+  if(col_idx == -1)
+    return;
+
+  string directory = string(__FILE__);
+  while (directory.back() != '/')
+    directory.pop_back();
+  FILE *file;
+  string path_to_file = directory + "u_profiles_data_points_ghia.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ghia_results: impossible to open data file " + path_to_file);
+
+  double y_raw_data[17];
+  double u_raw_data[17][7];
+  int ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 7){
+      int count = fscanf(file," %lf", &u_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ghia_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 17; i++)
+    u_data.push_back(pair<double, double>(y_raw_data[i], u_raw_data[i][col_idx]));
+
+  path_to_file = directory + "v_profiles_data_points_ghia.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ghia_results: impossible to open data file " + path_to_file);
+
+  double v_raw_data[17][7];
+  ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 7){
+      int count = fscanf(file," %lf", &v_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ghia_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 17; i++)
+    v_data.push_back(pair<double, double>(y_raw_data[i], v_raw_data[i][col_idx]));
+
+  return;
+}
+
+
 const double default_side_length  = 1.0;
 const double default_top_velocity = 1.0;
 const int default_nx = 2;
@@ -191,6 +324,11 @@ void export_velocity_cavity(const string &export_dir, my_p4est_navier_stokes_t *
 
   if(!ns->get_mpirank())
   {
+    vector<pair<double, double>> u_data_points_ertuk, v_data_points_ertuk;
+    vector<pair<double, double>> u_data_points_ghia, v_data_points_ghia;
+    get_ertuk_results(Reynolds(bc_wall_u, ns), u_data_points_ertuk, v_data_points_ertuk);
+    get_ghia_results(Reynolds(bc_wall_u, ns), u_data_points_ghia, v_data_points_ghia);
+
     FILE* fp;
     ostringstream filename;
     filename << fixed << setprecision(2);
@@ -201,10 +339,30 @@ void export_velocity_cavity(const string &export_dir, my_p4est_navier_stokes_t *
     if(fp == NULL)
       throw invalid_argument("export_velocity_cavity: could not open file.");
 
-    ierr = PetscFPrintf(ns->get_mpicomm(), fp, "%% normalized x/y \t vx \t vy\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(ns->get_mpicomm(), fp, ("%% normalized x/y \t vx \t vy" +
+                                                string(u_data_points_ertuk.size() > 0 ? "\t normalized y \t vx" : "") +
+                                                string(v_data_points_ertuk.size() > 0 ? "\t normalized x \t vy" : "") +
+                                                string(u_data_points_ghia.size() > 0 ? "\t normalized y \t vx" : "") +
+                                                string(v_data_points_ghia.size() > 0 ? "\t normalized x \t vy" : "") +
+                                                " \n").c_str()); CHKERRXX(ierr);
+    const string base_format = "%g, %g, %g";
     for(int i = 0; i <= N; ++i)
     {
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "%g, %g, %g\n", (double)i/(double)N, phi0[i] < 0.0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0); CHKERRXX(ierr);
+      string format = base_format;
+      if(i < (int) u_data_points_ertuk.size())
+        format += ", %g, %g";
+      if(i < (int) v_data_points_ertuk.size())
+        format += ", %g, %g";
+      if(i < (int) u_data_points_ghia.size())
+        format += ", %g, %g";
+      if(i < (int) v_data_points_ghia.size())
+        format += ", %g, %g";
+      format += "\n";
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, format.c_str(), (double)i/(double)N, phi0[i] < 0.0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0,
+                          (i < (int) u_data_points_ertuk.size() ? u_data_points_ertuk[i].first : NAN), (i < (int) u_data_points_ertuk.size() ? u_data_points_ertuk[i].second : NAN),
+                          (i < (int) v_data_points_ertuk.size() ? v_data_points_ertuk[i].first : NAN), (i < (int) v_data_points_ertuk.size() ? v_data_points_ertuk[i].second : NAN),
+                          (i < (int) u_data_points_ghia.size() ? u_data_points_ghia[i].first : NAN), (i < (int) u_data_points_ghia.size() ? u_data_points_ghia[i].second : NAN),
+                          (i < (int) v_data_points_ghia.size() ? v_data_points_ghia[i].first : NAN), (i < (int) v_data_points_ghia.size() ? v_data_points_ghia[i].second : NAN)); CHKERRXX(ierr);
     }
 
     fclose(fp);
@@ -226,7 +384,12 @@ void export_velocity_cavity(const string &export_dir, my_p4est_navier_stokes_t *
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set ylabel \"v\" font \"Arial,14\"\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set xrange [0.0 : 1.0]\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set yrange [%g : %g]\n", (Reynolds(bc_wall_u, ns) <= 1500.0 ? -0.6 : -0.8), (Reynolds(bc_wall_u, ns) < 1500.0 ? 0.4 : 0.6)); CHKERRXX(ierr);
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 1:2 with lines lw 3 notitle\n\n", data_file.c_str()); CHKERRXX(ierr);
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 1:2 with lines lw 3 notitle", data_file.c_str()); CHKERRXX(ierr);
+      if(u_data_points_ertuk.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 6:7 with points pointtype 3 lc 'red' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      if(u_data_points_ghia.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 10:11 with points pointtype 6 lc 'black' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "\n\n", data_file.c_str()); CHKERRXX(ierr);
 
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set term wxt noraise 1\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set key top right Left font \"Arial,14\"\n"); CHKERRXX(ierr);
@@ -234,7 +397,12 @@ void export_velocity_cavity(const string &export_dir, my_p4est_navier_stokes_t *
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set ylabel \"y\" font \"Arial,14\"\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set xrange [%g : %g]\n", (Reynolds(bc_wall_u, ns) <= 1500.0 ? -0.4 : -0.5), 1.0); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set yrange [0.0 : 1.0]\n"); CHKERRXX(ierr);
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 3:1 with lines lw 3 notitle\n\n", data_file.c_str()); CHKERRXX(ierr);
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 3:1 with lines lw 3 notitle", data_file.c_str()); CHKERRXX(ierr);
+      if(v_data_points_ertuk.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 5:4 with points pointtype 3 lc 'red' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      if(v_data_points_ghia.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 9:8 with points pointtype 6 lc 'black' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "\n\n", data_file.c_str()); CHKERRXX(ierr);
 
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "pause 2 \n", filename.str().c_str()); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "reread", filename.str().c_str()); CHKERRXX(ierr);
