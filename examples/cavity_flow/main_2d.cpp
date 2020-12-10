@@ -56,12 +56,13 @@ const std::string default_pc_cell             = "sor";
 const std::string default_cell_solver         = "bicgstab";
 const std::string default_pc_face             = "sor";
 
-const double default_cfl            = 1.0;
-const double default_thresh         = 0.1;
-const double default_uniform_band   = 5.0;
-const double default_smoke_thresh   = 0.5;
-const double default_vtk_dt         = 0.2;
-const std::string default_root_vtk_dir = "/home/regan/workspace/projects/cavity_flow/" + std::to_string(P4EST_DIM) + "d";
+const double default_cfl                = 1.0;
+const double default_vorticity_thresh   = 0.1;
+const double default_norm_grad_u_thresh = DBL_MAX;
+const double default_uniform_band       = 5.0;
+const double default_smoke_thresh       = 0.5;
+const double default_vtk_dt             = 0.2;
+const std::string default_root_vtk_dir  = "/home/regan/workspace/projects/cavity_flow/" + std::to_string(P4EST_DIM) + "d";
 
 class INIT_SMOKE : public CF_2
 {
@@ -341,8 +342,9 @@ my_p4est_navier_stokes_t* create_ns_solver(const mpi_environment_t &mpi, const c
                      rho,
                      cmd.get<int>("sl_order", default_sl_order),
                      data->uniform_band,
-                     cmd.get<double>("thresh", default_thresh),
-                     cmd.get<double>("cfl", default_cfl));
+                     cmd.get<double>("vort_thresh", default_vorticity_thresh),
+                     cmd.get<double>("cfl", default_cfl),
+                     cmd.get<double>("grad_u_thresh", default_norm_grad_u_thresh));
 
   CF_2 *initial_velocity[2];
   for (unsigned char dim = 0; dim < 2; ++dim)
@@ -402,7 +404,8 @@ int main (int argc, char* argv[])
   // computational grid parameters
   cmd.add_option("lmin",                  "min level of the trees, default is " + std::to_string(default_lmin));
   cmd.add_option("lmax",                  "max level of the trees, default is " + std::to_string(default_lmax));
-  cmd.add_option("thresh",                "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
+  cmd.add_option("vort_thresh",           "the threshold used for the vorticity-based refinement criterion, default is " + std::to_string(default_vorticity_thresh));
+  cmd.add_option("grad_u_thresh",         "the threshold used for the norm-of-velocity-gradient-based refinement criterion, default is " + (default_norm_grad_u_thresh > largest_dbl_smaller_than_dbl_max ? "DBL_MAX" : std::to_string(default_norm_grad_u_thresh)));
   cmd.add_option("uniform_band",          "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced), default is " + std::to_string(default_uniform_band));
   cmd.add_option("nx",                    "number of trees in the macromesh along x. The default value is " + std::to_string(default_nx));
   cmd.add_option("ny",                    "number of trees in the macromesh along y. The default value is " + std::to_string(default_ny));

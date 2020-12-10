@@ -71,14 +71,15 @@ protected:
   private:
     void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes,
                       const double* tree_dimensions,
-                      const double *phi_p, const double *vorticity_p, const double *smoke_p = NULL);
+                      const double *phi_p, const double *vorticity_p, const double *smoke_p, const double* norm_grad_u_p);
   public:
     double max_L2_norm_u;
-    double threshold;
+    double threshold_vorticity;
+    double threshold_norm_grad_u;
     double uniform_band;
     double smoke_thresh;
-    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u, double smoke_thresh);
-    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke);
+    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold_vorticity, double max_L2_norm_u, double smoke_thresh, double threshold_norm_grad_u);
+    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke, Vec norm_grad_u);
   };
 
   class wall_bc_value_hodge_t : public CF_DIM
@@ -127,7 +128,8 @@ protected:
   double dt_nm1;
   double max_L2_norm_u;
   double uniform_band;
-  double threshold_split_cell;
+  double vorticity_threshold_split_cell;
+  double norm_grad_u_threshold_split_cell;
   double n_times_dt;
   bool   dt_updated;
 
@@ -157,6 +159,7 @@ protected:
   Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
 
   Vec vorticity;
+  Vec norm_grad_u;
 
   Vec pressure;
 
@@ -403,7 +406,7 @@ public:
   my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
   ~my_p4est_navier_stokes_t();
 
-  void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
+  void set_parameters(double mu, double rho, int sl_order, double uniform_band, double vorticity_threshold_split_cell, double n_times_dt, double norm_grad_u_threshold_split_cell = DBL_MAX);
 
   void set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
 
@@ -582,7 +585,7 @@ public:
 
   void copy_vorticity(Vec vort){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(vorticity,vort); CHKERRXX(ierr);
+    ierr = VecCopyGhost(vorticity, vort); CHKERRXX(ierr);
   }
   inline bool get_refine_with_smoke() { return refine_with_smoke; }
   inline double get_smoke_threshold() { return smoke_thresh; }
@@ -600,7 +603,9 @@ public:
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
   inline double get_mu()                const { return mu; }
-  inline double get_split_threshold()   const { return threshold_split_cell; }
+  inline double get_vorticity_split_threshold() const { return vorticity_threshold_split_cell; }
+  inline double get_norm_grad_u_split_threshold() const { return norm_grad_u_threshold_split_cell; }
+  inline double get_split_threshold()   const { return get_vorticity_split_threshold(); }
   inline double get_rho()               const { return rho; }
   inline double get_nu()                const { return mu/rho; }
   inline double get_uniform_band()      const { return uniform_band; }
@@ -616,7 +621,7 @@ public:
 #ifdef P4_TO_P8
   inline double get_width_of_domain()   const { return (xyz_max[2] - xyz_min[2]); }
 #endif
-  inline my_p4est_brick_t* get_brick()  const  { return brick; }
+  inline my_p4est_brick_t* get_brick()  const { return brick; }
 
   void solve_viscosity()
   {
