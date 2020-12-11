@@ -133,6 +133,9 @@ protected:
   double n_times_dt;
   bool   dt_updated;
 
+  interpolation_method interp_v_viscosity;
+  interpolation_method interp_v_update;
+
   Vec phi, grad_phi;
   Vec hodge;
   Vec dxyz_hodge[P4EST_DIM];
@@ -407,6 +410,9 @@ public:
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double vorticity_threshold_split_cell, double n_times_dt, double norm_grad_u_threshold_split_cell = DBL_MAX);
+
+  inline void set_interpolation_method_for_velocity_in_viscosity_step(const interpolation_method& desired_method) { interp_v_viscosity = desired_method; }
+  inline void set_interpolation_method_for_velocity_in_update_step(const interpolation_method& desired_method) { interp_v_update = desired_method; }
 
   void set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
 

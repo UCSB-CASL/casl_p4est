@@ -197,7 +197,8 @@ const double default_norm_grad_u_thresh = DBL_MAX;
 const double default_uniform_band       = 5.0;
 const double default_smoke_thresh       = 0.5;
 const double default_vtk_dt             = 0.2;
-const std::string default_root_vtk_dir  = "/home/regan/workspace/projects/cavity_flow/" + std::to_string(P4EST_DIM) + "d";
+const interpolation_method default_interp_v_viscosity = quadratic;
+const interpolation_method default_interp_v_update    = quadratic;
 
 class INIT_SMOKE : public CF_2
 {
@@ -515,6 +516,8 @@ my_p4est_navier_stokes_t* create_ns_solver(const mpi_environment_t &mpi, const c
                      cmd.get<double>("vort_thresh", default_vorticity_thresh),
                      cmd.get<double>("cfl", default_cfl),
                      cmd.get<double>("grad_u_thresh", default_norm_grad_u_thresh));
+  ns->set_interpolation_method_for_velocity_in_viscosity_step(cmd.get<interpolation_method>("interp_v_visc", default_interp_v_viscosity));
+  ns->set_interpolation_method_for_velocity_in_update_step(cmd.get<interpolation_method>("interp_v_update", default_interp_v_update));
 
   CF_2 *initial_velocity[2];
   for (unsigned char dim = 0; dim < 2; ++dim)
@@ -591,6 +594,11 @@ int main (int argc, char* argv[])
   cmd.add_option("mass_density",          "mass density of the fluid. Default value is "  + to_string(default_rho));
   // method-related parameters
   cmd.add_option("sl_order",              "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + to_string(default_sl_order));
+  ostringstream oss;
+  oss << default_interp_v_viscosity;
+  cmd.add_option("interp_v_visc",         "desired interpolation method for velocity at backtraced points in viscous step, default is " + oss.str());
+  oss.str(""); oss << default_interp_v_update;
+  cmd.add_option("interp_v_update",       "desired interpolation method for velocity in grid update, default is " + oss.str());
   cmd.add_option("cfl",                   "dt = cfl * dx/vmax, default is " + to_string(default_cfl));
   cmd.add_option("hodge_tol",             "numerical tolerance used for the convergence criterion on the Hodge variable (or its gradient), at all time steps.\n\
                  Default is " + to_string(default_hodge_tol) + ": w.r.t absolute value of hodge if checking against 'value'; relative to top wall velocity otherwise)");
@@ -673,7 +681,7 @@ int main (int argc, char* argv[])
   }
 
   const string export_root = cmd.get<string>("export_folder", (getenv("OUT_DIR") == NULL ? default_export_dir : getenv("OUT_DIR")));
-  ostringstream oss;
+  oss.str("");
   oss << fixed << setprecision(2);
   oss << export_root << "/" << (with_hole ? "with" : "without") << "_hole/Re_" << Reynolds(bc_wall_value_u, ns) << "_cfl_" << ns->get_cfl() << "/nx_" << brick->nxyztrees[0]
       << "_ny_" << brick->nxyztrees[1] << "_lmin_" << data.min_lvl << "_lmax_" << data.max_lvl;

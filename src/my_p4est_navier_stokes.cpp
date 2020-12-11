@@ -249,6 +249,8 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   max_L2_norm_u = 0;
 
   sl_order = 1;
+  interp_v_viscosity  = quadratic;
+  interp_v_update     = quadratic;
 
   double *v2c = p4est_n->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;
@@ -1026,12 +1028,10 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
   vector<double> xyz_n[P4EST_DIM][P4EST_DIM];   // xyz_n[dir][comp][f_idx] = comp^th Cartesian coordinate of the backtraced point at time n calculated from the f_idx^th face of orientation dir
   vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // xyz_nm1[dir][comp][f_idx] = comp^th Cartesian coordinate of the backtraced point time (n - 1) calculated from the f_idx^th face of orientation dir (required only if sl_order == 2)
   if(!semi_lagrangian_backtrace_is_done)
-  {
     trajectory_from_np1_all_faces(faces_n, ngbd_nm1, ngbd_n,
                                   vnm1_nodes, second_derivatives_vnm1_nodes,
                                   vn_nodes, second_derivatives_vn_nodes, dt_nm1, dt_n,
                                   xyz_n, (sl_order == 2 ? xyz_nm1 : NULL));
-  }
 
   // rhs is modified by the solver so it should be reset every-time (could be modified, if required)
   Vec rhs[P4EST_DIM];
@@ -1062,12 +1062,12 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
       if(sl_order == 2)
       {
         backtraced_v_nm1[dir].resize(faces_n->num_local[dir]);
-        interp_nm1.set_input(vnm1_nodes[dir], DIM(second_derivatives_vnm1_nodes[0][dir], second_derivatives_vnm1_nodes[1][dir], second_derivatives_vnm1_nodes[2][dir]), quadratic);
+        interp_nm1.set_input(vnm1_nodes[dir], DIM(second_derivatives_vnm1_nodes[0][dir], second_derivatives_vnm1_nodes[1][dir], second_derivatives_vnm1_nodes[2][dir]), interp_v_viscosity);
         interp_nm1.interpolate(backtraced_v_nm1[dir].data());
       }
 
       backtraced_v_n[dir].resize(faces_n->num_local[dir]);
-      interp_n.set_input(vn_nodes[dir], DIM(second_derivatives_vn_nodes[0][dir], second_derivatives_vn_nodes[1][dir], second_derivatives_vn_nodes[2][dir]), quadratic);
+      interp_n.set_input(vn_nodes[dir], DIM(second_derivatives_vn_nodes[0][dir], second_derivatives_vn_nodes[1][dir], second_derivatives_vn_nodes[2][dir]), interp_v_viscosity);
       interp_n.interpolate(backtraced_v_n[dir].data());
     }
 
@@ -1930,7 +1930,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   }
   if(!grid_is_unchanged)
   {
-    interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+    interp_nodes.set_input(vnp1_nodes, interp_v_update, P4EST_DIM);
     interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
   }
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -2177,7 +2177,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   }
 
   // Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n + 1 grid to become the vn values at upcoming the (n + 1) timestep
-  interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+  interp_nodes.set_input(vnp1_nodes, interp_v_update, P4EST_DIM);
   interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -3030,6 +3030,8 @@ void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag
     data[idx++] = splitting_criterion->min_lvl;
     data[idx++] = splitting_criterion->max_lvl;
     data[idx++] = sl_order;
+//    data[idx++] = static_cast<int>(interp_v_viscosity);
+//    data[idx++] = static_cast<int>(interp_v_update);
     break;
   }
   case LOAD:
@@ -3041,6 +3043,8 @@ void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag
     splitting_criterion->min_lvl  = data[idx++];
     splitting_criterion->max_lvl  = data[idx++];
     sl_order                      = data[idx++];
+//    interp_v_viscosity            = static_cast<interpolation_method>(data[idx++]);
+//    interp_v_update               = static_cast<interpolation_method>(data[idx++]);
     break;
   }
   default:
@@ -3048,6 +3052,7 @@ void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag
     break;
   }
   P4EST_ASSERT(idx == 5);
+//  P4EST_ASSERT(idx == 7); // if adding the velocity interpolation methods
 }
 
 void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
@@ -3060,6 +3065,7 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
   // P4EST_DIM, refine_with_smoke (converted to int), data->min_lvl, data->max_lvl, sl_order
   // that makes 5 integers
   PetscInt integer_parameters[5];
+//  PetscInt integer_parameters[7]; // --> if adding the interpolation methods for v
   int fd;
   char diskfilename[PATH_MAX];
   switch (flag) {
@@ -3070,7 +3076,7 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
       sprintf(diskfilename, "%s_integers", filename);
       fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, integer_parameters, 5, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters, 5 /* 7 */, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
       // Then we save the double parameters
       sprintf(diskfilename, "%s_doubles", filename);
@@ -3089,10 +3095,10 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
     if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, integer_parameters, 5, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters, 5 /* 7 */, PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
-    int mpiret = MPI_Bcast(integer_parameters, 5, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
+    int mpiret = MPI_Bcast(integer_parameters, 5 /* 7 */, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
     // Then we save the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
