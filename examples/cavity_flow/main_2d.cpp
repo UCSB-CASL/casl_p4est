@@ -52,9 +52,16 @@ void get_ertuk_results(const double& Re, vector<pair<double, double>>& u_data, v
   if(col_idx == -1)
     return;
 
-  string directory = string(__FILE__);
-  while (directory.back() != '/')
-    directory.pop_back();
+#if defined(POD_CLUSTER)
+  const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
+#elif defined(STAMPEDE)
+  const string directory = "/work/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+#elif defined(LAPTOP)
+  const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
+#else
+  const string directory = "/home/regan/workspace/casl_p4est/examples/cavity_flow/";
+#endif
+
   FILE *file;
   string path_to_file = directory + "u_profiles_data_points_ertuk.dat";
   file = fopen(path_to_file.c_str(), "r");
@@ -118,9 +125,16 @@ void get_ghia_results(const double& Re, vector<pair<double, double>>& u_data, ve
   if(col_idx == -1)
     return;
 
-  string directory = string(__FILE__);
-  while (directory.back() != '/')
-    directory.pop_back();
+#if defined(POD_CLUSTER)
+  const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
+#elif defined(STAMPEDE)
+  const string directory = "/work/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+#elif defined(LAPTOP)
+  const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
+#else
+  const string directory = "/home/regan/workspace/casl_p4est/examples/cavity_flow/";
+#endif
+
   FILE *file;
   string path_to_file = directory + "u_profiles_data_points_ghia.dat";
   file = fopen(path_to_file.c_str(), "r");
