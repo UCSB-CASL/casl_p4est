@@ -814,10 +814,13 @@ void simulation_time_info(){
     }
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      tfinal = 1000.0; // 1000 in nondim time for refinement test
+      tfinal = 5.0; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
       dt_max_allowed = 1e-2;
       tstart = 0.0;
+
+      save_using_dt = 1;
+      save_every_dt=0.1; // Save every 0.1 units of nondimensional time (in this case)
       break;
     }
 
@@ -1496,13 +1499,13 @@ public:
       kappa_interp->set_input(kappa,linear);
     }
   }
-  double Gibbs_Thomson(double sigma_, double dval,DIM(double x, double y, double z)) const {
+  double Gibbs_Thomson(double sigma_, double T0, double dval,DIM(double x, double y, double z)) const {
     //printf("theta_interface = %0.4f, kappa = %0.4f, sigma = %0.4e, dval = %0.4e,sigma/dval = %0.4e \n",theta_interface*(1.0 - (sigma_/dval)*((*kappa_interp)(x,y))),(*kappa_interp)(x,y),sigma_,dval,sigma_/dval);
     if(print_stuff){printf("Tint : %0.4f \n",theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y))));}
 
     return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
 
-        //(theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
+        //return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -1511,8 +1514,7 @@ public:
           return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
         }
       case DENDRITE_TEST:{
-        double xc = xmax/2.;
-        double yc = ymax/2.;
+
         // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
         //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
 
@@ -1549,12 +1551,12 @@ public:
 //          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
 
         //double sigma_ = sigma;
-        return Gibbs_Thomson(sigma_,d_seed,DIM(x,y,z));
+        return Gibbs_Thomson(sigma_,Tinterface,d_seed,DIM(x,y,z));
         //return theta_interface;
       }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: {
-        double interface_val = Gibbs_Thomson(sigma,d_cyl,DIM(x,y,z));
+        double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
 
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
@@ -3252,7 +3254,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
     // If ice on cylinder case, let's compute the area of the ice, and store that as well:
     double ice_area = 0.0;
-    if(example_ == ICE_AROUND_CYLINDER){
+    if(example_ == ICE_AROUND_CYLINDER || example_ == MELTING_ICE_SPHERE){
       // ELYCE DEBUGGING HERE
       // Get total solid domain
       // (including the cylinder bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
@@ -4904,7 +4906,7 @@ int main(int argc, char** argv) {
                            "With: \n"
                            "u_inf = %0.3e [m/s]\n"
                            "delta T = %0.2f [K]\n"
-                           "sigma = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,sigma/d_cyl);
+                           "sigma = %0.3e, d = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,d_cyl,sigma/d_cyl);
 
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
