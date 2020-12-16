@@ -871,7 +871,20 @@ void simulation_time_info(){
     }
 
     }
-  if(duration_overwrite>0.) tfinal = (duration_overwrite*60.)/(time_nondim_to_dim); // convert input in minutes to nondimensional time
+  if((duration_overwrite>0.) || (duration_overwrite_nondim>0.)){
+    if((duration_overwrite>0.) && (duration_overwrite_nondim>0.)){
+      throw std::invalid_argument("You have selected BOTH a dimensional and nondimensional duration overwrite. Please only select one \n");
+    }
+
+    if(duration_overwrite>0.) {
+      tfinal = (duration_overwrite*60.)/(time_nondim_to_dim); // convert input in minutes to nondimensional time
+    }
+    else{
+      tfinal = duration_overwrite_nondim;
+    }
+
+
+  }
 }
 
 // ---------------------------------------
@@ -4947,6 +4960,12 @@ int main(int argc, char** argv) {
     }
     else{
       PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
+      bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
+      bool using_dim_startup = using_startup && (startup_dim_time>0.);
+      PetscPrintf(mpi.comm(),"Using startup time? %s \n",using_startup? "Yes": "No");
+      if(using_startup){
+        PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n",using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
+      }
     }
 
     PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
