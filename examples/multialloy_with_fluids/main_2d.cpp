@@ -122,6 +122,8 @@ DEFINE_PARAMETER(pl,bool,do_advection,1,"Boolean flag whether or not to do advec
 DEFINE_PARAMETER(pl,double,Re_overwrite,-100.0,"overwrite the examples set Reynolds number");
 DEFINE_PARAMETER(pl,double,duration_overwrite,-100.0,"overwrite the duration");
 
+DEFINE_PARAMETER(pl,double,duration_overwrite_nondim,-10.,"Duration overwrite (in nondimensional time) -- not fully implemented");
+
 DEFINE_PARAMETER(pl,bool,use_uniform_band,true,"Boolean whether or not to refine using a uniform band");
 DEFINE_PARAMETER(pl,bool,no_flow,false,"An override switch for the ice cylinder example to run a case with no flow (default: false)");
 
@@ -380,6 +382,7 @@ void set_geometry(){
       d0 = 1.3e-8;
       //d_seed = 30.*d0;
       d_seed = 60.*d0;
+      //d_seed = 1000.*d0;
       // physical property paper ""
       break;
     }
@@ -583,17 +586,21 @@ void set_physical_properties(){
     case DENDRITE_TEST:{
       cp_s = 1913.; // Specific heat of solid, [J/kgK]
 
-      alpha_l = 1.12e-7;
+      //alpha_l = 1.12e-7;
       alpha_s = 1.16e-7;
 
-      k_l = 0.223; // [W /(m K)]
+      alpha_l = alpha_s;
+
+      //k_l = 0.223; // [W /(m K)]
       k_s = 0.225;
 
+      k_l = k_s;
       L = 4.7e4; // [J/kg]
 
-      rho_l = 988.; // [kg/m^3]
+      //rho_l = 988.; // [kg/m^3]
       rho_s = k_s/alpha_s/cp_s; // [kg/m^3]
 
+      rho_l = rho_s;
       nu = 2.6e-6;
       mu_l = nu*rho_l; // [Pa s]
 
@@ -793,6 +800,8 @@ double dt_min_allowed = 1.e-5;
 DEFINE_PARAMETER(pl,double,t_ramp,3.,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
 DEFINE_PARAMETER(pl,int,startup_iterations,-1,"Number of startup iterations to do before entering real time loop, used for verification tests to allow v_interface and NS fields to stabilize. Default:-1, to use this, set number to positive integer value.");
+DEFINE_PARAMETER(pl,double,startup_nondim_time,-10.0,"Startup time in nondimesional time, before the simulation allows interfacial growth to occur (Default : 0)");
+DEFINE_PARAMETER(pl,double,startup_dim_time,-10.0,"Startup time in dimesional time (seconds), before the simulation allows interfacial growth to occur (Default : 0)");
 
 void simulation_time_info(){
   t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
@@ -814,7 +823,7 @@ void simulation_time_info(){
     }
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      tfinal = 5.0; // 1000 in nondim time for refinement test
+      tfinal = 35.0; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
       dt_max_allowed = 1e-2;
       tstart = 0.0;
@@ -850,10 +859,14 @@ void simulation_time_info(){
 
 
       // Modifications (11-24-20):
-      double tau = 3.12e-7;
-      tfinal = (30.*tau)/(time_nondim_to_dim);
+      //double tau = 3.12e-7;
+      //tfinal = (30.*tau)/(time_nondim_to_dim);
+
+      tfinal = (10000.*SQR(d0)/alpha_s)/time_nondim_to_dim;
       tstart=0.;
-      dt_max_allowed = tfinal/(1000);
+      dt_max_allowed = tfinal/(100);
+      save_using_dt = 1;
+      save_every_dt = tfinal/100.;
       break;
     }
 
@@ -1384,7 +1397,10 @@ public:
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y));
       case FLOW_PAST_CYLINDER:
-      case MELTING_ICE_SPHERE:
+      case MELTING_ICE_SPHERE:{
+        return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+      }
+
       case ICE_AROUND_CYLINDER:
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE:
@@ -2042,7 +2058,7 @@ struct INITIAL_VELOCITY : CF_DIM
     switch(example_){
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
-      case MELTING_ICE_SPHERE:
+      //case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs) return 0.;
         else{
@@ -2055,6 +2071,20 @@ struct INITIAL_VELOCITY : CF_DIM
             throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
           }
         }
+      case MELTING_ICE_SPHERE:{
+        double noise=0.25;
+        if(ramp_bcs) return 0.;
+        else{
+          switch(dir){
+          case dir::x:
+            return u0*(1 + noise*sin(2.*PI*y/ymax));
+          case dir::y:
+            return v0;
+          default:
+            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+          }
+        }
+      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -5350,6 +5380,30 @@ int main(int argc, char** argv) {
         }
       }
 
+      // Check if some startup time (before allowing interfacial growth) has been requested
+      if((startup_dim_time>0.) || (startup_nondim_time>0.)){
+        if((startup_dim_time>0.) && (startup_nondim_time>0.)){
+          throw std::invalid_argument("Must choose startup dim time, OR startup nondim time, but not both \n");
+        }
+
+        if(startup_dim_time>0.){ // Dimensional case
+          if(tn*time_nondim_to_dim < startup_dim_time){
+            force_interfacial_velocity_to_zero=true;
+          }
+          else{
+              force_interfacial_velocity_to_zero = false;
+          }
+        } // end of dimensional case
+        else{ // nondimensional case
+          if(tn<startup_nondim_time){
+            force_interfacial_velocity_to_zero=true;
+          }
+          else{
+            force_interfacial_velocity_to_zero=false;
+          }
+        } // end of nondimensional case
+      } // end of considering startup times
+
 
       // ------------------------------------------------------------
       // Print iteration information:
@@ -5367,6 +5421,8 @@ int main(int argc, char** argv) {
                                       ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
       }
       else{
+        int num_nodes = nodes->num_owned_indeps;
+        MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
         ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
                                       "Iteration %d , Time: %0.3f [nondim] "
                                       "= Time: %0.3f [nondim] "
@@ -5374,10 +5430,11 @@ int main(int argc, char** argv) {
                                       "= %0.2f [min],"
                                       " Timestep: %0.3e [nondim] = %0.3e [sec],"
                                       " Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",
+                                      " \n ------------------------------------------- \n"
+                                      "Number of nodes : %d \n \n",
                            tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
                            dt, dt*(time_nondim_to_dim),
-                           ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
+                           ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
       }
 
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
@@ -5958,6 +6015,9 @@ int main(int argc, char** argv) {
                 v_interface_max_norm,
                 v_interface_max_norm*vel_nondim_to_dim,
                 v_interface_max_norm*vel_nondim_to_dim*1000.);
+        if(example_ == DENDRITE_TEST){
+           PetscPrintf(mpi.comm()," ! vint*d0/alpha_s = %0.4f \n", v_interface_max_norm*vel_nondim_to_dim*d0/alpha_s);
+        }
       }
 
       // Take NS timestep into account if relevant:
