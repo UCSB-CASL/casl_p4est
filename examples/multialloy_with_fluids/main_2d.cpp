@@ -1533,9 +1533,9 @@ public:
     //printf("theta_interface = %0.4f, kappa = %0.4f, sigma = %0.4e, dval = %0.4e,sigma/dval = %0.4e \n",theta_interface*(1.0 - (sigma_/dval)*((*kappa_interp)(x,y))),(*kappa_interp)(x,y),sigma_,dval,sigma_/dval);
     if(print_stuff){printf("Tint : %0.4f \n",theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y))));}
 
-    return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
+    //return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
 
-        //return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
+        return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -2072,19 +2072,7 @@ struct INITIAL_VELOCITY : CF_DIM
     switch(example_){
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
-      //case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
-        if(ramp_bcs) return 0.;
-        else{
-          switch(dir){
-          case dir::x:
-            return u0;
-          case dir::y:
-            return v0;
-          default:
-            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
-          }
-        }
       case MELTING_ICE_SPHERE:{
         double noise=0.25;
         if(ramp_bcs) return 0.;
