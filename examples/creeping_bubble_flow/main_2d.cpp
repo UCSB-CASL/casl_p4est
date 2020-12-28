@@ -71,6 +71,7 @@ static const bool default_use_second_order_theta = false;
 static const bool default_extrapolation = false;
 const interpolation_method default_interp_method_phi = linear;
 const double default_extrapolation_band_check = 3.0;
+const int default_niter_xGFM = INT_MAX;
 
 #if defined(STAMPEDE)
 const string default_work_folder = "/scratch/04965/tg842642/creeping_bubble_flow";
@@ -998,6 +999,7 @@ int main (int argc, char* argv[])
   cmd.add_option("second_order_ls", "activate second order interface localization if present. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation.");
   cmd.add_option("bandcheck",       "band check (in number of smallest diagonals) in which the extrapolation accuracy is checked. Default (if not specified) is " + to_string(default_extrapolation_band_check) + " smallest diagonals.");
+  cmd.add_option("niter_xGFM",      "max number of xGFM iterations, default is " + to_string(default_niter_xGFM));
   // exportation control
   cmd.add_option("save_vtk",        "saves vtk visualization files if present (default is " + string(default_save_vtk ? "" : "not ") + "saved)");
   cmd.add_option("work_dir",        "exportation directory, if not defined otherwise in the environment variable OUT_DIR. \n\
@@ -1136,6 +1138,9 @@ int main (int argc, char* argv[])
 
     my_p4est_poisson_jump_faces_xgfm_t * jump_solver_faces = new my_p4est_poisson_jump_faces_xgfm_t(faces, nodes);
     jump_solver_faces->activate_xGFM_corrections(solver_to_test == xGFM);
+    if(solver_to_test == xGFM){
+      jump_solver_faces->set_max_number_of_iter(cmd.get<int>("niter_xGFM", default_niter_xGFM));
+    }
     jump_solver_faces->set_interface(interface_manager);
     jump_solver_faces->set_bc(bc_v);
     jump_solver_faces->set_mus(mu_minus, mu_plus);
