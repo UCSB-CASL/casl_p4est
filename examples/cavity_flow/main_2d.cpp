@@ -325,14 +325,13 @@ int main (int argc, char* argv[])
                   subfolder(s) will be created, default is " + default_export_dir);
   cmd.add_option("save_vtk",              "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt",                "export vtk files every vtk_dt time lapse. If not specified, default is " + to_string(default_vtk_dt));
-  cmd.add_option("timing",                "if defined, activates the internal timer and prints final information .");
   cmd.parse(argc, argv);
 
   int sl_order = cmd.get("sl_order", default_sl_order);
   int lmin = cmd.get("lmin", default_lmin);
   int lmax = cmd.get("lmax", default_lmax);
-  double n_times_dt = cmd.get("n_times_dt", default_cfl);
-  double threshold_split_cell = cmd.get("thresh", default_vorticity_thresh);
+  double n_times_dt = cmd.get("cfl", default_cfl);
+  double threshold_split_cell = cmd.get("vort_thresh", default_vorticity_thresh);
   bool save_vtk = cmd.contains("save_vtk");
   const double duration = cmd.get<double>("duration", default_tf);
   double vtk_dt = DBL_MAX;
@@ -342,7 +341,6 @@ int main (int argc, char* argv[])
     if (vtk_dt <= 0.0)
       throw invalid_argument("cavity_flow::main: the value of vtk_dt must be strictly positive.");
   }
-
 
   const bool with_smoke         = cmd.contains("smoke");
   const bool refine_with_smoke  = cmd.contains("refine_with_smoke");
@@ -492,6 +490,12 @@ int main (int argc, char* argv[])
       << "_ny_" << brick.nxyztrees[1] << "_lmin_" << data.min_lvl << "_lmax_" << data.max_lvl;
   const string export_dir  = oss.str();
   const string vtk_path    = export_dir + "/vtu";
+  if(save_vtk && mpi.rank() == 0)
+  {
+    ostringstream cmd;
+    cmd << "mkdir -p " << vtk_path;
+    system(cmd.str().c_str());
+  }
 
   while(tn+0.01*dt < duration)
   {
