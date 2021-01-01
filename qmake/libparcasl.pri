@@ -3,7 +3,7 @@
 # --------------------------------------------------------------
 # other common stuff
 HEADERS += \
-  $$PARCASL/src/casl_math.h \
+  $$PARCASL/src/math.h \
   $$PARCASL/src/Parser.h \
   $$PARCASL/src/matrix.h \
   $$PARCASL/src/petsc_logging.h \
@@ -16,7 +16,7 @@ HEADERS += \
   $$PARCASL/src/petsc_compatibility.h
 
 SOURCES += \
-  $$PARCASL/src/casl_math.cpp \
+  $$PARCASL/src/math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/matrix.cpp \
   $$PARCASL/src/petsc_logging.cpp \
@@ -94,7 +94,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
-  $$PARCASL/src/my_p4est_vtk.cpp \
+  $$PARCASL/src/my_p4est_vtk.c \
   $$PARCASL/src/my_p4est_log_wrappers.c \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
@@ -166,7 +166,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
   $$PARCASL/src/my_p8est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p8est_utils.cpp \
-  $$PARCASL/src/my_p8est_vtk.cpp \
+  $$PARCASL/src/my_p8est_vtk.c \
   $$PARCASL/src/my_p8est_log_wrappers.c \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \

@@ -25,9 +25,9 @@
 using namespace std;
 
 #if defined(LAPTOP)
-const string default_export_dir  = "/home/raphael/workspace/projects/cavity_flow/original_solver";
+const string default_export_dir  = "/home/raphael/workspace/projects/cavity_flow/tagged_library";
 #else
-const string default_export_dir  = "/home/regan/workspace/projects/cavity_flow/original_solver";
+const string default_export_dir  = "/home/regan/workspace/projects/cavity_flow/tagged_library";
 #endif
 
 const double default_side_length  = 1.0;
