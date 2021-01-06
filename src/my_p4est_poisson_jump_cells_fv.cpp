@@ -22,6 +22,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   finite_volume_data_for_quad.clear();
   are_required_finite_volumes_and_correction_functions_known = false;
   interface_relative_threshold = +1.0e-11;
+  threshold_volume_ratio_for_extrapolation = 1.1; // larger than 1 to invalide the use of any correction for extrapolation purposes
   reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
   pin_normal_derivative_for_correction_functions = false;
   scale_system_by_diagonals = true;
@@ -110,7 +111,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           data_to_send.solution_dependent_term_weight       = correction_function.solution_dependent_terms[k].weight;
           serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
         }
-        data_to_send.using_fast_side = correction_function.not_reliable; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+        data_to_send.using_fast_side = correction_function.not_reliable_for_extrapolation; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
       }
     }
   }
@@ -174,7 +175,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           const double weight_for_term = received_serialized_global_correction_functions[running_idx++].solution_dependent_term_weight;
           correction_function_for_ghost_quad.solution_dependent_terms.add_term(local_idx_of_term, weight_for_term);
         }
-        correction_function_for_ghost_quad.not_reliable = received_serialized_global_correction_functions[running_idx++].using_fast_side;
+        correction_function_for_ghost_quad.not_reliable_for_extrapolation = received_serialized_global_correction_functions[running_idx++].using_fast_side;
         correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(local_quad_idx, correction_function_for_ghost_quad));
       }
       // remove the source from the set of expected messengers
@@ -200,10 +201,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
 #endif
 
   // construct finite volume info
-  std::pair<map_of_finite_volume_t::iterator, bool> ret;
-  ret = finite_volume_data_for_quad.insert(std::pair<p4est_locidx_t, my_p4est_finite_volume_t>(quad_idx, interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx)));
-  P4EST_ASSERT(ret.second);
-  const my_p4est_finite_volume_t& fv_quad = ret.first->second;
+  finite_volume_data_for_quad[quad_idx] = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
 
   // construct correction function
   const p4est_quadrant_t* quad;
@@ -235,7 +233,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
 
   linear_combination_of_dof_t* one_sided_normal_derivative_at_projected_point = (mus_are_equal() ? NULL : new linear_combination_of_dof_t); // we need that only if there is a nonzero jump in mu
   correction_function_t correction_function_to_build;
-  correction_function_to_build.not_reliable = ((sgn_quad < 0 ? fv_quad.volume_in_positive_domain() : fv_quad.volume_in_negative_domain()) < 0.01*fv_quad.full_cell_volume);
+  correction_function_to_build.not_reliable_for_extrapolation = ((sgn_quad < 0 ? finite_volume_data_for_quad[quad_idx].volume_in_positive_domain() : finite_volume_data_for_quad[quad_idx].volume_in_negative_domain()) < threshold_volume_ratio_for_extrapolation*finite_volume_data_for_quad[quad_idx].full_cell_volume);
 
   if (!mus_are_equal())
   {
@@ -270,7 +268,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       get_lsqr_cell_gradient_operator_at_point(xyz_for_normal_derivative, cell_ngbd, first_degree_neighbors_in_slow_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point, pin_normal_derivative_for_correction_functions, quad_idx);
     } catch (std::exception e) { // it couldn't be done on the slow side
       use_slow_side = false;
-      correction_function_to_build.not_reliable = true;
+      correction_function_to_build.not_reliable_for_extrapolation = true;
       use_extrapolations_in_sharp_flux_calculations = true;
       get_lsqr_cell_gradient_operator_at_point(xyz_for_normal_derivative, cell_ngbd, first_degree_neighbors_in_fast_side, scaling_distance, lsqr_cell_grad_operator_on_slow_side_at_projected_point, pin_normal_derivative_for_correction_functions, quad_idx); // this should work if the other didn't (hopefully, otherwise, we're screwed)
     }
@@ -893,7 +891,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
   if(sgn_quad < 0)
   {
     extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx];
-    if(corr_fun != NULL && !corr_fun->not_reliable)
+    if(corr_fun != NULL && !corr_fun->not_reliable_for_extrapolation)
       extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (*corr_fun)(sharp_solution_p);
     else
       extrapolation_plus_p[quad_idx]  = sharp_solution_p[quad_idx] + (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
@@ -901,7 +899,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
   else
   {
     extrapolation_plus_p[quad_idx] = sharp_solution_p[quad_idx];
-    if(corr_fun != NULL && !corr_fun->not_reliable)
+    if(corr_fun != NULL && !corr_fun->not_reliable_for_extrapolation)
       extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (*corr_fun)(sharp_solution_p);
     else
       extrapolation_minus_p[quad_idx] = sharp_solution_p[quad_idx] - (interp_jump_u != NULL ? (*interp_jump_u)(xyz_quad) : 0.0); // rough initialization to (hopefully) speed up the convergence in pseudo-time
@@ -960,7 +958,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
           P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid() && quad->level == direct_neighbor.level);
 
           map_of_correction_functions_t::const_iterator it_neighbor = correction_function_for_quad.find(direct_neighbor.p.piggy3.local_num);
-          if(it_neighbor != correction_function_for_quad.end() && !it_neighbor->second.not_reliable)
+          if(it_neighbor != correction_function_for_quad.end() && !it_neighbor->second.not_reliable_for_extrapolation)
             oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(sharp_solution_p[direct_neighbor.p.piggy3.local_num] + (sgn_quad > 0 ? +1.0 : -1.0)*it_neighbor->second(sharp_solution_p) - sharp_solution_p[quad_idx])/dxyz_min[dim];
           else
             un_is_well_defined = false;
@@ -1037,7 +1035,7 @@ void my_p4est_poisson_jump_cells_fv_t::extrapolate_solution_local(const p4est_lo
   tmp_minus_p[quad_idx] = extrapolation_minus_p[quad_idx];
   tmp_plus_p[quad_idx] = extrapolation_plus_p[quad_idx];
 
-  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() && !correction_function_for_quad[quad_idx].not_reliable)
+  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() && !correction_function_for_quad[quad_idx].not_reliable_for_extrapolation)
     return; // the ghost value is safely defined intrinsically, no need to solve for the pseudo-time step equation here
 
   // no (safe to use) correction function was defined, extrapolation is required

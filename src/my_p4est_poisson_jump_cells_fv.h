@@ -29,10 +29,10 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     {
       return jump_dependent_terms + solution_dependent_terms(sharp_solution_p);
     }
-    bool not_reliable;
+    bool not_reliable_for_extrapolation;
     correction_function_t() {
       solution_dependent_terms.clear();
-      not_reliable = false;
+      not_reliable_for_extrapolation = false;
     }
   };
 
@@ -49,6 +49,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
   bool                          are_required_finite_volumes_and_correction_functions_known;
   double                        interface_relative_threshold;
+  double                        threshold_volume_ratio_for_extrapolation;
   double                        reference_face_area;
   bool                          pin_normal_derivative_for_correction_functions;
 
@@ -139,6 +140,26 @@ public:
    * \param threshold_value [in] new value to be set for interface_relative_threshold.
    */
   inline void set_interface_relative_threshold(const double& threshold_value) { P4EST_ASSERT(threshold_value >= 0.0); interface_relative_threshold = threshold_value; }
+
+  /*!
+   * \brief set_threshold_volume_ratio_for_extrapolation sets a new threshold for the ratio of volumes in cut cells
+   * that invalidates the use of correction function when determining extrapolated values from one side of the
+   * interface to the other.
+   * The correction function is used to determine the extrapolated value from the other side  in cells that are cut
+   * by the interface if and only if
+   *
+   * 1) the correction function actually uses the "slow side" to evaluate the normal derivative at the
+   * interface;
+   *
+   * 2) the volume that lies across the interafce in the cut is larger
+   *                   threshold_volume_ratio_for_extrapolation*(full volume of the cell)
+   *
+   * The default value for threshold_volume_ratio_for_extrapolation is 1.1 (note that a value larger than or equal
+   * to 1 technically invalidates ALL use of correction functions for extrapolation purposes: only inner cell values
+   * are used).
+   * \param desired_threshold_volume_ratio [in] new value to be set for threshold_volume_ratio.
+   */
+  inline void set_threshold_volume_ratio(const double& desired_threshold_volume_ratio) { P4EST_ASSERT(desired_threshold_volume_ratio >= 0.0); threshold_volume_ratio_for_extrapolation = desired_threshold_volume_ratio; }
 
   /*!
    * \brief set_pinning_for_normal_derivatives_in_correction_functions sets the internal flag controlling the use of
