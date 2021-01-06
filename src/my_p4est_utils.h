@@ -3133,7 +3133,27 @@ inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
   const std::vector<const CF_DIM*> ls_functors(1, phi);
   const std::vector<mls_opn_t> ls_opn(1, MLS_INTERSECTION);
 
-  construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, order, cube_refinement, compute_centroids, perturb);
+  try {
+    construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, order, cube_refinement, compute_centroids, perturb);
+  } catch (std::exception& e) {
+    std::cerr << "construct_finite_volume: Something went wrong when constructing finite volume data (for a cell) using the MLS sub-library." << std::endl;
+    if(order == 1)
+    {
+      std::cerr << "Minimal order of interface representation being used, no fallback option... throwing back the exception now." << std::endl;
+      throw e;
+    }
+    else
+    {
+      std::cerr << "Fallback: attempting linear elements..." << std::endl;
+      try {
+        construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, 1, cube_refinement, compute_centroids, perturb);
+      } catch (std::exception& ee) {
+        std::cerr << "Fallback failed; throwing back the second exception." << std::endl;
+        throw ee;
+      }
+    }
+  }
+
   return;
 }
 
