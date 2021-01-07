@@ -2029,7 +2029,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
 }
 
 // ELYCE TRYING SOMETHING:
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, Vec phi_n,
                                                                     p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
                                                                     my_p4est_node_neighbors_t* ngbd_np1,
                                                                     my_p4est_faces_t* &faces_np1, my_p4est_cell_neighbors_t* &ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
@@ -2066,7 +2066,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
     }
   }
 
-  interp_cell.set_input(hodge, phi, &bc_hodge);
+  interp_cell.set_input(hodge, phi_n, &bc_hodge);
   Vec hodge_tmp;
   ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge_tmp); CHKERRXX(ierr);
   interp_cell.interpolate(hodge_tmp);

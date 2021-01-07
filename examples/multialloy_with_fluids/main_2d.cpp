@@ -4811,6 +4811,8 @@ int main(int argc, char** argv) {
 
   // Level set function(s):---------------------------
   vec_and_ptr_t phi;
+  vec_and_ptr_t phi_nm1; // LSF for previous timestep... we must keep this so that hodge fields can be updated correctly in NS process
+
   vec_and_ptr_t phi_solid; // LSF for solid domain: -- This will be assigned within the loop as the negative of phi
   vec_and_ptr_t phi_cylinder;   // LSF for the inner cylinder, if applicable (example ICE_OVER_CYLINDER)
 
@@ -5399,6 +5401,7 @@ int main(int argc, char** argv) {
         }
       }
 
+
       // Check if some startup time (before allowing interfacial growth) has been requested
       if((startup_dim_time>0.) || (startup_nondim_time>0.)){
         if((startup_dim_time>0.) && (startup_nondim_time>0.)){
@@ -5850,11 +5853,12 @@ int main(int argc, char** argv) {
                                faces_np1,ngbd_c_np1);
         }
         else{
-          ns->update_from_tn_to_tnp1_grid_external(phi.vec,
+          ns->update_from_tn_to_tnp1_grid_external(phi.vec, phi_nm1.vec,
                                                    p4est_np1,nodes_np1,ghost_np1,
                                                    ngbd_np1,
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
+          phi_nm1.destroy(); // Now that hodge has been correctly interpolated, we can destroy this
         }
 
         // NOTE: we update NS grid first, THEN set new BCs and forces. This is because the update grid interpolation of the hodge variable
@@ -6136,8 +6140,16 @@ int main(int argc, char** argv) {
           ns->nullify_p4est_nm1(); // the nm1 grid has just been destroyed, but pointer within NS has not been updated, so it needs to be nullified (p4est_nm1 in NS == p4est in main)
         }
         // -------------------------------
-        // Create the semi-lagrangian object and do the advection:
+        // Create the semi-lagrangian object and do the advection/grid update:
         // -------------------------------
+        // If solving NS, save the previous LSF to provide to NS solver, to correctly
+        // interpolate hodge variable to new grid
+        if(solve_navier_stokes){
+          phi_nm1.create(p4est,nodes);
+          ierr = VecCopyGhost(phi.vec,phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
+          // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
+          // for NS update procedure
+        }
 
         my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
@@ -6305,6 +6317,8 @@ int main(int argc, char** argv) {
   if(solve_navier_stokes){
     v_n.destroy();
     v_nm1.destroy();
+
+    phi_nm1.destroy();
 
     // NS takes care of destroying v_NS_n and v_NS_nm1
     vorticity.destroy();
