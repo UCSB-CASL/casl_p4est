@@ -3228,6 +3228,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         KSPType face_solver_type, PCType pc_face,
                         KSPType cell_solver_type, PCType pc_cell,
                         my_p4est_faces_t* faces_np1, bool compute_pressure_,
+                        bool &did_crash,
                         char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
   PetscErrorCode ierr;
 
@@ -3326,6 +3327,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
+
   PetscPrintf(mpi_comm,"\n Max NS velocity norm: \n"
                          " - Computational value: %0.4f  "
                          " - Physical value: %0.3e [m/s]  "
@@ -3333,9 +3335,13 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   // Stop simulation if things are blowing up
   if(NS_norm>100.0){
-      std::cerr<<"The simulation blew up \n"<<std::endl;
-      SC_ABORT("Navier Stokes velocity blew up \n");
+      MPI_Barrier(mpi_comm);
+      PetscPrintf(mpi_comm,"The simulation blew up ! ");
+      did_crash=true;
     }
+  else{
+    did_crash=false;
+  }
 
 //  // Compute the corresponding timestep:
 //  ns->compute_dt();
@@ -3932,7 +3938,8 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
                        vec_and_ptr_t phi, vec_and_ptr_t phi_cylinder,
                        vec_and_ptr_t T_l_n,vec_and_ptr_t T_s_n,
                        vec_and_ptr_dim_t v_interface,
-                       vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity){
+                       vec_and_ptr_dim_t v_n, vec_and_ptr_t press_nodes, vec_and_ptr_t vorticity,
+                        bool is_crash=false){
   int mpi_comm = p4est->mpicomm;
 
   // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
@@ -3953,8 +3960,14 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
       sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
     }
 
-    sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-    save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+    if(is_crash){
+      sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_CRASH",out_dir,lmin+grid_res_iter,lmax+grid_res_iter);
+      save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+    }
+    else{
+      sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+      save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
+    }
 
     if(example_ == ICE_AROUND_CYLINDER)phi_cylinder.destroy();
     if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
@@ -5907,13 +5920,22 @@ int main(int argc, char** argv) {
         compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)|| (example_ == NS_GIBOU_EXAMPLE);
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
+        bool did_crash = false;
         navier_stokes_step(ns,p4est_np1,nodes_np1,
                            v_n.vec,v_nm1.vec,vorticity.vec,press_nodes.vec,
                            phi.vec,
                            face_solver_type,pc_face,cell_solver_type,pc_cell,
-                           faces_np1, compute_pressure_to_save,
+                           faces_np1, compute_pressure_to_save, did_crash,
                            save_fluid_forces? name_fluid_forces:NULL,
                            save_fluid_forces? fich_fluid_forces:NULL);
+        if(did_crash){
+          PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
+          save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1,
+                             0,0,phi,phi_cylinder,T_l_n,T_s_n,v_interface,
+                             v_n,press_nodes,vorticity,true);
+          MPI_Barrier(mpi.comm());
+          MPI_Abort(mpi.comm(),0);
+        }
 
         // -------------------------------
         // Update timestep info as needed
