@@ -2045,75 +2045,16 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   // Create new the faces:
   faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,ngbd_c_np1);
 
+  //------------------------------------------------------
+  // (0) Interpolate the cell-centered hodge variable onto the new grid (cells to cells)
+  //------------------------------------------------------
 
-  // (1) Set phi as the new phi on new grid -------------------------------------
-  phi = phi_np1;
-  delete interp_phi;
-  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
-  interp_phi->set_input(phi_np1,linear);
-  // reset grad phi
-  if(grad_phi != NULL){
-    ierr = VecDestroy(grad_phi); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &grad_phi);
-  ngbd_np1->first_derivatives_central(phi_np1, grad_phi);
-  delete interp_grad_phi;
-  interp_grad_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
-  interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
-
-  // (2) Reset the scalar vorticity field onto the new grid provided -------------
-  ierr = VecDestroy(vorticity); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity); CHKERRXX(ierr);
-
-  // (3) Slide velocity fields at nodes (and their second derivatives) -----------
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-  {
-    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
-    vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
-
-    // Create new object to hold the new v_n values (which will be slided from the computed vnp1)
-    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);// At this point, we now create a new object, which vn_nodes points to now.
-    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
-      ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
-      second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
-    }
-  }
-
-  // Prepare interpolator for velocity fields at nodes
-  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-  {
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-    interp_nodes.add_point(n, xyz);
-  }
-
-  // Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n + 1 grid to become the vn values at upcoming the (n + 1) timestep
-  interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
-  interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
-
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
-  }
-  interp_nodes.clear();
-
-  ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
-
-
-  // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
-  /* set velocity inside solid to bc_v */
-  //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
-
-  // (4) Smoke should be handled here -- [Elyce: Ignoring this for now, will come back to it later]
-
-  // (5) cell-centered hodge variable, face-centered dxyz_hodge and face-centered face_is_well_defined vectors
-  // the first two variables are interpolated (cells to cells and faces to faces) and the
-  // face_is_well_defined vectors are recalculated and reset.
-
+  /*NOTE: this interpolation from old cells to new cells requires the *old* level set function phi,
+   * and thus must be executed BEFORE we update the LSF phi with the new provided LSF phi_np1 */
   /* interpolate the Hodge variable on the new forest (for good initial guess for next projection step)
    * build a new cell-centered pressure vector for calculating the next pressure field */
+
+
   my_p4est_interpolation_cells_t interp_cell(ngbd_c, ngbd_n);
   for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
     p4est_tree_t *tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
@@ -2134,6 +2075,93 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   ierr = VecDestroy(hodge); CHKERRXX(ierr);
   hodge = hodge_tmp;
   ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  // Now that the hodge variable has been updated using the old LSF,
+  // we may proceed with sliding the rest of the fields
+
+  //------------------------------------------------------
+  // (1) Set phi as the new phi on new grid
+  //------------------------------------------------------
+
+  phi = phi_np1;
+  delete interp_phi;
+  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
+  interp_phi->set_input(phi_np1,linear);
+  // reset grad phi
+  if(grad_phi != NULL){
+    ierr = VecDestroy(grad_phi); CHKERRXX(ierr);
+  }
+  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &grad_phi);
+  ngbd_np1->first_derivatives_central(phi_np1, grad_phi);
+  delete interp_grad_phi;
+  interp_grad_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
+  interp_grad_phi->set_input(grad_phi, linear, P4EST_DIM);
+
+  //------------------------------------------------------
+  // (2) Reset the scalar vorticity field onto the new grid provided
+  //------------------------------------------------------
+  // Note -- vorticity will be computed by user as desired after solution is obtained
+  ierr = VecDestroy(vorticity); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity); CHKERRXX(ierr);
+
+  //------------------------------------------------------
+  // (3) Slide velocity fields at nodes (and their second derivatives)
+  //------------------------------------------------------
+
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    // (3.1) : destroy vnm1 at nodes , and slide current vn to be the new vnm1
+    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
+    vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
+
+    // (3.2): Create new object to hold the new v_n values (which will be interpolated from the computed vnp1)
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);// At this point, we now create a new object, which vn_nodes points to now.
+
+    // (3.3): do 3.1 and 3.2, but for the second derivatives of velocity
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
+      ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+    }
+  }
+
+  // (3.4) Prepare interpolator for vnp1 at nodes
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
+  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    interp_nodes.add_point(n, xyz);
+  }
+
+  // (3.5) Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n + 1 grid to become the vn values at upcoming the (n + 1) timestep
+  interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+  interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
+  }
+  interp_nodes.clear();
+
+  // (3.6) Compute the new second derivatives of vn on the new grid
+  ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
+
+
+  // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
+  /* set velocity inside solid to bc_v */
+  //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
+  //------------------------------------------------------
+  // (4) Smoke should be handled here -- [Elyce: Ignoring this for now, will come back to it later]
+  //------------------------------------------------------
+
+
+  //------------------------------------------------------
+  // (5) face-centered dxyz_hodge and face-centered face_is_well_defined vectors
+  //------------------------------------------------------
+  // the first variable is interpolated (faces to faces) and the
+  // face_is_well_defined vectors are recalculated and reset.
+
   // create a new pressure vector...
   ierr = VecDestroy(pressure); CHKERRXX(ierr);
   ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &pressure); CHKERRXX(ierr);
@@ -2149,41 +2177,56 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
+    // (5.1) Create temporary dxyz_hodge at faces for np1 grid
     Vec dxyz_hodge_tmp;
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_tmp, dir); CHKERRXX(ierr);
+
+    // (5.2) Set up face interpolator to interp dxyz_hodge values
     for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
     {
       double xyz[P4EST_DIM];
       faces_np1->xyz_fr_f(f_idx, dir, xyz);
       interp_faces.add_point(f_idx, xyz);
     }
+    // (5.3) Perform the interpolation
     interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
 
     interp_faces.interpolate(dxyz_hodge_tmp);
 
     interp_faces.clear();
 
+    // (5.4) Destroy old dxyz_hodge and update variable with the new values
     ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
     dxyz_hodge[dir] = dxyz_hodge_tmp;
 
     ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
+    // (5.5) Destroy face_is_well_defined at previous grid and check at the new grid
     ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
     check_if_faces_are_well_defined(faces_np1, dir, *interp_phi, bc_v[dir], face_is_well_defined[dir]);
 
+    //------------------------------------------------------
+    // (6) Create new vectors for vstar (intermediate velocity) and vnp1 on new grid for next solution step
+    //------------------------------------------------------
     ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vstar[dir], dir); CHKERRXX(ierr);
 
     ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vnp1[dir], dir); CHKERRXX(ierr);
   }
+  //------------------------------------------------------
   // finish communicating ghost values for hodge and dxyz_hodge
+  //------------------------------------------------------
   ierr = VecGhostUpdateEnd(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   }
-  // destruction of p4est_nm1 is handled externally
+  //------------------------------------------------------
+  //(7) Slide the grid objects
+  //------------------------------------------------------
+  // Note: destruction of p4est_nm1 is handled externally
   p4est_nm1 = p4est_n; p4est_n = p4est_np1;
 
   ghost_nm1 = ghost_n; ghost_n = ghost_np1;

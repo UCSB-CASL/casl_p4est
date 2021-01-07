@@ -644,6 +644,7 @@ double dt_NS;
 double hodge_global_error;
 
 double NS_norm = 0.0; // To keep track of the NS norm
+double perturb_flow_noise =0.25;
 
 double u_inf; // physical value of freestream velocity
 void set_NS_info(){
@@ -1928,17 +1929,19 @@ public:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
-            if(ramp_bcs){
+            if(ramp_bcs && tn<=t_ramp){
+
               switch(dir){
-              case dir::x:
-                return ramp_BC(0.,u0);
-              case dir::y:
-                return ramp_BC(0.,v0);
-              default:
-                throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
-              }
+                case dir::x:
+                  return ramp_BC(0.,u0);
+                case dir::y:
+                  return ramp_BC(0.,v0);
+                default:
+                  throw std::runtime_error("WALL BC VELOCITY: unrecognized Cartesian direction \n");
+                }
             } // end of ramp BC case
             else{
+
               switch(dir){
               case dir::x:
                 return u0;
@@ -2074,19 +2077,23 @@ struct INITIAL_VELOCITY : CF_DIM
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:
       case MELTING_ICE_SPHERE:{
-        double noise=0.25;
         if(ramp_bcs) return 0.;
         else{
           switch(dir){
           case dir::x:
             if(perturb_initial_flow){
-              return u0*(1 + noise*sin(2.*PI*y/ymax));
+              return u0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
             }
             else{
               return u0;
             }
           case dir::y:
-            return v0;
+            if(perturb_initial_flow){
+              return v0*(1 + perturb_flow_noise*sin(2.*PI*y/ymax));
+            }
+            else{
+              return v0;
+            }
           default:
             throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
           }
@@ -2885,7 +2892,6 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
   bool use_block = false;
   bool expand_ghost_layer = true;
-  double threshold = vorticity_threshold; // originally was set to 0.
 
   std::vector<compare_option_t> compare_opn;
   std::vector<compare_diagonal_option_t> diag_opn;
@@ -2927,12 +2933,12 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     if(solve_navier_stokes){
       compare_opn.push_back(LESS_THAN);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(threshold*NS_norm/2.);
+      criteria.push_back(vorticity_threshold*NS_norm/2.);
 
       // Refining instructions: (for vorticity)
       compare_opn.push_back(GREATER_THAN);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(threshold*NS_norm);
+      criteria.push_back(vorticity_threshold*NS_norm);
 
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
@@ -2945,7 +2951,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       // Coarsening instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
       diag_opn.push_back(DIVIDE_BY);
-      criteria.push_back(dTheta*gradT_threshold); // did 0.1* () for the coarsen if no sign change OR below threshold case
+      criteria.push_back(dTheta*gradT_threshold*0.1); // did 0.1* () for the coarsen if no sign change OR below threshold case
 
       // Refining instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
