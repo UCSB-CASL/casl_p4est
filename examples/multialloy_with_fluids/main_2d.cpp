@@ -182,8 +182,8 @@ void select_solvers(){
 }
 
 // Refinement options:
-DEFINE_PARAMETER(pl,double,vorticity_threshold,0.05,"Threshold to refine vorticity by, default is 0.1 \n");
-DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-6,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+DEFINE_PARAMETER(pl,double,vorticity_threshold,0.1,"Threshold to refine vorticity by, default is 0.1 \n");
+DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
 // ---------------------------------------
 // Geometry options:
