@@ -234,6 +234,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
   linear_combination_of_dof_t* one_sided_normal_derivative_at_projected_point = (mus_are_equal() ? NULL : new linear_combination_of_dof_t); // we need that only if there is a nonzero jump in mu
   correction_function_t correction_function_to_build;
   correction_function_to_build.not_reliable_for_extrapolation = ((sgn_quad < 0 ? finite_volume_data_for_quad[quad_idx].volume_in_positive_domain() : finite_volume_data_for_quad[quad_idx].volume_in_negative_domain()) < threshold_volume_ratio_for_extrapolation*finite_volume_data_for_quad[quad_idx].full_cell_volume);
+  if(correction_function_to_build.not_reliable_for_extrapolation)
+    use_extrapolations_in_sharp_flux_calculations = true;
 
   if (!mus_are_equal())
   {

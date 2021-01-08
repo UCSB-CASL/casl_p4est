@@ -708,8 +708,6 @@ void my_p4est_poisson_jump_cells_t::extrapolate_solution_from_either_side_to_the
     }
   }
 
-
-
   /* EXTRAPOLATE the solution */
   for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) {
     // local layer cells first
