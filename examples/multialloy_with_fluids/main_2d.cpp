@@ -660,8 +660,8 @@ void set_NS_info(){
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       Re = 201.;
-      u0 = 1; // computational freestream velocity
-      v0 = 0;
+      u0 = 1.0; // computational freestream velocity
+      v0 = 0.0;
       hodge_percentage_of_max_u = 1.e-3;
       break;
     }
@@ -798,7 +798,7 @@ double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
 
-DEFINE_PARAMETER(pl,double,t_ramp,3.,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
+DEFINE_PARAMETER(pl,double,t_ramp,0.1,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
 DEFINE_PARAMETER(pl,int,startup_iterations,-1,"Number of startup iterations to do before entering real time loop, used for verification tests to allow v_interface and NS fields to stabilize. Default:-1, to use this, set number to positive integer value.");
 DEFINE_PARAMETER(pl,double,startup_nondim_time,-10.0,"Startup time in nondimesional time, before the simulation allows interfacial growth to occur (Default : 0)");
@@ -2889,6 +2889,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   PetscErrorCode ierr;
   int mpi_comm = p4est_np1->mpicomm;
 
+  if(!solve_stefan) refine_by_d2T=false; // override settings if there *is* no temperature field
 
   bool use_block = false;
   bool expand_ghost_layer = true;
@@ -3243,8 +3244,9 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
     ierr = VecCreateNoGhostFaces(p4est_np1,faces_np1,&dxyz_hodge_old[d],d); CHKERRXX(ierr);
   }
 
-  if ((ramp_bcs && (tn<t_ramp))) hodge_tolerance = u0*hodge_percentage_of_max_u;
-  else hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
+  //if ((ramp_bcs && (tn<t_ramp))) hodge_tolerance = u0*hodge_percentage_of_max_u;
+  //else
+  hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
   PetscPrintf(mpi_comm,"Hodge tolerance is %e \n",hodge_tolerance);
 
   int hodge_iteration = 0;
@@ -3253,12 +3255,15 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   face_solver = NULL;
   cell_solver = NULL;
 
-  while(hodge_iteration<hodge_max_it && convergence_check_on_dxyz_hodge>hodge_tolerance){
+  while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
+
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
+
     convergence_check_on_dxyz_hodge=
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
+
     ierr= PetscPrintf(mpi_comm,"Hodge iteration : %d, hodge error: %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge);CHKERRXX(ierr);
     hodge_iteration++;
   }
@@ -5398,7 +5403,7 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
 //    for (tn=tstart;tn<tfinal; tn+=dt, tstep++){
 
-    if(!loading_from_previous_state)tstep=0;
+    if(!loading_from_previous_state){tstep=0;}
     tn = tstart;
     int last_tstep=-1;
     while(tn<=tfinal){ // trying something
@@ -5412,6 +5417,18 @@ int main(int argc, char** argv) {
           force_interfacial_velocity_to_zero=false;
           tn = tstart;
         }
+      }
+      if(tstep==0){
+        dxyz_min(p4est,dxyz_smallest);
+
+        // Initialize timesteps to use:
+        if(solve_navier_stokes){
+          dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
+          dt = dt_nm1;
+        }
+        else{
+          dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.;
+          dt = dt_nm1;}
       }
 
 
@@ -5921,6 +5938,7 @@ int main(int argc, char** argv) {
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
         bool did_crash = false;
+
         navier_stokes_step(ns,p4est_np1,nodes_np1,
                            v_n.vec,v_nm1.vec,vorticity.vec,press_nodes.vec,
                            phi.vec,
@@ -6166,11 +6184,13 @@ int main(int argc, char** argv) {
         // -------------------------------
         // If solving NS, save the previous LSF to provide to NS solver, to correctly
         // interpolate hodge variable to new grid
+
         if(solve_navier_stokes){
           phi_nm1.create(p4est,nodes);
           ierr = VecCopyGhost(phi.vec,phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
           // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
           // for NS update procedure
+          if(print_checkpoints) ierr= PetscPrintf(mpi.comm(),"Phi nm1 copy is created ... \n");
         }
 
         my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
@@ -6183,6 +6203,7 @@ int main(int argc, char** argv) {
                         vorticity,vorticity_refine,
                         T_l_n,T_l_dd,
                         ngbd);
+
         // -------------------------------
         // Update hierarchy and neighbors to match new updated grid:
         // -------------------------------
@@ -6200,16 +6221,15 @@ int main(int argc, char** argv) {
 
         //      my_p4est_level_set_t ls_new(ngbd_np1);
         ls.update(ngbd_np1);
-        if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30);/*ls.reinitialize_1st_order_time_2nd_order_space(phi.vec);*/
+        if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30);
+
         if(solve_navier_stokes && !solve_stefan){
           // If only solving Navier-Stokes, only need to do this once, not every single timestep
-          if(tstep==0){ls.reinitialize_1st_order_time_2nd_order_space(phi.vec);
-          }
+          if(tstep==0)ls.reinitialize_2nd_order(phi.vec,30);
         }
 
         if(example_ == DENDRITE_TEST){
           regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
-//          ls.perturb_level_set_function(phi.vec,EPS);
         }
 
         // --------------------------------------------------------------------------------------------------------------
