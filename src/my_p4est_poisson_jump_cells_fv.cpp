@@ -911,7 +911,13 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
   interface_manager->normal_vector_at_point(xyz_quad, oriented_normal, (sgn_quad < 0 ? +1.0 : -1.0));
 
   double diagonal_coeff_for_n_dot_grad_this_side = 0.0, diagonal_coeff_for_n_dot_grad_across = 0.0;
-  extrapolation_operator_t extrapolation_operator_across, extrapolation_operator_this_side; // ("_this_side" may not be required)
+  extrapolation_operator_t* extrapolation_operator_across     = NULL;
+  extrapolation_operator_t* extrapolation_operator_this_side  = NULL; // ("_this_side" may not be required)
+  if(extrapolation_operator_minus.find(quad_idx) == extrapolation_operator_minus.end() && extrapolation_operator_plus.find(quad_idx) == extrapolation_operator_plus.end()) // no operator constructed yet
+  {
+    extrapolation_operator_across     = new extrapolation_operator_t;
+    extrapolation_operator_this_side  = new extrapolation_operator_t; // ("_this_side" may not be required)
+  }
 
   double n_dot_grad_u = 0.0; // let's evaluate this term on the side of quad, set the corresponding value across to 0.0
 
@@ -966,24 +972,26 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
             un_is_well_defined = false;
         }
 
+        if(extrapolation_operator_across != NULL && extrapolation_operator_this_side != NULL)
+        {
+          // add the (regular, i.e. without interface-fetching) derivative term(s) to the relevant extrapolation operator (for extrapolating normal derivatives, for instance)
+          double discretization_distance = 0.0;
+          const bool derivative_is_relevant_for_extrapolation_of_this_side = (oriented_normal[dim] <= 0.0 && orientation == 1) || (oriented_normal[dim] > 0.0 && orientation == 0);
+          const double relevant_normal_component = (derivative_is_relevant_for_extrapolation_of_this_side ? +1.0 : -1.0)*oriented_normal[dim];
+          extrapolation_operator_t* relevant_operator = (derivative_is_relevant_for_extrapolation_of_this_side ? extrapolation_operator_this_side : extrapolation_operator_across);
+          double& relevant_diagonal_term = (derivative_is_relevant_for_extrapolation_of_this_side ? diagonal_coeff_for_n_dot_grad_this_side : diagonal_coeff_for_n_dot_grad_across);
 
-        // add the (regular, i.e. without interface-fetching) derivative term(s) to the relevant extrapolation operator (for extrapolating normal derivatives, for instance)
-        double discretization_distance = 0.0;
-        const bool derivative_is_relevant_for_extrapolation_of_this_side = (oriented_normal[dim] <= 0.0 && orientation == 1) || (oriented_normal[dim] > 0.0 && orientation == 0);
-        const double relevant_normal_component = (derivative_is_relevant_for_extrapolation_of_this_side ? +1.0 : -1.0)*oriented_normal[dim];
-        extrapolation_operator_t& relevant_operator = (derivative_is_relevant_for_extrapolation_of_this_side ? extrapolation_operator_this_side : extrapolation_operator_across);
-        double& relevant_diagonal_term = (derivative_is_relevant_for_extrapolation_of_this_side ? diagonal_coeff_for_n_dot_grad_this_side : diagonal_coeff_for_n_dot_grad_across);
+          for (size_t k = 0; k < stable_projection_derivative.size(); ++k) {
+            const dof_weighted_term& derivative_term = stable_projection_derivative[k];
+            if(derivative_term.dof_idx == quad_idx)
+              relevant_diagonal_term += derivative_term.weight*relevant_normal_component;
+            else
+              relevant_operator->n_dot_grad.add_term(derivative_term.dof_idx, relevant_normal_component*derivative_term.weight);
+            discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+          }
 
-        for (size_t k = 0; k < stable_projection_derivative.size(); ++k) {
-          const dof_weighted_term& derivative_term = stable_projection_derivative[k];
-          if(derivative_term.dof_idx == quad_idx)
-            relevant_diagonal_term += derivative_term.weight*relevant_normal_component;
-          else
-            relevant_operator.n_dot_grad.add_term(derivative_term.dof_idx, relevant_normal_component*derivative_term.weight);
-          discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+          relevant_operator->dtau = MIN(relevant_operator->dtau, discretization_distance/(double) P4EST_DIM);
         }
-
-        relevant_operator.dtau = MIN(relevant_operator.dtau, 0.9*discretization_distance/(double) P4EST_DIM);
       }
     }
 
@@ -995,9 +1003,12 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
     n_dot_grad_u += oriented_normal[dim]*sharp_derivative_quad_center;
   }
 
-  // complete the extrapolation operators
-  extrapolation_operator_across.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_across);
-  extrapolation_operator_this_side.n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_this_side);
+  if(extrapolation_operator_across != NULL && extrapolation_operator_this_side != NULL)
+  {
+    // complete the extrapolation operators
+    extrapolation_operator_across->n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_across);
+    extrapolation_operator_this_side->n_dot_grad.add_term(quad_idx, diagonal_coeff_for_n_dot_grad_this_side);
+  }
 
   if(degree > 0)
   {
@@ -1013,16 +1024,24 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
     }
   }
 
-  if(sgn_quad < 0)
-    extrapolation_operator_plus[quad_idx] = extrapolation_operator_across;
-  else
-    extrapolation_operator_minus[quad_idx] = extrapolation_operator_across;
-  if(!un_is_well_defined)
+
+  if(extrapolation_operator_across != NULL && extrapolation_operator_this_side != NULL)
   {
     if(sgn_quad < 0)
-      extrapolation_operator_minus[quad_idx] = extrapolation_operator_this_side;
+      extrapolation_operator_plus[quad_idx] = *extrapolation_operator_across;
     else
-      extrapolation_operator_plus[quad_idx] = extrapolation_operator_this_side;
+      extrapolation_operator_minus[quad_idx] = *extrapolation_operator_across;
+    if(!un_is_well_defined)
+    {
+      if(sgn_quad < 0)
+        extrapolation_operator_minus[quad_idx] = *extrapolation_operator_this_side;
+      else
+        extrapolation_operator_plus[quad_idx] = *extrapolation_operator_this_side;
+    }
+
+    // delete what you built locally (map insertion creates a copy)
+    delete extrapolation_operator_across;
+    delete extrapolation_operator_this_side;
   }
 
   return;

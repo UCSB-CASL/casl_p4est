@@ -18,12 +18,17 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   mu_minus = mu_plus = -1.0;
   add_diag_minus = add_diag_plus = 0.0;
   user_rhs_minus = user_rhs_plus = NULL;
+  face_velocity_minus_km1 = face_velocity_plus_km1 = NULL;
+  dt_over_BDF_alpha = 0.0;
+  set_for_projection_steps = false;
   face_velocity_minus = face_velocity_plus = NULL;
   interp_jump_normal_velocity = NULL;
   jump_u = jump_normal_flux_u = NULL;
   user_initial_guess = NULL;
   solution = rhs = NULL;
   extrapolation_minus = extrapolation_plus = NULL;
+  extrapolation_operator_minus.clear();
+  extrapolation_operator_plus.clear();
   interp_jump_u           = NULL;
   interp_jump_normal_flux = NULL;
 
@@ -646,8 +651,6 @@ void my_p4est_poisson_jump_cells_t::extrapolate_solution_from_either_side_to_the
     ierr = VecCreateGhostCells(p4est, ghost, &normal_derivative_of_solution_plus); CHKERRXX(ierr);
     ierr = VecGetArray(normal_derivative_of_solution_minus, &normal_derivative_of_solution_minus_p); CHKERRXX(ierr);
     ierr = VecGetArray(normal_derivative_of_solution_plus, &normal_derivative_of_solution_plus_p); CHKERRXX(ierr);
-    extrapolation_operator_minus.clear();
-    extrapolation_operator_plus.clear();
   }
   // INITIALIZE extrapolation
   // local layer cells first
@@ -766,25 +769,19 @@ void my_p4est_poisson_jump_cells_t::extrapolate_normal_derivatives_local(const p
   tmp_minus_p[quad_idx] = normal_derivative_of_solution_minus_p[quad_idx];
   std::map<p4est_locidx_t, extrapolation_operator_t>::const_iterator it = extrapolation_operator_minus.find(quad_idx);
 #ifdef P4EST_DEBUG
-  bool found_one = false;
+  bool found_one = (it != extrapolation_operator_minus.end());
 #endif
   if(it != extrapolation_operator_minus.end())
-  {
     tmp_minus_p[quad_idx] -= it->second.n_dot_grad(normal_derivative_of_solution_minus_p)*it->second.dtau;
-#ifdef P4EST_DEBUG
-    found_one = true;
-#endif
-  }
 
   tmp_plus_p[quad_idx] = normal_derivative_of_solution_plus_p[quad_idx];
   it = extrapolation_operator_plus.find(quad_idx);
-  if(it != extrapolation_operator_plus.end())
-  {
-    tmp_plus_p[quad_idx] -= it->second.n_dot_grad(normal_derivative_of_solution_plus_p)*it->second.dtau;
 #ifdef P4EST_DEBUG
-    found_one = true;
+  found_one = found_one || (it != extrapolation_operator_plus.end());
 #endif
-  }
+  if(it != extrapolation_operator_plus.end())
+    tmp_plus_p[quad_idx] -= it->second.n_dot_grad(normal_derivative_of_solution_plus_p)*it->second.dtau;
+
   P4EST_ASSERT(found_one);
   return;
 }

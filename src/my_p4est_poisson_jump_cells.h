@@ -30,6 +30,11 @@ protected:
   // equation parameters
   double mu_minus, mu_plus;
   double add_diag_minus, add_diag_plus;
+  // for coupling with two-phase flow solver (evaluation of normal component of normal viscous stress balance across the interface)
+  double shear_viscosity_minus, shear_viscosity_plus;
+  Vec *face_velocity_minus_km1, *face_velocity_plus_km1; // required/used for jump in pressure guess AND for jump corrections in subsequent projection steps
+  double dt_over_BDF_alpha;
+  bool set_for_projection_steps;
 
   // Petsc tolerance parameters
   PetscInt    max_ksp_iterations;
@@ -178,6 +183,21 @@ public:
     P4EST_ASSERT(diffusion_coefficients_have_been_set()); // must be both strictly positive
   }
 
+  inline void set_shear_viscosities(const double& shear_viscosity_minus_, const double& shear_viscosity_plus_)
+  {
+    shear_viscosity_minus = shear_viscosity_minus_;
+    shear_viscosity_plus = shear_viscosity_plus_;
+    P4EST_ASSERT(shear_viscosity_minus > 0.0 && shear_viscosity_plus_ > 0.0); // must be both strictly positive
+  }
+
+  inline void set_face_velocities_km1(Vec *face_velocity_minus_km1_, Vec *face_velocity_plus_km1_)
+  {
+    P4EST_ASSERT(!interface_is_set() ||
+                 (VecsAreSetForFaces(face_velocity_minus_km1_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_km1_, interface_manager->get_faces(), 1)));
+    face_velocity_minus_km1 = face_velocity_minus_km1_;
+    face_velocity_plus_km1  = face_velocity_plus_km1_;
+  }
+
   inline void set_diagonals(const double& add_diag_minus_, const double& add_diag_plus_)
   {
     const bool diags_unchanged = (fabs(add_diag_minus_ - add_diag_minus) < EPS*MAX(add_diag_minus_, add_diag_minus) && fabs(add_diag_plus_ - add_diag_plus) < EPS*MAX(add_diag_plus_, add_diag_plus));
@@ -195,6 +215,12 @@ public:
     user_rhs_minus  = user_rhs_minus_;
     user_rhs_plus   = user_rhs_plus_;
     rhs_is_set = false;
+  }
+
+  inline void set_for_subsequent_projection_steps(const double &dt_over_BDF_alpha_)
+  {
+    dt_over_BDF_alpha = dt_over_BDF_alpha_;
+    set_for_projection_steps = true;
   }
 
   inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
