@@ -28,6 +28,17 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   scale_system_by_diagonals = true;
 }
 
+void my_p4est_poisson_jump_cells_fv_t::clear_node_sampled_jumps()
+{
+  my_p4est_poisson_jump_cells_t::clear_node_sampled_jumps();
+  // clearing the jumps nullifies the current solution (done at virtual parent level),
+  // its extensions, the current residual and the xgfm jump values:
+  for(map_of_correction_functions_t::iterator it = correction_function_for_quad.begin();
+      it != correction_function_for_quad.end(); it++)
+    it->second.jump_dependent_terms = 0.0;
+
+}
+
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
 {
   if(are_required_finite_volumes_and_correction_functions_known)

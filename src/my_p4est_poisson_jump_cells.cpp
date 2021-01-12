@@ -158,6 +158,26 @@ void my_p4est_poisson_jump_cells_t::set_jumps(Vec jump_u_, Vec jump_normal_flux_
   return;
 }
 
+void my_p4est_poisson_jump_cells_t::clear_node_sampled_jumps()
+{
+  if(interp_jump_u != NULL)
+  {
+    delete interp_jump_u;
+    interp_jump_u = NULL;
+  }
+  jump_u = NULL;
+
+  if(interp_jump_normal_flux != NULL)
+  {
+    delete interp_jump_normal_flux;
+    interp_jump_normal_flux = NULL;
+  }
+
+  rhs_is_set = false;
+  extrapolations_are_set = false;
+  return;
+}
+
 linear_combination_of_dof_t
 my_p4est_poisson_jump_cells_t::stable_projection_derivative_operator_at_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const u_char& oriented_dir,
                                                                              set_of_neighboring_quadrants &direct_neighbors, bool& all_cell_centers_on_same_side,

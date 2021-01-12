@@ -78,6 +78,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
                                   const double* extrapolation_minus_p, const double* extrapolation_plus_p,
                                   const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p);
 
+  void clear_node_sampled_jumps();
 
 public:
   my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);

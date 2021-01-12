@@ -42,6 +42,31 @@ my_p4est_poisson_jump_cells_xgfm_t::~my_p4est_poisson_jump_cells_xgfm_t()
     delete interp_grad_jump;
 }
 
+void my_p4est_poisson_jump_cells_xgfm_t::clear_node_sampled_jumps()
+{
+  my_p4est_poisson_jump_cells_t::clear_node_sampled_jumps();
+  PetscErrorCode ierr;
+  ierr = delete_and_nullify_vector(grad_jump); CHKERRXX(ierr);
+  if(interp_grad_jump != NULL)
+  {
+    delete interp_grad_jump;
+    interp_grad_jump = NULL;
+  }
+
+  // clearing the jumps nullifies the current solution (done at virtual parent level),
+  // its extensions, the current residual and the xgfm jump values:
+  ierr = delete_and_nullify_vector(extension); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(residual); CHKERRXX(ierr);
+  for(map_of_scalar_field_xgfm_jumps_t::iterator it = xgfm_jump_between_quads.begin();
+      it != xgfm_jump_between_quads.end(); it++)
+  {
+    it->second.jump_field = 0.0;
+    it->second.known_jump_flux_component = 0.0;
+  }
+
+  solver_monitor.clear();
+}
+
 void my_p4est_poisson_jump_cells_xgfm_t::get_numbers_of_cells_involved_in_equation_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
                                                                                PetscInt& number_of_local_cells_involved, PetscInt& number_of_ghost_cells_involved) const
 {
@@ -288,7 +313,7 @@ const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_
 }
 
 linear_combination_of_dof_t my_p4est_poisson_jump_cells_xgfm_t::build_xgfm_jump_flux_correction_operator_at_point(const double* xyz, const double* normal,
-                                                                                                     const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const
+                                                                                                                  const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& flux_component) const
 {
   const p4est_quadrant_t quad           = get_quad(quad_idx,          p4est, ghost, true);
   const p4est_quadrant_t neighbor_quad  = get_quad(neighbor_quad_idx, p4est, ghost, true);

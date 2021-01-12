@@ -140,6 +140,8 @@ protected:
 
   void pointwise_operation_with_sqrt_of_diag(size_t num_vectors, ...) const;
 
+  virtual void clear_node_sampled_jumps();
+
 public:
   my_p4est_poisson_jump_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
   virtual ~my_p4est_poisson_jump_cells_t();
@@ -221,6 +223,14 @@ public:
   {
     dt_over_BDF_alpha = dt_over_BDF_alpha_;
     set_for_projection_steps = true;
+    clear_node_sampled_jumps();
+    user_rhs_minus = NULL;
+    user_rhs_plus = NULL;
+    user_initial_guess = NULL;
+    PetscErrorCode ierr;
+    ierr = delete_and_nullify_vector(solution); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(extrapolation_minus); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(extrapolation_plus); CHKERRXX(ierr);
   }
 
   inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
@@ -259,6 +269,19 @@ public:
   inline my_p4est_interface_manager_t* get_interface_manager()  const { return interface_manager;           }
   inline Vec get_extrapolated_solution_minus()                  const { return extrapolation_minus;         }
   inline Vec get_extrapolated_solution_plus()                   const { return extrapolation_plus;          }
+
+  inline Vec return_extrapolated_solution_minus()
+  {
+    Vec tmp = extrapolation_minus;
+    PetscErrorCode ierr = delete_and_nullify_vector(extrapolation_minus); CHKERRXX(ierr);
+    return tmp;
+  }
+  inline Vec return_extrapolated_solution_plus()
+  {
+    Vec tmp = extrapolation_plus;
+    PetscErrorCode ierr = delete_and_nullify_vector(extrapolation_plus); CHKERRXX(ierr);
+    return tmp;
+  }
 
   /*!
    * \brief project_face_velocities calculates the sharp flux components of the solution (at faces of the
