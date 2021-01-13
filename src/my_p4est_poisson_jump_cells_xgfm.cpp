@@ -27,6 +27,7 @@ my_p4est_poisson_jump_cells_xgfm_t::my_p4est_poisson_jump_cells_xgfm_t(const my_
   pseudo_time_step_increment_operator.resize(p4est->local_num_quadrants);
   extension_operators_are_stored_and_set = false;
   xgfm_jump_between_quads.clear();
+  jump_operators_for_viscous_terms_between_quads.clear();
   solver_monitor.clear();
   print_residuals_and_corrections_with_solve_info = false;
   scale_system_by_diagonals = false;
@@ -281,9 +282,32 @@ void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4e
 const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
 {
   couple_of_dofs quad_couple({quad_idx, neighbor_quad_idx});
-  map_of_scalar_field_xgfm_jumps_t::const_iterator it = xgfm_jump_between_quads.find(quad_couple);
+  map_of_scalar_field_xgfm_jumps_t::iterator it = xgfm_jump_between_quads.find(quad_couple);
   if(it != xgfm_jump_between_quads.end())
+  {
+    if(is_coupled_to_two_phase_flow() && set_for_projection_steps) // re-evaluates the jump conditions every time in that case
+    {
+      PetscErrorCode ierr;
+      const double *face_velocity_plus_km1_p[P4EST_DIM], *face_velocity_minus_km1_p[P4EST_DIM], *face_velocity_plus_p[P4EST_DIM], *face_velocity_minus_p[P4EST_DIM];
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecGetArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+      const differential_operators_on_face_sampled_field& viscous_term_operators = get_differential_operators_for_viscous_jump_terms(quad_idx, neighbor_quad_idx, oriented_dir);
+      it->second.jump_field = viscous_term_operators.jump_viscous_temps(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+                                                                        face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+      it->second.known_jump_flux_component = 0.0; // we don't even attempt to calculate the tangential derivtaive of the above
+    }
     return it->second;
+  }
 
   // not found in map --> build it and insert in map
   scalar_field_xgfm_jump to_insert_in_map;
@@ -292,7 +316,41 @@ const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_
   interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface_point);
   interface_manager->normal_vector_at_point(xyz_interface_point, normal);
 
-  to_insert_in_map.jump_field                 = (interp_jump_u != NULL            ? (*interp_jump_u)(xyz_interface_point) : 0.0);
+  double viscous_jump_terms = 0.0;
+  if(is_coupled_to_two_phase_flow())
+  {
+    PetscErrorCode ierr;
+    const double *face_velocity_plus_km1_p[P4EST_DIM], *face_velocity_minus_km1_p[P4EST_DIM], *face_velocity_plus_p[P4EST_DIM], *face_velocity_minus_p[P4EST_DIM];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+      face_velocity_plus_p[dim] = NULL; face_velocity_minus_p[dim] = NULL;
+      if(face_velocity_plus[dim] != NULL){
+        ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+      }
+      if(face_velocity_minus[dim] != NULL){
+        ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+    }
+
+    const differential_operators_on_face_sampled_field& viscous_term_operators = get_differential_operators_for_viscous_jump_terms(quad_idx, neighbor_quad_idx, oriented_dir);
+    viscous_jump_terms = viscous_term_operators.jump_viscous_temps(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+                                                                   face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+      face_velocity_plus_p[dim] = NULL; face_velocity_minus_p[dim] = NULL;
+      if(face_velocity_plus[dim] != NULL){
+        ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+      }
+      if(face_velocity_minus[dim] != NULL){
+        ierr = VecRestoreArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+    }
+  }
+
+  to_insert_in_map.jump_field                 = (interp_jump_u != NULL            ? (*interp_jump_u)(xyz_interface_point) : 0.0) + viscous_jump_terms;
   to_insert_in_map.known_jump_flux_component  = (interp_jump_normal_flux != NULL  ? (*interp_jump_normal_flux)(xyz_interface_point)*normal[oriented_dir/2] : 0.0);
   if(activate_xGFM)
   {
@@ -331,6 +389,57 @@ linear_combination_of_dof_t my_p4est_poisson_jump_cells_xgfm_t::build_xgfm_jump_
     xgfm_flux_correction.add_operator_on_same_dofs(lsqr_cell_grad_operator[dim], get_jump_in_mu()*((flux_component == dim ? 1.0 : 0.0) - normal[flux_component]*normal[dim]));
 
   return xgfm_flux_correction;
+}
+
+const differential_operators_on_face_sampled_field&
+my_p4est_poisson_jump_cells_xgfm_t::get_differential_operators_for_viscous_jump_terms(const p4est_locidx_t& quad_idx, const p4est_locidx_t& neighbor_quad_idx, const u_char& oriented_dir)
+{
+  couple_of_dofs quad_couple({quad_idx, neighbor_quad_idx});
+  map_of_face_operators_for_jumps_t::const_iterator it = jump_operators_for_viscous_terms_between_quads.find(quad_couple);
+  if(it != jump_operators_for_viscous_terms_between_quads.end())
+    return it->second;
+
+  // not found in map --> build it and insert in map
+  differential_operators_on_face_sampled_field to_insert_in_map;
+  double xyz_interface_point[P4EST_DIM];
+  double normal[P4EST_DIM];
+  interface_manager->get_coordinates_of_FD_interface_point_between_cells(quad_idx, neighbor_quad_idx, oriented_dir, xyz_interface_point);
+  interface_manager->normal_vector_at_point(xyz_interface_point, normal);
+  const my_p4est_faces_t* faces = interface_manager->get_faces();
+
+  set_of_neighboring_quadrants nb_quads;
+  p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = P4EST_ROOT_LEN;
+
+  p4est_quadrant_t qq;
+  p4est_topidx_t tree_idx = tree_index_of_quad(quad_idx, p4est, ghost);
+  qq = *fetch_quad(quad_idx, tree_idx, p4est, ghost);
+  qq.p.piggy3.which_tree = tree_idx; qq.p.piggy3.local_num = quad_idx;
+  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(qq, nb_quads));
+
+  p4est_topidx_t neighbor_tree_idx = tree_index_of_quad(neighbor_quad_idx, p4est, ghost);
+  qq = *fetch_quad(neighbor_quad_idx, tree_idx, p4est, ghost);
+  qq.p.piggy3.which_tree = neighbor_tree_idx; qq.p.piggy3.local_num = neighbor_quad_idx;
+  logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(qq, nb_quads));
+
+  const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
+  std::set<indexed_and_located_face> set_of_neighbor_faces[P4EST_DIM];
+  add_all_faces_to_sets_and_clear_set_of_quad(faces, set_of_neighbor_faces, nb_quads);
+  const bool grad_is_known[P4EST_DIM] = {DIM(false, false, false)};
+  linear_combination_of_dof_t gradient_of_face_sampled_field[P4EST_DIM][P4EST_DIM]; // we need the gradient of all vector components
+  for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+    get_lsqr_face_gradient_at_point(xyz_interface_point, faces, set_of_neighbor_faces[comp], scaling_distance, gradient_of_face_sampled_field[comp], NULL, grad_is_known);
+
+
+  for(u_char comp = 0; comp < P4EST_DIM; comp++)
+  {
+    to_insert_in_map.div_term[comp] = gradient_of_face_sampled_field[comp][comp]; // divergence == trace of gradient tensor;
+    for(u_char der = 0; der < P4EST_DIM; der++)
+      to_insert_in_map.n_dot_grad_dot_n_operator[comp].add_operator_on_same_dofs(gradient_of_face_sampled_field[comp][der], normal[comp]*normal[der]);
+  }
+
+  jump_operators_for_viscous_terms_between_quads.insert(std::pair<couple_of_dofs, differential_operators_on_face_sampled_field>(quad_couple, to_insert_in_map));
+
+  return jump_operators_for_viscous_terms_between_quads.at(quad_couple);
 }
 
 void my_p4est_poisson_jump_cells_xgfm_t::solve_for_sharp_solution(const KSPType& ksp_type, const PCType& pc_type)

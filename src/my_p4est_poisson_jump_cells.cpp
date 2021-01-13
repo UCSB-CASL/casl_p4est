@@ -17,6 +17,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
 
   mu_minus = mu_plus = -1.0;
   add_diag_minus = add_diag_plus = 0.0;
+  shear_viscosity_minus = shear_viscosity_plus = 0.0;
   user_rhs_minus = user_rhs_plus = NULL;
   face_velocity_minus_km1 = face_velocity_plus_km1 = NULL;
   dt_over_BDF_alpha = 0.0;

@@ -35,6 +35,10 @@ protected:
   Vec *face_velocity_minus_km1, *face_velocity_plus_km1; // required/used for jump in pressure guess AND for jump corrections in subsequent projection steps
   double dt_over_BDF_alpha;
   bool set_for_projection_steps;
+  inline bool is_coupled_to_two_phase_flow() const
+  {
+    return (fabs(shear_viscosity_minus) > 0.0) && (fabs(shear_viscosity_plus) > 0.0);
+  }
 
   // Petsc tolerance parameters
   PetscInt    max_ksp_iterations;
@@ -213,20 +217,27 @@ public:
 
   inline void set_rhs(Vec user_rhs_minus_, Vec user_rhs_plus_)
   {
-    P4EST_ASSERT(VecIsSetForCells(user_rhs_minus_, p4est, ghost, 1, false) && VecIsSetForCells(user_rhs_plus_, p4est, ghost, 1, false));
+    P4EST_ASSERT((user_rhs_minus_ == NULL && user_rhs_plus_ == NULL)
+                 || (VecIsSetForCells(user_rhs_minus_, p4est, ghost, 1, false) && VecIsSetForCells(user_rhs_plus_, p4est, ghost, 1, false)));
     user_rhs_minus  = user_rhs_minus_;
     user_rhs_plus   = user_rhs_plus_;
     rhs_is_set = false;
   }
 
+  inline void set_initial_guess(Vec user_initial_guess_)
+  {
+    user_initial_guess = user_initial_guess_;
+  }
+
+
   inline void set_for_subsequent_projection_steps(const double &dt_over_BDF_alpha_)
   {
+    P4EST_ASSERT(is_coupled_to_two_phase_flow());
     dt_over_BDF_alpha = dt_over_BDF_alpha_;
     set_for_projection_steps = true;
     clear_node_sampled_jumps();
-    user_rhs_minus = NULL;
-    user_rhs_plus = NULL;
-    user_initial_guess = NULL;
+    set_rhs(NULL, NULL);
+    set_initial_guess(NULL);
     PetscErrorCode ierr;
     ierr = delete_and_nullify_vector(solution); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(extrapolation_minus); CHKERRXX(ierr);
