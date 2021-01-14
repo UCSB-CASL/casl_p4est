@@ -17,6 +17,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     p4est_gloidx_t  solution_dependent_term_global_index;
     double          solution_dependent_term_weight;
     bool            using_fast_side;
+    size_t          local_corr_fun_idx;
   };
 
   // arbitrary-defined tag used to label the communications between processes related to correction function data
@@ -36,16 +37,31 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     }
   };
 
-
 #if __cplusplus >= 201103L
   typedef std::unordered_map<p4est_locidx_t, correction_function_t> map_of_correction_functions_t;
   typedef std::unordered_map<p4est_locidx_t, my_p4est_finite_volume_t> map_of_finite_volume_t;
+  typedef std::unordered_map<p4est_locidx_t, size_t> map_of_local_quad_to_corr_fun_t;
 #else
   typedef std::map<p4est_locidx_t, correction_function_t> map_of_correction_functions_t;
   typedef std::map<p4est_locidx_t, my_p4est_finite_volume_t> map_of_finite_volume_t;
+  typedef std::map<p4est_locidx_t, size_t> map_of_local_quad_to_corr_fun_t;
 #endif
 
-  map_of_correction_functions_t correction_function_for_quad; //
+  map_of_local_quad_to_corr_fun_t local_corr_fun_for_layer_quad;
+  map_of_local_quad_to_corr_fun_t local_corr_fun_for_inner_quad;
+  map_of_local_quad_to_corr_fun_t local_corr_fun_for_ghost_quad;
+  vector<int> offset_corr_fun_on_proc;
+  vector<PetscInt> global_idx_of_ghost_corr_fun;
+  inline PetscErrorCode VecCreateGhostCellCorrFun(Vec *vv) const
+  {
+    PetscErrorCode ierr;
+    ierr = VecCreateGhost(p4est->mpicomm, local_corr_fun_for_inner_quad.size() + local_corr_fun_for_layer_quad.size(),
+                          offset_corr_fun_on_proc[p4est->mpisize], global_idx_of_ghost_corr_fun.size(), global_idx_of_ghost_corr_fun.data(), vv); CHKERRQ(ierr);
+    return ierr;
+  }
+  Vec jump_terms_in_corr_fun;
+
+  map_of_correction_functions_t correction_function_for_quad;
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
   bool                          are_required_finite_volumes_and_correction_functions_known;
   double                        interface_relative_threshold;
@@ -55,7 +71,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
   void build_finite_volumes_and_correction_functions();
 
-  void build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx);
+  void build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, map_of_local_quad_to_corr_fun_t* map_quad_to_cf = NULL);
 
   bool is_point_in_slow_side(const char& sgn_point) const { return mus_are_equal() || ((mu_minus < mu_plus) == (sgn_point < 0)); }
 
@@ -82,7 +98,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
 public:
   my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
-  ~my_p4est_poisson_jump_cells_fv_t() {}; // no extra data allocated dynamically
+  ~my_p4est_poisson_jump_cells_fv_t();
 
   void solve_for_sharp_solution(const KSPType &ksp = KSPBCGS, const PCType& pc = PCHYPRE);
 

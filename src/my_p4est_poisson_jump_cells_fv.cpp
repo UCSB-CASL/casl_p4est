@@ -26,6 +26,18 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
   pin_normal_derivative_for_correction_functions = false;
   scale_system_by_diagonals = true;
+
+  local_corr_fun_for_layer_quad.clear();
+  local_corr_fun_for_inner_quad.clear();
+  local_corr_fun_for_ghost_quad.clear();
+  offset_corr_fun_on_proc.assign(p4est->mpisize + 1, 0);
+  global_idx_of_ghost_corr_fun.clear();
+  jump_terms_in_corr_fun = NULL;
+}
+
+my_p4est_poisson_jump_cells_fv_t::~my_p4est_poisson_jump_cells_fv_t()
+{
+  PetscErrorCode ierr = delete_and_nullify_vector(jump_terms_in_corr_fun); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_cells_fv_t::clear_node_sampled_jumps()
@@ -70,7 +82,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
 #endif
 
     if(is_quad_double_valued)
-      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
+      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_layer_quad);
 
     // figure out if required by another process and or if this process expects communications from another one
     std::set<int> ranks_to_communicate_correction_function_with; ranks_to_communicate_correction_function_with.clear();
@@ -123,6 +135,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
         }
         data_to_send.using_fast_side = correction_function.not_reliable_for_extrapolation; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+        data_to_send.local_corr_fun_idx = local_corr_fun_for_layer_quad[quad_idx]; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
       }
     }
   }
@@ -148,14 +161,21 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
       if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
         throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
 #endif
-      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx);
+      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_inner_quad);
     }
   }
+  P4EST_ASSERT(local_corr_fun_for_inner_quad.size() + local_corr_fun_for_layer_quad.size() == correction_function_for_quad.size()); // make sure we didn't miss one in there
+  // get global offsets per processor for correction functions
+  int n_corr_fun = correction_function_for_quad.size();
+  mpiret = MPI_Allgather(&n_corr_fun, 1, MPI_INT, (void *) (&offset_corr_fun_on_proc[1]), 1, MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret); // offet of 1, this is normal!
+  for(int r = 1; r < p4est->mpisize + 1; r++)
+    offset_corr_fun_on_proc[r] += offset_corr_fun_on_proc[r - 1];
 
   // Receive (blocking) the serialized (global) correction functions from the relevant neighbors
   // 1) deserialize the message;
   // 2) make the correction functions local (global -> local indices)
   // 3) insert in map
+
   while (ranks_to_receive_correction_functions_from.size() > 0) {
     int is_msg_pending;
     MPI_Status status;
@@ -187,8 +207,12 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
           correction_function_for_ghost_quad.solution_dependent_terms.add_term(local_idx_of_term, weight_for_term);
         }
         correction_function_for_ghost_quad.not_reliable_for_extrapolation = received_serialized_global_correction_functions[running_idx++].using_fast_side;
+
+        global_idx_of_ghost_corr_fun.push_back(received_serialized_global_correction_functions[running_idx++].local_corr_fun_idx + offset_corr_fun_on_proc[status.MPI_SOURCE]);
+        local_corr_fun_for_ghost_quad.insert(std::pair<p4est_locidx_t, size_t>(local_quad_idx, correction_function_for_quad.size()));
         correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(local_quad_idx, correction_function_for_ghost_quad));
       }
+      P4EST_ASSERT(global_idx_of_ghost_corr_fun.size() == local_corr_fun_for_ghost_quad.size()); // make sure we didn't miss one
       // remove the source from the set of expected messengers
       ranks_to_receive_correction_functions_from.erase(status.MPI_SOURCE);
     }
@@ -200,7 +224,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
   are_required_finite_volumes_and_correction_functions_known = true;
 }
 
-void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx)
+void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, map_of_local_quad_to_corr_fun_t* map_quad_to_cf)
 {
   if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() &&
      finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end())
@@ -315,6 +339,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       correction_function_to_build.solution_dependent_terms.add_term((*one_sided_normal_derivative_at_projected_point)[k].dof_idx,
                                                                      -scaling_factor*(signed_distance*get_jump_in_mu()/mu_across_normal_derivative)*(*one_sided_normal_derivative_at_projected_point)[k].weight);
 
+  if(map_quad_to_cf != NULL)
+    map_quad_to_cf->insert(std::pair<p4est_locidx_t, size_t>(quad_idx, correction_function_for_quad.size()));
   correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(quad_idx, correction_function_to_build));
 
   if(one_sided_normal_derivative_at_projected_point != NULL)
