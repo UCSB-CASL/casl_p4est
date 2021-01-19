@@ -22,7 +22,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   finite_volume_data_for_quad.clear();
   are_required_finite_volumes_and_correction_functions_known = false;
   interface_relative_threshold = +1.0e-11;
-  threshold_volume_ratio_for_extrapolation = 1.1; // larger than 1 to invalide the use of any correction for extrapolation purposes
+  threshold_volume_ratio_for_extrapolation = 0.01;
   reference_face_area = pow(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2]), P4EST_DIM - 1);
   pin_normal_derivative_for_correction_functions = false;
   scale_system_by_diagonals = true;

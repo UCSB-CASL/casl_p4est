@@ -39,6 +39,7 @@ const interpolation_method default_interp_method_phi = linear;
 const bool default_use_second_order_theta = false;
 //const bool default_use_second_order_theta = true;
 const bool default_quad_pinning     = false;
+const double default_FV_ratio       = 0.01;
 const bool default_get_integral     = false;
 const bool default_print_summary    = false;
 const bool default_subrefinement    = true;
@@ -160,18 +161,15 @@ struct convergence_analyzer_for_jump_cell_solver_t {
       if(cell_sampled_extrapolation_error_minus_p != NULL && cell_sampled_extrapolation_error_plus_p != NULL)
       {
         cell_sampled_extrapolation_error_minus_p[q_idx] = cell_sampled_extrapolation_error_plus_p[q_idx] = 0.0;
-        if(fabs(phi_quad) < band)
+        if(phi_quad >= -band)
         {
-          if(phi_quad <= 0.0)
-          {
-            cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
-            err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
-          }
-          else
-          {
-            cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
-            err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
-          }
+          cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+          err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
+        }
+        if(phi_quad <= band)
+        {
+          cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+          err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
         }
       }
     }
@@ -195,18 +193,15 @@ struct convergence_analyzer_for_jump_cell_solver_t {
       if(cell_sampled_extrapolation_error_minus_p != NULL && cell_sampled_extrapolation_error_plus_p != NULL)
       {
         cell_sampled_extrapolation_error_minus_p[q_idx] = cell_sampled_extrapolation_error_plus_p[q_idx] = 0.0;
-        if(fabs(phi_quad) < band)
+        if(phi_quad >= -band)
         {
-          if(phi_quad <= 0.0)
-          {
-            cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
-            err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
-          }
-          else
-          {
-            cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
-            err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
-          }
+          cell_sampled_extrapolation_error_plus_p[q_idx] = fabs(extrapolated_solution_plus_p[q_idx] - test_problem->solution_plus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+          err_extrapolation_plus = MAX(err_extrapolation_plus, cell_sampled_extrapolation_error_plus_p[q_idx]);
+        }
+        if(phi_quad <= band)
+        {
+          cell_sampled_extrapolation_error_minus_p[q_idx] = fabs(extrapolated_solution_minus_p[q_idx] - test_problem->solution_minus(DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+          err_extrapolation_minus = MAX(err_extrapolation_minus, cell_sampled_extrapolation_error_minus_p[q_idx]);
         }
       }
     }
@@ -864,6 +859,9 @@ int main (int argc, char* argv[])
   cmd.add_option("solver",          "solver(s) to be tested, possible choices are 'GFM', 'xGFM', 'FV' or any combination thereof (separated with comma(s), and no space characters) [default is all of them].");
   cmd.add_option("extrapolate",     "flag activating the extrapolation of the sharp solution from either side to the other. Default is " + string(default_extrapolation ? "with" : "without") + " extrapolation.");
   cmd.add_option("quad_pinning",    "activates the use of quad-center pinning for the least-square normal derivative to construct in the FV solver if set to true or 1. Default is " + string(default_quad_pinning ? "with" : "without") + " pinning.");
+  oss.str("");
+  oss << default_FV_ratio;
+  cmd.add_option("FV_ratio",        "threshold value on volume ratio to tag correction functions as valid in FV solver (valid if using slow side and if volume across > threshold*cell volume). Default is " + oss.str() + " .");
   cmd.add_option("diag_scaling",    "activates the (symmetric) scaling of the linear system(s) of interest by their diagonal if set to true or 1, deactivates it if set to false or 0.\n\t\t The default behavior (if disregarded) is without scaling for (x)GFM solver(s) and with scaling for FV solver.");
   oss.str("");
   oss << default_interp_method_phi;
@@ -991,6 +989,7 @@ int main (int argc, char* argv[])
       {
         my_p4est_poisson_jump_cells_fv_t *solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes);
         solver->set_pinning_for_normal_derivatives_in_correction_functions(pin_normal_derivatives);
+        solver->set_threshold_volume_ratio(cmd.get("FV_ratio", default_FV_ratio));
         solver_analyses[k].jump_cell_solver = solver;
       }
         break;

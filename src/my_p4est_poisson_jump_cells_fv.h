@@ -162,7 +162,7 @@ public:
    * \brief set_threshold_volume_ratio_for_extrapolation sets a new threshold for the ratio of volumes in cut cells
    * that invalidates the use of correction function when determining extrapolated values from one side of the
    * interface to the other.
-   * The correction function is used to determine the extrapolated value from the other side  in cells that are cut
+   * The correction function is used to determine the extrapolated value from the other side in cells that are cut
    * by the interface if and only if
    *
    * 1) the correction function actually uses the "slow side" to evaluate the normal derivative at the
@@ -170,11 +170,21 @@ public:
    *
    * 2) the volume that lies across the interafce in the cut is larger
    *                   threshold_volume_ratio_for_extrapolation*(full volume of the cell)
-   *
-   * The default value for threshold_volume_ratio_for_extrapolation is 1.1 (note that a value larger than or equal
-   * to 1 technically invalidates ALL use of correction functions for extrapolation purposes: only inner cell values
-   * are used).
    * \param desired_threshold_volume_ratio [in] new value to be set for threshold_volume_ratio.
+   *
+   * The default value for threshold_volume_ratio_for_extrapolation is 0.01: this value value was found to be good
+   * enough for stable two-phase flow simulations (in the very first early stable runs). If such a criterion was
+   * disregarded (i.e., if threshold_volume_ratio_for_extrapolation <-- 0.00), the error associated with
+   * correction-function-defined ghost value was found to spike in cells crossed by tiny volumes across the interface,
+   * therefore creating large gradient errors and inappropriately large velocity values leading to unstable runs.
+   * Note that a value larger than or equal to 1.0 would invalidate the use of ANY correction functions for
+   * extrapolation purposes: only inner cell values would be used. While this probably sounds like the "safest" approach,
+   * error analyses for sharp flux components revealed that
+   * 1) their rate of convergence was more erratic;
+   * 2) the error could be the one order of magnitude larger close to the interface;
+   * if disabling the use of ANY correction function.
+   * (In conclusion, this control parameter is probably worth a much more thorough analysis in order to be defined in a
+   * less arbitrary fashion, but this was deemed "not important" by authorities and instructions to move on were given)
    */
   inline void set_threshold_volume_ratio(const double& desired_threshold_volume_ratio) { P4EST_ASSERT(desired_threshold_volume_ratio >= 0.0); threshold_volume_ratio_for_extrapolation = desired_threshold_volume_ratio; }
 
