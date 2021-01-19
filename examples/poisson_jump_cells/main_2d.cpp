@@ -91,6 +91,7 @@ struct convergence_analyzer_for_jump_cell_solver_t {
   std::vector<double> errors_in_extrapolated_solution_minus;
   std::vector<double> errors_in_extrapolated_solution_plus;
   Vec cell_sampled_error, cell_sampled_extrapolation_error_minus, cell_sampled_extrapolation_error_plus;
+  Vec cell_sampled_sharp_flux_error;
 
   void delete_and_nullify_cell_sampled_errors_if_needed()
   {
@@ -98,10 +99,11 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     ierr = delete_and_nullify_vector(cell_sampled_error); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_minus); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(cell_sampled_sharp_flux_error); CHKERRXX(ierr);
   }
 
   convergence_analyzer_for_jump_cell_solver_t(const jump_solver_tag& tag_) : total_solve_time(0.0), tag(tag_), cell_sampled_error(NULL),
-    cell_sampled_extrapolation_error_minus(NULL), cell_sampled_extrapolation_error_plus(NULL) { }
+    cell_sampled_extrapolation_error_minus(NULL), cell_sampled_extrapolation_error_plus(NULL), cell_sampled_sharp_flux_error(NULL) { }
 
   void add_solve_time(const double& exec_time) { total_solve_time += exec_time; }
 
@@ -137,13 +139,15 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_error); CHKERRXX(ierr);
     double *cell_sampled_error_p;
     ierr = VecGetArray(cell_sampled_error, &cell_sampled_error_p); CHKERRXX(ierr);
-    double *cell_sampled_extrapolation_error_minus_p = NULL, *cell_sampled_extrapolation_error_plus_p = NULL;
+    double *cell_sampled_extrapolation_error_minus_p = NULL, *cell_sampled_extrapolation_error_plus_p = NULL, *cell_sampled_sharp_flux_error_p = NULL;
     if(jump_cell_solver->get_extrapolated_solution_minus() != NULL && jump_cell_solver->get_extrapolated_solution_plus() != NULL)
     {
       ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_extrapolation_error_minus); CHKERRXX(ierr);
       ierr = VecCreateGhostCells(p4est, ghost, &cell_sampled_extrapolation_error_plus); CHKERRXX(ierr);
+      ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &cell_sampled_sharp_flux_error); CHKERRXX(ierr);
       ierr = VecGetArray(cell_sampled_extrapolation_error_minus, &cell_sampled_extrapolation_error_minus_p); CHKERRXX(ierr);
       ierr = VecGetArray(cell_sampled_extrapolation_error_plus, &cell_sampled_extrapolation_error_plus_p); CHKERRXX(ierr);
+      ierr = VecGetArray(cell_sampled_sharp_flux_error, &cell_sampled_sharp_flux_error_p); CHKERRXX(ierr);
     }
 
     double err_n = 0.0, err_extrapolation_minus = 0.0, err_extrapolation_plus = 0.0;
@@ -235,6 +239,57 @@ struct convergence_analyzer_for_jump_cell_solver_t {
       }
     }
 
+    for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; tree_idx++){
+      const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      for(size_t q = 0; q < tree->quadrants.elem_count; q++)
+      {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+
+        for(u_char dim = 0; dim < P4EST_DIM; dim++)
+        {
+          cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] = 0.0;
+          set_of_neighboring_quadrants ngbd_cells;
+          jump_cell_solver->get_cell_ngbd()->find_neighbor_cells_of_cell(ngbd_cells, quad_idx, tree_idx, 2*dim);
+          if(ngbd_cells.size() > 1)
+          {
+            for(set_of_neighboring_quadrants::const_iterator it = ngbd_cells.begin(); it != ngbd_cells.end(); it++)
+            {
+              p4est_locidx_t face_idx = faces->q2f(it->p.piggy3.local_num, 2*dim + 1);
+              double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
+              const double phi_face = interface_manager->phi_at_point(xyz_face);
+              if(phi_face > 0.0)
+              {
+                const double mu_ = test_problem->get_mu_plus();
+                cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+              }
+              else
+              {
+                const double mu_ = test_problem->get_mu_minus();
+                cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+              }
+            }
+            cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] /= ngbd_cells.size();
+          }
+          else
+          {
+            p4est_locidx_t face_idx = faces->q2f(quad_idx, 2*dim);
+            double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
+            const double phi_face = interface_manager->phi_at_point(xyz_face);
+            if(phi_face > 0.0)
+            {
+              const double mu_ = test_problem->get_mu_plus();
+              cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+            }
+            else
+            {
+              const double mu_ = test_problem->get_mu_minus();
+              cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+            }
+          }
+        }
+      }
+    }
+
 
     if(jump_cell_solver->get_extrapolated_solution_plus() != NULL){
       ierr = VecRestoreArrayRead(jump_cell_solver->get_extrapolated_solution_plus(), &extrapolated_solution_plus_p); CHKERRXX(ierr); }
@@ -252,6 +307,9 @@ struct convergence_analyzer_for_jump_cell_solver_t {
     {
       ierr = VecRestoreArray(cell_sampled_extrapolation_error_minus, &cell_sampled_extrapolation_error_minus_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(cell_sampled_extrapolation_error_plus, &cell_sampled_extrapolation_error_plus_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(cell_sampled_sharp_flux_error, &cell_sampled_sharp_flux_error_p); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(cell_sampled_sharp_flux_error, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(cell_sampled_sharp_flux_error, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     }
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -422,6 +480,7 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   std::vector<Vec_for_vtk_export_t> comp_node_scalar_fields;
   std::vector<Vec_for_vtk_export_t> comp_node_vector_fields;
   std::vector<Vec_for_vtk_export_t> comp_cell_scalar_fields;
+  std::vector<Vec_for_vtk_export_t> comp_cell_vector_fields;
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_scalar_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_vector_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_vector_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_cell_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_cell_scalar_fields);
@@ -454,6 +513,7 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
     }
+    comp_cell_vector_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_sharp_flux_error, "error_sharp_flux" + name_extension));
   }
   // on interface-capturing grid nodes
   interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump(), "jump"));
@@ -463,7 +523,7 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(interface_manager->get_phi(), "phi"));
 
   my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, oss_computational.str().c_str(),
-                                       &comp_node_scalar_fields, &comp_node_vector_fields, &comp_cell_scalar_fields, NULL);
+                                       &comp_node_scalar_fields, &comp_node_vector_fields, &comp_cell_scalar_fields, &comp_cell_vector_fields);
 
   if(interface_manager->subcell_resolution() > 0)
   {
