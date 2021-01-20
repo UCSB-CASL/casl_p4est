@@ -10,11 +10,11 @@
 // struct of differential operators for capturing appropriate
 // viscous terms in jump of normal stress in two-phase flows
 struct differential_operators_on_face_sampled_field {
-  double scaling;
+  double FV_corr_function_scaling_for_jump_dependent_terms;
   linear_combination_of_dof_t n_dot_grad_dot_n_operator[P4EST_DIM];
   linear_combination_of_dof_t div_term[P4EST_DIM];
 
-  differential_operators_on_face_sampled_field() : scaling(1.0) {}
+  differential_operators_on_face_sampled_field() : FV_corr_function_scaling_for_jump_dependent_terms(1.0) {}
 
   inline double n_dot_grad_dot_n(const double *face_sampled_field_p[P4EST_DIM]) const
   {
@@ -28,22 +28,6 @@ struct differential_operators_on_face_sampled_field {
     return (ANDD(face_sampled_field_p[0] != NULL, face_sampled_field_p[1] != NULL, face_sampled_field_p[2] != NULL) ?
         SUMD(div_term[0](face_sampled_field_p[0]), div_term[1](face_sampled_field_p[1]), div_term[2](face_sampled_field_p[2]))
         : 0.0);
-  }
-
-
-  inline double jump_viscous_terms(const bool for_projection_steps,
-                                   const double& dt_over_alpha, const double& shear_viscosity_plus, const double& shear_viscosity_minus,
-                                   const double *face_velocity_plus_km1_p[P4EST_DIM], const double *face_velocity_minus_km1_p[P4EST_DIM],
-                                   const double *face_velocity_plus_k_p[P4EST_DIM], const double *face_velocity_minus_k_p[P4EST_DIM]) const
-  {
-    if(!for_projection_steps)
-      return scaling*(shear_viscosity_plus*n_dot_grad_dot_n(face_velocity_plus_km1_p) - shear_viscosity_minus*n_dot_grad_dot_n(face_velocity_minus_km1_p));
-    else
-    {
-      double ans  = dt_over_alpha*shear_viscosity_plus  *(n_dot_grad_dot_n(face_velocity_plus_k_p)  - n_dot_grad_dot_n(face_velocity_plus_km1_p)  + divergence(face_velocity_plus_k_p));
-      ans        -= dt_over_alpha*shear_viscosity_minus *(n_dot_grad_dot_n(face_velocity_minus_k_p) - n_dot_grad_dot_n(face_velocity_minus_km1_p) + divergence(face_velocity_minus_k_p));
-      return scaling*ans;
-    }
   }
 };
 
