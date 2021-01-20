@@ -61,7 +61,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
                           offset_corr_fun_on_proc[p4est->mpisize], global_idx_of_ghost_corr_fun.size(), global_idx_of_ghost_corr_fun.data(), vv); CHKERRQ(ierr);
     return ierr;
   }
-  Vec jump_terms_in_corr_fun;
+  Vec jump_dependent_terms_in_corr_fun;
 
   map_of_correction_functions_t correction_function_for_quad;
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
@@ -98,6 +98,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
                                   const double* normal_derivative_of_solution_minus_p, const double* normal_derivative_of_solution_plus_p);
 
   void clear_node_sampled_jumps();
+  void update_jump_terms_for_projection();
 
 public:
   my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);

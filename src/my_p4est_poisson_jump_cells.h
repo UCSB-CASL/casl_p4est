@@ -185,6 +185,7 @@ protected:
   void pointwise_operation_with_sqrt_of_diag(size_t num_vectors, ...) const;
 
   virtual void clear_node_sampled_jumps();
+  virtual void update_jump_terms_for_projection() = 0;
 
 public:
   my_p4est_poisson_jump_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
@@ -236,14 +237,6 @@ public:
     P4EST_ASSERT(shear_viscosity_minus > 0.0 && shear_viscosity_plus_ > 0.0); // must be both strictly positive
   }
 
-  inline void set_face_velocities_km1(Vec *face_velocity_minus_km1_, Vec *face_velocity_plus_km1_)
-  {
-    P4EST_ASSERT(!interface_is_set() ||
-                 (VecsAreSetForFaces(face_velocity_minus_km1_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_km1_, interface_manager->get_faces(), 1)));
-    face_velocity_minus_km1 = face_velocity_minus_km1_;
-    face_velocity_plus_km1  = face_velocity_plus_km1_;
-  }
-
   inline void set_diagonals(const double& add_diag_minus_, const double& add_diag_plus_)
   {
     const bool diags_unchanged = (fabs(add_diag_minus_ - add_diag_minus) < EPS*MAX(add_diag_minus_, add_diag_minus) && fabs(add_diag_plus_ - add_diag_plus) < EPS*MAX(add_diag_plus_, add_diag_plus));
@@ -275,6 +268,7 @@ public:
     P4EST_ASSERT(is_coupled_to_two_phase_flow());
     dt_over_BDF_alpha = dt_over_BDF_alpha_;
     set_for_projection_steps = true;
+    add_diag_minus = add_diag_plus = 0.0;
     clear_node_sampled_jumps();
     set_rhs(NULL, NULL);
     set_initial_guess(NULL);
@@ -284,13 +278,25 @@ public:
     ierr = delete_and_nullify_vector(extrapolation_plus); CHKERRXX(ierr);
   }
 
+  inline void set_face_velocities_km1(Vec *face_velocity_minus_km1_, Vec *face_velocity_plus_km1_)
+  {
+    P4EST_ASSERT(!interface_is_set() ||
+                 (VecsAreSetForFaces(face_velocity_minus_km1_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_km1_, interface_manager->get_faces(), 1)));
+    face_velocity_minus_km1 = face_velocity_minus_km1_;
+    face_velocity_plus_km1  = face_velocity_plus_km1_;
+  }
+
   inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
   {
-    P4EST_ASSERT(!interface_is_set() || (VecsAreSetForFaces(face_velocity_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_, interface_manager->get_faces(), 1)));
+    P4EST_ASSERT(!interface_is_set() ||
+                 (VecsAreSetForFaces(face_velocity_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_, interface_manager->get_faces(), 1)));
     face_velocity_minus = face_velocity_minus_;
     face_velocity_plus  = face_velocity_plus_;
     interp_jump_normal_velocity = interp_jump_normal_velocity_;
-    rhs_is_set = false;
+    if(is_coupled_to_two_phase_flow() && set_for_projection_steps)
+      update_jump_terms_for_projection();
+
+    rhs_is_set = false; // but the matrix is fine...
   }
 
   virtual void solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type) = 0;

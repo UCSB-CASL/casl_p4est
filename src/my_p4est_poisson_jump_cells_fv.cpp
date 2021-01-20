@@ -33,12 +33,12 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   local_corr_fun_for_ghost_quad.clear();
   offset_corr_fun_on_proc.assign(p4est->mpisize + 1, 0);
   global_idx_of_ghost_corr_fun.clear();
-  jump_terms_in_corr_fun = NULL;
+  jump_dependent_terms_in_corr_fun = NULL;
 }
 
 my_p4est_poisson_jump_cells_fv_t::~my_p4est_poisson_jump_cells_fv_t()
 {
-  PetscErrorCode ierr = delete_and_nullify_vector(jump_terms_in_corr_fun); CHKERRXX(ierr);
+  PetscErrorCode ierr = delete_and_nullify_vector(jump_dependent_terms_in_corr_fun); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_cells_fv_t::clear_node_sampled_jumps()
@@ -49,7 +49,82 @@ void my_p4est_poisson_jump_cells_fv_t::clear_node_sampled_jumps()
   for(map_of_correction_functions_t::iterator it = correction_function_for_quad.begin();
       it != correction_function_for_quad.end(); it++)
     it->second.jump_dependent_terms = 0.0;
+}
 
+void my_p4est_poisson_jump_cells_fv_t::update_jump_terms_for_projection()
+{
+  PetscErrorCode ierr;
+  P4EST_ASSERT(set_for_projection_steps);
+  if(jump_dependent_terms_in_corr_fun == NULL)
+  {
+    ierr = VecCreateGhostCellCorrFun(&jump_dependent_terms_in_corr_fun); CHKERRXX(ierr);
+  }
+  double *jump_dependent_terms_in_corr_fun_p;
+  ierr = VecGetArray(jump_dependent_terms_in_corr_fun, &jump_dependent_terms_in_corr_fun_p); CHKERRXX(ierr);
+
+  const double *face_velocity_plus_km1_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};  P4EST_ASSERT(face_velocity_plus_km1 == NULL   || (ANDD(face_velocity_plus_km1[0]  != NULL,  face_velocity_plus_km1[1]  != NULL, face_velocity_plus_km1[2]  != NULL)));
+  const double *face_velocity_minus_km1_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)}; P4EST_ASSERT(face_velocity_minus_km1 == NULL  || (ANDD(face_velocity_minus_km1[0] != NULL,  face_velocity_minus_km1[1] != NULL, face_velocity_minus_km1[2] != NULL)));
+  const double *face_velocity_plus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};      P4EST_ASSERT(face_velocity_plus == NULL       || (ANDD(face_velocity_plus[0] != NULL,       face_velocity_plus[1] != NULL,      face_velocity_plus[2] != NULL     )));
+  const double *face_velocity_minus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};     P4EST_ASSERT(face_velocity_minus == NULL      || (ANDD(face_velocity_minus[0] != NULL,      face_velocity_minus[1] != NULL,     face_velocity_minus[2] != NULL    )));
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    if(face_velocity_plus_km1 != NULL){
+      ierr = VecGetArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_minus_km1 != NULL){
+      ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_plus != NULL){
+      ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_minus != NULL){
+      ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  for(map_of_local_quad_to_corr_fun_t::const_iterator it = local_corr_fun_for_layer_quad.begin();
+      it != local_corr_fun_for_layer_quad.end(); it++)
+  {
+    const differential_operators_on_face_sampled_field& viscous_jump_operators = jump_operators_for_viscous_terms_on_quad.at(it->first);
+    const double new_jump = viscous_jump_operators.jump_viscous_terms(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+                                                                      face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
+    jump_dependent_terms_in_corr_fun_p[it->second] = new_jump;
+    correction_function_for_quad[it->first].jump_dependent_terms = new_jump;
+  }
+  ierr = VecGhostUpdateBegin(jump_dependent_terms_in_corr_fun, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(map_of_local_quad_to_corr_fun_t::const_iterator it = local_corr_fun_for_inner_quad.begin();
+      it != local_corr_fun_for_inner_quad.end(); it++)
+  {
+    const differential_operators_on_face_sampled_field& viscous_jump_operators = jump_operators_for_viscous_terms_on_quad.at(it->first);
+    const double new_jump = viscous_jump_operators.jump_viscous_terms(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+                                                                      face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
+    jump_dependent_terms_in_corr_fun_p[it->second] = new_jump;
+    correction_function_for_quad[it->first].jump_dependent_terms = new_jump;
+  }
+  ierr = VecGhostUpdateEnd(jump_dependent_terms_in_corr_fun, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    if(face_velocity_plus_km1 != NULL){
+      ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_minus_km1 != NULL){
+      ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_plus != NULL){
+      ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+    }
+    if(face_velocity_minus != NULL){
+      ierr = VecRestoreArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  // now that ghost values have been synchronized, update the jump terms in correction functions associated with ghost cells as well:
+  for(map_of_local_quad_to_corr_fun_t::const_iterator it = local_corr_fun_for_ghost_quad.begin();
+      it != local_corr_fun_for_ghost_quad.end(); it++)
+    correction_function_for_quad[it->first].jump_dependent_terms = jump_dependent_terms_in_corr_fun_p[it->second];
+
+  ierr = VecRestoreArray(jump_dependent_terms_in_corr_fun, &jump_dependent_terms_in_corr_fun_p); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions()
