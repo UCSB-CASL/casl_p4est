@@ -296,7 +296,7 @@ const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_
         ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
       }
       const differential_operators_on_face_sampled_field& viscous_term_operators = get_differential_operators_for_viscous_jump_terms(quad_idx, neighbor_quad_idx, oriented_dir);
-      it->second.jump_field = viscous_term_operators.jump_viscous_temps(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+      it->second.jump_field = viscous_term_operators.jump_viscous_terms(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
                                                                         face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
@@ -320,11 +320,12 @@ const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_
   if(is_coupled_to_two_phase_flow())
   {
     PetscErrorCode ierr;
-    const double *face_velocity_plus_km1_p[P4EST_DIM], *face_velocity_minus_km1_p[P4EST_DIM], *face_velocity_plus_p[P4EST_DIM], *face_velocity_minus_p[P4EST_DIM];
+    const double *face_velocity_plus_km1_p[P4EST_DIM], *face_velocity_minus_km1_p[P4EST_DIM];
+    const double *face_velocity_plus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+    const double *face_velocity_minus_p[P4EST_DIM]= {DIM(NULL, NULL, NULL)};
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecGetArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
       ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
-      face_velocity_plus_p[dim] = NULL; face_velocity_minus_p[dim] = NULL;
       if(face_velocity_plus[dim] != NULL){
         ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
       }
@@ -334,13 +335,12 @@ const scalar_field_xgfm_jump& my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_
     }
 
     const differential_operators_on_face_sampled_field& viscous_term_operators = get_differential_operators_for_viscous_jump_terms(quad_idx, neighbor_quad_idx, oriented_dir);
-    viscous_jump_terms = viscous_term_operators.jump_viscous_temps(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+    viscous_jump_terms = viscous_term_operators.jump_viscous_terms(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
                                                                    face_velocity_plus_km1_p, face_velocity_minus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
-      face_velocity_plus_p[dim] = NULL; face_velocity_minus_p[dim] = NULL;
       if(face_velocity_plus[dim] != NULL){
         ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
       }

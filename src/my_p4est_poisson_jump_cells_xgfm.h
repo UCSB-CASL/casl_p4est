@@ -14,41 +14,6 @@ typedef struct {
   inline double jump_flux_component(const double* extension_p = NULL) const { return known_jump_flux_component + (extension_p != NULL  ? xgfm_jump_flux_component_correction(extension_p) : 0.0); }
 } scalar_field_xgfm_jump;
 
-typedef struct {
-  linear_combination_of_dof_t n_dot_grad_dot_n_operator[P4EST_DIM];
-  linear_combination_of_dof_t div_term[P4EST_DIM];
-
-  inline double n_dot_grad_dot_n(const double *face_sampled_field_p[P4EST_DIM]) const
-  {
-    return (ANDD(face_sampled_field_p[0] != NULL, face_sampled_field_p[1] != NULL, face_sampled_field_p[2] != NULL) ?
-        SUMD(n_dot_grad_dot_n_operator[0](face_sampled_field_p[0]), n_dot_grad_dot_n_operator[1](face_sampled_field_p[1]), n_dot_grad_dot_n_operator[2](face_sampled_field_p[2]))
-        : 0.0);
-  }
-
-  inline double divergence(const double *face_sampled_field_p[P4EST_DIM]) const
-  {
-    return (ANDD(face_sampled_field_p[0] != NULL, face_sampled_field_p[1] != NULL, face_sampled_field_p[2] != NULL) ?
-        SUMD(div_term[0](face_sampled_field_p[0]), div_term[1](face_sampled_field_p[1]), div_term[2](face_sampled_field_p[2]))
-        : 0.0);
-  }
-
-
-  inline double jump_viscous_temps(const bool for_projection_steps,
-                                   const double& dt_over_alpha, const double& shear_viscosity_plus, const double& shear_viscosity_minus,
-                                   const double *face_velocity_plus_km1_p[P4EST_DIM], const double *face_velocity_minus_km1_p[P4EST_DIM],
-                                   const double *face_velocity_plus_k_p[P4EST_DIM], const double *face_velocity_minus_k_p[P4EST_DIM]) const
-  {
-    if(!for_projection_steps)
-      return (shear_viscosity_plus*n_dot_grad_dot_n(face_velocity_plus_km1_p) - shear_viscosity_minus*n_dot_grad_dot_n(face_velocity_minus_km1_p));
-    else
-    {
-      double ans  = dt_over_alpha*shear_viscosity_plus  *(n_dot_grad_dot_n(face_velocity_plus_k_p)  - n_dot_grad_dot_n(face_velocity_plus_km1_p)  + divergence(face_velocity_plus_k_p));
-      ans        -= dt_over_alpha*shear_viscosity_minus *(n_dot_grad_dot_n(face_velocity_minus_k_p) - n_dot_grad_dot_n(face_velocity_minus_km1_p) + divergence(face_velocity_minus_k_p));
-      return ans;
-    }
-  }
-} differential_operators_on_face_sampled_field;
-
 #if __cplusplus >= 201103L
 typedef std::unordered_map<couple_of_dofs, scalar_field_xgfm_jump, hash_functor> map_of_scalar_field_xgfm_jumps_t;
 typedef std::unordered_map<couple_of_dofs, differential_operators_on_face_sampled_field, hash_functor> map_of_face_operators_for_jumps_t;
