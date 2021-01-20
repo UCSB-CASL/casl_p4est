@@ -40,10 +40,12 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 #if __cplusplus >= 201103L
   typedef std::unordered_map<p4est_locidx_t, correction_function_t> map_of_correction_functions_t;
   typedef std::unordered_map<p4est_locidx_t, my_p4est_finite_volume_t> map_of_finite_volume_t;
+  typedef std::unordered_map<p4est_locidx_t, differential_operators_on_face_sampled_field> map_of_jump_operators_for_viscous_terms_t;
   typedef std::unordered_map<p4est_locidx_t, size_t> map_of_local_quad_to_corr_fun_t;
 #else
   typedef std::map<p4est_locidx_t, correction_function_t> map_of_correction_functions_t;
   typedef std::map<p4est_locidx_t, my_p4est_finite_volume_t> map_of_finite_volume_t;
+  typedef std::map<p4est_locidx_t, differential_operators_on_face_sampled_field> map_of_jump_operators_for_viscous_terms_t;
   typedef std::map<p4est_locidx_t, size_t> map_of_local_quad_to_corr_fun_t;
 #endif
 
@@ -63,6 +65,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
   map_of_correction_functions_t correction_function_for_quad;
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
+  map_of_jump_operators_for_viscous_terms_t jump_operators_for_viscous_terms_on_quad;
   bool                          are_required_finite_volumes_and_correction_functions_known;
   double                        interface_relative_threshold;
   double                        threshold_volume_ratio_for_extrapolation;

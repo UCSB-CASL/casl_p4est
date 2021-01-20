@@ -20,6 +20,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
 {
   correction_function_for_quad.clear();
   finite_volume_data_for_quad.clear();
+  jump_operators_for_viscous_terms_on_quad.clear();
   are_required_finite_volumes_and_correction_functions_known = false;
   interface_relative_threshold = +1.0e-11;
   threshold_volume_ratio_for_extrapolation = 0.01;
@@ -338,6 +339,96 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
     for (size_t k = 0; k < one_sided_normal_derivative_at_projected_point->size(); ++k)
       correction_function_to_build.solution_dependent_terms.add_term((*one_sided_normal_derivative_at_projected_point)[k].dof_idx,
                                                                      -scaling_factor*(signed_distance*get_jump_in_mu()/mu_across_normal_derivative)*(*one_sided_normal_derivative_at_projected_point)[k].weight);
+
+  if(is_coupled_to_two_phase_flow())
+  {
+    if(jump_operators_for_viscous_terms_on_quad.find(quad_idx) == jump_operators_for_viscous_terms_on_quad.end())
+    {
+      // not found in map --> build it and insert in map
+      differential_operators_on_face_sampled_field to_insert_in_map;
+      const my_p4est_faces_t* faces = interface_manager->get_faces();
+
+      set_of_neighboring_quadrants nb_quads;
+      p4est_quadrant_t qq = *quad;
+      qq.p.piggy3.which_tree = tree_idx; qq.p.piggy3.local_num = quad_idx;
+      p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = cell_ngbd->gather_neighbor_cells_of_cell(qq, nb_quads, true); // include second-degree neighbors, because YOLO!
+      logical_size_smallest_first_degree_cell_neighbor = MIN(logical_size_smallest_first_degree_cell_neighbor, cell_ngbd->gather_neighbor_cells_of_cell(qq, nb_quads));
+      const double scaling_distance = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double) logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
+      std::set<indexed_and_located_face> set_of_neighbor_faces[P4EST_DIM];
+      add_all_faces_to_sets_and_clear_set_of_quad(faces, set_of_neighbor_faces, nb_quads);
+      const bool grad_is_known[P4EST_DIM] = {DIM(false, false, false)};
+      linear_combination_of_dof_t gradient_of_face_sampled_field[P4EST_DIM][P4EST_DIM]; // we need the gradient of all vector components
+      for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+        get_lsqr_face_gradient_at_point(xyz_quad_projected, faces, set_of_neighbor_faces[comp], scaling_distance, gradient_of_face_sampled_field[comp], NULL, grad_is_known);
+
+      if(mus_are_equal()) // normal_at_projected_point is not known yet if mus are equal...
+      {
+        const double *xyz_for_normal_derivative = (pin_normal_derivative_for_correction_functions ? xyz_quad : xyz_quad_projected);
+        interface_manager->normal_vector_at_point(xyz_for_normal_derivative, normal_at_projected_point);
+      }
+
+      for(u_char comp = 0; comp < P4EST_DIM; comp++)
+      {
+        for(u_char der = 0; der < P4EST_DIM; der++)
+          to_insert_in_map.n_dot_grad_dot_n_operator[comp].add_operator_on_same_dofs(gradient_of_face_sampled_field[comp][der], normal_at_projected_point[comp]*normal_at_projected_point[der]);
+
+        // the divergence operator is build at the cell center, as per in the stable projection in this case
+        // (the correction function is associated with a specific quadrant in this approach)
+        to_insert_in_map.div_term[comp].clear();
+        const double dx = (tree_xyz_max[comp] - tree_xyz_min[comp])*(((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN));
+
+        for(u_char face = 0; face < 2; face++)
+        {
+          set_of_neighboring_quadrants direct_neighbor;
+          cell_ngbd->find_neighbor_cells_of_cell(direct_neighbor, quad_idx, tree_idx, 2*comp + face);
+          P4EST_ASSERT(direct_neighbor.size() <= 1); // otherwise it means the current quadrant is not as fine as it should be, it's under-refined...
+          if(direct_neighbor.size() == 1 && direct_neighbor.begin()->level < quad->level) // should not happen, hopefully, but who knows, we'd better be careful in this world...
+          {
+            set_of_neighboring_quadrants minor_quads;
+            cell_ngbd->find_neighbor_cells_of_cell(minor_quads, direct_neighbor.begin()->p.piggy3.local_num, direct_neighbor.begin()->p.piggy3.which_tree, 2*comp + (face == 0 ? 1 : 0));
+            P4EST_ASSERT(minor_quads.size() > 1);
+            for(const p4est_quadrant_t& minor_quad : minor_quads)
+              to_insert_in_map.div_term[comp].add_term(faces->q2f(minor_quad.p.piggy3.local_num, 2*comp + face),
+                                                       (face == 0 ? -1.0 : +1.0)*pow(2.0, (double)(direct_neighbor.begin()->level - minor_quad.level)*(P4EST_DIM - 1))/dx);
+          }
+          else
+            to_insert_in_map.div_term[comp].add_term(faces->q2f(quad_idx, 2*comp + face), (face == 0 ? -1.0 : +1.0)/dx);
+        }
+      }
+      to_insert_in_map.scaling = scaling_factor; // VERY IMPORTANT
+      jump_operators_for_viscous_terms_on_quad.insert(std::pair<p4est_locidx_t, differential_operators_on_face_sampled_field>(quad_idx, to_insert_in_map));
+    }
+    const differential_operators_on_face_sampled_field& viscous_term_operators = jump_operators_for_viscous_terms_on_quad.at(quad_idx);
+
+    PetscErrorCode ierr;
+    const double *face_velocity_plus_km1_p[P4EST_DIM], *face_velocity_minus_km1_p[P4EST_DIM];
+    const double *face_velocity_plus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+    const double *face_velocity_minus_p[P4EST_DIM]= {DIM(NULL, NULL, NULL)};
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+      if(face_velocity_plus[dim] != NULL){
+        ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+      }
+      if(face_velocity_minus[dim] != NULL){
+        ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+    }
+
+    correction_function_to_build.jump_dependent_terms += viscous_term_operators.jump_viscous_terms(set_for_projection_steps, dt_over_BDF_alpha, shear_viscosity_plus, shear_viscosity_minus,
+                                                                                                   face_velocity_plus_km1_p, face_velocity_plus_km1_p, face_velocity_plus_p, face_velocity_minus_p);
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(face_velocity_plus_km1[dim], &face_velocity_plus_km1_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
+      if(face_velocity_plus[dim] != NULL){
+        ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
+      }
+      if(face_velocity_minus[dim] != NULL){
+        ierr = VecRestoreArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
+      }
+    }
+  }
 
   if(map_quad_to_cf != NULL)
     map_quad_to_cf->insert(std::pair<p4est_locidx_t, size_t>(quad_idx, correction_function_for_quad.size()));
