@@ -771,13 +771,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu_this_side*full_face_area/cell_dxyz[oriented_dir/2], ADD_VALUES); CHKERRXX(ierr);
         }
         if(!rhs_is_set)
-          rhs_p[quad_idx]  += 2.0*mu_this_side*full_face_area*bc->wallValue(xyz_face)/cell_dxyz[oriented_dir/2];
+          rhs_p[quad_idx]  += 2.0*mu_this_side*full_face_area*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face))/cell_dxyz[oriented_dir/2];
       }
         break;
       case NEUMANN:
       {
         if(!rhs_is_set)
-          rhs_p[quad_idx]  += mu_this_side*full_face_area*bc->wallValue(xyz_face);
+          rhs_p[quad_idx]  += mu_this_side*full_face_area*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
       }
         break;
       default:
@@ -975,16 +975,16 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
     case DIRICHLET:
       if(using_extrapolations)
       {
-        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus *(bc->wallValue(xyz_face) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
-        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus  *(bc->wallValue(xyz_face) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus *((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus  *((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
       }
       else
-        *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*(bc->wallValue(xyz_face) - solution_p[quad_idx])/cell_dxyz[dim]);
+        *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - solution_p[quad_idx])/cell_dxyz[dim]);
       break;
     case NEUMANN:
     {
-      flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_minus*bc->wallValue(xyz_face);
-      flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_plus*bc->wallValue(xyz_face);
+      flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_minus*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
+      flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_plus*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
       break;
     }
     default:
@@ -1170,11 +1170,11 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
         switch(bc->wallType(xyz_wall))
         {
         case DIRICHLET:
-          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*(bc->wallValue(xyz_wall) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_wall)) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
           oriented_dist             = 0.5*dxyz_quad[dim];
           break;
         case NEUMANN:
-          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*bc->wallValue(xyz_wall);
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_wall));
           break;
         default:
           throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(): unknown boundary condition on a wall.");
