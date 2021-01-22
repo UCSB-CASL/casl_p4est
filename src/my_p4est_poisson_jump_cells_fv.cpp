@@ -54,7 +54,7 @@ void my_p4est_poisson_jump_cells_fv_t::clear_node_sampled_jumps()
 void my_p4est_poisson_jump_cells_fv_t::update_jump_terms_for_projection()
 {
   PetscErrorCode ierr;
-  P4EST_ASSERT(set_for_projection_steps);
+  P4EST_ASSERT(is_set_for_projection_step);
   if(jump_dependent_terms_in_corr_fun == NULL)
   {
     ierr = VecCreateGhostCellCorrFun(&jump_dependent_terms_in_corr_fun); CHKERRXX(ierr);
@@ -499,15 +499,15 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       if(face_velocity_minus_km1 != NULL){
         ierr = VecGetArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
       }
-      if(face_velocity_plus != NULL && set_for_projection_steps){
+      if(face_velocity_plus != NULL && is_set_for_projection_step){
         ierr = VecGetArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
       }
-      if(face_velocity_minus != NULL && set_for_projection_steps){
+      if(face_velocity_minus != NULL && is_set_for_projection_step){
         ierr = VecGetArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
       }
     }
 
-    if(!set_for_projection_steps)
+    if(!is_set_for_projection_step)
       correction_function_to_build.jump_dependent_terms += scaling_factor*(shear_viscosity_plus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_plus_km1_p) - shear_viscosity_minus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_minus_km1_p));
     else
     {
@@ -523,10 +523,10 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       if(face_velocity_minus_km1 != NULL){
         ierr = VecRestoreArrayRead(face_velocity_minus_km1[dim], &face_velocity_minus_km1_p[dim]); CHKERRXX(ierr);
       }
-      if(face_velocity_plus != NULL && set_for_projection_steps){
+      if(face_velocity_plus != NULL && is_set_for_projection_step){
         ierr = VecRestoreArrayRead(face_velocity_plus[dim], &face_velocity_plus_p[dim]); CHKERRXX(ierr);
       }
-      if(face_velocity_minus != NULL && set_for_projection_steps){
+      if(face_velocity_minus != NULL && is_set_for_projection_step){
         ierr = VecRestoreArrayRead(face_velocity_minus[dim], &face_velocity_minus_p[dim]); CHKERRXX(ierr);
       }
     }
@@ -637,13 +637,12 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   P4EST_ASSERT((user_rhs_minus == NULL && user_rhs_plus == NULL) || (user_rhs_minus != NULL && user_rhs_plus != NULL));                     // can't have one provided but not the other...
   P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) || (face_velocity_minus != NULL && face_velocity_plus != NULL)); // can't have one provided but not the other...
   const bool with_cell_sampled_rhs  = user_rhs_minus != NULL && user_rhs_plus != NULL;
-  const bool is_projecting_vstar = face_velocity_minus != NULL && face_velocity_plus != NULL;
 #ifdef CASL_THROWS
-  if(with_cell_sampled_rhs && is_projecting_vstar)
+  if(with_cell_sampled_rhs && is_set_for_projection_step)
     std::cerr << "my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(): [WARNING] the solver is configured with both cell-sampled rhs's and face-sampled velocity fields..." << std::endl;
 #endif
   linear_combination_of_dof_t vstar_on_face;
-  P4EST_ASSERT(!is_projecting_vstar || (ANDD(face_velocity_minus[0] != NULL, face_velocity_minus[1] != NULL, face_velocity_minus[2] != NULL) && ANDD(face_velocity_plus[0] != NULL, face_velocity_plus[1] != NULL, face_velocity_plus[2] != NULL)));
+  P4EST_ASSERT(!is_set_for_projection_step || (ANDD(face_velocity_minus[0] != NULL, face_velocity_minus[1] != NULL, face_velocity_minus[2] != NULL) && ANDD(face_velocity_plus[0] != NULL, face_velocity_plus[1] != NULL, face_velocity_plus[2] != NULL)));
 
   if(!rhs_is_set)
   {
@@ -652,7 +651,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       ierr = VecGetArrayRead(user_rhs_minus, &user_rhs_minus_p); CHKERRXX(ierr);
       ierr = VecGetArrayRead(user_rhs_plus, &user_rhs_plus_p); CHKERRXX(ierr);
     }
-    if(is_projecting_vstar)
+    if(is_set_for_projection_step)
     {
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecGetArrayRead(face_velocity_minus[dim], &vstar_minus_p[dim]); CHKERRXX(ierr);
@@ -753,7 +752,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_quad, sgn_quad))
         throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : a wall-face is crossed by the interface, this is not handled yet...");
 #endif
-      if(!rhs_is_set && is_projecting_vstar)
+      if(!rhs_is_set && is_set_for_projection_step)
       {
         const p4est_locidx_t f_idx = interface_manager->get_faces()->q2f(quad_idx, oriented_dir);
         const double* &vstar_to_consider = (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
@@ -771,13 +770,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu_this_side*full_face_area/cell_dxyz[oriented_dir/2], ADD_VALUES); CHKERRXX(ierr);
         }
         if(!rhs_is_set)
-          rhs_p[quad_idx]  += 2.0*mu_this_side*full_face_area*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face))/cell_dxyz[oriented_dir/2];
+          rhs_p[quad_idx]  += 2.0*mu_this_side*full_face_area*(is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face))/cell_dxyz[oriented_dir/2];
       }
         break;
       case NEUMANN:
       {
         if(!rhs_is_set)
-          rhs_p[quad_idx]  += mu_this_side*full_face_area*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
+          rhs_p[quad_idx]  += mu_this_side*full_face_area*(is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face));
       }
         break;
       default:
@@ -788,7 +787,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     // not a wall in that direction
     set_of_neighboring_quadrants direct_neighbors;
     bool are_all_cell_centers_on_same_side;
-    linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side, (is_projecting_vstar ? &vstar_on_face : NULL));
+    linear_combination_of_dof_t stable_projection_derivative_operator = stable_projection_derivative_operator_at_face(quad_idx, tree_idx, oriented_dir, direct_neighbors, are_all_cell_centers_on_same_side, (is_set_for_projection_step ? &vstar_on_face : NULL));
     /* Two possible scenarii :
      * 1) two local equations to consider (and sum up), which happens if
      *    a) the face is crossed --> no trivial (i.e. identically 0.0) term in either equation to consider;
@@ -858,7 +857,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
         if(face_area < interface_relative_threshold*reference_face_area)
           continue;
 
-        if(!rhs_is_set && is_projecting_vstar)
+        if(!rhs_is_set && is_set_for_projection_step)
         {
           const double* &vstar_to_consider = (sgn_eqn < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
           rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_to_consider[face_idx]*face_area;
@@ -896,7 +895,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
           ierr = MatSetValue(A, quad_gloidx, compute_global_index(stable_projection_derivative_operator[k].dof_idx),
                              (oriented_dir%2 == 1 ? -1.0 : +1.0)*mu_this_side*full_face_area*stable_projection_derivative_operator[k].weight, ADD_VALUES); CHKERRXX(ierr);
         }
-      if(!rhs_is_set && is_projecting_vstar)
+      if(!rhs_is_set && is_set_for_projection_step)
       {
         const double* &vstar_dir_to_consider = (sgn_quad < 0 ? vstar_minus_p[oriented_dir/2] : vstar_plus_p[oriented_dir/2]);
         rhs_p[quad_idx] += (oriented_dir%2 == 1 ? -1.0 : +1.0)*vstar_on_face(vstar_dir_to_consider)*full_face_area;
@@ -911,7 +910,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
       ierr = VecRestoreArrayRead(user_rhs_minus, &user_rhs_minus_p);  CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(user_rhs_plus, &user_rhs_plus_p);    CHKERRXX(ierr);
     }
-    if(is_projecting_vstar)
+    if(is_set_for_projection_step)
     {
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecRestoreArrayRead(face_velocity_minus[dim], &vstar_minus_p[dim]);  CHKERRXX(ierr);
@@ -927,7 +926,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
 
 void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                                                  double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
-                                                                 double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const
+                                                                 double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM],
+                                                                 double* max_flux_component) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -975,16 +975,16 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
     case DIRICHLET:
       if(using_extrapolations)
       {
-        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus *((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
-        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus  *((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_minus *((is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_minus_p[quad_idx])/cell_dxyz[dim]);
+        flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*mu_plus  *((is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face)) - extrapolation_plus_p[quad_idx])/cell_dxyz[dim]);
       }
       else
-        *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face)) - solution_p[quad_idx])/cell_dxyz[dim]);
+        *flux_at_face = (oriented_dir%2 == 1 ? +1.0 : -1.0)*(2.0*(sgn_face > 0 ? mu_plus : mu_minus)*((is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face)) - solution_p[quad_idx])/cell_dxyz[dim]);
       break;
     case NEUMANN:
     {
-      flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_minus*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
-      flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_plus*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_face));
+      flux_component_minus  = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_minus*(is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face));
+      flux_component_plus   = (oriented_dir%2 == 1 ? +1.0 : -1.0)*mu_plus*(is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_face));
       break;
     }
     default:
@@ -1081,6 +1081,14 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
       face_velocity_plus_p[dim][f_idx] -= flux_component_plus;
   }
 
+  if(max_flux_component != NULL)
+  {
+    if(sgn_face < 0)
+      max_flux_component[0] = MAX(max_flux_component[0], fabs(flux_component_minus));
+    else
+      max_flux_component[1] = MAX(max_flux_component[1], fabs(flux_component_plus));
+  }
+
   return;
 }
 
@@ -1170,11 +1178,11 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
         switch(bc->wallType(xyz_wall))
         {
         case DIRICHLET:
-          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*((set_for_projection_steps ? 0.0 : bc->wallValue(xyz_wall)) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(2.0*((is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_wall)) - sharp_solution_p[quad_idx])/dxyz_quad[dim]);
           oriented_dist             = 0.5*dxyz_quad[dim];
           break;
         case NEUMANN:
-          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(set_for_projection_steps ? 0.0 : bc->wallValue(xyz_wall));
+          oriented_sharp_derivative = (orientation == 1 ? +1.0 : -1.0)*(is_set_for_projection_step ? 0.0 : bc->wallValue(xyz_wall));
           break;
         default:
           throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(): unknown boundary condition on a wall.");

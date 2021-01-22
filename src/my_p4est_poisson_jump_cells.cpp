@@ -21,7 +21,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   user_rhs_minus = user_rhs_plus = NULL;
   face_velocity_minus_km1 = face_velocity_plus_km1 = NULL;
   dt_over_BDF_alpha = 0.0;
-  set_for_projection_steps = false;
+  is_set_for_projection_step = false;
   face_velocity_minus = face_velocity_plus = NULL;
   interp_jump_normal_velocity = NULL;
   jump_u = jump_normal_flux_u = NULL;
@@ -550,7 +550,38 @@ void my_p4est_poisson_jump_cells_t::setup_linear_system()
   return;
 }
 
-void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *flux_minus, Vec *flux_plus)
+void my_p4est_poisson_jump_cells_t::get_divergence_operator_on_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, linear_combination_of_dof_t div_term[P4EST_DIM]) const
+{
+  const p4est_quadrant_t* quad;
+  const double *tree_xyz_min, *tree_xyz_max;
+  P4EST_ASSERT(quad_idx < p4est->local_num_quadrants);
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+
+  set_of_neighboring_quadrants dummy_1;
+  bool dummy_2;
+  linear_combination_of_dof_t velocity_on_face;
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    div_term[dim].clear();
+    const double cell_dx = (tree_xyz_max[dim] - tree_xyz_min[dim])*((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN);
+    for(u_char orientation = 0; orientation < 2; orientation++)
+    {
+      if(is_quad_Wall(p4est, tree_idx, quad, 2*dim +orientation))
+        div_term[dim].add_term(interface_manager->get_faces()->q2f(quad_idx, 2*dim +orientation), (orientation == 1 ? +1.0 : -1.0)/cell_dx);
+      else
+      {
+        stable_projection_derivative_operator_at_face(quad_idx, tree_idx, 2*dim + orientation, dummy_1, dummy_2, &velocity_on_face);
+        for(size_t k = 0; k < velocity_on_face.size(); k++)
+          div_term[dim].add_term(velocity_on_face[k].dof_idx, ((orientation == 1 ? +1.0 : -1.0)/cell_dx)*velocity_on_face[k].weight);
+      }
+
+    }
+  }
+  return;
+}
+
+void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces_t *faces, Vec *flux_minus, Vec *flux_plus,
+                                                            double* max_flux_component)
 {
   P4EST_ASSERT(faces->get_p4est() == p4est); // the faces must be built from the same computational grid
   P4EST_ASSERT((face_velocity_minus == NULL && face_velocity_plus == NULL) ||
@@ -584,13 +615,18 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
       ierr = VecGetArray(face_velocity_plus[dim],   &face_velocity_plus_p[dim]);  CHKERRXX(ierr);
     }
   }
+  if(max_flux_component != NULL)
+  {
+    max_flux_component[0] = 0.0; // initialize
+    max_flux_component[1] = 0.0; // initialize
+  }
 
   // layer faces, first
   for (u_char dim = 0; dim < P4EST_DIM; ++dim){
     for (size_t k = 0; k < faces->get_layer_size(dim); ++k)
     {
       const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
-      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p);
+      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p, max_flux_component);
     }
     // start the ghost updates
     if(flux_minus != NULL){
@@ -607,7 +643,7 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
     for (size_t k = 0; k < faces->get_local_size(dim); ++k)
     {
       const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
-      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p);
+      local_projection_for_face(f_idx, dim, faces, flux_minus_p, flux_plus_p, face_velocity_minus_p, face_velocity_plus_p, max_flux_component);
     }
     // finish the ghost updates
     if(flux_minus != NULL){
@@ -630,6 +666,10 @@ void my_p4est_poisson_jump_cells_t::project_face_velocities(const my_p4est_faces
       ierr = VecRestoreArray(face_velocity_minus[dim],  &face_velocity_minus_p[dim]); CHKERRXX(ierr);
       ierr = VecRestoreArray(face_velocity_plus[dim],   &face_velocity_plus_p[dim]);  CHKERRXX(ierr);
     }
+  }
+
+  if(max_flux_component != NULL){
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, max_flux_component, 2, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   }
 
   return;

@@ -33,6 +33,7 @@ struct differential_operators_on_face_sampled_field {
 
 class my_p4est_poisson_jump_cells_t
 {
+  friend class my_p4est_two_phase_flows_t;
 protected:
   // data related to the computational grid
   const my_p4est_cell_neighbors_t *cell_ngbd;
@@ -58,7 +59,7 @@ protected:
   double shear_viscosity_minus, shear_viscosity_plus;
   Vec *face_velocity_minus_km1, *face_velocity_plus_km1; // required/used for jump in pressure guess AND for jump corrections in subsequent projection steps
   double dt_over_BDF_alpha;
-  bool set_for_projection_steps;
+  bool is_set_for_projection_step;
   inline bool is_coupled_to_two_phase_flow() const
   {
     return (fabs(shear_viscosity_minus) > 0.0) && (fabs(shear_viscosity_plus) > 0.0);
@@ -151,7 +152,8 @@ protected:
 
   virtual void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                          double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
-                                         double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM]) const = 0;
+                                         double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM],
+                                         double* max_flux_component) const = 0;
 
   virtual void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
                                               double* extrapolation_minus_p, double* extrapolation_plus_p,
@@ -247,12 +249,18 @@ public:
   }
 
 
-  inline void set_for_subsequent_projection_steps(const double &dt_over_BDF_alpha_)
+  inline void set_for_projection_steps(const double &dt_over_BDF_alpha_)
   {
     P4EST_ASSERT(is_coupled_to_two_phase_flow());
+    if(is_set_for_projection_step && fabs(dt_over_BDF_alpha_ - dt_over_BDF_alpha) < 1e-6*MAX(fabs(dt_over_BDF_alpha_), fabs(dt_over_BDF_alpha)))
+      return;
+
     dt_over_BDF_alpha = dt_over_BDF_alpha_;
-    set_for_projection_steps = true;
-    add_diag_minus = add_diag_plus = 0.0;
+    if(add_diag_minus > EPS || add_diag_plus > EPS)
+    {
+      add_diag_minus = add_diag_plus = 0.0;
+      matrix_is_set = false;
+    }
     clear_node_sampled_jumps();
     set_rhs(NULL, NULL);
     set_initial_guess(NULL);
@@ -260,6 +268,8 @@ public:
     ierr = delete_and_nullify_vector(solution); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(extrapolation_minus); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(extrapolation_plus); CHKERRXX(ierr);
+
+    is_set_for_projection_step = true;
   }
 
   inline void set_face_velocities_km1(Vec *face_velocity_minus_km1_, Vec *face_velocity_plus_km1_)
@@ -277,10 +287,11 @@ public:
     face_velocity_minus = face_velocity_minus_;
     face_velocity_plus  = face_velocity_plus_;
     interp_jump_normal_velocity = interp_jump_normal_velocity_;
-    if(is_coupled_to_two_phase_flow() && set_for_projection_steps)
+    if(is_coupled_to_two_phase_flow() && is_set_for_projection_step)
       update_jump_terms_for_projection();
 
     rhs_is_set = false; // but the matrix is fine...
+    extrapolations_are_set = false; // since the solution will change
   }
 
   virtual void solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type) = 0;
@@ -314,15 +325,19 @@ public:
   inline Vec return_extrapolated_solution_minus()
   {
     Vec tmp = extrapolation_minus;
-    PetscErrorCode ierr = delete_and_nullify_vector(extrapolation_minus); CHKERRXX(ierr);
+    extrapolation_minus = NULL;
+    extrapolations_are_set = false;
     return tmp;
   }
   inline Vec return_extrapolated_solution_plus()
   {
     Vec tmp = extrapolation_plus;
-    PetscErrorCode ierr = delete_and_nullify_vector(extrapolation_plus); CHKERRXX(ierr);
+    extrapolation_plus = NULL;
+    extrapolations_are_set = false;
     return tmp;
   }
+
+  void get_divergence_operator_on_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, linear_combination_of_dof_t div_term[P4EST_DIM]) const;
 
   /*!
    * \brief project_face_velocities calculates the sharp flux components of the solution (at faces of the
@@ -331,6 +346,10 @@ public:
    * \param [in] faces      : pointer to the face data structure for the computational grid under consideration
    * \param [in] flux_minus : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
    * \param [in] flux_plus  : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
+   * \param [out] max_flux_component : (optional) pointer to an array of double of size 2. If disregarded or NULL,
+   *                          this is ignored, otherwise this will contain the maximum (sharp) flux component
+   *                          applied during the projection on the output (index 0 corresponds to negative domain,
+   *                          index 1 corresponds to positive domain)
    * (A) If the solver is aware of face-sampled velocity components (and used them in order to define and determine
    * the divergence-free projection problem to solve) this function will operate on the user-provided velocity and
    * subtract the relevant flux components;
@@ -349,7 +368,8 @@ public:
    * velocity components are set to DBL_MAX (if known to the solver) as a way to tag them "unknown" and prevent their
    * use thereafter...
    */
-  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL);
+  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL,
+                               double* max_flux_component = NULL);
   /*!
    * \brief get_sharp_flux_components returns the local sharp flux component corresponding to the local sign of the
    * face (only the sharp locally defined flux component)
