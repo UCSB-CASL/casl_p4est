@@ -274,6 +274,7 @@ public:
       matrix_is_set[dim]  = false;
       rhs_is_set[dim]     = false;
     }
+    extrapolations_are_set = false;
   }
 
   inline void set_mus(const double& mu_minus_, const double& mu_plus_)
@@ -288,6 +289,7 @@ public:
       mu_minus  = mu_minus_;
       mu_plus   = mu_plus_;
     }
+    extrapolations_are_set = extrapolations_are_set && mus_unchanged;
     P4EST_ASSERT(diffusion_coefficients_have_been_set()); // must be both strictly positive
   }
 
@@ -302,6 +304,7 @@ public:
       add_diag_minus = add_diag_minus_;
       add_diag_plus = add_diag_plus_;
     }
+    extrapolations_are_set = extrapolations_are_set && diags_unchanged;
   }
 
   inline void set_rhs(Vec* user_rhs_minus_, Vec* user_rhs_plus_)
@@ -311,6 +314,8 @@ public:
     user_rhs_plus   = user_rhs_plus_;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       rhs_is_set[dim] = false;
+
+    extrapolations_are_set = false; // a new rhs, defines a new solution hence new extrapolations
   }
 
   virtual void solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type) = 0;
@@ -351,6 +356,7 @@ public:
       std::swap(extrapolation_minus_out[dim], extrapolation_minus[dim]);
       std::swap(extrapolation_plus_out[dim],  extrapolation_plus[dim]);
     }
+    extrapolations_are_set = false;
     return;
   }
 
