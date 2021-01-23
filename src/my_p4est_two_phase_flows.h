@@ -72,11 +72,21 @@ private:
   my_p4est_faces_t          *faces_n;
   my_p4est_interface_manager_t  *interface_manager;
 
-  my_p4est_poisson_jump_cells_t* pressure_guess_solver;
-  bool pressure_guess_is_set;
-  my_p4est_poisson_jump_cells_t* divergence_free_projector;
   jump_solver_tag cell_jump_solver_to_use;
-  bool fetch_interface_FD_neighbors_with_second_order_accuracy;
+  KSPType Krylov_solver_for_cell_problems;
+  PCType preconditioner_for_cell_problems;
+  bool fetch_interface_FD_neighbors_with_second_order_accuracy; // relevant for FD xgfm approach(es)
+  bool pressure_guess_is_set;
+  my_p4est_poisson_jump_cells_t* cell_jump_solver;
+
+  jump_solver_tag face_jump_solver_to_use;
+  KSPType Krylov_solver_for_face_problems;
+  PCType preconditioner_for_face_problems;
+  bool voronoi_on_the_fly;
+  my_p4est_poisson_jump_faces_t *face_jump_solver;
+
+  void build_face_jump_solver();
+  void build_cell_jump_solver();
 
   const double *xyz_min, *xyz_max;
   double tree_dimension[P4EST_DIM];
@@ -97,7 +107,9 @@ private:
   interpolation_method levelset_interpolation_method;
 
   int sl_order, sl_order_interface;
-  int n_xGFM_viscous_iterations;
+  int n_viscous_subiterations;
+  double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
+  double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
 
   const double threshold_dbl_max;
 
@@ -111,10 +123,10 @@ private:
   // -------------------------------------------------------------------
   // scalar fields
   Vec phi;
-  Vec jump_normal_velocity; // jump_in_normal_velocity <-> mass_flux*(jump in inverse mass density)
-  Vec pressure_jump;
+  Vec jump_normal_velocity; // jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
+  Vec non_viscous_pressure_jump; // pressure jump terms due to surface tension + mass transfer (i.e., 2 out of 3 terms in pressure jumps)
   // vector fields and/or other P4EST_DIM-block-structured
-  Vec phi_xxyyzz, interface_stress;
+  Vec phi_xxyyzz, interface_tangential_stress;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
@@ -132,12 +144,16 @@ private:
   // vn_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_n
   Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz;
   // ------------------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
+  // ------------------------------------------------------------------------------
+  // scalar fields
+  Vec pressure_minus, pressure_plus;
+  // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
-  Vec grad_p_guess_over_rho_minus[P4EST_DIM], grad_p_guess_over_rho_plus[P4EST_DIM];
+  Vec vnp1_face_minus_km1[P4EST_DIM], vnp1_face_plus_km1[P4EST_DIM];
   Vec vnp1_face_minus[P4EST_DIM], vnp1_face_plus[P4EST_DIM];
-  Vec vnp1_face_minus_star[P4EST_DIM];
   Vec viscosity_rhs_minus[P4EST_DIM], viscosity_rhs_plus[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
@@ -155,9 +171,6 @@ private:
   bool semi_lagrangian_backtrace_is_done;
   std::vector<double> backtraced_vn_faces_minus[P4EST_DIM], backtraced_vn_faces_plus[P4EST_DIM];
   std::vector<double> backtraced_vnm1_faces_minus[P4EST_DIM], backtraced_vnm1_faces_plus[P4EST_DIM]; // used only if sl_order == 2
-
-  bool voronoi_on_the_fly;
-  my_p4est_poisson_jump_faces_xgfm_t *viscosity_solver;
 
   inline char sgn_of_wall_neighbor_of_face(const p4est_locidx_t& face_idx, const u_char &dir, const u_char &wall_dir, const double *xyz_wall = NULL)
   {
@@ -209,7 +222,7 @@ private:
    * - levelset_interpolation_method
    * - sl_order
    * - sl_order_interface
-   * - n_xGFM_viscous_iterations
+   * - n_viscous_subiterations
    * - voronoi_on_the_fly
    * The double parameters/variables that are saved/loaded are (in this order):
    * - tree_dimension[0 : P4EST_DIM - 1]
@@ -250,6 +263,13 @@ private:
                                save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
   void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double& tn);
   void fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
+
+  inline u_int npseudo_time_steps() const
+  {
+    return 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
+  }
+
+  void transfer_face_sampled_vnp1_to_cells(Vec vnp1_minus_on_cells, Vec vnp1_plus_on_cells) const; // for exhaustive vtk exportations
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
@@ -325,7 +345,7 @@ public:
   {
     sl_order_interface = sl_;
   }
-  inline void set_n_xGFM_viscous_iterations(const int& nn) { n_xGFM_viscous_iterations = nn; }
+  inline void set_n_viscous_subiterations(const int& nn) { n_viscous_subiterations = nn; }
 
   inline void set_uniform_bands(const double& uniform_band_m_, const double&uniform_band_p_)
   {
@@ -378,13 +398,17 @@ public:
   inline double get_rho_plus() const                                        { return rho_plus; }
   inline double get_surface_tension() const                                 { return surface_tension; }
 
+
+  void compute_non_viscous_pressure_jump();
+  void solve_for_pressure_guess();
   void solve_viscosity();
+  void solve_projection();
 
-  void compute_pressure_jump();
-  void solve_for_pressure_guess(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
-  void solve_projection(const KSPType ksp = KSPBCGS, const PCType pc = PCHYPRE);
+  void solve_time_step(const double& velocity_relative_threshold, const int& max_niter);
 
-  inline void set_projection_solver(const jump_solver_tag& solver_to_use) { cell_jump_solver_to_use = solver_to_use; }
+  void set_cell_jump_solver(const jump_solver_tag& solver_to_use,   const KSPType& KSP_ = "default", const PCType& PC_ = "default");
+  void set_face_jump_solvers(const jump_solver_tag& solver_to_use,  const KSPType& KSP_ = "default", const PCType& PC_ = "default");
+
   inline void fetch_interface_points_with_second_order_accuracy() {
     fetch_interface_FD_neighbors_with_second_order_accuracy = true;
     interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
@@ -392,7 +416,7 @@ public:
 
   void compute_velocities_at_nodes();
   void set_interface_velocity_np1();
-  void save_vtk(const std::string& vtk_directory, const int& index) const;
+  void save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive = false) const;
   void update_from_tn_to_tnp1(const bool& reinitialize_levelset = true, const bool& static_interface = false);
 
   inline double get_max_velocity() const        { return MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus); }
@@ -477,14 +501,21 @@ public:
     }
   }
 
-  inline void print_pressure_guess() const
+  inline void print_pressures() const
   {
-    if(pressure_guess_solver != NULL && pressure_guess_solver->get_solution() != NULL)
+    if(pressure_minus != NULL)
     {
       PetscErrorCode ierr;
       if(p4est_n->mpirank == 0)
-        std::cout << "pressure_guess = " << std::endl;
-      ierr = VecView(pressure_guess_solver->get_solution(), PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+        std::cout << "pressure_minus = " << std::endl;
+      ierr = VecView(pressure_minus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+    }
+    if(pressure_plus != NULL)
+    {
+      PetscErrorCode ierr;
+      if(p4est_n->mpirank == 0)
+        std::cout << "pressure_plus = " << std::endl;
+      ierr = VecView(pressure_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
   }
 
@@ -494,7 +525,7 @@ public:
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       if(p4est_n->mpirank == 0)
         std::cout << "viscosity rhs[" << int(dim) << "] = " << std::endl;
-      ierr = VecView(viscosity_solver->rhs[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+      ierr = VecView(face_jump_solver->rhs[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
   }
 
@@ -517,7 +548,7 @@ public:
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       if(p4est_n->mpirank == 0)
         std::cout << "sharp_viscous_solution[" << int(dim) << "] = " << std::endl;
-      ierr = VecView(viscosity_solver->solution[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+      ierr = VecView(face_jump_solver->solution[dim], PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
   }
 
@@ -533,7 +564,7 @@ public:
   }
   inline int get_sl_order()           const { return sl_order; }
   inline int get_sl_order_interface() const { return sl_order_interface; }
-  inline int get_n_xGFM_viscous_iterations() const { return n_xGFM_viscous_iterations; }
+  inline int get_n_viscous_subiterations() const { return n_viscous_subiterations; }
   inline double get_advection_cfl()   const { return cfl_advection; }
 
 };

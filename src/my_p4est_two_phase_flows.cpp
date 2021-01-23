@@ -207,7 +207,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   sl_order = 2;
   sl_order_interface = 2;
-  n_xGFM_viscous_iterations = INT_MAX;
+  n_viscous_subiterations = INT_MAX;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
@@ -231,12 +231,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi                   = NULL;
-  pressure_jump         = NULL;
-  jump_normal_velocity  = NULL;
+  phi                       = NULL;
+  non_viscous_pressure_jump = NULL;
+  jump_normal_velocity      = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_xxyyzz  = NULL;
-  interface_stress = NULL;
+  interface_tangential_stress = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
@@ -257,17 +257,22 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   interface_velocity_np1_xxyyzz = NULL;
   interface_velocity_n_xxyyzz   = NULL;
   // ------------------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
+  // ------------------------------------------------------------------------------
+  // scalar fields
+  pressure_minus                = NULL;
+  pressure_plus                 = NULL;
+  // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    grad_p_guess_over_rho_minus[dir]  = NULL;
-    grad_p_guess_over_rho_plus[dir]   = NULL;
-    vnp1_face_minus[dir]  = NULL;
-    vnp1_face_minus_star[dir] = NULL;
-    vnp1_face_plus[dir]   = NULL;
-    viscosity_rhs_minus[dir]  = NULL;
-    viscosity_rhs_plus[dir]   = NULL;
+    vnp1_face_minus_km1[dir]  = NULL;
+    vnp1_face_plus_km1[dir]   = NULL;
+    vnp1_face_minus[dir]      = NULL;
+    vnp1_face_plus[dir]       = NULL;
+    viscosity_rhs_minus[dir]    = NULL;
+    viscosity_rhs_plus[dir]     = NULL;
   }
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
@@ -291,13 +296,13 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   if(!faces_n->finest_faces_neighborhoods_have_been_set())
     faces_n->set_finest_face_neighborhoods();
 
-  pressure_guess_solver = NULL;
+  cell_jump_solver = NULL;
   pressure_guess_is_set = false;
-  divergence_free_projector = NULL;
-  viscosity_solver = NULL;
+  face_jump_solver = NULL;
   voronoi_on_the_fly = false;
 
-  cell_jump_solver_to_use = FV; // default is finite-volume solver for projection step
+  set_cell_jump_solver(FV);   // default is finite-volume solver for projection step
+  set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
   fetch_interface_FD_neighbors_with_second_order_accuracy = false;
 }
 
@@ -325,12 +330,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi                   = NULL;
-  pressure_jump         = NULL;
-  jump_normal_velocity  = NULL;
+  phi                       = NULL;
+  non_viscous_pressure_jump = NULL;
+  jump_normal_velocity      = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_xxyyzz  = NULL;
-  interface_stress = NULL;
+  interface_tangential_stress = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
@@ -351,17 +356,22 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   interface_velocity_np1_xxyyzz = NULL;
   interface_velocity_n_xxyyzz   = NULL;
   // ------------------------------------------------------------------------------
+  // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
+  // ------------------------------------------------------------------------------
+  // scalar fields
+  pressure_minus                = NULL;
+  pressure_plus                 = NULL;
+  // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    grad_p_guess_over_rho_minus[dir]  = NULL;
-    grad_p_guess_over_rho_plus[dir]   = NULL;
-    vnp1_face_minus[dir]  = NULL;
-    vnp1_face_minus_star[dir]  = NULL;
-    vnp1_face_plus[dir]   = NULL;
-    viscosity_rhs_minus[dir]  = NULL;
-    viscosity_rhs_plus[dir]   = NULL;
+    vnp1_face_minus_km1[dir]    = NULL;
+    vnp1_face_plus_km1[dir]     = NULL;
+    vnp1_face_minus[dir]        = NULL;
+    vnp1_face_plus[dir]         = NULL;
+    viscosity_rhs_minus[dir]    = NULL;
+    viscosity_rhs_plus[dir]     = NULL;
   }
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
@@ -389,11 +399,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   if(!faces_n->finest_faces_neighborhoods_have_been_set())
     faces_n->set_finest_face_neighborhoods();
 
-  pressure_guess_solver = NULL;
   pressure_guess_is_set = false;
-  divergence_free_projector = NULL;
-  viscosity_solver = NULL;
-
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
   xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
@@ -407,7 +413,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   compute_second_derivatives_of_n_velocities();
   compute_second_derivatives_of_nm1_velocities();
 }
-
 
 void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
 {
@@ -467,7 +472,7 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   {
     if(!create_directory(path_to_root_directory, p4est_n->mpirank, p4est_n->mpicomm))
     {
-      char error_msg[1024];
+      char error_msg[BUFSIZ];
       sprintf(error_msg, "my_p4est_two_phase_flows_t::save_state: the path %s is invalid and the directory could not be created", path_to_root_directory);
       throw std::invalid_argument(error_msg);
     }
@@ -662,7 +667,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = (PetscInt) levelset_interpolation_method;
     data[idx++] = sl_order;
     data[idx++] = sl_order_interface;
-    data[idx++] = n_xGFM_viscous_iterations;
+    data[idx++] = n_viscous_subiterations;
     data[idx++] = (PetscInt) voronoi_on_the_fly;
     break;
   }
@@ -680,7 +685,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     levelset_interpolation_method = (interpolation_method) data[idx++];
     sl_order = data[idx++];
     sl_order_interface = data[idx++];
-    n_xGFM_viscous_iterations = data[idx++];
+    n_viscous_subiterations = data[idx++];
     voronoi_on_the_fly = (bool) data[idx++];
     break;
   }
@@ -701,7 +706,7 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   const size_t ndouble_values =  2*P4EST_DIM + 18;
   std::vector<PetscReal> double_parameters(ndouble_values);
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
-  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, n_xGFM_viscous_iterations
+  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, n_viscous_subiterations
   // voronoi_on_the_fly
   // that makes 12 integers
   const size_t ninteger_values = 12;
@@ -769,10 +774,10 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     ierr = delete_and_nullify_vector(phi_on_computational_nodes);       CHKERRXX(ierr); }
   // node-sampled fields on the interface-capturing grid
   ierr = delete_and_nullify_vector(phi);                                CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(pressure_jump);                      CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(phi_xxyyzz);                         CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_stress);                   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_tangential_stress);        CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
@@ -781,22 +786,24 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(vn_nodes_minus);                     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_plus);                      CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_np1);             CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_n);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_minus_xxyyzz);              CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_plus_xxyyzz);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);      CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);        CHKERRXX(ierr);
+  // cell-sampled fields on the computational grids n
+  ierr = delete_and_nullify_vector(pressure_minus);                     CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(pressure_plus);                      CHKERRXX(ierr);
   // node-sampled fields on the computational grids nm1
+  ierr = delete_and_nullify_vector(interface_velocity_n);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);        CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_minus);                   CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_plus);                    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);            CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);             CHKERRXX(ierr);
   // face-sampled fields, computational grid n
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_minus_km1[dir]);         CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_plus_km1[dir]);          CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);             CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_minus_star[dir]);        CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);              CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]);         CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);          CHKERRXX(ierr);
@@ -840,12 +847,49 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete faces_n;
   if(ngbd_c != NULL)
     delete ngbd_c;
-  if(pressure_guess_solver != NULL)
-    delete pressure_guess_solver;
-  if(divergence_free_projector != NULL)
-    delete divergence_free_projector;
-  if(viscosity_solver != NULL)
-    delete viscosity_solver;
+  if(cell_jump_solver != NULL)
+    delete cell_jump_solver;
+  if(face_jump_solver != NULL)
+    delete face_jump_solver;
+}
+
+void my_p4est_two_phase_flows_t::build_face_jump_solver()
+{
+  if(face_jump_solver != NULL)
+    return;
+
+  switch (face_jump_solver_to_use) {
+  case xGFM:
+  case GFM:
+    face_jump_solver = new my_p4est_poisson_jump_faces_xgfm_t(faces_n, nodes_n);
+    dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver)->activate_xGFM_corrections(face_jump_solver_to_use == xGFM);
+    break;
+  default:
+    throw std::runtime_error("my_p4est_two_phase_flows_t::build_face_jump_solver(): unkown face jump solver, only (x)GFM solvers are implemented for face problems as of now");
+    break;
+  }
+  return;
+}
+
+void my_p4est_two_phase_flows_t::build_cell_jump_solver()
+{
+  if(cell_jump_solver != NULL)
+    return;
+
+  switch (cell_jump_solver_to_use) {
+  case xGFM:
+  case GFM:
+    cell_jump_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
+    dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(cell_jump_solver)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
+    break;
+  case FV:
+    cell_jump_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+    break;
+  default:
+    throw std::runtime_error("my_p4est_two_phase_flows_t::build_cell_jump_solver(): unkown cell jump solver, only (x)GFM and FV solvers are implemented for face problems as of now");
+    break;
+  }
+  return;
 }
 
 void my_p4est_two_phase_flows_t::set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method, Vec phi_on_computational_nodes_)
@@ -1006,97 +1050,16 @@ void my_p4est_two_phase_flows_t::compute_second_derivatives_of_nm1_velocities()
   return;
 }
 
-void my_p4est_two_phase_flows_t::compute_pressure_jump()
+void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
 {
   PetscErrorCode ierr;
-  if(pressure_jump == NULL)
-    interface_manager->create_vector_on_interface_capturing_nodes(pressure_jump);
-
-
-  /* HOW TO MAKE SURE WE TAKE [2\mu n \cdot E \cdot n] into account, in general?
-   * irrelevant so long as mu_minus and mu_plus are equal, but we'll need to address that, eventually
-   */
+  if(non_viscous_pressure_jump == NULL){
+    ierr = interface_manager->create_vector_on_interface_capturing_nodes(non_viscous_pressure_jump); CHKERRXX(ierr);
+  }
 
   // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density + [2\mu n \cdot E \cdot n]
-  // and we use [2\mu n\cdot E\cdot n] = 2*[\mu] n_cdot_grad_u_minus_or_plus_cdot_n + 2*mu_plus_or_minus*(-curvature*mass_flux*jump_of_inverse_mass_density)
-  // (proof in our summary of equations)
+  // we calculate the two first terms in here (known before any time step)
 
-  // compute n_cdot_grad_u_minus_cdot_n and n_cdot_grad_u_minus_cdot_n if needed
-  Vec n_cdot_grad_u_minus_cdot_n = NULL, n_cdot_grad_u_plus_cdot_n = NULL;
-//  if(!viscosities_are_equal())
-//  {
-//    if(vnp1_nodes_minus == NULL || vnp1_nodes_plus == NULL)
-//      throw std::runtime_error("my_p4est_two_phase_flows_t::compute_pressure_jump() : the (n + 1) node velocities would be required to evaluate some terms in the pressure jump (have you interpolated at the nodes after the viscosity step?)");
-//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_minus_cdot_n);  CHKERRXX(ierr);
-//    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &n_cdot_grad_u_plus_cdot_n);   CHKERRXX(ierr);
-//    double *n_cdot_grad_u_minus_cdot_n_p, *n_cdot_grad_u_plus_cdot_n_p;
-//    ierr = VecGetArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
-//    ierr = VecGetArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
-
-//    const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
-//    ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
-//    ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-//    double xyz_node[P4EST_DIM], normal_vector[P4EST_DIM];
-//    double grad_u_minus[SQR_P4EST_DIM], grad_u_plus[SQR_P4EST_DIM];
-//    const double *inputs[2] = {vnp1_nodes_minus_p, vnp1_nodes_plus_p};
-//    double* outputs[2] = {grad_u_minus, grad_u_plus};
-//    quad_neighbor_nodes_of_node_t qnnn_buf;
-//    const quad_neighbor_nodes_of_node_t* qnnn_p = (ngbd_n->neighbors_are_initialized() ? NULL : &qnnn_buf);
-//    for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
-//      const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
-//      if(ngbd_n->neighbors_are_initialized())
-//        ngbd_n->get_neighbors(node_idx, qnnn_p);
-//      else
-//        ngbd_n->get_neighbors(node_idx, qnnn_buf);
-
-//      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-//      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
-//      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
-//      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
-//      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
-//      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
-//        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
-//        {
-//          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
-//          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
-//        }
-//    }
-//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
-//      const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
-//      if(ngbd_n->neighbors_are_initialized())
-//        ngbd_n->get_neighbors(node_idx, qnnn_p);
-//      else
-//        ngbd_n->get_neighbors(node_idx, qnnn_buf);
-
-//      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-//      interface_manager->normal_vector_at_point(xyz_node, normal_vector);
-//      qnnn_p->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
-//      n_cdot_grad_u_minus_cdot_n_p[node_idx]  = 0.0;
-//      n_cdot_grad_u_plus_cdot_n_p[node_idx]   = 0.0;
-//      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
-//        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
-//        {
-//          n_cdot_grad_u_minus_cdot_n_p[node_idx]  += normal_vector[uu]*normal_vector[vv]*grad_u_minus[P4EST_DIM*uu + vv];
-//          n_cdot_grad_u_plus_cdot_n_p[node_idx]   += normal_vector[uu]*normal_vector[vv]*grad_u_plus[P4EST_DIM*uu + vv];
-//        }
-//    }
-//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_minus_cdot_n,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(n_cdot_grad_u_plus_cdot_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//    ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-//    ierr = VecRestoreArray(n_cdot_grad_u_minus_cdot_n,  &n_cdot_grad_u_minus_cdot_n_p); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(n_cdot_grad_u_plus_cdot_n,   &n_cdot_grad_u_plus_cdot_n_p);  CHKERRXX(ierr);
-//  }
-  // let's use (linear) interpolators since we may need to do that at subresolved nodes
-  my_p4est_interpolation_nodes_t *interp_n_cdot_grad_u_minus_cdot_n = NULL, *interp_n_cdot_grad_u_plus_cdot_n = NULL;
-  if(n_cdot_grad_u_minus_cdot_n != NULL && n_cdot_grad_u_plus_cdot_n != NULL)
-  {
-    interp_n_cdot_grad_u_minus_cdot_n = new my_p4est_interpolation_nodes_t(ngbd_n); interp_n_cdot_grad_u_minus_cdot_n->set_input(n_cdot_grad_u_minus_cdot_n, linear);
-    interp_n_cdot_grad_u_plus_cdot_n  = new my_p4est_interpolation_nodes_t(ngbd_n); interp_n_cdot_grad_u_plus_cdot_n->set_input(n_cdot_grad_u_plus_cdot_n, linear);
-  }
   const double* curvature_p = NULL;
   const double* jump_normal_velocity_p = NULL;
 
@@ -1110,68 +1073,45 @@ void my_p4est_two_phase_flows_t::compute_pressure_jump()
     ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
   }
 
-  double* pressure_jump_p;
-  const double *phi_p;
-  ierr = VecGetArray(pressure_jump, &pressure_jump_p);          CHKERRXX(ierr);
-  ierr = VecGetArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
-  double xyz_node[P4EST_DIM];
+  double* non_viscous_pressure_jump_p;
+  ierr = VecGetArray(non_viscous_pressure_jump, &non_viscous_pressure_jump_p); CHKERRXX(ierr);
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_layer_node(k);
-    pressure_jump_p[node_idx] = 0.0;
-    if(curvature_p != NULL)
-      pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
+    non_viscous_pressure_jump_p[node_idx] = 0.0;
+    if(fabs(surface_tension) > EPS)
+      non_viscous_pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
     if(jump_normal_velocity_p != NULL)
-      pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
-    if(curvature_p != NULL && jump_normal_velocity_p != NULL)
-      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*jump_normal_velocity_p[node_idx];
-    if(interp_n_cdot_grad_u_minus_cdot_n != NULL && interp_n_cdot_grad_u_plus_cdot_n != NULL)
-    {
-      node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
-      pressure_jump_p[node_idx] += 2.0*jump_viscosity()*(phi_p[node_idx] <= 0.0 ? (*interp_n_cdot_grad_u_minus_cdot_n)(xyz_node) : (*interp_n_cdot_grad_u_plus_cdot_n)(xyz_node));
-    }
+      non_viscous_pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
   }
-  ierr = VecGhostUpdateBegin(pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_local_size(); ++k) {
     const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_local_node(k);
-    pressure_jump_p[node_idx] = 0.0;
-    if(curvature_p != NULL)
-      pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
+    non_viscous_pressure_jump_p[node_idx] = 0.0;
+    if(fabs(surface_tension) > EPS)
+      non_viscous_pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
     if(jump_normal_velocity_p != NULL)
-      pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
-    if(curvature_p != NULL && jump_normal_velocity_p != NULL)
-      pressure_jump_p[node_idx] -= 2.0*(phi_p[node_idx] <= 0.0 ? mu_plus : mu_minus)*curvature_p[node_idx]*jump_normal_velocity_p[node_idx];
-    if(interp_n_cdot_grad_u_minus_cdot_n != NULL && interp_n_cdot_grad_u_plus_cdot_n != NULL)
-    {
-      node_xyz_fr_n(node_idx, interface_capturing_ngbd_n.get_p4est(), interface_capturing_ngbd_n.get_nodes(), xyz_node);
-      pressure_jump_p[node_idx] += 2.0*jump_viscosity()*(phi_p[node_idx] <= 0.0 ? (*interp_n_cdot_grad_u_minus_cdot_n)(xyz_node) : (*interp_n_cdot_grad_u_plus_cdot_n)(xyz_node));
-    }
+      non_viscous_pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
   }
-  ierr = VecGhostUpdateEnd(pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = VecRestoreArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(pressure_jump, &pressure_jump_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(non_viscous_pressure_jump, &non_viscous_pressure_jump_p); CHKERRXX(ierr);
 
   if(jump_normal_velocity_p != NULL){
     ierr = VecRestoreArrayRead(jump_normal_velocity, &jump_normal_velocity_p); CHKERRXX(ierr); }
   if(curvature_p != NULL){
     ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr); }
 
-  ierr = delete_and_nullify_vector(n_cdot_grad_u_minus_cdot_n); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(n_cdot_grad_u_plus_cdot_n); CHKERRXX(ierr);
-  if(interp_n_cdot_grad_u_minus_cdot_n != NULL)
-    delete interp_n_cdot_grad_u_minus_cdot_n;
-  if(interp_n_cdot_grad_u_plus_cdot_n != NULL)
-    delete interp_n_cdot_grad_u_plus_cdot_n;
   return;
 }
 
 /* solve the pressure guess equation:
  * -div((1.0/rho)*grad(p_guess)) = 0.0
- * jump_p = -surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density()
+ * jump in pressure guess = -surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density()
+ *                           + jump in (mu n*E*n) <-- this one is estimated with vnp1_face_*_km1
  * jump_normal_flux = 0.0
  */
-void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, const PCType pc)
+void my_p4est_two_phase_flows_t::solve_for_pressure_guess()
 {
   if(pressure_guess_is_set)
     return;
@@ -1179,35 +1119,36 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_pressure_guess, 0, 0, 0, 0); CHKERRXX(ierr);
 
   /* Solve for the pressure guess: */
-  compute_pressure_jump();
-
-  if(pressure_guess_solver == NULL)
+  if(cell_jump_solver == NULL)
   {
-    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
-    {
-      pressure_guess_solver = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(pressure_guess_solver)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
-    }
-    else
-      pressure_guess_solver = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
+    build_cell_jump_solver();
+    cell_jump_solver->set_interface(interface_manager);
+    cell_jump_solver->set_diagonals(0.0, 0.0);
+    cell_jump_solver->set_mus(1.0/rho_minus, 1.0/rho_plus);
+    cell_jump_solver->set_shear_viscosities(mu_minus, mu_plus); // required for the last terms in pressure jumps
+    if(bc_pressure != NULL)
+      cell_jump_solver->set_bc(*bc_pressure);
   }
 
-  pressure_guess_solver->set_interface(interface_manager);
-  pressure_guess_solver->set_diagonals(0.0, 0.0);
-  pressure_guess_solver->set_mus(1.0/rho_minus, 1.0/rho_plus);
-  if(bc_pressure != NULL)
-    pressure_guess_solver->set_bc(*bc_pressure);
-  pressure_guess_solver->set_jumps(pressure_jump, NULL);
-  pressure_guess_solver->solve(ksp, pc);
+  compute_non_viscous_pressure_jump();
+  cell_jump_solver->set_jumps(non_viscous_pressure_jump, NULL); /* NULL for the jump in (1/rho normal derivative of p) because we don't know't do any better */
+  if(ANDD(vnp1_face_minus_km1[0] != NULL, vnp1_face_minus_km1[1] != NULL, vnp1_face_minus_km1[2] != NULL) &&
+     ANDD(vnp1_face_plus_km1[0] != NULL,  vnp1_face_plus_km1[1] != NULL,  vnp1_face_plus_km1[2] != NULL))
+    cell_jump_solver->set_face_velocities_km1(vnp1_face_minus_km1, vnp1_face_plus_km1);
+  else
+    cell_jump_solver->set_face_velocities_km1(NULL, NULL);
 
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(grad_p_guess_over_rho_minus[dim] == NULL){
-      ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dim], dim); CHKERRXX(ierr); }
-    if(grad_p_guess_over_rho_plus[dim] == NULL){
-      ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_plus[dim], dim); CHKERRXX(ierr); }
-  }
+  // no "set_rhs" here, we consider the homogeneous problem
+  cell_jump_solver->solve(Krylov_solver_for_cell_problems, preconditioner_for_cell_problems);
+  cell_jump_solver->extrapolate_solution_from_either_side_to_the_other(npseudo_time_steps());
 
-  pressure_guess_solver->get_flux_components(grad_p_guess_over_rho_minus, grad_p_guess_over_rho_plus, faces_n);
+  if(pressure_minus != NULL){
+    ierr = delete_and_nullify_vector(pressure_minus); CHKERRXX(ierr); }
+  if(pressure_plus != NULL){
+    ierr = delete_and_nullify_vector(pressure_plus); CHKERRXX(ierr); }
+
+  pressure_minus  = cell_jump_solver->return_extrapolated_solution_minus();
+  pressure_plus   = cell_jump_solver->return_extrapolated_solution_plus();
 
   pressure_guess_is_set = true;
 
@@ -1218,35 +1159,25 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess(const KSPType ksp, con
 /* solve the projection step, we consider (PHI/rho) to be the HODGE variable, define the divergence-free projection as
  * v^{n + 1} = v^{\star} - (1.0/rho) grad PHI, and we solve for PHI as the solution of
  * -div((1.0/rho)*grad(PHI)) = -div(vstar)
- * jump_PHI = 0.0
+ * jump_PHI = (dt/alpha)*(jump in (mu*n*E*n) - jump in (mu*n*E_km1*n) + jump in (mu div v))
  * jump_normal_flux = 0.0! --> because we assume the normal jump in u_star has been correctly captured earlier on...
  */
-void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCType pc)
+void my_p4est_two_phase_flows_t::solve_projection()
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_projection, 0, 0, 0, 0); CHKERRXX(ierr);
-  /* Make the two-phase velocity field divergence free : */
-  if(divergence_free_projector == NULL)
-  {
-    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
-    {
-      divergence_free_projector = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(divergence_free_projector)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
-    }
-    else
-      divergence_free_projector = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
-  }
+  /* Make the two-phase velocity field divergence free (and correct pressure): */
+  if(cell_jump_solver == NULL)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection(): the cell jump solver has *NOT* been constructed yet, have you call solve_for_pressure_guess beforehand? ");
 
-  divergence_free_projector->set_interface(interface_manager);
-  divergence_free_projector->set_diagonals(0.0, 0.0);
-  divergence_free_projector->set_mus(1.0/rho_minus, 1.0/rho_plus);
-  struct wall_type_hodge_t : WallBCDIM {
-    BoundaryConditionType operator()(DIM(double, double, double)) const { return NEUMANN; }
-  } wall_type_hodge;
-  BoundaryConditionsDIM bc_hodge;
-  bc_hodge.setWallTypes(wall_type_hodge); bc_hodge.setWallValues(zero_cf);
-  divergence_free_projector->set_bc(bc_hodge);
-  divergence_free_projector->set_jumps(NULL, NULL);
+  cell_jump_solver->set_for_projection_steps(dt_n/BDF_advection_alpha());
+  // If not previously done, the above does
+  // - clear the node-sampled jumps (surface tension + recoil), internally to the solver
+  // - makes the memorized jump-related data homoegeneous
+  // - raise a flag that
+  //  1) activates the definition of jumps thereafter as
+  //              (dt/alpha)*(jump in (mu n_dot_E_dot_n) - jump in (mu n_dot_Ekm1_dot_n) + jump in (div u))
+  //  2) keeps the boundary condition types as originally given (i.e. as for pressure guess) makes them homogeneous
 
   my_p4est_interpolation_nodes_t* interp_jump_normal_velocity = NULL;
   if(jump_normal_velocity != NULL)
@@ -1254,18 +1185,161 @@ void my_p4est_two_phase_flows_t::solve_projection(const KSPType ksp, const PCTyp
     interp_jump_normal_velocity = new my_p4est_interpolation_nodes_t(ngbd_n);
     interp_jump_normal_velocity->set_input(jump_normal_velocity, linear);
   }
-  divergence_free_projector->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, interp_jump_normal_velocity);
-  divergence_free_projector->solve(ksp, pc);
+  if(ANDD(vnp1_face_minus_km1[0] != NULL, vnp1_face_minus_km1[1] != NULL, vnp1_face_minus_km1[2] != NULL) &&
+     ANDD(vnp1_face_plus_km1[0] != NULL, vnp1_face_plus_km1[1] != NULL, vnp1_face_plus_km1[2] != NULL))
+    cell_jump_solver->set_face_velocities_km1(vnp1_face_minus_km1, vnp1_face_plus_km1);
+  else
+    cell_jump_solver->set_face_velocities_km1(NULL, NULL);
+
+  if(ORD(vnp1_face_minus[0] == NULL,  vnp1_face_minus[1] == NULL, vnp1_face_minus[2] == NULL) ||
+     ORD(vnp1_face_plus[0] == NULL,   vnp1_face_plus[1] == NULL,  vnp1_face_plus[2] == NULL))
+    throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection(): current face-sampled velocities are not defined, what are you making divergence-free?");
+
+  cell_jump_solver->set_velocity_on_faces(vnp1_face_minus, vnp1_face_plus, interp_jump_normal_velocity);
+  cell_jump_solver->solve(Krylov_solver_for_cell_problems, preconditioner_for_cell_problems);
 
   // extrapolate the solutions from either side so that the projection can be done for ghost-values velocities, as well
-  const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
-  divergence_free_projector->extrapolate_solution_from_either_side_to_the_other(niter);
-  divergence_free_projector->project_face_velocities(faces_n);
+  cell_jump_solver->extrapolate_solution_from_either_side_to_the_other(npseudo_time_steps());
+
+  // --------------------------------------
+  // --- start updating pressure fields ---
+  // (done BEFORE we project the velocity field, because the correction term "mu div vnp1_face_*" requires the not-yet-updated face-velocity)
+  if(pressure_minus == NULL || pressure_plus == NULL)
+    throw  std::runtime_error("my_p4est_two_phase_flows_t::solve_projection(): the pressure field is not defined yet...");
+  const double *projection_variable_minus_p, *projection_variable_plus_p;
+  const double *vnp1_face_plus_p[P4EST_DIM], *vnp1_face_minus_p[P4EST_DIM];
+  double *pressure_minus_p, *pressure_plus_p;
+  ierr = VecGetArrayRead(cell_jump_solver->get_extrapolated_solution_minus(), &projection_variable_minus_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(cell_jump_solver->get_extrapolated_solution_plus(),  &projection_variable_plus_p);   CHKERRXX(ierr);
+  ierr = VecGetArray(pressure_minus,  &pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(pressure_plus,   &pressure_plus_p);  CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    ierr = VecGetArrayRead(vnp1_face_minus[dim],  &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vnp1_face_plus[dim],   &vnp1_face_plus_p[dim]);  CHKERRXX(ierr);
+  }
+
+  const double alpha_over_dt = BDF_advection_alpha()/dt_n;
+  linear_combination_of_dof_t cell_divergence[P4EST_DIM];
+  for(size_t k = 0; k < hierarchy_n->get_layer_size(); k++)
+  {
+    p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_layer_quadrant(k);
+    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_layer_quadrant(k);
+    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
+    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx]   - mu_plus *SUMD(cell_divergence[0](vnp1_face_plus_p[0]),  cell_divergence[1](vnp1_face_plus_p[1]),  cell_divergence[2](vnp1_face_plus_p[2]));
+    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx]  - mu_minus*SUMD(cell_divergence[0](vnp1_face_minus_p[0]), cell_divergence[1](vnp1_face_minus_p[1]), cell_divergence[2](vnp1_face_minus_p[2]));
+  }
+  ierr = VecGhostUpdateBegin(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < hierarchy_n->get_inner_size(); k++)
+  {
+    p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_inner_quadrant(k);
+    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_inner_quadrant(k);
+    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
+    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx]   - mu_plus *SUMD(cell_divergence[0](vnp1_face_plus_p[0]),  cell_divergence[1](vnp1_face_plus_p[1]),  cell_divergence[2](vnp1_face_plus_p[2]));
+    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx]  - mu_minus*SUMD(cell_divergence[0](vnp1_face_minus_p[0]), cell_divergence[1](vnp1_face_minus_p[1]), cell_divergence[2](vnp1_face_minus_p[2]));
+  }
+  ierr = VecGhostUpdateEnd(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(cell_jump_solver->get_extrapolated_solution_minus(), &projection_variable_minus_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(cell_jump_solver->get_extrapolated_solution_plus(),  &projection_variable_plus_p);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(pressure_minus,  &pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(pressure_plus,   &pressure_plus_p);  CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    ierr = VecRestoreArrayRead(vnp1_face_minus[dim],  &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(vnp1_face_plus[dim],   &vnp1_face_plus_p[dim]);  CHKERRXX(ierr);
+  }
+  // ------- done updating pressure -------
+  // --------------------------------------
+
+  cell_jump_solver->project_face_velocities(faces_n, NULL, NULL, max_velocity_correction_in_projection);
 
   if(interp_jump_normal_velocity != NULL)
     delete interp_jump_normal_velocity;
 
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_projection, 0, 0, 0, 0); CHKERRXX(ierr);
+  return;
+}
+
+void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter)
+{
+  PetscErrorCode ierr;
+  max_velocity_correction_in_projection[0] = max_velocity_correction_in_projection[1] = DBL_MAX;
+  int iter = 0;
+  while((max_velocity_correction_in_projection[0] > velocity_relative_threshold*max_velocity_component_before_projection[0] ||
+         max_velocity_correction_in_projection[1] > velocity_relative_threshold*max_velocity_component_before_projection[1])
+        && iter < max_niter)
+  {
+    solve_viscosity(); // will do the pressure guess calculation in the very first pass, if needed
+    solve_projection();
+
+    ierr = PetscPrintf(p4est_n->mpicomm, " -------- Internal iteration #%02d -------- \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " --- In negative domain --- \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " --- In positive domain --- \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[1]); CHKERRXX(ierr);
+  }
+  return;
+}
+
+void my_p4est_two_phase_flows_t::set_cell_jump_solver(const jump_solver_tag& solver_to_use, const KSPType& KSP_, const PCType& PC_)
+{
+  cell_jump_solver_to_use = solver_to_use;
+  if(strcmp(KSP_, "default") != 0)
+    Krylov_solver_for_cell_problems = KSP_;
+  else
+  {
+    switch (cell_jump_solver_to_use) {
+    case GFM:
+    case xGFM:
+      Krylov_solver_for_cell_problems = KSPCG; // the matrix is always SPD in those case, CG is the best
+      break;
+    case FV:
+      Krylov_solver_for_cell_problems = (mass_densities_are_equal() ? KSPCG : KSPBCGS); // matrix is SPD iff rho_minus == rho_plus;
+    default:
+      throw std::runtime_error("my_p4est_two_phase_flows_t::set_cell_jump_solver(): unknown solver type for cell-based jump problems");
+      break;
+    }
+  }
+
+  if(strcmp(PC_, "default") != 0)
+    preconditioner_for_cell_problems = PC_;
+  else
+    preconditioner_for_cell_problems = PCHYPRE; // we might need all the help we can get
+
+  return;
+}
+
+
+void my_p4est_two_phase_flows_t::set_face_jump_solvers(const jump_solver_tag& solver_to_use,  const KSPType& KSP_, const PCType& PC_)
+{
+  face_jump_solver_to_use = solver_to_use;
+  if(strcmp(KSP_, "default") != 0)
+    Krylov_solver_for_face_problems = KSP_;
+  else
+  {
+    switch (face_jump_solver_to_use) {
+    case GFM:
+    case xGFM:
+      Krylov_solver_for_face_problems = KSPCG; // the matrix is always SPD in those case, CG is the best
+      break;
+    case FV:
+      Krylov_solver_for_face_problems = (viscosities_are_equal() ? KSPCG : KSPBCGS); // matrix is SPD iff mu_minus == mu_plus;
+    default:
+      throw std::runtime_error("my_p4est_two_phase_flows_t::set_face_jump_solvers(): unknown solver type for face-based jump problems");
+      break;
+    }
+  }
+
+  if(strcmp(PC_, "default") != 0)
+    preconditioner_for_face_problems = PC_;
+  else
+    preconditioner_for_face_problems = PCSOR; // we have nonzero diagonal terms in this case, no need to be anal about it
+
   return;
 }
 
@@ -1596,31 +1670,40 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_solve_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
-  if(viscosity_solver == NULL)
-    viscosity_solver = new my_p4est_poisson_jump_faces_xgfm_t(faces_n, nodes_n);
-  viscosity_solver->set_interface(interface_manager);
-  viscosity_solver->set_mus(mu_minus, mu_plus);
-//  viscosity_solver->set_validity_of_interface_neighbors_for_extrapolation(false);
-  viscosity_solver->set_bc(bc_velocity);
-  viscosity_solver->set_jumps(NULL, NULL);
-  viscosity_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
-  viscosity_solver->set_rhs(viscosity_rhs_minus, viscosity_rhs_plus);
-  viscosity_solver->set_max_number_of_iter(n_xGFM_viscous_iterations);
-
-  if(sl_order == 1)
-    viscosity_solver->set_diagonals(rho_minus/dt_n, rho_plus/dt_n);
-  else
-    viscosity_solver->set_diagonals(BDF_advection_alpha()*rho_minus/dt_n, BDF_advection_alpha()*rho_plus/dt_n);
-  viscosity_solver->solve(KSPCG);
-  const int niter = 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
-  viscosity_solver->extrapolate_solution_from_either_side_to_the_other(niter);
-  viscosity_solver->return_ownership_of_extrapolations(vnp1_face_minus, vnp1_face_plus);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(vnp1_face_minus_star[dim] == NULL){
-      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus_star[dim], dim); CHKERRXX(ierr);
-    }
-    ierr = VecCopyGhost(vnp1_face_minus[dim], vnp1_face_minus_star[dim]); CHKERRXX(ierr);
+  if(face_jump_solver == NULL)
+  {
+    build_face_jump_solver();
+    face_jump_solver->set_interface(interface_manager);
+    face_jump_solver->set_mus(mu_minus, mu_plus);
+    face_jump_solver->set_bc(bc_velocity);
+    face_jump_solver->set_jumps(jump_normal_velocity, interface_tangential_stress);
+    face_jump_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
   }
+
+  face_jump_solver->set_rhs(viscosity_rhs_minus, viscosity_rhs_plus);
+  face_jump_solver->set_max_number_of_iter(n_viscous_subiterations);
+  face_jump_solver->set_diagonals(BDF_advection_alpha()*rho_minus/dt_n, BDF_advection_alpha()*rho_plus/dt_n);
+  face_jump_solver->solve(Krylov_solver_for_face_problems, preconditioner_for_face_problems);
+  face_jump_solver->extrapolate_solution_from_either_side_to_the_other(npseudo_time_steps(), 1, max_velocity_component_before_projection);
+
+  P4EST_ASSERT((ANDD(vnp1_face_minus[0] == NULL, vnp1_face_minus[1] == NULL, vnp1_face_minus[2] == NULL) &&
+      ANDD(vnp1_face_plus[0] == NULL, vnp1_face_plus[1] == NULL, vnp1_face_plus[2] == NULL)) ||
+      (ANDD(vnp1_face_minus[0] != NULL, vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL) &&
+      ANDD(vnp1_face_plus[0] != NULL, vnp1_face_plus[1] != NULL, vnp1_face_plus[2] != NULL))); // either all undefined or all defined...
+  if(ANDD(vnp1_face_minus[0] != NULL, vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL) &&
+     ANDD(vnp1_face_plus[0] != NULL,  vnp1_face_plus[1] != NULL,  vnp1_face_plus[2] != NULL))
+  {
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    {
+      // no longer need km1 (if we had it)
+      ierr = delete_and_nullify_vector(vnp1_face_minus_km1[dim]); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(vnp1_face_plus_km1[dim]);  CHKERRXX(ierr);
+      // swap current and km1 (current is NULL until the face jump solver returns its knowledge herebelow)
+      std::swap(vnp1_face_minus_km1[dim], vnp1_face_minus[dim]);
+      std::swap(vnp1_face_plus_km1[dim], vnp1_face_plus[dim]);
+    }
+  }
+  face_jump_solver->return_ownership_of_extrapolations(vnp1_face_minus, vnp1_face_plus);
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_solve_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
@@ -1802,10 +1885,6 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
   if (interface_manager->phi_at_point(xyz_node) >= 0.0)
     max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
 
-//  if (interface_manager->phi_at_point(xyz_node) <= (sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
-//    max_L2_norm_velocity_minus = MAX(max_L2_norm_velocity_minus, sqrt(magnitude_velocity_minus));
-//  if (interface_manager->phi_at_point(xyz_node) >= -(sl_order + 1)*cfl_advection*smallest_diagonal) // "+ 1" for safety
-//    max_L2_norm_velocity_plus = MAX(max_L2_norm_velocity_plus, sqrt(magnitude_velocity_plus));
   return;
 }
 
@@ -2014,13 +2093,94 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
 }
 
-void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index) const
+void my_p4est_two_phase_flows_t::transfer_face_sampled_vnp1_to_cells(Vec vnp1_minus_on_cells, Vec vnp1_plus_on_cells) const
+{
+  PetscErrorCode ierr;
+  const double *vnp1_face_minus_p[P4EST_DIM]= {DIM(NULL, NULL, NULL)}; double *vnp1_minus_on_cells_p  = NULL;
+  const double *vnp1_face_plus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)}; double *vnp1_plus_on_cells_p   = NULL;
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vnp1_face_plus[dim], &vnp1_face_plus_p[dim]); CHKERRXX(ierr);
+  }
+  ierr = VecGetArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
+  ierr = VecGetArray(vnp1_plus_on_cells, &vnp1_plus_on_cells_p); CHKERRXX(ierr);
+
+  for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_layer_size(); ++k) {
+    p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_layer_quadrant(k);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
+      if(face_idx != NO_VELOCITY){
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
+        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_plus_p[dim][face_idx];
+      }
+      else
+      {
+        set_of_neighboring_quadrants nb_quad;
+        ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+        double sum_w = 0.0;
+        for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
+          double w = 1.0/((double) (1 << (P4EST_DIM - 1)*it->level));
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_plus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          sum_w += w;
+        }
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+      }
+    }
+  }
+
+  ierr = VecGhostUpdateBegin(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(vnp1_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_inner_size(); ++k) {
+    p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_inner_quadrant(k);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
+      if(face_idx != NO_VELOCITY){
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
+        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_plus_p[dim][face_idx];
+      }
+      else
+      {
+        set_of_neighboring_quadrants nb_quad;
+        ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+        double sum_w = 0.0;
+        for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
+          double w = 1.0/((double) (1 << (P4EST_DIM - 1)*it->level));
+          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_plus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          sum_w += w;
+        }
+        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+      }
+    }
+  }
+
+  ierr = VecGhostUpdateEnd(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(vnp1_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(vnp1_face_plus[dim], &vnp1_face_plus_p[dim]); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vnp1_plus_on_cells, &vnp1_plus_on_cells_p); CHKERRXX(ierr);
+  return;
+}
+
+void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive) const
 {
   PetscErrorCode ierr;
   std::vector<Vec_for_vtk_export_t> node_scalar_fields;
   std::vector<Vec_for_vtk_export_t> node_vector_fields;
   std::vector<Vec_for_vtk_export_t> cell_scalar_fields;
   std::vector<Vec_for_vtk_export_t> cell_vector_fields;
+
+  // those are the primary variables of interest, we should always export them:
   if(phi_on_computational_nodes != NULL)
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_on_computational_nodes, "phi"));
   if(vnp1_nodes_minus != NULL)
@@ -2029,131 +2189,67 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_plus, "vnp1_plus"));
   if(interface_velocity_np1 != NULL)
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_velocity_np1, "itfc_vnp1"));
+  if(pressure_minus != NULL)
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_minus, "pressure_minus"));
+  if(pressure_plus != NULL)
+    cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_plus, "pressure_plus"));
+
   if(interface_manager->subcell_resolution() == 0)
   {
     node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
+    if(exhaustive && non_viscous_pressure_jump != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
+    if(exhaustive && jump_normal_velocity != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
+    if(exhaustive && interface_tangential_stress != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_stress, "interface_tangential_stress"));
   }
 
-  Vec projection_variable = divergence_free_projector->get_solution();
-  if(projection_variable != NULL)
-    cell_scalar_fields.push_back(Vec_for_vtk_export_t(projection_variable, "projection_variable"));
-
-  Vec extrapolated_Phi_minus = divergence_free_projector->get_extrapolated_solution_minus();
-  if(extrapolated_Phi_minus != NULL)
-    cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_Phi_minus, "extrapolation_phi_minus"));
-
-
-  Vec sharp_vnp1_on_cells = NULL;
   Vec vnp1_minus_on_cells = NULL;
-  Vec vnp1_minus_star_on_cells = NULL;
-  if(ANDD(vnp1_face_minus[0] != NULL, vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL))
-  {
-    const double *vnp1_face_minus_p[P4EST_DIM], *sharp_vnp1_face_p[P4EST_DIM], *vnp1_face_minus_star_p[P4EST_DIM];
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecGetArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(vnp1_face_minus_star[dim], &vnp1_face_minus_star_p[dim]); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(viscosity_solver->get_solution()[dim], &sharp_vnp1_face_p[dim]); CHKERRXX(ierr);
-    }
-
-    double *vnp1_minus_on_cells_p, *sharp_vnp1_on_cells_p, *vnp1_minus_star_on_cells_p;
-    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_on_cells); CHKERRXX(ierr);
-    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &sharp_vnp1_on_cells); CHKERRXX(ierr);
-    ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_star_on_cells); CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
-    ierr = VecGetArray(sharp_vnp1_on_cells, &sharp_vnp1_on_cells_p); CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_minus_star_on_cells, &vnp1_minus_star_on_cells_p); CHKERRXX(ierr);
-    for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_layer_size(); ++k) {
-      p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_layer_quadrant(k);
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
-        if(face_idx != NO_VELOCITY){
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
-          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_face_p[dim][face_idx];
-          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_star_p[dim][face_idx];
-        }
-        else
-        {
-          set_of_neighboring_quadrants nb_quad;
-          ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
-          for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
-            vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-            sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] += sharp_vnp1_face_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-            vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_star_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-          }
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-        }
-      }
-    }
-
-    ierr = VecGhostUpdateBegin(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(sharp_vnp1_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vnp1_minus_star_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_inner_size(); ++k) {
-      p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_inner_quadrant(k);
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
-        if(face_idx != NO_VELOCITY){
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
-          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_face_p[dim][face_idx];
-          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_star_p[dim][face_idx];
-        }
-        else
-        {
-          set_of_neighboring_quadrants nb_quad;
-          ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
-          for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
-            vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-            sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] += sharp_vnp1_face_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-            vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_star_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)];
-          }
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-          sharp_vnp1_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-          vnp1_minus_star_on_cells_p[P4EST_DIM*quad_idx + dim] /= nb_quad.size();
-        }
-      }
-    }
-
-    ierr = VecGhostUpdateEnd(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(sharp_vnp1_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vnp1_minus_star_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sharp_vnp1_on_cells, &sharp_vnp1_on_cells_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_minus_star_on_cells, &vnp1_minus_star_on_cells_p); CHKERRXX(ierr);
-
-
-    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_on_cells, "vnp1_minus"));
-    cell_vector_fields.push_back(Vec_for_vtk_export_t(sharp_vnp1_on_cells, "sharp_vnp1"));
-    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_star_on_cells, "vnp1_minus_star"));
-    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecRestoreArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(vnp1_face_minus_star[dim], &vnp1_face_minus_star_p[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(viscosity_solver->get_solution()[dim], &sharp_vnp1_face_p[dim]); CHKERRXX(ierr);
-    }
-  }
-
+  Vec vnp1_plus_on_cells = NULL;
   Vec discretized_div_u_star = NULL;
-  if(divergence_free_projector->get_rhs() != NULL)
+  if(exhaustive)
   {
-    ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
-    ierr = VecCopy(divergence_free_projector->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
+    if(cell_jump_solver->is_set_for_projection_step)
+    {
+      if(cell_jump_solver->get_solution() != NULL)
+        cell_scalar_fields.push_back(Vec_for_vtk_export_t(cell_jump_solver->get_solution(), "latest_sharp_projection_variable"));
+      if(cell_jump_solver->get_extrapolated_solution_minus() != NULL)
+        cell_scalar_fields.push_back(Vec_for_vtk_export_t(cell_jump_solver->get_extrapolated_solution_minus(), "latest_projection_variable_minus"));
+      if(cell_jump_solver->get_extrapolated_solution_plus() != NULL)
+        cell_scalar_fields.push_back(Vec_for_vtk_export_t(cell_jump_solver->get_extrapolated_solution_plus(), "latest_projection_variable_plus"));
+
+      if(cell_jump_solver->get_rhs() != NULL)
+      {
+        ierr = VecCreateGhostCells(p4est_n, ghost_n, &discretized_div_u_star); CHKERRXX(ierr);
+        ierr = VecCopy(cell_jump_solver->get_rhs(), discretized_div_u_star); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(discretized_div_u_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        cell_scalar_fields.push_back(Vec_for_vtk_export_t(discretized_div_u_star, "discrete_div_u_star"));
+      }
+    }
+
+    if(ANDD(vnp1_face_minus[0] != NULL, vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL) &&
+       ANDD(vnp1_face_plus[0] != NULL, vnp1_face_plus[1] != NULL, vnp1_face_plus[2] != NULL))
+    {
+      ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_on_cells); CHKERRXX(ierr);
+      ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_plus_on_cells); CHKERRXX(ierr);
+      transfer_face_sampled_vnp1_to_cells(vnp1_minus_on_cells, vnp1_plus_on_cells);
+    }
+
+    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_on_cells,  "vnp1_minus"));
+    cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_plus_on_cells,   "vnp1_plus"));
   }
-  Vec pressure_guess = (pressure_guess_solver != NULL ? pressure_guess_solver->get_solution() : NULL);
-  if(pressure_guess != NULL)
-    cell_scalar_fields.push_back(Vec_for_vtk_export_t(pressure_guess, "pressure_guess"));
 
   my_p4est_vtk_write_all_general_lists(p4est_n, nodes_n, ghost_n,
                                        P4EST_TRUE, P4EST_TRUE,
                                        (vtk_directory + "/snapshot_" + std::to_string(index)).c_str(),
                                        &node_scalar_fields, &node_vector_fields, &cell_scalar_fields, &cell_vector_fields);
+
+  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_minus_on_cells); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_plus_on_cells); CHKERRXX(ierr);
 
   if(interface_manager->subcell_resolution() > 0)
   {
@@ -2162,6 +2258,13 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi, "phi"));
     node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
+    if(exhaustive && non_viscous_pressure_jump != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
+    if(exhaustive && jump_normal_velocity != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
+    if(exhaustive && interface_tangential_stress != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_stress, "interface_tangential_stress"));
+
     my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
                                          P4EST_TRUE, P4EST_TRUE,
                                          (vtk_directory + "/subresolved_snapshot_" + std::to_string(index)).c_str(),
@@ -2172,9 +2275,6 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   node_vector_fields.clear();
   cell_scalar_fields.clear();
   cell_vector_fields.clear();
-  ierr = delete_and_nullify_vector(discretized_div_u_star); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnp1_minus_on_cells); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(sharp_vnp1_on_cells); CHKERRXX(ierr);
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
   return;
@@ -2190,84 +2290,84 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
   P4EST_ASSERT((vnm1_nodes_minus_xxyyzz == NULL && vnm1_nodes_plus_xxyyzz == NULL && vn_nodes_minus_xxyyzz == NULL && vn_nodes_plus_xxyyzz == NULL) ||
                (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL));
 
-  /* first find the velocity at the np1 points */
-  my_p4est_interpolation_nodes_t interp_np1_plus(ngbd_n), interp_np1_minus(ngbd_n);
-  const bool use_second_derivatives = (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL);
-  p4est_locidx_t serialized_offset = 0;
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-    serialized_offset += faces_n->num_local[dir];
-  vector<double> xyz_np1;     xyz_np1.resize(P4EST_DIM*serialized_offset);    // coordinates of the origin point, i.e. face centers --> same for minus and plus...
-  vector<double> vnp1_minus;  vnp1_minus.resize(P4EST_DIM*serialized_offset);
-  vector<double> vnp1_plus;   vnp1_plus.resize(P4EST_DIM*serialized_offset);
-  serialized_offset = 0;
+  /* first find the velocity n at the np1 points */
+  my_p4est_interpolation_nodes_t interp_np1(ngbd_n);
+  const bool use_second_derivatives_n   = (vn_nodes_minus_xxyyzz    != NULL && vn_nodes_plus_xxyyzz   != NULL);
+  const bool use_second_derivatives_nm1 = (vnm1_nodes_minus_xxyyzz  != NULL && vnm1_nodes_plus_xxyyzz != NULL);
+  const p4est_locidx_t serialized_offset[P4EST_DIM] = {DIM(0, faces_n->num_local[0], faces_n->num_local[0] + faces_n->num_local[1])};
+  const size_t total_number_of_faces = SUMD(faces_n->num_local[0], faces_n->num_local[1], faces_n->num_local[2]);
+
+  vector<double> xyz_np1(P4EST_DIM*total_number_of_faces);    // coordinates of the origin point, i.e. face centers --> same for minus and plus...
+  vector<double> vnp1_minus(P4EST_DIM*total_number_of_faces);
+  vector<double> vnp1_plus(P4EST_DIM*total_number_of_faces);
+
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
       double xyz_face[P4EST_DIM];
       faces_n->xyz_fr_f(f_idx, dir, xyz_face);
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
-        xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] = xyz_face[comp];
+        xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] = xyz_face[comp];
 
-      interp_np1_minus.add_point(serialized_offset + f_idx, xyz_face);
-      interp_np1_plus.add_point(serialized_offset + f_idx, xyz_face);;
+      interp_np1.add_point(serialized_offset[dir] + f_idx, xyz_face);
     }
-    serialized_offset += faces_n->num_local[dir];
   }
 
-  if (use_second_derivatives)
-  {
-    interp_np1_minus.set_input(vn_nodes_minus,  vn_nodes_minus_xxyyzz,  quadratic, P4EST_DIM);
-    interp_np1_plus.set_input(vn_nodes_plus,    vn_nodes_plus_xxyyzz,   quadratic, P4EST_DIM);
-  }
+  Vec input_fields[2]         = {vn_nodes_minus,        vn_nodes_plus};
+  Vec input_fields_xxyyzz[2]  = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
+  double *outputs[2]          = {vnp1_minus.data(),     vnp1_plus.data()};
+
+  if (use_second_derivatives_n)
+    interp_np1.set_input(input_fields, input_fields_xxyyzz, quadratic, 2, P4EST_DIM);
   else
-  {
-    interp_np1_minus.set_input(vn_nodes_minus,  quadratic, P4EST_DIM);
-    interp_np1_plus.set_input(vn_nodes_plus,    quadratic, P4EST_DIM);
-  }
-  interp_np1_minus.interpolate(vnp1_minus.data());
-  interp_np1_plus.interpolate(vnp1_plus.data());
+    interp_np1.set_input(input_fields, quadratic, 2, P4EST_DIM);
+  interp_np1.interpolate(outputs);
 
   /* find xyz_star */
   my_p4est_interpolation_nodes_t interp_nm1_minus(ngbd_nm1), interp_nm1_plus(ngbd_nm1);
   my_p4est_interpolation_nodes_t interp_n_minus  (ngbd_n  ), interp_n_plus  (ngbd_n  );
-  serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
       double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
       {
-        xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*dt_n*vnp1_minus[P4EST_DIM*(serialized_offset + f_idx) + comp];
-        xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*dt_n*vnp1_plus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+        xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - 0.5*dt_n*vnp1_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp];
+        xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - 0.5*dt_n*vnp1_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp];
       }
       clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
       clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
 
-      interp_nm1_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
-      interp_nm1_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
+      interp_nm1_minus.add_point(serialized_offset[dir] + f_idx, xyz_star_minus);
+      interp_nm1_plus.add_point(serialized_offset[dir] + f_idx, xyz_star_plus);
 
-      interp_n_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
-      interp_n_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
+      interp_n_minus.add_point(serialized_offset[dir] + f_idx, xyz_star_minus);
+      interp_n_plus.add_point(serialized_offset[dir] + f_idx, xyz_star_plus);
     }
-    serialized_offset += faces_n->num_local[dir];
   }
 
   /* compute the velocities at the intermediate point */
-  std::vector<double> vn_star_minus;    vn_star_minus.resize(P4EST_DIM*serialized_offset);
-  std::vector<double> vn_star_plus;     vn_star_plus.resize(P4EST_DIM*serialized_offset);
-  std::vector<double> vnm1_star_minus;  vnm1_star_minus.resize(P4EST_DIM*serialized_offset);
-  std::vector<double> vnm1_star_plus;   vnm1_star_plus.resize(P4EST_DIM*serialized_offset);
-  if(use_second_derivatives)
+  std::vector<double> vn_star_minus(P4EST_DIM*total_number_of_faces);
+  std::vector<double> vn_star_plus(P4EST_DIM*total_number_of_faces);
+  std::vector<double> vnm1_star_minus(P4EST_DIM*total_number_of_faces);
+  std::vector<double> vnm1_star_plus(P4EST_DIM*total_number_of_faces);
+  if(use_second_derivatives_n)
   {
-    interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  quadratic, P4EST_DIM);
-    interp_nm1_plus.set_input (vnm1_nodes_plus,   vnm1_nodes_plus_xxyyzz,   quadratic, P4EST_DIM);
     interp_n_minus.set_input  (vn_nodes_minus,    vn_nodes_minus_xxyyzz,    quadratic, P4EST_DIM);
     interp_n_plus.set_input   (vn_nodes_plus,     vn_nodes_plus_xxyyzz,     quadratic, P4EST_DIM);
   }
   else
   {
-    interp_nm1_minus.set_input(vnm1_nodes_minus,  quadratic, P4EST_DIM);
-    interp_nm1_plus.set_input (vnm1_nodes_plus,   quadratic, P4EST_DIM);
     interp_n_minus.set_input  (vn_nodes_minus,    quadratic, P4EST_DIM);
     interp_n_plus.set_input   (vn_nodes_plus,     quadratic, P4EST_DIM);
+  }
+  if(use_second_derivatives_nm1)
+  {
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  quadratic, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   vnm1_nodes_plus_xxyyzz,   quadratic, P4EST_DIM);
+  }
+  else
+  {
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  quadratic, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   quadratic, P4EST_DIM);
   }
   interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
   interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
@@ -2275,7 +2375,6 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
   interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
 
   /* now find the departure point at time n and interpolate the appropriate velocity component there */
-  serialized_offset = 0;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     backtraced_vn_faces_minus[dir].resize(faces_n->num_local[dir]);
     backtraced_vn_faces_plus[dir].resize(faces_n->num_local[dir]);
@@ -2283,10 +2382,10 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
       double xyz_backtraced_n_minus[P4EST_DIM], xyz_backtraced_n_plus[P4EST_DIM];
       for (u_char comp = 0; comp < P4EST_DIM; ++comp)
       {
-        xyz_backtraced_n_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
-        xyz_backtraced_n_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+        xyz_backtraced_n_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]
+            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]);
+        xyz_backtraced_n_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]
+            - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - .5*(dt_n/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]);
       }
       clip_in_domain(xyz_backtraced_n_minus, xyz_min, xyz_max, periodicity);
       clip_in_domain(xyz_backtraced_n_plus, xyz_min, xyz_max, periodicity);
@@ -2295,31 +2394,28 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
     }
     interp_n_minus.interpolate(backtraced_vn_faces_minus[dir].data(), dir); interp_n_minus.clear();
     interp_n_plus.interpolate(backtraced_vn_faces_plus[dir].data(),  dir);  interp_n_plus.clear();
-    serialized_offset += faces_n->num_local[dir];
   }
 
   // EXTRA STUFF FOR FINDING xyz_nm1 ONLY (for second-order bdf advection terms, for instance)
   if(sl_order == 2)
   {
     /* proceed similarly for the departure point at time nm1 */
-    serialized_offset = 0;
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
       for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
         double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
         for (u_char comp = 0; comp < P4EST_DIM; ++comp)
         {
-          xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_minus[P4EST_DIM*(serialized_offset + f_idx) + comp];
-          xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_plus[P4EST_DIM*(serialized_offset + f_idx) + comp];
+          xyz_star_minus[comp]  = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp];
+          xyz_star_plus[comp]   = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - 0.5*(dt_n + dt_nm1)*vnp1_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp];
         }
         clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
         clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
 
-        interp_nm1_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
-        interp_nm1_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
-        interp_n_minus.add_point(serialized_offset + f_idx, xyz_star_minus);
-        interp_n_plus.add_point(serialized_offset + f_idx, xyz_star_plus);
+        interp_nm1_minus.add_point(serialized_offset[dir] + f_idx, xyz_star_minus);
+        interp_nm1_plus.add_point(serialized_offset[dir] + f_idx, xyz_star_plus);
+        interp_n_minus.add_point(serialized_offset[dir] + f_idx, xyz_star_minus);
+        interp_n_plus.add_point(serialized_offset[dir] + f_idx, xyz_star_plus);
       }
-      serialized_offset += faces_n->num_local[dir];
     }
 
     /* compute the velocities at the intermediate point */
@@ -2329,7 +2425,6 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
     interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
 
     /* now find the departure point at time nm1 and interpolate the appropriate velocity component there */
-    serialized_offset = 0;
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
       backtraced_vnm1_faces_minus[dir].resize(faces_n->num_local[dir]);
       backtraced_vnm1_faces_plus[dir].resize(faces_n->num_local[dir]);
@@ -2337,10 +2432,10 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
         double xyz_backtraced_nm1_minus[P4EST_DIM], xyz_backtraced_nm1_plus[P4EST_DIM];
         for (u_char comp = 0; comp < P4EST_DIM; ++comp)
         {
-          xyz_backtraced_nm1_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
-          xyz_backtraced_nm1_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset + f_idx) + comp]
-              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset + f_idx) + comp]);
+          xyz_backtraced_nm1_minus[comp] = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]
+              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_minus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]);
+          xyz_backtraced_nm1_plus[comp] = xyz_np1[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]
+              - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_plus[P4EST_DIM*(serialized_offset[dir] + f_idx) + comp]);
         }
         clip_in_domain(xyz_backtraced_nm1_minus, xyz_min, xyz_max, periodicity);
         clip_in_domain(xyz_backtraced_nm1_plus, xyz_min, xyz_max, periodicity);
@@ -2350,7 +2445,6 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
       }
       interp_nm1_minus.interpolate(backtraced_vnm1_faces_minus[dir].data(), dir); interp_nm1_minus.clear();
       interp_nm1_plus.interpolate(backtraced_vnm1_faces_plus[dir].data(), dir);   interp_nm1_plus.clear();
-      serialized_offset += faces_n->num_local[dir];
     }
   }
   semi_lagrangian_backtrace_is_done = true;
@@ -2360,11 +2454,18 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
 
 void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
 {
-  solve_for_pressure_guess((cell_jump_solver_to_use == FV ? KSPBCGS : KSPCG));
+  if(pressure_minus == NULL || pressure_plus == NULL)
+    solve_for_pressure_guess();
   compute_backtraced_velocities();
+
+  P4EST_ASSERT(pressure_minus != NULL && pressure_plus != NULL);
+
   PetscErrorCode ierr;
+  const double *pressure_minus_p, *pressure_plus_p;
+  ierr = VecGetArrayRead(pressure_minus, &pressure_minus_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(pressure_plus, &pressure_plus_p);    CHKERRXX(ierr);
+
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    const double *grad_p_guess_over_rho_minus_dir_p, *grad_p_guess_over_rho_plus_dir_p;
     double *viscosity_rhs_minus_dir_p, *viscosity_rhs_plus_dir_p;
     if(viscosity_rhs_minus[dir] == NULL){
       ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_minus[dir], dir); CHKERRXX(ierr);
@@ -2374,9 +2475,6 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
     }
     ierr = VecGetArray(viscosity_rhs_minus[dir],  &viscosity_rhs_minus_dir_p);  CHKERRXX(ierr);
     ierr = VecGetArray(viscosity_rhs_plus[dir],   &viscosity_rhs_plus_dir_p);   CHKERRXX(ierr);
-    ierr = VecGetArrayRead(grad_p_guess_over_rho_minus[dir],  &grad_p_guess_over_rho_minus_dir_p);  CHKERRXX(ierr);
-    ierr = VecGetArrayRead(grad_p_guess_over_rho_plus[dir],   &grad_p_guess_over_rho_plus_dir_p);   CHKERRXX(ierr);
-
 
     for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
     {
@@ -2403,15 +2501,49 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
         viscosity_rhs_plus_dir_p[f_idx]   += rho_plus*(*force_per_unit_mass[dir])(xyz_face);
       }
 
-      viscosity_rhs_minus_dir_p[f_idx]  -= rho_minus*grad_p_guess_over_rho_minus_dir_p[f_idx];
-      viscosity_rhs_plus_dir_p[f_idx]   -= rho_plus*grad_p_guess_over_rho_plus_dir_p[f_idx];
+      // pressure gradient!
+      p4est_quadrant_t qm, qp;
+      faces_n->find_quads_touching_face(f_idx, dir, qm, qp);
+      if(qm.p.piggy3.local_num == -1 || qp.p.piggy3.local_num == -1) // i.e. wall face
+      {
+        const p4est_quadrant_t& quad  = (qm.p.piggy3.local_num != -1 ? qm : qp);
+        const double face_orientation = (qm.p.piggy3.local_num != -1 ? +1.0 : -1.0);
+        const double cell_dx = tree_dimension[dir]*((double) P4EST_QUADRANT_LEN(quad.level))/((double) P4EST_ROOT_LEN);
+        double xyz_face[P4EST_DIM];
+        faces_n->xyz_fr_f(f_idx, dir, xyz_face);
+        switch (bc_pressure->wallType(xyz_face)) {
+        case DIRICHLET:
+          viscosity_rhs_minus_dir_p[f_idx]  -= face_orientation*2.0*(bc_pressure->wallType(xyz_face) - pressure_minus_p[quad.p.piggy3.local_num])/cell_dx;
+          viscosity_rhs_plus_dir_p[f_idx]   -= face_orientation*2.0*(bc_pressure->wallType(xyz_face) - pressure_plus_p[quad.p.piggy3.local_num])/cell_dx;
+          break;
+        case NEUMANN:
+          viscosity_rhs_minus_dir_p[f_idx]  -= face_orientation*bc_pressure->wallType(xyz_face);
+          viscosity_rhs_plus_dir_p[f_idx]   -= face_orientation*bc_pressure->wallType(xyz_face);
+          break;
+        default:
+          throw std::runtime_error("my_p4est_two_phase_flows_t::compute_viscosity_rhs(): unknown pressure wall boundary type");
+          break;
+        }
+      }
+      else
+      {
+        const p4est_quadrant_t& quad  = (qm.level < qp.level || qm.level == qp.level ? qm : qp);        // we pick the "major" quad to avoid yet another search for neighbors in "stable_projection_..."
+        const u_char face_dir         = 2*dir + (qm.level < qp.level || qm.level == qp.level ? 1 : 0);
+        set_of_neighboring_quadrants dummy1;
+        bool dummy2;
+        linear_combination_of_dof_t derivative_operator = cell_jump_solver->stable_projection_derivative_operator_at_face(quad.p.piggy3.local_num, quad.p.piggy3.which_tree, face_dir, dummy1, dummy2);
+        viscosity_rhs_minus_dir_p[f_idx]  -= derivative_operator(pressure_minus_p);
+        viscosity_rhs_plus_dir_p[f_idx]   -= derivative_operator(pressure_plus_p);
+      }
     }
 
     ierr = VecRestoreArray(viscosity_rhs_minus[dir],  &viscosity_rhs_minus_dir_p);  CHKERRXX(ierr);
     ierr = VecRestoreArray(viscosity_rhs_plus[dir],   &viscosity_rhs_plus_dir_p);   CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(grad_p_guess_over_rho_minus[dir],  &grad_p_guess_over_rho_minus_dir_p);  CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(grad_p_guess_over_rho_plus[dir],   &grad_p_guess_over_rho_plus_dir_p);   CHKERRXX(ierr);
   }
+
+  ierr = VecRestoreArrayRead(pressure_minus, &pressure_minus_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(pressure_plus, &pressure_plus_p);    CHKERRXX(ierr);
+
   return;
 }
 
@@ -2631,20 +2763,31 @@ void my_p4est_two_phase_flows_t::get_average_interface_velocity(double avg_itfc_
   my_p4est_interpolation_nodes_t interp_itfc_velocity(ngbd_n);
   interp_itfc_velocity.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
 
-  double integral_velocity_and_surface[P4EST_DIM + 1] = {DIM(0.0, 0.0, 0.0), 0.0};
+  double integral_velocity_and_surface[P4EST_DIM + 1] = {0.0, DIM(0.0, 0.0, 0.0)};
 
   for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
     const p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
       const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-      if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, NULL))
+
+      if((cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
+          && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known
+          && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
+         || interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, NULL))
       {
         double xyz_quad[P4EST_DIM];
         const double *tree_xyz_min, *tree_xyz_max;
         const p4est_quadrant_t* quad;
         fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est_n, ghost_n);
         xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad);
-        my_p4est_finite_volume_t fv = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
+        my_p4est_finite_volume_t fv;
+        if(cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
+           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known
+           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
+          fv = dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad[quad_idx];
+        else
+          fv = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
+
         P4EST_ASSERT(fv.interfaces.size() <= 1);
         for (size_t k = 0; k < fv.interfaces.size(); ++k) {
           const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + fv.interfaces[k].centroid[0], xyz_quad[1] + fv.interfaces[k].centroid[1], xyz_quad[2] + fv.interfaces[k].centroid[2])};
@@ -2995,8 +3138,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
    * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
 
   ierr = delete_and_nullify_vector(jump_normal_velocity); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(pressure_jump);  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_stress); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_tangential_stress); CHKERRXX(ierr);
   // on computational grid at time nm1, just "slide" fields and grids in discrete time
   ierr = delete_and_nullify_vector(vnm1_nodes_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_plus);  CHKERRXX(ierr);
@@ -3091,47 +3234,25 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   set_phi((fine_ngbd_n != NULL ? phi_on_fine_nodes_np1 : phi_on_computational_nodes_np1), levelset_interpolation_method, phi_on_computational_nodes_np1); // memory handled therein!
   interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
+  ierr = delete_and_nullify_vector(pressure_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(pressure_plus);  CHKERRXX(ierr);
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_minus[dir]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(grad_p_guess_over_rho_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_minus_star[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);  CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_minus[dir], dir); CHKERRXX(ierr);
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &grad_p_guess_over_rho_plus[dir],  dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir],  dir); CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_plus[dir],  dir); CHKERRXX(ierr);
   }
 
-  if(divergence_free_projector != NULL)
-  {
-    delete divergence_free_projector;
+  if(cell_jump_solver != NULL)
+    delete cell_jump_solver;
 
-    if(cell_jump_solver_to_use == GFM || cell_jump_solver_to_use == xGFM)
-    {
-      divergence_free_projector = new my_p4est_poisson_jump_cells_xgfm_t(ngbd_c, nodes_n);
-      dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(divergence_free_projector)->activate_xGFM_corrections(cell_jump_solver_to_use == xGFM);
-    }
-    else
-      divergence_free_projector = new my_p4est_poisson_jump_cells_fv_t(ngbd_c, nodes_n);
-  }
-
-  if(pressure_guess_solver != NULL)
-  {
-    delete pressure_guess_solver;
-    pressure_guess_solver = NULL;
-    pressure_guess_is_set = false;
-  }
-
-  if(viscosity_solver != NULL)
-  {
-    delete viscosity_solver;
-    viscosity_solver = NULL;
-  }
+  if(face_jump_solver != NULL)
+    delete face_jump_solver;
+  pressure_guess_is_set = false;
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
   semi_lagrangian_backtrace_is_done = false;
