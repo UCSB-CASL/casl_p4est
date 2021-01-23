@@ -72,14 +72,15 @@ const double default_uniform_band_to_radius   = 0.15;
 const double default_nondimensional_duration  = 10.0;
 const double default_nondimensional_vtk_dt    = 0.5;
 const double default_nondimensional_save_state_dt  = 0.1;
-const int default_n_xGFM_iter_viscous = INT_MAX;
+const int default_nviscous_subiter  = INT_MAX;
 const int default_save_nstates      = 0;
 const int default_sl_order          = 2;
 const int default_sl_order_itfc     = 2;
 const double default_cfl_advection  = 1.0;
 const double default_cfl_visco_capillary = 0.95;
-const double default_cfl_capillary = 0.95;
-const jump_solver_tag default_projection = FV;
+const double default_cfl_capillary  = 0.95;
+const jump_solver_tag default_cell_solver  = FV;
+const jump_solver_tag default_face_solver  = xGFM;
 const int default_n_reinit = 1;
 const bool default_save_vtk = true;
 
@@ -371,12 +372,13 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const bool use_second_order_theta     = cmd.get<bool>   ("second_order_ls",   default_use_second_order_theta);
   const int sl_order                    = cmd.get<int>    ("sl_order",          default_sl_order);
   const int sl_order_interface          = cmd.get<int>    ("sl_order_itfc",     default_sl_order_itfc);
-  const int n_xGFM_iter_viscous         = cmd.get<int>    ("n_xGFM_iter_viscous", default_n_xGFM_iter_viscous);
+  const int nviscous_subiter            = cmd.get<int>    ("nviscous_subiter",  default_nviscous_subiter);
   const double cfl_advection            = cmd.get<double> ("cfl_advection",     default_cfl_advection);
   const double cfl_visco_capillary      = cmd.get<double> ("cfl_visco_capillary",default_cfl_visco_capillary);
   const double cfl_capillary            = cmd.get<double> ("cfl_capillary",     default_cfl_capillary);
   const string root_export_folder       = cmd.get<std::string>("work_dir", (getenv("OUT_DIR") == NULL ? default_work_folder : getenv("OUT_DIR")));
-  const jump_solver_tag projection_solver_to_use = cmd.get<jump_solver_tag>("projection", default_projection);
+  const jump_solver_tag cell_solver_to_use  = cmd.get<jump_solver_tag>("cell_solver", default_cell_solver);
+  const jump_solver_tag face_solver_to_use  = cmd.get<jump_solver_tag>("face_solver", default_face_solver);
 
 
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
@@ -443,10 +445,11 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_cfls(cfl_advection, cfl_visco_capillary, cfl_capillary);
   solver->set_semi_lagrangian_order_advection(sl_order);
   solver->set_semi_lagrangian_order_interface(sl_order_interface);
-  solver->set_n_xGFM_viscous_iterations(n_xGFM_iter_viscous);
+  solver->set_n_viscous_subiterations(nviscous_subiter);
   solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
 
-  solver->set_projection_solver(projection_solver_to_use);
+  solver->set_cell_jump_solver(cell_solver_to_use);
+  solver->set_face_jump_solvers(face_solver_to_use);
   if(use_second_order_theta)
     solver->fetch_interface_points_with_second_order_accuracy();
   return;
@@ -528,14 +531,15 @@ int main (int argc, char* argv[])
   cmd.add_option("second_order_ls", "flag activating second order F-D interface fetching if set to true or 1. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("sl_order", "the order for the semi lagrangian advection terms, either 1 or 2, default is " + to_string(default_sl_order));
   cmd.add_option("sl_order_itfc", "the order for the semi lagrangian interface advection, either 1 or 2, default is " + to_string(default_sl_order_itfc));
-  cmd.add_option("n_xGFM_iter_viscous", "the max number of xGFM iterations for viscous solver, default is " + to_string(default_n_xGFM_iter_viscous));
+  cmd.add_option("nviscous_subiter", "the max number of subiterations for viscous solver, default is " + to_string(default_nviscous_subiter));
   streamObj.str(""); streamObj << default_cfl_advection;
   cmd.add_option("cfl_advection", "desired advection CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_visco_capillary;
   cmd.add_option("cfl_visco_capillary", "desired visco-capillary CFL number, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_cfl_capillary;
   cmd.add_option("cfl_capillary", "desired capillary-wave CFL number, default is " + streamObj.str());
-  cmd.add_option("projection", "cell-based solver to use for projection step, possible choices are 'GFM', 'xGFM' or 'FV'. Default is " + convert_to_string(default_projection));
+  cmd.add_option("cell_solver", "cell-based solver to use for projection step and pressure guess, possible choices are 'GFM', 'xGFM' or 'FV'. Default is " + convert_to_string(default_cell_solver));
+  cmd.add_option("face_solver", "face-based solver to use for viscosity step. Default is " + convert_to_string(default_face_solver));
   streamObj.str(""); streamObj << default_n_reinit;
   cmd.add_option("n_reinit", "number of solver iterations between two reinitializations of the levelset. Default is " + streamObj.str());
   // output-control parameters
@@ -598,11 +602,6 @@ int main (int argc, char* argv[])
 
   splitting_criteria_t* data            = (splitting_criteria_t*) (two_phase_flow_solver->get_p4est_n()->user_pointer); // to delete it appropriately, eventually
   splitting_criteria_t* subrefined_data = (two_phase_flow_solver->get_fine_p4est_n() != NULL ? (splitting_criteria_t*) two_phase_flow_solver->get_fine_p4est_n()->user_pointer : NULL); // same, to delete it appropriately, eventually
-
-  // make sure we're doing consistent stuff
-//  if(!two_phase_flow_solver->viscosities_are_equal())
-//    throw std::runtime_error("main for static bubble: this test is designed for mu_minus == mu_plus");
-
 
   const double time_unit  = two_phase_flow_solver->get_mu_plus()*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension();
   const double duration   = cmd.get<double> ("duration",      default_nondimensional_duration)*time_unit;
@@ -680,7 +679,7 @@ int main (int argc, char* argv[])
     if(two_phase_flow_solver->get_max_velocity() > 100.0)
     {
       if(save_vtk)
-        two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx);
+        two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx, true);
       ierr = PetscPrintf(mpi.comm(), "The simulation blew up... Maximum velocity found to be %g\n", two_phase_flow_solver->get_max_velocity()); CHKERRXX(ierr);
       break;
     }
