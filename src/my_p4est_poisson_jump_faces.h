@@ -26,6 +26,8 @@ protected:
   double dxyz_min[P4EST_DIM];
   inline double diag_min() const { return sqrt(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2])); }
 
+  int max_iter;
+
   // this solver needs an interface manager (and may contribute to building some of its interface face-specific maps)
   my_p4est_interface_manager_t* interface_manager;
 
@@ -159,7 +161,8 @@ protected:
 
   virtual void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                               double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                              double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree) = 0;
+                                              double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
+                                              double* sharp_max_component) = 0;
 
   void extrapolate_normal_derivatives_local(const u_char& dim, const p4est_locidx_t& face_idx,
                                             double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
@@ -360,7 +363,7 @@ public:
     return;
   }
 
-  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1);
+  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1, double* sharp_max_component = NULL);
 
   /*!
    * \brief set_scale_by_diagonal sets the internal flag for controlling the (symmetric) scaling of the linear
@@ -390,6 +393,8 @@ public:
   }
 
   void print_partition_VTK(const char *file, const u_char &dir);
+
+  inline void set_max_number_of_iter(const int& nn) { max_iter = nn; }
 
 };
 

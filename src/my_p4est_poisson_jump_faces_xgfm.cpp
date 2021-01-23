@@ -5,7 +5,6 @@ my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_
 {
   xGFM_absolute_accuracy_threshold  = 1e-8;   // default value
   xGFM_tolerance_on_rel_residual    = 1e-12;  // default value
-  max_xGFM_iter = INT_MAX;                    // default is "no limit" on number of internal iterations
 
   grad_jump_u_dot_n = NULL;
   interp_grad_jump_u_dot_n = NULL;
@@ -670,7 +669,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
                                                       former_rhs, former_residual, max_correction);
       solver_monitor.log_iteration(max_correction, this);
       // check if good enough, yet
-      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual) || xGFM_iter >= max_xGFM_iter)
+      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual) || xGFM_iter >= max_iter)
         break;
       xGFM_iter ++;
     }
@@ -1175,7 +1174,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1);
+                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1, NULL);
       extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
       if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
       {
@@ -1201,7 +1200,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1);
+                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1, NULL);
       extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
       if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
       {
@@ -1237,7 +1236,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
 
 void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                                                         double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                                                        double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree)
+                                                                        double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
+                                                                        double* sharp_max_component)
 {
   double xyz_face[P4EST_DIM];
   faces->xyz_fr_f(face_idx, dim, xyz_face);
@@ -1251,6 +1251,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face)));
     if(set_for_testing_backbone)
       extrapolation_plus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] + (*interp_validation_jump_u).operator()(xyz_face, dim);
+    if(sharp_max_component != NULL)
+      sharp_max_component[0] = MAX(sharp_max_component[0], fabs(sharp_solution_p[dim][face_idx]));
   }
   else
   {
@@ -1258,6 +1260,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face))); //  the sign is _in_ the oriented_normal already...
     if(set_for_testing_backbone)
       extrapolation_minus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] - (*interp_validation_jump_u).operator()(xyz_face, dim);
+    if(sharp_max_component != NULL)
+      sharp_max_component[1] = MAX(sharp_max_component[1], fabs(sharp_solution_p[dim][face_idx]));
   }
 
   double diagonal_coeff_for_n_dot_grad_this_side = 0.0, diagonal_coeff_for_n_dot_grad_across = 0.0;

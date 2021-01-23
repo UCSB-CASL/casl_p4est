@@ -26,6 +26,7 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
   relative_tolerance    = 1.0e-12;
   absolute_tolerance    = PETSC_DEFAULT;
   divergence_tolerance  = PETSC_DEFAULT;
+  max_iter              = INT_MAX;        // default is "no limit" on number of internal iterations (get that f****** stress balance)
 
   const splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -475,7 +476,7 @@ void my_p4est_poisson_jump_faces_t::setup_linear_system(const u_char& dim)
   return;
 }
 
-void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree)
+void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree, double* sharp_max_component)
 {
   if(extrapolations_are_set)
     return;
@@ -525,11 +526,13 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
   }
   // INITIALIZE extrapolation
   // local layer faces first
+  if(sharp_max_component != NULL)
+    sharp_max_component[0] = sharp_max_component[1] = 0.0;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     for (size_t k = 0; k < faces->get_layer_size(dim); ++k)
       initialize_extrapolation_local(dim, faces->get_layer_face(dim, k),
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree);
+                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree, sharp_max_component);
     // start updates
     ierr = VecGhostUpdateBegin(extrapolation_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(extrapolation_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -544,7 +547,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
   {
     for (size_t k = 0; k < faces->get_local_size(dim); ++k)
       initialize_extrapolation_local(dim, faces->get_local_face(dim, k),
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree);
+                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_of_solution_minus_p, normal_derivative_of_solution_plus_p, degree, sharp_max_component);
 
     // finish updates
     ierr = VecGhostUpdateEnd(extrapolation_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -566,6 +569,8 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
       ierr = VecRestoreArray(normal_derivative_of_solution_plus[dim], &normal_derivative_of_solution_plus_p[dim]); CHKERRXX(ierr);
     }
   }
+  if(sharp_max_component != NULL){
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, sharp_max_component, 2, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret); }
 
   /* EXTRAPOLATE normal derivatives of solution */
   if(degree >= 1)

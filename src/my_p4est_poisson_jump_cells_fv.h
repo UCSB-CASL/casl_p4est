@@ -9,6 +9,7 @@
 
 class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 {
+  friend class my_p4est_two_phase_flows_t;
   union global_correction_function_elementary_data_t
   {
     p4est_gloidx_t  quad_global_idx;

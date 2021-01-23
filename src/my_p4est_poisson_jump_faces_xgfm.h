@@ -40,7 +40,6 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   my_p4est_interpolation_nodes_t *interp_grad_jump_u_dot_n;
   bool activate_xGFM, print_residuals_and_corrections_with_solve_info, use_face_dofs_only_in_extrapolations;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
-  int max_xGFM_iter;
 
   // - BEGIN validation data only -
   Vec validation_jump_u;          // node-sampled, P4EST_DIM block-structure, jump in every component of the solution defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
@@ -260,7 +259,8 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
 
   void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                       double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                      double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree);
+                                      double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
+                                      double* sharp_max_component);
 
   void extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
                                   double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
@@ -370,7 +370,6 @@ public:
 //  inline std::vector<double> get_max_corrections()              const { return solver_monitor.get_max_corrections();              }
 //  inline std::vector<double> get_relative_residuals()           const { return solver_monitor.get_relative_residuals();           }
   inline bool is_using_xGFM()                                   const { return activate_xGFM;                                     }
-  inline void set_max_number_of_iter(const int& nn) { max_xGFM_iter = nn; }
 
   void solve_for_sharp_solution(const KSPType& ksp_type = KSPCG, const PCType& pc_type = PCHYPRE);
   inline void set_xGFM_absolute_value_threshold(const double& abs_thresh)              { P4EST_ASSERT(abs_thresh > 0.0);           xGFM_absolute_accuracy_threshold  = abs_thresh; }
@@ -380,6 +379,8 @@ public:
   {
     activate_xGFM = flag_;
     print_residuals_and_corrections_with_solve_info = activate_xGFM && print_xGFM_residuals_and_corrections;
+    if(!activate_xGFM)
+      max_iter = 0;
   }
 
   inline void set_validity_of_interface_neighbors_for_extrapolation(const bool& interface_neighbors_are_valid) { use_face_dofs_only_in_extrapolations = !interface_neighbors_are_valid; }
