@@ -1266,7 +1266,10 @@ void my_p4est_two_phase_flows_t::solve_projection()
 void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter)
 {
   PetscErrorCode ierr;
+  // intialize the measures monitoring fix-point iterations
   max_velocity_correction_in_projection[0] = max_velocity_correction_in_projection[1] = DBL_MAX;
+  max_velocity_component_before_projection[0] = max_velocity_component_before_projection[1] = 0.0;
+  // end of initialization
   int iter = 0;
   while((max_velocity_correction_in_projection[0] > velocity_relative_threshold*max_velocity_component_before_projection[0] ||
          max_velocity_correction_in_projection[1] > velocity_relative_threshold*max_velocity_component_before_projection[1])
@@ -1275,13 +1278,14 @@ void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative
     solve_viscosity(); // will do the pressure guess calculation in the very first pass, if needed
     solve_projection();
 
-    ierr = PetscPrintf(p4est_n->mpicomm, " -------- Internal iteration #%02d -------- \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " -------- Internal iteration #%02d -------- \n", iter); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est_n->mpicomm, " --- In negative domain --- \n"); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[0]); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[0]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[0]); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est_n->mpicomm, " --- In positive domain --- \n"); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[1]); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est_n->mpicomm, " \t\t\t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t max velocity component before projection: %.5e \n", max_velocity_component_before_projection[1]); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_n->mpicomm, " \t max velocity correction in projection: %.5e \n", max_velocity_correction_in_projection[1]); CHKERRXX(ierr);
+    iter++;
   }
   return;
 }
@@ -1300,6 +1304,7 @@ void my_p4est_two_phase_flows_t::set_cell_jump_solver(const jump_solver_tag& sol
       break;
     case FV:
       Krylov_solver_for_cell_problems = (mass_densities_are_equal() ? KSPCG : KSPBCGS); // matrix is SPD iff rho_minus == rho_plus;
+      break;
     default:
       throw std::runtime_error("my_p4est_two_phase_flows_t::set_cell_jump_solver(): unknown solver type for cell-based jump problems");
       break;
@@ -1327,8 +1332,9 @@ void my_p4est_two_phase_flows_t::set_face_jump_solvers(const jump_solver_tag& so
     case xGFM:
       Krylov_solver_for_face_problems = KSPCG; // the matrix is always SPD in those case, CG is the best
       break;
-    case FV:
-      Krylov_solver_for_face_problems = (viscosities_are_equal() ? KSPCG : KSPBCGS); // matrix is SPD iff mu_minus == mu_plus;
+//    case FV:
+//      Krylov_solver_for_face_problems = (viscosities_are_equal() ? KSPCG : KSPBCGS); // matrix is SPD iff mu_minus == mu_plus;
+//      break;
     default:
       throw std::runtime_error("my_p4est_two_phase_flows_t::set_face_jump_solvers(): unknown solver type for face-based jump problems");
       break;
@@ -2502,23 +2508,25 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
       }
 
       // pressure gradient!
-      p4est_quadrant_t qm, qp;
-      faces_n->find_quads_touching_face(f_idx, dir, qm, qp);
-      if(qm.p.piggy3.local_num == -1 || qp.p.piggy3.local_num == -1) // i.e. wall face
+      p4est_locidx_t quad_idx;
+      p4est_topidx_t tree_idx;
+      faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
+      const u_char f_dir = (faces_n->q2f(quad_idx, 2*dir) == f_idx ? 2*dir : 2*dir + 1);
+      P4EST_ASSERT(faces_n->q2f(quad_idx, f_dir) == f_idx);
+      const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est_n, ghost_n);
+      if(is_quad_Wall(p4est_n, tree_idx, quad, f_dir)) // i.e. wall face
       {
-        const p4est_quadrant_t& quad  = (qm.p.piggy3.local_num != -1 ? qm : qp);
-        const double face_orientation = (qm.p.piggy3.local_num != -1 ? +1.0 : -1.0);
-        const double cell_dx = tree_dimension[dir]*((double) P4EST_QUADRANT_LEN(quad.level))/((double) P4EST_ROOT_LEN);
+        const double cell_dx = tree_dimension[dir]*((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN);
         double xyz_face[P4EST_DIM];
         faces_n->xyz_fr_f(f_idx, dir, xyz_face);
         switch (bc_pressure->wallType(xyz_face)) {
         case DIRICHLET:
-          viscosity_rhs_minus_dir_p[f_idx]  -= face_orientation*2.0*(bc_pressure->wallType(xyz_face) - pressure_minus_p[quad.p.piggy3.local_num])/cell_dx;
-          viscosity_rhs_plus_dir_p[f_idx]   -= face_orientation*2.0*(bc_pressure->wallType(xyz_face) - pressure_plus_p[quad.p.piggy3.local_num])/cell_dx;
+          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallType(xyz_face) - pressure_minus_p[quad_idx])/cell_dx;
+          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallType(xyz_face) - pressure_plus_p[quad_idx])/cell_dx;
           break;
         case NEUMANN:
-          viscosity_rhs_minus_dir_p[f_idx]  -= face_orientation*bc_pressure->wallType(xyz_face);
-          viscosity_rhs_plus_dir_p[f_idx]   -= face_orientation*bc_pressure->wallType(xyz_face);
+          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallType(xyz_face);
+          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallType(xyz_face);
           break;
         default:
           throw std::runtime_error("my_p4est_two_phase_flows_t::compute_viscosity_rhs(): unknown pressure wall boundary type");
@@ -2527,11 +2535,9 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
       }
       else
       {
-        const p4est_quadrant_t& quad  = (qm.level < qp.level || qm.level == qp.level ? qm : qp);        // we pick the "major" quad to avoid yet another search for neighbors in "stable_projection_..."
-        const u_char face_dir         = 2*dir + (qm.level < qp.level || qm.level == qp.level ? 1 : 0);
         set_of_neighboring_quadrants dummy1;
         bool dummy2;
-        linear_combination_of_dof_t derivative_operator = cell_jump_solver->stable_projection_derivative_operator_at_face(quad.p.piggy3.local_num, quad.p.piggy3.which_tree, face_dir, dummy1, dummy2);
+        linear_combination_of_dof_t derivative_operator = cell_jump_solver->stable_projection_derivative_operator_at_face(quad_idx, tree_idx, f_dir, dummy1, dummy2);
         viscosity_rhs_minus_dir_p[f_idx]  -= derivative_operator(pressure_minus_p);
         viscosity_rhs_plus_dir_p[f_idx]   -= derivative_operator(pressure_plus_p);
       }
@@ -3248,11 +3254,17 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   }
 
   if(cell_jump_solver != NULL)
+  {
     delete cell_jump_solver;
+    cell_jump_solver = NULL;
+  }
+  pressure_guess_is_set = false;
 
   if(face_jump_solver != NULL)
+  {
     delete face_jump_solver;
-  pressure_guess_is_set = false;
+    face_jump_solver = NULL;
+  }
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
   semi_lagrangian_backtrace_is_done = false;

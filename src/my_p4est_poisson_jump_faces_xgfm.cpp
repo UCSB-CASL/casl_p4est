@@ -671,7 +671,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
       // check if good enough, yet
       if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual) || xGFM_iter >= max_iter)
         break;
-      xGFM_iter ++;
+      xGFM_iter++;
     }
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
