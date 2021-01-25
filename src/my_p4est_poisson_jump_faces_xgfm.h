@@ -65,8 +65,9 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
     {
       PetscErrorCode ierr;
       solver_iteration_log log_entry;
-      log_entry.n_ksp_iterations = 0;
-      log_entry.L2_norm_residual = 0.0;
+      log_entry.n_ksp_iterations  = 0;
+      log_entry.L2_norm_residual  = 0.0;
+      log_entry.L2_norm_rhs       = 0.0;
       for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
         PetscInt latest_nksp_dim;
         PetscReal L2_norm_latest_residual_dim, L2_norm_latest_rhs;
@@ -120,7 +121,7 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
     bool reached_convergence_within_desired_bounds(const double& absolute_accuracy_threshold, const double& tolerance_on_rel_residual) const
     {
       const size_t last_step_idx = last_step();
-      return ANDD(logger[last_step_idx].max_correction[0] < absolute_accuracy_threshold, logger[last_step_idx].max_correction[1] < absolute_accuracy_threshold , logger[last_step_idx].max_correction[2] < absolute_accuracy_threshold) && // the latest max_correction must be below the desired absolute accuracy requirement AND
+      return ANDD(logger[last_step_idx].max_correction[0] < absolute_accuracy_threshold, logger[last_step_idx].max_correction[1] < absolute_accuracy_threshold, logger[last_step_idx].max_correction[2] < absolute_accuracy_threshold) && // the latest max_correction must be below the desired absolute accuracy requirement AND
           (relative_residual(last_step_idx) < tolerance_on_rel_residual || // either the latest relative residual is below the desired threshold as well OR
           (last_step_idx != 0 && fabs(relative_residual(last_step_idx) - relative_residual(last_step_idx - 1)) < 1.0e-6*MAX(relative_residual(last_step_idx), relative_residual(last_step_idx - 1)))); // or we have done at least two solves and we have reached a fixed-point for which the relative residual is above the desired threshold but can't really be made any smaller, apparently
     }
