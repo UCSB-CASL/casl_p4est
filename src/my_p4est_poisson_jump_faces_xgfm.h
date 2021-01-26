@@ -253,8 +253,8 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
                                                        Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM],
                                                        double max_correction[P4EST_DIM]);
 
-  void initialize_extensions_and_extrapolations(Vec extension[P4EST_DIM], Vec extrapolation_minus[P4EST_DIM], Vec extrapolation_plus[P4EST_DIM],
-                                                Vec normal_derivative_minus[P4EST_DIM], Vec normal_derivative_plus[P4EST_DIM]);
+  void initialize_extensions_and_extrapolations(Vec new_extension[P4EST_DIM], Vec new_extrapolation_minus[P4EST_DIM], Vec new_extrapolation_plus[P4EST_DIM],
+                                                Vec new_normal_derivative_minus[P4EST_DIM], Vec new_normal_derivative_plus[P4EST_DIM]);
 
   void build_discretization_for_face(const u_char& dir, const p4est_locidx_t& face_idx, int *nullspace_contains_constant_vector = NULL);
 

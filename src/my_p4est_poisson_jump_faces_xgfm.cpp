@@ -1155,30 +1155,30 @@ my_p4est_poisson_jump_faces_xgfm_t::get_extension_increment_operator_for(const u
   return pseudo_time_step_operator;
 }
 
-void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolations(Vec extension[P4EST_DIM], Vec extrapolation_minus[P4EST_DIM], Vec extrapolation_plus[P4EST_DIM],
-                                                                                  Vec normal_derivative_minus[P4EST_DIM], Vec normal_derivative_plus[P4EST_DIM])
+void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolations(Vec new_extension[P4EST_DIM], Vec new_extrapolation_minus[P4EST_DIM], Vec new_extrapolation_plus[P4EST_DIM],
+                                                                                  Vec new_normal_derivative_minus[P4EST_DIM], Vec new_normal_derivative_plus[P4EST_DIM])
 {
   P4EST_ASSERT(interface_is_set());
   PetscErrorCode ierr;
-  P4EST_ASSERT(ANDD(extension[0] != NULL,                extension[1] != NULL,                extension[2] != NULL)                && VecsAreSetForFaces(extension, faces, 1));
-  P4EST_ASSERT(ANDD(extrapolation_minus[0] != NULL,      extrapolation_minus[1] != NULL,      extrapolation_minus[2] != NULL)      && VecsAreSetForFaces(extrapolation_minus, faces, 1));
-  P4EST_ASSERT(ANDD(extrapolation_plus[0] != NULL,       extrapolation_plus[1] != NULL,       extrapolation_plus[2] != NULL)       && VecsAreSetForFaces(extrapolation_plus, faces, 1));
-  P4EST_ASSERT(ANDD(normal_derivative_minus[0] != NULL,  normal_derivative_minus[1] != NULL,  normal_derivative_minus[2] != NULL)  && VecsAreSetForFaces(normal_derivative_minus, faces, 1));
-  P4EST_ASSERT(ANDD(normal_derivative_plus[0] != NULL,   normal_derivative_plus[1] != NULL,   normal_derivative_plus[2] != NULL)   && VecsAreSetForFaces(normal_derivative_plus, faces, 1));
+  P4EST_ASSERT(ANDD(new_extension[0] != NULL,               new_extension[1] != NULL,               new_extension[2] != NULL)               && VecsAreSetForFaces(new_extension, faces, 1));
+  P4EST_ASSERT(ANDD(new_extrapolation_minus[0] != NULL,     new_extrapolation_minus[1] != NULL,     new_extrapolation_minus[2] != NULL)     && VecsAreSetForFaces(new_extrapolation_minus, faces, 1));
+  P4EST_ASSERT(ANDD(new_extrapolation_plus[0] != NULL,      new_extrapolation_plus[1] != NULL,      new_extrapolation_plus[2] != NULL)      && VecsAreSetForFaces(new_extrapolation_plus, faces, 1));
+  P4EST_ASSERT(ANDD(new_normal_derivative_minus[0] != NULL, new_normal_derivative_minus[1] != NULL, new_normal_derivative_minus[2] != NULL) && VecsAreSetForFaces(new_normal_derivative_minus, faces, 1));
+  P4EST_ASSERT(ANDD(new_normal_derivative_plus[0] != NULL,  new_normal_derivative_plus[1] != NULL,  new_normal_derivative_plus[2] != NULL)  && VecsAreSetForFaces(new_normal_derivative_plus, faces, 1));
 
-  double *extension_p[P4EST_DIM]                = {DIM(NULL, NULL, NULL)};
-  double *extrapolation_minus_p[P4EST_DIM]      = {DIM(NULL, NULL, NULL)};
-  double *extrapolation_plus_p[P4EST_DIM]       = {DIM(NULL, NULL, NULL)};
-  double *normal_derivative_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
-  double *normal_derivative_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  double *new_extension_p[P4EST_DIM]            = {DIM(NULL, NULL, NULL)};
+  double *new_extrapolation_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  double *new_extrapolation_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  double *new_normal_derivative_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  double *new_normal_derivative_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
   const double* sharp_solution_p[P4EST_DIM]     = {DIM(NULL, NULL, NULL)};
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(normal_derivative_minus[dim], &normal_derivative_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(normal_derivative_plus[dim], &normal_derivative_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(new_extension[dim],                &new_extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(new_extrapolation_minus[dim],      &new_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(new_extrapolation_plus[dim],       &new_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(new_normal_derivative_minus[dim],  &new_normal_derivative_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(new_normal_derivative_plus[dim],   &new_normal_derivative_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
   }
 
@@ -1187,8 +1187,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1, NULL);
-      extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
+                                     sharp_solution_p, new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1, NULL);
+      new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
       if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
       {
         double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
@@ -1197,15 +1197,15 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
         {
           double local_normal[P4EST_DIM];
           interface_manager->normal_vector_at_point(xyz_face, local_normal);
-          extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
         }
       }
     }
-    ierr = VecGhostUpdateBegin(extension[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(extrapolation_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(extrapolation_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(normal_derivative_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(normal_derivative_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(new_extension[dim],                INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(new_extrapolation_minus[dim],      INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(new_extrapolation_plus[dim],       INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(new_normal_derivative_minus[dim],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(new_normal_derivative_plus[dim],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -1213,8 +1213,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, extrapolation_minus_p, extrapolation_plus_p, normal_derivative_minus_p, normal_derivative_plus_p, 1, NULL);
-      extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
+                                     sharp_solution_p, new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1, NULL);
+      new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
       if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
       {
         double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
@@ -1223,24 +1223,24 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
         {
           double local_normal[P4EST_DIM];
           interface_manager->normal_vector_at_point(xyz_face, local_normal);
-          extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
         }
       }
     }
-    ierr = VecGhostUpdateEnd(extension[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(extrapolation_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(extrapolation_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(normal_derivative_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(normal_derivative_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(new_extension[dim],                INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(new_extrapolation_minus[dim],      INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(new_extrapolation_plus[dim],       INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(new_normal_derivative_minus[dim],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(new_normal_derivative_plus[dim],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     extrapolation_operators_are_stored_and_set[dim] = true; // if they were not known yet, now they are!
   }
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(normal_derivative_minus[dim], &normal_derivative_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(normal_derivative_plus[dim], &normal_derivative_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(new_extension[dim],                &new_extension_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(new_extrapolation_minus[dim],      &new_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(new_extrapolation_plus[dim],       &new_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(new_normal_derivative_minus[dim],  &new_normal_derivative_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(new_normal_derivative_plus[dim],   &new_normal_derivative_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
   }
 
