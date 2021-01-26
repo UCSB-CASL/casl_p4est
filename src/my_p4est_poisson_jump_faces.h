@@ -47,7 +47,7 @@ protected:
   // for relevant applications (two-phase flows)
   Vec jump_u_dot_n, jump_tangential_stress; // node-sampled (resp. blocksize 1 and P4EST_DIM), defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   inline bool interface_is_set() const { return interface_manager != NULL; }
-  Vec *user_initial_guess; // pointers to P4EST_DIM face-sampled initial guesses
+  Vec *user_initial_guess_minus, *user_initial_guess_plus; // pointers to P4EST_DIM face-sampled initial guesses (supposed to be properly extrapolated as well to evaluate jump terms!)
 
   /* ---- OWNED BY THE SOLVER ---- (therefore destroyed at solver's destruction) */
   Vec solution[P4EST_DIM]; // face-sampled, sharp
@@ -75,9 +75,9 @@ protected:
   /* ---- Pointer to boundary condition (wall only) ---- */
   const BoundaryConditionsDIM *bc; // array of P4EST_DIM boundary conditions
   /* ---- Control flags ---- */
-  bool matrix_is_set[P4EST_DIM], rhs_is_set[P4EST_DIM];
+  bool matrix_is_set[P4EST_DIM], rhs_is_set[P4EST_DIM], linear_solver_is_set[P4EST_DIM];
   bool scale_systems_by_diagonals;
-  bool extrapolations_are_set;
+  u_int niter_extrapolations_done;
   /* voronoi tesselation data */
   bool voronoi_on_the_fly, all_voronoi_cells_are_set[P4EST_DIM];
   // If voronoi_on_the_fly is true, voronoi_cell[dim] is of size 1 and voronoi_cell[dim][0] is the face being considered (of cartesian orientation 'dim')
@@ -106,7 +106,7 @@ protected:
    * \param [in] pc_type  preconditioner type desired by the user
    * \return a PetscError code to check if anything went wrong
    */
-  PetscErrorCode setup_linear_solver(const u_char& dim, const KSPType& ksp_type, const PCType& pc_type) const;
+  PetscErrorCode setup_linear_solver(const u_char& dim, const KSPType& ksp_type, const PCType& pc_type);
   void solve_linear_systems();
   inline void reset_rhs()
   {
@@ -121,6 +121,7 @@ protected:
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     {
       matrix_is_set[dim] = false;
+      linear_solver_is_set[dim] = false;
       setup_linear_system(dim);
     }
   }
@@ -128,7 +129,7 @@ protected:
   {
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     {
-      matrix_is_set[dim] = rhs_is_set[dim] = false;
+      matrix_is_set[dim] = rhs_is_set[dim] = linear_solver_is_set[dim] = false;
       setup_linear_system(dim);
     }
   }
@@ -239,6 +240,9 @@ protected:
     return false;
   }
 
+  void build_solution_with_initial_guess(const u_char& dim);
+  void get_residual(const u_char& dim, Vec &residual_dim);
+
 public:
   my_p4est_poisson_jump_faces_t(const my_p4est_faces_t *faces_, const p4est_nodes_t* nodes_);
   virtual ~my_p4est_poisson_jump_faces_t();
@@ -275,9 +279,10 @@ public:
     // we can't really check for unchanged behavior in this cass, --> play it safe
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       matrix_is_set[dim]  = false;
+      linear_solver_is_set[dim] = false;
       rhs_is_set[dim]     = false;
     }
-    extrapolations_are_set = false;
+    niter_extrapolations_done = 0;
   }
 
   inline void set_mus(const double& mu_minus_, const double& mu_plus_)
@@ -285,6 +290,7 @@ public:
     const bool mus_unchanged = (fabs(mu_minus_ - mu_minus) < EPS*MAX(mu_minus_, mu_minus) && fabs(mu_plus_ - mu_plus) < EPS*MAX(mu_plus_, mu_plus));
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       matrix_is_set[dim] = matrix_is_set[dim] && mus_unchanged;
+      linear_solver_is_set[dim] = linear_solver_is_set[dim] && mus_unchanged;
       rhs_is_set[dim]    = rhs_is_set[dim]    && mus_unchanged;
     }
     if(!mus_unchanged)
@@ -292,7 +298,7 @@ public:
       mu_minus  = mu_minus_;
       mu_plus   = mu_plus_;
     }
-    extrapolations_are_set = extrapolations_are_set && mus_unchanged;
+    niter_extrapolations_done = (mus_unchanged ? niter_extrapolations_done : 0);
     P4EST_ASSERT(diffusion_coefficients_have_been_set()); // must be both strictly positive
   }
 
@@ -300,14 +306,17 @@ public:
   {
     const bool diags_unchanged = (fabs(add_diag_minus_ - add_diag_minus) < EPS*MAX(add_diag_minus_, add_diag_minus) && fabs(add_diag_plus_ - add_diag_plus) < EPS*MAX(add_diag_plus_, add_diag_plus));
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
       matrix_is_set[dim] = matrix_is_set[dim] && diags_unchanged;
+      linear_solver_is_set[dim] = linear_solver_is_set[dim] && diags_unchanged;
+    }
 
     if(!diags_unchanged)
     {
       add_diag_minus = add_diag_minus_;
       add_diag_plus = add_diag_plus_;
     }
-    extrapolations_are_set = extrapolations_are_set && diags_unchanged;
+    niter_extrapolations_done = (diags_unchanged ? niter_extrapolations_done : 0);
   }
 
   inline void set_rhs(Vec* user_rhs_minus_, Vec* user_rhs_plus_)
@@ -318,24 +327,13 @@ public:
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       rhs_is_set[dim] = false;
 
-    extrapolations_are_set = false; // a new rhs, defines a new solution hence new extrapolations
+    niter_extrapolations_done = 0; // a new rhs defines a new solution hence new extrapolations
   }
 
   virtual void solve_for_sharp_solution(const KSPType &ksp_type, const PCType& pc_type) = 0;
 
-  inline void solve(const KSPType& ksp_type, const PCType& pc_type = PCHYPRE, Vec* initial_guess_ = NULL)
-  {
-    P4EST_ASSERT(initial_guess_ == NULL || VecsAreSetForFaces(initial_guess_, faces, 1));
-    PetscErrorCode ierr;
-    user_initial_guess = initial_guess_;
-    if(user_initial_guess != NULL)
-      for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_TRUE); CHKERRXX(ierr); // activates initial guess
-      }
-
-    solve_for_sharp_solution(ksp_type, pc_type);
-    return;
-  }
+  void solve(const KSPType& ksp_type, const PCType& pc_type = PCHYPRE,
+             Vec* initial_guess_minus_ = NULL, Vec* initial_guess_plus_ = NULL);
 
   inline bool get_matrix_has_nullspace(const u_char& dim)       const { return null_space[dim] != NULL;               }
   inline const p4est_t* get_p4est()                             const { return p4est;                                 }
@@ -359,7 +357,7 @@ public:
       std::swap(extrapolation_minus_out[dim], extrapolation_minus[dim]);
       std::swap(extrapolation_plus_out[dim],  extrapolation_plus[dim]);
     }
-    extrapolations_are_set = false;
+    niter_extrapolations_done = 0;
     return;
   }
 

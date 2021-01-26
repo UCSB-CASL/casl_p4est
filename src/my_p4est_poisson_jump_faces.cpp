@@ -24,7 +24,9 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
   user_rhs_minus = user_rhs_plus = NULL;
   jump_u_dot_n = jump_tangential_stress = NULL;
   interp_jump_u_dot_n = interp_jump_tangential_stress = NULL;
-  user_initial_guess = NULL;
+
+  user_initial_guess_minus  = NULL;
+  user_initial_guess_plus   = NULL;
 
   max_ksp_iterations    = PETSC_DEFAULT;
   relative_tolerance    = 1.0e-12;
@@ -44,6 +46,7 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
     ierr = KSPCreate(p4est->mpicomm, &ksp[dim]); CHKERRXX(ierr);
     rhs[dim] = NULL;
     matrix_is_set[dim] = false;
+    linear_solver_is_set[dim] = false;
     rhs_is_set[dim] = false;
     dxyz_min[dim] = tree_dimensions[dim]/(double) (1 << data->max_lvl);
     voronoi_cell[dim].resize(faces->num_local[dim]); // default behavior is *NOT* on the fly
@@ -52,7 +55,7 @@ my_p4est_poisson_jump_faces_t::my_p4est_poisson_jump_faces_t(const my_p4est_face
   }
   bc = NULL;
   scale_systems_by_diagonals = false;
-  extrapolations_are_set = false;
+  niter_extrapolations_done = 0;
 
   voronoi_on_the_fly = false;
 }
@@ -124,9 +127,9 @@ void my_p4est_poisson_jump_faces_t::set_interface(my_p4est_interface_manager_t* 
     interface_manager->set_curvature(); // you may need it (if jump_u_dot_n is nonzero)!
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-    matrix_is_set[dim] = rhs_is_set[dim] = false;
+    matrix_is_set[dim] = rhs_is_set[dim] = linear_solver_is_set[dim] = false;
 
-  extrapolations_are_set = false;
+  niter_extrapolations_done = 0;
   return;
 }
 
@@ -165,7 +168,7 @@ void my_p4est_poisson_jump_faces_t::set_jumps(Vec jump_u_dot_n_, Vec jump_tangen
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     rhs_is_set[dim] = false;
 
-  extrapolations_are_set = false;
+  niter_extrapolations_done = 0;
   return;
 }
 
@@ -239,30 +242,91 @@ void my_p4est_poisson_jump_faces_t::pointwise_operation_with_sqrt_of_diag(const 
   return;
 }
 
+void my_p4est_poisson_jump_faces_t::build_solution_with_initial_guess(const u_char& dim)
+{
+  P4EST_ASSERT(user_initial_guess_minus != NULL && user_initial_guess_plus != NULL
+      && user_initial_guess_minus[dim] != NULL && user_initial_guess_plus[dim] != NULL);
+
+  PetscErrorCode ierr;
+  if(solution[dim] == NULL){
+    ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr);
+  }
+  const double *user_initial_guess_minus_dim_p, *user_initial_guess_plus_dim_p;
+  double *solution_dim_p;
+  ierr = VecGetArray(solution[dim], &solution_dim_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(user_initial_guess_minus[dim], &user_initial_guess_minus_dim_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(user_initial_guess_plus[dim], &user_initial_guess_plus_dim_p); CHKERRXX(ierr);
+
+  double xyz_face[P4EST_DIM];
+  for(size_t k = 0; k < faces->get_layer_size(dim); k++)
+  {
+    const p4est_locidx_t face_idx = faces->get_layer_face(dim, k);
+    faces->xyz_fr_f(face_idx, dim, xyz_face);
+    const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+    solution_dim_p[k] = (sgn_face < 0 ? user_initial_guess_minus_dim_p[face_idx] : user_initial_guess_plus_dim_p[face_idx]);
+  }
+  ierr = VecGhostUpdateBegin(solution[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < faces->get_local_size(dim); k++)
+  {
+    const p4est_locidx_t face_idx = faces->get_local_face(dim, k);
+    faces->xyz_fr_f(face_idx, dim, xyz_face);
+    const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+    solution_dim_p[k] = (sgn_face < 0 ? user_initial_guess_minus_dim_p[face_idx] : user_initial_guess_plus_dim_p[face_idx]);
+  }
+  ierr = VecGhostUpdateBegin(solution[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(solution[dim], &solution_dim_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(user_initial_guess_minus[dim], &user_initial_guess_minus_dim_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(user_initial_guess_plus[dim], &user_initial_guess_plus_dim_p); CHKERRXX(ierr);
+  return;
+}
+
+void my_p4est_poisson_jump_faces_t::get_residual(const u_char& dim, Vec &residual_dim)
+{
+  // create a new vector if needed:
+  PetscErrorCode ierr;
+  if(residual_dim == NULL){
+    ierr = VecCreateNoGhostFaces(p4est, faces, &residual_dim, dim); CHKERRXX(ierr); }
+  // calculate the fix-point residual
+  if(scale_systems_by_diagonals)
+    pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], multiply_by_sqrt_D, rhs[dim], divide_by_sqrt_D);
+
+  ierr = VecAXPBY(residual_dim, -1.0, 0.0, rhs[dim]); CHKERRXX(ierr);
+  ierr = MatMultAdd(matrix[dim], solution[dim], residual_dim, residual_dim); CHKERRXX(ierr);
+  if(scale_systems_by_diagonals)
+    pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], divide_by_sqrt_D, rhs[dim], multiply_by_sqrt_D);
+  return;
+}
+
+void my_p4est_poisson_jump_faces_t::solve(const KSPType& ksp_type, const PCType& pc_type,
+                                          Vec* initial_guess_minus_, Vec* initial_guess_plus_)
+{
+  P4EST_ASSERT((initial_guess_minus_ == NULL && initial_guess_plus_ == NULL) // either both undefined
+               || (VecsAreSetForFaces(initial_guess_minus_, faces, 1) && VecsAreSetForFaces(initial_guess_plus_, faces, 1))); // or both defined properly
+  user_initial_guess_minus  = (initial_guess_minus_ != NULL && initial_guess_plus_ != NULL ? initial_guess_minus_ : NULL); // we do not allow an initial guess in only one subdomain
+  user_initial_guess_plus   = (initial_guess_minus_ != NULL && initial_guess_plus_ != NULL ? initial_guess_plus_  : NULL); // we do not allow an initial guess in only one subdomain
+
+  solve_for_sharp_solution(ksp_type, pc_type);
+  return;
+}
+
 void my_p4est_poisson_jump_faces_t::solve_linear_systems()
 {
   PetscErrorCode ierr;
 
-  bool sensible_guess[P4EST_DIM] = {DIM(false, false, false)};
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    sensible_guess[dim] = (solution[dim] != NULL);
-    if (solution[dim] == NULL) {
-      ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr);
-      if(user_initial_guess != NULL && user_initial_guess[dim] != NULL){
-        ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_TRUE); CHKERRXX(ierr);
-        ierr = VecCopyGhost(user_initial_guess[dim], solution[dim]); CHKERRXX(ierr);
-        sensible_guess[dim] = true;
-      }
-    }
-  }
-
   ierr = PetscLogEventBegin(log_my_p4est_poisson_jump_faces_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(scale_systems_by_diagonals)
+    if(solution[dim] != NULL)
     {
-      if(sensible_guess[dim]) // scale the initial guess as well in that case...
+      ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_TRUE); CHKERRXX(ierr);
+      if(scale_systems_by_diagonals)
         pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], multiply_by_sqrt_D, rhs[dim], divide_by_sqrt_D);
-      else
+    }
+    else
+    {
+      ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_FALSE); CHKERRXX(ierr);
+      ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr);
+      if(scale_systems_by_diagonals)
         pointwise_operation_with_sqrt_of_diag(dim, 1, rhs[dim], divide_by_sqrt_D); // you need to scale the rhs
     }
     // solve the system
@@ -293,12 +357,15 @@ void my_p4est_poisson_jump_faces_t::solve_linear_systems()
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_faces_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
-  extrapolations_are_set = false;
+  niter_extrapolations_done = 0;
   return;
 }
 
-PetscErrorCode my_p4est_poisson_jump_faces_t::setup_linear_solver(const u_char& dim, const KSPType& ksp_type, const PCType& pc_type) const
+PetscErrorCode my_p4est_poisson_jump_faces_t::setup_linear_solver(const u_char& dim, const KSPType& ksp_type, const PCType& pc_type)
 {
+  if(linear_solver_is_set[dim])
+    return 0;
+
   PetscErrorCode ierr;
   ierr = KSPSetOperators(ksp[dim], matrix[dim], matrix[dim], SAME_PRECONDITIONER); CHKERRQ(ierr);
   // set ksp type
@@ -356,6 +423,7 @@ PetscErrorCode my_p4est_poisson_jump_faces_t::setup_linear_solver(const u_char& 
     }
   }
   ierr = PCSetFromOptions(pc); CHKERRQ(ierr);
+  linear_solver_is_set[dim] = true;
 
   return ierr;
 }
@@ -482,10 +550,10 @@ void my_p4est_poisson_jump_faces_t::setup_linear_system(const u_char& dim)
 
 void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree, double* sharp_max_component)
 {
-  if(extrapolations_are_set)
+  if(n_pseudo_time_iterations <= niter_extrapolations_done)
     return;
 
-  P4EST_ASSERT(n_pseudo_time_iterations > 0);
+  P4EST_ASSERT(n_pseudo_time_iterations > niter_extrapolations_done);
   P4EST_ASSERT(solution != NULL && ANDD(solution[0] != NULL, solution[1] != NULL, solution[2] != NULL));
 
   PetscErrorCode ierr;
@@ -579,7 +647,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
   /* EXTRAPOLATE normal derivatives of solution */
   if(degree >= 1)
   {
-    for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) {
+    for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) { // normal derivatives are not stored at any time --> do n_pseudo_time_iterations in this case
       // get pointers
       for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       {
@@ -638,7 +706,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
     }
 
   /* EXTRAPOLATE the solution */
-  for (u_int iter = 0; iter < n_pseudo_time_iterations; ++iter) {
+  for (u_int iter = 0; iter < n_pseudo_time_iterations - (degree > 0 ? 0 : niter_extrapolations_done); ++iter) { // if degree == 1 we do the full process because the normal derivatives redefine the extrapolations
     // get pointers
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     {
@@ -733,7 +801,7 @@ void my_p4est_poisson_jump_faces_t::extrapolate_solution_from_either_side_to_the
     ierr = VecRestoreArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
   }
 
-  extrapolations_are_set = true;
+  niter_extrapolations_done = n_pseudo_time_iterations;
   return;
 }
 

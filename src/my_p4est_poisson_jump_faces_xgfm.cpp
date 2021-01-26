@@ -640,19 +640,39 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
   P4EST_ASSERT(bc != NULL || ANDD(periodicity[0], periodicity[1], periodicity[2])); // boundary conditions
   P4EST_ASSERT(diffusion_coefficients_have_been_set() && interface_is_set());       // essential parameters
 
-  PetscBool saved_ksp_original_guess_flag[P4EST_DIM];
+  // /!\ STEP "-1":
+  // clear information that is critial to internal xGFM convergence monitoring (i.e., residuals)
+  // and/or to the intrinsical consistency of the coupled system of equations being considered (i.e., extensions and extrapolations)
+  // if needed.
+  // [NB: even if an initial guess is given, we *cannot* use it as a "zeroth iterate" of the xGFM strategy because
+  // it does not necessarily correspond to the solution of the set of discrete equations being considered.
+  // --> Indeed, we do not know the hypothetical extensions/extrapolations and former residuals attached with that
+  // user-defined guess(es) and we cannot assume that the initial guesses are their own xGFM consistent extrapolations
+  // since they would basically be the fixpoint being searched if they were...]
+  for(u_char dir = 0; dir < P4EST_DIM; dir++)
+  {
+    ierr = delete_and_nullify_vector(residual[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(extension[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(extrapolation_minus[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(extrapolation_plus[dir]); CHKERRXX(ierr);
+  }
+
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = KSPGetInitialGuessNonzero(ksp[dir], &saved_ksp_original_guess_flag[dir]); // we'll change that one to true internally, but we want to set it back to whatever it originally was
     /* Set the linear system, the linear solver and solve it */
     setup_linear_system(dir);
     ierr = setup_linear_solver(dir, ksp_type, pc_type); CHKERRXX(ierr);
+
+    if(user_initial_guess_minus != NULL && user_initial_guess_plus != NULL
+       && ANDD(user_initial_guess_minus[0] != NULL, user_initial_guess_minus[1] != NULL, user_initial_guess_minus[2] != NULL)
+       && ANDD(user_initial_guess_plus[0] != NULL, user_initial_guess_plus[1] != NULL, user_initial_guess_plus[2] != NULL))
+      build_solution_with_initial_guess(dir);
   }
 
   if(!activate_xGFM || mus_are_equal() || set_for_testing_backbone)
   {
     solve_linear_systems();
-    const double dummy_input[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
-    solver_monitor.log_iteration(dummy_input, this); // we just want to log the number of ksp iterations in this case, 0.0 because no correction yet
+    const double dummy_input[P4EST_DIM] = {DIM(DBL_MAX, DBL_MAX, DBL_MAX)};
+    solver_monitor.log_iteration(dummy_input, this); // we just want to log the number of ksp iterations in this case, DBL_MAX because irrelevant in this case...
   }
   else
   {
@@ -673,7 +693,8 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
                                                       former_rhs, former_residual, max_correction);
       solver_monitor.log_iteration(max_correction, this);
       // check if good enough, yet
-      if(solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual) || xGFM_iter >= max_iter)
+      if(xGFM_iter >= max_iter ||
+         (xGFM_iter > 0 && solver_monitor.reached_convergence_within_desired_bounds(xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual)))
         break;
       xGFM_iter++;
     }
@@ -688,9 +709,6 @@ void my_p4est_poisson_jump_faces_xgfm_t::solve_for_sharp_solution(const KSPType&
     }
   }
 
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = KSPSetInitialGuessNonzero(ksp[dir], saved_ksp_original_guess_flag[dir]); CHKERRXX(ierr);
-  }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
@@ -702,15 +720,13 @@ bool my_p4est_poisson_jump_faces_xgfm_t::update_solution(Vec former_solution[P4E
 
   // save current solution needed by xgfm iterative procedure
   for (u_char dim = 0; dim < P4EST_DIM; ++dim){
-    std::swap(former_solution[dim], solution[dim]); // save former solution
-    if(solution[dim] == NULL){
-      ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr); }
-    if(former_solution[dim] != NULL || (user_initial_guess != NULL && user_initial_guess[dim] != NULL)){
-      ierr = KSPSetInitialGuessNonzero(ksp[dim], PETSC_TRUE); CHKERRXX(ierr);
-      if(former_solution[dim] != NULL){ // former solution has precedence as initial guess, if defined
-        ierr = VecCopyGhost(former_solution[dim], solution[dim]); CHKERRXX(ierr); }
-      else{ // copy the given initial guess
-        ierr = VecCopyGhost(user_initial_guess[dim], solution[dim]); CHKERRXX(ierr); }
+    std::swap(former_solution[dim], solution[dim]); // save solution into "former solution" (for residual minimization thereafter)
+    if(former_solution[dim] != NULL) // we had a former solution, we'll use it as an "initial guess" for what comes next
+    {
+      if(solution[dim] == NULL){
+        ierr = VecCreateGhostFaces(p4est, faces, &solution[dim], dim); CHKERRXX(ierr);
+      }
+      ierr = VecCopyGhost(former_solution[dim], solution[dim]); CHKERRXX(ierr);
     }
   }
   solve_linear_systems();
@@ -720,7 +736,7 @@ bool my_p4est_poisson_jump_faces_xgfm_t::update_solution(Vec former_solution[P4E
     ierr = KSPGetIterationNumber(ksp[dim], &nksp_iteration[dim]); CHKERRXX(ierr);
   }
 
-  return SUMD(nksp_iteration[0], nksp_iteration[1], nksp_iteration[2]) != 0; // if the ksp solver did at least one iteration, there was an update
+  return SUMD(nksp_iteration[0], nksp_iteration[1], nksp_iteration[2]) != 0; // if the ksp solver did at least one iteration, i.e., there was an update
 }
 
 void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Vec former_extension[P4EST_DIM], Vec former_extrapolation_minus[P4EST_DIM], Vec former_extrapolation_plus[P4EST_DIM],
@@ -873,7 +889,6 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, max_increment_in_band, P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecRestoreArrayRead(extension_n[dim],            &extension_n_p[dim]);           CHKERRXX(ierr); ierr = VecRestoreArray(extension_np1[dim],            &extension_np1_p[dim]);           CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(extrapolation_minus_n[dim],  &extrapolation_minus_n_p[dim]); CHKERRXX(ierr); ierr = VecRestoreArray(extrapolation_minus_np1[dim],  &extrapolation_minus_np1_p[dim]); CHKERRXX(ierr);
@@ -920,6 +935,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
     former_extrapolation_plus[dim] = extrapolation_plus[dim];   extrapolation_plus[dim] = extrapolation_plus_n[dim];
   }
 
+  niter_extrapolations_done = niter_max;
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_faces_xgfm_t_update_extensions_and_extrapolations, 0, 0, 0, 0); CHKERRXX(ierr);
   return;
 }
@@ -966,17 +982,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_rhs_and_residual(Vec former_rhs[
   // save the current residuals
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     std::swap(former_residual[dim], residual[dim]);
-    // create a new vector if needed:
-    if(residual[dim] == NULL){
-      ierr = VecCreateNoGhostFaces(p4est, faces, &residual[dim], dim); CHKERRXX(ierr); }
-    // calculate the fix-point residual
-    if(scale_systems_by_diagonals)
-      pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], multiply_by_sqrt_D, rhs[dim], divide_by_sqrt_D);
-
-    ierr = VecAXPBY(residual[dim], -1.0, 0.0, rhs[dim]); CHKERRXX(ierr);
-    ierr = MatMultAdd(matrix[dim], solution[dim], residual[dim], residual[dim]); CHKERRXX(ierr);
-    if(scale_systems_by_diagonals)
-      pointwise_operation_with_sqrt_of_diag(dim, 2, solution[dim], divide_by_sqrt_D, rhs[dim], multiply_by_sqrt_D);
+    get_residual(dim, residual[dim]);
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -997,14 +1003,17 @@ void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_
 
   if(ANDD(former_residual[0] == NULL, former_residual[1] == NULL, former_residual[2] == NULL))
   {
-    P4EST_ASSERT(ANDD(former_solution[0] == NULL,       former_solution[1] == NULL,             former_solution[2] == NULL)
-        && ANDD(former_extension[0] == NULL,            former_extension[1] == NULL,            former_extension[2] == NULL)
+    P4EST_ASSERT(ANDD(former_extension[0] == NULL,            former_extension[1] == NULL,            former_extension[2] == NULL)
         && ANDD(former_extrapolation_minus[0] == NULL,  former_extrapolation_minus[1] == NULL,  former_extrapolation_minus[2] == NULL)
         && ANDD(former_extrapolation_plus[0] == NULL,   former_extrapolation_plus[1] == NULL,   former_extrapolation_plus[2] == NULL)); // otherwise, something went wrong...
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-      max_correction[dim] = 0.0;
+      max_correction[dim] = DBL_MAX;
 
-    return; // if the former residual is not known (0th step), we can't do anything and we need to leave the solver's state as is (0.0 returned because no actual "correction")
+    return;
+    // if the former residual is not known (0th step of the iterative process), we can't do anything and we need
+    // to leave the solver's state as is
+    // DBL_MAX returned for max_correction because no actual combination of states happened and we don't want
+    // to trigger a false positive convergence termination
   }
 
   PetscErrorCode ierr;

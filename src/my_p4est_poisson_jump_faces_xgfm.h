@@ -359,7 +359,7 @@ public:
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       rhs_is_set[dim] = false;
 
-    extrapolations_are_set = false;
+    niter_extrapolations_done = 0;
     set_for_testing_backbone = true;
 
     return;
