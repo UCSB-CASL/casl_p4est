@@ -984,7 +984,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_rhs_and_residual(Vec former_rhs[
 }
 
 void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_residual(Vec former_solution[P4EST_DIM],
-                                                                                         Vec former_extension[P4EST_DIM], Vec former_extrapoltion_minus[P4EST_DIM], Vec former_extrapoltion_plus[P4EST_DIM],
+                                                                                         Vec former_extension[P4EST_DIM], Vec former_extrapolation_minus[P4EST_DIM], Vec former_extrapolation_plus[P4EST_DIM],
                                                                                          Vec former_rhs[P4EST_DIM], Vec former_residual[P4EST_DIM],
                                                                                          double max_correction[P4EST_DIM])
 {
@@ -997,10 +997,10 @@ void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_
 
   if(ANDD(former_residual[0] == NULL, former_residual[1] == NULL, former_residual[2] == NULL))
   {
-    P4EST_ASSERT(ANDD(former_solution[0] == NULL,     former_solution[1] == NULL,           former_solution[2] == NULL)
-        && ANDD(former_extension[0] == NULL,          former_extension[1] == NULL,          former_extension[2] == NULL)
-        && ANDD(former_extrapoltion_minus[0] == NULL, former_extrapoltion_minus[1] == NULL, former_extrapoltion_minus[2] == NULL)
-        && ANDD(former_extrapoltion_plus[0] == NULL,  former_extrapoltion_plus[1] == NULL,  former_extrapoltion_plus[2] == NULL)); // otherwise, something went wrong...
+    P4EST_ASSERT(ANDD(former_solution[0] == NULL,       former_solution[1] == NULL,             former_solution[2] == NULL)
+        && ANDD(former_extension[0] == NULL,            former_extension[1] == NULL,            former_extension[2] == NULL)
+        && ANDD(former_extrapolation_minus[0] == NULL,  former_extrapolation_minus[1] == NULL,  former_extrapolation_minus[2] == NULL)
+        && ANDD(former_extrapolation_plus[0] == NULL,   former_extrapolation_plus[1] == NULL,   former_extrapolation_plus[2] == NULL)); // otherwise, something went wrong...
     for (u_char dim = 0; dim < P4EST_DIM; ++dim)
       max_correction[dim] = 0.0;
 
@@ -1029,9 +1029,9 @@ void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_
     ierr = VecGetArray(rhs[dim], &rhs_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(former_extension[dim], &former_extension_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(former_extrapoltion_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_extrapolation_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(former_extrapoltion_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(former_extrapolation_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(former_solution[dim], &former_solution_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
@@ -1060,9 +1060,9 @@ void my_p4est_poisson_jump_faces_xgfm_t::set_solver_state_minimizing_L2_norm_of_
     ierr = VecRestoreArray(rhs[dim], &rhs_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(former_extension[dim], &former_extension_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(extension[dim], &extension_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(former_extrapoltion_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_extrapolation_minus[dim], &former_extrapolation_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(extrapolation_minus[dim], &extrapolation_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(former_extrapoltion_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(former_extrapolation_plus[dim], &former_extrapolation_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(extrapolation_plus[dim], &extrapolation_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(former_solution[dim], &former_solution_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
