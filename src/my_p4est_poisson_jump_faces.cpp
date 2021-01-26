@@ -1,4 +1,8 @@
+#ifdef P4_TO_P8
+#include "my_p8est_poisson_jump_faces.h"
+#else
 #include "my_p4est_poisson_jump_faces.h"
+#endif
 
 //#ifdef P4_TO_P8
 //#include <src/my_p8est_vtk.h>

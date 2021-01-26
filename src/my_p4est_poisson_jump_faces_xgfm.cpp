@@ -1,4 +1,8 @@
+#ifdef P4_TO_P8
+#include "my_p8est_poisson_jump_faces_xgfm.h"
+#else
 #include "my_p4est_poisson_jump_faces_xgfm.h"
+#endif
 
 my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_p4est_faces_t *faces_, const p4est_nodes_t* nodes_)
   : my_p4est_poisson_jump_faces_t(faces_, nodes_), activate_xGFM(true)
