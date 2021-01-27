@@ -108,17 +108,44 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
 
   const double *user_rhs_minus_dir_p    = NULL;
   const double *user_rhs_plus_dir_p     = NULL;
-  const double *extension_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  const double *extension_p[P4EST_DIM]              = {DIM(NULL, NULL, NULL)};
   const double *viscous_extrapolation_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
   ierr = VecGetArrayRead(user_rhs_minus[dir], &user_rhs_minus_dir_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(user_rhs_plus[dir],  &user_rhs_plus_dir_p); CHKERRXX(ierr);
-  Vec* viscous_extrapolation = (extend_negative_interface_values() ? extrapolation_minus : extrapolation_plus);
-  for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+  // If extensions and extrapolations are defined intrinsically, we use them to define the
+  // appropriate stress-balancing jump terms (priority to that, if defined). Otherwise, we
+  // consider the user-defined initial guess (0th step of the iterative strategy) if provided.
+  // (If none is given, the solution-dependent missing terms are set to 0.0, this ain't doing no miracle...)
+  const bool use_user_initial_guess = ANDD(extension[0] == NULL, extension[1] == NULL, extension[2] == NULL) &&
+      ANDD(extrapolation_minus[0] == NULL, extrapolation_minus[1] == NULL, extrapolation_minus[2] == NULL) &&
+      ANDD(extrapolation_plus[0] == NULL, extrapolation_plus[1] == NULL, extrapolation_plus[2] == NULL) &&
+      user_initial_guess_minus != NULL && user_initial_guess_plus != NULL &&
+      ANDD(user_initial_guess_minus[0] != NULL, user_initial_guess_minus[1] != NULL, user_initial_guess_minus[2] != NULL) &&
+      ANDD(user_initial_guess_plus[0] != NULL, user_initial_guess_plus[1] != NULL, user_initial_guess_plus[2] != NULL);
+  Vec* viscous_extrapolation;
+  if(!use_user_initial_guess)
   {
-    if(extension[comp] != NULL){
-      ierr = VecGetArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
-    if(viscous_extrapolation[comp] != NULL){
-      ierr = VecGetArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
+    viscous_extrapolation = (extend_negative_interface_values() ? extrapolation_minus : extrapolation_plus);
+    for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+    {
+      if(extension[comp] != NULL){
+        ierr = VecGetArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
+      if(viscous_extrapolation[comp] != NULL){
+        ierr = VecGetArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
+    }
+  }
+  else
+  {
+    viscous_extrapolation = (extend_negative_interface_values() ? user_initial_guess_minus : user_initial_guess_plus);
+    for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+    {
+      ierr = VecGetArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr);
+      extension_p[comp] = viscous_extrapolation_p[comp];
+      // We don't have any extension of interface-defined values in this case.
+      // We use the appropriate user-defined guess for it, instead: since the
+      // xGFM operators built herebelow implement the tangential projection operators
+      // under the hood, this trick should be fine (besides, it's nothing but a guess...)
+    }
   }
 
   bool wall[P4EST_FACES];
@@ -522,6 +549,25 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
     if(viscous_extrapolation[comp] != NULL){
       ierr = VecRestoreArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
   }
+
+  if(!use_user_initial_guess)
+  {
+    for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+    {
+      if(extension[comp] != NULL){
+        ierr = VecRestoreArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
+      if(viscous_extrapolation[comp] != NULL){
+        ierr = VecRestoreArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
+    }
+  }
+  else
+  {
+    for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+    {
+      extension_p[comp] = NULL; // it was nothing but a copy to viscous_extrapolation_p[comp]...
+      ierr = VecGetArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr);
+    }
+  }
 }
 
 const vector_field_component_xgfm_jump& my_p4est_poisson_jump_faces_xgfm_t::get_xgfm_jump_between_faces(const u_char& dim, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx, const u_char& oriented_dir)
@@ -754,14 +800,31 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
   Vec extrapolation_plus_n[P4EST_DIM], extrapolation_plus_np1[P4EST_DIM]; // (extrapolations of plus field at pseudo times n and np1)
   Vec normal_derivative_minus_n[P4EST_DIM], normal_derivative_minus_np1[P4EST_DIM]; // (extrapolations of plus field at pseudo times n and np1)
   Vec normal_derivative_plus_n[P4EST_DIM], normal_derivative_plus_np1[P4EST_DIM]; // (extrapolations of plus field at pseudo times n and np1)
-  //
+  // same as in "build_discretization_for_face"
+  const bool use_user_initial_guess = ANDD(extension[0] == NULL, extension[1] == NULL, extension[2] == NULL) &&
+      ANDD(extrapolation_minus[0] == NULL, extrapolation_minus[1] == NULL, extrapolation_minus[2] == NULL) &&
+      ANDD(extrapolation_plus[0] == NULL, extrapolation_plus[1] == NULL, extrapolation_plus[2] == NULL) &&
+      user_initial_guess_minus != NULL && user_initial_guess_plus != NULL &&
+      ANDD(user_initial_guess_minus[0] != NULL, user_initial_guess_minus[1] != NULL, user_initial_guess_minus[2] != NULL) &&
+      ANDD(user_initial_guess_plus[0] != NULL, user_initial_guess_plus[1] != NULL, user_initial_guess_plus[2] != NULL);
+  Vec* viscous_extrapolation = (use_user_initial_guess ? (extend_negative_interface_values() ? user_initial_guess_minus : user_initial_guess_plus) :
+                                                         (extend_negative_interface_values() ? extrapolation_minus : extrapolation_plus));
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecGetArrayRead(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
-    if(extension[dim] != NULL){
-      ierr = VecGetArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+
+    if(!use_user_initial_guess)
+    {
+      if(extension[dim] != NULL){
+        ierr = VecGetArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+      }
+      if(viscous_extrapolation[dim] != NULL){
+        ierr = VecGetArrayRead(viscous_extrapolation[dim], &current_viscous_extrapolation_p[dim]); CHKERRXX(ierr); }
     }
-    if((extend_negative_interface_values() ? extrapolation_minus[dim] : extrapolation_plus[dim]) != NULL){
-      ierr = VecGetArrayRead((extend_negative_interface_values() ? extrapolation_minus[dim] : extrapolation_plus[dim]), &current_viscous_extrapolation_p[dim]); CHKERRXX(ierr); }
+    else
+    {
+      ierr = VecGetArrayRead(viscous_extrapolation[dim], &current_viscous_extrapolation_p[dim]); CHKERRXX(ierr);
+      current_extension_p[dim] = current_viscous_extrapolation_p[dim];
+    }
 
     ierr = VecCreateGhostFaces(p4est, faces, &extension_n[dim], dim); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est, faces, &extension_np1[dim], dim); CHKERRXX(ierr);
@@ -906,6 +969,21 @@ void my_p4est_poisson_jump_faces_xgfm_t::update_extensions_and_extrapolations(Ve
   // restore pointers and free data
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecRestoreArrayRead(solution[dim], &solution_p[dim]); CHKERRXX(ierr);
+
+    if(!use_user_initial_guess)
+    {
+      if(current_extension_p[dim] != NULL){
+        ierr = VecRestoreArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+      }
+      if(current_viscous_extrapolation_p[dim] != NULL){
+        ierr = VecRestoreArrayRead(viscous_extrapolation[dim], &current_viscous_extrapolation_p[dim]); CHKERRXX(ierr); }
+    }
+    else
+    {
+      current_extension_p[dim] = NULL; // nothing but a copy of current_viscous_extrapolation_p in this case
+      ierr = VecRestoreArrayRead(viscous_extrapolation[dim], &current_viscous_extrapolation_p[dim]); CHKERRXX(ierr);
+    }
+
     if(current_extension_p[dim] != NULL){
       ierr = VecRestoreArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr); }
     if(current_viscous_extrapolation_p[dim] != NULL){
@@ -1171,7 +1249,24 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
   double *new_extrapolation_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
   double *new_normal_derivative_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
   double *new_normal_derivative_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
-  const double* sharp_solution_p[P4EST_DIM]     = {DIM(NULL, NULL, NULL)};
+
+  const double* sharp_solution_p[P4EST_DIM]               = {DIM(NULL, NULL, NULL)};
+  const double* current_extrapolation_minus_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  const double* current_extrapolation_plus_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  const double* current_extension_p[P4EST_DIM]            = {DIM(NULL, NULL, NULL)};
+
+  P4EST_ASSERT((ANDD(extension[0] == NULL, extension[1] == NULL, extension[2] == NULL) &&
+      ANDD(extrapolation_minus[0] == NULL, extrapolation_minus[1] == NULL, extrapolation_minus[2] == NULL) &&
+      ANDD(extrapolation_plus[0] == NULL, extrapolation_plus[1] == NULL, extrapolation_plus[2] == NULL)) ||
+      (ANDD(extension[0] != NULL, extension[1] != NULL, extension[2] != NULL) &&
+      ANDD(extrapolation_minus[0] != NULL, extrapolation_minus[1] != NULL, extrapolation_minus[2] != NULL) &&
+      ANDD(extrapolation_plus[0] != NULL, extrapolation_plus[1] != NULL, extrapolation_plus[2] != NULL))); // either all defined or none
+  const bool use_user_initial_guess = ANDD(extension[0] == NULL, extension[1] == NULL, extension[2] == NULL) &&
+      ANDD(extrapolation_minus[0] == NULL, extrapolation_minus[1] == NULL, extrapolation_minus[2] == NULL) &&
+      ANDD(extrapolation_plus[0] == NULL, extrapolation_plus[1] == NULL, extrapolation_plus[2] == NULL) &&
+      user_initial_guess_minus != NULL && user_initial_guess_plus != NULL &&
+      ANDD(user_initial_guess_minus[0] != NULL, user_initial_guess_minus[1] != NULL, user_initial_guess_minus[2] != NULL) &&
+      ANDD(user_initial_guess_plus[0] != NULL, user_initial_guess_plus[1] != NULL, user_initial_guess_plus[2] != NULL);
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecGetArray(new_extension[dim],                &new_extension_p[dim]); CHKERRXX(ierr);
@@ -1180,6 +1275,23 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     ierr = VecGetArray(new_normal_derivative_minus[dim],  &new_normal_derivative_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArray(new_normal_derivative_plus[dim],   &new_normal_derivative_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
+    if(use_user_initial_guess)
+    {
+      ierr = VecGetArrayRead(user_initial_guess_minus[dim], &current_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(user_initial_guess_plus[dim], &current_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    }
+    else
+    {
+      if(extrapolation_minus[dim] != NULL && extrapolation_plus[dim] != NULL)
+      {
+        ierr = VecGetArrayRead(extrapolation_minus[dim], &current_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(extrapolation_plus[dim], &current_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+      }
+      // otherwise, leave them as NULL, the solver knows what to do...
+    }
+    if(extension[dim] != NULL){
+      ierr = VecGetArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+    }
   }
 
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -1187,17 +1299,23 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_layer_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1, NULL);
-      new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
-      if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
+                                     sharp_solution_p, current_extrapolation_minus_p, current_extrapolation_plus_p,
+                                     new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1);
+      if(current_extension_p[dim] != NULL)
+        new_extension_p[dim][f_idx] = current_extension_p[dim][f_idx];
+      else
       {
-        double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
-        const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
-        if((sgn_face < 0) != extend_negative_interface_values()) // we are actually on the wrong side and there is a nonzero jump
+        new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
+        if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
         {
-          double local_normal[P4EST_DIM];
-          interface_manager->normal_vector_at_point(xyz_face, local_normal);
-          new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
+          const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+          if((sgn_face < 0) != extend_negative_interface_values()) // we are actually on the wrong side and there is a nonzero jump
+          {
+            double local_normal[P4EST_DIM];
+            interface_manager->normal_vector_at_point(xyz_face, local_normal);
+            new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          }
         }
       }
     }
@@ -1213,17 +1331,23 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     {
       const p4est_locidx_t f_idx = faces->get_local_face(dim, k);
       initialize_extrapolation_local(dim, f_idx,
-                                     sharp_solution_p, new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1, NULL);
-      new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
-      if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
+                                     sharp_solution_p, current_extrapolation_minus_p, current_extrapolation_plus_p,
+                                     new_extrapolation_minus_p, new_extrapolation_plus_p, new_normal_derivative_minus_p, new_normal_derivative_plus_p, 1);
+      if(current_extension_p[dim] != NULL)
+        new_extension_p[dim][f_idx] = current_extension_p[dim][f_idx];
+      else
       {
-        double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
-        const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
-        if((sgn_face < 0) != extend_negative_interface_values()) // we are actually on the wrong side and there is a nonzero jump
+        new_extension_p[dim][f_idx] = sharp_solution_p[dim][f_idx];
+        if(interp_jump_u_dot_n != NULL) // there is a possibly nonzero jump
         {
-          double local_normal[P4EST_DIM];
-          interface_manager->normal_vector_at_point(xyz_face, local_normal);
-          new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dim, xyz_face);
+          const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
+          if((sgn_face < 0) != extend_negative_interface_values()) // we are actually on the wrong side and there is a nonzero jump
+          {
+            double local_normal[P4EST_DIM];
+            interface_manager->normal_vector_at_point(xyz_face, local_normal);
+            new_extension_p[dim][f_idx] += (sgn_face < 0 ? +1.0 : -1.0)*((*interp_jump_u_dot_n)(xyz_face)*local_normal[dim]);
+          }
         }
       }
     }
@@ -1242,15 +1366,31 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extensions_and_extrapolation
     ierr = VecRestoreArray(new_normal_derivative_minus[dim],  &new_normal_derivative_minus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(new_normal_derivative_plus[dim],   &new_normal_derivative_plus_p[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(solution[dim], &sharp_solution_p[dim]); CHKERRXX(ierr);
+    if(use_user_initial_guess)
+    {
+      ierr = VecRestoreArrayRead(user_initial_guess_minus[dim], &current_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(user_initial_guess_plus[dim], &current_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+    }
+    else
+    {
+      if(extrapolation_minus[dim] != NULL && extrapolation_plus[dim] != NULL)
+      {
+        ierr = VecRestoreArrayRead(extrapolation_minus[dim], &current_extrapolation_minus_p[dim]); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(extrapolation_plus[dim], &current_extrapolation_plus_p[dim]); CHKERRXX(ierr);
+      }
+    }
+    if(extension[dim] != NULL){
+      ierr = VecRestoreArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+    }
   }
 
   return;
 }
 
-void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
+void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                                                        const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
                                                                         double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                                                        double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
-                                                                        double* sharp_max_component)
+                                                                        double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree)
 {
   double xyz_face[P4EST_DIM];
   faces->xyz_fr_f(face_idx, dim, xyz_face);
@@ -1261,20 +1401,28 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
   if(sgn_face < 0)
   {
     extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx];
-    extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face)));
-    if(set_for_testing_backbone)
-      extrapolation_plus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] + (*interp_validation_jump_u).operator()(xyz_face, dim);
-    if(sharp_max_component != NULL)
-      sharp_max_component[0] = MAX(sharp_max_component[0], fabs(sharp_solution_p[dim][face_idx]));
+    if(current_extrapolation_plus_p[dim] != NULL)
+      extrapolation_plus_p[dim][face_idx]   = current_extrapolation_plus_p[dim][face_idx];
+    else
+    {
+      extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face)));
+      if(set_for_testing_backbone)
+        extrapolation_plus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] + (*interp_validation_jump_u).operator()(xyz_face, dim);
+    }
+    sharp_max_component[0] = MAX(sharp_max_component[0], fabs(sharp_solution_p[dim][face_idx]));
   }
   else
   {
     extrapolation_plus_p[dim][face_idx]   = sharp_solution_p[dim][face_idx];
-    extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face))); //  the sign is _in_ the oriented_normal already...
-    if(set_for_testing_backbone)
-      extrapolation_minus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] - (*interp_validation_jump_u).operator()(xyz_face, dim);
-    if(sharp_max_component != NULL)
-      sharp_max_component[1] = MAX(sharp_max_component[1], fabs(sharp_solution_p[dim][face_idx]));
+    if(current_extrapolation_minus_p[dim] != NULL && current_extrapolation_plus_p[dim] != NULL)
+      extrapolation_minus_p[dim][face_idx]  = current_extrapolation_minus_p[dim][face_idx];
+    else
+    {
+      extrapolation_minus_p[dim][face_idx]  = sharp_solution_p[dim][face_idx] + (interp_jump_u_dot_n == NULL ? 0.0 : oriented_normal[dim]*((*interp_jump_u_dot_n)(xyz_face))); //  the sign is _in_ the oriented_normal already...
+      if(set_for_testing_backbone)
+        extrapolation_minus_p[dim][face_idx] = sharp_solution_p[dim][face_idx] - (*interp_validation_jump_u).operator()(xyz_face, dim);
+    }
+    sharp_max_component[1] = MAX(sharp_max_component[1], fabs(sharp_solution_p[dim][face_idx]));
   }
 
   double diagonal_coeff_for_n_dot_grad_this_side = 0.0, diagonal_coeff_for_n_dot_grad_across = 0.0;
@@ -1283,15 +1431,23 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
   double n_dot_grad_u = 0.0; // let's evaluate this term on the side of face, set the corresponding value across to 0.0
 
   PetscErrorCode ierr;
-  const double *extension_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-  const double *viscous_extrapolation_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-  Vec* viscous_exrapolation = (extend_negative_interface_values() ? extrapolation_minus : extrapolation_plus);
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(extension[dim] != NULL){
-      ierr = VecGetArrayRead(extension[dim], &extension_p[dim]); CHKERRXX(ierr); }
-    if(viscous_exrapolation[dim] != NULL){
-      ierr = VecGetArrayRead(viscous_exrapolation[dim], &viscous_extrapolation_p[dim]); CHKERRXX(ierr); }
+  const double *current_extension_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+  const double **current_viscous_extrapolation_p = (extend_negative_interface_values() ? current_extrapolation_minus_p : current_extrapolation_plus_p);
+  if(ANDD(extension[0] != NULL, extension[1] != NULL, extension[2] != NULL))
+  {
+    for(u_char dim = 0; dim < P4EST_DIM; dim++){
+      ierr = VecGetArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+    }
   }
+  else
+  {
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      current_extension_p[dim] = current_viscous_extrapolation_p[dim]; // we could have been using a user-defined guess (if not, these will be NULL and that is fine)
+  }
+  P4EST_ASSERT((ANDD(current_extension_p[0] == NULL, current_extension_p[1] == NULL, current_extension_p[2] == NULL) &&
+      ANDD(current_viscous_extrapolation_p[0] == NULL, current_viscous_extrapolation_p[1] == NULL, current_viscous_extrapolation_p[2] == NULL)) ||
+      (ANDD(current_extension_p[0] != NULL, current_extension_p[1] != NULL, current_extension_p[2] != NULL) &&
+      ANDD(current_viscous_extrapolation_p[0] != NULL, current_viscous_extrapolation_p[1] != NULL, current_viscous_extrapolation_p[2] != NULL))); // either both defined or none
 
   bool un_is_well_defined = true;
   p4est_locidx_t quad_idx;
@@ -1336,7 +1492,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
           const vector_field_component_xgfm_jump& jump_info = it->second;
           sharp_derivative_at_face = (1.0/mu_this_side)*face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, dual_dir, in_positive_domain, sharp_solution_p[dim][face_idx], sharp_solution_p[dim][neighbor_face_in_dual_direction],
                                                                                                    jump_info.jump_component,
-                                                                                                   jump_info.jump_flux_component(extension_p, viscous_extrapolation_p), dxyz_local[der]);
+                                                                                                   jump_info.jump_flux_component(current_extension_p, current_viscous_extrapolation_p), dxyz_local[der]);
         }
 
         if(!extrapolation_operators_are_stored_and_set[dim])
@@ -1408,7 +1564,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
               const vector_field_component_xgfm_jump& jump_info = it->second;
               oriented_sharp_derivative = face_interface_neighbor.GFM_flux_component(mu_this_side, mu_across, 2*der + orientation, is_in_positive_domain, sharp_solution_p[dim][face_idx], solution_across,
                                                                                      jump_info.jump_component,
-                                                                                     jump_info.jump_flux_component(extension_p, viscous_extrapolation_p),
+                                                                                     jump_info.jump_flux_component(current_extension_p, current_viscous_extrapolation_p),
                                                                                      (neighbor_face_idx >= 0 ? 1.0 : 0.5)*dxyz_local[der])/mu_this_side;
             }
             else // wall neighbor across the interface with Neumann boundary condition --> as for within the solver, take the wall BC and convert it to a Neumann condition on the field on this side
@@ -1626,29 +1782,30 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     }
   }
 
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    if(extension[dim] != NULL){
-      ierr = VecRestoreArrayRead(extension[dim], &extension_p[dim]); CHKERRXX(ierr); }
-    if(viscous_exrapolation[dim] != NULL){
-      ierr = VecRestoreArrayRead(viscous_exrapolation[dim], &viscous_extrapolation_p[dim]); CHKERRXX(ierr); }
+  if(ANDD(extension[0] != NULL, extension[1] != NULL, extension[2] != NULL))
+  {
+    for(u_char dim = 0; dim < P4EST_DIM; dim++){
+      ierr = VecRestoreArrayRead(extension[dim], &current_extension_p[dim]); CHKERRXX(ierr);
+    }
   }
 
   return;
 }
 
-void my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
-                                                                    double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
-                                                                    const double* extrapolation_minus_p[P4EST_DIM], const double* extrapolation_plus_p[P4EST_DIM],
+void my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                                                    const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
+                                                                    double* extrapolation_minus_np1_p[P4EST_DIM], double* extrapolation_plus_np1_p[P4EST_DIM],
+                                                                    const double* extrapolation_minus_n_p[P4EST_DIM], const double* extrapolation_plus_n_p[P4EST_DIM],
                                                                     const double* normal_derivative_of_solution_minus_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_p[P4EST_DIM])
 {
-  tmp_minus_p[dim][face_idx] = extrapolation_minus_p[dim][face_idx];
-  tmp_plus_p[dim][face_idx] = extrapolation_plus_p[dim][face_idx];
+  extrapolation_minus_np1_p[dim][face_idx] = extrapolation_minus_n_p[dim][face_idx];
+  extrapolation_plus_np1_p[dim][face_idx] = extrapolation_plus_n_p[dim][face_idx];
   double xyz_face[P4EST_DIM];
   faces->xyz_fr_f(face_idx, dim, xyz_face);
   const char sgn_face = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : +1);
 
-  double** extrapolation_np1_p        = (sgn_face < 0 ? tmp_plus_p : tmp_minus_p);
-  const double** extrapolation_n_p    = (sgn_face < 0 ? extrapolation_plus_p : extrapolation_minus_p);
+  double** extrapolation_np1_p        = (sgn_face < 0 ? extrapolation_plus_np1_p  : extrapolation_minus_np1_p);
+  const double** extrapolation_n_p    = (sgn_face < 0 ? extrapolation_plus_n_p    : extrapolation_minus_n_p);
   const double** normal_derivative_p  = (sgn_face < 0 ? normal_derivative_of_solution_plus_p : normal_derivative_of_solution_minus_p);
 
   if(activate_xGFM && !use_face_dofs_only_in_extrapolations)
@@ -1656,23 +1813,26 @@ void my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local(const u_char
     const extension_increment_operator& xgfm_extension_operator = get_extension_increment_operator_for(dim, face_idx, DBL_MAX);
     const bool fetch_positive_interface_values = (sgn_face < 0);
     const double *extension_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-    const double *viscous_extrapolation_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-    Vec* viscous_extrapolation = extend_negative_interface_values() ? extrapolation_minus : extrapolation_plus;
+    const double **viscous_extrapolation_p = extend_negative_interface_values() ? current_extrapolation_minus_p : current_extrapolation_plus_p;
     PetscErrorCode ierr;
-    for (u_char comp = 0; comp < P4EST_DIM; ++comp) {
-      if(extension[comp] != NULL){
+    if(ANDD(extension[0] != NULL, extension[1] != NULL, extension[1] != NULL))
+    {
+      for (u_char comp = 0; comp < P4EST_DIM; ++comp){
         ierr = VecGetArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
-      if(viscous_extrapolation[dim] != NULL){
-        ierr = VecGetArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
     }
+    else
+    {
+      for (u_char comp = 0; comp < P4EST_DIM; ++comp)
+        extension_p[comp] = viscous_extrapolation_p[comp];
+    }
+
     double dummy;
     extrapolation_np1_p[dim][face_idx] = extrapolation_n_p[dim][face_idx] + xgfm_extension_operator(dim, extrapolation_n_p, sharp_solution_p, extension_p, viscous_extrapolation_p, *this, fetch_positive_interface_values, dummy, normal_derivative_p);
 
-    for (u_char comp = 0; comp < P4EST_DIM; ++comp) {
-      if(extension[comp] != NULL){
+    if(ANDD(extension[0] != NULL, extension[1] != NULL, extension[1] != NULL))
+    {
+      for (u_char comp = 0; comp < P4EST_DIM; ++comp){
         ierr = VecRestoreArrayRead(extension[comp], &extension_p[comp]); CHKERRXX(ierr); }
-      if(viscous_extrapolation[dim] != NULL){
-        ierr = VecRestoreArrayRead(viscous_extrapolation[comp], &viscous_extrapolation_p[comp]); CHKERRXX(ierr); }
     }
   }
   else

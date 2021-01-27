@@ -258,14 +258,16 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
 
   void build_discretization_for_face(const u_char& dir, const p4est_locidx_t& face_idx, int *nullspace_contains_constant_vector = NULL);
 
-  void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
+  void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                      const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
                                       double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                      double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
-                                      double* sharp_max_component);
+                                      double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree);
 
-  void extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
-                                  double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
-                                  const double* extrapolation_minus_p[P4EST_DIM], const double* extrapolation_plus_p[P4EST_DIM],
+
+  void extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                  const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
+                                  double* extrapolation_minus_np1_p[P4EST_DIM], double* extrapolation_plus_np1_p[P4EST_DIM],
+                                  const double* extrapolation_minus_n_p[P4EST_DIM], const double* extrapolation_plus_n_p[P4EST_DIM],
                                   const double* normal_derivative_of_solution_minus_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_p[P4EST_DIM]);
 
 public:

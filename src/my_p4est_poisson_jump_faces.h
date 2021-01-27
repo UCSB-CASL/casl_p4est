@@ -27,6 +27,10 @@ protected:
   inline double diag_min() const { return sqrt(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2])); }
 
   int max_iter;
+  double sharp_max_component[2]; // 0 <-> negative domain, 1 <-> positive domain
+
+  inline bool sharp_max_components_are_known() const { return (sharp_max_component[0] > 0.0 && sharp_max_component[1] > 0.0); }
+  inline void reset_sharp_max_components() { sharp_max_component[0] = sharp_max_component[1] = -1.0; return; }
 
   // this solver needs an interface manager (and may contribute to building some of its interface face-specific maps)
   my_p4est_interface_manager_t* interface_manager;
@@ -160,18 +164,19 @@ protected:
   virtual void build_discretization_for_face(const u_char& dim, const p4est_locidx_t& face_idx, int *nullspace_contains_constant_vector = NULL) = 0;
   void setup_linear_system(const u_char& dim);
 
-  virtual void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
+  virtual void initialize_extrapolation_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                              const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
                                               double* extrapolation_minus_p[P4EST_DIM], double* extrapolation_plus_p[P4EST_DIM],
-                                              double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree,
-                                              double* sharp_max_component) = 0;
+                                              double* normal_derivative_of_solution_minus_p[P4EST_DIM], double* normal_derivative_of_solution_plus_p[P4EST_DIM], const u_char& degree) = 0;
 
   void extrapolate_normal_derivatives_local(const u_char& dim, const p4est_locidx_t& face_idx,
-                                            double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
-                                            const double* normal_derivative_of_solution_minus_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_p[P4EST_DIM]) const;
+                                            double* normal_derivative_of_solution_minus_np1_p[P4EST_DIM], double* normal_derivative_of_solution_plus_np1_p[P4EST_DIM],
+                                            const double* normal_derivative_of_solution_minus_n_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_n_p[P4EST_DIM]) const;
 
-  virtual void extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx, const double* sharp_solution_p[P4EST_DIM],
-                                          double* tmp_minus_p[P4EST_DIM], double* tmp_plus_p[P4EST_DIM],
-                                          const double* extrapolation_minus_p[P4EST_DIM], const double* extrapolation_plus_p[P4EST_DIM],
+  virtual void extrapolate_solution_local(const u_char& dim, const p4est_locidx_t& face_idx,
+                                          const double* sharp_solution_p[P4EST_DIM], const double* current_extrapolation_minus_p[P4EST_DIM], const double* current_extrapolation_plus_p[P4EST_DIM],
+                                          double* extrapolation_minus_np1_p[P4EST_DIM], double* extrapolation_plus_np1_p[P4EST_DIM],
+                                          const double* extrapolation_minus_n_p[P4EST_DIM], const double* extrapolation_plus_n_p[P4EST_DIM],
                                           const double* normal_derivative_of_solution_minus_p[P4EST_DIM], const double* normal_derivative_of_solution_plus_p[P4EST_DIM]) = 0;
 
   void pointwise_operation_with_sqrt_of_diag(const u_char& dim, size_t num_vectors, ...) const;
@@ -361,7 +366,7 @@ public:
     return;
   }
 
-  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1, double* sharp_max_component = NULL);
+  void extrapolate_solution_from_either_side_to_the_other(const u_int& n_pseudo_time_iterations, const u_char& degree = 1);
 
   /*!
    * \brief set_scale_by_diagonal sets the internal flag for controlling the (symmetric) scaling of the linear
@@ -393,6 +398,8 @@ public:
   void print_partition_VTK(const char *file, const u_char &dir);
 
   inline void set_max_number_of_iter(const int& nn) { max_iter = nn; }
+
+  void get_max_components_in_subdomains(double max_component[2]);
 
 };
 
