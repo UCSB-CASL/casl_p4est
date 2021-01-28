@@ -111,8 +111,6 @@ private:
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
   double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
 
-  const double threshold_dbl_max;
-
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
 
@@ -152,8 +150,9 @@ private:
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
-  Vec vnp1_face_minus_km1[P4EST_DIM], vnp1_face_plus_km1[P4EST_DIM];
-  Vec vnp1_face_minus[P4EST_DIM], vnp1_face_plus[P4EST_DIM];
+  Vec vnp1_face_star_minus_k[P4EST_DIM],   vnp1_face_star_plus_k[P4EST_DIM];    // face-sampled velocity, before projection, after the second-to-last viscosity step (or as used wihin the pressure guess jumps)
+  Vec vnp1_face_star_minus_kp1[P4EST_DIM], vnp1_face_star_plus_kp1[P4EST_DIM];  // face-sampled velocity, before projection, after the latest viscosity step
+  Vec vnp1_face_minus[P4EST_DIM],     vnp1_face_plus[P4EST_DIM];      // divergence free face-sampled velocity, i.e. vnp1_face_*_kp1 made divergence-free
   Vec viscosity_rhs_minus[P4EST_DIM], viscosity_rhs_plus[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
@@ -270,6 +269,8 @@ private:
   }
 
   void transfer_face_sampled_vnp1_to_cells(Vec vnp1_minus_on_cells, Vec vnp1_plus_on_cells) const; // for exhaustive vtk exportations
+
+  void build_sharp_pressure(Vec sharp_pressure) const;
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
