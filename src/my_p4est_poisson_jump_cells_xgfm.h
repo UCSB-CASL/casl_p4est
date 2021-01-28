@@ -231,8 +231,8 @@ class my_p4est_poisson_jump_cells_xgfm_t : public my_p4est_poisson_jump_cells_t
 
   void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                  double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
-                                 double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM],
-                                 double* max_flux_component) const;
+                                 const double* face_velocity_star_minus_kp1_p[P4EST_DIM], const double* face_velocity_star_plus_kp1_p[P4EST_DIM],
+                                 double* divergence_free_velocity_minus_p[P4EST_DIM], double* divergence_free_velocity_plus_p[P4EST_DIM]);
 
   void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
                                       double* extrapolation_minus_p, double* extrapolation_plus_p,

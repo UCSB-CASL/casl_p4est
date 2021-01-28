@@ -57,13 +57,17 @@ protected:
   double add_diag_minus, add_diag_plus;
   // for coupling with two-phase flow solver (evaluation of normal component of normal viscous stress balance across the interface)
   double shear_viscosity_minus, shear_viscosity_plus;
-  Vec *face_velocity_minus_km1, *face_velocity_plus_km1; // required/used for jump in pressure guess AND for jump corrections in subsequent projection steps
+  Vec *face_velocity_star_minus_k,    *face_velocity_star_plus_k;   // required/used for jump in pressure guess AND for jump corrections in subsequent projection steps
+  Vec *face_velocity_star_minus_kp1,  *face_velocity_star_plus_kp1; // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
   double dt_over_BDF_alpha;
   bool is_set_for_projection_step;
   inline bool is_coupled_to_two_phase_flow() const
   {
     return (fabs(shear_viscosity_minus) > 0.0) && (fabs(shear_viscosity_plus) > 0.0);
   }
+
+  double sharp_max_projection_flux[2]; // 0 <-> negative domain, 1 <-> positive domain
+  inline void reset_sharp_max_projection_flux() { sharp_max_projection_flux[0] = sharp_max_projection_flux[1] = -1.0; return; }
 
   // Petsc tolerance parameters
   PetscInt    max_ksp_iterations;
@@ -75,7 +79,6 @@ protected:
   // - sharp, cell-sampled value of the continuum rhs
   Vec user_rhs_minus, user_rhs_plus;        // cell-sampled rhs of the continuum-level problem --> sharp, cell-sampled value of the continuum value of f defining the rhs as diag*u - div(mu*grad(u)) = f
   // - or sharp, face-sampled values of the two-phase velocity field that needs to be made divergence-free
-  Vec *face_velocity_minus, *face_velocity_plus;  // face-sampled rhs of the two-phase velocity field that needs to be made divergence-free --> sharp, face-sampled values of v_star defining the rhs as diag*u - div(mu*grad(u)) = -div(v_star)
   const CF_DIM* interp_jump_normal_velocity; // interpolator to the jump in normal velocity value --> considered to be 0.0 if not provided
   Vec jump_u, jump_normal_flux_u;     // node-sampled, defined on the nodes of the interpolation_node_ngbd of the interface manager (important if using subrefinement)
   inline bool interface_is_set()    const { return interface_manager != NULL; }
@@ -105,7 +108,7 @@ protected:
   /* ---- Pointer to boundary condition (wall only) ---- */
   const BoundaryConditionsDIM *bc;
   /* ---- Control flags ---- */
-  bool matrix_is_set, rhs_is_set;
+  bool matrix_is_set, rhs_is_set, linear_solver_is_set;
   bool scale_system_by_diagonals;
   bool extrapolations_are_set;
   bool use_extrapolations_in_sharp_flux_calculations;
@@ -131,11 +134,11 @@ protected:
    * \param [in] pc_type                    preconditioner type desired by the user
    * \return a PetscError code to check if anything went wrong
    */
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type) const;
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type);
   void solve_linear_system();
-  inline void reset_rhs()           { rhs_is_set = false;                 setup_linear_system(); }
-  inline void reset_matrix()        { matrix_is_set = false;              setup_linear_system(); }
-  inline void reset_linear_system() { matrix_is_set = rhs_is_set = false; setup_linear_system(); }
+  inline void reset_rhs()           { rhs_is_set = false;                                         setup_linear_system(); }
+  inline void reset_matrix()        { matrix_is_set = linear_solver_is_set = false;               setup_linear_system(); }
+  inline void reset_linear_system() { matrix_is_set = linear_solver_is_set = rhs_is_set = false;  setup_linear_system(); }
 
   inline p4est_gloidx_t compute_global_index(const p4est_locidx_t &quad_idx) const
   {
@@ -152,8 +155,8 @@ protected:
 
   virtual void local_projection_for_face(const p4est_locidx_t& f_idx, const u_char& dim, const my_p4est_faces_t* faces,
                                          double* flux_component_minus_p[P4EST_DIM], double* flux_component_plus_p[P4EST_DIM],
-                                         double* face_velocity_minus_p[P4EST_DIM], double* face_velocity_plus_p[P4EST_DIM],
-                                         double* max_flux_component) const = 0;
+                                         const double* face_velocity_star_minus_kp1_p[P4EST_DIM], const double* face_velocity_star_plus_kp1_p[P4EST_DIM],
+                                         double* divergence_free_velocity_minus_p[P4EST_DIM], double* divergence_free_velocity_plus_p[P4EST_DIM]) = 0;
 
   virtual void initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
                                               double* extrapolation_minus_p, double* extrapolation_plus_p,
@@ -199,8 +202,9 @@ public:
   {
     bc = &bc_;
     // we can't really check for unchanged behavior in this cass, --> play it safe
-    matrix_is_set = false;
-    rhs_is_set    = false;
+    matrix_is_set         = false;
+    linear_solver_is_set  = false;
+    rhs_is_set            = false;
   }
 
   inline void set_mus(const double& mu_minus_, const double& mu_plus_)
@@ -208,6 +212,7 @@ public:
     const bool mus_unchanged = (fabs(mu_minus_ - mu_minus) < EPS*MAX(mu_minus_, mu_minus) && fabs(mu_plus_ - mu_plus) < EPS*MAX(mu_plus_, mu_plus));
     matrix_is_set = matrix_is_set && mus_unchanged;
     rhs_is_set    = rhs_is_set    && mus_unchanged;
+    linear_solver_is_set = linear_solver_is_set && mus_unchanged;
     if(!mus_unchanged)
     {
       mu_minus = mu_minus_;
@@ -227,6 +232,7 @@ public:
   {
     const bool diags_unchanged = (fabs(add_diag_minus_ - add_diag_minus) < EPS*MAX(add_diag_minus_, add_diag_minus) && fabs(add_diag_plus_ - add_diag_plus) < EPS*MAX(add_diag_plus_, add_diag_plus));
     matrix_is_set = matrix_is_set && diags_unchanged;
+    linear_solver_is_set = linear_solver_is_set && diags_unchanged;
     if(!diags_unchanged)
     {
       add_diag_minus = add_diag_minus_;
@@ -260,6 +266,7 @@ public:
     {
       add_diag_minus = add_diag_plus = 0.0;
       matrix_is_set = false;
+      linear_solver_is_set = false;
     }
     clear_node_sampled_jumps();
     set_rhs(NULL, NULL);
@@ -272,20 +279,21 @@ public:
     is_set_for_projection_step = true;
   }
 
-  inline void set_face_velocities_km1(Vec *face_velocity_minus_km1_, Vec *face_velocity_plus_km1_)
+  inline void set_face_velocities_star_k(Vec *face_velocity_star_minus_k_, Vec *face_velocity_star_plus_k_)
   {
-    P4EST_ASSERT(!interface_is_set() ||
-                 (VecsAreSetForFaces(face_velocity_minus_km1_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_km1_, interface_manager->get_faces(), 1)));
-    face_velocity_minus_km1 = face_velocity_minus_km1_;
-    face_velocity_plus_km1  = face_velocity_plus_km1_;
+    P4EST_ASSERT(((face_velocity_star_minus_k_ == NULL || ANDD(face_velocity_star_minus_k_[0] == NULL, face_velocity_star_minus_k_[1] == NULL, face_velocity_star_minus_k_[2] == NULL)) &&
+        (face_velocity_star_plus_k_ == NULL || ANDD(face_velocity_star_plus_k_[0] == NULL, face_velocity_star_plus_k_[1] == NULL, face_velocity_star_plus_k_[2] == NULL))) ||
+        (!interface_is_set() || (VecsAreSetForFaces(face_velocity_star_minus_k_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_star_plus_k_, interface_manager->get_faces(), 1))));
+    face_velocity_star_minus_k = face_velocity_star_minus_k_;
+    face_velocity_star_plus_k  = face_velocity_star_plus_k_;
   }
 
-  inline void set_velocity_on_faces(Vec* face_velocity_minus_, Vec* face_velocity_plus_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
+  inline void set_face_velocities_star_kp1(Vec *face_velocity_star_minus_kp1_, Vec *face_velocity_star_plus_kp1_, const CF_DIM* interp_jump_normal_velocity_ = NULL)
   {
     P4EST_ASSERT(!interface_is_set() ||
-                 (VecsAreSetForFaces(face_velocity_minus_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_plus_, interface_manager->get_faces(), 1)));
-    face_velocity_minus = face_velocity_minus_;
-    face_velocity_plus  = face_velocity_plus_;
+                 (VecsAreSetForFaces(face_velocity_star_minus_kp1_, interface_manager->get_faces(), 1) && VecsAreSetForFaces(face_velocity_star_plus_kp1_, interface_manager->get_faces(), 1)));
+    face_velocity_star_minus_kp1 = face_velocity_star_minus_kp1_;
+    face_velocity_star_plus_kp1  = face_velocity_star_plus_kp1_;
     interp_jump_normal_velocity = interp_jump_normal_velocity_;
     if(is_coupled_to_two_phase_flow() && is_set_for_projection_step)
       update_jump_terms_for_projection();
@@ -341,18 +349,22 @@ public:
 
   /*!
    * \brief project_face_velocities calculates the sharp flux components of the solution (at faces of the
-   * computational grids) and subtract them from the (corresponding) user-defined velocity components, if
-   * they're provided --> this function executes the "two-phase projection step".
+   * computational grids) and subtract them from the (corresponding) user-defined velocity components
+   * face_velocity_star_*_kp1 (if they're provided) and store the results into divergence_free_velocity_*
+   * --> i.e., this function executes the "two-phase projection step".
    * \param [in] faces      : pointer to the face data structure for the computational grid under consideration
+   * \param [in] divergence_free_velocity_minus:
+   *                          array of P4EST_DIM parallel vectors for face-sampled vector fields holding the result
+   *                          of the projection step associated with negative domain (disregarded if NULL);
+   * param [in]  divergence_free_velocity_plus:
+   *                          array of P4EST_DIM parallel vectors for face-sampled vector fields holding the result
+   *                          of the projection step associated with positive domain (disregarded if NULL);
    * \param [in] flux_minus : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
+   *                          --> contains the flux components associated with negative domain if provided (and not NULL);
    * \param [in] flux_plus  : (optional) array of P4EST_DIM parallel vectors for face-sampled vector fields
-   * \param [out] max_flux_component : (optional) pointer to an array of double of size 2. If disregarded or NULL,
-   *                          this is ignored, otherwise this will contain the maximum (sharp) flux component
-   *                          applied during the projection on the output (index 0 corresponds to negative domain,
-   *                          index 1 corresponds to positive domain)
-   * (A) If the solver is aware of face-sampled velocity components (and used them in order to define and determine
-   * the divergence-free projection problem to solve) this function will operate on the user-provided velocity and
-   * subtract the relevant flux components;
+   *                          --> contains the flux components associated with positive domain if provided (and not NULL);
+   * (A) If the solver is not aware of face-sampled velocity components face_velocity_star_*_kp1, but given non-NULL
+   * divergence_free_velocity_minus and/or divergence_free_velocity_plus, this method will throw an exception;
    * (B) If flux_minus and flux_plus are NULL, the actual flux components are _not_ returned to the user in any way
    * (C) If flux_minus and flux_plus are not NULL but equal (thus pointing to the same array), the local sharp flux
    * components are returned (e.g. if phi_face <= 0.0, only the negative flux component is returned)
@@ -368,8 +380,9 @@ public:
    * velocity components are set to DBL_MAX (if known to the solver) as a way to tag them "unknown" and prevent their
    * use thereafter...
    */
-  void project_face_velocities(const my_p4est_faces_t *faces, Vec* flux_minus = NULL, Vec* flux_plus = NULL,
-                               double* max_flux_component = NULL);
+  void project_face_velocities(const my_p4est_faces_t *faces,
+                               Vec* divergence_free_velocity_minus, Vec* divergence_free_velocity_plus,
+                               Vec* flux_minus = NULL, Vec* flux_plus = NULL);
   /*!
    * \brief get_sharp_flux_components returns the local sharp flux component corresponding to the local sign of the
    * face (only the sharp locally defined flux component)
@@ -377,7 +390,7 @@ public:
    */
   inline void get_sharp_flux_components(Vec flux[P4EST_DIM], const my_p4est_faces_t* faces)
   {
-    project_face_velocities(faces, flux, flux);
+    project_face_velocities(faces, NULL, NULL, flux, flux);
   }
   /*!
    * \brief get_flux_components returns the flux components from either side wherever they can be evaluated
@@ -385,7 +398,7 @@ public:
    */
   inline void get_flux_components(Vec flux_minus[P4EST_DIM], Vec flux_plus[P4EST_DIM], const my_p4est_faces_t* faces)
   {
-    project_face_velocities(faces, flux_minus, flux_plus);
+    project_face_velocities(faces, NULL, NULL, flux_minus, flux_plus);
   }
 
   inline void extrapolate_before_calculating_fluxes(const bool& desired_action) { use_extrapolations_in_sharp_flux_calculations = desired_action; }
@@ -409,6 +422,14 @@ public:
    * \param do_the_scaling [in] action desired by the user;
    */
   inline void set_scale_by_diagonal(const bool& do_the_scaling) { scale_system_by_diagonals = do_the_scaling; }
+
+  inline void get_max_components_projection_flux(double max_component[2]) const
+  {
+    P4EST_ASSERT(sharp_max_projection_flux[0] >= 0.0 && sharp_max_projection_flux[1] >= 0.0);
+    max_component[0]  = sharp_max_projection_flux[0];
+    max_component[1]  = sharp_max_projection_flux[1];
+    return;
+  }
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_H
