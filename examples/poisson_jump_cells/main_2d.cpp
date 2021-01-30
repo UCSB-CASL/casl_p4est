@@ -52,6 +52,8 @@ const bool track_xgfm_residuals_and_corrections = false;
 const string default_work_folder = "/scratch/04965/tg842642/poisson_jump_cells";
 #elif defined(POD_CLUSTER)
 const string default_work_folder = "/scratch/regan/poisson_jump_cells";
+#elif defined(ABADDON)
+const string default_work_folder = "/Users/raphael/workspace/projects/poisson_jump_cells";
 #else
 const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_cells";
 #endif
