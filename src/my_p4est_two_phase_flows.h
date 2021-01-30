@@ -41,7 +41,7 @@ private:
   {
   private:
     void tag_quadrant(p4est_t *p4est_np1, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_nodes_t* nodes_np1,
-                      const double *phi_np1_on_computational_nodes_p,
+                      const double *phi_np2_on_computational_nodes_p, bool &coarse_cell_crossed,
                       const double *vorticity_magnitude_np1_on_computational_nodes_minus_p,
                       const double *vorticity_magnitude_np1_on_computational_nodes_plus_p);
     const my_p4est_two_phase_flows_t *owner;
@@ -49,7 +49,7 @@ private:
     splitting_criteria_computational_grid_two_phase_t(my_p4est_two_phase_flows_t* parent_solver) :
       splitting_criteria_tag_t((splitting_criteria_t*)(parent_solver->p4est_n->user_pointer)), owner(parent_solver) {}
     bool refine_and_coarsen(p4est_t* p4est_np1, const p4est_nodes_t* nodes_np1,
-                            Vec phi_np1_on_computational_nodes,
+                            Vec phi_np2_on_computational_nodes, bool& coarse_cell_crossed,
                             Vec vorticity_magnitude_np1_on_computational_nodes_minus,
                             Vec vorticity_magnitude_np1_on_computational_nodes_plus);
   };
@@ -99,11 +99,11 @@ private:
   double rho_minus, rho_plus;
   double dt_n;
   double dt_nm1;
+  double dt_np1;
   double max_L2_norm_velocity_minus, max_L2_norm_velocity_plus;
   double uniform_band_minus, uniform_band_plus;
   double threshold_split_cell;
   double cfl_advection, cfl_visco_capillary, cfl_capillary;
-  bool   dt_updated;
   interpolation_method levelset_interpolation_method;
 
   int sl_order, sl_order_interface;
@@ -120,16 +120,16 @@ private:
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  Vec phi;
+  Vec phi_np1;
   Vec jump_normal_velocity; // jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
   Vec non_viscous_pressure_jump; // pressure jump terms due to surface tension + mass transfer (i.e., 2 out of 3 terms in pressure jumps)
   // vector fields and/or other P4EST_DIM-block-structured
-  Vec phi_xxyyzz, interface_tangential_stress;
+  Vec phi_np1_xxyyzz, interface_tangential_stress;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
   // scalar fields
-  Vec phi_on_computational_nodes;
+  Vec phi_np1_on_computational_nodes;
   Vec vorticity_magnitude_minus, vorticity_magnitude_plus;
   // vector fields and/or other P4EST_DIM-block-structured
   Vec vnp1_nodes_minus,  vnp1_nodes_plus;
@@ -202,9 +202,9 @@ private:
   void compute_backtraced_velocities();
   void compute_viscosity_rhs();
 
-  void advect_interface(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1,
-                        const p4est_nodes_t *known_nodes, Vec known_phi_np1 = NULL);
-  void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np1);
+  void advect_interface(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2,
+                        const p4est_nodes_t *known_nodes_np2 = NULL, Vec known_phi_np2 = NULL);
+  void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2);
   void compute_vorticities();
 
   /*!
@@ -272,6 +272,11 @@ private:
 
   void build_sharp_pressure(Vec sharp_pressure) const;
 
+  inline void compute_dt_np1()
+  {
+    dt_np1 = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
+  }
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
@@ -292,13 +297,6 @@ public:
   inline double get_advection_dt() const
   {
     return cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
-  }
-  inline void compute_dt()
-  {
-    dt_nm1 = dt_n;
-    dt_n = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
-
-    dt_updated = true;
   }
 
   inline void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p)
@@ -330,7 +328,7 @@ public:
     rho_plus  = rho_p_;
   }
 
-  void set_phi(Vec phi_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_on_computational_nodes_ = NULL);
+  void set_phi_np1(Vec phi_np1_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_np1_on_computational_nodes_ = NULL);
   void set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
                            CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM]);
   void set_face_velocities_np1(CF_DIM* vnp1_m_[P4EST_DIM], CF_DIM* vnp1_p_[P4EST_DIM]);
@@ -373,6 +371,13 @@ public:
   {
     dt_nm1  = dt_nm1_;
     dt_n    = dt_n_;
+    dt_np1  = -DBL_MAX; // absurd value
+  }
+
+  inline void init_time_steps()
+  {
+    compute_dt_np1();
+    set_dt(dt_np1, dt_np1);
   }
 
   inline bool viscosities_are_equal() const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
@@ -380,8 +385,8 @@ public:
 
   inline void set_dt(double dt_n_) {dt_n = dt_n_; }
 
-  inline double get_dt() const                                              { return dt_n; }
-  inline double get_dtnm1() const                                           { return dt_nm1; }
+  inline double get_dt_n() const                                            { return dt_n; }
+  inline double get_dt_nm1() const                                          { return dt_nm1; }
   inline p4est_t* get_p4est_n() const                                       { return p4est_n; }
   inline p4est_t* get_fine_p4est_n() const                                  { return fine_p4est_n; }
   inline p4est_nodes_t* get_nodes_n() const                                 { return nodes_n; }
@@ -479,26 +484,26 @@ public:
     ierr = VecView(vnm1_nodes_plus, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
   }
 
-  inline void print_phi() const
+  inline void print_phi_np1() const
   {
     PetscErrorCode ierr;
-    if(phi_on_computational_nodes != NULL && phi_on_computational_nodes != phi)
+    if(phi_np1_on_computational_nodes != NULL && phi_np1_on_computational_nodes != phi_np1)
     {
       if(p4est_n->mpirank == 0)
-        std::cout << "phi_on_computational_nodes = " << std::endl;
-      ierr = VecView(phi_on_computational_nodes, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+        std::cout << "phi_np1_on_computational_nodes = " << std::endl;
+      ierr = VecView(phi_np1_on_computational_nodes, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
-    if(phi != NULL)
+    if(phi_np1 != NULL)
     {
       if(p4est_n->mpirank == 0)
-        std::cout << "phi = " << std::endl;
-      ierr = VecView(phi, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+        std::cout << "phi_np1 = " << std::endl;
+      ierr = VecView(phi_np1, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
-    if(phi_xxyyzz != NULL)
+    if(phi_np1_xxyyzz != NULL)
     {
       if(p4est_n->mpirank == 0)
-        std::cout << "phi_xxyyzz = " << std::endl;
-      ierr = VecView(phi_xxyyzz, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
+        std::cout << "phi_np1_xxyyzz = " << std::endl;
+      ierr = VecView(phi_np1_xxyyzz, PETSC_VIEWER_STDOUT_WORLD); CHKERRXX(ierr);
     }
   }
 
