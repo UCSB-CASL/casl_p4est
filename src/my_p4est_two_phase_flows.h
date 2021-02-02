@@ -106,7 +106,7 @@ private:
   double cfl_advection, cfl_visco_capillary, cfl_capillary;
   interpolation_method levelset_interpolation_method;
 
-  int sl_order, sl_order_interface;
+  int sl_order, sl_order_interface, degree_guess_v_star_face_k;
   int n_viscous_subiterations;
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
   double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
@@ -116,18 +116,30 @@ private:
 
   CF_DIM *force_per_unit_mass[P4EST_DIM];
 
-  // -------------------------------------------------------------------
-  // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
-  // -------------------------------------------------------------------
+  // --------------------------------------------------------------
+  // -------------- FIELDS *NOT* OWNED BY THE SOLVER --------------
+  // (must be provided by the user at every time step, if relevant)
+  // --------------------------------------------------------------
+  // - sampled at the nodes of the INTERFACE-CAPTURING grid:
+  // -------------------------------------------------------
+  Vec jump_normal_velocity; // scalar fields, jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
+  Vec interface_tangential_stress; // vector field, P4EST_DIM-block-structured
+
+  // --------------------------------------------------------------
+  // ----------------- FIELDS OWNED BY THE SOLVER -----------------
+  // (the solver is responsible for related memory management and
+  // updates, etc.
+  // --------------------------------------------------------------
+  // - sampled at the nodes of the INTERFACE-CAPTURING grid:
+  // -------------------------------------------------------
   // scalar fields
   Vec phi_np1;
-  Vec jump_normal_velocity; // jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
   Vec non_viscous_pressure_jump; // pressure jump terms due to surface tension + mass transfer (i.e., 2 out of 3 terms in pressure jumps)
   // vector fields and/or other P4EST_DIM-block-structured
-  Vec phi_np1_xxyyzz, interface_tangential_stress;
-  // -----------------------------------------------------------------------
-  // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
-  // -----------------------------------------------------------------------
+  Vec phi_np1_xxyyzz;
+  // -------------------------------------------------------
+  // - sampled at the nodes of the COMPUTATIONAL grid n:
+  // -------------------------------------------------------
   // scalar fields
   Vec phi_np1_on_computational_nodes;
   Vec vorticity_magnitude_minus, vorticity_magnitude_plus;
@@ -141,22 +153,22 @@ private:
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vn_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_n
   Vec vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz, interface_velocity_np1_xxyyzz;
-  // ------------------------------------------------------------------------------
-  // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
-  // ------------------------------------------------------------------------------
+  // -------------------------------------------------------
+  // - sampled at the cells of the COMPUTATIONAL grid n:
+  // -------------------------------------------------------
   // scalar fields
   Vec pressure_minus, pressure_plus;
-  // ------------------------------------------------------------------------------
-  // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
-  // ------------------------------------------------------------------------------
+  // -------------------------------------------------------
+  // - sampled at the faces of the COMPUTATIONAL grid n:
+  // -------------------------------------------------------
   // vector fields
   Vec vnp1_face_star_minus_k[P4EST_DIM],   vnp1_face_star_plus_k[P4EST_DIM];    // face-sampled velocity, before projection, after the second-to-last viscosity step (or as used wihin the pressure guess jumps)
   Vec vnp1_face_star_minus_kp1[P4EST_DIM], vnp1_face_star_plus_kp1[P4EST_DIM];  // face-sampled velocity, before projection, after the latest viscosity step
   Vec vnp1_face_minus[P4EST_DIM],     vnp1_face_plus[P4EST_DIM];      // divergence free face-sampled velocity, i.e. vnp1_face_*_kp1 made divergence-free
   Vec viscosity_rhs_minus[P4EST_DIM], viscosity_rhs_plus[P4EST_DIM];
-  // -------------------------------------------------------------------------
-  // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
-  // -------------------------------------------------------------------------
+  // -------------------------------------------------------
+  // - sampled at the nodes of the COMPUTATIONAL grid nm1:
+  // -------------------------------------------------------
   // vector fields, P4EST_DIM-block-structured
   Vec vnm1_nodes_minus,  vnm1_nodes_plus;
   Vec interface_velocity_n;
@@ -335,6 +347,22 @@ public:
 
   void compute_second_derivatives_of_n_velocities();
   void compute_second_derivatives_of_nm1_velocities();
+
+  /*!
+   * \brief set_degree_guess_vstar_k sets the degree of the extrapolation for guessing vstar_k in the grid update process.
+   * \param degree_ [in] : desired "degree", accepted values are:
+   * -1 : no guess is built;
+   * 0  : the latest velocity field is considered, i.e., vnp2_star <-- vnp1;
+   * 1  : a linear extrapolation in time is considered, i.e., vnp2_star <-- vnp1 + vnp1_prime*dt_np1
+   * 2  : a quadratic extrapolation in time is considered, i.e., vnp2_star <-- vnp1 + vnp1_prime*dt_np1 + vnp1_prime_prime*0.5*dt_np1*dt_np1
+   * (the time derivative vnp1_prime and/or vnp1_prime_prime are evaluated using backward difference formulae with vnp1, vn (degree 1 and 2) and vnm1 (degree 2))
+   */
+  inline void set_degree_guess_vstar_k(const int& degree_)
+  {
+    if(degree_ < -1 || degree_ > 2)
+      throw  std::invalid_argument("my_p4est_two_phase_flows_t::set_degree_guess_vstar_k(): choose -1 (deactivate guess), 0 (take latest velocity field), 1 (linear extrapolation in time) or 2 (quadratic extrapolation in time)");
+    degree_guess_v_star_face_k = degree_;
+  }
 
   inline void set_semi_lagrangian_order_advection(const int& sl_)
   {

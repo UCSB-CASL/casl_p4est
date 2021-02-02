@@ -217,6 +217,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   sl_order = 2;
   sl_order_interface = 2;
+  degree_guess_v_star_face_k = 1; // (better safe than sorry...)
   n_viscous_subiterations = INT_MAX;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
@@ -681,6 +682,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = (PetscInt) levelset_interpolation_method;
     data[idx++] = sl_order;
     data[idx++] = sl_order_interface;
+    data[idx++] = degree_guess_v_star_face_k;
     data[idx++] = n_viscous_subiterations;
     data[idx++] = (PetscInt) voronoi_on_the_fly;
     break;
@@ -699,6 +701,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     levelset_interpolation_method = (interpolation_method) data[idx++];
     sl_order = data[idx++];
     sl_order_interface = data[idx++];
+    degree_guess_v_star_face_k = data[idx++];
     n_viscous_subiterations = data[idx++];
     voronoi_on_the_fly = (bool) data[idx++];
     break;
@@ -720,10 +723,10 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   const size_t ndouble_values =  2*P4EST_DIM + 18;
   std::vector<PetscReal> double_parameters(ndouble_values);
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
-  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, n_viscous_subiterations
-  // voronoi_on_the_fly
-  // that makes 12 integers
-  const size_t ninteger_values = 12;
+  // fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method, sl_order, sl_order_interface, degree_guess_v_star_face_k,
+  // n_viscous_subiterations, voronoi_on_the_fly
+  // that makes 13 integers
+  const size_t ninteger_values = 13;
   std::vector<PetscInt> integer_parameters(ninteger_values);
   int fd;
   char diskfilename[PATH_MAX];
@@ -788,10 +791,8 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     ierr = delete_and_nullify_vector(phi_np1_on_computational_nodes);       CHKERRXX(ierr); }
   // node-sampled fields on the interface-capturing grid
   ierr = delete_and_nullify_vector(phi_np1);                            CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(phi_np1_xxyyzz);                     CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_tangential_stress);        CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
@@ -2996,14 +2997,12 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   if(vorticity_magnitude_np1_plus != vorticity_magnitude_plus){
     ierr = delete_and_nullify_vector(vorticity_magnitude_np1_plus); CHKERRXX(ierr); }
 
-  // we do not need the vorticities anymore (only need them for grid construction)
-  ierr = delete_and_nullify_vector(vorticity_magnitude_minus); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vorticity_magnitude_plus); CHKERRXX(ierr);
-
   // Finalize the computational grid np1 (if needed):
   p4est_ghost_t *ghost_np1 = ghost_n;
   my_p4est_hierarchy_t *hierarchy_np1 = hierarchy_n;
   my_p4est_node_neighbors_t *ngbd_np1 = ngbd_n;
+  my_p4est_cell_neighbors_t *ngbd_c_np1 = ngbd_c;
+  my_p4est_faces_t *faces_np1 = faces_n;
   if(p4est_np1 != p4est_n)
   {
     // Balance the grid and repartition
@@ -3020,11 +3019,12 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
     ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
     ngbd_np1->init_neighbors();
+    ngbd_c_np1  = new my_p4est_cell_neighbors_t(hierarchy_np1);
+    faces_np1   = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c_np1);
 
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np2_on_computational_nodes); CHKERRXX(ierr);
     if(!coarse_cell_crossed)
     {
-      interp_nodes.clear();
       for(size_t node_idx = 0; node_idx < nodes_np1->indep_nodes.elem_count; ++node_idx)
       {
         double xyz[P4EST_DIM];
@@ -3179,9 +3179,9 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
   if(reinitialize_levelset)
   {
-    Vec& interface_resolving_phi_np1 = (fine_ngbd_np1 != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes);
+    Vec& interface_resolving_phi_np2 = (fine_ngbd_np1 != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes);
     my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
-    ls.reinitialize_2nd_order(interface_resolving_phi_np1);
+    ls.reinitialize_2nd_order(interface_resolving_phi_np2);
   }
 
   if(interface_manager->subcell_resolution() > 0)
@@ -3199,62 +3199,205 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = VecGhostUpdateBegin(phi_np2_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(phi_np2_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-  // you have your new grids and the new levelset function, now transfer your data!
-
-  /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
-   * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
-   * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
-
-  ierr = delete_and_nullify_vector(jump_normal_velocity); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_tangential_stress); CHKERRXX(ierr);
-  // on computational grid at time nm1, just "slide" fields and grids in discrete time
-  ierr = delete_and_nullify_vector(vnm1_nodes_minus); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_plus);  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);   CHKERRXX(ierr);
-  vnm1_nodes_minus  = vn_nodes_minus;
-  vnm1_nodes_plus   = vn_nodes_plus;
-  vnm1_nodes_minus_xxyyzz = vn_nodes_minus_xxyyzz;
-  vnm1_nodes_plus_xxyyzz  = vn_nodes_plus_xxyyzz;
-  // no longer need the n interface velocity
-  ierr = delete_and_nullify_vector(interface_velocity_n); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz); CHKERRXX(ierr);
-  interface_velocity_n        = interface_velocity_np1;
-  interface_velocity_n_xxyyzz = interface_velocity_np1_xxyyzz;
-  interface_velocity_np1 = NULL; // will need to be determined after completion of the next time step
-  interface_velocity_np1_xxyyzz = NULL; // will need to be determined after completion of the next time step
-  // on computational grid at time n, we will need to interpolate things...
-  // we will need to interpolate for vnp1 to vn (and then we'll take their derivatives)
+  // you have your new grids (and the new levelset function), now transfer vnp1_nodes to that grid:
+  // note: this will become your n grid and your n velocity field!
+  // (+ evaluate second derivatives for efficiency of interpolations thereafter)
   if(p4est_np1 != p4est_n)
   {
-    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vn_nodes_minus); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vn_nodes_plus); CHKERRXX(ierr);
-    interp_nodes.clear();
+    Vec vnp1_nodes_minus_on_new_grid, vnp1_nodes_plus_on_new_grid;
+    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vnp1_nodes_minus_on_new_grid); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, P4EST_DIM, &vnp1_nodes_plus_on_new_grid); CHKERRXX(ierr);
     for (size_t k = 0; k < nodes_np1->indep_nodes.elem_count; ++k) {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(k, p4est_np1, nodes_np1, xyz);
       interp_nodes.add_point(k, xyz);
     }
-    Vec inputs[2]   = {vnp1_nodes_minus,  vnp1_nodes_plus};
-    Vec outputs[2]  = {vn_nodes_minus,    vn_nodes_plus};
+    Vec inputs[2]   = {vnp1_nodes_minus,              vnp1_nodes_plus};
+    Vec outputs[2]  = {vnp1_nodes_minus_on_new_grid,  vnp1_nodes_plus_on_new_grid};
     interp_nodes.set_input(inputs, quadratic, 2, P4EST_DIM);
-    interp_nodes.interpolate(outputs);
+    interp_nodes.interpolate(outputs); interp_nodes.clear();
     // clear those
     ierr = delete_and_nullify_vector(vnp1_nodes_minus); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_nodes_plus);  CHKERRXX(ierr);
+    vnp1_nodes_minus  = vnp1_nodes_minus_on_new_grid;
+    vnp1_nodes_plus   = vnp1_nodes_plus_on_new_grid;
   }
-  else{
-    vn_nodes_minus  = vnp1_nodes_minus;
-    vn_nodes_plus   = vnp1_nodes_plus;
-    vnp1_nodes_minus  = NULL; // to avoid overwriting thereafter
-    vnp1_nodes_plus   = NULL; // to avoid overwriting thereafter
-  }
-  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vn_nodes_minus_xxyyzz); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vn_nodes_plus_xxyyzz);  CHKERRXX(ierr);
-  Vec inputs[2]         = {vn_nodes_minus, vn_nodes_plus};
-  Vec outputs_xxyyzz[2] = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
+
+  Vec vnp1_nodes_minus_xxyyzz = NULL;
+  Vec vnp1_nodes_plus_xxyyzz  = NULL;
+  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vnp1_nodes_minus_xxyyzz); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_np1, nodes_np1, SQR_P4EST_DIM, &vnp1_nodes_plus_xxyyzz);  CHKERRXX(ierr);
+  Vec inputs[2]         = {vnp1_nodes_minus,        vnp1_nodes_plus};
+  Vec outputs_xxyyzz[2] = {vnp1_nodes_minus_xxyyzz, vnp1_nodes_plus_xxyyzz};
   ngbd_np1->second_derivatives_central(inputs, outputs_xxyyzz, 2, P4EST_DIM);
+
+  // before we get rid of nm1 data, we may want to use it for estimating vnp1_face_star_*_k
+  // (which would enter as a jump input for the pressure guess in next time step)
+  Vec vnp2_face_star_minus_k[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+  Vec vnp2_face_star_plus_k[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  if(degree_guess_v_star_face_k >= 0) // if degree_guess_v_star_face_k < 0, we don't build a guess
+  {
+    my_p4est_interpolation_nodes_t  interp_nodes_np1(ngbd_np1);
+    my_p4est_interpolation_nodes_t& interp_nodes_n = interp_nodes;
+    my_p4est_interpolation_nodes_t* interp_nodes_nm1 = (degree_guess_v_star_face_k == 2 ? new my_p4est_interpolation_nodes_t(ngbd_nm1) : NULL);
+    vector<double> interp_vnp1_face_minus; vector<double> interp_vnp1_face_plus;
+    vector<double> interp_vn_face_minus;   vector<double> interp_vn_face_plus;
+    vector<double> interp_vnm1_face_minus; vector<double> interp_vnm1_face_plus;
+
+    P4EST_ASSERT(dt_np1 > 0.0);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vnp2_face_star_minus_k[dir], dir); CHKERRXX(ierr);
+      ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vnp2_face_star_plus_k[dir],  dir); CHKERRXX(ierr);
+
+      interp_vnp1_face_minus.resize(faces_np1->num_local[dir]); interp_vnp1_face_plus.resize(faces_np1->num_local[dir]);
+      if(degree_guess_v_star_face_k >= 1)
+      {
+        interp_vn_face_minus.resize(faces_np1->num_local[dir]);   interp_vn_face_plus.resize(faces_np1->num_local[dir]);
+
+      }
+      if(degree_guess_v_star_face_k >= 2)
+      {
+        interp_vnm1_face_minus.resize(faces_np1->num_local[dir]); interp_vnm1_face_plus.resize(faces_np1->num_local[dir]);
+      }
+
+      double xyz_face[P4EST_DIM];
+      for(p4est_locidx_t f_idx = 0; f_idx < faces_np1->num_local[dir]; f_idx++)
+      {
+        faces_np1->xyz_fr_f(f_idx, dir, xyz_face);
+        interp_nodes_np1.add_point(f_idx, xyz_face);
+        if(degree_guess_v_star_face_k >= 1)
+          interp_nodes_n.add_point(f_idx, xyz_face);
+        if(degree_guess_v_star_face_k >= 2)
+          interp_nodes_nm1->add_point(f_idx, xyz_face);
+      }
+      const bool use_second_derivatives_np1 = (vnp1_nodes_minus_xxyyzz  != NULL && vnp1_nodes_plus_xxyyzz != NULL);
+      const bool use_second_derivatives_n   = (vn_nodes_minus_xxyyzz    != NULL && vn_nodes_plus_xxyyzz   != NULL);
+      const bool use_second_derivatives_nm1 = (vnm1_nodes_minus_xxyyzz  != NULL && vnm1_nodes_plus_xxyyzz != NULL);
+
+      Vec inputs_np1[2] = {vnp1_nodes_minus,  vnp1_nodes_plus}; Vec inputs_xxyyzz_np1[2] = {vnp1_nodes_minus_xxyyzz,  vnp1_nodes_plus_xxyyzz};
+      Vec inputs_n[2]   = {vn_nodes_minus,    vn_nodes_plus};   Vec inputs_xxyyzz_n[2]   = {vn_nodes_minus_xxyyzz,    vn_nodes_plus_xxyyzz};
+      Vec inputs_nm1[2] = {vnm1_nodes_minus,  vnm1_nodes_plus}; Vec inputs_xxyyzz_nm1[2] = {vnm1_nodes_minus_xxyyzz,  vnm1_nodes_plus_xxyyzz};
+
+      double *outputs_np1[2]  = {interp_vnp1_face_minus.data(), interp_vnp1_face_plus.data()};
+      double *outputs_n[2]    = {interp_vn_face_minus.data(),   interp_vn_face_plus.data()};
+      double *outputs_nm1[2]  = {interp_vnm1_face_minus.data(), interp_vnm1_face_plus.data()};
+
+      if(use_second_derivatives_np1)
+        interp_nodes_np1.set_input(inputs_np1, inputs_xxyyzz_np1, quadratic, 2, P4EST_DIM);
+      else
+        interp_nodes_np1.set_input(inputs_np1, quadratic, 2, P4EST_DIM);
+      interp_nodes_np1.interpolate(outputs_np1, dir);   interp_nodes_np1.clear();
+
+      if(degree_guess_v_star_face_k >= 1)
+      {
+        if(use_second_derivatives_n)
+          interp_nodes_n.set_input(inputs_n, inputs_xxyyzz_n, quadratic, 2, P4EST_DIM);
+        else
+          interp_nodes_n.set_input(inputs_n, quadratic, 2, P4EST_DIM);
+        interp_nodes_n.interpolate(outputs_n, dir);       interp_nodes_n.clear();
+      }
+
+      if(degree_guess_v_star_face_k >= 2)
+      {
+        if(use_second_derivatives_nm1)
+          interp_nodes_nm1->set_input(inputs_nm1, inputs_xxyyzz_nm1, quadratic, 2, P4EST_DIM);
+        else
+          interp_nodes_nm1->set_input(inputs_nm1, quadratic, 2, P4EST_DIM);
+        interp_nodes_nm1->interpolate(outputs_nm1, dir); interp_nodes_nm1->clear();
+      }
+
+      double *vnp2_face_star_minus_k_p, *vnp2_face_star_plus_k_p;
+      ierr = VecGetArray(vnp2_face_star_minus_k[dir], &vnp2_face_star_minus_k_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp2_face_star_plus_k[dir],  &vnp2_face_star_plus_k_p); CHKERRXX(ierr);
+      for(p4est_locidx_t f_idx = 0; f_idx < faces_np1->num_local[dir]; f_idx++)
+      {
+        switch (degree_guess_v_star_face_k) {
+        case 2:
+          vnp2_face_star_minus_k_p[f_idx] = interp_vnp1_face_minus[f_idx]*(1.0 + (dt_np1*(2.0*dt_n + dt_nm1))/(dt_n*(dt_n + dt_nm1)) + dt_np1*dt_np1/(dt_n*(dt_n + dt_nm1)))
+              - interp_vn_face_minus[f_idx]*(dt_np1*dt_np1/(dt_n*dt_nm1) + ((dt_n + dt_nm1)*dt_np1)/(dt_n*dt_nm1))
+              + interp_vnm1_face_minus[f_idx]*(dt_np1*dt_np1/(dt_nm1*(dt_nm1 + dt_n)) + (dt_n*dt_np1)/(dt_nm1*(dt_nm1 + dt_n)));
+          vnp2_face_star_plus_k_p[f_idx]  = interp_vnp1_face_plus[f_idx]*(1.0 + (dt_np1*(2.0*dt_n + dt_nm1))/(dt_n*(dt_n + dt_nm1)) + dt_np1*dt_np1/(dt_n*(dt_n + dt_nm1)))
+              - interp_vn_face_plus[f_idx]*(dt_np1*dt_np1/(dt_n*dt_nm1) + ((dt_n + dt_nm1)*dt_np1)/(dt_n*dt_nm1))
+              + interp_vnm1_face_plus[f_idx]*(dt_np1*dt_np1/(dt_nm1*(dt_nm1 + dt_n)) + (dt_n*dt_np1)/(dt_nm1*(dt_nm1 + dt_n)));
+          break;
+        case 1:
+          vnp2_face_star_minus_k_p[f_idx] = interp_vnp1_face_minus[f_idx]*(1.0 + dt_np1/dt_n) - (dt_np1/dt_n)*interp_vn_face_minus[f_idx];
+          vnp2_face_star_plus_k_p[f_idx]  = interp_vnp1_face_plus[f_idx]*(1.0 + dt_np1/dt_n) - (dt_np1/dt_n)*interp_vn_face_plus[f_idx];
+          break;
+        case 0:
+          vnp2_face_star_minus_k_p[f_idx] = interp_vnp1_face_minus[f_idx];
+          vnp2_face_star_plus_k_p[f_idx]  = interp_vnp1_face_plus[f_idx];
+          break;
+        default:
+          throw std::runtime_error("my_p4est_two_phase_flows_t::update_from_tn_to_tnp1() : unknown degree_guess_v_star_face_k...");
+          break;
+        }
+      }
+      ierr = VecRestoreArray(vnp2_face_star_minus_k[dir], &vnp2_face_star_minus_k_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vnp2_face_star_plus_k[dir],  &vnp2_face_star_plus_k_p); CHKERRXX(ierr);
+
+      ierr = VecGhostUpdateBegin(vnp2_face_star_minus_k[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vnp2_face_star_plus_k[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+    // complete the updates
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecGhostUpdateEnd(vnp2_face_star_minus_k[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(vnp2_face_star_plus_k[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+    if(interp_nodes_nm1 != NULL)
+      delete interp_nodes_nm1;
+  }
+
+  /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data... */
+  // discard nm1 data
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_velocity_n); CHKERRXX(ierr);         // these ones are indexed "n" but attached to nm1 grid (results of computation done on nm1 grid)
+  ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz); CHKERRXX(ierr);
+  // delete nm1 grid data
+  if(p4est_nm1 != p4est_n)
+    p4est_destroy(p4est_nm1);
+  if(ghost_nm1 != ghost_n)
+    p4est_ghost_destroy(ghost_nm1);
+  if(nodes_nm1 != nodes_n)
+    p4est_nodes_destroy(nodes_nm1);
+  if(hierarchy_nm1 != hierarchy_n)
+    delete hierarchy_nm1;
+  if(ngbd_nm1 != ngbd_n)
+    delete ngbd_nm1;
+  // slide n -> nm1 fields and grid data
+  vnm1_nodes_minus            = vn_nodes_minus;
+  vnm1_nodes_plus             = vn_nodes_plus;
+  vnm1_nodes_minus_xxyyzz     = vn_nodes_minus_xxyyzz;
+  vnm1_nodes_plus_xxyyzz      = vn_nodes_plus_xxyyzz;
+  interface_velocity_n        = interface_velocity_np1;
+  interface_velocity_n_xxyyzz = interface_velocity_np1_xxyyzz;
+  p4est_nm1     = p4est_n;
+  ghost_nm1     = ghost_n;
+  nodes_nm1     = nodes_n;
+  hierarchy_nm1 = hierarchy_n;
+  ngbd_nm1      = ngbd_n;
+  // slide np1 -> n fields and grid data
+  vn_nodes_minus        = vnp1_nodes_minus;
+  vn_nodes_plus         = vnp1_nodes_plus;
+  vn_nodes_minus_xxyyzz = vnp1_nodes_minus_xxyyzz;
+  vn_nodes_plus_xxyyzz  = vnp1_nodes_plus_xxyyzz;
+  interface_velocity_np1 = NULL;        // will need to be determined after completion of the next time step
+  interface_velocity_np1_xxyyzz = NULL; // will need to be determined after completion of the next time step
+  // new n grid:
+  p4est_n     = p4est_np1;
+  ghost_n     = ghost_np1;
+  nodes_n     = nodes_np1;
+  hierarchy_n = hierarchy_np1;
+  ngbd_n      = ngbd_np1;
+  if(ngbd_c_np1 != ngbd_c)
+    delete ngbd_c;
+  ngbd_c = ngbd_c_np1;
+  if(faces_np1 != faces_n)
+    delete faces_n;
+  faces_n = faces_np1;
 
   if(interface_manager->subcell_resolution() > 0)
   {
@@ -3267,46 +3410,24 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   else
     P4EST_ASSERT(fine_p4est_n == NULL && fine_p4est_np1 == NULL && fine_ghost_n == NULL && fine_ghost_np1 == NULL &&  fine_nodes_n == NULL && fine_nodes_np1 == NULL &&
                  fine_hierarchy_n == NULL && fine_hierarchy_np1 == NULL && fine_ngbd_n == NULL && fine_ngbd_np1 == NULL);
-  if(p4est_nm1 != p4est_n)
-    p4est_destroy(p4est_nm1);
-  if(ghost_nm1 != ghost_n)
-    p4est_ghost_destroy(ghost_nm1);
-  if(nodes_nm1 != nodes_n)
-    p4est_nodes_destroy(nodes_nm1);
-  if(hierarchy_nm1 != hierarchy_n)
-    delete hierarchy_nm1;
-  if(ngbd_nm1 != ngbd_n)
-    delete ngbd_nm1;
-  p4est_nm1     = p4est_n;
-  ghost_nm1     = ghost_n;
-  nodes_nm1     = nodes_n;
-  hierarchy_nm1 = hierarchy_n;
-  ngbd_nm1      = ngbd_n;
-  if(p4est_np1 != p4est_n || ghost_np1 != ghost_n || hierarchy_np1 != hierarchy_n){
-    if(hierarchy_np1 != hierarchy_n)
-    {
-      delete ngbd_c;
-      ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
-    }
-    delete  faces_n;
-    faces_n = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c, true);
-  }
-  p4est_n     = p4est_np1;
-  ghost_n     = ghost_np1;
-  nodes_n     = nodes_np1;
-  hierarchy_n = hierarchy_np1;
-  ngbd_n      = ngbd_np1;
 
   delete interface_manager;
-  interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_np1);
+  const my_p4est_node_neighbors_t* interface_resolving_ngbd_n = (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n);
+  interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_n);
   set_phi_np1((fine_ngbd_n != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes), levelset_interpolation_method, phi_np2_on_computational_nodes); // memory handled therein!
   interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
+  // now reset the solver so that it is ready to tackle the next time step:
+  vnp1_nodes_minus = NULL; vnp1_nodes_plus = NULL; // will be the "solution" of the next time step
+  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_plus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_plus);  CHKERRXX(ierr);
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(vnp1_face_star_minus_k[dir]);   CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_star_plus_k[dir]);    CHKERRXX(ierr);
+    // intermediate results, members of the iterative solution strategy
+    ierr = delete_and_nullify_vector(vnp1_face_star_minus_k[dir]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_star_plus_k[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_star_minus_kp1[dir]); CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_star_plus_kp1[dir]);  CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]); CHKERRXX(ierr);
@@ -3315,6 +3436,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);  CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_plus[dir],  dir); CHKERRXX(ierr);
+    vnp1_face_star_minus_k[dir] = vnp2_face_star_minus_k[dir];  // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next tim step
+    vnp1_face_star_plus_k[dir]  = vnp2_face_star_plus_k[dir];   // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next tim step
   }
 
   if(cell_jump_solver != NULL)
@@ -3351,6 +3474,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   dt_nm1  = dt_n;
   dt_n    = dt_np1;
   dt_np1  = -DBL_MAX;
+  // READY TO MOVE ON!
 
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
