@@ -20,7 +20,7 @@ my_p4est_poisson_jump_faces_xgfm_t::my_p4est_poisson_jump_faces_xgfm_t(const my_
   }
   print_residuals_and_corrections_with_solve_info = false;
   scale_systems_by_diagonals = false;
-  use_face_dofs_only_in_extrapolations = false;
+  use_face_dofs_only_in_normal_derivatives = false;
 
   validation_jump_u = NULL;
   validation_jump_mu_grad_u = NULL;
@@ -1478,7 +1478,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
           sharp_derivative_at_face = (touch_dir%2 == 1 ? +1.0 : -1.0)*(sharp_solution_p[dim][face_idx] - sharp_solution_p[dim][neighbor_face_in_dual_direction])/dxyz_local[der];
         else
         {
-          if(!activate_xGFM || use_face_dofs_only_in_extrapolations)
+          if(!activate_xGFM || use_face_dofs_only_in_normal_derivatives)
             un_is_well_defined = false;
           const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_in_dual_direction, dim, dual_dir);
           const double& mu_this_side  = (sgn_face < 0 ? mu_minus  : mu_plus);
@@ -1544,7 +1544,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
           }
           else
           {
-            if(!activate_xGFM || use_face_dofs_only_in_extrapolations)
+            if(!activate_xGFM || use_face_dofs_only_in_normal_derivatives)
               un_is_well_defined = false;
             P4EST_ASSERT(quad->level == interface_manager->get_max_level_computational_grid());
             const double& mu_this_side  = (sgn_face > 0 ? mu_plus   : mu_minus);
@@ -1808,7 +1808,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::extrapolate_solution_local(const u_char
   const double** extrapolation_n_p    = (sgn_face < 0 ? extrapolation_plus_n_p    : extrapolation_minus_n_p);
   const double** normal_derivative_p  = (sgn_face < 0 ? normal_derivative_of_solution_plus_p : normal_derivative_of_solution_minus_p);
 
-  if(activate_xGFM && !use_face_dofs_only_in_extrapolations)
+  if(activate_xGFM)
   {
     const extension_increment_operator& xgfm_extension_operator = get_extension_increment_operator_for(dim, face_idx, DBL_MAX);
     const bool fetch_positive_interface_values = (sgn_face < 0);

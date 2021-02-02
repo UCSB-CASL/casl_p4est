@@ -38,7 +38,7 @@ class my_p4est_poisson_jump_faces_xgfm_t : public my_p4est_poisson_jump_faces_t
   Vec extension[P4EST_DIM]; // face-sampled, extension of interface-defined component values
 
   my_p4est_interpolation_nodes_t *interp_grad_jump_u_dot_n;
-  bool activate_xGFM, print_residuals_and_corrections_with_solve_info, use_face_dofs_only_in_extrapolations;
+  bool activate_xGFM, print_residuals_and_corrections_with_solve_info, use_face_dofs_only_in_normal_derivatives;
   double xGFM_absolute_accuracy_threshold, xGFM_tolerance_on_rel_residual;
 
   // - BEGIN validation data only -
@@ -386,7 +386,7 @@ public:
       max_iter = 0;
   }
 
-  inline void set_validity_of_interface_neighbors_for_extrapolation(const bool& interface_neighbors_are_valid) { use_face_dofs_only_in_extrapolations = !interface_neighbors_are_valid; }
+  inline void set_validity_of_interface_neighbors_for_normal_derivatives(const bool& interface_neighbors_are_valid) { use_face_dofs_only_in_normal_derivatives = !interface_neighbors_are_valid; }
 
   inline bool uses_xGFM_corrections() const { return activate_xGFM; }
 

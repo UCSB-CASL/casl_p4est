@@ -1703,6 +1703,8 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
     face_jump_solver->set_bc(bc_velocity);
     face_jump_solver->set_jumps(jump_normal_velocity, interface_tangential_stress);
     face_jump_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
+    if(dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver) != NULL)
+      dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver)->set_validity_of_interface_neighbors_for_normal_derivatives(false);
   }
 
   Vec *initial_guess_minus  = ANDD(vnp1_face_minus[0] != NULL,  vnp1_face_minus[1] != NULL, vnp1_face_minus[2] != NULL) ? vnp1_face_minus : NULL;
