@@ -307,8 +307,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
-  if(!faces_n->finest_faces_neighborhoods_have_been_set())
-    faces_n->set_finest_face_neighborhoods();
+//  if(!faces_n->finest_faces_neighborhoods_have_been_set())
+//    faces_n->set_finest_face_neighborhoods();
 
   cell_jump_solver = NULL;
   pressure_guess_is_set = false;
@@ -410,8 +410,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
-  if(!faces_n->finest_faces_neighborhoods_have_been_set())
-    faces_n->set_finest_face_neighborhoods();
+//  if(!faces_n->finest_faces_neighborhoods_have_been_set())
+//    faces_n->set_finest_face_neighborhoods();
 
   pressure_guess_is_set = false;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
