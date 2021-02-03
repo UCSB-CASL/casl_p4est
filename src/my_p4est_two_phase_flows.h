@@ -162,19 +162,19 @@ private:
   // - sampled at the faces of the COMPUTATIONAL grid n:
   // -------------------------------------------------------
   // vector fields
-  Vec vnp1_face_star_minus_k[P4EST_DIM],   vnp1_face_star_plus_k[P4EST_DIM];    // face-sampled velocity, before projection, after the second-to-last viscosity step (or as used wihin the pressure guess jumps)
-  Vec vnp1_face_star_minus_kp1[P4EST_DIM], vnp1_face_star_plus_kp1[P4EST_DIM];  // face-sampled velocity, before projection, after the latest viscosity step
-  Vec vnp1_face_minus[P4EST_DIM],     vnp1_face_plus[P4EST_DIM];      // divergence free face-sampled velocity, i.e. vnp1_face_*_kp1 made divergence-free
-  Vec viscosity_rhs_minus[P4EST_DIM], viscosity_rhs_plus[P4EST_DIM];
+  Vec vnp1_face_star_minus_k[P4EST_DIM],    vnp1_face_star_plus_k[P4EST_DIM];     // face-sampled velocity, before projection, after the second-to-last viscosity step (or as used wihin the pressure guess jumps)
+  Vec vnp1_face_star_minus_kp1[P4EST_DIM],  vnp1_face_star_plus_kp1[P4EST_DIM];   // face-sampled velocity, before projection, after the latest viscosity step
+  Vec vnp1_face_minus[P4EST_DIM],           vnp1_face_plus[P4EST_DIM];            // divergence free face-sampled velocity, i.e. vnp1_face_*_kp1 made divergence-free
+  Vec viscosity_rhs_minus[P4EST_DIM],       viscosity_rhs_plus[P4EST_DIM];
   // -------------------------------------------------------
   // - sampled at the nodes of the COMPUTATIONAL grid nm1:
   // -------------------------------------------------------
   // vector fields, P4EST_DIM-block-structured
   Vec vnm1_nodes_minus,  vnm1_nodes_plus;
   Vec interface_velocity_n;
-  Vec interface_velocity_n_xxyyzz;
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vnm1_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n-1, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_nm1
+  Vec interface_velocity_n_xxyyzz;
   Vec vnm1_nodes_minus_xxyyzz, vnm1_nodes_plus_xxyyzz;
 
   // The value of the dir velocity component at the points at time n and nm1 backtraced from the face of orientation dir and local index f_idx are
@@ -347,6 +347,7 @@ public:
 
   void compute_second_derivatives_of_n_velocities();
   void compute_second_derivatives_of_nm1_velocities();
+  void compute_second_derivatives_of_interface_velocity_n();
 
   /*!
    * \brief set_degree_guess_vstar_k sets the degree of the extrapolation for guessing vstar_k in the grid update process.

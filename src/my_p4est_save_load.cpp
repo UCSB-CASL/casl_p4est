@@ -347,7 +347,7 @@ void my_p4est_save_forest(const char* absolute_path_to_file, p4est_t* forest, p4
 }
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
-                                   const char* forest_filename, u_int num_exports, va_list args)
+                                   const char* forest_filename, const vector<save_or_load_element_t>& elements)
 {
   if(create_directory(absolute_path_to_folder, forest->mpirank, forest->mpicomm) != 0)
 #ifdef CASL_THROWS
@@ -357,23 +357,16 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 #endif
 
   char absolute_path_to_file[PATH_MAX];
-  u_int num_vecs;
-  const char* vec_name;
 
   // save the p4est object with global order of dofs saved as cell-level data to recover correct data localization at reload stage
   sprintf(absolute_path_to_file, "%s/%s", absolute_path_to_folder, forest_filename);
   my_p4est_save_forest(absolute_path_to_file, forest, nodes, faces);
 
   // export the Petsc vectors
-  for (u_int i = 0; i < num_exports; ++i) {
+  for (size_t k = 0; k < elements.size(); k++) {
     /* get the name of the vector(s) for the export */
-    vec_name = va_arg(args, const char*);
-    sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, vec_name);
-    /* get the number of vectors to be exported under that name */
-    num_vecs = va_arg(args, u_int);
-    /* get the pointer to Vec object(s) pointing to the vectors to be exported */
-    Vec* pointer_to_vecs = va_arg(args, Vec*);
-    PetscErrorCode ierr = VecDump(absolute_path_to_file, num_vecs, pointer_to_vecs); CHKERRXX(ierr);
+    sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, elements[k].name.c_str());
+    PetscErrorCode ierr = VecDump(absolute_path_to_file, elements[k].nvecs, elements[k].pointer_to_vecs); CHKERRXX(ierr);
   }
 }
 
@@ -382,9 +375,18 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 {
   va_list args;
   va_start(args, num_exports);
-  my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, faces,
-                                forest_filename, num_exports, args);
+
+  vector<save_or_load_element_t> elements;
+  for (u_int i = 0; i < num_exports; ++i) {
+    save_or_load_element_t to_add;
+    to_add.name     = std::string(va_arg(args, const char*));
+    to_add.nvecs  = va_arg(args, u_int);
+    to_add.pointer_to_vecs = va_arg(args, Vec*);
+    elements.push_back(to_add);
+  }
   va_end(args);
+
+  my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, faces, forest_filename, elements);
 }
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes,
@@ -401,11 +403,9 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
                                    const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
                                    const p4est_bool_t retrieve_brick, my_p4est_brick_t* &brick,
                                    const p4est_bool_t create_faces_hierarchy_and_cell_neighbors, my_p4est_faces_t* &faces, my_p4est_hierarchy_t* &hierarchy, my_p4est_cell_neighbors_t* &ngbd_c,
-                                   const char* forest_filename, u_int num_loads, va_list args)
+                                   const char* forest_filename, const vector<save_or_load_element_t>& elements)
 {
   char absolute_path_to_file[PATH_MAX];
-  u_int num_vecs;
-  const char* vec_name;
 
   // load the p4est object and the connectivity
   if(forest != NULL)
@@ -474,47 +474,40 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 
   // load the Petsc vectors and redistribute them accordingly
   PetscErrorCode ierr;
-  for (u_int i = 0; i < num_loads; ++i) {
-    /* get the vector name corresponding to the on-disk file for the load */
-    vec_name = va_arg(args, const char*);
-    sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, vec_name);
+  for (size_t nn = 0; nn < elements.size(); nn++) {
+    /* get the on-disk filename for the load */
+    sprintf(absolute_path_to_file, "%s/%s.petscbin", absolute_path_to_folder, elements[nn].name.c_str());
     if(!file_exists(absolute_path_to_file))
       throw std::invalid_argument("my_p4est_load_forest_and_data: a petsc file can't be found on disk...");
-    /* get the type of data to load (NODE_DATA, CELL_DATA OR FACE_DATA) */
-    int data_type = va_arg(args, int);
-    /* get the number of vectors to be loaded under that name */
-    num_vecs = va_arg(args, u_int);
-    /* get the pointer to Vec object(s) pointing to the vectors to be loaded in */
-    Vec* pointer_to_vecs = va_arg(args, Vec*);
-    switch (data_type) {
+    switch (elements[nn].DATA_SAMPLING) {
     case NODE_DATA:
     {
-      for (u_int i = 0; i < num_vecs; ++i) {
-        ierr = VecCreateGhostNodes(forest, nodes, &pointer_to_vecs[i]); CHKERRXX(ierr);
+      for (u_int i = 0; i < elements[nn].nvecs; ++i) {
+        ierr = VecCreateGhostNodes(forest, nodes, &elements[nn].pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
     case CELL_DATA:
     {
-      for (u_int i = 0; i < num_vecs; ++i) {
-        ierr = VecCreateGhostCells(forest, ghost, &pointer_to_vecs[i]); CHKERRXX(ierr);
+      for (u_int i = 0; i < elements[nn].nvecs; ++i) {
+        ierr = VecCreateGhostCells(forest, ghost, &elements[nn].pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
     case FACE_DATA:
     {
-      P4EST_ASSERT(num_vecs%P4EST_DIM == 0);
-      for (u_int i = 0; i < num_vecs/P4EST_DIM; ++i) {
+      P4EST_ASSERT(elements[nn].nvecs%P4EST_DIM == 0);
+      for (u_int i = 0; i < elements[nn].nvecs/P4EST_DIM; ++i) {
         for (u_char k = 0; k < P4EST_DIM; ++k) {
-          ierr = VecCreateGhostFaces(forest, faces, &pointer_to_vecs[P4EST_DIM*i + k], k); CHKERRXX(ierr);
+          ierr = VecCreateGhostFaces(forest, faces, &elements[nn].pointer_to_vecs[P4EST_DIM*i + k], k); CHKERRXX(ierr);
         }
       }
       break;
     }
     case NODE_BLOCK_VECTOR_DATA:
     {
-      for (u_int i = 0; i < num_vecs; ++i) {
-        ierr = VecCreateGhostNodesBlock(forest, nodes, P4EST_DIM, &pointer_to_vecs[i]); CHKERRXX(ierr);
+      for (u_int i = 0; i < elements[nn].nvecs; ++i) {
+        ierr = VecCreateGhostNodesBlock(forest, nodes, P4EST_DIM, &elements[nn].pointer_to_vecs[i]); CHKERRXX(ierr);
       }
       break;
     }
@@ -525,7 +518,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     }
     }
 
-    PetscErrorCode ierr = LoadVec(absolute_path_to_file, num_vecs, pointer_to_vecs, data_type, forest, ghost, nodes, faces); CHKERRXX(ierr);
+    PetscErrorCode ierr = LoadVec(absolute_path_to_file, elements[nn].nvecs, elements[nn].pointer_to_vecs, elements[nn].DATA_SAMPLING, forest, ghost, nodes, faces); CHKERRXX(ierr);
   }
   p4est_reset_data(forest, 0, NULL, NULL);
 }
@@ -538,11 +531,36 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 {
   va_list args;
   va_start(args, num_loads);
+  vector<save_or_load_element_t> elements;
+  for (u_int i = 0; i < num_loads; ++i) {
+    save_or_load_element_t to_add;
+    to_add.name             = std::string(va_arg(args, const char*));
+    to_add.DATA_SAMPLING    = va_arg(args, int);
+    to_add.nvecs            = va_arg(args, u_int);
+    to_add.pointer_to_vecs  = va_arg(args, Vec*);
+    elements.push_back(to_add);
+  }
+  va_end(args);
+
   my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn,
                                 expand_ghost, ghost, nodes,
                                 retrieve_brick, brick, create_faces_hierarchy_and_cell_neighbors, faces, hierarchy, ngbd_c,
-                                forest_filename, num_loads, args);
-  va_end(args);
+                                forest_filename, elements);
+}
+
+void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
+                                   const p4est_bool_t expand_ghost, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes,
+                                   const char* forest_filename, const std::vector<save_or_load_element_t>& elements)
+{
+  // since we are not dealing with faces for this case, all the following need to be set to NULL
+  my_p4est_brick_t* brick = NULL;
+  my_p4est_faces_t* faces = NULL;
+  my_p4est_hierarchy_t* hierarchy = NULL;
+  my_p4est_cell_neighbors_t* ngbd_c = NULL;
+
+  my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn, expand_ghost, ghost, nodes,
+                                P4EST_FALSE, brick, P4EST_FALSE, faces, hierarchy, ngbd_c,
+                                forest_filename, elements);
 }
 
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
@@ -551,17 +569,18 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 {
   va_list args;
   va_start(args, num_loads);
-  // since we are not dealing with faces for this case, all the following need to be set to NULL
-  my_p4est_brick_t* brick = NULL;
-  my_p4est_faces_t* faces = NULL;
-  my_p4est_hierarchy_t* hierarchy = NULL;
-  my_p4est_cell_neighbors_t* ngbd_c = NULL;
-
-  my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn,
-                                expand_ghost, ghost, nodes,
-                                P4EST_FALSE, brick, P4EST_FALSE, faces, hierarchy, ngbd_c,
-                                forest_filename, num_loads, args);
+  vector<save_or_load_element_t> elements;
+  for (u_int i = 0; i < num_loads; ++i) {
+    save_or_load_element_t to_add;
+    to_add.name             = std::string(va_arg(args, const char*));
+    to_add.DATA_SAMPLING    = va_arg(args, int);
+    to_add.nvecs            = va_arg(args, u_int);
+    to_add.pointer_to_vecs  = va_arg(args, Vec*);
+    elements.push_back(to_add);
+  }
   va_end(args);
+
+  my_p4est_load_forest_and_data(mpi_comm, absolute_path_to_folder, forest, conn, expand_ghost, ghost, nodes, forest_filename, elements);
 }
 
 
