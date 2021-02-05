@@ -364,14 +364,14 @@ void my_p4est_poisson_jump_cells_t::solve_linear_system()
   return;
 }
 
-PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type)
+PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, bool even_if_nullspace_nonempty)
 {
   if(linear_solver_is_set)
     return 0;
   PetscErrorCode ierr;
   ierr = KSPSetOperators(ksp, A, A, SAME_PRECONDITIONER); CHKERRQ(ierr);
   // set ksp type
-  ierr = KSPSetType(ksp, (A_null_space != NULL ? KSPGMRES : ksp_type)); CHKERRQ(ierr); // PetSc advises GMRES for problems with nullspaces
+  ierr = KSPSetType(ksp, (!even_if_nullspace_nonempty && A_null_space != NULL ? KSPGMRES : ksp_type)); CHKERRQ(ierr); // PetSc advises GMRES for problems with nullspaces
 
   ierr = KSPSetTolerances(ksp, relative_tolerance, absolute_tolerance, divergence_tolerance, max_ksp_iterations); CHKERRQ(ierr);
   ierr = KSPSetFromOptions(ksp); CHKERRQ(ierr);

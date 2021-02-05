@@ -34,6 +34,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   offset_corr_fun_on_proc.assign(p4est->mpisize + 1, 0);
   global_idx_of_ghost_corr_fun.clear();
   jump_dependent_terms_in_corr_fun = NULL;
+  ksp_fallback = KSPBCGSL; // reported to be "most" stable in some papers
 }
 
 my_p4est_poisson_jump_cells_fv_t::~my_p4est_poisson_jump_cells_fv_t()
@@ -1110,7 +1111,13 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
   /* Set the linear system, the linear solver and solve it */
   setup_linear_system();
   ierr = setup_linear_solver(ksp_type, pc_type); CHKERRXX(ierr);
-  solve_linear_system();
+  try {
+    solve_linear_system();
+  } catch (std::runtime_error& e) {
+    ierr = PetscFPrintf(p4est->mpicomm, stderr, "The finite volume cell jump solver did not converge with KSP = %s. Attempting a fallback recovery 'solve' with ksp = %s", ksp_type, ksp_fallback);
+    ierr = setup_linear_solver(ksp_fallback, pc_type, true); CHKERRXX(ierr);
+    solve_linear_system();
+  }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;

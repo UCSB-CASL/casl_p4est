@@ -63,6 +63,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     return ierr;
   }
   Vec jump_dependent_terms_in_corr_fun;
+  KSPType ksp_fallback;
 
   map_of_correction_functions_t correction_function_for_quad;
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
@@ -201,6 +202,7 @@ public:
    */
   inline void set_pinning_for_normal_derivatives_in_correction_functions(const bool& do_the_pinning) { pin_normal_derivative_for_correction_functions = do_the_pinning;}
 
+  inline void set_ksp_fallback(const KSPType& fallback_ksp) { ksp_fallback = fallback_ksp;}
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_FV_H

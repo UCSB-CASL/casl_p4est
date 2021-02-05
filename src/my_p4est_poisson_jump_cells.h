@@ -132,9 +132,10 @@ protected:
    *                                        IMPORTANT NOTE: PetSc recommends using GMRES for singular problems
    *                                        --> GMRES is enforces in that case and the provided ksp_type is irrelevant then (i.e. if A_null_space != NULL)
    * \param [in] pc_type                    preconditioner type desired by the user
+   * \param [in] even_if_nullspace_nonempty [optional] flag bypassing the above behavior in case of non-empty null space, if true
    * \return a PetscError code to check if anything went wrong
    */
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type);
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, bool even_if_nullspace_nonempty = false);
   void solve_linear_system();
   inline void reset_rhs()           { rhs_is_set = false;                                         setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = linear_solver_is_set = false;               setup_linear_system(); }
