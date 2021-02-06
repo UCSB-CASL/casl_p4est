@@ -205,20 +205,20 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     ngbd_n(ngbd_n_), fine_ngbd_n(fine_ngbd_n_),
     ngbd_c(faces_n_->get_ngbd_c()), faces_n(faces_n_)
 {
-  surface_tension       =  0.0;
-  mu_minus  = mu_plus   =  1.0;
-  rho_minus = rho_plus  =  1.0;
+  surface_tension       =  NAN;
+  mu_minus  = mu_plus   =  NAN;
+  rho_minus = rho_plus  =  NAN;
   uniform_band_minus = uniform_band_plus = 0.0;
   threshold_split_cell = 0.04;
   cfl_advection = 1.0;
   cfl_visco_capillary = 0.95;
   cfl_capillary = 0.95;
-  max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
 
   sl_order = 2;
   sl_order_interface = 2;
   degree_guess_v_star_face_k = 1; // (better safe than sorry...)
   n_viscous_subiterations = INT_MAX;
+  static_interface = false;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
@@ -231,13 +231,16 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   tree_diagonal = ABSD(tree_dimension[0], tree_dimension[1], tree_dimension[2]);
   smallest_diagonal = ABSD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]);
 
-  dt_nm1 = dt_n = 0.5*MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]));
-  dt_np1 = -DBL_MAX; // absurd initialization
+  tstart  = t_n   = 0.0;
+  dt_nm1  = dt_n  = 0.0; // we'll consider those later on
+  dt_np1  = -DBL_MAX; // absurd initialization
 
   bc_velocity = NULL;
   bc_pressure = NULL;
   for(u_char dim = 0; dim < P4EST_DIM; ++dim)
     force_per_unit_mass[dim]  = NULL;
+  log_file = stdout; // STANDARD OUTPUT is default;
+  nsolve_calls = 0;
 
   // -------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
@@ -298,6 +301,28 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   vnm1_nodes_minus_xxyyzz = NULL;
   vnm1_nodes_plus_xxyyzz  = NULL;
 
+  // set the fields as required for starting capabilities
+  // initialize all velocities to 0.0 (if the user needs another
+  // initialization, they'll have to use set_node_velocities)
+  max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = EPS;
+  PetscErrorCode ierr;
+  ierr = VecCreateGhostNodesBlock(p4est_nm1,  nodes_nm1,  P4EST_DIM,      &vnm1_nodes_minus);         CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_nm1,  nodes_nm1,  P4EST_DIM,      &vnm1_nodes_plus);          CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_n,    nodes_n,    P4EST_DIM,      &vn_nodes_minus);           CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_n,    nodes_n,    P4EST_DIM,      &vn_nodes_plus);            CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_nm1,  nodes_nm1,  SQR_P4EST_DIM,  &vnm1_nodes_minus_xxyyzz);  CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_nm1,  nodes_nm1,  SQR_P4EST_DIM,  &vnm1_nodes_plus_xxyyzz);   CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_n,    nodes_n,    SQR_P4EST_DIM,  &vn_nodes_minus_xxyyzz);    CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est_n,    nodes_n,    SQR_P4EST_DIM,  &vn_nodes_plus_xxyyzz);     CHKERRXX(ierr);
+  ierr = VecSetGhost(vnm1_nodes_minus,        0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vnm1_nodes_plus,         0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vn_nodes_minus,          0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vn_nodes_plus,           0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vnm1_nodes_minus_xxyyzz, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vnm1_nodes_plus_xxyyzz,  0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vn_nodes_minus_xxyyzz,   0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(vn_nodes_plus_xxyyzz,    0.0); CHKERRXX(ierr);
+
   // clear backtraced values of velocity components and computational-to-fine-grid maps
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     backtraced_vn_faces_minus[dir].clear();   backtraced_vn_faces_plus[dir].clear();
@@ -307,8 +332,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
-//  if(!faces_n->finest_faces_neighborhoods_have_been_set())
-//    faces_n->set_finest_face_neighborhoods();
 
   cell_jump_solver = NULL;
   pressure_guess_is_set = false;
@@ -317,10 +340,11 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   set_cell_jump_solver(FV);   // default is finite-volume solver for projection step
   set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
-  fetch_interface_FD_neighbors_with_second_order_accuracy = false;
+  fetch_interface_FD_neighbors_with_second_order_accuracy = false; // default value
+
 }
 
-my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time)
+my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state)
 {
   // we need to initialize those to NULL, otherwise the loader will freak out
   // no risk of memory leak here, this is a CONSTRUCTOR
@@ -338,6 +362,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   bc_pressure = NULL;
   for(u_char dim = 0; dim < P4EST_DIM; ++dim)
     force_per_unit_mass[dim]  = NULL;
+  log_file = stdout; // STANDARD OUTPUT is default;
+  nsolve_calls = 0;
 
   // -------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
@@ -399,7 +425,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   vnm1_nodes_plus_xxyyzz  = NULL;
 
   // load the solver state from disk
-  load_state(mpi, path_to_saved_state, simulation_time);
+  load_state(mpi, path_to_saved_state);
 
   // clear backtraced values of velocity components
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -410,8 +436,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
-//  if(!faces_n->finest_faces_neighborhoods_have_been_set())
-//    faces_n->set_finest_face_neighborhoods();
 
   pressure_guess_is_set = false;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
@@ -431,7 +455,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
 }
 
-void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
+void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder)
 {
   PetscErrorCode ierr;
   char filename[PATH_MAX];
@@ -443,11 +467,12 @@ void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const 
   splitting_criteria_t* data = new splitting_criteria_t;
   splitting_criteria_t* fine_data = new splitting_criteria_t;
   sprintf(filename, "%s/solver_parameters", path_to_folder);
-  save_or_load_parameters(filename, data, fine_data, LOAD, tn, &mpi);
+  save_or_load_parameters(filename, data, fine_data, LOAD, &mpi);
   tree_diagonal     = ABSD(tree_dimension[0], tree_dimension[1], tree_dimension[2]);
   smallest_diagonal = ABSD(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]);
   dt_np1            = -DBL_MAX; // absurd initialization
   max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
+  tstart = t_n;
 
 
   // load p4est_n and the corresponding objects
@@ -657,10 +682,9 @@ void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const 
   }
 
   ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
-
 }
 
-void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, double& tn, const int& n_saved)
+void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, const int& n_saved)
 {
   if(!is_folder(path_to_root_directory))
   {
@@ -741,7 +765,7 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   char filename[PATH_MAX];
   // save the solver parameters
   sprintf(filename, "%s/solver_parameters", path_to_folder);
-  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, (fine_p4est_n != NULL ? (splitting_criteria_t*) fine_p4est_n->user_pointer : NULL), SAVE, tn);
+  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, (fine_p4est_n != NULL ? (splitting_criteria_t*) fine_p4est_n->user_pointer : NULL), SAVE);
 
   if(vn_nodes_minus == NULL)
     throw std::runtime_error("my_p4est_two_phase_flows_t::save_state(): vn_nodes_minus undefined, this is a required field to save");
@@ -840,7 +864,7 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t *splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double &tn)
+void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t *splitting_criterion, splitting_criteria_t* fine_splitting_criterion)
 {
   size_t idx = 0;
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -880,7 +904,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       data[idx++] = mu_plus;
       data[idx++] = rho_minus;
       data[idx++] = rho_plus;
-      data[idx++] = tn;
+      data[idx++] = t_n;
       data[idx++] = dt_n;
       data[idx++] = dt_nm1;
       data[idx++] = uniform_band_minus;
@@ -900,7 +924,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       mu_plus = data[idx++];
       rho_minus = data[idx++];
       rho_plus = data[idx++];
-      tn = data[idx++];
+      t_n = data[idx++];
       dt_n = data[idx++];
       dt_nm1 = data[idx++];
       uniform_band_minus = data[idx++];
@@ -941,6 +965,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = sl_order_interface;
     data[idx++] = degree_guess_v_star_face_k;
     data[idx++] = n_viscous_subiterations;
+    data[idx++] = (PetscInt) static_interface;
     break;
   }
   case LOAD:
@@ -961,6 +986,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     sl_order_interface = data[idx++];
     degree_guess_v_star_face_k = data[idx++];
     n_viscous_subiterations = data[idx++];
+    static_interface = (bool) data[idx++];
     break;
   }
   default:
@@ -970,7 +996,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
   P4EST_ASSERT(idx == data.size());
 }
 
-void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
+void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, save_or_load flag, const mpi_environment_t* mpi)
 {
   PetscErrorCode ierr;
   // double parameters required to build the solver and/or to prepare it for restart
@@ -985,9 +1011,9 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
   // integer parameters required to build the solver and/or to prepare it for restart
   // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
   // face_jump_solver_to_use, voronoi_on_the_fly, fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method,
-  // sl_order, sl_order_interface, degree_guess_v_star_face_k, n_viscous_subiterations
-  // that makes 14 integers
-  const size_t ninteger_values = 14;
+  // sl_order, sl_order_interface, degree_guess_v_star_face_k, n_viscous_subiterations, static_interface
+  // that makes 15 integers
+  const size_t ninteger_values = 15;
   std::vector<PetscInt> integer_parameters(ninteger_values);
   int fd;
   char diskfilename[PATH_MAX];
@@ -1003,7 +1029,7 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
       // Then we save the double parameters
       sprintf(diskfilename, "%s_doubles", filename);
-      fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
+      fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
       ierr = PetscBinaryWrite(fd, double_parameters.data(), double_parameters.size(), PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
@@ -1034,7 +1060,7 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
     mpiret = MPI_Bcast(double_parameters.data(), ndouble_values, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
-    fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion, tn);
+    fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion);
     break;
   }
   default:
@@ -1131,6 +1157,26 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
     delete face_jump_solver;
 }
 
+void my_p4est_two_phase_flows_t::initialize_time_steps()
+{
+  if(ISNAN(mu_minus) || mu_minus <= 0.0)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): mu_minus is not defined yet, or ill-defined...");
+  if(ISNAN(mu_plus) || mu_plus <= 0.0)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): mu_plus is not defined yet, or ill-defined...");
+  if(ISNAN(rho_minus) || rho_minus <= 0.0)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): rho_minus is not defined yet, or ill-defined...");
+  if(ISNAN(rho_plus) || rho_plus <= 0.0)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): rho_plus is not defined yet, or ill-defined...");
+
+  if(ISNAN(surface_tension) || surface_tension < 0.0)
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): surface_tension is not defined yet, or ill-defined...");
+
+  compute_dt_np1();
+  dt_nm1  = dt_np1;
+  dt_n    = dt_np1;
+  dt_np1 = -DBL_MAX; // reset to absurd value
+}
+
 void my_p4est_two_phase_flows_t::build_face_jump_solver()
 {
   if(face_jump_solver != NULL)
@@ -1213,11 +1259,41 @@ void my_p4est_two_phase_flows_t::set_phi_np1(Vec phi_np1_on_interface_capturing_
   return;
 }
 
-void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
-                                                     CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM])
+void my_p4est_two_phase_flows_t::set_interface_velocity_n(CF_DIM* interface_velocity_n_functor[P4EST_DIM])
 {
   PetscErrorCode ierr;
   double xyz_node[P4EST_DIM];
+  if(interface_velocity_n == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &interface_velocity_n); CHKERRXX(ierr); }
+  double *interface_velocity_n_p;
+
+  ierr = VecGetArray(interface_velocity_n,  &interface_velocity_n_p); CHKERRXX(ierr);
+  for (size_t n = 0; n < nodes_nm1->indep_nodes.elem_count; ++n) {
+    node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz_node);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      interface_velocity_n_p[P4EST_DIM*n + dir] = (*interface_velocity_n_functor[dir])(xyz_node);
+  }
+  ierr = VecRestoreArray(interface_velocity_n,  &interface_velocity_n_p); CHKERRXX(ierr);
+  if(interface_velocity_n_xxyyzz == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, SQR_P4EST_DIM, &interface_velocity_n_xxyyzz); CHKERRXX(ierr);
+  }
+  ngbd_nm1->second_derivatives_central(interface_velocity_n, interface_velocity_n_xxyyzz);
+  return;
+}
+
+void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
+                                                     CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM])
+{
+  if(phi_np1_on_computational_nodes == NULL && phi_np1 == NULL)
+  {
+    throw std::runtime_error("my_p4est_two_phase_flows_t::set_node_velocities: please set the interface before setting the velocities (for computation of max sharp velocities magnitudes)");
+  }
+  PetscErrorCode ierr;
+  double xyz_node[P4EST_DIM];
+  const double * phi_np1_on_computational_nodes_p = NULL;
+  if(phi_np1_on_computational_nodes != NULL){
+    ierr = VecGetArrayRead(phi_np1_on_computational_nodes, &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
+  }
   if(vnm1_nodes_minus == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &vnm1_nodes_minus); CHKERRXX(ierr); }
   if(vnm1_nodes_plus == NULL){
@@ -1232,6 +1308,8 @@ void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[
   ierr = VecGetArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecGetArray(vn_nodes_minus,    &vn_nodes_minus_p);   CHKERRXX(ierr);
   ierr = VecGetArray(vn_nodes_plus,     &vn_nodes_plus_p);    CHKERRXX(ierr);
+  max_L2_norm_velocity_minus  = EPS;
+  max_L2_norm_velocity_plus   = EPS;
   for (size_t n = 0; n < MAX(nodes_n->indep_nodes.elem_count, nodes_nm1->indep_nodes.elem_count); ++n) {
     if(n < nodes_n->indep_nodes.elem_count)
     {
@@ -1240,6 +1318,10 @@ void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[
         vn_nodes_minus_p[P4EST_DIM*n + dir] = (*vn_minus_functor[dir])(xyz_node);
         vn_nodes_plus_p[P4EST_DIM*n + dir]  = (*vn_plus_functor[dir])(xyz_node);
       }
+      if((phi_np1_on_computational_nodes_p != NULL ? phi_np1_on_computational_nodes_p[n] : interface_manager->phi_at_point(xyz_node)) <= 0.0)
+        max_L2_norm_velocity_minus  = MAX(max_L2_norm_velocity_minus, ABSD(vn_nodes_minus_p[P4EST_DIM*n], vn_nodes_minus_p[P4EST_DIM*n + 1], vn_nodes_minus_p[P4EST_DIM*n + 2]));
+      else
+        max_L2_norm_velocity_plus   = MAX(max_L2_norm_velocity_plus, ABSD(vn_nodes_plus_p[P4EST_DIM*n], vn_nodes_plus_p[P4EST_DIM*n + 1], vn_nodes_plus_p[P4EST_DIM*n + 2]));
     }
     if(n < nodes_nm1->indep_nodes.elem_count)
     {
@@ -1254,6 +1336,12 @@ void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[
   ierr = VecRestoreArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecRestoreArray(vn_nodes_minus,    &vn_nodes_minus_p);   CHKERRXX(ierr);
   ierr = VecRestoreArray(vn_nodes_plus,     &vn_nodes_plus_p);    CHKERRXX(ierr);
+  if(phi_np1_on_computational_nodes != NULL){
+    ierr = VecRestoreArrayRead(phi_np1_on_computational_nodes, &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
+  }
+  int mpiret;
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_velocity_minus, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_velocity_plus,  1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
   compute_second_derivatives_of_nm1_velocities();
   compute_second_derivatives_of_n_velocities();
   return;
@@ -1555,7 +1643,7 @@ void my_p4est_two_phase_flows_t::solve_projection()
   return;
 }
 
-void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter)
+void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter, const double& t_end)
 {
   PetscErrorCode ierr;
   // intialize the measures monitoring fix-point iterations
@@ -1580,6 +1668,19 @@ void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative
         100*max_velocity_correction_in_projection[0]/max_velocity_component_before_projection[0], max_velocity_component_before_projection[1], 100.0*max_velocity_correction_in_projection[1]/max_velocity_component_before_projection[1]); CHKERRXX(ierr);
     iter++;
   }
+  // done determining v at faces and p at cells
+  // get the velocities at nodes:
+  compute_velocities_at_nodes();
+  // set the interface velocity from that solution if the interface is to be advected
+  if(!static_interface)
+    set_interface_velocity_np1();
+
+  // log progress
+  ierr = PetscFPrintf(p4est_n->mpicomm, log_file,
+                      "Time step #%04d : tn = %.5e, progress : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
+                      nsolve_calls, t_n + dt_n, 100*(t_n + dt_n - tstart)/(t_end - tstart),
+                      get_max_velocity(), p4est_n->global_num_quadrants); CHKERRXX(ierr);
+  nsolve_calls++;
   return;
 }
 
@@ -2023,7 +2124,7 @@ void my_p4est_two_phase_flows_t::compute_velocities_at_nodes()
   double *vnp1_nodes_plus_p, *vnp1_nodes_minus_p;
   ierr = VecGetArray(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecGetArray(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-  max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = 0.0;
+  max_L2_norm_velocity_minus = max_L2_norm_velocity_plus = EPS; // (avoid division by zero in time-step calculation)
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecGetArrayRead(vnp1_face_minus[dir],  &vnp1_face_minus_p[dir]); CHKERRXX(ierr);
@@ -3089,6 +3190,7 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
 void my_p4est_two_phase_flows_t::sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2)
 {
   PetscErrorCode ierr;
+  P4EST_ASSERT(static_interface);
 
   /* simply interpolate phi to the new nodes to define phi_np1*/
   my_p4est_interpolation_nodes_t& interp_phi_np1 = interface_manager->get_interp_phi(); interp_phi_np1.clear(); // clear the buffers, if not empty
@@ -3160,7 +3262,7 @@ void my_p4est_two_phase_flows_t::get_average_interface_velocity(double avg_itfc_
   return;
 }
 
-void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset, const bool& static_interface)
+void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_update, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -3453,7 +3555,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   }
 
   const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
-  if(reinitialize_levelset)
+  if(!static_interface && reinitialize_levelset)
   {
     Vec& interface_resolving_phi_np2 = (fine_ngbd_np1 != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes);
     my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
@@ -3747,6 +3849,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   }
 
   P4EST_ASSERT(dt_np1 > 0.0);
+  t_n    += dt_n;
   dt_nm1  = dt_n;
   dt_n    = dt_np1;
   dt_np1  = -DBL_MAX;

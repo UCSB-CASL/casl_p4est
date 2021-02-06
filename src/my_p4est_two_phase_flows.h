@@ -97,6 +97,12 @@ private:
   double surface_tension;
   double mu_minus, mu_plus;
   double rho_minus, rho_plus;
+  //
+  // ---------|-------------|------------------|--------------|------------------>
+  //          t_nm1         t_n                t_np1          t_np2
+  //          <-------------><-----------------><------------->
+  //               dt_nm1           dt_n             dt_np1
+  double t_n;
   double dt_n;
   double dt_nm1;
   double dt_np1;
@@ -108,11 +114,15 @@ private:
 
   int sl_order, sl_order_interface, degree_guess_v_star_face_k;
   int n_viscous_subiterations;
+  bool static_interface;
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
   double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
 
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
+  FILE* log_file;
+  int nsolve_calls;
+  double tstart; // tn at the construction (0.0 or value as loaded from file)
 
   CF_DIM *force_per_unit_mass[P4EST_DIM];
 
@@ -243,7 +253,7 @@ private:
    * - mu_plus
    * - rho_minus
    * - rho_plus
-   * - the simulation time tn
+   * - t_n
    * - dt_n
    * - dt_nm1
    * - max_L2_norm_velocity_minus
@@ -271,8 +281,8 @@ private:
    * Raphael EGAN
    */
   void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion,
-                               save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
-  void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, double& tn);
+                               save_or_load flag, const mpi_environment_t* mpi = NULL);
+  void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
   void fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion);
 
   inline u_int npseudo_time_steps() const
@@ -293,7 +303,7 @@ public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
 
-  my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double& simulation_time);
+  my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state);
   ~my_p4est_two_phase_flows_t();
 
   inline double get_capillary_dt() const
@@ -341,6 +351,7 @@ public:
   }
 
   void set_phi_np1(Vec phi_np1_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_np1_on_computational_nodes_ = NULL);
+  void set_interface_velocity_n(CF_DIM* interface_velocity_n_functor[P4EST_DIM]);
   void set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
                            CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM]);
   void set_face_velocities_np1(CF_DIM* vnp1_m_[P4EST_DIM], CF_DIM* vnp1_p_[P4EST_DIM]);
@@ -403,12 +414,6 @@ public:
     dt_np1  = -DBL_MAX; // absurd value
   }
 
-  inline void init_time_steps()
-  {
-    compute_dt_np1();
-    set_dt(dt_np1, dt_np1);
-  }
-
   inline bool viscosities_are_equal() const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool mass_densities_are_equal() const { return fabs(rho_minus - rho_plus) < EPS*MAX(fabs(rho_minus), fabs(rho_plus)); }
 
@@ -439,7 +444,7 @@ public:
   void solve_viscosity();
   void solve_projection();
 
-  void solve_time_step(const double& velocity_relative_threshold, const int& max_niter);
+  void solve_time_step(const double& velocity_relative_threshold, const int& max_niter, const double& t_end);
 
   void set_cell_jump_solver(const jump_solver_tag& solver_to_use,   const KSPType& KSP_ = "default", const PCType& PC_ = "default");
   void set_face_jump_solvers(const jump_solver_tag& solver_to_use,  const KSPType& KSP_ = "default", const PCType& PC_ = "default");
@@ -452,7 +457,7 @@ public:
   void compute_velocities_at_nodes();
   void set_interface_velocity_np1();
   void save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive = false) const;
-  void update_from_tn_to_tnp1(const bool& reinitialize_levelset = true, const bool& static_interface = false);
+  void update_from_tn_to_tnp1(const bool& reinitialize_levelset = true);
 
   inline double get_max_velocity() const        { return MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus); }
   inline double get_max_velocity_minus() const  { return max_L2_norm_velocity_minus; }
@@ -471,21 +476,19 @@ public:
    * extra subdirectories.
    * \param path_to_root_directory: path to the root exportation directory. n_saved subdirectories 'backup_' will be created
    * under the root directory, in which successive solver states will be saved.
-   * \param tn: simulation time at which the function is called
    * \param n_saved: number of solver states to keep in memory (default is 1)
    */
-  void save_state(const char* path_to_root_directory, double& tn, const int& n_saved = 1);
+  void save_state(const char* path_to_root_directory, const int& n_saved = 1);
 
   /*!
    * \brief load_state loads a solver state that has been previously saved on disk
    * \param mpi             [in]    mpi environment to load the solver state in
    * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
-   * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
    * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
    * if they have already been constructed beforehand...
    * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
    */
-  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder);
 
 
   inline my_p4est_brick_t* get_brick() const { return brick; }
@@ -601,6 +604,28 @@ public:
   inline int get_sl_order_interface() const { return sl_order_interface; }
   inline int get_n_viscous_subiterations() const { return n_viscous_subiterations; }
   inline double get_advection_cfl()   const { return cfl_advection; }
+
+  inline void set_static_interface(bool interface_is_static)
+  {
+    static_interface = interface_is_static;
+  }
+
+  inline void set_log_file(FILE* log_)
+  {
+    log_file = log_;
+  }
+
+  /*!
+   * \brief initialize_time_steps sets dt_nm1 = dt_n = time_step;
+   * --> to be called after full initialization (i.e., after mus,
+   * rhos, surface_tension and node_velocity at tn have been set up)
+   */
+  void initialize_time_steps();
+
+  inline double get_tn()            const { return t_n;                 }
+  inline double get_tnp1()          const { return t_n + dt_n;          }
+  inline double get_progress_n()    const { return t_n - tstart;        }
+  inline double get_progress_np1()  const { return t_n + dt_n - tstart; }
 
 };
 
