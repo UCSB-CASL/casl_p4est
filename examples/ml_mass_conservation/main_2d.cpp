@@ -269,7 +269,7 @@ int main( int argc, char** argv )
 			semiLagrangian.set_velo_interpolation( VEL_INTERP_MTHD );
 
 			// Advect the level-set function one step, then update the grid.
-			semiLagrangian.update_p4est( vel_c, dt_c, phi_c );
+			semiLagrangian.update_p4est_one_vel_step( vel_c, dt_c, phi_c );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est_c );
@@ -366,7 +366,7 @@ int main( int argc, char** argv )
 		// only ones that are not re-created in every iteration of semi-Lagrangian advection.
 		my_p4est_brick_destroy( connectivity_c, &brick_c );
 
-		printf( "<< Finished data set generation after %f secs.\n", watch.get_duration_current() );
+		printf( "<< Finished data set generation after %f secs with error %f.\n", watch.get_duration_current(), error );
 		watch.stop();
 	}
 	catch( const std::exception &exception )

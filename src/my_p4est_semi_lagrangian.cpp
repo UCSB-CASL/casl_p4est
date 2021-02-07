@@ -1487,3 +1487,195 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+
+
+void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi )
+{
+	PetscErrorCode ierr;
+	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+
+	/////////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy ///////////////////////////
+	// We need these to interpolate the velocity at X^{n+1} in the updated grid.
+	Vec *vel_xx[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )	// Choose velocity component: u, v, or w.
+	{
+		vel_xx[dir] = new Vec[P4EST_DIM];		// For each velocity component, we need the derivatives w.r.t. x, y, z.
+		if( dir == 0 )
+		{
+			for( int dd = 0; dd < P4EST_DIM; dd++ )
+			{
+				ierr = VecCreateGhostNodes( ngbd_n->p4est, ngbd_n->nodes, &vel_xx[dir][dd] );
+				CHKERRXX( ierr );
+			}
+		}
+		else
+		{
+			for( int dd = 0; dd < P4EST_DIM; dd++ )
+			{
+				ierr = VecDuplicate( vel_xx[0][dd], &vel_xx[dir][dd] );
+				CHKERRXX( ierr );
+			}
+		}
+		ngbd_n->second_derivatives_central( vel[dir], DIM( vel_xx[dir][0], vel_xx[dir][1], vel_xx[dir][2] ) );
+	}
+
+	/////////////////////// Compute second derivatives of level-set function: phi_xx and phi_yy ////////////////////////
+	// We need these in case of quadratic interpolation for phi.
+	Vec *phi_xx = new Vec[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		ierr = VecCreateGhostNodes( ngbd_phi->p4est, ngbd_phi->nodes, &phi_xx[dir] );
+		CHKERRXX( ierr );
+	}
+	ngbd_phi->second_derivatives_central( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ) );
+
+	// Save the old splitting criteria information.
+	auto *oldSplittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
+
+	// New grid level-set values: start from current grid values.
+	Vec phiNew;
+	ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );	// Notice p4est and nodes are the grid at time n so far.
+	CHKERRXX( ierr );
+
+	/////////////////////////////////////////// Update grid until convergence //////////////////////////////////////////
+	// Main loop in Algorithm 3 in reference [*].
+	bool isGridChanging = true;
+	int counter = 0;
+	while( isGridChanging )
+	{
+		ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
+		CHKERRXX( ierr );
+
+		// Advect from G^{n} to G^{n+1} to enable refinement.
+		double *phiNewPtr;
+		ierr = VecGetArray( phiNew, &phiNewPtr );
+		CHKERRXX( ierr );
+
+		// Perform first order advection.
+		advect_from_n_to_np1_one_vel_step( dt, vel, vel_xx, phi, phi_xx, phiNewPtr );
+
+		splitting_criteria_tag_t splittingCriteriaTag( oldSplittingCriteria->min_lvl, oldSplittingCriteria->max_lvl,
+												 	   oldSplittingCriteria->lip );
+		isGridChanging = splittingCriteriaTag.refine_and_coarsen( p4est, nodes, phiNewPtr );	// Modifies grid using advected phi.
+
+		ierr = VecRestoreArray( phiNew, &phiNewPtr );
+		CHKERRXX( ierr );
+
+		if( isGridChanging )
+		{
+			// Repartition grid as it changed.
+			my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+
+			// Reset nodes, ghost, and phi.
+			p4est_ghost_destroy( ghost );
+			ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+			p4est_nodes_destroy( nodes );
+			nodes = my_p4est_nodes_new( p4est, ghost );
+
+			// Allocate vector for new level-set values for most up-to-date grid.
+			ierr = VecDestroy( phiNew );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );
+			CHKERRXX( ierr );
+		}
+
+		ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
+		CHKERRXX( ierr );
+		counter++;
+	}
+
+	p4est->user_pointer = (void *) oldSplittingCriteria;
+	*p_p4est = p4est;	// TODO: I still don't understand the use of these pointers if they are never returned to caller.
+	*p_nodes = nodes;
+	*p_ghost = ghost;
+
+	// Cleaning up.
+	ierr = VecDestroy( phi );
+	CHKERRXX( ierr );
+	phi = phiNew;
+
+	for( auto& dir : vel_xx )
+	{
+		for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
+		{
+			ierr = VecDestroy( dir[dd] );
+			CHKERRXX( ierr );
+		}
+		delete[] dir;
+	}
+
+	for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+	{
+		ierr = VecDestroy( phi_xx[dir] );
+		CHKERRXX( ierr );
+	}
+	delete[] phi_xx;
+
+	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+}
+
+
+void my_p4est_semi_lagrangian_t::advect_from_n_to_np1_one_vel_step( double dt, Vec vel[], Vec *vel_xx[], Vec phi,
+																	Vec phi_xx[], double *phiNewPtr )
+{
+	PetscErrorCode ierr;
+	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+
+	my_p4est_interpolation_nodes_t interp( ngbd_n );			// These node neighborhoods are the ones that preserve
+	my_p4est_interpolation_nodes_t interp_phi( ngbd_phi );		// the grid structure at time n.
+																// TODO: What's the difference between ngbd_n and ngbd_phi?
+
+	double *interpOutput[P4EST_DIM];
+
+	Vec xx_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][0], vel_xx[1][0], vel_xx[2][0] )};	// Reorganize velocity derivatives
+	Vec yy_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][1], vel_xx[1][1], vel_xx[2][1] )};	// by derivative direction.
+#ifdef P4_TO_P8
+	Vec zz_v_derivatives[P4EST_DIM] = {vel_xx[0][2], vel_xx[1][2], vel_xx[2][2]};
+#endif
+
+	// Domain features.
+	const double *xyz_min = get_xyz_min();
+	const double *xyz_max = get_xyz_max();
+	const bool *periodicity = get_periodicity();
+
+	/////////////////////////////////////////// Finding velocity at G^{n+1} ////////////////////////////////////////////
+	// Using quadratic interpolation to find u^{n+1} by means of G^{n}.
+	std::vector<double> velNew[P4EST_DIM];
+	for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est, nodes, xyz );
+		clip_in_domain( xyz, xyz_min, xyz_max, periodicity );		// Check boundaries.
+		interp.add_point( n, xyz );				// Defining points X^{n+1} where we need the velocity.
+	}
+
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		velNew[dir].resize( nodes->indep_nodes.elem_count );
+		interpOutput[dir] = velNew[dir].data();
+	}
+	interp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), quadratic, P4EST_DIM );
+	interp.interpolate( interpOutput );			// Interpolate velocities.  Save these in velNew vector.
+	interp.clear();
+
+	//////////////////////////////////////////// Find the backtracing value ////////////////////////////////////////////
+	// Using the semi-Lagrangian interpolation chosen by caller for phi.
+	for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est, nodes, xyz );
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			xyz[dir] -= dt * velNew[dir][n];
+		clip_in_domain( xyz, xyz_min, xyz_max, periodicity );
+
+		interp_phi.add_point( n, xyz );
+	}
+	interp_phi.set_input( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ), phi_interpolation );
+	interp_phi.interpolate( phiNewPtr );
+
+	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+}

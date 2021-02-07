@@ -180,6 +180,31 @@ public:
 
   void set_ngbd_phi(my_p4est_node_neighbors_t *ngbd_phi) { this->ngbd_phi = ngbd_phi; }
 
+  /**
+   * Update a p4est from tn to tnp1, using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler
+   * along the characteristics.
+   * The forest at time tn is copied and then refined/coarsened and balance iteratively until convergence.
+   * The method is based on:
+   * [*] M. Mirzadeh, A. Guittet, C. Burstedde, and F. Gibou, Parallel Level-Set Method on Adaptive Tree-Based Grids.
+   * @note You need to update the node neighborhood and hierarchy objects yourself!
+   * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+   * @param [in] dt Time step.
+   * @param [in,out] phi Level-set function values at time n, and then updated at time n + 1.
+   */
+  void update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi );
+
+  /**
+   * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler along
+   * the characteristics.
+   * @param [in] dt Time step.
+   * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+   * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction.
+   * @param [in] phi Level-set function values at time n.
+   * @param [in] phi_xx Array of second derivatives of phi w.r.t. each Cartesian direction.
+   * @param [in,out] phiNewPtr Advected level-set function values.
+   */
+  void advect_from_n_to_np1_one_vel_step( double dt, Vec vel[], Vec *vel_xx[], Vec phi, Vec phi_xx[], double *phiNewPtr );
+
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H
