@@ -221,6 +221,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   static_interface = false;
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
+  fetch_interface_FD_neighbors_with_second_order_accuracy = true; // default value
+  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
   xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -340,7 +342,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   set_cell_jump_solver(FV);   // default is finite-volume solver for projection step
   set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
-  fetch_interface_FD_neighbors_with_second_order_accuracy = false; // default value
 
 }
 
@@ -439,6 +440,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   pressure_guess_is_set = false;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
+  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
   xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -3262,7 +3264,7 @@ void my_p4est_two_phase_flows_t::get_average_interface_velocity(double avg_itfc_
   return;
 }
 
-void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize_levelset)
+void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_update, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -3555,7 +3557,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
   }
 
   const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
-  if(!static_interface && reinitialize_levelset)
+  if(!static_interface && (nsolve_calls%n_reinit_iter == 0))
   {
     Vec& interface_resolving_phi_np2 = (fine_ngbd_np1 != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes);
     my_p4est_level_set_t ls(interface_resolving_ngbd_np1);
@@ -3814,8 +3816,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const bool& reinitialize
     ierr = delete_and_nullify_vector(viscosity_rhs_plus[dir]);  CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_minus[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &viscosity_rhs_plus[dir],  dir); CHKERRXX(ierr);
-    vnp1_face_star_minus_k[dir] = vnp2_face_star_minus_k[dir];  // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next tim step
-    vnp1_face_star_plus_k[dir]  = vnp2_face_star_plus_k[dir];   // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next tim step
+    vnp1_face_star_minus_k[dir] = vnp2_face_star_minus_k[dir];  // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next time step
+    vnp1_face_star_plus_k[dir]  = vnp2_face_star_plus_k[dir];   // as estimated (or not) here above --> used as input in jump terms for pressure guess in the next time step
   }
 
   if(cell_jump_solver != NULL)

@@ -66,7 +66,7 @@ const int default_ntree[P4EST_DIM] = {DIM(1, 4, 1)};
 // simulation-related:
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
 const bool default_subrefinement = false;
-const bool default_use_second_order_theta = false; // relevant only if using (x)GFM cell solver
+const bool default_use_second_order_theta = (default_interp_method_phi == linear ? false : true); // relevant only if using (x)GFM cell solver
 const int default_nviscous_subiter  = INT_MAX;
 const int default_sl_order          = 2;
 const int default_sl_order_itfc     = 2;
@@ -626,7 +626,6 @@ int main (int argc, char* argv[])
   string datafile;
   initialize_exportations(two_phase_flow_solver->get_tn()/time_unit, mpi, results_dir, datafile);
 
-  int iter = 0;
   const int vtk_start     = cmd.get<int>("vtk_idx_start", default_vtk_idx_start);
   const double vmax_abort = cmd.get<double>("vmax_abort", default_vmax_abort);
   int vtk_idx     = vtk_index(vtk_start, two_phase_flow_solver, vtk_dt) - 1; // -1 so that we do not miss the very first snapshot
@@ -640,7 +639,7 @@ int main (int argc, char* argv[])
   while(two_phase_flow_solver->get_tn() < t_end)
   {
     if(advance_solver)
-      two_phase_flow_solver->update_from_tn_to_tnp1(iter%niter_reinit == 0);
+      two_phase_flow_solver->update_from_tn_to_tnp1(niter_reinit);
 
     if(save_nstates > 0 && backup_index(two_phase_flow_solver, save_state_dt) != backup_idx)
     {

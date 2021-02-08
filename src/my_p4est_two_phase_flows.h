@@ -457,7 +457,7 @@ public:
   void compute_velocities_at_nodes();
   void set_interface_velocity_np1();
   void save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive = false) const;
-  void update_from_tn_to_tnp1(const bool& reinitialize_levelset = true);
+  void update_from_tn_to_tnp1(const int& n_reinit_iter = 1);
 
   inline double get_max_velocity() const        { return MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus); }
   inline double get_max_velocity_minus() const  { return max_L2_norm_velocity_minus; }
