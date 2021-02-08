@@ -182,13 +182,17 @@ int main( int argc, char** argv )
 		p4est_nodes_t *nodes_c;
 
 		// Create the forest using a level-set as refinement criterion.
+		const double BAND_C = 2; 						// Minimum band around interface in coarse grid.
 		p4est_c = my_p4est_new( mpi.comm(), connectivity_c, 0, nullptr, nullptr );
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion_c( 1, COARSE_MAX_RL, &sphere, 6.0 );
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion_c( 1, COARSE_MAX_RL, &sphere, BAND_C );
 		p4est_c->user_pointer = &levelSetSplittingCriterion_c;
 
-		// Refine and recursively partition forest.
-		my_p4est_refine( p4est_c, P4EST_TRUE, refine_levelset_cf_and_uniform_band, nullptr );
-		my_p4est_partition( p4est_c, P4EST_TRUE, nullptr );
+		// Refine and partition forest (according to the 'grid_update' example, I shouldn't use recursive refinement).
+		for( int i = 0; i < COARSE_MAX_RL; i++ )
+		{
+			my_p4est_refine( p4est_c, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
+			my_p4est_partition( p4est_c, P4EST_FALSE, nullptr );
+		}
 
 		// Create the ghost (cell) and node structures.
 		ghost_c = my_p4est_ghost_new( p4est_c, P4EST_CONNECT_FULL );
@@ -269,7 +273,7 @@ int main( int argc, char** argv )
 			semiLagrangian.set_velo_interpolation( VEL_INTERP_MTHD );
 
 			// Advect the level-set function one step, then update the grid.
-			semiLagrangian.update_p4est_one_vel_step( vel_c, dt_c, phi_c );
+			semiLagrangian.update_p4est_one_vel_step( vel_c, dt_c, phi_c, BAND_C );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est_c );

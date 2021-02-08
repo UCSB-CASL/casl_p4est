@@ -379,4 +379,42 @@ coarsen_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **qu
 p4est_bool_t
 coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Splitting-criteria class based on usual distance to interface and explicit narrow band around interface.
+ * Code based on the 'grid_update' example.
+ */
+class splitting_criteria_band_t : public splitting_criteria_tag_t
+{
+private:
+	double _bandWidth;		// Band width around the interface (measured in min cell diagonal).
+
+	/**
+	 * Tag quadrants for coarsening or refinement depending on whether their phi value meets the usual splitting crite-
+	 * rion or if they are within some band (in min diagonals) from the interface.
+	 * @param [in] p4est Pointer to p4est object.
+	 * @param [in] quadIdx Quadrant index.
+	 * @param [in] treeIdx Tree index which the quadrant belongs to.
+	 * @param [in] nodes Pointer to nodes object.
+	 * @param [in] phiReadPtr Pointer to level-set function values vector.
+	 */
+	void tag_quadrant( p4est_t const *p4est, p4est_locidx_t quadIdx, p4est_topidx_t treeIdx, p4est_nodes_t const *nodes,
+					   double const *phiReadPtr );
+public:
+	splitting_criteria_band_t( int minLvl, int maxLvl, double lip, double bandWidth=0 )
+	: splitting_criteria_tag_t( minLvl, maxLvl, lip ), _bandWidth( bandWidth ) {}
+
+	/**
+	 * Refine or coarsen a grid after tagging the quadrants appropriately.
+	 * @note I had to rename this function from refine_and_coarsen to refine_and_coarsen because I cannot declare the
+	 * parent's class function virtual --it has parameters with default values, which are forbidden.
+	 * @param [in,out] p4est Pointer to p4est object.
+	 * @param [in] nodes Pointer to nodes object.
+	 * @param [in] phiReadPtr Pointer to level-set function values vector.
+	 * @return True if grid changed, false otherwise.
+	 */
+	bool refine_and_coarsen_with_band( p4est_t *p4est, p4est_nodes_t const *nodes, double const *phiReadPtr );
+};
+
 #endif // REFINE_COARSEN_H

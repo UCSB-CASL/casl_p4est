@@ -190,8 +190,9 @@ public:
    * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
    * @param [in] dt Time step.
    * @param [in,out] phi Level-set function values at time n, and then updated at time n + 1.
+   * @param [in] band Desired minimum band around the interface, <= 1 to not refine based on band value.
    */
-  void update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi );
+  void update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi, double band=0 );
 
   /**
    * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler along

@@ -1489,7 +1489,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 }
 
 
-void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi )
+void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi, double band )
 {
 	PetscErrorCode ierr;
 	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
@@ -1533,6 +1533,20 @@ void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt
 	// Save the old splitting criteria information.
 	auto *oldSplittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
 
+	// Define splitting criteria.
+	// Note: I must declare these two different pointers even when the second one is a derived class.  This is because
+	// I cannot declare the method refine_and_coarsen virtual because it uses default-valued parameters.
+	splitting_criteria_tag_t *splittingCriteriaTagPtr = nullptr;
+	splitting_criteria_band_t *splittingCriteriaBandPtr = nullptr;
+	if( band <= 1 )		// Not using explicit band?
+		splittingCriteriaTagPtr = new splitting_criteria_tag_t( oldSplittingCriteria->min_lvl,
+																oldSplittingCriteria->max_lvl,
+																oldSplittingCriteria->lip );
+	else				// Using explicit band around interface?
+		splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
+																  oldSplittingCriteria->max_lvl,
+																  oldSplittingCriteria->lip, band );
+
 	// New grid level-set values: start from current grid values.
 	Vec phiNew;
 	ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );	// Notice p4est and nodes are the grid at time n so far.
@@ -1555,9 +1569,11 @@ void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt
 		// Perform first order advection.
 		advect_from_n_to_np1_one_vel_step( dt, vel, vel_xx, phi, phi_xx, phiNewPtr );
 
-		splitting_criteria_tag_t splittingCriteriaTag( oldSplittingCriteria->min_lvl, oldSplittingCriteria->max_lvl,
-												 	   oldSplittingCriteria->lip );
-		isGridChanging = splittingCriteriaTag.refine_and_coarsen( p4est, nodes, phiNewPtr );	// Modifies grid using advected phi.
+		// Refine an coarsen grid; detect if it changes from previous coarsening/refinement operation.
+		if( band <= 1 )
+			isGridChanging = splittingCriteriaTagPtr->refine_and_coarsen( p4est, nodes, phiNewPtr );	// Modifies grid using advected phi.
+		else
+			isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est, nodes, phiNewPtr );
 
 		ierr = VecRestoreArray( phiNew, &phiNewPtr );
 		CHKERRXX( ierr );
@@ -1614,6 +1630,9 @@ void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt
 
 	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
+
+	delete splittingCriteriaTagPtr;
+	delete splittingCriteriaBandPtr;
 }
 
 

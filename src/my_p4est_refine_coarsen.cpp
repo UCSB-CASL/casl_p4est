@@ -1304,3 +1304,109 @@ coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_
   else
     return P4EST_FALSE;
 }
+
+/////////////////////////////////////////// Splitting criteria band methods ////////////////////////////////////////////
+
+void splitting_criteria_band_t::tag_quadrant( p4est_t const *p4est, p4est_locidx_t quadIdx, p4est_topidx_t treeIdx,
+											  p4est_nodes_t const *nodes, double const *phiReadPtr )
+{
+	auto *tree = (p4est_tree_t*)sc_array_index( p4est->trees, treeIdx );	// Which tree does this quadrant belong to?
+	auto *quad = (p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx - tree->quadrants_offset );	// Quadrant.
+
+	if( quad->level < min_lvl )
+		quad->p.user_int = REFINE_QUADRANT; 	// If coarser than min refinement level, mark for refinement.
+	else if( quad->level > max_lvl )
+		quad->p.user_int = COARSEN_QUADRANT; 	// If finer than max refinement level, mark for coarsening.
+	else
+	{											// Decide if quadrant should be tag for refinement or coarsening.
+		double dxyz[P4EST_DIM];
+		double dxyzMin, diagMin;
+		get_dxyz_min( p4est, dxyz, dxyzMin, diagMin );	// Domain metrics.
+		const double quadDiag = diagMin * (1 << (max_lvl - quad->level));
+
+		bool coarsen = (quad->level > min_lvl);	// Beging by deciding if quadrant must be coarsened.
+		if( coarsen )
+		{
+			bool coarsenInterface = true;		// Coarsening due to distance to interface?
+			bool coarsenBand = true;			// Coarsening due to lying within band around the interface?
+			p4est_locidx_t nodeIdx;
+
+			// Check the P4EST_CHILDREN vertices of the quadrant and verify all conditions in each.
+			for( int v = 0; v < P4EST_CHILDREN; v++ )
+			{
+				nodeIdx = nodes->local_nodes[P4EST_CHILDREN * quadIdx + v];
+
+				coarsenInterface = coarsenInterface && (ABS( phiReadPtr[nodeIdx] ) >= lip * 2.0 * quadDiag);
+				coarsenBand = coarsenBand && (ABS( phiReadPtr[nodeIdx] ) > MAX( 1.0, _bandWidth ) * diagMin);
+
+				// Need ALL of the coarsening conditions satisfied to coarsen the quadrant.
+				coarsen = coarsenInterface && coarsenBand;
+				if( !coarsen )
+					break;
+			}
+		}
+
+		bool refine = (quad->level < max_lvl);	// Check now if quadrant must be refined.
+		if( refine )
+		{
+			bool refineInterface = false;		// Refining due to distance to interface?
+			bool refineBand = false;			// Refining due to lying within band around the interface?
+			p4est_locidx_t nodeIdx;
+
+			// Check the P4EST_CHILDREN vertices of the quadrant and verify all conditions in each.
+			for( int v = 0; v < P4EST_CHILDREN; v++ )
+			{
+				nodeIdx = nodes->local_nodes[P4EST_CHILDREN * quadIdx + v];
+
+				refineInterface = refineInterface || (ABS( phiReadPtr[nodeIdx] ) <= lip * quadDiag);
+				refineBand = refineBand || (ABS( phiReadPtr[nodeIdx] ) < MAX( 1.0, _bandWidth ) * diagMin);
+
+				// Need AT LEAST ONE of the refining conditions satisfied to refine the quadrant.
+				refine = refineInterface || refineBand;
+				if( refine )
+					break;
+			}
+		}
+
+		if( refine )
+			quad->p.user_int = REFINE_QUADRANT;
+		else if( coarsen )
+			quad->p.user_int = COARSEN_QUADRANT;
+		else
+			quad->p.user_int = SKIP_QUADRANT;
+	}
+}
+
+bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4est_nodes_t const *nodes, const double *phiReadPtr )
+{
+	PetscErrorCode ierr;
+
+	// Tag the quadrants that need to be refined or coarsened.
+	for( p4est_topidx_t treeIdx = p4est->first_local_tree; treeIdx <= p4est->last_local_tree; treeIdx++ )
+	{
+		auto *tree = (p4est_tree_t *)sc_array_index( p4est->trees, treeIdx );
+		for( size_t q = 0; q < tree->quadrants.elem_count; q++ )
+		{
+			p4est_locidx_t quadIdx = q + tree->quadrants_offset;
+			tag_quadrant( p4est, quadIdx, treeIdx, nodes, phiReadPtr );
+		}
+	}
+
+	my_p4est_coarsen( p4est, P4EST_FALSE, splitting_criteria_band_t::coarsen_fn, splitting_criteria_band_t::init_fn );
+	my_p4est_refine( p4est, P4EST_FALSE, splitting_criteria_band_t::refine_fn, splitting_criteria_band_t::init_fn );
+
+	int hasGridchanged = false;
+	for( p4est_topidx_t treeIdx = p4est->first_local_tree; !hasGridchanged && treeIdx <= p4est->last_local_tree; treeIdx++ )
+	{
+		auto *tree = (p4est_tree_t *)sc_array_index( p4est->trees, treeIdx );
+		for( size_t q = 0; !hasGridchanged && q < tree->quadrants.elem_count; q++ )
+		{
+			auto *quad = (p4est_quadrant_t *)sc_array_index( &tree->quadrants, q );
+			if( quad->p.user_int == NEW_QUADRANT )
+				hasGridchanged = true;
+		}
+	}
+
+	MPI_Allreduce( MPI_IN_PLACE, &hasGridchanged, 1, MPI_INT, MPI_LOR, p4est->mpicomm );
+	return hasGridchanged;
+}
