@@ -3044,11 +3044,40 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
 
-  // Maybe better to flatten the interface velocity here, before finalization?
+  // Probably better to flatten the interface velocity here, before finalization?
   my_p4est_level_set_t ls(ngbd_n);
+  Vec grad_phi_on_computational_nodes;
+  if(interface_manager->subcell_resolution() == 0)
+    grad_phi_on_computational_nodes = interface_manager->get_grad_phi();
+  else
+  {
+    double *grad_phi_on_computational_nodes_p;
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &grad_phi_on_computational_nodes); CHKERRXX(ierr);
+    ierr = VecGetArray(grad_phi_on_computational_nodes, &grad_phi_on_computational_nodes_p); CHKERRXX(ierr);
+    double xyz_node[P4EST_DIM];
+    for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+      p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      interface_manager->grad_phi_at_point(xyz_node, (grad_phi_on_computational_nodes_p + P4EST_DIM*node_idx));
+    }
+    ierr = VecGhostUpdateBegin(grad_phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+      p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      interface_manager->grad_phi_at_point(xyz_node, (grad_phi_on_computational_nodes_p + P4EST_DIM*node_idx));
+    }
+    ierr = VecGhostUpdateEnd(grad_phi_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(grad_phi_on_computational_nodes, &grad_phi_on_computational_nodes_p); CHKERRXX(ierr);
+  }
+
   Vec flat_interface_velocity_np1;
   ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &flat_interface_velocity_np1); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi_np1_on_computational_nodes, interface_velocity_np1, flat_interface_velocity_np1, 20, NULL, 2, 10, NULL, interface_manager->get_grad_phi(), P4EST_DIM);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_np1_on_computational_nodes, interface_velocity_np1, flat_interface_velocity_np1, 20, NULL, 2, 10, NULL, grad_phi_on_computational_nodes, P4EST_DIM);
+
+  if(interface_manager->subcell_resolution() > 0){
+    ierr = delete_and_nullify_vector(grad_phi_on_computational_nodes); CHKERRXX(ierr);
+  }
+
   ierr = delete_and_nullify_vector(interface_velocity_np1); CHKERRXX(ierr);
   interface_velocity_np1 = flat_interface_velocity_np1;
 
