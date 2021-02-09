@@ -222,7 +222,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
   fetch_interface_FD_neighbors_with_second_order_accuracy = true; // default value
-  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
   xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
   for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -440,7 +439,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   pressure_guess_is_set = false;
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n));
-  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
   xyz_min = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0                                + 0];
   xyz_max = p4est_n->connectivity->vertices + 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est_n->trees->elem_count - 1) + P4EST_CHILDREN - 1];
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
@@ -1242,6 +1240,7 @@ void my_p4est_two_phase_flows_t::set_phi_np1(Vec phi_np1_on_interface_capturing_
     interface_manager->get_interface_capturing_ngbd_n().second_derivatives_central(phi_np1, phi_np1_xxyyzz);
   }
   interface_manager->set_levelset(phi_np1, levelset_interpolation_method, phi_np1_xxyyzz, true, true);
+  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
 #ifdef CASL_THROWS
   if(interface_manager->subcell_resolution() == 0 && phi_np1_on_computational_nodes_ != NULL && phi_np1_on_computational_nodes_ != phi_np1_on_interface_capturing_nodes)
@@ -3795,8 +3794,6 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   const my_p4est_node_neighbors_t* interface_resolving_ngbd_n = (fine_ngbd_n != NULL ? fine_ngbd_n : ngbd_n);
   interface_manager = new my_p4est_interface_manager_t(faces_n, nodes_n, interface_resolving_ngbd_n);
   set_phi_np1((fine_ngbd_n != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes), levelset_interpolation_method, phi_np2_on_computational_nodes); // memory handled therein!
-  interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
-
   // now reset the solver so that it is ready to tackle the next time step:
   vnp1_nodes_minus = NULL; vnp1_nodes_plus = NULL; // will be the "solution" of the next time step
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);  CHKERRXX(ierr);
