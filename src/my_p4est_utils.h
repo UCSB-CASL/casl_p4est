@@ -837,6 +837,8 @@ enum jump_solver_tag {
   FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
 };
 
+std::istream& operator >> (std::istream& is, jump_solver_tag& solver);
+
 const static int multiply_by_sqrt_D = 153;
 const static int divide_by_sqrt_D = 154;
 

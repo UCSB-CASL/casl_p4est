@@ -29,36 +29,6 @@ const static string main_description =
     + string("The user can choose between periodic boundary conditions or no-slip boundary condition on any of the borders of the computational domain. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020\n");
 
-std::istream& operator>> (std::istream& is, jump_solver_tag& solver)
-{
-  std::string str;
-  is >> str;
-
-  std::vector<size_t> substr_found_at;
-  case_insensitive_find_substr_in_str(str, "xGFM", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = xGFM;
-    return is;
-  }
-  // xGFM not found, look for GFM
-  case_insensitive_find_substr_in_str(str, "GFM", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = GFM;
-    return is;
-  }
-  // nor xGFM nor GFM found, look for FV
-  case_insensitive_find_substr_in_str(str, "FV", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = FV;
-    return is;
-  }
-  throw std::runtime_error("unkonwn poisson_jump_cell_solver");
-  return is;
-}
-
 const int default_lmin = 4;
 const int default_lmax = 4;
 const int default_ntree = 1;
@@ -421,7 +391,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   if(solver != NULL)
     delete solver;
   solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces, (use_subrefinement ? subrefined_ngbd_n : NULL));
-  solver->set_phi(interface_capturing_phi, phi_interp, phi);
+  solver->set_phi_np1(interface_capturing_phi, phi_interp, phi);
   solver->set_dynamic_viscosities(viscosity, viscosity);
   solver->set_densities(mass_density, mass_density);
   solver->set_surface_tension(surface_tension);
@@ -431,14 +401,15 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_semi_lagrangian_order_advection(sl_order);
   solver->set_semi_lagrangian_order_interface(sl_order_itfc);
   solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
+  solver->initialize_time_steps();
 
-  solver->set_projection_solver(projection_solver_to_use);
+  solver->set_cell_jump_solver(projection_solver_to_use);
   if(use_second_order_theta)
     solver->fetch_interface_points_with_second_order_accuracy();
   return;
 }
 
-void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, double& tn,
+void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
                             my_p4est_two_phase_flows_t* &solver, my_p4est_brick_t* &brick, p4est_connectivity_t* &connectivity)
 {
   const string backup_directory = cmd.get<string>("restart", "");
@@ -448,7 +419,7 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd, 
   if (solver != NULL) {
     delete solver; solver = NULL; }
   P4EST_ASSERT(solver == NULL);
-  solver = new my_p4est_two_phase_flows_t(mpi, backup_directory.c_str(), tn);
+  solver = new my_p4est_two_phase_flows_t(mpi, backup_directory.c_str());
 
 
   if (brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -542,21 +513,11 @@ int main (int argc, char* argv[])
   my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
   my_p4est_brick_t *brick                           = NULL;
   p4est_connectivity_t* connectivity                = NULL;
-  double tn, dt;
 
   if(cmd.contains("restart"))
-  {
-    load_solver_from_state(mpi, cmd, tn, two_phase_flow_solver, brick, connectivity);
-    dt = two_phase_flow_solver->get_dt();
-  }
+    load_solver_from_state(mpi, cmd, two_phase_flow_solver, brick, connectivity);
   else
-  {
     create_solver_from_scratch(mpi, cmd, two_phase_flow_solver, brick, connectivity);
-    tn = 0.0;// no restart for now, so we assume we start from 0.0
-    two_phase_flow_solver->compute_dt();
-    dt = two_phase_flow_solver->get_dt();
-    two_phase_flow_solver->set_dt(dt, dt);
-  }
 
   splitting_criteria_t* data            = (splitting_criteria_t*) (two_phase_flow_solver->get_p4est_n()->user_pointer); // to delete it appropriately, eventually
   splitting_criteria_t* subrefined_data = (two_phase_flow_solver->get_fine_p4est_n() != NULL ? (splitting_criteria_t*) two_phase_flow_solver->get_fine_p4est_n()->user_pointer : NULL); // same, to delete it appropriately, eventually
@@ -585,11 +546,6 @@ int main (int argc, char* argv[])
   const double save_state_dt = cmd.get<double> ("save_state_dt", default_save_state_dt_nondimensional)*characteristic_time_unit;
   if(vtk_dt <= 0.0)
     throw std::invalid_argument("main for static bubble: the value of vtk_dt must be strictly positive.");
-  if(save_vtk && !cmd.contains("retsart"))
-  {
-    dt = MIN(dt, vtk_dt);
-    two_phase_flow_solver->set_dt(dt, dt);
-  }
 
   const double inv_Oh_square = surface_tension*mass_density*2.0*bubble_radius/SQR(viscosity);
   streamObj.str(""); streamObj << inv_Oh_square;
@@ -608,39 +564,33 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_external_forces_per_unit_mass(external_force_per_unit_mass);
 
   string parasitic_current_datafile, volume_datafile;
-  initialize_exportations(tn, mpi, results_dir, parasitic_current_datafile, volume_datafile);
-  int iter = 0;
-  int vtk_idx = (cmd.contains("restart") ? (int) floor(tn/vtk_dt)  : -1);
-  int backup_time_idx = (int) floor(tn/save_state_dt);
+  initialize_exportations(two_phase_flow_solver->get_tn(), mpi, results_dir, parasitic_current_datafile, volume_datafile);
+  int vtk_idx = (cmd.contains("restart") ? (int) floor(two_phase_flow_solver->get_tn()/vtk_dt)  : -1);
+  int backup_time_idx = (int) floor(two_phase_flow_solver->get_tn()/save_state_dt);
   double max_nondimensional_velocity_overall = 0.0;
   double magnitude_nondimensional_parasitic_current = 0.0*viscosity/mass_density;
   double error_nondimensional_volume = (exact_bubble_volume - two_phase_flow_solver->volume_in_negative_domain())/exact_bubble_volume;
   if(mpi.rank() == 0 && !cmd.contains("restart"))
-    export_results(tn/characteristic_time_unit, magnitude_nondimensional_parasitic_current, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
+    export_results(two_phase_flow_solver->get_tn()/characteristic_time_unit, magnitude_nondimensional_parasitic_current, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
+  bool advance_solver = false;
+  two_phase_flow_solver->set_static_interface(static_interface);
 
-  while(tn + 0.01*dt < duration)
+  while(two_phase_flow_solver->get_tn() < duration)
   {
-    if(iter > 0)
+    if(advance_solver)
+      two_phase_flow_solver->update_from_tn_to_tnp1(niter_reinit);
+
+    if(save_nstates > 0 && (int) floor(two_phase_flow_solver->get_tn()/save_state_dt) != backup_time_idx)
     {
-      two_phase_flow_solver->compute_dt();
-      dt = two_phase_flow_solver->get_dt();
-      two_phase_flow_solver->update_from_tn_to_tnp1(iter%niter_reinit == 0, static_interface);
+      backup_time_idx = (int) floor(two_phase_flow_solver->get_tn()/save_state_dt);
+      two_phase_flow_solver->save_state(export_dir.c_str(), save_nstates);
     }
 
-    if(save_nstates > 0 && (int) floor(tn/save_state_dt) != backup_time_idx)
+    two_phase_flow_solver->solve_time_step(0.01, 1, duration);
+
+    if(save_vtk && (int) floor(two_phase_flow_solver->get_tnp1()/vtk_dt) != vtk_idx)
     {
-      backup_time_idx = (int) floor(tn/save_state_dt);
-      two_phase_flow_solver->save_state(export_dir.c_str(), tn, save_nstates);
-    }
-
-    two_phase_flow_solver->solve_viscosity();
-    two_phase_flow_solver->solve_projection();
-
-    two_phase_flow_solver->compute_velocities_at_nodes();
-
-    if(save_vtk && (int) floor((tn + dt)/vtk_dt) != vtk_idx)
-    {
-      vtk_idx = (int) floor((tn + dt)/vtk_dt);
+      vtk_idx = (int) floor(two_phase_flow_solver->get_tnp1()/vtk_dt);
       two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx);
     }
 
@@ -652,16 +602,13 @@ int main (int argc, char* argv[])
       break;
     }
 
-    tn += dt;
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
-                       iter, tn, 100*tn/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
     magnitude_nondimensional_parasitic_current = two_phase_flow_solver->get_max_velocity()*viscosity/surface_tension;
     error_nondimensional_volume = (exact_bubble_volume - two_phase_flow_solver->volume_in_negative_domain())/exact_bubble_volume;
     if(mpi.rank() == 0)
-      export_results(tn/characteristic_time_unit, magnitude_nondimensional_parasitic_current, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
+      export_results(two_phase_flow_solver->get_tnp1()/characteristic_time_unit, magnitude_nondimensional_parasitic_current, error_nondimensional_volume, parasitic_current_datafile, volume_datafile);
     max_nondimensional_velocity_overall = MAX(max_nondimensional_velocity_overall, magnitude_nondimensional_parasitic_current);
 
-    iter++;
+    advance_solver = true;
   }
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_nondimensional_velocity_overall);
 

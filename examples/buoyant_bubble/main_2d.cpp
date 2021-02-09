@@ -16,36 +16,6 @@ const static string main_description =
     string("Buoyant bubble test! \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020-2021-...-2523\n");
 
-std::istream& operator>> (std::istream& is, jump_solver_tag& solver)
-{
-  std::string str;
-  is >> str;
-
-  std::vector<size_t> substr_found_at;
-  case_insensitive_find_substr_in_str(str, "xGFM", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = xGFM;
-    return is;
-  }
-  // xGFM not found, look for GFM
-  case_insensitive_find_substr_in_str(str, "GFM", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = GFM;
-    return is;
-  }
-  // nor xGFM nor GFM found, look for FV
-  case_insensitive_find_substr_in_str(str, "FV", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver = FV;
-    return is;
-  }
-  throw std::runtime_error("unkonwn poisson_jump_cell_solver");
-  return is;
-}
-
 // problem setup: 1) set parameters
 const double initial_bubble_diameter  = 1.0; // those are constant, not freely defined
 const double rho_plus                 = 1.0; // those are constant, not freely defined

@@ -2391,7 +2391,7 @@ std::ostream& operator<< (std::ostream& os, hodge_control type)
   return os;
 }
 
-std::istream& operator>> (std::istream& is, hodge_control& type)
+std::istream& operator >> (std::istream& is, hodge_control& type)
 {
   std::string str;
   is >> str;
@@ -2414,7 +2414,35 @@ std::istream& operator>> (std::istream& is, hodge_control& type)
   return is;
 }
 
+std::istream& operator >> (std::istream& is, jump_solver_tag& solver)
+{
+  std::string str;
+  is >> str;
 
+  std::vector<size_t> substr_found_at;
+  case_insensitive_find_substr_in_str(str, "xGFM", substr_found_at);
+  if(substr_found_at.size() > 0)
+  {
+    solver = xGFM;
+    return is;
+  }
+  // xGFM not found, look for GFM
+  case_insensitive_find_substr_in_str(str, "GFM", substr_found_at);
+  if(substr_found_at.size() > 0)
+  {
+    solver = GFM;
+    return is;
+  }
+  // nor xGFM nor GFM found, look for FV
+  case_insensitive_find_substr_in_str(str, "FV", substr_found_at);
+  if(substr_found_at.size() > 0)
+  {
+    solver = FV;
+    return is;
+  }
+  throw std::runtime_error("unkonwn jump_solver_tag");
+  return is;
+}
 
 double quadrant_interp_t::operator()(DIM(double x, double y, double z)) const
 {
