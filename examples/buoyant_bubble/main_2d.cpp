@@ -78,6 +78,8 @@ const jump_solver_tag default_face_solver = xGFM;
 const int default_n_reinit = 1;
 const double default_nondimensional_t_end = 10.0;
 const double default_vmax_abort = 100.0;
+const double default_projection_threshold = 0.01;
+const int default_niter = 5;
 // exportation-related
 const bool default_save_vtk = true;
 const double default_nondimensional_vtk_dt    = 0.5;
@@ -536,6 +538,10 @@ int main (int argc, char* argv[])
   cmd.add_option("n_reinit", "number of solver iterations between two reinitializations of the levelset. Default is " + streamObj.str());
   streamObj.str(""); streamObj << default_vmax_abort;
   cmd.add_option("vmax_abort", "maximum velocity tolerated (the solver aborts if the local velocity exceeds this value at any point). Default is " + streamObj.str());
+  streamObj.str(""); streamObj << default_projection_threshold;
+  cmd.add_option("projection_threshold", "threshold for convergence of inner criterion (inner loop terminates if (max projection correction)/(max velocity component before projection) is below this value). Default value is " + streamObj.str());
+  streamObj.str(""); streamObj << default_niter;
+  cmd.add_option("niter", "max number of fix-point iterations for every time step. Default value is " + streamObj.str());
   // output-control parameters
   cmd.add_option("save_vtk", "flag activating  the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
   streamObj.str(""); streamObj << default_nondimensional_vtk_dt;
@@ -628,6 +634,8 @@ int main (int argc, char* argv[])
 
   const int vtk_start     = cmd.get<int>("vtk_idx_start", default_vtk_idx_start);
   const double vmax_abort = cmd.get<double>("vmax_abort", default_vmax_abort);
+  const double projection_threshold = cmd.get<double>("projection_threshold", default_projection_threshold);
+  const int n_fixpoint_iter_max = cmd.get<int>("niter", default_niter);
   int vtk_idx     = vtk_index(vtk_start, two_phase_flow_solver, vtk_dt) - 1; // -1 so that we do not miss the very first snapshot
   int backup_idx  = backup_index(two_phase_flow_solver, save_nstates);
 
@@ -647,7 +655,7 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->save_state(export_dir.c_str(), save_nstates);
     }
 
-    two_phase_flow_solver->solve_time_step(0.01, 5, t_end);
+    two_phase_flow_solver->solve_time_step(projection_threshold, n_fixpoint_iter_max, t_end);
 
     if(save_vtk && vtk_idx != vtk_index(vtk_start, two_phase_flow_solver, vtk_dt))
     {
