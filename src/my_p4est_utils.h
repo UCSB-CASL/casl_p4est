@@ -454,7 +454,8 @@ class WallBC2D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);} // VERY BAD (conversion to double) but used like that in poisson_nodes_mls...
+  BoundaryConditionType operator()(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual ~WallBC2D() = 0;
 };
 
@@ -462,7 +463,8 @@ class WallBC3D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);} // VERY BAD (conversion to double) but used like that in poisson_nodes_mls...
+  BoundaryConditionType operator()(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
   virtual ~WallBC3D() = 0;
 };
 
