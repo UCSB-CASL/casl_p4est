@@ -117,6 +117,7 @@ private:
   bool static_interface;
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
   double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
+  double max_surface_tension_in_band_of_two_cells;
 
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
@@ -132,8 +133,9 @@ private:
   // --------------------------------------------------------------
   // - sampled at the nodes of the INTERFACE-CAPTURING grid:
   // -------------------------------------------------------
-  Vec jump_normal_velocity; // scalar fields, jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
-  Vec interface_tangential_stress; // vector field, P4EST_DIM-block-structured
+  Vec user_defined_nonconstant_surface_tension;   // in case of nonconstant surface tension, user-defined
+  Vec user_defined_mass_flux;                     // mass flux across the interface, user-defined
+  Vec user_defined_interface_force;               // vector field, P4EST_DIM-block-structured, interface-defined force term (ON TOP of surface tension effects!!!)
 
   // --------------------------------------------------------------
   // ----------------- FIELDS OWNED BY THE SOLVER -----------------
@@ -144,9 +146,11 @@ private:
   // -------------------------------------------------------
   // scalar fields
   Vec phi_np1;
-  Vec non_viscous_pressure_jump; // pressure jump terms due to surface tension + mass transfer (i.e., 2 out of 3 terms in pressure jumps)
+  Vec non_viscous_pressure_jump;    // pressure jump terms due to all but binormal viscous stress term
+  Vec jump_normal_velocity;         // scalar fields, jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_np1_xxyyzz;
+  Vec interface_tangential_force;   // vector field, P4EST_DIM-block-structured (tangential components of the interface-defined force and/or gradient of non-constant surface tension, i.e. Marangoni force)
   // -------------------------------------------------------
   // - sampled at the nodes of the COMPUTATIONAL grid n:
   // -------------------------------------------------------
@@ -296,6 +300,9 @@ private:
     dt_np1 = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
   }
 
+  void build_jump_in_normal_velocity(); // possible jump in normal velocity = mass flux*(jump in 1.0/rho)
+  void build_total_interface_tangential_force(); // possible Marangoni + possible component of user-defined
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
@@ -305,12 +312,12 @@ public:
 
   inline double get_capillary_dt() const
   {
-    return sqrt(cfl_capillary*(rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(4.0*M_PI*surface_tension));
+    return sqrt(cfl_capillary*(rho_minus + rho_plus)*pow(MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2])), 3)/(4.0*M_PI*max_surface_tension_in_band_of_two_cells));
   }
 
   inline double get_visco_capillary_dt() const
   {
-    return cfl_visco_capillary*MIN(mu_minus, mu_plus)*MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/surface_tension;
+    return cfl_visco_capillary*MIN(mu_minus, mu_plus)*MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/max_surface_tension_in_band_of_two_cells;
   }
 
   inline double get_advection_dt() const
@@ -352,6 +359,18 @@ public:
   inline void set_surface_tension(const double& surface_tension_)
   {
     surface_tension = surface_tension_;
+  }
+
+  inline void set_surface_tension(Vec surface_tension_)
+  {
+    P4EST_ASSERT(VecIsSetForNodes(surface_tension_, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
+    user_defined_nonconstant_surface_tension = surface_tension_;
+  }
+
+  inline void set_mass_flux(Vec mass_flux_)
+  {
+    P4EST_ASSERT(VecIsSetForNodes(mass_flux_, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
+    user_defined_mass_flux = mass_flux_;
   }
 
   inline void set_densities(const double& rho_m_, const double& rho_p_)
@@ -423,6 +442,8 @@ public:
     dt_n    = dt_n_;
     dt_np1  = -DBL_MAX; // absurd value
   }
+
+  inline void set_interface_force(Vec interface_force_) { user_defined_interface_force = interface_force_; };
 
   inline bool viscosities_are_equal() const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool mass_densities_are_equal() const { return fabs(rho_minus - rho_plus) < EPS*MAX(fabs(rho_minus), fabs(rho_plus)); }

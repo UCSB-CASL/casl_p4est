@@ -205,9 +205,9 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     ngbd_n(ngbd_n_), fine_ngbd_n(fine_ngbd_n_),
     ngbd_c(faces_n_->get_ngbd_c()), faces_n(faces_n_)
 {
-  surface_tension       =  NAN;
-  mu_minus  = mu_plus   =  NAN;
-  rho_minus = rho_plus  =  NAN;
+  surface_tension       =  0.0; // this one is not necessarily to be defined (is elastic membrane, it could be irrelevant, for instance)
+  mu_minus  = mu_plus   =  NAN; // make sure the user defines this
+  rho_minus = rho_plus  =  NAN; // make sure the user defines this
   uniform_band_minus = uniform_band_plus = 0.0;
   threshold_split_cell = 0.04;
   cfl_advection = 1.0;
@@ -250,12 +250,15 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi_np1                   = NULL;
-  non_viscous_pressure_jump = NULL;
-  jump_normal_velocity      = NULL;
+  phi_np1                                   = NULL;
+  non_viscous_pressure_jump                 = NULL;
+  jump_normal_velocity                      = NULL;
+  user_defined_nonconstant_surface_tension  = NULL;
+  user_defined_mass_flux                    = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
-  phi_np1_xxyyzz  = NULL;
-  interface_tangential_stress = NULL;
+  phi_np1_xxyyzz                = NULL;
+  interface_tangential_force    = NULL;
+  user_defined_interface_force  = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
@@ -375,12 +378,15 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  phi_np1                   = NULL;
-  non_viscous_pressure_jump = NULL;
-  jump_normal_velocity      = NULL;
+  phi_np1                                   = NULL;
+  non_viscous_pressure_jump                 = NULL;
+  jump_normal_velocity                      = NULL;
+  user_defined_nonconstant_surface_tension  = NULL;
+  user_defined_mass_flux                    = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
-  phi_np1_xxyyzz = NULL;
-  interface_tangential_stress = NULL;
+  phi_np1_xxyyzz                = NULL;
+  interface_tangential_force    = NULL;
+  user_defined_interface_force  = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
@@ -1081,11 +1087,13 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   PetscErrorCode ierr;
   // if using subcell resolution, you'll want to take care of this separately
   if(phi_np1_on_computational_nodes != phi_np1) {
-    ierr = delete_and_nullify_vector(phi_np1_on_computational_nodes);       CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(phi_np1_on_computational_nodes);   CHKERRXX(ierr); }
   // node-sampled fields on the interface-capturing grid
   ierr = delete_and_nullify_vector(phi_np1);                            CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);          CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(phi_np1_xxyyzz);                     CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_tangential_force);         CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
@@ -1174,8 +1182,26 @@ void my_p4est_two_phase_flows_t::initialize_time_steps()
   if(ISNAN(rho_plus) || rho_plus <= 0.0)
     throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): rho_plus is not defined yet, or ill-defined...");
 
-  if(ISNAN(surface_tension) || surface_tension < 0.0)
-    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_time_steps(): surface_tension is not defined yet, or ill-defined...");
+  if(user_defined_nonconstant_surface_tension != NULL)
+  {
+    max_surface_tension_in_band_of_two_cells = 0.0;
+    const double *phi_p, *user_defined_nonconstant_surface_tension_p;
+    PetscErrorCode ierr;
+    ierr = VecGetArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+    for (p4est_locidx_t node_idx = 0; node_idx < interface_manager->get_interface_capturing_ngbd_n().get_nodes()->num_owned_indeps; ++node_idx) {
+      if(fabs(phi_p[node_idx]) < 2.0*smallest_diagonal)
+        max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, user_defined_nonconstant_surface_tension_p[node_idx]);
+    }
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_surface_tension_in_band_of_two_cells, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+    ierr = VecRestoreArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
+  }
+  else
+    max_surface_tension_in_band_of_two_cells = surface_tension;
+
+  max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, EPS); // can't afford a 0.0 or negative value
 
   compute_dt_np1();
   dt_nm1  = dt_np1;
@@ -1443,15 +1469,33 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(non_viscous_pressure_jump); CHKERRXX(ierr);
   }
 
-  // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density + [2\mu n \cdot E \cdot n]
-  // we calculate the two first terms in here (known before any time step)
+  // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density - (normal component of user_defined_interface_force) + [2\mu n \cdot E \cdot n]
+  // we calculate all but the last term in here (supposedly known before any time step)
 
+  const double* phi_p = NULL;
   const double* curvature_p = NULL;
-  const double* jump_normal_velocity_p = NULL;
+  const double* user_defined_mass_flux_p = NULL;
+  const double* user_defined_interface_force_p = NULL;
+  const double* user_defined_nonconstant_surface_tension_p = NULL;
+  const double* grad_phi_p = NULL;
 
-  if(jump_normal_velocity != NULL && !mass_densities_are_equal()){
-    ierr = VecGetArrayRead(jump_normal_velocity, &jump_normal_velocity_p); CHKERRXX(ierr); }
-  if(fabs(surface_tension) > EPS || jump_normal_velocity_p != NULL)
+  if(user_defined_nonconstant_surface_tension != NULL){
+    ierr = VecGetArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(interface_manager->get_phi(), &phi_p);
+  }
+  if(user_defined_interface_force != NULL){
+    ierr = VecGetArrayRead(user_defined_interface_force, &user_defined_interface_force_p); CHKERRXX(ierr);
+
+    if(!interface_manager->is_grad_phi_set())
+      interface_manager->set_grad_phi();
+
+    ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  }
+
+  if(user_defined_mass_flux != NULL && !mass_densities_are_equal()){ // 0.0 contribution if mass densities are equal...
+    ierr = VecGetArrayRead(user_defined_mass_flux, &user_defined_mass_flux_p); CHKERRXX(ierr);
+  }
+  if(user_defined_nonconstant_surface_tension_p != NULL || fabs(surface_tension) > EPS || user_defined_mass_flux_p != NULL)
   {
     if(!interface_manager->is_curvature_set())
       interface_manager->set_curvature(); // Maybe we'd want to flatten it...
@@ -1459,34 +1503,85 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
     ierr = VecGetArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
   }
 
+  max_surface_tension_in_band_of_two_cells = (user_defined_nonconstant_surface_tension_p != NULL ? 0.0 : surface_tension);
   double* non_viscous_pressure_jump_p;
   ierr = VecGetArray(non_viscous_pressure_jump, &non_viscous_pressure_jump_p); CHKERRXX(ierr);
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_layer_node(k);
     non_viscous_pressure_jump_p[node_idx] = 0.0;
-    if(fabs(surface_tension) > EPS)
-      non_viscous_pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
-    if(jump_normal_velocity_p != NULL)
-      non_viscous_pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
+    if(user_defined_nonconstant_surface_tension_p != NULL || fabs(surface_tension) > EPS)
+    {
+      non_viscous_pressure_jump_p[node_idx] -= (user_defined_nonconstant_surface_tension_p != NULL ? user_defined_nonconstant_surface_tension_p[node_idx] : surface_tension)*curvature_p[node_idx];
+      if(user_defined_nonconstant_surface_tension_p != NULL && fabs(phi_p[node_idx]) < 2.0*smallest_diagonal)
+        max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, user_defined_nonconstant_surface_tension_p[node_idx]);
+    }
+    if(user_defined_mass_flux_p != NULL)
+      non_viscous_pressure_jump_p[node_idx] -= SQR(user_defined_mass_flux_p[node_idx])*jump_inverse_mass_density();
+    if(user_defined_interface_force_p != NULL)
+    {
+      const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
+      double local_normal_interface_force_component = 0.0;
+      if(mag_grad_phi > EPS) // set to 0.0 if normal is ill-defined
+      {
+        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+          local_normal_interface_force_component += grad_phi_p[P4EST_DIM*node_idx + dim]*user_defined_interface_force_p[P4EST_DIM*node_idx + dim];
+        local_normal_interface_force_component /= mag_grad_phi;
+      }
+      non_viscous_pressure_jump_p[node_idx] -= local_normal_interface_force_component;
+    }
   }
   ierr = VecGhostUpdateBegin(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interface_capturing_ngbd_n.get_local_size(); ++k) {
     const p4est_locidx_t node_idx = interface_capturing_ngbd_n.get_local_node(k);
     non_viscous_pressure_jump_p[node_idx] = 0.0;
-    if(fabs(surface_tension) > EPS)
-      non_viscous_pressure_jump_p[node_idx] -= surface_tension*curvature_p[node_idx];
-    if(jump_normal_velocity_p != NULL)
-      non_viscous_pressure_jump_p[node_idx] -= SQR(jump_normal_velocity_p[node_idx])/jump_inverse_mass_density();
+    if(user_defined_nonconstant_surface_tension_p != NULL || fabs(surface_tension) > EPS)
+    {
+      non_viscous_pressure_jump_p[node_idx] -= (user_defined_nonconstant_surface_tension_p != NULL  ? user_defined_nonconstant_surface_tension_p[node_idx] : surface_tension)*curvature_p[node_idx];
+      if(user_defined_nonconstant_surface_tension_p != NULL && fabs(phi_p[node_idx]) < 2.0*smallest_diagonal)
+        max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, user_defined_nonconstant_surface_tension_p[node_idx]);
+    }
+    if(user_defined_mass_flux_p != NULL)
+      non_viscous_pressure_jump_p[node_idx] -= SQR(user_defined_mass_flux_p[node_idx])*jump_inverse_mass_density();
+    if(user_defined_interface_force_p != NULL)
+    {
+      const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
+      double local_normal_interface_force_component = 0.0;
+      if(mag_grad_phi > EPS) // set to 0.0 if normal is ill-defined
+      {
+        for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+          local_normal_interface_force_component += grad_phi_p[P4EST_DIM*node_idx + dim]*user_defined_interface_force_p[P4EST_DIM*node_idx + dim];
+        local_normal_interface_force_component /= mag_grad_phi;
+      }
+      non_viscous_pressure_jump_p[node_idx] -= local_normal_interface_force_component;
+    }
   }
   ierr = VecGhostUpdateEnd(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(non_viscous_pressure_jump, &non_viscous_pressure_jump_p); CHKERRXX(ierr);
+  if(user_defined_nonconstant_surface_tension_p != NULL){
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_surface_tension_in_band_of_two_cells, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  }
+  max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, EPS); // can't have 0.0 or negative value in time step criterion...
 
-  if(jump_normal_velocity_p != NULL){
-    ierr = VecRestoreArrayRead(jump_normal_velocity, &jump_normal_velocity_p); CHKERRXX(ierr); }
+  ierr = VecRestoreArray(non_viscous_pressure_jump, &non_viscous_pressure_jump_p); CHKERRXX(ierr);
   if(curvature_p != NULL){
-    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr); }
+    ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
+  }
+  if(user_defined_mass_flux_p != NULL){
+    ierr = VecRestoreArrayRead(user_defined_mass_flux, &user_defined_mass_flux_p); CHKERRXX(ierr);
+  }
+  if(grad_phi_p != NULL){
+    ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  }
+  if(user_defined_interface_force_p != NULL){
+    ierr = VecRestoreArrayRead(user_defined_interface_force, &user_defined_interface_force_p); CHKERRXX(ierr);
+  }
+  if(user_defined_nonconstant_surface_tension_p != NULL){
+    ierr = VecRestoreArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+  }
+  if(phi_p != NULL){
+    ierr = VecRestoreArrayRead(interface_manager->get_phi(), &phi_p); CHKERRXX(ierr);
+  }
 
   return;
 }
@@ -1564,6 +1659,7 @@ void my_p4est_two_phase_flows_t::solve_projection()
      ORD(vnp1_face_star_plus_kp1[0] == NULL,   vnp1_face_star_plus_kp1[1] == NULL,  vnp1_face_star_plus_kp1[2] == NULL))
     throw std::runtime_error("my_p4est_two_phase_flows_t::solve_projection(): vnp1_face_*_kp1 are not defined, what are you making divergence-free?");
 
+  build_jump_in_normal_velocity(); // nothing done in there if nothing to do...
   my_p4est_interpolation_nodes_t* interp_jump_normal_velocity = NULL;
   if(jump_normal_velocity != NULL)
   {
@@ -2070,6 +2166,117 @@ void my_p4est_two_phase_flows_t::set_face_jump_solvers(const jump_solver_tag& so
 //  return to_return/volume;
 //}
 
+void my_p4est_two_phase_flows_t::build_jump_in_normal_velocity()
+{
+  PetscErrorCode ierr;
+  if(user_defined_mass_flux == NULL || mass_densities_are_equal()) // no jump in normal velocity if no mass flux or if equal mass densities
+  {
+    ierr = delete_and_nullify_vector(jump_normal_velocity); CHKERRXX(ierr);
+    return;
+  }
+  if(jump_normal_velocity != NULL)
+  {
+    // already done
+    P4EST_ASSERT(VecIsSetForNodes(jump_normal_velocity, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
+    return;
+  }
+
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(jump_normal_velocity); CHKERRXX(ierr);
+  P4EST_ASSERT(VecIsSetForNodes(user_defined_mass_flux, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
+  const double jump_inverse_rho = jump_inverse_mass_density();
+  ierr = VecAXPBYGhost(jump_normal_velocity, jump_inverse_rho, 0.0, user_defined_mass_flux);
+  return;
+}
+
+void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
+{
+  PetscErrorCode ierr;
+  if(user_defined_nonconstant_surface_tension == NULL && user_defined_interface_force == NULL)
+  {
+    ierr = delete_and_nullify_vector(interface_tangential_force); CHKERRXX(ierr);
+    return;
+  }
+  if(interface_tangential_force != NULL)
+  {
+    // already done
+    P4EST_ASSERT(VecIsSetForNodes(interface_tangential_force, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, P4EST_DIM));
+    return;
+  }
+
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(interface_tangential_force, P4EST_DIM); CHKERRXX(ierr);
+  double *interface_tangential_force_p;
+  ierr = VecGetArray(interface_tangential_force, &interface_tangential_force_p); CHKERRXX(ierr);
+  const double *grad_phi_p;
+  const double *user_defined_nonconstant_surface_tension_p = NULL;
+  const double *user_defined_interface_force_p = NULL;
+  ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  if(user_defined_nonconstant_surface_tension != NULL){
+    ierr = VecGetArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+  }
+  if(user_defined_interface_force != NULL){
+    ierr = VecGetArrayRead(user_defined_interface_force, &user_defined_interface_force_p); CHKERRXX(ierr);
+  }
+
+  double local_normal[P4EST_DIM];
+  double local_grad_surf_tension[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
+  P4EST_ASSERT(interface_manager->get_interface_capturing_ngbd_n().neighbors_are_initialized()); // we assume the node neighbors are initialized!
+  const quad_neighbor_nodes_of_node_t* qnnn;
+  for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_layer_size(); ++k) {
+    p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_layer_node(k);
+    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM + 0], grad_phi_p[P4EST_DIM + 1], grad_phi_p[P4EST_DIM + 2]);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      local_normal[dir] = (mag_grad_phi > EPS ? grad_phi_p[P4EST_DIM*node_idx + dir]/mag_grad_phi : 0.0);
+    if(user_defined_nonconstant_surface_tension_p != NULL)
+    {
+      interface_manager->get_interface_capturing_ngbd_n().get_neighbors(node_idx, qnnn);
+      qnnn->gradient(user_defined_nonconstant_surface_tension_p, local_grad_surf_tension);
+    }
+
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      interface_tangential_force_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
+      for (u_char der = 0; der < P4EST_DIM; ++der) {
+        if(user_defined_nonconstant_surface_tension_p != NULL)
+          interface_tangential_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
+        if(user_defined_interface_force_p != NULL)
+          interface_tangential_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
+      }
+    }
+  }
+  ierr = VecGhostUpdateBegin(interface_tangential_force, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_local_size(); ++k) {
+    p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_local_node(k);
+    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM + 0], grad_phi_p[P4EST_DIM + 1], grad_phi_p[P4EST_DIM + 2]);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      local_normal[dir] = (mag_grad_phi > EPS ? grad_phi_p[P4EST_DIM*node_idx + dir]/mag_grad_phi : 0.0);
+    if(user_defined_nonconstant_surface_tension_p != NULL)
+    {
+      interface_manager->get_interface_capturing_ngbd_n().get_neighbors(node_idx, qnnn);
+      qnnn->gradient(user_defined_nonconstant_surface_tension_p, local_grad_surf_tension);
+    }
+
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      interface_tangential_force_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
+      for (u_char der = 0; der < P4EST_DIM; ++der) {
+        if(user_defined_nonconstant_surface_tension_p != NULL)
+          interface_tangential_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
+        if(user_defined_interface_force_p != NULL)
+          interface_tangential_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
+      }
+    }
+  }
+  ierr = VecGhostUpdateEnd(interface_tangential_force, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  if(user_defined_nonconstant_surface_tension != NULL){
+    ierr = VecRestoreArrayRead(user_defined_nonconstant_surface_tension, &user_defined_nonconstant_surface_tension_p); CHKERRXX(ierr);
+  }
+  if(user_defined_interface_force != NULL){
+    ierr = VecRestoreArrayRead(user_defined_interface_force, &user_defined_interface_force_p); CHKERRXX(ierr);
+  }
+  ierr = VecGetArray(interface_tangential_force, &interface_tangential_force_p); CHKERRXX(ierr);
+  return;
+}
+
 void my_p4est_two_phase_flows_t::solve_viscosity()
 {
   compute_backtraced_velocities();
@@ -2080,10 +2287,12 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   if(face_jump_solver == NULL)
   {
     build_face_jump_solver();
+    build_jump_in_normal_velocity(); // nothing done in there if nothing to do, no worries...
+    build_total_interface_tangential_force(); // nothing done in there if nothing to do, no worries...
     face_jump_solver->set_interface(interface_manager);
     face_jump_solver->set_mus(mu_minus, mu_plus);
     face_jump_solver->set_bc(bc_velocity);
-    face_jump_solver->set_jumps(jump_normal_velocity, interface_tangential_stress);
+    face_jump_solver->set_jumps(jump_normal_velocity, interface_tangential_force);
     face_jump_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
     if(dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver) != NULL)
       dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver)->set_validity_of_interface_neighbors_for_normal_derivatives(false);
@@ -2657,8 +2866,8 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
-    if(exhaustive && interface_tangential_stress != NULL)
-      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_stress, "interface_tangential_stress"));
+    if(exhaustive && interface_tangential_force != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_force, "interface_tangential_force"));
   }
 
   Vec vnp1_minus_on_cells = NULL;
@@ -2713,8 +2922,8 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
-    if(exhaustive && interface_tangential_stress != NULL)
-      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_stress, "interface_tangential_stress"));
+    if(exhaustive && interface_tangential_force != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_force, "interface_tangential_force"));
 
     my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
                                          P4EST_TRUE, P4EST_TRUE,
@@ -3013,11 +3222,11 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
   }
 
   double *interface_velocity_np1_p  = NULL;
-  my_p4est_interpolation_nodes_t *interp_jump_normal_velocity = NULL;
-  if(jump_normal_velocity != NULL)
+  my_p4est_interpolation_nodes_t *interp_mass_flux = NULL; // it's important to use the user-defined mass-flux in this case since we may have mass_flux != 0 although jump_normal_velocity == 0 (if rho_m = rho_p)
+  if(user_defined_mass_flux != NULL)
   {
-    interp_jump_normal_velocity = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
-    interp_jump_normal_velocity->set_input(jump_normal_velocity, linear);
+    interp_mass_flux = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
+    interp_mass_flux->set_input(user_defined_mass_flux, linear);
   }
   const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
   ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
@@ -3028,10 +3237,10 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
   for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
     double local_mass_flux = 0.0;
-    if(interp_jump_normal_velocity != NULL)
+    if(interp_mass_flux != NULL)
     {
       node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-      local_mass_flux = (*interp_jump_normal_velocity)(xyz_node)/jump_inverse_mass_density();
+      local_mass_flux = (*interp_mass_flux)(xyz_node);
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
@@ -3041,10 +3250,10 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
     const p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
     double local_mass_flux = 0.0;
-    if(interp_jump_normal_velocity != NULL)
+    if(interp_mass_flux != NULL)
     {
       node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
-      local_mass_flux = (*interp_jump_normal_velocity)(xyz_node)/jump_inverse_mass_density();
+      local_mass_flux = (*interp_mass_flux)(xyz_node);
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
@@ -3097,8 +3306,8 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
 
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
-  if(interp_jump_normal_velocity != NULL)
-    delete interp_jump_normal_velocity;
+  if(interp_mass_flux != NULL)
+    delete interp_mass_flux;
 
   return;
 }
@@ -3834,9 +4043,14 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   set_phi_np1((fine_ngbd_n != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes), levelset_interpolation_method, phi_np2_on_computational_nodes); // memory handled therein!
   // now reset the solver so that it is ready to tackle the next time step:
   vnp1_nodes_minus = NULL; vnp1_nodes_plus = NULL; // will be the "solution" of the next time step
-  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);  CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vorticity_magnitude_minus); CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(vorticity_magnitude_plus); CHKERRXX(ierr);
+  user_defined_nonconstant_surface_tension  = NULL; // we don't take a chance, the grid has probably changed, we reset this one
+  user_defined_mass_flux                    = NULL; // we don't take a chance, the grid has probably changed, we reset this one
+  user_defined_interface_force              = NULL; // we don't take a chance, the grid has probably changed, we reset this one
+  ierr = delete_and_nullify_vector(non_viscous_pressure_jump);    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_normal_velocity);         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(interface_tangential_force);   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_minus);    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vorticity_magnitude_plus);     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_plus);  CHKERRXX(ierr);
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
