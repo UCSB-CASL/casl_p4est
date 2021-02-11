@@ -124,7 +124,7 @@ private:
   int nsolve_calls;
   double tstart; // tn at the construction (0.0 or value as loaded from file)
 
-  CF_DIM *force_per_unit_mass[P4EST_DIM];
+  CF_DIM *force_per_unit_mass_minus[P4EST_DIM], *force_per_unit_mass_plus[P4EST_DIM];
 
   // --------------------------------------------------------------
   // -------------- FIELDS *NOT* OWNED BY THE SOLVER --------------
@@ -156,9 +156,6 @@ private:
   // vector fields and/or other P4EST_DIM-block-structured
   Vec vnp1_nodes_minus,  vnp1_nodes_plus;
   Vec vn_nodes_minus,    vn_nodes_plus;
-  // the "np1" interface velocitiy is determined and used right after compute_dt in update_from_n_to_np1 but
-  // _BEFORE_ final data update, so it is actually a function of np1 velocities _BEFORE_ those are eventually
-  // slid in time. (yet used as "n" and "nm1" respectively when advecting the interface)
   Vec interface_velocity_np1;
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
   // vn_nodes_minus_xxyyzz_p[SQR_P4EST_DIM*i + P4EST_DIM*dir + der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction {der}, evaluated at local node i of p4est_n
@@ -327,10 +324,23 @@ public:
     bc_pressure = bc_p;
   }
 
-  inline void set_external_forces_per_unit_mass(CF_DIM *external_forces_per_unit_mass_[P4EST_DIM])
+  // use this in real life
+  inline void set_external_forces_per_unit_mass(CF_DIM *external_force_per_unit_mass_[P4EST_DIM])
   {
     for(u_char dir = 0; dir < P4EST_DIM; ++dir)
-      this->force_per_unit_mass[dir] = external_forces_per_unit_mass_[dir];
+    {
+      this->force_per_unit_mass_minus[dir] = external_force_per_unit_mass_[dir];
+      this->force_per_unit_mass_plus[dir] = external_force_per_unit_mass_[dir];
+    }
+  }
+  // use this for your mind experiments/self-convincing endeavors/earn your ticket out of a dysfunctional work environment...
+  inline void set_external_forces_per_unit_mass(CF_DIM *external_force_per_unit_mass_minus_[P4EST_DIM], CF_DIM *external_force_per_unit_mass_plus_[P4EST_DIM])
+  {
+    for(u_char dir = 0; dir < P4EST_DIM; ++dir)
+    {
+      this->force_per_unit_mass_minus[dir] = external_force_per_unit_mass_minus_[dir];
+      this->force_per_unit_mass_plus[dir] = external_force_per_unit_mass_plus_[dir];
+    }
   }
 
   inline void set_dynamic_viscosities(const double& mu_m_, const double& mu_p_)

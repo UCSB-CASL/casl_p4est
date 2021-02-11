@@ -239,7 +239,10 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   bc_velocity = NULL;
   bc_pressure = NULL;
   for(u_char dim = 0; dim < P4EST_DIM; ++dim)
-    force_per_unit_mass[dim]  = NULL;
+  {
+    force_per_unit_mass_minus[dim]  = NULL;
+    force_per_unit_mass_plus[dim]   = NULL;
+  }
   log_file = stdout; // STANDARD OUTPUT is default;
   nsolve_calls = 0;
 
@@ -361,7 +364,10 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   bc_velocity = NULL;
   bc_pressure = NULL;
   for(u_char dim = 0; dim < P4EST_DIM; ++dim)
-    force_per_unit_mass[dim]  = NULL;
+  {
+    force_per_unit_mass_minus[dim]  = NULL;
+    force_per_unit_mass_plus[dim]   = NULL;
+  }
   log_file = stdout; // STANDARD OUTPUT is default;
   nsolve_calls = 0;
 
@@ -2940,14 +2946,17 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
             + rho_plus*(BDF_advection_beta()/dt_nm1)*backtraced_vnm1_faces_plus[dir][f_idx];
       }
 
-      if(force_per_unit_mass[dir] != NULL)
+      if(force_per_unit_mass_minus[dir] != NULL || force_per_unit_mass_plus[dir] != NULL)
       {
         double xyz_face[P4EST_DIM];
-        if(dynamic_cast<const cf_const_t*>(force_per_unit_mass[dir]) == NULL){
+        if(dynamic_cast<const cf_const_t*>(force_per_unit_mass_minus[dir]) == NULL ||
+           dynamic_cast<const cf_const_t*>(force_per_unit_mass_plus[dir]) == NULL){
           faces_n->xyz_fr_f(f_idx, dir, xyz_face); // get coordinates only if not a stupid constant function...
         }
-        viscosity_rhs_minus_dir_p[f_idx]  += rho_minus*(*force_per_unit_mass[dir])(xyz_face);
-        viscosity_rhs_plus_dir_p[f_idx]   += rho_plus*(*force_per_unit_mass[dir])(xyz_face);
+        if(force_per_unit_mass_minus[dir] != NULL)
+          viscosity_rhs_minus_dir_p[f_idx]  += rho_minus*(*force_per_unit_mass_minus[dir])(xyz_face);
+        if(force_per_unit_mass_plus[dir] != NULL)
+          viscosity_rhs_plus_dir_p[f_idx]   += rho_plus*(*force_per_unit_mass_plus[dir])(xyz_face);
       }
 
       // pressure gradient!
