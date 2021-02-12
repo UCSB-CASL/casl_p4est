@@ -2227,7 +2227,7 @@ void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
   const quad_neighbor_nodes_of_node_t* qnnn;
   for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_layer_size(); ++k) {
     p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_layer_node(k);
-    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM + 0], grad_phi_p[P4EST_DIM + 1], grad_phi_p[P4EST_DIM + 2]);
+    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       local_normal[dir] = (mag_grad_phi > EPS ? grad_phi_p[P4EST_DIM*node_idx + dir]/mag_grad_phi : 0.0);
     if(user_defined_nonconstant_surface_tension_p != NULL)
@@ -2249,7 +2249,7 @@ void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
   ierr = VecGhostUpdateBegin(interface_tangential_force, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_local_size(); ++k) {
     p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_local_node(k);
-    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM + 0], grad_phi_p[P4EST_DIM + 1], grad_phi_p[P4EST_DIM + 2]);
+    const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
       local_normal[dir] = (mag_grad_phi > EPS ? grad_phi_p[P4EST_DIM*node_idx + dir]/mag_grad_phi : 0.0);
     if(user_defined_nonconstant_surface_tension_p != NULL)
