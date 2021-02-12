@@ -1315,59 +1315,63 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_n(CF_DIM* interface_velo
   return;
 }
 
-void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
-                                                     CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM])
+void my_p4est_two_phase_flows_t::set_node_velocities_nm1(const CF_DIM* vnm1_minus_functor[P4EST_DIM], const CF_DIM* vnm1_plus_functor[P4EST_DIM])
+{
+  PetscErrorCode ierr;
+  double xyz_node[P4EST_DIM];
+  if(vnm1_nodes_minus == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &vnm1_nodes_minus); CHKERRXX(ierr); }
+  if(vnm1_nodes_plus == NULL){
+    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &vnm1_nodes_plus); CHKERRXX(ierr); }
+  double *vnm1_nodes_minus_p, *vnm1_nodes_plus_p;
+
+  ierr = VecGetArray(vnm1_nodes_minus,  &vnm1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
+  for (size_t n = 0; n < nodes_nm1->indep_nodes.elem_count; ++n) {
+    node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz_node);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      vnm1_nodes_minus_p[P4EST_DIM*n + dir] = (*vnm1_minus_functor[dir])(xyz_node);
+      vnm1_nodes_plus_p[P4EST_DIM*n + dir]  = (*vnm1_plus_functor[dir])(xyz_node);
+    }
+  }
+  ierr = VecRestoreArray(vnm1_nodes_minus,  &vnm1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
+  compute_second_derivatives_of_nm1_velocities();
+  return;
+}
+
+void my_p4est_two_phase_flows_t::set_node_velocities_n(const CF_DIM* vn_minus_functor[P4EST_DIM], const CF_DIM* vn_plus_functor[P4EST_DIM])
 {
   if(phi_np1_on_computational_nodes == NULL && phi_np1 == NULL)
-  {
-    throw std::runtime_error("my_p4est_two_phase_flows_t::set_node_velocities: please set the interface before setting the velocities (for computation of max sharp velocities magnitudes)");
-  }
+    throw std::runtime_error("my_p4est_two_phase_flows_t::set_node_velocities_n: please set the interface before setting the velocities (for computation of max sharp velocities magnitudes)");
+
   PetscErrorCode ierr;
   double xyz_node[P4EST_DIM];
   const double * phi_np1_on_computational_nodes_p = NULL;
   if(phi_np1_on_computational_nodes != NULL){
     ierr = VecGetArrayRead(phi_np1_on_computational_nodes, &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
   }
-  if(vnm1_nodes_minus == NULL){
-    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &vnm1_nodes_minus); CHKERRXX(ierr); }
-  if(vnm1_nodes_plus == NULL){
-    ierr = VecCreateGhostNodesBlock(p4est_nm1, nodes_nm1, P4EST_DIM, &vnm1_nodes_plus); CHKERRXX(ierr); }
   if(vn_nodes_minus == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &vn_nodes_minus); CHKERRXX(ierr); }
   if(vn_nodes_plus == NULL){
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &vn_nodes_plus); CHKERRXX(ierr); }
-  double *vnm1_nodes_minus_p, *vnm1_nodes_plus_p, *vn_nodes_minus_p, *vn_nodes_plus_p;
+  double *vn_nodes_minus_p, *vn_nodes_plus_p;
 
-  ierr = VecGetArray(vnm1_nodes_minus,  &vnm1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecGetArray(vn_nodes_minus,    &vn_nodes_minus_p);   CHKERRXX(ierr);
   ierr = VecGetArray(vn_nodes_plus,     &vn_nodes_plus_p);    CHKERRXX(ierr);
   max_L2_norm_velocity_minus  = EPS;
   max_L2_norm_velocity_plus   = EPS;
-  for (size_t n = 0; n < MAX(nodes_n->indep_nodes.elem_count, nodes_nm1->indep_nodes.elem_count); ++n) {
-    if(n < nodes_n->indep_nodes.elem_count)
-    {
-      node_xyz_fr_n(n, p4est_n, nodes_n, xyz_node);
-      for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-        vn_nodes_minus_p[P4EST_DIM*n + dir] = (*vn_minus_functor[dir])(xyz_node);
-        vn_nodes_plus_p[P4EST_DIM*n + dir]  = (*vn_plus_functor[dir])(xyz_node);
-      }
-      if((phi_np1_on_computational_nodes_p != NULL ? phi_np1_on_computational_nodes_p[n] : interface_manager->phi_at_point(xyz_node)) <= 0.0)
-        max_L2_norm_velocity_minus  = MAX(max_L2_norm_velocity_minus, ABSD(vn_nodes_minus_p[P4EST_DIM*n], vn_nodes_minus_p[P4EST_DIM*n + 1], vn_nodes_minus_p[P4EST_DIM*n + 2]));
-      else
-        max_L2_norm_velocity_plus   = MAX(max_L2_norm_velocity_plus, ABSD(vn_nodes_plus_p[P4EST_DIM*n], vn_nodes_plus_p[P4EST_DIM*n + 1], vn_nodes_plus_p[P4EST_DIM*n + 2]));
+  for (size_t n = 0; n < nodes_n->indep_nodes.elem_count; ++n) {
+    node_xyz_fr_n(n, p4est_n, nodes_n, xyz_node);
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+      vn_nodes_minus_p[P4EST_DIM*n + dir] = (*vn_minus_functor[dir])(xyz_node);
+      vn_nodes_plus_p[P4EST_DIM*n + dir]  = (*vn_plus_functor[dir])(xyz_node);
     }
-    if(n < nodes_nm1->indep_nodes.elem_count)
-    {
-      node_xyz_fr_n(n, p4est_nm1, nodes_nm1, xyz_node);
-      for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-        vnm1_nodes_minus_p[P4EST_DIM*n + dir] = (*vnm1_minus_functor[dir])(xyz_node);
-        vnm1_nodes_plus_p[P4EST_DIM*n + dir]  = (*vnm1_plus_functor[dir])(xyz_node);
-      }
-    }
+    if((phi_np1_on_computational_nodes_p != NULL ? phi_np1_on_computational_nodes_p[n] : interface_manager->phi_at_point(xyz_node)) <= 0.0)
+      max_L2_norm_velocity_minus  = MAX(max_L2_norm_velocity_minus, ABSD(vn_nodes_minus_p[P4EST_DIM*n], vn_nodes_minus_p[P4EST_DIM*n + 1], vn_nodes_minus_p[P4EST_DIM*n + 2]));
+    else
+      max_L2_norm_velocity_plus   = MAX(max_L2_norm_velocity_plus, ABSD(vn_nodes_plus_p[P4EST_DIM*n], vn_nodes_plus_p[P4EST_DIM*n + 1], vn_nodes_plus_p[P4EST_DIM*n + 2]));
   }
-  ierr = VecRestoreArray(vnm1_nodes_minus,  &vnm1_nodes_minus_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vnm1_nodes_plus,   &vnm1_nodes_plus_p);  CHKERRXX(ierr);
   ierr = VecRestoreArray(vn_nodes_minus,    &vn_nodes_minus_p);   CHKERRXX(ierr);
   ierr = VecRestoreArray(vn_nodes_plus,     &vn_nodes_plus_p);    CHKERRXX(ierr);
   if(phi_np1_on_computational_nodes != NULL){
@@ -1376,47 +1380,46 @@ void my_p4est_two_phase_flows_t::set_node_velocities(CF_DIM* vnm1_minus_functor[
   int mpiret;
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_velocity_minus, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_velocity_plus,  1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
-  compute_second_derivatives_of_nm1_velocities();
   compute_second_derivatives_of_n_velocities();
   return;
 }
 
-void my_p4est_two_phase_flows_t::set_face_velocities_np1(CF_DIM* vnp1_minus_functor[P4EST_DIM], CF_DIM* vnp1_plus_functor[P4EST_DIM])
-{
-  PetscErrorCode ierr;
-  double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
-  double xyz_face[P4EST_DIM];
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    if(vnp1_face_minus[dir] == NULL){
-      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr); }
-    if(vnp1_face_plus[dir] == NULL){
-      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir], dir); CHKERRXX(ierr); }
-    ierr = VecGetArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
-    ierr = VecGetArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
-    for (size_t k = 0; k < faces_n->get_layer_size(dir); ++k) {
-      p4est_locidx_t face_idx = faces_n->get_layer_face(dir, k);
-      faces_n->xyz_fr_f(face_idx, dir, xyz_face);
-      vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
-      vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
-    }
-    ierr = VecGhostUpdateBegin(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//void my_p4est_two_phase_flows_t::set_face_velocities_np1(CF_DIM* vnp1_minus_functor[P4EST_DIM], CF_DIM* vnp1_plus_functor[P4EST_DIM])
+//{
+//  PetscErrorCode ierr;
+//  double *vnp1_face_minus_p[P4EST_DIM], *vnp1_face_plus_p[P4EST_DIM];
+//  double xyz_face[P4EST_DIM];
+//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+//    if(vnp1_face_minus[dir] == NULL){
+//      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_minus[dir], dir); CHKERRXX(ierr); }
+//    if(vnp1_face_plus[dir] == NULL){
+//      ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_face_plus[dir], dir); CHKERRXX(ierr); }
+//    ierr = VecGetArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
+//    ierr = VecGetArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
+//    for (size_t k = 0; k < faces_n->get_layer_size(dir); ++k) {
+//      p4est_locidx_t face_idx = faces_n->get_layer_face(dir, k);
+//      faces_n->xyz_fr_f(face_idx, dir, xyz_face);
+//      vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
+//      vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
+//    }
+//    ierr = VecGhostUpdateBegin(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
 
-  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    for (size_t k = 0; k < faces_n->get_local_size(dir); ++k) {
-      p4est_locidx_t face_idx = faces_n->get_local_face(dir, k);
-      faces_n->xyz_fr_f(face_idx, dir, xyz_face);
-      vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
-      vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
-    }
-    ierr = VecGhostUpdateEnd(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
-    ierr = VecRestoreArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
-  }
-  return;
-}
+//  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
+//    for (size_t k = 0; k < faces_n->get_local_size(dir); ++k) {
+//      p4est_locidx_t face_idx = faces_n->get_local_face(dir, k);
+//      faces_n->xyz_fr_f(face_idx, dir, xyz_face);
+//      vnp1_face_minus_p[dir][face_idx]  = (*vnp1_minus_functor[dir])(xyz_face);
+//      vnp1_face_plus_p[dir][face_idx]   = (*vnp1_plus_functor[dir])(xyz_face);
+//    }
+//    ierr = VecGhostUpdateEnd(vnp1_face_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd(vnp1_face_plus[dir],  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_face_minus[dir], &vnp1_face_minus_p[dir]);  CHKERRXX(ierr);
+//    ierr = VecRestoreArray(vnp1_face_plus[dir],  &vnp1_face_plus_p[dir]);   CHKERRXX(ierr);
+//  }
+//  return;
+//}
 
 void my_p4est_two_phase_flows_t::compute_second_derivatives_of_n_velocities()
 {

@@ -383,9 +383,9 @@ public:
 
   void set_phi_np1(Vec phi_np1_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_np1_on_computational_nodes_ = NULL);
   void set_interface_velocity_n(CF_DIM* interface_velocity_n_functor[P4EST_DIM]);
-  void set_node_velocities(CF_DIM* vnm1_minus_functor[P4EST_DIM], CF_DIM* vn_minus_functor[P4EST_DIM],
-                           CF_DIM* vnm1_plus_functor[P4EST_DIM],  CF_DIM* vn_plus_functor[P4EST_DIM]);
-  void set_face_velocities_np1(CF_DIM* vnp1_m_[P4EST_DIM], CF_DIM* vnp1_p_[P4EST_DIM]);
+  void set_node_velocities_nm1(const CF_DIM* vnm1_minus_functor[P4EST_DIM], const CF_DIM* vnm1_plus_functor[P4EST_DIM]);
+  void set_node_velocities_n(const CF_DIM* vn_minus_functor[P4EST_DIM], const CF_DIM* vn_plus_functor[P4EST_DIM]);
+//  void set_face_velocities_np1(CF_DIM* vnp1_m_[P4EST_DIM], CF_DIM* vnp1_p_[P4EST_DIM]);
 
   void compute_second_derivatives_of_n_velocities();
   void compute_second_derivatives_of_nm1_velocities();
