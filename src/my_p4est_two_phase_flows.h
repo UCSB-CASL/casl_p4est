@@ -466,8 +466,12 @@ public:
 
   inline const my_p4est_interface_manager_t* get_interface_manager() const  { return interface_manager; }
   inline my_p4est_interface_manager_t* get_interface_manager()              { return interface_manager; } // in case we want to augment the interface_manager
-  inline Vec get_vnp1_nodes_minus() const                                   { return vnp1_nodes_minus; }
-  inline Vec get_vnp1_nodes_plus() const                                    { return vnp1_nodes_plus; }
+  inline Vec get_vnp1_nodes_minus() const                                   { return vnp1_nodes_minus;  }
+  inline Vec get_vnp1_nodes_plus() const                                    { return vnp1_nodes_plus;   }
+  inline const Vec* get_vnp1_face_minus() const                             { return vnp1_face_minus;   }
+  inline const Vec* get_vnp1_face_plus() const                              { return vnp1_face_plus;    }
+  inline Vec get_pressure_minus() const                                     { return pressure_minus;    }
+  inline Vec get_pressure_plus() const                                      { return pressure_plus;     }
   inline double get_diag_min() const                                        { return tree_diagonal/((double) (1 << (interface_manager->get_max_level_computational_grid()))); }
   inline double get_mu_minus() const                                        { return mu_minus; }
   inline double get_mu_plus() const                                         { return mu_plus; }
