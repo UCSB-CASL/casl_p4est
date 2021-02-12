@@ -299,7 +299,7 @@ private:
   inline void compute_dt_np1()
   {
     dt_np1 = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
-    dt_np1 = MIN(dt_np1, final_time - t_n - dt_n);
+//    dt_np1 = MIN(dt_np1, final_time - t_n - dt_n); I'm not taking chances with this, I have seen error spikes due to small time steps from this condition even in single-phase problems
   }
 
   void build_jump_in_normal_velocity(); // possible jump in normal velocity = mass flux*(jump in 1.0/rho)
