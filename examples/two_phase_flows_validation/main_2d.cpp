@@ -1,8 +1,10 @@
 // p4est Library
 #ifdef P4_TO_P8
 #include <src/my_p8est_two_phase_flows.h>
+#include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_two_phase_flows.h>
+#include <src/my_p4est_vtk.h>
 #endif
 
 #include <src/Parser.h>
@@ -213,6 +215,119 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
     fprintf(fp_results, "---------------------------------------------------- \n");
     fclose(fp_results);
   }
+  return;
+}
+
+void export_error_visualization(const string& vtk_dir, const my_p4est_two_phase_flows_t* solver, test_case_for_two_phase_flows_t* test_problem)
+{
+  PetscErrorCode ierr;
+  Vec error_v_minus_np1_nodes;
+  Vec error_v_plus_np1_nodes;
+  Vec error_v_sharp_np1_nodes;
+  Vec error_pressure_minus;
+  Vec error_pressure_plus;
+  Vec error_sharp_pressure;
+  const p4est_t* p4est = solver->get_p4est_n();
+  const p4est_nodes_t* nodes = solver->get_nodes_n();
+  const p4est_ghost_t* ghost = solver->get_ghost_n();
+  const my_p4est_interface_manager_t* interface_manager = solver->get_interface_manager();
+  ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &error_v_minus_np1_nodes); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &error_v_plus_np1_nodes); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &error_v_sharp_np1_nodes); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est, ghost, &error_sharp_pressure); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est, ghost, &error_pressure_minus); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est, ghost, &error_pressure_plus); CHKERRXX(ierr);
+  Vec vnp1_nodes_minus  = solver->get_vnp1_nodes_minus();
+  Vec vnp1_nodes_plus   = solver->get_vnp1_nodes_plus();
+  Vec pressure_minus    = solver->get_pressure_minus();
+  Vec pressure_plus     = solver->get_pressure_plus();
+  const double* vnp1_nodes_minus_p, *vnp1_nodes_plus_p, *pressure_minus_p, *pressure_plus_p;
+  double *error_v_minus_np1_nodes_p, *error_v_plus_np1_nodes_p, *error_v_sharp_np1_nodes_p, *error_pressure_minus_p, *error_pressure_plus_p, *error_sharp_pressure_p;
+  ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(pressure_minus,    &pressure_minus_p);   CHKERRXX(ierr);
+  ierr = VecGetArrayRead(pressure_plus,     &pressure_plus_p);    CHKERRXX(ierr);
+  ierr = VecGetArray(error_v_minus_np1_nodes, &error_v_minus_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_v_plus_np1_nodes , &error_v_plus_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_v_sharp_np1_nodes, &error_v_sharp_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_sharp_pressure   , &error_sharp_pressure_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_pressure_minus   , &error_pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_pressure_plus    , &error_pressure_plus_p); CHKERRXX(ierr);
+  double xyz[P4EST_DIM];
+  test_problem->set_time(solver->get_tnp1());
+  for (p4est_locidx_t node_idx = 0; node_idx < nodes->num_owned_indeps; ++node_idx) {
+    node_xyz_fr_n(node_idx, p4est, nodes, xyz);
+    char sgn_node = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      error_v_minus_np1_nodes_p[P4EST_DIM*node_idx + dim] = fabs(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] - test_problem->velocity_minus(dim, xyz));
+      error_v_plus_np1_nodes_p[P4EST_DIM*node_idx + dim] = fabs(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim] - test_problem->velocity_plus(dim, xyz));
+      if(sgn_node < 0)
+        error_v_sharp_np1_nodes_p[P4EST_DIM*node_idx + dim] = error_v_minus_np1_nodes_p[P4EST_DIM*node_idx + dim];
+      else
+        error_v_sharp_np1_nodes_p[P4EST_DIM*node_idx + dim] = error_v_plus_np1_nodes_p[P4EST_DIM*node_idx + dim];
+    }
+  }
+  ierr = VecGhostUpdateBegin(error_v_minus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(error_v_plus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(error_v_sharp_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_v_minus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_v_plus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_v_sharp_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz);
+      char sgn_quad = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+      error_pressure_minus_p[quad_idx]  = fabs(pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz));
+      error_pressure_plus_p[quad_idx]   = fabs(pressure_plus_p[quad_idx] - test_problem->pressure_plus(xyz));
+      if(sgn_quad < 0)
+        error_sharp_pressure_p[quad_idx] = error_pressure_minus_p[quad_idx];
+      else
+        error_sharp_pressure_p[quad_idx] = error_pressure_plus_p[quad_idx];
+    }
+  }
+  ierr = VecGhostUpdateBegin(error_pressure_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(error_pressure_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(error_sharp_pressure, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_pressure_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_pressure_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(error_sharp_pressure, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+
+  ierr = VecRestoreArray(error_v_minus_np1_nodes, &error_v_minus_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_v_plus_np1_nodes , &error_v_plus_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_v_sharp_np1_nodes, &error_v_sharp_np1_nodes_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_sharp_pressure   , &error_sharp_pressure_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_pressure_minus   , &error_pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_pressure_plus    , &error_pressure_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(pressure_minus,    &pressure_minus_p);   CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(pressure_plus,     &pressure_plus_p);    CHKERRXX(ierr);
+
+  vector<Vec_for_vtk_export_t> node_vector_fields;
+  vector<Vec_for_vtk_export_t> cell_fields;
+  node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_minus_np1_nodes, "error_v_minus_np1"));
+  node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_plus_np1_nodes, "error_v_plus_np1"));
+  node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_sharp_np1_nodes, "error_v_sharp_np1"));
+  cell_fields.push_back(Vec_for_vtk_export_t(error_pressure_minus, "error_p_minus"));
+  cell_fields.push_back(Vec_for_vtk_export_t(error_pressure_plus, "error_p_plus"));
+  cell_fields.push_back(Vec_for_vtk_export_t(error_sharp_pressure, "error_p_sharp"));
+
+  string file_name = vtk_dir + "/error_visualization";
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_FALSE, P4EST_FALSE, file_name.c_str(),
+                                       NULL, &node_vector_fields, &cell_fields, NULL);
+  node_vector_fields.clear();
+  cell_fields.clear();
+
+
+  ierr = delete_and_nullify_vector(error_v_minus_np1_nodes); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_v_plus_np1_nodes); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_v_sharp_np1_nodes); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_pressure_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_pressure_plus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_sharp_pressure); CHKERRXX(ierr);
   return;
 }
 
@@ -463,7 +578,6 @@ string subdirectory_inteprolation_ls_name(my_p4est_two_phase_flows_t* solver)
     throw std::runtime_error("main for two-phase flow validation::subdirectory_inteprolation_ls_name unknonw interpolation method for the levelset function");
     break;
   }
-
 }
 
 int main (int argc, char* argv[])
@@ -643,6 +757,8 @@ int main (int argc, char* argv[])
     advance_solver = true;
   }
   ierr = PetscPrintf(mpi.comm(), "Gracefully finishing up now\n");
+  if(save_vtk)
+    export_error_visualization(vtk_dir, two_phase_flow_solver, test_problem);
   print_convergence_results(export_dir, two_phase_flow_solver, test_problem);
 
   delete two_phase_flow_solver;
