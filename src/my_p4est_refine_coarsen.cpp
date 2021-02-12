@@ -55,7 +55,7 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
     double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-    CF_DIM& phi = *(data->phi);
+    const CF_DIM& phi = *(data->phi);
 
     double lip = data->lip;
 
@@ -122,7 +122,7 @@ refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, 
     double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-    CF_DIM&  phi = *(data->phi);
+    const CF_DIM&  phi = *(data->phi);
 
     double f;
     bool vmmm_is_neg = phi(DIM(x, y, z)) <= 0.0;
@@ -183,7 +183,7 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
     double z = (tree_zmax-tree_zmin)*(double)quad[0]->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-    CF_DIM &phi = *(data->phi);
+    const CF_DIM &phi = *(data->phi);
     double lip = data->lip;
 
     double f[P4EST_CHILDREN];
@@ -249,7 +249,7 @@ refine_levelset_thresh (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
     double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-    CF_DIM& f = *(data->f);
+    const CF_DIM& f = *(data->f);
     double thresh = data->thresh;
 
 #ifdef P4_TO_P8
@@ -303,7 +303,7 @@ coarsen_levelset_thresh (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
     double z = (tree_zmax-tree_zmin)*(double)quad[0]->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-    CF_DIM& f = *(data->f);
+    const CF_DIM& f = *(data->f);
     double thresh = data->thresh;
 
 #ifdef P4_TO_P8
@@ -1018,7 +1018,7 @@ refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad
     return P4EST_FALSE;
   else
   {
-    CF_DIM& cf = *sp->cf;
+    const CF_DIM& cf = *sp->cf;
 
     double x[P4EST_DIM], dx[P4EST_DIM];
     quad_xyz(p4est, quad, x);

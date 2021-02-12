@@ -55,9 +55,9 @@ struct splitting_criteria_t {
 };
 
 struct splitting_criteria_cf_t : splitting_criteria_t {
-  CF_DIM *phi;
+  const CF_DIM *phi;
   bool refine_only_inside;
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_DIM *phi, double lip=1.2) : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, const CF_DIM *phi, double lip=1.2) : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
     this->phi = phi;
   }
@@ -67,14 +67,14 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 
 struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
   const double uniform_band;
-  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_DIM *phi_, double uniform_band_, double lip=1.2)
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, const CF_DIM *phi_, double uniform_band_, double lip=1.2)
     : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
 };
 
 struct splitting_criteria_thresh_t : splitting_criteria_t {
-  CF_DIM *f;
+  const CF_DIM *f;
   double thresh;
-  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_DIM *f, double thresh)
+  splitting_criteria_thresh_t(int min_lvl, int max_lvl, const CF_DIM *f, double thresh)
     : splitting_criteria_t(min_lvl, max_lvl)
   {
     this->f = f;
@@ -191,10 +191,10 @@ public:
 };
 
 struct splitting_criteria_grad_t: public splitting_criteria_t {
-  CF_DIM* cf;
+  const CF_DIM* cf;
   double fmax, tol;
 
-  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_DIM* cf, double fmax, double tol = 1e-2)
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, const CF_DIM* cf, double fmax, double tol = 1e-2)
   : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
   {}
   virtual ~splitting_criteria_grad_t() {};
