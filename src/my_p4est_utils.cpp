@@ -3253,3 +3253,42 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
       throw;
   }
 }
+
+void truncate_exportation_file_up_to_tstart(const double& tstart, const std::string &filename, const u_int& n_extra_values_exported_per_line)
+{
+  FILE* fp = fopen(filename.c_str(), "r+");
+  char* read_line = NULL;
+  size_t len = 0;
+  ssize_t len_read;
+  long size_to_keep = 0;
+  if(((len_read = getline(&read_line, &len, fp)) != -1))
+    size_to_keep += (long) len_read;
+  else
+    throw std::runtime_error("truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
+  std::string read_format = "%lg";
+  for (u_int k = 0; k < n_extra_values_exported_per_line; ++k)
+    read_format += " %*g";
+  double time, time_nm1;
+  double dt = 0.0;
+  bool not_first_line = false;
+  while ((len_read = getline(&read_line, &len, fp)) != -1) {
+    if(not_first_line)
+      time_nm1 = time;
+    sscanf(read_line, read_format.c_str(), &time);
+    if(not_first_line)
+      dt = time - time_nm1;
+    if(time <= tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
+      size_to_keep += (long) len_read;
+    else
+      break;
+    not_first_line = true;
+  }
+  fclose(fp);
+  if(read_line)
+    free(read_line);
+  if(truncate(filename.c_str(), size_to_keep))
+    throw std::runtime_error("truncate_exportation_file_up_to_tstart: couldn't truncate " + filename);
+  return;
+}
+
+

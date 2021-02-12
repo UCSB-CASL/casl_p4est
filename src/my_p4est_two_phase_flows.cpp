@@ -4111,3 +4111,115 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   return;
 }
 
+
+void my_p4est_two_phase_flows_t::build_initial_computational_grids(const mpi_environment_t &mpi, my_p4est_brick_t *brick, p4est_connectivity_t* connectivity,
+                                                                   const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_n, const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_np1,
+                                                                   p4est_t* &p4est_nm1, p4est_ghost_t* &ghost_nm1, p4est_nodes_t* &nodes_nm1, my_p4est_hierarchy_t* &hierarchy_nm1, my_p4est_node_neighbors_t* &ngbd_nm1,
+                                                                   p4est_t* &p4est_n, p4est_ghost_t* &ghost_n, p4est_nodes_t* &nodes_n, my_p4est_hierarchy_t* &hierarchy_n, my_p4est_node_neighbors_t* &ngbd_n,
+                                                                   my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces, Vec &phi_np1_computational_nodes)
+{
+  PetscErrorCode ierr;
+  // clear inout computational grid data at time (n - 1), if needed
+  if(p4est_nm1 != NULL)
+    p4est_destroy(p4est_nm1);
+  if(ghost_nm1 != NULL)
+    p4est_ghost_destroy(ghost_nm1);
+  if(nodes_nm1 != NULL)
+    p4est_nodes_destroy(nodes_nm1);
+  if(hierarchy_nm1 != NULL)
+    delete hierarchy_nm1;
+  if(ngbd_nm1 != NULL)
+    delete ngbd_nm1;
+  // clear inout computational grid data at time n, if needed
+  if(p4est_n != NULL)
+    p4est_destroy(p4est_n);
+  if(ghost_n != NULL)
+    p4est_ghost_destroy(ghost_n);
+  if(nodes_n != NULL)
+    p4est_nodes_destroy(nodes_n);
+  if(hierarchy_n != NULL)
+    delete hierarchy_n;
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+  if(ngbd_c != NULL)
+    delete ngbd_c;
+  if(faces != NULL)
+    delete faces;
+  if(phi_np1_computational_nodes != NULL){
+    ierr = VecDestroy(phi_np1_computational_nodes); CHKERRXX(ierr); }
+
+  // build computational grid data at time (n - 1) and n
+  p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+  p4est_n   = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+  p4est_nm1->user_pointer = (void*) data_with_with_phi_n;
+  p4est_n->user_pointer   = (void*) data_with_with_phi_np1;
+
+  for(int l = 0; l < data_with_with_phi_n->max_lvl; ++l)
+  {
+    my_p4est_refine(p4est_nm1,    P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
+    my_p4est_refine(p4est_n,      P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
+    my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
+    my_p4est_partition(p4est_n,   P4EST_FALSE, NULL);
+  }
+  /* balance and (re)partition: */
+  p4est_balance(p4est_nm1, P4EST_CONNECT_FULL, NULL);
+  my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
+  p4est_balance(p4est_n, P4EST_CONNECT_FULL, NULL);
+  my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
+
+  // finalize nm1 grid
+  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1); ngbd_nm1->init_neighbors();
+
+  /* finalize n grid */
+  ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_n, ghost_n);
+  nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
+  hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+  ngbd_n  = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n); ngbd_n->init_neighbors();
+  ngbd_c  = new my_p4est_cell_neighbors_t(hierarchy_n);
+  faces   = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_np1_computational_nodes); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est_n, nodes_n, *data_with_with_phi_np1->phi, phi_np1_computational_nodes);
+  return;
+}
+
+void my_p4est_two_phase_flows_t::build_initial_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, const splitting_criteria_cf_t* subrefined_data_with_phi_np1,
+                                                                        p4est_t* &subrefined_p4est, p4est_ghost_t* &subrefined_ghost, p4est_nodes_t* &subrefined_nodes,
+                                                                        my_p4est_hierarchy_t* &subrefined_hierarchy, my_p4est_node_neighbors_t* &subrefined_ngbd_n, Vec &subrefined_phi)
+{
+
+  PetscErrorCode ierr;
+  // clear inout data, if needed
+  if(subrefined_p4est != NULL)
+    p4est_destroy(subrefined_p4est);
+  if(subrefined_ghost != NULL)
+    p4est_ghost_destroy(subrefined_ghost);
+  if(subrefined_nodes != NULL)
+    p4est_nodes_destroy(subrefined_nodes);
+  if(subrefined_hierarchy != NULL)
+    delete subrefined_hierarchy;
+  if(subrefined_ngbd_n != NULL)
+    delete subrefined_ngbd_n;
+  if(subrefined_phi != NULL) {
+    ierr = VecDestroy(subrefined_phi); CHKERRXX(ierr); }
+
+  subrefined_p4est = p4est_copy(p4est_n, P4EST_FALSE); // we need matching local domain partitions!
+  subrefined_p4est->user_pointer = (void*) subrefined_data_with_phi_np1;
+  while (find_max_level(subrefined_p4est) < (int8_t) subrefined_data_with_phi_np1->max_lvl) {
+    p4est_refine(subrefined_p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+  }
+  subrefined_ghost = my_p4est_ghost_new(subrefined_p4est, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(subrefined_p4est, subrefined_ghost);
+  subrefined_hierarchy = new my_p4est_hierarchy_t(subrefined_p4est, subrefined_ghost, brick);
+  subrefined_nodes = my_p4est_nodes_new(subrefined_p4est, subrefined_ghost);
+  subrefined_ngbd_n = new my_p4est_node_neighbors_t(subrefined_hierarchy, subrefined_nodes); subrefined_ngbd_n->init_neighbors();
+
+  ierr = VecCreateGhostNodes(subrefined_p4est, subrefined_nodes, &subrefined_phi); CHKERRXX(ierr);
+  sample_cf_on_nodes(subrefined_p4est, subrefined_nodes, *subrefined_data_with_phi_np1->phi, subrefined_phi);
+  return;
+}

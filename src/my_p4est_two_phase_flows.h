@@ -658,6 +658,21 @@ public:
   inline double get_progress_n()    const { return t_n - tstart;        }
   inline double get_progress_np1()  const { return t_n + dt_n - tstart; }
 
+
+  // GENERAL functions of interests for initializing runs, monitoring exportations, etc...
+  // made static since we are not even working on an object (don't even need one for pre-construction steps for instance)
+  static void build_initial_computational_grids(const mpi_environment_t &mpi, my_p4est_brick_t *brick, p4est_connectivity_t* connectivity,
+                                                const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_n, const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_np1,
+                                                p4est_t* &p4est_nm1, p4est_ghost_t* &ghost_nm1, p4est_nodes_t* &nodes_nm1, my_p4est_hierarchy_t* &hierarchy_nm1, my_p4est_node_neighbors_t* &ngbd_nm1,
+                                                p4est_t* &p4est_n, p4est_ghost_t* &ghost_n, p4est_nodes_t* &nodes_n, my_p4est_hierarchy_t* &hierarchy_n, my_p4est_node_neighbors_t* &ngbd_n,
+                                                my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces, Vec &phi_np1_computational_nodes);
+
+  static void build_initial_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, const splitting_criteria_cf_t* subrefined_data_with_phi_np1,
+                                                     p4est_t* &subrefined_p4est, p4est_ghost_t* &subrefined_ghost, p4est_nodes_t* &subrefined_nodes,
+                                                     my_p4est_hierarchy_t* &subrefined_hierarchy, my_p4est_node_neighbors_t* &subrefined_ngbd_n, Vec &subrefined_phi);
+
+
+
 };
 
 #endif // MY_P4EST_TWO_PHASE_FLOWS_H

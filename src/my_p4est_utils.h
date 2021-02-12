@@ -3575,6 +3575,10 @@ struct interface_conditions_t
 double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
+
+// WARNING: non-collective procedure, make sure only one process calls this (on a given file) at a time
+void truncate_exportation_file_up_to_tstart(const double& tstart, const std::string &filename, const u_int& n_extra_values_exported_per_line);
+
 #endif // UTILS_H
 
 
