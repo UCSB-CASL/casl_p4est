@@ -118,6 +118,7 @@ private:
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
   double max_velocity_correction_in_projection[2];    // 0 <--> minus domain, 1 <--> plus domain
   double max_surface_tension_in_band_of_two_cells;
+  double final_time;
 
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
@@ -298,6 +299,7 @@ private:
   inline void compute_dt_np1()
   {
     dt_np1 = MIN(get_advection_dt(), get_visco_capillary_dt() + sqrt(SQR(get_visco_capillary_dt()) + SQR(get_capillary_dt())));
+    dt_np1 = MIN(dt_np1, final_time - t_n - dt_n);
   }
 
   void build_jump_in_normal_velocity(); // possible jump in normal velocity = mass flux*(jump in 1.0/rho)
@@ -475,7 +477,7 @@ public:
   void solve_viscosity();
   void solve_projection();
 
-  void solve_time_step(const double& velocity_relative_threshold, const int& max_niter, const double& t_end);
+  void solve_time_step(const double& velocity_relative_threshold, const int& max_niter);
 
   void set_cell_jump_solver(const jump_solver_tag& solver_to_use,   const KSPType& KSP_ = "default", const PCType& PC_ = "default");
   void set_face_jump_solvers(const jump_solver_tag& solver_to_use,  const KSPType& KSP_ = "default", const PCType& PC_ = "default");
@@ -645,6 +647,8 @@ public:
   {
     log_file = log_;
   }
+
+  inline void set_final_time(const double& final_time_) { final_time = final_time_; }
 
   /*!
    * \brief initialize_time_steps sets dt_nm1 = dt_n = time_step;

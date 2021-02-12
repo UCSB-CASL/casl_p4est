@@ -347,6 +347,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   set_cell_jump_solver(FV);   // default is finite-volume solver for projection step
   set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
+  final_time = DBL_MAX;
 
 }
 
@@ -464,7 +465,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   set_cell_jump_solver(cell_jump_solver_to_use); // we use default
   set_face_jump_solvers(face_jump_solver_to_use);
-
+  final_time = DBL_MAX;
 }
 
 void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder)
@@ -1746,7 +1747,7 @@ void my_p4est_two_phase_flows_t::solve_projection()
   return;
 }
 
-void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter, const double& t_end)
+void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter)
 {
   PetscErrorCode ierr;
   // intialize the measures monitoring fix-point iterations
@@ -1781,7 +1782,7 @@ void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative
   // log progress
   ierr = PetscFPrintf(p4est_n->mpicomm, log_file,
                       "Time step #%04d : tn = %.5e, progress : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
-                      nsolve_calls, t_n + dt_n, 100*(t_n + dt_n - tstart)/(t_end - tstart),
+                      nsolve_calls, t_n + dt_n, 100*(t_n + dt_n - tstart)/(final_time - tstart),
                       get_max_velocity(), p4est_n->global_num_quadrants); CHKERRXX(ierr);
   nsolve_calls++;
   return;
