@@ -300,6 +300,25 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     interface_capturing_phi_np1 = subrefined_phi_np1;
   }
 
+  if(test_case.is_reinitialization_needed())
+  {
+    my_p4est_level_set_t ls((use_subrefinement ? subrefined_ngbd_n : ngbd_n));
+    ls.reinitialize_2nd_order((use_subrefinement ? subrefined_phi_np1 : phi_np1));
+    if(use_subrefinement)
+    {
+      my_p4est_interpolation_nodes_t interp_phi(subrefined_ngbd_n);
+      interp_phi.set_input(subrefined_phi_np1, phi_interp);
+      for (p4est_locidx_t node_idx = 0; node_idx < nodes_n->num_owned_indeps; ++node_idx) {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+        interp_phi.add_point(node_idx, xyz_node);
+      }
+      interp_phi.interpolate(phi_np1);
+      ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+    }
+  }
+
   if(solver != NULL)
     delete solver;
   solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces, (use_subrefinement ? subrefined_ngbd_n : NULL));

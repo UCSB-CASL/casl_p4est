@@ -207,7 +207,7 @@ protected:
   double mu_m, mu_p;
   double rho_m, rho_p;
   double surface_tension;
-  bool static_interface, surface_tension_is_constant, nonzero_mass_flux;
+  bool static_interface, surface_tension_is_constant, nonzero_mass_flux, levelset_cf_is_signed_distance;
   wall_pressure_bc_value_t wall_pressure_bc_value;
   wall_velocity_bc_value_t  DIM(wall_velocity_bc_value_u,   wall_velocity_bc_value_v,   wall_velocity_bc_value_w  );
   force_per_unit_mass_t     DIM(bulk_acceleration_minus_x,  bulk_acceleration_minus_y,  bulk_acceleration_minus_z );
@@ -465,9 +465,10 @@ public:
   inline double get_rho_plus() const                  { return rho_p; }
   inline double get_surface_tension() const           { return (surface_tension_is_constant ? surface_tension : NAN); }
   inline const domain_t &get_domain() const           { return domain; }
-  inline bool is_interface_static() const             { return static_interface;            };
-  inline bool is_surface_tension_constant() const     { return surface_tension_is_constant; };
-  inline bool with_mass_flux() const                  { return nonzero_mass_flux;           };
+  inline bool is_interface_static() const             { return static_interface;                  };
+  inline bool is_surface_tension_constant() const     { return surface_tension_is_constant;       };
+  inline bool with_mass_flux() const                  { return nonzero_mass_flux;                 };
+  inline bool is_reinitialization_needed() const      { return !levelset_cf_is_signed_distance ;  };
   inline void set_time(const double& time_)   { time = time_; };
   inline BoundaryConditionsDIM& get_pressure_wall_bc() { return pressure_wall_bc; }
   inline BoundaryConditionsDIM* get_velocity_wall_bc() { return velocity_wall_bc; }
@@ -524,6 +525,7 @@ public:
     surface_tension = 0.0; // no surface tension effect in here but a surface-defined interface stress
     surface_tension_is_constant = true; // no need to bother with the calculation of Marangoni forces
     nonzero_mass_flux = false;
+    levelset_cf_is_signed_distance = true;
 
     static_interface = true;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -783,6 +785,7 @@ public:
     surface_tension = 0.1; // no surface tension effect in here but a surface-defined interface stress
     surface_tension_is_constant = true; // no need to bother with the calculation of Marangoni forces
     nonzero_mass_flux = false;
+    levelset_cf_is_signed_distance = false;
 
     static_interface = true;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
