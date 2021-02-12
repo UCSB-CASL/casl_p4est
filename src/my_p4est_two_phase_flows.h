@@ -375,6 +375,11 @@ public:
     user_defined_mass_flux = mass_flux_;
   }
 
+  inline void set_interface_force(Vec interface_force_)
+  {
+    user_defined_interface_force = interface_force_;
+  }
+
   inline void set_densities(const double& rho_m_, const double& rho_p_)
   {
     rho_minus = rho_m_;
@@ -445,8 +450,6 @@ public:
     dt_np1  = -DBL_MAX; // absurd value
   }
 
-  inline void set_interface_force(Vec interface_force_) { user_defined_interface_force = interface_force_; };
-
   inline bool viscosities_are_equal() const { return fabs(mu_minus - mu_plus) < EPS*MAX(fabs(mu_minus), fabs(mu_plus)); }
   inline bool mass_densities_are_equal() const { return fabs(rho_minus - rho_plus) < EPS*MAX(fabs(rho_minus), fabs(rho_plus)); }
 
@@ -462,6 +465,7 @@ public:
   inline my_p4est_node_neighbors_t* get_ngbd_n() const                      { return ngbd_n; }
 
   inline const my_p4est_interface_manager_t* get_interface_manager() const  { return interface_manager; }
+  inline my_p4est_interface_manager_t* get_interface_manager()              { return interface_manager; } // in case we want to augment the interface_manager
   inline Vec get_vnp1_nodes_minus() const                                   { return vnp1_nodes_minus; }
   inline Vec get_vnp1_nodes_plus() const                                    { return vnp1_nodes_plus; }
   inline double get_diag_min() const                                        { return tree_diagonal/((double) (1 << (interface_manager->get_max_level_computational_grid()))); }
