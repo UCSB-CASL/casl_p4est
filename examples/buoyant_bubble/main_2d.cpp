@@ -403,8 +403,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_n_viscous_subiterations(nviscous_subiter);
   solver->initialize_time_steps();
 
-  solver->set_cell_jump_solver(cell_solver_to_use, "default", PCSOR);
-  solver->set_face_jump_solvers(face_solver_to_use, "default", PCSOR);
+  solver->set_cell_jump_solver(cell_solver_to_use);
+  solver->set_face_jump_solvers(face_solver_to_use);
   if(use_second_order_theta)
     solver->fetch_interface_points_with_second_order_accuracy();
   return;
