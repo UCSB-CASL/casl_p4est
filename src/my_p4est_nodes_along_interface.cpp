@@ -6,15 +6,28 @@
 
 /////////////////////////////////////////////////// Private methods ////////////////////////////////////////////////////
 
-void NodesAlongInterface::_processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx,
-										   std::vector<p4est_locidx_t>& indices )
-{
 #ifdef P4_TO_P8
-	OctValueExtended  phiAndIdxValues;
+void NodesAlongInterface::_compareNodes( const OctValueExtended& phiAndIdxValues, int i, int j,
+										 std::unordered_set<p4est_locidx_t>& indices )
 #else
-	QuadValueExtended phiAndIdxValues;
+void NodesAlongInterface::_compareNodes( const QuadValueExtended& phiAndIdxValues, int i, int j,
+										 std::unordered_set<p4est_locidx_t>& indices )
 #endif
+{
+	if( phiAndIdxValues.val[i] * phiAndIdxValues.val[j] <= 0 )
+	{
+		indices.insert( phiAndIdxValues.indices[i] );
+		indices.insert( phiAndIdxValues.indices[j] );
+	}
+}
 
+
+#ifdef P4_TO_P8
+bool NodesAlongInterface::_organizeNodalInfo( p4est_locidx_t quadIdx, OctValueExtended& phiAndIdxValues ) const
+#else
+bool NodesAlongInterface::_organizeNodalInfo( p4est_locidx_t quadIdx, QuadValueExtended& phiAndIdxValues ) const
+#endif
+{
 	// Get node indices belonging to current quadrant.
 	const p4est_locidx_t *q2n = _nodes->local_nodes + P4EST_CHILDREN * quadIdx;
 	for( unsigned char incX = 0; incX < 2; incX++ )			// Truth table with x changing slowly, y changing faster
@@ -31,20 +44,81 @@ void NodesAlongInterface::_processQuadOct( const p4est_quadrant_t *quad, p4est_l
 			phiAndIdxValues.indices[idxInQuadOctValue] = nodeSubIdxInQuad;			// indices.
 		}
 
-	// Discard quad/oct if not crossed by \Gamma.
+	// Discard quad/oct if not crossed by Gamma.
 	if( phiAndIdxValues.val[0] <= 0 && phiAndIdxValues.val[1] <= 0 &&
 		phiAndIdxValues.val[2] <= 0 && phiAndIdxValues.val[3] <= 0
 		ONLY3D( && phiAndIdxValues.val[4] <= 0 && phiAndIdxValues.val[5] <= 0 &&
 					phiAndIdxValues.val[6] <= 0 && phiAndIdxValues.val[7] <= 0 ) )
-		return;
+		return false;
 
 	if( phiAndIdxValues.val[0] > 0 && phiAndIdxValues.val[1] > 0 &&
 		phiAndIdxValues.val[2] > 0 && phiAndIdxValues.val[3] > 0
 		ONLY3D( && phiAndIdxValues.val[4] > 0 && phiAndIdxValues.val[5] > 0 &&
 					phiAndIdxValues.val[6] > 0 && phiAndIdxValues.val[7] > 0 ) )
+		return false;
+
+	return true;		// Quad/oct is crossed by Gamma.
+}
+
+
+void NodesAlongInterface::_processIndepQuadOct( p4est_locidx_t quadIdx, std::unordered_set<p4est_locidx_t> &indices ) const
+{
+#ifdef P4_TO_P8
+	OctValueExtended  phiAndIdxValues;
+#else
+	QuadValueExtended phiAndIdxValues;
+#endif
+
+	// Get quad/oct data.
+	if( !_organizeNodalInfo( quadIdx, phiAndIdxValues ) )	// Stop processing quad/oct if not crossed by Gamma.
 		return;
 
-	// Check each non-visited node with an irradiating edge being crossed by \Gamma.
+	// Gamma crosses the quad/oct.  Find the pairs of affected vertices.
+	// We consider the fact that if one of the quad corners falls exactly on the interface (i.e., phi = 0), all of its
+	// neighboring points will be included in the indices set.  This is different than _processQuadOct, where we don't
+	// add any of the neigobors of a node sitting exactly on the interface.
+	// Based on types.h:
+	//		 2D                      3D                   #vertex  #loc
+	//	v01      v11			010      110               	000		0
+	//	 *--------*				 *--------*					001		1
+	//	 |        |				/.   111 /|					010		2
+	// 	 |        |		   011 *--------* |					011		3
+	//	 *--------*			   | *......|.*					100		4
+	//	v00      v10		   |· 000   |/ 100				101		5
+	//		 				   *--------*					110		6
+	//	   y|				  001      101	   y|			111		7
+	//		+---								+--- x
+	//		  x								   /z
+	for( int i = 0; i < P4EST_DIM - 1; i++ )	// Loop covers the quad case and the left and right faces of octant.
+	{
+		int stride = i * 4;
+		_compareNodes( phiAndIdxValues, 0 + stride, 1 + stride, indices );	// Notice we don't compare nodes across
+		_compareNodes( phiAndIdxValues, 0 + stride, 2 + stride, indices );	// the quad's diagonal.
+		_compareNodes( phiAndIdxValues, 3 + stride, 1 + stride, indices );
+		_compareNodes( phiAndIdxValues, 3 + stride, 2 + stride, indices );
+	}
+
+#ifdef P4_TO_P8
+	// In 3D, we have four more edeges to check, parallel to x axis.
+	for( int i = 0; i < 4; i++ )
+		_compareNodes( phiAndIdxValues, i, i + 4, indices );
+#endif
+}
+
+
+void NodesAlongInterface::_processQuadOct( p4est_locidx_t quadIdx, std::vector<p4est_locidx_t>& indices )
+{
+#ifdef P4_TO_P8
+	OctValueExtended  phiAndIdxValues;
+#else
+	QuadValueExtended phiAndIdxValues;
+#endif
+
+	// Get quad/oct data.
+	if( !_organizeNodalInfo( quadIdx, phiAndIdxValues ) )	// Stop processing quad/oct if not crossed by Gamma.
+		return;
+
+	// Check each non-visited node with an irradiating edge being crossed by Gamma.
 	double data[P4EST_DIM][2][2];
 	const short F = 0, S = 1;								// Meaning: function index, distance index.
 	for( auto n : phiAndIdxValues.indices )
@@ -70,12 +144,12 @@ void NodesAlongInterface::_processQuadOct( const p4est_quadrant_t *quad, p4est_l
 						continue;
 					if( dir[F] * _phiPtr[n] < 0 )			// Crossed by interface? Unlike in FastSweeping, we don't
 					{										// check for <= 0 because it then will output points that
-						crossed = true;						// are neighbors to nodes that fall exactly on \Gamma.
+						crossed = true;						// are neighbors to nodes that fall exactly on Gamma.
 						break;
 					}
 				}
 
-				if( crossed )								// Just find a single edge crossed by \Gamma.
+				if( crossed )								// Just find a single edge crossed by Gamma.
 					break;
 			}
 
@@ -153,7 +227,7 @@ void NodesAlongInterface::getIndices( const Vec *phi, std::vector<p4est_locidx_t
 		i = false;
 
 	// Go through each quad/octant and check if it's crossed by the interface.  As a shortcut, we can skip quads/octs
-	// that are not at the max level of refinement since that means they are not detailed enough to contain \Gamma.
+	// that are not at the max level of refinement since that means they are not detailed enough to contain Gamma.
 	for( p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
 	{
 		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );	// Check all local trees that posses local
@@ -164,7 +238,7 @@ void NodesAlongInterface::getIndices( const Vec *phi, std::vector<p4est_locidx_t
 			{
 				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
 				if( quad->level == _maxLevelOfRefinement )	// Is this quad/oct potentially crossed by the interface?
-					_processQuadOct( quad, quadIdx + tree->quadrants_offset, indices );
+					_processQuadOct( quadIdx + tree->quadrants_offset, indices );
 			}
 		}
 	}
@@ -314,3 +388,46 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 
 	return true;
 }
+
+
+void NodesAlongInterface::getIndepIndices( const Vec *phi, const p4est_ghost_t *ghost,
+										 std::unordered_set<p4est_locidx_t> &indices )
+{
+	PetscErrorCode ierr;
+	ierr = VecGetArrayRead( *phi, &_phiPtr );		// Access the parallel vector with level-set function values.
+	CHKERRXX( ierr );
+
+	// Reserve space for all independent nodes.
+	indices.clear();								// Start afresh.
+	indices.reserve( _nodes->indep_nodes.elem_count );
+
+	// First, go through each locally owned quad/octant and check if it's crossed by the interface.  Skip quads/octs
+	// that are not at the max level of refinement since that means they are not detailed enough to contain Gamma.
+	for( p4est_topidx_t treeIdx = _p4est->first_local_tree; treeIdx <= _p4est->last_local_tree; treeIdx++ )
+	{
+		auto *tree = (p4est_tree_t*)sc_array_index( _p4est->trees, treeIdx );	// Check all local trees that posses local
+		if( tree->maxlevel == _maxLevelOfRefinement )							// quads/octs with max level of refinement.
+		{
+			// Check each quadrant in local trees.
+			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
+			{
+				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
+				if( quad->level == _maxLevelOfRefinement )	// Is this quad/oct potentially crossed by the interface?
+					_processIndepQuadOct( quadIdx + tree->quadrants_offset, indices );
+			}
+		}
+	}
+
+	// Second, go through ghost quadrants and repeat the previous process.
+	for( p4est_topidx_t ghostIdx = 0; ghostIdx < ghost->ghosts.elem_count; ghostIdx++ )
+	{
+		auto *quad = (const p4est_quadrant_t*)p4est_quadrant_array_index( &(const_cast<p4est_ghost_t*>(ghost)->ghosts), ghostIdx );
+		if( quad->level == _maxLevelOfRefinement )			// Is this quad/oct potentially crossed by the interface?
+			_processIndepQuadOct( _p4est->local_num_quadrants + ghostIdx, indices );
+	}
+
+	ierr = VecRestoreArrayRead( *phi, &_phiPtr );	// Cleaning up.
+	CHKERRXX( ierr );
+}
+
+

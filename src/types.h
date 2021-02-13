@@ -45,12 +45,12 @@ struct QuadValue {
 /**
  * An extension of QuadValue class to also store the corresponding independent node indices for a given quad.
  * A quad is characterized as:
- *          v10      v11
+ *          v01      v11
  *           *--------*
  *           |        |
  *           |        |
  *           *--------*
- *          v00      v01
+ *          v00      v10
  */
 struct QuadValueExtended : public QuadValue
 {
@@ -131,14 +131,14 @@ struct OctValue {
 /**
  * An extension of OctValue class to also store the corresponding independent node indices for a given octant.
  * An octant is characterized as:
- *            110      111
+ *            010      110
  *             *--------*
- *            /.   011 /|
- *       010 *--------* |
+ *            /.   111 /|
+ *       011 *--------* |
  *           | *......|.*
- *           |· 100   |/ 101
+ *           |· 000   |/ 100
  *           *--------*
- *          000      001
+ *          001      101
  */
 struct OctValueExtended : public OctValue
 {

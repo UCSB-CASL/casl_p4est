@@ -34,6 +34,7 @@
 #include <src/petsc_compatibility.h>
 #include <src/casl_math.h>
 #include <vector>
+#include <unordered_set>
 
 /**
  * Class to hold methods related to retrieving and processing nodes along the interface, such as collecting their and
@@ -48,21 +49,58 @@ private:
 	const my_p4est_node_neighbors_t *_neighbors = nullptr;		// Pointer to nodes' neighborhood information.
 	const signed char _maxLevelOfRefinement = P4EST_MAXLEVEL;	// Expected maximum level of refinement, possibly different
 																// to actual maximum level of refinement reached by trees.
-	double _h = 0.0;											// Uniform minimum spacing for quads/octs crossed by \Gamma.
+	double _h = 0.0;											// Uniform minimum spacing for quads/octs crossed by Gamma.
 	double _zEPS = EPS;											// To be a scaled version of EPS, based on my_p4est_level_set.h.
 	const double *_phiPtr = nullptr;							// Read-pointer for a queried level-set function.
 	std::vector<bool> _visited;									// Cache vector of visited nodes when collecting points
 																// by the interface.
 
 	/**
-	 * Process a quadrant/octant and obtain the indices of nodes that lie on or next to the interface.  That is, check
-	 * for the nodes in the quad/oct and verify if there are some whose irradiating edges are crossed by \Gamma.  If so,
-	 * place their indices in an output dynamic vector.
-	 * @param [in] quad Pointer to quadrant object to analyze.
+	 * Organize quad/oct information into a struct with node indices and level-set values.  Also, check if all nodes in
+	 * the quad/oct have the same sign in their level-set value to determine if the quad/oct is crossed by Gamma.
+	 * @param [in] quadIdx Quad/oct index in macromesh.
+	 * @param [out] phiAndIdxValues Struct that holds the node indices and level-set values in an organized manner.
+	 * @return True if quad is crossed by the interface (i.e., at least one node has different sign), false otherwise.
+	 */
+#ifdef P4_TO_P8
+	bool _organizeNodalInfo( p4est_locidx_t quadIdx, OctValueExtended& phiAndIdxValues );
+#else
+	bool _organizeNodalInfo( p4est_locidx_t quadIdx, QuadValueExtended& phiAndIdxValues ) const;
+#endif
+
+	/**
+	 * Compare the level-set function value of two adjacent nodes, i and j, within a quad/oct.  If phi(i) * phi(j) <= 0,
+	 * then both nodes local partition indices are added to the output set `indices`.
+	 * @param [in] phiAndIdxValues Struct containing the node indices and level-set function values.
+	 * @param [in] i First node index (within the the quad info struct).
+	 * @param [in] j Second node index (within the quad info struct).
+	 * @param [out] indices Set of indices to be updated.
+	 */
+#ifdef P4_TO_P8
+	static void _compareNodes( const OctValueExtended& phiAndIdxValues, int i, int j,
+							   std::unordered_set<p4est_locidx_t>& indices );
+#else
+	static void _compareNodes( const QuadValueExtended& phiAndIdxValues, int i, int j,
+							   std::unordered_set<p4est_locidx_t>& indices );
+#endif
+
+	/**
+	 * Process a locally owned quadrant/octant and obtain the indices of nodes that lie on or next to the interface.
+	 * That is, check for the locally owned nodes in the quad/oct and verify if there are some whose irradiating edges
+	 * are crossed by Gamma.  If so, place their indices in an output dynamic vector.
 	 * @param [in] quadIdx Absolute index of quadrant in macromesh.
 	 * @param [out] indices Vector of nodal indices to be populated.
 	 */
-	void _processQuadOct( const p4est_quadrant_t *quad, p4est_locidx_t quadIdx, std::vector<p4est_locidx_t>& indices );
+	void _processQuadOct( p4est_locidx_t quadIdx, std::vector<p4est_locidx_t>& indices );
+
+	/**
+	 * Process a locally owned or ghost quadrant/octant and obtain the indices of nodes that lie on or next to the
+	 * interface.  That is, check if any of the quad/oct edges is crossed by Gamma.  If so, place the indices of the
+	 * two nodes sitting on those crossed edges in the output set.
+	 * @param [in] quadIdx Absolute index of quadrant in macromesh.
+	 * @param [out] indices Set of nodal indices to be populated.
+	 */
+	void _processIndepQuadOct( p4est_locidx_t quadIdx, std::unordered_set<p4est_locidx_t>& indices ) const;
 
 	/**
 	 * Shortcut function to compare the nodal indices comming from the my_p4est_node_neighbors_t::get_all_neighbors with
@@ -98,15 +136,29 @@ public:
 
 	/**
 	 * Retrieve indices of locally-owned nodes that are on or adjacent to the interface.
-	 * Warning! This function returns indices of nodes that belong to at least one quad/oct at the maximum level of
-	 * refinement AND at least one of their irradiating edges is crossed by \Gamma.  The function can still return the
+	 * @warning This function returns indices of nodes that belong to at least one quad/oct at the maximum level of
+	 * refinement AND at least one of their irradiating edges is crossed by Gamma.  The function can still return the
 	 * index of a node that meets the previous condition, yet it is a neighbor to a node that is not at the same
 	 * distance than the other neighbors.  The function `getFullStencilOfNode(.)` will discard these nodes because their
 	 * neighborhood is not uniform.
 	 * @param [in] phi A PETSc parallel vector with nodal level-set function values.
-	 * @param [out] indices Dynamic vector of nodal indices on or adjacent to \Gamma.
+	 * @param [out] indices Dynamic vector of nodal indices on or adjacent to Gamma.
 	 */
 	void getIndices( const Vec *phi, std::vector<p4est_locidx_t>& indices );
+
+	/**
+	 * Retrieve indices of all independent grid points that lie on or are adjacent to the interface.
+	 * Unlike getIndices(), here we also return the indices of nodes that belong to the ghost layer.  The process for
+	 * retrieving all independent grid point indices is substantially different than in getIndices().
+	 * @warning This function returns indices of nodes that belong to at least one quad/oct at the maximum level of
+	 * refinement AND at least one of their irradiating edges is crossed by Gamma.  The function can still return the
+	 * index of a node that meets the previous condition, yet it is a neighbor to a node that is not at the same
+	 * distance than the other neighbors.
+	 * @param [in] phi Level-set function values parallel PETSc vector.
+	 * @param [in] ghost The ghost struct.
+	 * @param [out] indices Resulting set of node indices on or adjacent to Gamma.
+	 */
+	void getIndepIndices( const Vec *phi, const p4est_ghost_t *ghost, std::unordered_set<p4est_locidx_t>& indices );
 
 	/**
 	 * Retrieve the full stencil of neighbor-node indices to a locally owned node if and only if all of them have uniform
