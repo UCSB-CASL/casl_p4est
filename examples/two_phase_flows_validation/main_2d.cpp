@@ -230,6 +230,7 @@ void export_error_visualization(const string& vtk_dir, const my_p4est_two_phase_
   const p4est_t* p4est = solver->get_p4est_n();
   const p4est_nodes_t* nodes = solver->get_nodes_n();
   const p4est_ghost_t* ghost = solver->get_ghost_n();
+  const my_p4est_faces_t* faces = solver->get_faces_n();
   const my_p4est_interface_manager_t* interface_manager = solver->get_interface_manager();
   ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &error_v_minus_np1_nodes); CHKERRXX(ierr);
   ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &error_v_plus_np1_nodes); CHKERRXX(ierr);
@@ -306,20 +307,73 @@ void export_error_visualization(const string& vtk_dir, const my_p4est_two_phase_
   ierr = VecRestoreArrayRead(pressure_minus,    &pressure_minus_p);   CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(pressure_plus,     &pressure_plus_p);    CHKERRXX(ierr);
 
+
+  Vec error_v_minus_np1_faces[P4EST_DIM], error_v_minus_np1_on_cells;
+  Vec error_v_plus_np1_faces[P4EST_DIM],  error_v_plus_np1_on_cells;
+  const double *v_minus_np1_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  const double *v_plus_np1_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  double *error_v_minus_np1_faces_p[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
+  double *error_v_plus_np1_faces_p[P4EST_DIM]   = {DIM(NULL, NULL, NULL)};
+  ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &error_v_minus_np1_on_cells);  CHKERRXX(ierr);
+  ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &error_v_plus_np1_on_cells);   CHKERRXX(ierr);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostFaces(p4est, faces, &error_v_minus_np1_faces[dim], dim);     CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est, faces, &error_v_plus_np1_faces[dim], dim);      CHKERRXX(ierr);
+    ierr = VecGetArray(error_v_minus_np1_faces[dim],  &error_v_minus_np1_faces_p[dim]);     CHKERRXX(ierr);
+    ierr = VecGetArray(error_v_plus_np1_faces[dim],   &error_v_plus_np1_faces_p[dim]);      CHKERRXX(ierr);
+    ierr = VecGetArrayRead(solver->get_vnp1_face_minus()[dim], &v_minus_np1_p[dim]);  CHKERRXX(ierr);
+    ierr = VecGetArrayRead(solver->get_vnp1_face_plus()[dim], &v_plus_np1_p[dim]);    CHKERRXX(ierr);
+  }
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dim]; ++f_idx) {
+      faces->xyz_fr_f(f_idx, dim, xyz);
+      error_v_minus_np1_faces_p[dim][f_idx] = fabs(test_problem->velocity_minus(dim, xyz) - v_minus_np1_p[dim][f_idx]);
+      error_v_plus_np1_faces_p[dim][f_idx]  = fabs(test_problem->velocity_plus(dim, xyz) - v_plus_np1_p[dim][f_idx]);
+    }
+  }
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArrayRead(solver->get_vnp1_face_minus()[dim], &v_minus_np1_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(solver->get_vnp1_face_plus()[dim], &v_plus_np1_p[dim]); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(error_v_minus_np1_faces[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(error_v_plus_np1_faces[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(error_v_minus_np1_faces[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(error_v_plus_np1_faces[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(error_v_minus_np1_faces[dim],  &error_v_minus_np1_faces_p[dim]);     CHKERRXX(ierr);
+    ierr = VecRestoreArray(error_v_plus_np1_faces[dim],   &error_v_plus_np1_faces_p[dim]);      CHKERRXX(ierr);
+  }
+  std::vector<const Vec*> face_errors;          face_errors.push_back(error_v_minus_np1_faces);             face_errors.push_back(error_v_plus_np1_faces);
+  std::vector<Vec>        face_errors_on_cells; face_errors_on_cells.push_back(error_v_minus_np1_on_cells); face_errors_on_cells.push_back(error_v_plus_np1_on_cells);
+  solver->transfer_face_sampled_fields_to_cells(face_errors, face_errors_on_cells);
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = delete_and_nullify_vector(error_v_minus_np1_faces[dim]); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(error_v_plus_np1_faces[dim]); CHKERRXX(ierr);
+  }
+
+  vector<Vec_for_vtk_export_t> node_scalar_fields;
   vector<Vec_for_vtk_export_t> node_vector_fields;
-  vector<Vec_for_vtk_export_t> cell_fields;
+  vector<Vec_for_vtk_export_t> cell_scalar_fields;
+  vector<Vec_for_vtk_export_t> cell_vector_fields;
+  if(interface_manager->get_phi_on_computational_nodes() != NULL)
+  {
+    node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_phi_on_computational_nodes(), "phi"));
+  }
   node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_minus_np1_nodes, "error_v_minus_np1"));
   node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_plus_np1_nodes, "error_v_plus_np1"));
   node_vector_fields.push_back(Vec_for_vtk_export_t(error_v_sharp_np1_nodes, "error_v_sharp_np1"));
-  cell_fields.push_back(Vec_for_vtk_export_t(error_pressure_minus, "error_p_minus"));
-  cell_fields.push_back(Vec_for_vtk_export_t(error_pressure_plus, "error_p_plus"));
-  cell_fields.push_back(Vec_for_vtk_export_t(error_sharp_pressure, "error_p_sharp"));
+  cell_scalar_fields.push_back(Vec_for_vtk_export_t(error_pressure_minus, "error_p_minus"));
+  cell_scalar_fields.push_back(Vec_for_vtk_export_t(error_pressure_plus, "error_p_plus"));
+  cell_scalar_fields.push_back(Vec_for_vtk_export_t(error_sharp_pressure, "error_p_sharp"));
+  cell_vector_fields.push_back(Vec_for_vtk_export_t(error_v_minus_np1_on_cells, "error_v_minus"));
+  cell_vector_fields.push_back(Vec_for_vtk_export_t(error_v_plus_np1_on_cells, "error_v_plus"));
 
   string file_name = vtk_dir + "/error_visualization";
   my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, P4EST_FALSE, P4EST_FALSE, file_name.c_str(),
-                                       NULL, &node_vector_fields, &cell_fields, NULL);
+                                       &node_scalar_fields, &node_vector_fields, &cell_scalar_fields, &cell_vector_fields);
+  node_scalar_fields.clear();
   node_vector_fields.clear();
-  cell_fields.clear();
+  cell_scalar_fields.clear();
+  cell_vector_fields.clear();
 
 
   ierr = delete_and_nullify_vector(error_v_minus_np1_nodes); CHKERRXX(ierr);
@@ -328,6 +382,8 @@ void export_error_visualization(const string& vtk_dir, const my_p4est_two_phase_
   ierr = delete_and_nullify_vector(error_pressure_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(error_pressure_plus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(error_sharp_pressure); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_v_minus_np1_on_cells); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(error_v_plus_np1_on_cells); CHKERRXX(ierr);
   return;
 }
 
@@ -733,7 +789,7 @@ int main (int argc, char* argv[])
     if(save_vtk && vtk_idx != vtk_index(vtk_start, two_phase_flow_solver, vtk_dt))
     {
       vtk_idx = vtk_index(vtk_start, two_phase_flow_solver, vtk_dt);
-      two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx);
+      two_phase_flow_solver->save_vtk(vtk_dir, vtk_idx, true);
     }
 
     if(two_phase_flow_solver->get_max_velocity() > vmax_abort)
