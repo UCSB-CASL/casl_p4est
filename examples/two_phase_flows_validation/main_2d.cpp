@@ -595,7 +595,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the trees, default is " + to_string(default_lmax));
   streamObj.str(""); streamObj << default_vorticity_threshold;
   cmd.add_option("thresh", "the vorticity-based threshold used for the refinement criteria, default is " + streamObj.str());
-  streamObj.str(""); streamObj << 100.0*default_uniform_band_in_dx_min;
+  streamObj.str(""); streamObj << default_uniform_band_in_dx_min;
   cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx, default is " + streamObj.str());
   cmd.add_option("ntree_x", "number of trees in the macromesh, along the x-direction. The default value is " + to_string(default_ntree[0]));
   cmd.add_option("ntree_y", "number of trees in the macromesh, along the y-direction. The default value is " + to_string(default_ntree[1]));

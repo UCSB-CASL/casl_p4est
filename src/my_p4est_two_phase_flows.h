@@ -292,8 +292,6 @@ private:
     return 10*MAX(3, (int)ceil((sl_order + 1)*cfl_advection)); // in case someone has the brilliant idea of using a stupidly large advection cfl ("+1" for safety)
   }
 
-  void transfer_face_sampled_vnp1_to_cells(Vec vnp1_minus_on_cells, Vec vnp1_plus_on_cells) const; // for exhaustive vtk exportations
-
   void build_sharp_pressure(Vec sharp_pressure) const;
 
   inline void compute_dt_np1()
@@ -670,6 +668,10 @@ public:
   inline double get_progress_n()    const { return t_n - tstart;        }
   inline double get_progress_np1()  const { return t_n + dt_n - tstart; }
 
+
+  // for exhaustive vtk exportations
+  void transfer_face_sampled_fields_to_cells(const std::vector<const Vec *>& face_field,
+                                             const std::vector<Vec>& face_field_on_cells) const;
 
   // GENERAL functions of interests for initializing runs, monitoring exportations, etc...
   // made static since we are not even working on an object (don't even need one for pre-construction steps for instance)

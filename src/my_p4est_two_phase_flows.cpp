@@ -2713,82 +2713,92 @@ void my_p4est_two_phase_flows_t::compute_vorticities()
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
 }
 
-void my_p4est_two_phase_flows_t::transfer_face_sampled_vnp1_to_cells(Vec vnp1_minus_on_cells, Vec vnp1_plus_on_cells) const
+void my_p4est_two_phase_flows_t::transfer_face_sampled_fields_to_cells(const std::vector<const Vec*>& face_field,
+                                                                       const std::vector<Vec>& face_field_on_cells) const
 {
   PetscErrorCode ierr;
-  const double *vnp1_face_minus_p[P4EST_DIM]= {DIM(NULL, NULL, NULL)}; double *vnp1_minus_on_cells_p  = NULL;
-  const double *vnp1_face_plus_p[P4EST_DIM] = {DIM(NULL, NULL, NULL)}; double *vnp1_plus_on_cells_p   = NULL;
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(vnp1_face_plus[dim], &vnp1_face_plus_p[dim]); CHKERRXX(ierr);
+  std::vector<const double*> face_field_p(face_field.size()*P4EST_DIM, NULL);
+  std::vector<double*> face_field_on_cell_p(face_field.size(), NULL);
+  for(size_t field_idx = 0; field_idx < face_field.size(); field_idx++)
+  {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(face_field[field_idx][dim], &face_field_p[P4EST_DIM*field_idx + dim]); CHKERRXX(ierr);
+    }
+    ierr = VecGetArray(face_field_on_cells[field_idx], &face_field_on_cell_p[field_idx]); CHKERRXX(ierr);
   }
-  ierr = VecGetArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vnp1_plus_on_cells, &vnp1_plus_on_cells_p); CHKERRXX(ierr);
 
   for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_layer_size(); ++k) {
     p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_layer_quadrant(k);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
       if(face_idx != NO_VELOCITY){
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
-        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_plus_p[dim][face_idx];
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx) {
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] = face_field_p[P4EST_DIM*field_idx + dim][face_idx];
+        }
       }
       else
       {
         set_of_neighboring_quadrants nb_quad;
         ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] = 0.0;
         double sum_w = 0.0;
         for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
           double w = 1.0/((double) (1 << (P4EST_DIM - 1)*it->level));
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
-          vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_plus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+            face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] += face_field_p[P4EST_DIM*field_idx + dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
           sum_w += w;
         }
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
-        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] /= sum_w;
       }
     }
   }
-
-  ierr = VecGhostUpdateBegin(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(vnp1_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+  {
+    ierr = VecGhostUpdateBegin(face_field_on_cells[field_idx], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   for (size_t k = 0; k < ngbd_c->get_hierarchy()->get_inner_size(); ++k) {
     p4est_locidx_t quad_idx = ngbd_c->get_hierarchy()->get_local_index_of_inner_quadrant(k);
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       p4est_locidx_t face_idx = faces_n->q2f(quad_idx, 2*dim);
       if(face_idx != NO_VELOCITY){
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_minus_p[dim][face_idx];
-        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_face_plus_p[dim][face_idx];
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx) {
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] = face_field_p[P4EST_DIM*field_idx + dim][face_idx];
+        }
       }
       else
       {
         set_of_neighboring_quadrants nb_quad;
         ngbd_c->find_neighbor_cells_of_cell(nb_quad, quad_idx,tree_index_of_quad(quad_idx, p4est_n, ghost_n), 2*dim);
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] = vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] = 0.0;
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] = 0.0;
         double sum_w = 0.0;
         for (set_of_neighboring_quadrants::const_iterator it = nb_quad.begin(); it != nb_quad.end(); ++it) {
           double w = 1.0/((double) (1 << (P4EST_DIM - 1)*it->level));
-          vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_minus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
-          vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] += vnp1_face_plus_p[dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
+          for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+            face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] += face_field_p[P4EST_DIM*field_idx + dim][faces_n->q2f(it->p.piggy3.local_num, 2*dim + 1)]*w;
           sum_w += w;
         }
-        vnp1_minus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
-        vnp1_plus_on_cells_p[P4EST_DIM*quad_idx + dim] /= sum_w;
+        for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+          face_field_on_cell_p[field_idx][P4EST_DIM*quad_idx + dim] /= sum_w;
       }
     }
   }
 
-  ierr = VecGhostUpdateEnd(vnp1_minus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(vnp1_plus_on_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArrayRead(vnp1_face_minus[dim], &vnp1_face_minus_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(vnp1_face_plus[dim], &vnp1_face_plus_p[dim]); CHKERRXX(ierr);
+  for (size_t field_idx = 0; field_idx < face_field.size(); ++field_idx)
+  {
+    ierr = VecGhostUpdateEnd(face_field_on_cells[field_idx], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-  ierr = VecRestoreArray(vnp1_minus_on_cells, &vnp1_minus_on_cells_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vnp1_plus_on_cells, &vnp1_plus_on_cells_p); CHKERRXX(ierr);
+
+  for(size_t field_idx = 0; field_idx < face_field.size(); field_idx++)
+  {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(face_field[field_idx][dim], &face_field_p[P4EST_DIM*field_idx + dim]); CHKERRXX(ierr);
+    }
+    ierr = VecRestoreArray(face_field_on_cells[field_idx], &face_field_on_cell_p[field_idx]); CHKERRXX(ierr);
+  }
   return;
 }
 
@@ -2903,7 +2913,9 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     {
       ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_minus_on_cells); CHKERRXX(ierr);
       ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_plus_on_cells); CHKERRXX(ierr);
-      transfer_face_sampled_vnp1_to_cells(vnp1_minus_on_cells, vnp1_plus_on_cells);
+      std::vector<const Vec*> to_transfer_to_cell;  to_transfer_to_cell.push_back(vnp1_face_minus); to_transfer_to_cell.push_back(vnp1_face_plus);
+      std::vector<Vec> destination;                 destination.push_back(vnp1_minus_on_cells);     destination.push_back(vnp1_plus_on_cells);
+      transfer_face_sampled_fields_to_cells(to_transfer_to_cell, destination);
     }
 
     cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_minus_on_cells,  "vnp1_minus"));
