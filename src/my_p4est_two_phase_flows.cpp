@@ -575,15 +575,18 @@ void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const 
   to_add.pointer_to_vecs = &vnm1_nodes_plus;
   fields_to_load.push_back(to_add);
 
-  sprintf(absolute_path_to_file, "%s/interface_velocity_n.petscbin", path_to_folder);
-  if(!file_exists(absolute_path_to_file))
-    throw std::runtime_error("my_p4est_two_phase_flows_t::load_state(): " + std::string(absolute_path_to_file) + "is not on disk (yet required)");
+  if(!static_interface)
+  {
+    sprintf(absolute_path_to_file, "%s/interface_velocity_n.petscbin", path_to_folder);
+    if(!file_exists(absolute_path_to_file))
+      throw std::runtime_error("my_p4est_two_phase_flows_t::load_state(): " + std::string(absolute_path_to_file) + "is not on disk (yet required)");
 
-  to_add.name = "interface_velocity_n";
-  to_add.DATA_SAMPLING = NODE_BLOCK_VECTOR_DATA;
-  to_add.nvecs = 1;
-  to_add.pointer_to_vecs = &interface_velocity_n;
-  fields_to_load.push_back(to_add);
+    to_add.name = "interface_velocity_n";
+    to_add.DATA_SAMPLING = NODE_BLOCK_VECTOR_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &interface_velocity_n;
+    fields_to_load.push_back(to_add);
+  }
 
   p4est_connectivity_t* conn_nm1 = NULL;
   my_p4est_load_forest_and_data(mpi.comm(), path_to_folder, p4est_nm1, conn_nm1, P4EST_TRUE, ghost_nm1, nodes_nm1,
@@ -835,7 +838,7 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
     throw std::runtime_error("my_p4est_two_phase_flows_t::save_state(): vnm1_nodes_minus undefined, this is a required field to save");
   if(vnm1_nodes_plus == NULL)
     throw std::runtime_error("my_p4est_two_phase_flows_t::save_state(): vnm1_nodes_plus undefined, this is a required field to save");
-  if(interface_velocity_n == NULL)
+  if(interface_velocity_n == NULL && !static_interface)
     throw std::runtime_error("my_p4est_two_phase_flows_t::save_state(): interface_velocity_n undefined, this is a required field to save");
   // add vnm1_nodes_minus
   to_add.name = "vnm1_nodes_minus";
@@ -850,11 +853,14 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   to_add.pointer_to_vecs = &vnm1_nodes_plus;
   fields_to_save.push_back(to_add);
   // add interface_velocity_n
-  to_add.name = "interface_velocity_n";
-  to_add.DATA_SAMPLING = NODE_BLOCK_VECTOR_DATA;
-  to_add.nvecs = 1;
-  to_add.pointer_to_vecs = &interface_velocity_n;
-  fields_to_save.push_back(to_add);
+  if(!static_interface)
+  {
+    to_add.name = "interface_velocity_n";
+    to_add.DATA_SAMPLING = NODE_BLOCK_VECTOR_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &interface_velocity_n;
+    fields_to_save.push_back(to_add);
+  }
 
   my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1, NULL, "p4est_nm1", fields_to_save);
 
