@@ -142,6 +142,25 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
   ierr= VecGetArrayRead(pressure_plus, &pressure_plus_p); CHKERRXX(ierr);
   double error_p_minus  = 0.0;
   double error_p_plus   = 0.0;
+  double floating_pressure = 0.0;
+  if(test_problem->is_pressure_floating())
+  {
+    for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
+    {
+      const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
+        const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+        if(sgn_cell < 0)
+          floating_pressure += pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz);
+        else
+          floating_pressure += pressure_plus_p[quad_idx] -test_problem->pressure_plus(xyz);
+      }
+    }
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &floating_pressure, 1, MPI_DOUBLE, MPI_SUM, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    floating_pressure /= computational_p4est->global_num_quadrants;
+  }
   for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
   {
     const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
@@ -150,9 +169,9 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
       quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
       const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
       if(sgn_cell < 0)
-        error_p_minus = MAX(error_p_minus,  fabs(pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz)));
+        error_p_minus = MAX(error_p_minus,  fabs(pressure_minus_p[quad_idx] - floating_pressure - test_problem->pressure_minus(xyz)));
       else
-        error_p_plus  = MAX(error_p_plus,   fabs(pressure_plus_p[quad_idx] - test_problem->pressure_plus(xyz)));
+        error_p_plus  = MAX(error_p_plus,   fabs(pressure_plus_p[quad_idx] - floating_pressure - test_problem->pressure_plus(xyz)));
     }
   }
   ierr= VecRestoreArrayRead(pressure_minus, &pressure_minus_p); CHKERRXX(ierr);
@@ -274,14 +293,34 @@ void export_error_visualization(const string& vtk_dir, const my_p4est_two_phase_
   ierr = VecGhostUpdateEnd(error_v_minus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(error_v_plus_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(error_v_sharp_np1_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  double floating_pressure = 0.0;
+  if(test_problem->is_pressure_floating())
+  {
+    for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+    {
+      const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz);
+        const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+        if(sgn_cell < 0)
+          floating_pressure += pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz);
+        else
+          floating_pressure += pressure_plus_p[quad_idx] -test_problem->pressure_plus(xyz);
+      }
+    }
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &floating_pressure, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    floating_pressure /= p4est->global_num_quadrants;
+  }
   for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
     const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
       p4est_locidx_t quad_idx = tree->quadrants_offset + q;
       quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz);
       char sgn_quad = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
-      error_pressure_minus_p[quad_idx]  = fabs(pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz));
-      error_pressure_plus_p[quad_idx]   = fabs(pressure_plus_p[quad_idx] - test_problem->pressure_plus(xyz));
+      error_pressure_minus_p[quad_idx]  = fabs(pressure_minus_p[quad_idx] - floating_pressure - test_problem->pressure_minus(xyz));
+      error_pressure_plus_p[quad_idx]   = fabs(pressure_plus_p[quad_idx] - floating_pressure - test_problem->pressure_plus(xyz));
       if(sgn_quad < 0)
         error_sharp_pressure_p[quad_idx] = error_pressure_minus_p[quad_idx];
       else
