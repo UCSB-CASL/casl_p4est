@@ -16,6 +16,8 @@
 
 /**
  * Machine-learning-based Semi-Lagrangian namespace.
+ * @note This functionality has not yet been tested in 3D.
+ *
  * Author: Luis Ángel.
  * Date: February 18, 2021.
  */

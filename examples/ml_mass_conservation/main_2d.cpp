@@ -150,8 +150,8 @@ int main( int argc, char** argv )
 		PetscErrorCode ierr;			// PETSc error flag code.
 
 		// To generate data sets we don't admit more than a single process to avoid race conditions.
-		if( mpi.size() > 1 )
-			throw std::runtime_error( "Only a single process is allowed!" );
+//		if( mpi.size() > 1 )
+//			throw std::runtime_error( "Only a single process is allowed!" );
 
 		parStopWatch watch;
 		printf( ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d\n",
@@ -253,6 +253,9 @@ int main( int argc, char** argv )
 		std::cout << "* " << dataPackets.size() << " received packets!" << std::endl;
 		for( auto dataPacket : dataPackets )
 		{
+			if( dataPacket->distance <= 1 )
+				continue;
+
 			std::cout << "------ Node " << dataPacket->nodeIdx << " ------" << std::endl;
 			std::cout << "phi_a: " << dataPacket->phi_a << std::endl;
 			std::cout << "vel_a: (" << dataPacket->vel_a[0] << ", " << dataPacket->vel_a[1] << ")" << std::endl;
@@ -277,7 +280,6 @@ int main( int argc, char** argv )
 		// Advection loop.
 		while( tn_c + 0.1 * dt_c < DURATION )
 		{
-			break;
 			// Clip time step if it's going to go over the final time.
 			if( tn_c + dt_c > DURATION )
 				dt_c = DURATION - tn_c;
