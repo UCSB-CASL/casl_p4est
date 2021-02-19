@@ -27,6 +27,8 @@ class my_p4est_semi_lagrangian_t
 {
   friend class my_p4est_ns_free_surface_t;
   friend class my_p4est_surfactant_t;
+
+protected:			// Added to allow child classes to access previously declared private members of this base class.
   /*
    * The pointer-to-pointer member variables (i.e. the 'p_***' variables here below) are required
    * to udpate the pointer to grid data that the user passed when constructing this object.

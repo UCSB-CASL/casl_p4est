@@ -18,6 +18,7 @@
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_semi_lagrangian_ml.h>
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
@@ -149,7 +150,7 @@ int main( int argc, char** argv )
 		PetscErrorCode ierr;			// PETSc error flag code.
 
 		// To generate data sets we don't admit more than a single process to avoid race conditions.
-		if( mpi.rank() > 1 )
+		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		parStopWatch watch;
@@ -245,9 +246,38 @@ int main( int argc, char** argv )
 		const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm known analitically.
 		double dt_c = CFL * dxyz_min_c / MAX_VEL_NORM;	// This is deltaT knowing that the CFL condition is (c * deltaT)/deltaX <= CFLN.
 
+		// Testing sample collection for machine learning training.
+		slml::SemiLagrangian semiLagrangianML( &p4est_c, &nodes_c, &ghost_c, nodeNeighbors_c );
+		std::vector<slml::DataPacket *> dataPackets;
+		semiLagrangianML.collectSamples( vel_c, dt_c, phi_c, dataPackets );
+		std::cout << "* " << dataPackets.size() << " received packets!" << std::endl;
+		for( auto dataPacket : dataPackets )
+		{
+			std::cout << "------ Node " << dataPacket->nodeIdx << " ------" << std::endl;
+			std::cout << "phi_a: " << dataPacket->phi_a << std::endl;
+			std::cout << "vel_a: (" << dataPacket->vel_a[0] << ", " << dataPacket->vel_a[1] << ")" << std::endl;
+			std::cout << "distance: " << dataPacket->distance << std::endl;
+			std::cout << "x_d: (" << dataPacket->xyz_d[0] << ", " << dataPacket->xyz_d[1] << ")" << std::endl;
+			std::cout << "phi_d: ";
+			for( auto val : dataPacket->phi_d )
+				std::cout << val << "  ";
+			std::cout << std::endl;
+			std::cout << "vel_d: ";
+			for( int i = 0; i < P4EST_DIM; i++ )
+			{
+				std::cout << "[ ";
+				for( int j = 0; j < P4EST_CHILDREN; j++ )
+					std::cout << dataPacket->vel_d[i * P4EST_CHILDREN + j] << " ";
+				std::cout << "]";
+			}
+			std::cout << std::endl;
+		}
+		slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+
 		// Advection loop.
 		while( tn_c + 0.1 * dt_c < DURATION )
 		{
+			break;
 			// Clip time step if it's going to go over the final time.
 			if( tn_c + dt_c > DURATION )
 				dt_c = DURATION - tn_c;
