@@ -78,6 +78,20 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
 
   PetscErrorCode ierr;
   int mpiret;
+  double error_levelset = NAN;
+  if(!test_problem->is_interface_static() && !test_problem->is_reinitialization_needed())
+  {
+    error_levelset = 0.0;
+    const double band = 3.0*ABSD(computational_faces->get_smallest_dxyz()[0], computational_faces->get_smallest_dxyz()[1], computational_faces->get_smallest_dxyz()[2]);
+    const p4est_nodes_t* interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
+    for (p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; ++node_idx) {
+      node_xyz_fr_n(node_idx, interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_capturing_nodes, xyz);
+      if(fabs(test_problem->levelset_function(xyz)) > band)
+        continue;
+      error_levelset = MAX(error_levelset, fabs(interface_manager->phi_at_point(xyz) - test_problem->levelset_function(xyz)));
+    }
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_levelset, 1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  }
   // errors for velocity_np1 at nodes
   Vec vnp1_nodes_minus  = solver->get_vnp1_nodes_minus();
   Vec vnp1_nodes_plus   = solver->get_vnp1_nodes_plus();
@@ -185,6 +199,13 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
     FILE* fp_results = fopen(filename.c_str(), "w");
     if(fp_results == NULL)
       throw std::runtime_error("print_convergence_results: could not open file for output of cnovergence results.");
+    if(!test_problem->is_interface_static() && !test_problem->is_reinitialization_needed())
+    {
+      fprintf(fp_results, "--------------------------------------------------------------- \n");
+      fprintf(fp_results, "Error on the levelset at nodes of the interface-capturing grid: \n");
+      fprintf(fp_results, "--------------------------------------------------------------- \n");
+      fprintf(fp_results, "Error on \\phi = %g \n", error_levelset);
+    }
     fprintf(fp_results, "---------------------------------------------------- \n");
     fprintf(fp_results, "Error for velocities sampled at computational nodes: \n");
     fprintf(fp_results, "---------------------------------------------------- \n");

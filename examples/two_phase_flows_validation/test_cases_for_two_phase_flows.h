@@ -555,12 +555,11 @@ public:
         + std::string("* v_p  = -(x/r -x)*cos(t); \n")
         + std::string("* pressure_minus = cos(x)*cos(y)*cos(t); \n")
         + std::string("* pressure_plus  = 0.0; \n")
-        + std::string("* Dirichlet BC on all walls for all variables; \n")
+        + std::string("* Dirichlet BC on all walls for velocity; Neumann on all walls for pressure (pressure is floating); \n")
         + std::string("* Validation test case 0 in 2D");
     test_name = "test_case_0";
     max_v_magnitude_0 = MAX(2.0*sqrt(3.0)/9.0, 2.0*sqrt(2.0) - 1);
     max_surface_tension_0 = EPS;
-
   }
 
   inline double levelset_function(const double *xyz) const
@@ -777,64 +776,71 @@ public:
 
 static class test_case_1_t : public test_case_for_two_phase_flows_t
 {
+  inline double rr_2(const double* xyz) const { return SQRSUMD(xyz[0] - (time - 0.5), xyz[1] - (time - 0.5), xyz[2] - (time - 0.5)); }
+  inline double drr_2_dx(const double* xyz) const { return 2.0*(xyz[0] - (time - 0.5)); }
+  inline double drr_2_dy(const double* xyz) const { return 2.0*(xyz[1] - (time - 0.5)); }
+  inline double drr_2_dt(const double* xyz) const { return -2.0*(xyz[0] - (time - 0.5)) - 2.0*(xyz[1] - (time - 0.5)); }
+  inline double rr(const double* xyz) const { return sqrt(rr_2(xyz)); }
 public:
   test_case_1_t() : test_case_for_two_phase_flows_t()
   {
-    mu_m  = 0.1;
+    mu_m  = 0.01;
     rho_m = 0.1;
-    mu_p  = 1.0;
+    mu_p  = 0.1;
     rho_p = 1.0;
-    surface_tension = 0.1; // no surface tension effect in here but a surface-defined interface stress
+    surface_tension = 0.0; // no surface tension effect in here but a surface-defined interface stress
     surface_tension_is_constant = true; // no need to bother with the calculation of Marangoni forces
     nonzero_mass_flux = false;
-    levelset_cf_is_signed_distance = false;
+    levelset_cf_is_signed_distance = true;
+    pressure_is_floating = true;
 
-    static_interface = true;
+    static_interface = false;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-      domain.xyz_min[dim] = -M_PI/2.0;
-      domain.xyz_max[dim] = +3.0*M_PI/2.0;
-      domain.periodicity[dim] = 1;
+      domain.xyz_min[dim]     = -2.0;
+      domain.xyz_max[dim]     = +2.0;
+      domain.periodicity[dim] = 0;
     }
-    t_end = M_PI;
+    t_end = 1.0;
     pressure_wall_bc.setWallTypes(neumann_cf); // let's use neumann in this case
     for(u_char dir = 0; dir < P4EST_DIM; dir++)
       velocity_wall_bc[dir].setWallTypes(dirichlet_cf);
 
     description =
-        std::string("* domain = [-\\pi/2, 3\\pi/2] X [-\\pi/2, 3\\pi/3] \n")
-        + std::string("* full periodicity \n")
-        + std::string("* (static) interface = zero level of 0.1 - sin(x)*sin(y) positive inside\n")
-        + std::string("* mu_m = 0.1; \n")
+        std::string("* domain = [-2.0, 2.0] X [-2.0, 2.0] \n")
+        + std::string("* no periodicity \n")
+        + std::string("* levelset = sqrt((x - (t - 0.5))^2 + (y - (t - 0.5))^2) - 1\n")
+        + std::string("* mu_m = 0.01; \n")
         + std::string("* mu_p = 0.1; \n")
-        + std::string("* rho_m = 1.00; \n")
+        + std::string("* rho_m = 0.1; \n")
         + std::string("* rho_p = 1.00; \n")
-        + std::string("* surface_tension = 0.1; \n")
-        + std::string("* u_m  = sin(x)*cos(y)*sin(t); \n")
-        + std::string("* v_m  = -cos(x)*sin(y)*sin(t); \n")
-        + std::string("* u_p  = u_m; \n")
-        + std::string("* v_p  = v_p; \n")
-        + std::string("* pressure_minus = 0.0; \n")
+        + std::string("* surface_tension = 0.00; \n")
+        + std::string("* u_m  =  (y - (t - 0.5))*(r^2 - 1) + 1; \n")
+        + std::string("* v_m  = -(x - (t - 0.5))*(r^2 - 1) + 1; \n")
+        + std::string("* u_p  = 1; \n")
+        + std::string("* v_p  = 1; \n")
+        + std::string("* pressure_minus = 2.0 - r^2; \n")
         + std::string("* pressure_plus  = 0.0; \n")
+        + std::string("* (r == sqrt((x - (t - 0.5))^2 + (y - (t - 0.5))^2)); \n")
         + std::string("* Dirichlet BC on all walls for velocity, neumann for pressure; \n")
-        + std::string("* Validation test case 1 in 2D (slightly modifided from section 5.1 from Maxime Theillard's paper 'Sharp numerical simulation of incompressible two-phase flows')");
+        + std::string("* Validation test case 1 in 2D, with moving interface");
     test_name = "test_case_1";
-    max_v_magnitude_0 = sqrt(2.0)*sin(0.0);
-    max_surface_tension_0 = surface_tension;
+    max_v_magnitude_0 = sqrt(1.87601);
+    max_surface_tension_0 = EPS;
   }
 
   inline double levelset_function(const double *xyz) const
   {
-    return 0.1 - sin(xyz[0])*sin(xyz[1]);
+    return rr(xyz) - 1.0;
   }
   // negative velocity field
   inline double velocity_minus(const u_char& dir, const double *xyz) const
   {
     switch (dir) {
     case dir::x:
-      return sin(xyz[0])*cos(xyz[1])*sin(time);
+      return (xyz[1] - time + 0.5)*(rr_2(xyz) - 1.0) + 1;
       break;
     case dir::y:
-      return -cos(xyz[0])*sin(xyz[1])*sin(time);
+      return -(xyz[0] - time + 0.5)*(rr_2(xyz) - 1.0) + 1;
       break;
     default:
       throw std::invalid_argument("test_case_1_t::velocity_minus: unknown velocity component");
@@ -845,10 +851,10 @@ public:
   {
     switch (dir) {
     case dir::x:
-      return sin(xyz[0])*cos(xyz[1])*cos(time);
+      return -(rr_2(xyz) - 1.0) + (xyz[1] - time + 0.5)*drr_2_dt(xyz);
       break;
     case dir::y:
-      return -cos(xyz[0])*sin(xyz[1])*cos(time);
+      return +(rr_2(xyz) - 1.0) - (xyz[0] - time + 0.5)*drr_2_dt(xyz);
       break;
     default:
       throw std::invalid_argument("test_case_1_t::time_derivative_velocity_minus: unknown velocity component");
@@ -862,10 +868,10 @@ public:
     {
       switch (der) {
       case dir::x:
-        return cos(xyz[0])*cos(xyz[1])*sin(time);
+        return (xyz[1] - time + 0.5)*drr_2_dx(xyz);
         break;
       case dir::y:
-        return -sin(xyz[0])*sin(xyz[1])*sin(time);
+        return (rr_2(xyz) - 1.0) + (xyz[1] - time + 0.5)*drr_2_dy(xyz);
         break;
       default:
         throw std::invalid_argument("test_case_1_t::first_derivative_velocity_minus: unknown cartesian direction");
@@ -876,10 +882,10 @@ public:
     case dir::y:
       switch (der) {
       case dir::x:
-        return sin(xyz[0])*sin(xyz[1])*sin(time);
+        return -(rr_2(xyz) - 1.0) - (xyz[0] - time + 0.5)*drr_2_dx(xyz);
         break;
       case dir::y:
-        return -cos(xyz[0])*cos(xyz[1])*sin(time);
+        return -(xyz[0] - time + 0.5)*drr_2_dy(xyz);
         break;
       default:
         throw std::invalid_argument("test_case_1_t::first_derivative_velocity_minus: unknown cartesian direction");
@@ -895,10 +901,10 @@ public:
   {
     switch (dir) {
     case dir::x:
-      return -2.0*sin(xyz[0])*cos(xyz[1])*sin(time);
+      return 8.0*(xyz[1] - time + 0.5);
       break;
     case dir::y:
-      return +2.0*cos(xyz[0])*sin(xyz[1])*sin(time);
+      return -8.0*(xyz[0] - time + 0.5);
       break;
     default:
       throw std::invalid_argument("test_case_1_t::laplacian_velocity_minus: unknown velocity component");
@@ -906,23 +912,22 @@ public:
     }
   }
   // positive velocity field
-  inline double velocity_plus(const u_char& dir, const double *xyz) const
+  inline double velocity_plus(const u_char&, const double *) const
   {
-    return velocity_minus(dir, xyz);
+    return 1.0;
+  }
+  inline double time_derivative_velocity_plus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+  inline double first_derivative_velocity_plus(const u_char& , const u_char& , const double *) const
+  {
+    return 0.0;
+  }
 
-  }
-  inline double time_derivative_velocity_plus(const u_char& dir, const double *xyz) const
+  inline double laplacian_velocity_plus(const u_char &, const double *) const
   {
-    return time_derivative_velocity_minus(dir, xyz);
-  }
-  inline double first_derivative_velocity_plus(const u_char& dir, const u_char& der, const double *xyz) const
-  {
-    return first_derivative_velocity_minus(dir, der, xyz);
-  }
-
-  inline double laplacian_velocity_plus(const u_char &dir, const double *xyz) const
-  {
-    return laplacian_velocity_minus(dir, xyz);
+    return 0.0;
   }
   // mass flux
   inline double local_mass_flux(const double *) const
@@ -931,13 +936,23 @@ public:
   }
 
   // negative pressure field
-  inline double pressure_minus(const double *) const
+  inline double pressure_minus(const double *xyz) const
   {
-    return 0.0;
+    return 2.0 - rr_2(xyz);
   }
-  inline double first_derivative_pressure_minus(const u_char&, const double *) const
+  inline double first_derivative_pressure_minus(const u_char& der, const double * xyz) const
   {
-    return 0.0;
+    switch (der) {
+    case dir::x:
+      return -drr_2_dx(xyz);
+      break;
+    case dir::y:
+      return -drr_2_dy(xyz);
+      break;
+    default:
+      throw std::invalid_argument("test_case_1_t::first_derivative_pressure_minus: unknown cartesian direction");
+      break;
+    };
   }
 
   // positive pressure field
