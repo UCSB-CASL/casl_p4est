@@ -977,6 +977,194 @@ public:
     return;
   }
 } test_case_1;
+
+static class test_case_2_t : public test_case_for_two_phase_flows_t
+{
+public:
+  test_case_2_t() : test_case_for_two_phase_flows_t()
+  {
+    mu_m  = 0.1;
+    rho_m = 0.1;
+    mu_p  = 1.0;
+    rho_p = 1.0;
+    surface_tension = 0.1;
+    surface_tension_is_constant = true; // no need to bother with the calculation of Marangoni forces
+    nonzero_mass_flux = false;
+    levelset_cf_is_signed_distance = false;
+    pressure_is_floating = true;
+
+    static_interface = true;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      domain.xyz_min[dim]     = -M_PI/3.0;
+      domain.xyz_max[dim]     = +4.0*M_PI/3.0;
+      domain.periodicity[dim] = 0;
+    }
+    t_end = M_PI;
+    pressure_wall_bc.setWallTypes(neumann_cf); // let's use neumann in this case
+    for(u_char dir = 0; dir < P4EST_DIM; dir++)
+      velocity_wall_bc[dir].setWallTypes(dirichlet_cf);
+
+    description =
+        std::string("* domain = [-\\pi/3.0, 4.0\\pi/3.0] X [-\\pi/3.0, 4.0\\pi/3.0] \n")
+        + std::string("* no periodicity \n")
+        + std::string("* levelset = 0.1 outside of [0, \\pi] x [0, \\pi], 0.1 - sin(x)*sin(y) inside (+ needs reinitialization)\n")
+        + std::string("* mu_m = 0.1; \n")
+        + std::string("* mu_p = 0.1; \n")
+        + std::string("* rho_m = 1.00; \n")
+        + std::string("* rho_p = 1.00; \n")
+        + std::string("* surface_tension = 0.1; \n")
+        + std::string("* u_m  =  sin(x)*cos(y)*sin(t); \n")
+        + std::string("* v_m  = -cos(x)*sin(y)*sin(t); \n")
+        + std::string("* u_p  = u_m; \n")
+        + std::string("* v_p  = v_p; \n")
+        + std::string("* pressure_minus = 0.0; \n")
+        + std::string("* pressure_plus  = 0.0; \n")
+        + std::string("* Dirichlet BC on all walls for velocity, neumann for pressure; \n")
+        + std::string("* Validation test case 2 in 2D (from Maxime's paper)");
+    test_name = "test_case_2";
+    max_v_magnitude_0 = EPS;
+    max_surface_tension_0 = surface_tension;
+  }
+
+  inline double levelset_function(const double *xyz) const
+  {
+    return 0.1 - (xyz[0] > 0.0 && xyz[0] < M_PI && xyz[1] > 0.0 && xyz[1] < M_PI ? sin(xyz[0])*sin(xyz[1]) : 0.0);
+  }
+  // negative velocity field
+  inline double velocity_minus(const u_char& dir, const double *xyz) const
+  {
+    switch (dir) {
+    case dir::x:
+      return sin(xyz[0])*cos(xyz[1])*sin(time);
+      break;
+    case dir::y:
+      return -cos(xyz[0])*sin(xyz[1])*sin(time);
+      break;
+    default:
+      throw std::invalid_argument("test_case_2_t::velocity_minus: unknown velocity component");
+      break;
+    }
+  }
+  inline double time_derivative_velocity_minus(const u_char& dir, const double *xyz) const
+  {
+    switch (dir) {
+    case dir::x:
+      return sin(xyz[0])*cos(xyz[1])*cos(time);
+      break;
+    case dir::y:
+      return -cos(xyz[0])*sin(xyz[1])*cos(time);
+      break;
+    default:
+      throw std::invalid_argument("test_case_2_t::time_derivative_velocity_minus: unknown velocity component");
+      break;
+    }
+  }
+  inline double first_derivative_velocity_minus(const u_char& dir, const u_char& der, const double *xyz) const
+  {
+    switch (dir) {
+    case dir::x:
+    {
+      switch (der) {
+      case dir::x:
+        return cos(xyz[0])*cos(xyz[1])*sin(time);
+        break;
+      case dir::y:
+        return -sin(xyz[0])*sin(xyz[1])*sin(time);
+        break;
+      default:
+        throw std::invalid_argument("test_case_2_t::first_derivative_velocity_minus: unknown cartesian direction");
+        break;
+      }
+    }
+      break;
+    case dir::y:
+      switch (der) {
+      case dir::x:
+        return sin(xyz[0])*sin(xyz[1])*sin(time);
+        break;
+      case dir::y:
+        return -cos(xyz[0])*cos(xyz[1])*sin(time);
+        break;
+      default:
+        throw std::invalid_argument("test_case_2_t::first_derivative_velocity_minus: unknown cartesian direction");
+        break;
+      }
+      break;
+    default:
+      throw std::invalid_argument("test_case_2_t::first_derivative_velocity_minus: unknown velocity component");
+      break;
+    }
+  }
+  inline double laplacian_velocity_minus(const u_char &dir, const double *xyz) const
+  {
+    switch (dir) {
+    case dir::x:
+      return -2.0*sin(xyz[0])*cos(xyz[1])*sin(time);
+      break;
+    case dir::y:
+      return +2.0*cos(xyz[0])*sin(xyz[1])*sin(time);
+      break;
+    default:
+      throw std::invalid_argument("test_case_2_t::laplacian_velocity_minus: unknown velocity component");
+      break;
+    }
+  }
+  // positive velocity field
+  inline double velocity_plus(const u_char& dir, const double *xyz) const
+  {
+    return velocity_minus(dir, xyz);
+  }
+  inline double time_derivative_velocity_plus(const u_char& dir, const double* xyz) const
+  {
+    return time_derivative_velocity_minus(dir, xyz);
+  }
+  inline double first_derivative_velocity_plus(const u_char& dir, const u_char& der, const double *xyz) const
+  {
+    return first_derivative_velocity_minus(dir, der, xyz);
+  }
+
+  inline double laplacian_velocity_plus(const u_char &dir, const double *xyz) const
+  {
+    return laplacian_velocity_minus(dir, xyz);
+  }
+  // mass flux
+  inline double local_mass_flux(const double *) const
+  {
+    return 0.0;
+  }
+
+  // negative pressure field
+  inline double pressure_minus(const double *) const
+  {
+    return 0.0;
+  }
+  inline double first_derivative_pressure_minus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+
+  // positive pressure field
+  inline double pressure_plus(const double *) const
+  {
+    return 0.0;
+  }
+  inline double first_derivative_pressure_plus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+
+  // useful if nonconstant surface tension
+  inline double local_surface_tension(const double *) const
+  {
+    return surface_tension;
+  }
+  inline void gradient_surface_tension(const double *, double grad_surf_tension[P4EST_DIM]) const
+  {
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      grad_surf_tension[dir] = 0.0;
+    return;
+  }
+} test_case_2;
 #else
 
 #endif
@@ -993,6 +1181,7 @@ public:
 #else
     list_of_test_problems.push_back(&test_case_0);
     list_of_test_problems.push_back(&test_case_1);
+    list_of_test_problems.push_back(&test_case_2);
 #endif
   }
 
