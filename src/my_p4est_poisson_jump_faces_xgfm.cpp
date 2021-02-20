@@ -1748,7 +1748,7 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
     for (u_char comp = 0; comp < P4EST_DIM; ++comp)
     {
       n_dot_grad_u += lsqr_face_gradient[comp]*oriented_normal[comp];
-      if(!extrapolation_operators_are_stored_and_set[dim])
+      if(!extrapolation_operators_are_stored_and_set[dim] && !homogeneous_grad_component_for_extrapolation[comp])
         extrapolation_operator_across.n_dot_grad.add_operator_on_same_dofs(upwind_lsqr_face_grad_operator[comp], -oriented_normal[comp]);
     }
   }
