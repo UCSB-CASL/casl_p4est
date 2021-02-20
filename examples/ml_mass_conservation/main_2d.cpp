@@ -1,8 +1,11 @@
 /**
  * Title: ml_mass_conservation
+ *
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
  * advection.  We assume that all considered velocity fields are divergence-free.  To generate these velocity fields, we
  * obtain the skew gradient of random Gaussians.
+ * @note Not yet tested on 3D.
+ *
  * Author: Luis Ángel (임 영민)
  * Date Created: 01-20-2021
  */
@@ -69,10 +72,10 @@ void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 	my_p4est_vtk_write_all( p4est, nodes, ghost,
 							P4EST_TRUE, P4EST_TRUE,
 							2 + P4EST_DIM, 0, name,
-							VTK_POINT_DATA, "phi_c", phiReadPtr,
-							VTK_POINT_DATA, "phiExact_c", phiExactReadPtr,
-							VTK_POINT_DATA, "vel_x_c", velReadPtr[0],
-							VTK_POINT_DATA, "vel_y_c", velReadPtr[1]
+							VTK_POINT_DATA, "phi_f", phiReadPtr,
+							VTK_POINT_DATA, "phiExact_f", phiExactReadPtr,
+							VTK_POINT_DATA, "vel_x_f", velReadPtr[0],
+							VTK_POINT_DATA, "vel_y_f", velReadPtr[1]
 	);
 	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 	CHKERRXX( ierr );
@@ -134,14 +137,17 @@ int main( int argc, char** argv )
 	const int FINE_MAX_RL = 8;
 
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
-	const auto PHI_INTERP_MTHD = interpolation_method::linear;		// Phi interpolation method.
-	const auto VEL_INTERP_MTHD = interpolation_method::linear;		// Velocity interpolation method.
+	const auto PHI_INTERP_MTHD = interpolation_method::quadratic;		// Phi interpolation method.
+	const auto VEL_INTERP_MTHD = interpolation_method::quadratic;		// Velocity interpolation method.
 
 	const double MIN_D = 0;				// Domain minimum and maximum values for each dimension.
 	const double MAX_D = 1;
 	const int NUM_TREES_PER_DIM = 1;	// Number of macro cells per dimension.
 
 	const int NUM_ITER_VTK = 8;			// Save VTK files every NUM_ITER_VTK iterations.
+
+	const double BAND_C = 2; 			// Minimum number of cells around interface in both grids.
+	const double BAND_F = BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL));
 
 	try
 	{
@@ -159,10 +165,10 @@ int main( int argc, char** argv )
 		  	COARSE_MAX_RL, FINE_MAX_RL );
 		watch.start();
 
-		// Define the velocity field arrays (valid for coarse and fine grids).
+		// Define the velocity field arrays (valid for COARSE and FINE grids).
 		UComponent uComponent;
 		VComponent vComponent;
-		const CF_2 *velocityField[P4EST_DIM] = {&uComponent, &vComponent};
+		const CF_DIM *velocityField[P4EST_DIM] = {&uComponent, &vComponent};
 
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
@@ -170,243 +176,211 @@ int main( int argc, char** argv )
 		const double xyz_max[] = {MAX_D, MAX_D, MAX_D};
 		const int periodic[] = {0, 0, 0};
 
-		// Define the initial interface (valid for coarse and fine grids).
+		// Define the initial interface (valid for COARSE and FINE grids).
 		geom::Sphere sphere( DIM( 0.5, 0.75, 0.0 ), 0.15 );
 
-		// Declaration of the macromesh via the brick and connectivity objects.
-//		my_p4est_brick_t brick_c;					// Coarse grid variables.
-//		p4est_connectivity_t *connectivity_c;
-//		coarseGrid.connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &coarseGrid.brick, periodic );
+		// Declaration of the FINE macromesh via the brick and connectivity objects.
+		my_p4est_brick_t brick_f;
+		p4est_connectivity_t *connectivity_f;
+		connectivity_f = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick_f, periodic );
 
-		// Pointers to p4est variables.
-//		p4est_t *p4est_c;								// Coarse grid variables.
-//		p4est_ghost_t *ghost_c;
-//		p4est_nodes_t *nodes_c;
+		// Pointers to FINE p4est variables.
+		p4est_t *p4est_f;
+		p4est_ghost_t *ghost_f;
+		p4est_nodes_t *nodes_f;
 
-		// Create the forest using a level-set as refinement criterion.
-		const double BAND_C = 2; 						// Minimum band around interface in coarse grid.
-//		coarseGrid.p4est = my_p4est_new( mpi.comm(), coarseGrid.connectivity, 0, nullptr, nullptr );
-//		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion_c( 1, COARSE_MAX_RL, &sphere, BAND_C );
-//		coarseGrid.p4est->user_pointer = &levelSetSplittingCriterion_c;
+		// Create the FINE forest using a level-set as refinement criterion.
+		p4est_f = my_p4est_new( mpi.comm(), connectivity_f, 0, nullptr, nullptr );
+		splitting_criteria_cf_and_uniform_band_t lsSplittingCriterion_f( 1, FINE_MAX_RL, &sphere, BAND_F );
+		p4est_f->user_pointer = &lsSplittingCriterion_f;
 
-		// Refine and partition forest (according to the 'grid_update' example, I shouldn't use recursive refinement).
-//		for( int i = 0; i < COARSE_MAX_RL; i++ )
-//		{
-//			my_p4est_refine( coarseGrid.p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
-//			my_p4est_partition( coarseGrid.p4est, P4EST_FALSE, nullptr );
-//		}
-
-		// Create the ghost (cell) and node structures.
-//		coarseGrid.ghost = my_p4est_ghost_new( coarseGrid.p4est, P4EST_CONNECT_FULL );
-//		coarseGrid.nodes = my_p4est_nodes_new( coarseGrid.p4est, coarseGrid.ghost );
-
-		// Initialize the neighbor node structure.
-//		coarseGrid.hierarchy = new my_p4est_hierarchy_t( coarseGrid.p4est, coarseGrid.ghost, &coarseGrid.brick );
-//		coarseGrid.nodeNeighbors = new my_p4est_node_neighbors_t( coarseGrid.hierarchy, coarseGrid.nodes );
-//		coarseGrid.nodeNeighbors->init_neighbors();
-
-		CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere );
-
-		// Compute grid size data.
-		double dxyz_c[P4EST_DIM];
-		double dxyz_min_c;
-		double diag_min_c;
-		get_dxyz_min( coarseGrid.p4est, dxyz_c, dxyz_min_c, diag_min_c );
-
-		// Declare data vectors and pointers for read/write.
-//		Vec phi_c;
-		Vec phiExact_c;						// Level-set function function values for coarse grid.
-		const double *phiReadPtr_c, *phiExactReadPtr_c;
-
-		Vec vel_c[P4EST_DIM];				// Veloctiy field for coarse grid.
-
-		// Allocate memory for the Vecs.
-//		ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &coarseGrid.phi );
-//		CHKERRXX( ierr );
-		ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &phiExact_c );
-		CHKERRXX( ierr );
-		for( auto& dir : vel_c )
+		// Refine and partition the FINE forest.
+		for( int i = 0; i < FINE_MAX_RL; i++ )
 		{
-			ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &dir );
+			my_p4est_refine( p4est_f, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
+			my_p4est_partition( p4est_f, P4EST_FALSE, nullptr );
+		}
+
+		// Create the FINE ghost (cell) and node structures.
+		ghost_f = my_p4est_ghost_new( p4est_f, P4EST_CONNECT_FULL );
+		nodes_f = my_p4est_nodes_new( p4est_f, ghost_f );
+
+		// Initialize the FINE neighbor node structure.
+		auto *hierarchy_f = new my_p4est_hierarchy_t( p4est_f, ghost_f, &brick_f );
+		auto *nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
+		nodeNeighbors_f->init_neighbors();
+
+//		CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere, velocityField );
+
+		// Retrieve FINE grid size data.
+		double dxyz_f[P4EST_DIM];
+		double dxyz_min_f;
+		double diag_min_f;
+		get_dxyz_min( p4est_f, dxyz_f, dxyz_min_f, diag_min_f );
+
+		// Declare FINE data vectors and pointers for read/write.
+		Vec phi_f, phiExact_f;				// Level-set function function values for FINE grid.
+		const double *phiReadPtr_f, *phiExactReadPtr_f;
+
+		Vec vel_f[P4EST_DIM];				// Veloctiy field for FINE grid.
+
+		// Allocate memory for FINE the Vecs.
+		ierr = VecCreateGhostNodes( p4est_f, nodes_f, &phi_f );
+		CHKERRXX( ierr );
+		ierr = VecCreateGhostNodes( p4est_f, nodes_f, &phiExact_f );
+		CHKERRXX( ierr );
+		for( auto& dir : vel_f )
+		{
+			ierr = VecCreateGhostNodes( p4est_f, nodes_f, &dir );
 			CHKERRXX( ierr );
 		}
 
-		// Sample the level-set function at t = 0 at all independent nodes.
-//		sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, sphere, coarseGrid.phi );
-		sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, sphere, phiExact_c );
+		// Sample the level-set function at t = 0 at all independent nodes of FINE grid.
+		sample_cf_on_nodes( p4est_f, nodes_f, sphere, phi_f );
+		sample_cf_on_nodes( p4est_f, nodes_f, sphere, phiExact_f );
 
-		// Sample the velocity field at t = 0 at all independent nodes.
+		// Sample the velocity field at t = 0 at all independent nodes of FINE grid.
 		for( unsigned int dir = 0; dir < P4EST_DIM; dir++ )
-			sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, *velocityField[dir], vel_c[dir] );
+			sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
 
 		// Save the initial grid and fields into vtk.
-		writeVTK( 0, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.ghost, coarseGrid.phi, phiExact_c, vel_c );
+		writeVTK( 0, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
 
 		// Define time stepping variables.
-		double tn_c = 0;							// Initial time.
+		double tn = 0;								// Current time.
 		bool hasVelSwitched = false;
 		int iter = 0;
 		int vtkIdx = 1;								// Index for VTK files.
 		const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm known analitically.
-		double dt_c = CFL * dxyz_min_c / MAX_VEL_NORM;	// This is deltaT knowing that the CFL condition is (c * deltaT)/deltaX <= CFLN.
-
-		// Testing sample collection for machine learning training.
-		slml::SemiLagrangian semiLagrangianML( &coarseGrid.p4est, &coarseGrid.nodes, &coarseGrid.ghost, coarseGrid.nodeNeighbors );
-		std::vector<slml::DataPacket *> dataPackets;
-		semiLagrangianML.collectSamples( vel_c, dt_c, coarseGrid.phi, dataPackets );
-		std::cout << "* " << dataPackets.size() << " received packets!" << std::endl;
-		for( auto dataPacket : dataPackets )
-		{
-			if( dataPacket->distance <= 1 )
-				continue;
-
-			std::cout << "------ Node " << dataPacket->nodeIdx << " ------" << std::endl;
-			std::cout << "phi_a: " << dataPacket->phi_a << std::endl;
-			std::cout << "vel_a: (" << dataPacket->vel_a[0] << ", " << dataPacket->vel_a[1] << ")" << std::endl;
-			std::cout << "distance: " << dataPacket->distance << std::endl;
-			std::cout << "x_d: (" << dataPacket->xyz_d[0] << ", " << dataPacket->xyz_d[1] << ")" << std::endl;
-			std::cout << "phi_d: ";
-			for( auto val : dataPacket->phi_d )
-				std::cout << val << "  ";
-			std::cout << std::endl;
-			std::cout << "vel_d: ";
-			for( int i = 0; i < P4EST_DIM; i++ )
-			{
-				std::cout << "[ ";
-				for( int j = 0; j < P4EST_CHILDREN; j++ )
-					std::cout << dataPacket->vel_d[i * P4EST_CHILDREN + j] << " ";
-				std::cout << "]";
-			}
-			std::cout << std::endl;
-		}
-		slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+		double dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;	// FINE deltaT knowing that the CFL condition is (c * deltaT)/deltaX <= CFLN.
 
 		// Advection loop.
-		while( tn_c + 0.1 * dt_c < DURATION )
+		while( tn + 0.1 * dt_f < DURATION )
 		{
 			// Clip time step if it's going to go over the final time.
-			if( tn_c + dt_c > DURATION )
-				dt_c = DURATION - tn_c;
+			if( tn + dt_f > DURATION )
+				dt_f = DURATION - tn;
 
 			// Clip time step if it's going to go over the half time.
-			if( tn_c + dt_c >= DURATION / 2.0 && !hasVelSwitched )
+			if( tn + dt_f >= DURATION / 2.0 && !hasVelSwitched )
 			{
-				if( tn_c + dt_c > DURATION / 2.0 )
-					dt_c = (DURATION / 2.0) - tn_c;
+				if( tn + dt_f > DURATION / 2.0 )
+					dt_f = (DURATION / 2.0) - tn;
 				uComponent.switch_direction();
 				vComponent.switch_direction();
 				hasVelSwitched = true;
 			}
 
-			// Declare auxiliary p4est objects: these will be updated during the semi-Lagrangian advection step.
-			p4est_t *p4est_c1 = p4est_copy( coarseGrid.p4est, P4EST_FALSE );
-			p4est_ghost_t *ghost_c1 = my_p4est_ghost_new( p4est_c1, P4EST_CONNECT_FULL );
-			p4est_nodes_t *nodes_c1 = my_p4est_nodes_new( p4est_c1, ghost_c1 );
+			// Declare auxiliary FINE p4est objects: these will be updated during the semi-Lagrangian advection step.
+			p4est_t *p4est_f1 = p4est_copy( p4est_f, P4EST_FALSE );
+			p4est_ghost_t *ghost_f1 = my_p4est_ghost_new( p4est_f1, P4EST_CONNECT_FULL );
+			p4est_nodes_t *nodes_f1 = my_p4est_nodes_new( p4est_f1, ghost_f1 );
 
-			// Create semi-lagrangian object.
-			my_p4est_semi_lagrangian_t semiLagrangian( &p4est_c1, &nodes_c1, &ghost_c1, coarseGrid.nodeNeighbors );
-			semiLagrangian.set_phi_interpolation( PHI_INTERP_MTHD );
-			semiLagrangian.set_velo_interpolation( VEL_INTERP_MTHD );
+			// Create FINE semi-lagrangian object.
+			my_p4est_semi_lagrangian_t semiLagrangian_f( &p4est_f1, &nodes_f1, &ghost_f1, nodeNeighbors_f );
+			semiLagrangian_f.set_phi_interpolation( PHI_INTERP_MTHD );
+			semiLagrangian_f.set_velo_interpolation( VEL_INTERP_MTHD );
 
-			// Advect the level-set function one step, then update the grid.
-			semiLagrangian.update_p4est_one_vel_step( vel_c, dt_c, coarseGrid.phi, BAND_C );
+			// Advect the FINE level-set function one step, then update the grid.
+			semiLagrangian_f.update_p4est_one_vel_step( vel_f, dt_f, phi_f, BAND_F );
 
-			// Destroy old forest and create new structures.
-			p4est_destroy( coarseGrid.p4est );
-			coarseGrid.p4est = p4est_c1;
-			p4est_ghost_destroy( coarseGrid.ghost );
-			coarseGrid.ghost = ghost_c1;
-			p4est_nodes_destroy( coarseGrid.nodes );
-			coarseGrid.nodes = nodes_c1;
+			// Destroy old FINE forest and create new structures.
+			p4est_destroy( p4est_f );
+			p4est_f = p4est_f1;
+			p4est_ghost_destroy( ghost_f );
+			ghost_f = ghost_f1;
+			p4est_nodes_destroy( nodes_f );
+			nodes_f = nodes_f1;
 
-			delete coarseGrid.hierarchy;
-			delete coarseGrid.nodeNeighbors;
-			coarseGrid.hierarchy = new my_p4est_hierarchy_t( coarseGrid.p4est, coarseGrid.ghost, &coarseGrid.brick );
-			coarseGrid.nodeNeighbors = new my_p4est_node_neighbors_t( coarseGrid.hierarchy, coarseGrid.nodes );
-			coarseGrid.nodeNeighbors->init_neighbors();
+			delete hierarchy_f;
+			delete nodeNeighbors_f;
+			hierarchy_f = new my_p4est_hierarchy_t( p4est_f, ghost_f, &brick_f );
+			nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
+			nodeNeighbors_f->init_neighbors();
 
-			// Reinitialize level-set function.
-			my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );
-			levelSet_c.reinitialize_2nd_order( coarseGrid.phi );
+			// Reinitialize FINE level-set function.
+			my_p4est_level_set_t levelSet_f( nodeNeighbors_f );
+			levelSet_f.reinitialize_2nd_order( phi_f );
 
 			// Advance time step and iteration counter.
-			tn_c += dt_c;
+			tn += dt_f;
 			iter++;
-			if( tn_c == DURATION / 2.0 )
-				dt_c = CFL * dxyz_min_c / MAX_VEL_NORM;		// Restore time step to original definition.
+			if( tn == DURATION / 2.0 )
+				dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;		// Restore time step to original definition.
 
-			// Re-sample the velocity field on new grid.
+			// Re-sample the FINE velocity field on new grid.
 			for( int dir = 0; dir < P4EST_DIM; dir++ )
 			{
-				ierr = VecDestroy( vel_c[dir] );
+				ierr = VecDestroy( vel_f[dir] );
 				CHKERRXX( ierr );
-				ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &vel_c[dir] );
+				ierr = VecCreateGhostNodes( p4est_f, nodes_f, &vel_f[dir] );
 				CHKERRXX( ierr );
-				sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, *velocityField[dir], vel_c[dir] );
+				sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
 			}
 
-			// Re-sample the exact initial level-set function.
-			ierr = VecDestroy( phiExact_c );
+			// Re-sample the exact initial FINE level-set function.
+			ierr = VecDestroy( phiExact_f );
 			CHKERRXX( ierr );
-			ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &phiExact_c );
+			ierr = VecCreateGhostNodes( p4est_f, nodes_f, &phiExact_f );
 			CHKERRXX( ierr );
-			sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, sphere, phiExact_c );
+			sample_cf_on_nodes( p4est_f, nodes_f, sphere, phiExact_f );
 
 			// Display iteration message.
 			char msg[1024];
-			sprintf( msg, " Iteration %04d: t = %1.4f \n", iter, tn_c );
+			sprintf( msg, " Iteration %04d: t = %1.4f \n", iter, tn );
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
 
 			// Save to vtk format.
-			if( iter >= vtkIdx * NUM_ITER_VTK || tn_c == DURATION )
+			if( iter >= vtkIdx * NUM_ITER_VTK || tn == DURATION )
 			{
-				writeVTK( vtkIdx, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.ghost, coarseGrid.phi, phiExact_c, vel_c );
+				writeVTK( vtkIdx, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
 				vtkIdx++;
 			}
 		}
 
-		// Compute error L-inf norm and store it once we finished a simulation split.
-		ierr = VecGetArrayRead( coarseGrid.phi, &phiReadPtr_c );
+		// Compute error L-inf norm on FINE grid and store it once we finished a simulation split.
+		ierr = VecGetArrayRead( phi_f, &phiReadPtr_f );
 		CHKERRXX( ierr );
-		ierr = VecGetArrayRead( phiExact_c, &phiExactReadPtr_c );
+		ierr = VecGetArrayRead( phiExact_f, &phiExactReadPtr_f );
 		CHKERRXX( ierr );
 		double error = 0;
-		for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )
+		for( p4est_locidx_t n = 0; n < nodes_f->num_owned_indeps; n++ )
 		{
-			if( fabs( phiReadPtr_c[n] ) < 4.0 * diag_min_c )
-				error = MAX( error, fabs( phiReadPtr_c[n] - phiExactReadPtr_c[n] ) );
+			if( fabs( phiReadPtr_f[n] ) < 4.0 * diag_min_f )
+				error = MAX( error, fabs( phiReadPtr_f[n] - phiExactReadPtr_f[n] ) );
 		}
 		int mpiret = MPI_Allreduce( MPI_IN_PLACE, &error, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() );
 		SC_CHECK_MPI( mpiret );
-		ierr = VecRestoreArrayRead( coarseGrid.phi, &phiReadPtr_c );
+		ierr = VecRestoreArrayRead( phi_f, &phiReadPtr_f );
 		CHKERRXX( ierr );
-		ierr = VecRestoreArrayRead( phiExact_c, &phiExactReadPtr_c );
+		ierr = VecRestoreArrayRead( phiExact_f, &phiExactReadPtr_f );
 		CHKERRXX( ierr );
 
-		// Destroy the dynamically allocated Vecs.
-//		ierr = VecDestroy( coarseGrid.phi );
-//		CHKERRXX( ierr );
-		ierr = VecDestroy( phiExact_c );
+		// Destroy the dynamically allocated Vecs for FINE grid.
+		ierr = VecDestroy( phi_f );
 		CHKERRXX( ierr );
-		for( auto& dir : vel_c )
+		ierr = VecDestroy( phiExact_f );
+		CHKERRXX( ierr );
+		for( auto& dir : vel_f )
 		{
 			ierr = VecDestroy( dir );
 			CHKERRXX( ierr );
 		}
 
-		// Destroy the dynamically allocated p4est and my_p4est structures.
-//		delete coarseGrid.hierarchy;
-//		delete coarseGrid.nodeNeighbors;
-//		p4est_nodes_destroy( coarseGrid.nodes );
-//		p4est_ghost_destroy( coarseGrid.ghost );
-//		p4est_destroy( coarseGrid.p4est );
+		// Destroy the dynamically allocated FINE p4est and my_p4est structures.
+		delete hierarchy_f;
+		delete nodeNeighbors_f;
+		p4est_nodes_destroy( nodes_f );
+		p4est_ghost_destroy( ghost_f );
+		p4est_destroy( p4est_f );
 
-		// Destroy the dynamically allocated brick and connectivity structures.  Connectivity and Brick objects are the
-		// only ones that are not re-created in every iteration of semi-Lagrangian advection.
-//		my_p4est_brick_destroy( coarseGrid.connectivity, &coarseGrid.brick );
+		// Destroy the dynamically allocated FINE brick and connectivity structures.
+		// Connectivity and Brick objects are the only ones that are not re-created in every iteration of
+		// semi-Lagrangian advection.
+		my_p4est_brick_destroy( connectivity_f, &brick_f );
 
-		coarseGrid.destroy();
+//		coarseGrid.destroy();
 
 		printf( "<< Finished data set generation after %f secs with error %f.\n", watch.get_duration_current(), error );
 		watch.stop();

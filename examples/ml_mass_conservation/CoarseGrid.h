@@ -35,6 +35,7 @@ public:
 	const int MAX_RL;							// Maximum refinement level.
 
 	Vec phi = nullptr;							// Level-set function values parallel vector.
+	Vec vel[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};			// Velocity field parallel vectors.
 
 	splitting_criteria_cf_and_uniform_band_t *lsSplittingCriteria;		// Criteria created dynamically in constructor.
 
@@ -48,10 +49,12 @@ public:
 	 * @param [in] band Minimum number of (min) cells around the interface.
 	 * @param [in] maxRL Maximum refinement level.
 	 * @param [in] initialInterface Object to define the initial interface and the initial splitting criteria.
-	 * @param [in] samplePhi Whether or not sample the level-set function on the initial interface.
+	 * @param [in] velocityField Velocity object with as many components as velocities.
+	 * @param [in] sampleVecs Whether or not to sample the level-set function and velocity field on the initial grid.
 	 */
 	CoarseGrid( const mpi_environment_t& mpi, const int nTreesPerDim[], const double xyzMin[], const double xyzMax[],
-			 	const int periodic[], double band, int maxRL, CF_DIM *initialInterface, bool samplePhi=true )
+			 	const int periodic[], double band, int maxRL, CF_DIM *initialInterface,
+			 	const CF_2 *velocityField[P4EST_DIM], bool sampleVecs=true )
 			 	: BAND( band ), MAX_RL( maxRL )
 	{
 
@@ -83,9 +86,23 @@ public:
 		PetscErrorCode ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 		CHKERRXX( ierr );
 
+		// Allocate parallel vectors for velocity field.
+		for( auto& dir : vel )
+		{
+			ierr = VecCreateGhostNodes( p4est, nodes, &dir );
+			CHKERRXX( ierr );
+		}
+
 		// Finish up by sampling the level-set function at all independent nodes.
-		if( samplePhi )
+		if( sampleVecs )
+		{
+			// Sampling the level-set function.
 			sample_cf_on_nodes( p4est, nodes, *initialInterface, phi );
+
+			// Sampling the velocity field.
+			for( unsigned int dir = 0; dir < P4EST_DIM; dir++ )
+				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+		}
 	}
 
 	/**
@@ -100,6 +117,16 @@ public:
 			ierr = VecDestroy( phi );
 			CHKERRXX( ierr );
 			phi = nullptr;			// Taking precautions to nullify anything that is dynamically created/deleted.
+		}
+
+		for( auto& dir : vel )
+		{
+			if( dir )
+			{
+				ierr = VecDestroy( dir );
+				CHKERRXX( ierr );
+				dir = nullptr;
+			}
 		}
 
 		if( lsSplittingCriteria )
