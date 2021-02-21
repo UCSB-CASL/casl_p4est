@@ -1028,7 +1028,14 @@ public:
 
   inline double levelset_function(const double *xyz) const
   {
-    return 0.1 - (xyz[0] > 0.0 && xyz[0] < M_PI && xyz[1] > 0.0 && xyz[1] < M_PI ? sin(xyz[0])*sin(xyz[1]) : 0.0);
+    if(xyz[0] > 0.0 && xyz[0] < M_PI && xyz[1] > 0.0 && xyz[1] < M_PI)
+      return 0.1 - sin(xyz[0])*sin(xyz[1]);
+    else
+    {
+      const double xx = (xyz[0] > 0.0 && xyz[0] < M_PI ? 0.0 : MIN(fabs(xyz[0]), fabs(xyz[0] - M_PI)));
+      const double yy = (xyz[1] > 0.0 && xyz[1] < M_PI ? 0.0 : MIN(fabs(xyz[1]), fabs(xyz[1] - M_PI)));
+      return 0.1 + sqrt(SQR(xx) + SQR(yy));
+    }
   }
   // negative velocity field
   inline double velocity_minus(const u_char& dir, const double *xyz) const

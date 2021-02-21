@@ -518,7 +518,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
                                                                 data, data,
                                                                 p4est_nm1, ghost_nm1, nodes_nm1, hierarchy_nm1, ngbd_nm1,
                                                                 p4est_n, ghost_n, nodes_n, hierarchy_n, ngbd_n,
-                                                                ngbd_c, faces, phi_np1);
+                                                                ngbd_c, faces, phi_np1, test_case.is_reinitialization_needed());
   Vec interface_capturing_phi_np1 = phi_np1; // no creation here, just a renamed pointer to streamline the logic
 
   if(use_subrefinement)

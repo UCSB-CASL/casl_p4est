@@ -4150,7 +4150,7 @@ void my_p4est_two_phase_flows_t::build_initial_computational_grids(const mpi_env
                                                                    const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_n, const splitting_criteria_cf_and_uniform_band_t* data_with_with_phi_np1,
                                                                    p4est_t* &p4est_nm1, p4est_ghost_t* &ghost_nm1, p4est_nodes_t* &nodes_nm1, my_p4est_hierarchy_t* &hierarchy_nm1, my_p4est_node_neighbors_t* &ngbd_nm1,
                                                                    p4est_t* &p4est_n, p4est_ghost_t* &ghost_n, p4est_nodes_t* &nodes_n, my_p4est_hierarchy_t* &hierarchy_n, my_p4est_node_neighbors_t* &ngbd_n,
-                                                                   my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces, Vec &phi_np1_computational_nodes)
+                                                                   my_p4est_cell_neighbors_t* &ngbd_c, my_p4est_faces_t* &faces, Vec &phi_np1_computational_nodes, const bool& reinit_ls)
 {
   PetscErrorCode ierr;
   // clear inout computational grid data at time (n - 1), if needed
@@ -4214,11 +4214,73 @@ void my_p4est_two_phase_flows_t::build_initial_computational_grids(const mpi_env
   nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
   hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
   ngbd_n  = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n); ngbd_n->init_neighbors();
-  ngbd_c  = new my_p4est_cell_neighbors_t(hierarchy_n);
-  faces   = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
 
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_np1_computational_nodes); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est_n, nodes_n, *data_with_with_phi_np1->phi, phi_np1_computational_nodes);
+
+  if(reinit_ls)
+  {
+    // the next splitting criterion uses diagonal of cells, while we used min dx, dy, dz here above
+    // --> lest scale factors to match what to expect with the above if the ls was actually a signed distance
+    const p4est_topidx_t first_tree_first_vertex  = 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0];
+    const p4est_topidx_t first_tree_last_vertex   = 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1];
+
+    const double min_tree_side = MIN(DIM(p4est_n->connectivity->vertices[3*first_tree_last_vertex + 0] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 0],
+        p4est_n->connectivity->vertices[3*first_tree_last_vertex + 1] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 1],
+        p4est_n->connectivity->vertices[3*first_tree_last_vertex + 2] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 2]));
+    const double tree_diag  = ABSD(p4est_n->connectivity->vertices[3*first_tree_last_vertex + 0] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 0],
+        p4est_n->connectivity->vertices[3*first_tree_last_vertex + 1] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 1],
+        p4est_n->connectivity->vertices[3*first_tree_last_vertex + 2] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 2]);
+    const double min_dx_to_diag = min_tree_side/tree_diag;
+
+    for (int k = 0; k < data_with_with_phi_n->max_lvl - data_with_with_phi_n->min_lvl; k++)
+    {
+      Vec phi;
+      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &phi); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est_nm1, nodes_nm1, *data_with_with_phi_n->phi, phi);
+      my_p4est_level_set_t ls(ngbd_nm1);
+      ls.reinitialize_2nd_order(phi);
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      splitting_criteria_tag_t sp(data_with_with_phi_n->min_lvl, data_with_with_phi_n->max_lvl, data_with_with_phi_n->lip, data_with_with_phi_n->uniform_band*min_dx_to_diag);
+      sp.refine_and_coarsen(p4est_nm1, nodes_nm1, phi_p);
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(phi); CHKERRXX(ierr);
+      // update grid
+      p4est_balance(p4est_nm1, P4EST_CONNECT_FULL, NULL);
+      my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
+      p4est_ghost_destroy(ghost_nm1);  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL); my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+      p4est_nodes_destroy(nodes_nm1); nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+      delete hierarchy_nm1; hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+      delete ngbd_nm1; ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1); ngbd_nm1->init_neighbors();
+    }
+
+    my_p4est_level_set_t ls(ngbd_n);
+    ls.reinitialize_2nd_order(phi_np1_computational_nodes);
+    for (int k = 0; k < data_with_with_phi_np1->max_lvl - data_with_with_phi_np1->min_lvl; k++)
+    {
+      const double *phi_np1_computational_nodes_p;
+      ierr = VecGetArrayRead(phi_np1_computational_nodes, &phi_np1_computational_nodes_p); CHKERRXX(ierr);
+      splitting_criteria_tag_t sp(data_with_with_phi_np1->min_lvl, data_with_with_phi_np1->max_lvl, data_with_with_phi_np1->lip, data_with_with_phi_np1->uniform_band*min_dx_to_diag);
+      sp.refine_and_coarsen(p4est_n, nodes_n, phi_np1_computational_nodes_p);
+      ierr = VecRestoreArrayRead(phi_np1_computational_nodes, &phi_np1_computational_nodes_p); CHKERRXX(ierr);
+      ierr = delete_and_nullify_vector(phi_np1_computational_nodes); CHKERRXX(ierr);
+      // update grid
+      p4est_balance(p4est_n, P4EST_CONNECT_FULL, NULL);
+      my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
+      p4est_ghost_destroy(ghost_n);  ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL); my_p4est_ghost_expand(p4est_n, ghost_n);
+      p4est_nodes_destroy(nodes_n); nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
+      delete hierarchy_n; hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+      delete ngbd_n; ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n); ngbd_n->init_neighbors();
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_np1_computational_nodes); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est_n, nodes_n, *data_with_with_phi_np1->phi, phi_np1_computational_nodes);
+      my_p4est_level_set_t ls(ngbd_n);
+      ls.reinitialize_2nd_order(phi_np1_computational_nodes);
+    }
+  }
+  ngbd_c  = new my_p4est_cell_neighbors_t(hierarchy_n);
+  faces   = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+
   return;
 }
 
