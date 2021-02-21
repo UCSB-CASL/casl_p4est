@@ -31,6 +31,8 @@ public:
 	my_p4est_hierarchy_t *hierarchy;			// Neighborhood-node structures.
 	my_p4est_node_neighbors_t *nodeNeighbors;
 
+	double minCellWidth = 0;					// Minimum cell width.
+
 	const double BAND;							// Minimum band around the interface.
 	const int MAX_RL;							// Maximum refinement level.
 
@@ -92,6 +94,10 @@ public:
 			ierr = VecCreateGhostNodes( p4est, nodes, &dir );
 			CHKERRXX( ierr );
 		}
+
+		// Retrieve grid size data.
+		double dxyz[P4EST_DIM];
+		get_dxyz_min( p4est, dxyz, minCellWidth );
 
 		// Finish up by sampling the level-set function at all independent nodes.
 		if( sampleVecs )

@@ -52,7 +52,7 @@
  * @param [in] vel Array of two-dimensional velocity components.
  */
 void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-				 const Vec& phi, const Vec& phiExact, const Vec vel[2] )
+			   const Vec& phi, const Vec& phiExact, const Vec vel[2] )
 {
 	char name[1024];
 	PetscErrorCode ierr;
@@ -162,7 +162,7 @@ int main( int argc, char** argv )
 
 		parStopWatch watch;
 		printf( ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d\n",
-		  	COARSE_MAX_RL, FINE_MAX_RL );
+				COARSE_MAX_RL, FINE_MAX_RL );
 		watch.start();
 
 		// Define the velocity field arrays (valid for COARSE and FINE grids).
@@ -210,7 +210,7 @@ int main( int argc, char** argv )
 		auto *nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
 		nodeNeighbors_f->init_neighbors();
 
-//		CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere, velocityField );
+		CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere, velocityField );
 
 		// Retrieve FINE grid size data.
 		double dxyz_f[P4EST_DIM];
@@ -247,99 +247,140 @@ int main( int argc, char** argv )
 		writeVTK( 0, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
 
 		// Define time stepping variables.
-		double tn = 0;								// Current time.
+		double tn_c = 0;							// Current time for COARSE grid.
+		double tn_f = 0;							// Current time for FINE grid.
 		bool hasVelSwitched = false;
 		int iter = 0;
 		int vtkIdx = 1;								// Index for VTK files.
 		const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm known analitically.
-		double dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;	// FINE deltaT knowing that the CFL condition is (c * deltaT)/deltaX <= CFLN.
+		double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;		// deltaT for COARSE grid.
+		double dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;					// FINE deltaT knowing that the CFL condition is
+		// (c * deltaT)/deltaX <= CFLN.
 
 		// Advection loop.
-		while( tn + 0.1 * dt_f < DURATION )
+		// For each COARSE step, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
+		const int N_FINE_STEPS_PER_COARSE_STEP = 1u << (FINE_MAX_RL - COARSE_MAX_RL);
+		while( tn_c + 0.1 * dt_c < DURATION )
 		{
-			// Clip time step if it's going to go over the final time.
-			if( tn + dt_f > DURATION )
-				dt_f = DURATION - tn;
+			// Clip leading COARSE time step if it's going to go over the final time.
+			if( tn_c + dt_c > DURATION )
+				dt_c = DURATION - tn_c;
 
-			// Clip time step if it's going to go over the half time.
-			if( tn + dt_f >= DURATION / 2.0 && !hasVelSwitched )
+			// Clip leading COARSE time step if it's going to go over half time.
+			if( tn_c + dt_c > DURATION / 2.0 && !hasVelSwitched )
+				dt_c = (DURATION / 2.0) - tn_c;
+
+			// Update up to N_FINE_STEPS_PER_COARSE_STEP times the FINE grid.
+			for( int step = 0; step < N_FINE_STEPS_PER_COARSE_STEP; step++ )
 			{
-				if( tn + dt_f > DURATION / 2.0 )
-					dt_f = (DURATION / 2.0) - tn;
+				if( step == 3 )		// In last step, stretch the FINE step so that tn_f matches tn_c + dt_c.
+				{
+					dt_f = tn_c + dt_c - tn_f;
+				}
+				else if( tn_f + dt_f > tn_c + dt_c )		// Is FINE step going over COARSE step?
+				{
+					dt_f = tn_c + dt_c - tn_f;
+					step = 3;
+				}
+
+				// Declare auxiliary FINE p4est objects; they will be updated during the semi-Lagrangian advection step.
+				p4est_t *p4est_f1 = p4est_copy( p4est_f, P4EST_FALSE );
+				p4est_ghost_t *ghost_f1 = my_p4est_ghost_new( p4est_f1, P4EST_CONNECT_FULL );
+				p4est_nodes_t *nodes_f1 = my_p4est_nodes_new( p4est_f1, ghost_f1 );
+
+				// Create FINE semi-lagrangian object.
+				my_p4est_semi_lagrangian_t semiLagrangian_f( &p4est_f1, &nodes_f1, &ghost_f1, nodeNeighbors_f );
+				semiLagrangian_f.set_phi_interpolation( PHI_INTERP_MTHD );
+				semiLagrangian_f.set_velo_interpolation( VEL_INTERP_MTHD );
+
+				// Advect the FINE level-set function one step, then update the grid.
+				semiLagrangian_f.update_p4est_one_vel_step( vel_f, dt_f, phi_f, BAND_F );
+
+				// Destroy old FINE forest and create new structures.
+				p4est_destroy( p4est_f );
+				p4est_f = p4est_f1;
+				p4est_ghost_destroy( ghost_f );
+				ghost_f = ghost_f1;
+				p4est_nodes_destroy( nodes_f );
+				nodes_f = nodes_f1;
+
+				delete hierarchy_f;
+				delete nodeNeighbors_f;
+				hierarchy_f = new my_p4est_hierarchy_t( p4est_f, ghost_f, &brick_f );
+				nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
+				nodeNeighbors_f->init_neighbors();
+
+				// Reinitialize FINE level-set function.
+				my_p4est_level_set_t levelSet_f( nodeNeighbors_f );
+				levelSet_f.reinitialize_2nd_order( phi_f );
+
+				// Advance FINE time.
+				tn_f += dt_f;
+				iter++;
+
+				// Re-sample the FINE velocity field on new grid.
+				for( int dir = 0; dir < P4EST_DIM; dir++ )
+				{
+					ierr = VecDestroy( vel_f[dir] );
+					CHKERRXX( ierr );
+					ierr = VecCreateGhostNodes( p4est_f, nodes_f, &vel_f[dir] );
+					CHKERRXX( ierr );
+					sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
+				}
+
+				// Re-sample the exact initial FINE level-set function.
+				ierr = VecDestroy( phiExact_f );
+				CHKERRXX( ierr );
+				ierr = VecCreateGhostNodes( p4est_f, nodes_f, &phiExact_f );
+				CHKERRXX( ierr );
+				sample_cf_on_nodes( p4est_f, nodes_f, sphere, phiExact_f );
+
+				// Display iteration message.
+				char msg[1024];
+				sprintf( msg, "    Iteration %04d: t = %1.4f \n", iter, tn_f );
+				ierr = PetscPrintf( mpi.comm(), msg );
+				CHKERRXX( ierr );
+
+				// Save to vtk format.
+				if( iter >= vtkIdx * NUM_ITER_VTK || tn_f == DURATION )
+				{
+					writeVTK( vtkIdx, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
+					vtkIdx++;
+				}
+			}
+
+			// Restore FINE time step size.
+			dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;
+
+			// TODO: Here's where I need to "advect" COARSE grid.
+
+			// Advance COARSE time step.
+			tn_c += dt_c;
+			tn_f = tn_c;									// Synchronize COARSE and FINE times.
+			if( tn_c >= DURATION / 2.0 && !hasVelSwitched )
+			{
+				dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM; // Restore COARSE time step to original definition.
 				uComponent.switch_direction();
 				vComponent.switch_direction();
 				hasVelSwitched = true;
+				std::cout << " *** Velocity switched ***" << std::endl;
 			}
-
-			// Declare auxiliary FINE p4est objects: these will be updated during the semi-Lagrangian advection step.
-			p4est_t *p4est_f1 = p4est_copy( p4est_f, P4EST_FALSE );
-			p4est_ghost_t *ghost_f1 = my_p4est_ghost_new( p4est_f1, P4EST_CONNECT_FULL );
-			p4est_nodes_t *nodes_f1 = my_p4est_nodes_new( p4est_f1, ghost_f1 );
-
-			// Create FINE semi-lagrangian object.
-			my_p4est_semi_lagrangian_t semiLagrangian_f( &p4est_f1, &nodes_f1, &ghost_f1, nodeNeighbors_f );
-			semiLagrangian_f.set_phi_interpolation( PHI_INTERP_MTHD );
-			semiLagrangian_f.set_velo_interpolation( VEL_INTERP_MTHD );
-
-			// Advect the FINE level-set function one step, then update the grid.
-			semiLagrangian_f.update_p4est_one_vel_step( vel_f, dt_f, phi_f, BAND_F );
-
-			// Destroy old FINE forest and create new structures.
-			p4est_destroy( p4est_f );
-			p4est_f = p4est_f1;
-			p4est_ghost_destroy( ghost_f );
-			ghost_f = ghost_f1;
-			p4est_nodes_destroy( nodes_f );
-			nodes_f = nodes_f1;
-
-			delete hierarchy_f;
-			delete nodeNeighbors_f;
-			hierarchy_f = new my_p4est_hierarchy_t( p4est_f, ghost_f, &brick_f );
-			nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
-			nodeNeighbors_f->init_neighbors();
-
-			// Reinitialize FINE level-set function.
-			my_p4est_level_set_t levelSet_f( nodeNeighbors_f );
-			levelSet_f.reinitialize_2nd_order( phi_f );
-
-			// Advance time step and iteration counter.
-			tn += dt_f;
-			iter++;
-			if( tn == DURATION / 2.0 )
-				dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;		// Restore time step to original definition.
-
-			// Re-sample the FINE velocity field on new grid.
-			for( int dir = 0; dir < P4EST_DIM; dir++ )
-			{
-				ierr = VecDestroy( vel_f[dir] );
-				CHKERRXX( ierr );
-				ierr = VecCreateGhostNodes( p4est_f, nodes_f, &vel_f[dir] );
-				CHKERRXX( ierr );
-				sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
-			}
-
-			// Re-sample the exact initial FINE level-set function.
-			ierr = VecDestroy( phiExact_f );
-			CHKERRXX( ierr );
-			ierr = VecCreateGhostNodes( p4est_f, nodes_f, &phiExact_f );
-			CHKERRXX( ierr );
-			sample_cf_on_nodes( p4est_f, nodes_f, sphere, phiExact_f );
 
 			// Display iteration message.
 			char msg[1024];
-			sprintf( msg, " Iteration %04d: t = %1.4f \n", iter, tn );
+			sprintf( msg, " COARSE time t = %1.4f \n", tn_c );
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
 
 			// Save to vtk format.
-			if( iter >= vtkIdx * NUM_ITER_VTK || tn == DURATION )
-			{
-				writeVTK( vtkIdx, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
-				vtkIdx++;
-			}
+//			if( iter >= vtkIdx * NUM_ITER_VTK || tn == DURATION )
+//			{
+//				writeVTK( vtkIdx, p4est_f, nodes_f, ghost_f, phi_f, phiExact_f, vel_f );
+//				vtkIdx++;
+//			}
 		}
 
-		// Compute error L-inf norm on FINE grid and store it once we finished a simulation split.
+		// Compute error L-inf norm on FINE grid.
 		ierr = VecGetArrayRead( phi_f, &phiReadPtr_f );
 		CHKERRXX( ierr );
 		ierr = VecGetArrayRead( phiExact_f, &phiExactReadPtr_f );
@@ -380,7 +421,7 @@ int main( int argc, char** argv )
 		// semi-Lagrangian advection.
 		my_p4est_brick_destroy( connectivity_f, &brick_f );
 
-//		coarseGrid.destroy();
+		coarseGrid.destroy();
 
 		printf( "<< Finished data set generation after %f secs with error %f.\n", watch.get_duration_current(), error );
 		watch.stop();
@@ -390,4 +431,3 @@ int main( int argc, char** argv )
 		std::cerr << exception.what() << std::endl;
 	}
 }
-
