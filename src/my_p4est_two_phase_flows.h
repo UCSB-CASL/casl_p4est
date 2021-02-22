@@ -482,6 +482,7 @@ public:
   void solve_for_pressure_guess();
   void solve_viscosity();
   void solve_projection();
+  void subtract_mu_div_star_from_pressure();
 
   void solve_time_step(const double& velocity_relative_threshold, const int& max_niter);
 

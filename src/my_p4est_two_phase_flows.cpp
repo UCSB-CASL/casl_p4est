@@ -1752,6 +1752,53 @@ void my_p4est_two_phase_flows_t::solve_projection()
   return;
 }
 
+void my_p4est_two_phase_flows_t::subtract_mu_div_star_from_pressure()
+{
+  if(pressure_minus == NULL || pressure_plus == NULL)
+    throw  std::runtime_error("my_p4est_two_phase_flows_t::subtract_mu_div_star_from_pressure(): the pressure field is not defined yet...");
+  const double *vnp1_face_star_plus_kp1_p[P4EST_DIM], *vnp1_face_star_minus_kp1_p[P4EST_DIM];
+  double *pressure_minus_p, *pressure_plus_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArray(pressure_minus,  &pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(pressure_plus,   &pressure_plus_p);  CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    ierr = VecGetArrayRead(vnp1_face_star_minus_kp1[dim],  &vnp1_face_star_minus_kp1_p[dim]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vnp1_face_star_plus_kp1[dim],   &vnp1_face_star_plus_kp1_p[dim]);  CHKERRXX(ierr);
+  }
+
+  linear_combination_of_dof_t cell_divergence[P4EST_DIM];
+  for(size_t k = 0; k < hierarchy_n->get_layer_size(); k++)
+  {
+    p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_layer_quadrant(k);
+    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_layer_quadrant(k);
+    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
+    pressure_plus_p[quad_idx]   -= mu_plus *SUMD(cell_divergence[0](vnp1_face_star_plus_kp1_p[0]),  cell_divergence[1](vnp1_face_star_plus_kp1_p[1]),  cell_divergence[2](vnp1_face_star_plus_kp1_p[2]));
+    pressure_minus_p[quad_idx]  -= mu_minus*SUMD(cell_divergence[0](vnp1_face_star_minus_kp1_p[0]), cell_divergence[1](vnp1_face_star_minus_kp1_p[1]), cell_divergence[2](vnp1_face_star_minus_kp1_p[2]));
+  }
+  ierr = VecGhostUpdateBegin(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < hierarchy_n->get_inner_size(); k++)
+  {
+    p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_inner_quadrant(k);
+    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_inner_quadrant(k);
+    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
+    pressure_plus_p[quad_idx]   -= mu_plus *SUMD(cell_divergence[0](vnp1_face_star_plus_kp1_p[0]),  cell_divergence[1](vnp1_face_star_plus_kp1_p[1]),  cell_divergence[2](vnp1_face_star_plus_kp1_p[2]));
+    pressure_minus_p[quad_idx]  -= mu_minus*SUMD(cell_divergence[0](vnp1_face_star_minus_kp1_p[0]), cell_divergence[1](vnp1_face_star_minus_kp1_p[1]), cell_divergence[2](vnp1_face_star_minus_kp1_p[2]));
+  }
+  ierr = VecGhostUpdateEnd(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(pressure_minus,  &pressure_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(pressure_plus,   &pressure_plus_p);  CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+  {
+    ierr = VecRestoreArrayRead(vnp1_face_star_minus_kp1[dim],  &vnp1_face_star_minus_kp1_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(vnp1_face_star_plus_kp1[dim],   &vnp1_face_star_plus_kp1_p[dim]);  CHKERRXX(ierr);
+  }
+  return;
+}
+
 void my_p4est_two_phase_flows_t::solve_time_step(const double& velocity_relative_threshold, const int& max_niter)
 {
   PetscErrorCode ierr;
