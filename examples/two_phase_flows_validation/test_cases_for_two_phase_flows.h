@@ -510,6 +510,8 @@ public:
 
   inline double get_final_time() const { return t_end; }
 
+  virtual void set_motion_of_interface(const bool& desired_interface_is_moving) = 0;
+
 };
 
 #ifndef P4_TO_P8
@@ -543,7 +545,8 @@ public:
     description =
         std::string("* domain = [-2.0, +2.0] X [-2.0, +2.0] \n")
         + std::string("* no periodicity \n")
-        + std::string("* (static) interface = circle of radius 1, centered in (0, 0), negative inside, positive outside \n")
+        + std::string("* interface = static circle of radius 1, centered in (0, 0), negative inside, positive outside \n")
+        + std::string("* (The user may enable interface advection or not, it is disabled by default) \n")
         + std::string("* mu_m = 0.0001; \n")
         + std::string("* mu_p = 0.01; \n")
         + std::string("* rho_m = 0.01; \n")
@@ -560,6 +563,11 @@ public:
     test_name = "test_case_0";
     max_v_magnitude_0 = MAX(2.0*sqrt(3.0)/9.0, 2.0*sqrt(2.0) - 1);
     max_surface_tension_0 = EPS;
+  }
+
+  inline void set_motion_of_interface(const bool& desired_interface_is_moving)
+  {
+    static_interface = !desired_interface_is_moving;
   }
 
   inline double levelset_function(const double *xyz) const
@@ -809,6 +817,7 @@ public:
         std::string("* domain = [-2.0, 2.0] X [-2.0, 2.0] \n")
         + std::string("* no periodicity \n")
         + std::string("* levelset = sqrt((x - (t - 0.5))^2 + (y - (t - 0.5))^2) - 1\n")
+        + std::string("* (The user may NOT disable interface advection in this case) \n")
         + std::string("* mu_m = 0.01; \n")
         + std::string("* mu_p = 0.1; \n")
         + std::string("* rho_m = 0.1; \n")
@@ -826,6 +835,13 @@ public:
     test_name = "test_case_1";
     max_v_magnitude_0 = sqrt(1.87601);
     max_surface_tension_0 = EPS;
+  }
+
+  inline void set_motion_of_interface(const bool& desired_interface_is_moving)
+  {
+    if(!desired_interface_is_moving)
+      throw std::invalid_argument("test_case_1_t::set_motion_of_interface(): the interface advection cannot be deactivated for this test problem");
+    static_interface = !desired_interface_is_moving;
   }
 
   inline double levelset_function(const double *xyz) const
@@ -1008,6 +1024,7 @@ public:
         std::string("* domain = [-\\pi/3.0, 4.0\\pi/3.0] X [-\\pi/3.0, 4.0\\pi/3.0] \n")
         + std::string("* no periodicity \n")
         + std::string("* levelset = 0.1 outside of [0, \\pi] x [0, \\pi], 0.1 - sin(x)*sin(y) inside (+ needs reinitialization)\n")
+        + std::string("* (The user may enable interface advection or not, it is disabled by default) \n")
         + std::string("* mu_m = 0.1; \n")
         + std::string("* mu_p = 0.1; \n")
         + std::string("* rho_m = 1.00; \n")
@@ -1024,6 +1041,10 @@ public:
     test_name = "test_case_2";
     max_v_magnitude_0 = EPS;
     max_surface_tension_0 = surface_tension;
+  }
+  inline void set_motion_of_interface(const bool& desired_interface_is_moving)
+  {
+    static_interface = !desired_interface_is_moving;
   }
 
   inline double levelset_function(const double *xyz) const

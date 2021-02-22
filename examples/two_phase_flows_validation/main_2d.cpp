@@ -775,6 +775,7 @@ int main (int argc, char* argv[])
   ostringstream streamObj;
   // test number
   cmd.add_option("test", "Test problem to choose. Available choices are (default test number is " + to_string(default_test) +"): \n" + list_of_test_problems_for_two_phase_flows.get_description_of_tests() + "\n");
+  cmd.add_option("interface_motion", "flag activating interface advection (and error analysis on the levelset) if set to true or 1. Default behavior is tst-dependent (note that some test(s) may not allow this to be changed by the user)");
   // computational grid parameters
   cmd.add_option("lmin", "min level of the trees, default is " + to_string(default_lmin));
   cmd.add_option("lmax", "max level of the trees, default is " + to_string(default_lmax));
@@ -809,7 +810,7 @@ int main (int argc, char* argv[])
   streamObj.str(""); streamObj << default_niter;
   cmd.add_option("niter", "max number of fix-point iterations for every time step. Default value is " + streamObj.str());
   // output-control parameters
-  cmd.add_option("save_vtk", "flag activating  the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
+  cmd.add_option("save_vtk", "flag activating the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
   streamObj.str(""); streamObj << default_vtk_dt;
   cmd.add_option("vtk_dt", "vtk_dt = time step between two vtk exportation (nondimendional), default is " + streamObj.str());
   streamObj.str(""); streamObj << default_vtk_idx_start;
@@ -836,6 +837,8 @@ int main (int argc, char* argv[])
 
   const int test_number = cmd.get<int>("test", default_test);
   test_case_for_two_phase_flows_t *test_problem = list_of_test_problems_for_two_phase_flows[test_number];
+  if(cmd.contains("interface_motion"))
+    test_problem->set_motion_of_interface(cmd.get<bool>("interface_motion"));
   Vec non_constant_surface_tension  = NULL;
   Vec mass_flux                     = NULL;
   Vec interface_force               = NULL;
