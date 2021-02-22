@@ -1599,7 +1599,7 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
 /* solve the pressure guess equation:
  * -div((1.0/rho)*grad(p_guess)) = 0.0
  * jump in pressure guess = -surface_tension*kappa  - SQR(mass_flux)*jump_inverse_mass_density()
- *                           + jump in (mu n*E*n) <-- this one is estimated with vnp1_face_*_k
+ *                           + jump in (2.0*mu*n*E*n) <-- this one is estimated with vnp1_face_*_k if accessible
  * jump_normal_flux = 0.0
  */
 void my_p4est_two_phase_flows_t::solve_for_pressure_guess()
@@ -1646,8 +1646,9 @@ void my_p4est_two_phase_flows_t::solve_for_pressure_guess()
 /* solve the projection step, we consider (PHI/rho) to be the HODGE variable, define the divergence-free projection as
  * v^{n + 1} = v^{\star} - (1.0/rho) grad PHI, and we solve for PHI as the solution of
  * -div((1.0/rho)*grad(PHI)) = -div(vstar)
- * jump_PHI = (dt/alpha)*(jump in (mu*n*E*n) - jump in (mu*n*E_km1*n) + jump in (mu div v))
- * jump_normal_flux = 0.0! --> because we assume the normal jump in u_star has been correctly captured earlier on...
+ * jump_PHI = (dt/alpha)*(jump in (2*mu*n*E_kp1*n) - jump in (2*mu*n*E_k*n))
+ * jump_normal_flux = 0.0! --> because we assume the jump in normal u_star has been correctly captured earlier on in the
+ * viscosity step and we don't want to mess that up...
  */
 void my_p4est_two_phase_flows_t::solve_projection()
 {
@@ -1660,10 +1661,10 @@ void my_p4est_two_phase_flows_t::solve_projection()
   cell_jump_solver->set_for_projection_steps(dt_n/BDF_advection_alpha());
   // If not previously done, the above does
   // - clear the node-sampled jumps (surface tension + recoil), internally to the solver
-  // - makes the memorized jump-related data homoegeneous
+  // - makes the memorized jump-related data homogeneous
   // - raise a flag that
   //  1) activates the definition of jumps thereafter as
-  //           (dt/alpha)*(jump in (mu n_dot_E_kp1_dot_n) - jump in (mu n_dot_E_k_dot_n) + jump in (div u_kp1))
+  //           (dt/alpha)*(jump in (2.0*mu*n_dot_E_kp1_dot_n) - jump in (2.0*mu*n_dot_E_k_dot_n))
   //  2) keeps the boundary condition types as originally given (i.e. as for pressure guess) makes them homogeneous
   if(ORD(vnp1_face_star_minus_kp1[0] == NULL,  vnp1_face_star_minus_kp1[1] == NULL, vnp1_face_star_minus_kp1[2] == NULL) ||
      ORD(vnp1_face_star_plus_kp1[0] == NULL,   vnp1_face_star_plus_kp1[1] == NULL,  vnp1_face_star_plus_kp1[2] == NULL))
@@ -1715,24 +1716,19 @@ void my_p4est_two_phase_flows_t::solve_projection()
   }
 
   const double alpha_over_dt = BDF_advection_alpha()/dt_n;
-//  linear_combination_of_dof_t cell_divergence[P4EST_DIM];
   for(size_t k = 0; k < hierarchy_n->get_layer_size(); k++)
   {
     p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_layer_quadrant(k);
-//    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_layer_quadrant(k);
-//    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
-    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx] ; // - mu_plus *SUMD(cell_divergence[0](vnp1_face_star_plus_kp1_p[0]),  cell_divergence[1](vnp1_face_star_plus_kp1_p[1]),  cell_divergence[2](vnp1_face_star_plus_kp1_p[2]));
-    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx]; // - mu_minus*SUMD(cell_divergence[0](vnp1_face_star_minus_kp1_p[0]), cell_divergence[1](vnp1_face_star_minus_kp1_p[1]), cell_divergence[2](vnp1_face_star_minus_kp1_p[2]));
+    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx] ;
+    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx];
   }
   ierr = VecGhostUpdateBegin(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for(size_t k = 0; k < hierarchy_n->get_inner_size(); k++)
   {
     p4est_locidx_t quad_idx = hierarchy_n->get_local_index_of_inner_quadrant(k);
-//    p4est_topidx_t tree_idx = hierarchy_n->get_tree_index_of_inner_quadrant(k);
-//    cell_jump_solver->get_divergence_operator_on_cell(quad_idx, tree_idx, cell_divergence);
-    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx] ; //   - mu_plus *SUMD(cell_divergence[0](vnp1_face_star_plus_kp1_p[0]),  cell_divergence[1](vnp1_face_star_plus_kp1_p[1]),  cell_divergence[2](vnp1_face_star_plus_kp1_p[2]));
-    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx]; //   - mu_minus*SUMD(cell_divergence[0](vnp1_face_star_minus_kp1_p[0]), cell_divergence[1](vnp1_face_star_minus_kp1_p[1]), cell_divergence[2](vnp1_face_star_minus_kp1_p[2]));
+    pressure_plus_p[quad_idx]   += alpha_over_dt*projection_variable_plus_p[quad_idx] ;
+    pressure_minus_p[quad_idx]  += alpha_over_dt*projection_variable_minus_p[quad_idx];
   }
   ierr = VecGhostUpdateEnd(pressure_minus,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(pressure_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

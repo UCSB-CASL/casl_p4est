@@ -103,8 +103,8 @@ void my_p4est_poisson_jump_cells_xgfm_t::update_jump_terms_for_projection()
     P4EST_ASSERT(jump_operators_for_viscous_terms_between_quads.find(it->first) != jump_operators_for_viscous_terms_between_quads.end());
     const differential_operators_on_face_sampled_field& viscous_term_operators = jump_operators_for_viscous_terms_between_quads.at(it->first);
 
-    it->second.jump_field  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p) + viscous_term_operators.divergence(face_velocity_star_plus_kp1_p));
-    it->second.jump_field -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p) + viscous_term_operators.divergence(face_velocity_star_minus_kp1_p));
+    it->second.jump_field  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p));
+    it->second.jump_field -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     it->second.known_jump_flux_component = 0.0; // we don't even attempt to calculate the tangential derivative of the above expression, forget it;
   }
 
@@ -383,8 +383,8 @@ my_p4est_poisson_jump_cells_xgfm_t::get_xgfm_jump_between_quads(const p4est_loci
       viscous_jump_terms = 2.0*shear_viscosity_plus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p) - 2.0*shear_viscosity_minus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p);
     else
     {
-      viscous_jump_terms  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p) + viscous_term_operators.divergence(face_velocity_star_plus_kp1_p));
-      viscous_jump_terms -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p) + viscous_term_operators.divergence(face_velocity_star_minus_kp1_p));
+      viscous_jump_terms  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p));
+      viscous_jump_terms -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     }
 
     for(u_char dim = 0; dim < P4EST_DIM; dim++)
@@ -483,11 +483,8 @@ my_p4est_poisson_jump_cells_xgfm_t::get_differential_operators_for_viscous_jump_
 
 
   for(u_char comp = 0; comp < P4EST_DIM; comp++)
-  {
-    to_insert_in_map.div_term[comp] = gradient_of_face_sampled_field[comp][comp]; // divergence == trace of gradient tensor;
     for(u_char der = 0; der < P4EST_DIM; der++)
       to_insert_in_map.n_dot_grad_dot_n_operator[comp].add_operator_on_same_dofs(gradient_of_face_sampled_field[comp][der], normal[comp]*normal[der]);
-  }
 
   jump_operators_for_viscous_terms_between_quads.insert(std::pair<couple_of_dofs, differential_operators_on_face_sampled_field>(quad_couple, to_insert_in_map));
 

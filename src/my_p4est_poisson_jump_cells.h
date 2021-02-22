@@ -12,7 +12,6 @@
 struct differential_operators_on_face_sampled_field {
   double FV_corr_function_scaling_for_jump_dependent_terms;
   linear_combination_of_dof_t n_dot_grad_dot_n_operator[P4EST_DIM];
-  linear_combination_of_dof_t div_term[P4EST_DIM];
 
   differential_operators_on_face_sampled_field() : FV_corr_function_scaling_for_jump_dependent_terms(1.0) {}
 
@@ -20,13 +19,6 @@ struct differential_operators_on_face_sampled_field {
   {
     return (ANDD(face_sampled_field_p[0] != NULL, face_sampled_field_p[1] != NULL, face_sampled_field_p[2] != NULL) ?
         SUMD(n_dot_grad_dot_n_operator[0](face_sampled_field_p[0]), n_dot_grad_dot_n_operator[1](face_sampled_field_p[1]), n_dot_grad_dot_n_operator[2](face_sampled_field_p[2]))
-        : 0.0);
-  }
-
-  inline double divergence(const double *face_sampled_field_p[P4EST_DIM]) const
-  {
-    return (ANDD(face_sampled_field_p[0] != NULL, face_sampled_field_p[1] != NULL, face_sampled_field_p[2] != NULL) ?
-        SUMD(div_term[0](face_sampled_field_p[0]), div_term[1](face_sampled_field_p[1]), div_term[2](face_sampled_field_p[2]))
         : 0.0);
   }
 };

@@ -94,8 +94,8 @@ void my_p4est_poisson_jump_cells_fv_t::update_jump_terms_for_projection()
     P4EST_ASSERT(jump_operators_for_viscous_terms_on_quad.find(it->first) != jump_operators_for_viscous_terms_on_quad.end());
     const differential_operators_on_face_sampled_field& viscous_term_operators = jump_operators_for_viscous_terms_on_quad.at(it->first);
 
-    double new_jump  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p)    /*+ viscous_term_operators.divergence(face_velocity_star_plus_kp1_p) */);
-    new_jump        -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p) /*+ viscous_term_operators.divergence(face_velocity_star_minus_kp1_p)*/);
+    double new_jump  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p));
+    new_jump        -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     new_jump *= viscous_term_operators.FV_corr_function_scaling_for_jump_dependent_terms;
 
     jump_dependent_terms_in_corr_fun_p[it->second] = new_jump;
@@ -108,8 +108,8 @@ void my_p4est_poisson_jump_cells_fv_t::update_jump_terms_for_projection()
     P4EST_ASSERT(jump_operators_for_viscous_terms_on_quad.find(it->first) != jump_operators_for_viscous_terms_on_quad.end());
     const differential_operators_on_face_sampled_field& viscous_term_operators = jump_operators_for_viscous_terms_on_quad.at(it->first);
 
-    double new_jump  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p)    /* + viscous_term_operators.divergence(face_velocity_star_plus_kp1_p) */);
-    new_jump        -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p) /* + viscous_term_operators.divergence(face_velocity_star_minus_kp1_p)*/);
+    double new_jump  = dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p));
+    new_jump        -= dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     new_jump *= viscous_term_operators.FV_corr_function_scaling_for_jump_dependent_terms;
 
     jump_dependent_terms_in_corr_fun_p[it->second] = new_jump;
@@ -458,33 +458,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       }
 
       for(u_char comp = 0; comp < P4EST_DIM; comp++)
-      {
         for(u_char der = 0; der < P4EST_DIM; der++)
           to_insert_in_map.n_dot_grad_dot_n_operator[comp].add_operator_on_same_dofs(gradient_of_face_sampled_field[comp][der], normal_at_projected_point[comp]*normal_at_projected_point[der]);
-
-        // the divergence operator is build at the cell center, as per in the stable projection in this case
-        // (the correction function is associated with a specific quadrant in this approach)
-        to_insert_in_map.div_term[comp].clear();
-        const double dx = (tree_xyz_max[comp] - tree_xyz_min[comp])*(((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN));
-
-        for(u_char face = 0; face < 2; face++)
-        {
-          set_of_neighboring_quadrants direct_neighbor;
-          cell_ngbd->find_neighbor_cells_of_cell(direct_neighbor, quad_idx, tree_idx, 2*comp + face);
-          P4EST_ASSERT(direct_neighbor.size() <= 1); // otherwise it means the current quadrant is not as fine as it should be, it's under-refined...
-          if(direct_neighbor.size() == 1 && direct_neighbor.begin()->level < quad->level) // should not happen, hopefully, but who knows, we'd better be careful in this world...
-          {
-            set_of_neighboring_quadrants minor_quads;
-            cell_ngbd->find_neighbor_cells_of_cell(minor_quads, direct_neighbor.begin()->p.piggy3.local_num, direct_neighbor.begin()->p.piggy3.which_tree, 2*comp + (face == 0 ? 1 : 0));
-            P4EST_ASSERT(minor_quads.size() > 1);
-            for(const p4est_quadrant_t& minor_quad : minor_quads)
-              to_insert_in_map.div_term[comp].add_term(faces->q2f(minor_quad.p.piggy3.local_num, 2*comp + face),
-                                                       (face == 0 ? -1.0 : +1.0)*pow(2.0, (double)(direct_neighbor.begin()->level - minor_quad.level)*(P4EST_DIM - 1))/dx);
-          }
-          else
-            to_insert_in_map.div_term[comp].add_term(faces->q2f(quad_idx, 2*comp + face), (face == 0 ? -1.0 : +1.0)/dx);
-        }
-      }
       to_insert_in_map.FV_corr_function_scaling_for_jump_dependent_terms = scaling_factor; // VERY IMPORTANT
       jump_operators_for_viscous_terms_on_quad.insert(std::pair<p4est_locidx_t, differential_operators_on_face_sampled_field>(quad_idx, to_insert_in_map));
     }
@@ -519,8 +494,8 @@ void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_qu
       correction_function_to_build.jump_dependent_terms += 2.0*scaling_factor*(shear_viscosity_plus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p) - shear_viscosity_minus*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     else
     {
-      correction_function_to_build.jump_dependent_terms += scaling_factor*dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p)     /*+ viscous_term_operators.divergence(face_velocity_star_plus_kp1_p)*/);
-      correction_function_to_build.jump_dependent_terms -= scaling_factor*dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p)  /*+ viscous_term_operators.divergence(face_velocity_star_minus_kp1_p)*/);
+      correction_function_to_build.jump_dependent_terms += scaling_factor*dt_over_BDF_alpha*shear_viscosity_plus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_plus_k_p));
+      correction_function_to_build.jump_dependent_terms -= scaling_factor*dt_over_BDF_alpha*shear_viscosity_minus*(2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_kp1_p) - 2.0*viscous_term_operators.n_dot_grad_dot_n(face_velocity_star_minus_k_p));
     }
 
     for(u_char dim = 0; dim < P4EST_DIM; dim++)
