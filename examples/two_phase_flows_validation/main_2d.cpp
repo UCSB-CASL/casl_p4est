@@ -64,14 +64,67 @@ const string default_work_folder = "/Users/raphael/workspace/projects/two_phase_
 const string default_work_folder = "/home/regan/workspace/projects/two_phase_flow/validation_tests/" + to_string(P4EST_DIM) + "D";
 #endif
 
-void print_convergence_results(const string& export_dir, const my_p4est_two_phase_flows_t* solver, test_case_for_two_phase_flows_t* test_problem)
+void get_pressure_errors(double& error_p_minus, double& error_p_plus, const my_p4est_two_phase_flows_t* solver, test_case_for_two_phase_flows_t* test_problem)
+{
+  const my_p4est_interface_manager_t* interface_manager = solver->get_interface_manager();
+  const p4est_t*          computational_p4est = solver->get_p4est_n();
+  const p4est_ghost_t*    computational_ghost = solver->get_ghost_n();
+  double xyz[P4EST_DIM];
+  Vec pressure_minus  = solver->get_pressure_minus();
+  Vec pressure_plus   = solver->get_pressure_plus();
+  const double *pressure_minus_p, *pressure_plus_p;
+  PetscErrorCode ierr;
+  int mpiret;
+  error_p_minus = error_p_plus = 0.0; // initialization
+  ierr= VecGetArrayRead(pressure_minus, &pressure_minus_p); CHKERRXX(ierr);
+  ierr= VecGetArrayRead(pressure_plus, &pressure_plus_p); CHKERRXX(ierr);
+  double floating_pressure = 0.0;
+  if(test_problem->is_pressure_floating())
+  {
+    for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
+    {
+      const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+        quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
+        const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+        if(sgn_cell < 0)
+          floating_pressure += pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz);
+        else
+          floating_pressure += pressure_plus_p[quad_idx] -test_problem->pressure_plus(xyz);
+      }
+    }
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &floating_pressure, 1, MPI_DOUBLE, MPI_SUM, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    floating_pressure /= computational_p4est->global_num_quadrants;
+  }
+  for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
+  {
+    const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
+      const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
+      if(sgn_cell < 0)
+        error_p_minus = MAX(error_p_minus,  fabs(pressure_minus_p[quad_idx] - floating_pressure - test_problem->pressure_minus(xyz)));
+      else
+        error_p_plus  = MAX(error_p_plus,   fabs(pressure_plus_p[quad_idx] - floating_pressure - test_problem->pressure_plus(xyz)));
+    }
+  }
+  ierr= VecRestoreArrayRead(pressure_minus, &pressure_minus_p); CHKERRXX(ierr);
+  ierr= VecRestoreArrayRead(pressure_plus, &pressure_plus_p); CHKERRXX(ierr);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_p_minus, 1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_p_plus,  1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  // done with pressure np1 at cells
+  return;
+}
+
+void print_convergence_results(const string& export_dir, my_p4est_two_phase_flows_t* solver, test_case_for_two_phase_flows_t* test_problem)
 {
   string filename = export_dir + "/sharp_error_analysis.dat";
   const my_p4est_interface_manager_t* interface_manager = solver->get_interface_manager();
   test_problem->set_time(solver->get_tnp1());
 
   const p4est_t*          computational_p4est = solver->get_p4est_n();
-  const p4est_ghost_t*    computational_ghost = solver->get_ghost_n();
   const p4est_nodes_t*    computational_nodes = solver->get_nodes_n();
   const my_p4est_faces_t* computational_faces = solver->get_faces_n();
   double xyz[P4EST_DIM];
@@ -79,18 +132,41 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
   PetscErrorCode ierr;
   int mpiret;
   double error_levelset = NAN;
-  if(!test_problem->is_interface_static() && !test_problem->is_reinitialization_needed())
+  if(!test_problem->is_interface_static())
   {
+    const p4est_nodes_t* interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
+    Vec exact_phi = NULL;
+    double *exact_phi_p;
+    ierr = interface_manager->create_vector_on_interface_capturing_nodes(exact_phi);
+    ierr = VecGetArray(exact_phi, &exact_phi_p); CHKERRXX(ierr);
+    for(p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; node_idx++)
+    {
+      node_xyz_fr_n(node_idx, interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_capturing_nodes, xyz);
+      exact_phi_p[node_idx] = test_problem->levelset_function(xyz);
+    }
+    ierr = VecRestoreArray(exact_phi, &exact_phi_p); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(exact_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(exact_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    if(test_problem->is_reinitialization_needed())
+    {
+      my_p4est_level_set_t ls(&interface_manager->get_interface_capturing_ngbd_n());
+      ls.reinitialize_2nd_order(exact_phi);
+    }
+
     error_levelset = 0.0;
     const double band = 3.0*ABSD(computational_faces->get_smallest_dxyz()[0], computational_faces->get_smallest_dxyz()[1], computational_faces->get_smallest_dxyz()[2]);
-    const p4est_nodes_t* interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
+    const double *our_phi_read_p, *exact_phi_read_p;
+    ierr = VecGetArrayRead(interface_manager->get_phi(), &our_phi_read_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(exact_phi, &exact_phi_read_p); CHKERRXX(ierr);
     for (p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; ++node_idx) {
-      node_xyz_fr_n(node_idx, interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_capturing_nodes, xyz);
-      if(fabs(test_problem->levelset_function(xyz)) > band)
+      if(fabs(exact_phi_read_p[node_idx]) > band)
         continue;
-      error_levelset = MAX(error_levelset, fabs(interface_manager->phi_at_point(xyz) - test_problem->levelset_function(xyz)));
+      error_levelset = MAX(error_levelset, fabs(our_phi_read_p[node_idx] - exact_phi_read_p[node_idx]));
     }
+    ierr = VecRestoreArrayRead(exact_phi, &exact_phi_read_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(interface_manager->get_phi(), &our_phi_read_p); CHKERRXX(ierr);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_levelset, 1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    ierr = delete_and_nullify_vector(exact_phi); CHKERRXX(ierr);
   }
   // errors for velocity_np1 at nodes
   Vec vnp1_nodes_minus  = solver->get_vnp1_nodes_minus();
@@ -148,64 +224,55 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
   mpiret = MPI_Allreduce(MPI_IN_PLACE, error_v_plus_face,  P4EST_DIM, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
   // done with velocity_np1 at faces
 
-  // errors for pressure np1 at cells
-  Vec pressure_minus  = solver->get_pressure_minus();
-  Vec pressure_plus   = solver->get_pressure_plus();
-  const double *pressure_minus_p, *pressure_plus_p;
-  ierr= VecGetArrayRead(pressure_minus, &pressure_minus_p); CHKERRXX(ierr);
-  ierr= VecGetArrayRead(pressure_plus, &pressure_plus_p); CHKERRXX(ierr);
-  double error_p_minus  = 0.0;
-  double error_p_plus   = 0.0;
-  double floating_pressure = 0.0;
-  if(test_problem->is_pressure_floating())
-  {
-    for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
-    {
-      const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
-      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
-        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-        quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
-        const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
-        if(sgn_cell < 0)
-          floating_pressure += pressure_minus_p[quad_idx] - test_problem->pressure_minus(xyz);
-        else
-          floating_pressure += pressure_plus_p[quad_idx] -test_problem->pressure_plus(xyz);
-      }
-    }
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &floating_pressure, 1, MPI_DOUBLE, MPI_SUM, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    floating_pressure /= computational_p4est->global_num_quadrants;
-  }
-  for (p4est_topidx_t tree_idx = computational_p4est->first_local_tree; tree_idx <= computational_p4est->last_local_tree; ++tree_idx)
-  {
-    const p4est_tree_t* tree = p4est_tree_array_index(computational_p4est->trees, tree_idx);
-    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
-      const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-      quad_xyz_fr_q(quad_idx, tree_idx, computational_p4est, computational_ghost, xyz);
-      const char sgn_cell = (interface_manager->phi_at_point(xyz) <= 0.0 ? -1 : +1);
-      if(sgn_cell < 0)
-        error_p_minus = MAX(error_p_minus,  fabs(pressure_minus_p[quad_idx] - floating_pressure - test_problem->pressure_minus(xyz)));
-      else
-        error_p_plus  = MAX(error_p_plus,   fabs(pressure_plus_p[quad_idx] - floating_pressure - test_problem->pressure_plus(xyz)));
-    }
-  }
-  ierr= VecRestoreArrayRead(pressure_minus, &pressure_minus_p); CHKERRXX(ierr);
-  ierr= VecRestoreArrayRead(pressure_plus, &pressure_plus_p); CHKERRXX(ierr);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_p_minus, 1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_p_plus,  1, MPI_DOUBLE, MPI_MAX, computational_p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  // done with pressure np1 at cells
+  // errors for pressure np1 at cells (2 ways)
+  double error_p_minus, error_p_plus;
+  get_pressure_errors(error_p_minus, error_p_plus, solver, test_problem);
+  double error_finalized_p_minus, error_finalized_p_plus;
+  solver->subtract_mu_div_star_from_pressure();
+  get_pressure_errors(error_finalized_p_minus, error_finalized_p_plus, solver, test_problem);
 
   if(solver->get_rank() == 0)
   {
     FILE* fp_results = fopen(filename.c_str(), "w");
     if(fp_results == NULL)
       throw std::runtime_error("print_convergence_results: could not open file for output of cnovergence results.");
-    if(!test_problem->is_interface_static() && !test_problem->is_reinitialization_needed())
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    fprintf(fp_results, "---------------- MAX ERRORS IN FULL DOMAIN -------------------- \n");
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    if(!test_problem->is_interface_static())
     {
       fprintf(fp_results, "--------------------------------------------------------------- \n");
       fprintf(fp_results, "Error on the levelset at nodes of the interface-capturing grid: \n");
       fprintf(fp_results, "--------------------------------------------------------------- \n");
       fprintf(fp_results, "Error on \\phi = %g \n", error_levelset);
     }
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error for velocities sampled at computational nodes: \n");
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error on u = %g \n", MAX(error_v_minus_nodes[0], error_v_plus_nodes[0]));
+    fprintf(fp_results, "Error on v = %g \n", MAX(error_v_minus_nodes[1], error_v_plus_nodes[1]));
+#ifdef P4_TO_P8
+    fprintf(fp_results, "Error on w = %g \n", MAX(error_v_minus_nodes[2], error_v_plus_nodes[2]));
+#endif
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error for velocities sampled at computational faces: \n");
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error on u = %g \n", MAX(error_v_minus_face[0], error_v_plus_face[0]));
+    fprintf(fp_results, "Error on v = %g \n", MAX(error_v_minus_face[1], error_v_plus_face[1]));
+#ifdef P4_TO_P8
+    fprintf(fp_results, "Error on w = %g \n", MAX(error_v_minus_face[2], error_v_plus_face[2]));
+#endif
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error for pressure sampled at computational cells    \n");
+    fprintf(fp_results, "---------------------------------------------------- \n");
+    fprintf(fp_results, "Error on p = %g \n", MAX(error_p_minus, error_p_plus));
+    fprintf(fp_results, "Error on \"finalized\" p = %g \n", MAX(error_finalized_p_minus, error_finalized_p_plus));
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    fprintf(fp_results, "---------------- MAX ERRORS IN SUBDOMAINS --------------------- \n");
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
+    fprintf(fp_results, "--------------------------------------------------------------- \n");
     fprintf(fp_results, "---------------------------------------------------- \n");
     fprintf(fp_results, "Error for velocities sampled at computational nodes: \n");
     fprintf(fp_results, "---------------------------------------------------- \n");
@@ -243,15 +310,17 @@ void print_convergence_results(const string& export_dir, const my_p4est_two_phas
     fprintf(fp_results, "Error on w = %g \n", error_v_plus_face[2]);
 #endif
     fprintf(fp_results, "---------------------------------------------------- \n");
-    fprintf(fp_results, "Error for pressure sampled at computational cells: \n");
+    fprintf(fp_results, "Error for pressure sampled at computational cells    \n");
     fprintf(fp_results, "---------------------------------------------------- \n");
     fprintf(fp_results, "In negative domain: \n");
     fprintf(fp_results, "------------------- \n");
     fprintf(fp_results, "Error on p = %g \n", error_p_minus);
+    fprintf(fp_results, "Error on \"finalized\" p = %g \n", error_finalized_p_minus);
     fprintf(fp_results, "------------------- \n");
     fprintf(fp_results, "In positive domain: \n");
     fprintf(fp_results, "------------------- \n");
     fprintf(fp_results, "Error on p = %g \n", error_p_plus);
+    fprintf(fp_results, "Error on \"finalized\" p = %g \n", error_finalized_p_plus);
     fprintf(fp_results, "---------------------------------------------------- \n");
     fclose(fp_results);
   }
