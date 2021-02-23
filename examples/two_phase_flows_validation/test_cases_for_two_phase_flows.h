@@ -303,13 +303,13 @@ public:
 
       // interface_stress term = [(-p*I + mu*(grad_u + grad_u^T))\cdot n] - gamma*kappa*n - SQR(mass_flux)*[1/rho]*n + (I - nn)\cdot grad gamma
       for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= (pressure_plus(xyz_node) - pressure_minus(xyz_node))*normal[dir];
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= local_surface_tension(xyz_node)*curvature_p[node_idx]*normal[dir];
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= SQR(mass_flux)*(1.0/rho_p - 1.0/rho_m)*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += (pressure_plus(xyz_node) - pressure_minus(xyz_node))*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += local_surface_tension(xyz_node)*curvature_p[node_idx]*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += SQR(mass_flux)*(1.0/rho_p - 1.0/rho_m)*normal[dir];
         for(u_char der = 0; der < P4EST_DIM; der++)
         {
-          interfacial_force_p[P4EST_DIM*node_idx + dir] += (mu_p*(grad_v_plus[P4EST_DIM*dir + der] + grad_v_plus[P4EST_DIM*der + dir]) - mu_m*(grad_v_minus[P4EST_DIM*dir + der] + grad_v_minus[P4EST_DIM*der + dir]))*normal[der];
-          interfacial_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - normal[dir]*normal[der])*grad_surf_tension[der];
+          interfacial_force_p[P4EST_DIM*node_idx + dir] -= (mu_p*(grad_v_plus[P4EST_DIM*dir + der] + grad_v_plus[P4EST_DIM*der + dir]) - mu_m*(grad_v_minus[P4EST_DIM*dir + der] + grad_v_minus[P4EST_DIM*der + dir]))*normal[der]; // XX
+          interfacial_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - normal[dir]*normal[der])*grad_surf_tension[der]; // XX
         }
       }
     }
@@ -331,13 +331,13 @@ public:
 
       // interface_stress term = [(-p*I + mu*(grad_u + grad_u^T))\cdot n] - gamma*kappa*n - SQR(mass_flux)*[1/rho]*n + (I - nn)\cdot grad gamma
       for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= (pressure_plus(xyz_node) - pressure_minus(xyz_node))*normal[dir];
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= local_surface_tension(xyz_node)*curvature_p[node_idx]*normal[dir];
-        interfacial_force_p[P4EST_DIM*node_idx + dir] -= SQR(mass_flux)*(1.0/rho_p - 1.0/rho_m)*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += (pressure_plus(xyz_node) - pressure_minus(xyz_node))*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += local_surface_tension(xyz_node)*curvature_p[node_idx]*normal[dir];
+        interfacial_force_p[P4EST_DIM*node_idx + dir] += SQR(mass_flux)*(1.0/rho_p - 1.0/rho_m)*normal[dir];
         for(u_char der = 0; der < P4EST_DIM; der++)
         {
-          interfacial_force_p[P4EST_DIM*node_idx + dir] += (mu_p*(grad_v_plus[P4EST_DIM*dir + der] + grad_v_plus[P4EST_DIM*der + dir]) - mu_m*(grad_v_minus[P4EST_DIM*dir + der] + grad_v_minus[P4EST_DIM*der + dir]))*normal[der];
-          interfacial_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - normal[dir]*normal[der])*grad_surf_tension[der];
+          interfacial_force_p[P4EST_DIM*node_idx + dir] -= (mu_p*(grad_v_plus[P4EST_DIM*dir + der] + grad_v_plus[P4EST_DIM*der + dir]) - mu_m*(grad_v_minus[P4EST_DIM*dir + der] + grad_v_minus[P4EST_DIM*der + dir]))*normal[der];
+          interfacial_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - normal[dir]*normal[der])*grad_surf_tension[der];
         }
       }
     }

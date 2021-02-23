@@ -257,7 +257,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   user_defined_mass_flux                    = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_np1_xxyyzz                = NULL;
-  interface_tangential_force    = NULL;
+  jump_tangential_stress        = NULL;
   user_defined_interface_force  = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
@@ -386,7 +386,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   user_defined_mass_flux                    = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_np1_xxyyzz                = NULL;
-  interface_tangential_force    = NULL;
+  jump_tangential_stress        = NULL;
   user_defined_interface_force  = NULL;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
@@ -1100,7 +1100,7 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(phi_np1_xxyyzz);                     CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_tangential_force);         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_tangential_stress);             CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
@@ -1479,7 +1479,7 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(non_viscous_pressure_jump); CHKERRXX(ierr);
   }
 
-  // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density - (normal component of user_defined_interface_force) + [2\mu n \cdot E \cdot n]
+  // [p] = -surface_tension*curvature - SQR(mass_flux)*jump_of_inverse_mass_density + (normal component of user_defined_interface_force) + [2\mu n \cdot E \cdot n]
   // we calculate all but the last term in here (supposedly known before any time step)
 
   const double* phi_p = NULL;
@@ -1538,7 +1538,7 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
           local_normal_interface_force_component += grad_phi_p[P4EST_DIM*node_idx + dim]*user_defined_interface_force_p[P4EST_DIM*node_idx + dim];
         local_normal_interface_force_component /= mag_grad_phi;
       }
-      non_viscous_pressure_jump_p[node_idx] -= local_normal_interface_force_component;
+      non_viscous_pressure_jump_p[node_idx] += local_normal_interface_force_component;
     }
   }
   ierr = VecGhostUpdateBegin(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1563,7 +1563,7 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
           local_normal_interface_force_component += grad_phi_p[P4EST_DIM*node_idx + dim]*user_defined_interface_force_p[P4EST_DIM*node_idx + dim];
         local_normal_interface_force_component /= mag_grad_phi;
       }
-      non_viscous_pressure_jump_p[node_idx] -= local_normal_interface_force_component;
+      non_viscous_pressure_jump_p[node_idx] += local_normal_interface_force_component;
     }
   }
   ierr = VecGhostUpdateEnd(non_viscous_pressure_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2241,24 +2241,24 @@ void my_p4est_two_phase_flows_t::build_jump_in_normal_velocity()
   return;
 }
 
-void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
+void my_p4est_two_phase_flows_t::build_total_jump_tangential_stress()
 {
   PetscErrorCode ierr;
   if(user_defined_nonconstant_surface_tension == NULL && user_defined_interface_force == NULL)
   {
-    ierr = delete_and_nullify_vector(interface_tangential_force); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(jump_tangential_stress); CHKERRXX(ierr);
     return;
   }
-  if(interface_tangential_force != NULL)
+  if(jump_tangential_stress != NULL)
   {
     // already done
-    P4EST_ASSERT(VecIsSetForNodes(interface_tangential_force, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, P4EST_DIM));
+    P4EST_ASSERT(VecIsSetForNodes(jump_tangential_stress, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, P4EST_DIM));
     return;
   }
 
-  ierr = interface_manager->create_vector_on_interface_capturing_nodes(interface_tangential_force, P4EST_DIM); CHKERRXX(ierr);
-  double *interface_tangential_force_p;
-  ierr = VecGetArray(interface_tangential_force, &interface_tangential_force_p); CHKERRXX(ierr);
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(jump_tangential_stress, P4EST_DIM); CHKERRXX(ierr);
+  double *jump_tangential_stress_p;
+  ierr = VecGetArray(jump_tangential_stress, &jump_tangential_stress_p); CHKERRXX(ierr);
   const double *grad_phi_p;
   const double *user_defined_nonconstant_surface_tension_p = NULL;
   const double *user_defined_interface_force_p = NULL;
@@ -2286,16 +2286,16 @@ void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
     }
 
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      interface_tangential_force_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
+      jump_tangential_stress_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
       for (u_char der = 0; der < P4EST_DIM; ++der) {
         if(user_defined_nonconstant_surface_tension_p != NULL)
-          interface_tangential_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
+          jump_tangential_stress_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
         if(user_defined_interface_force_p != NULL)
-          interface_tangential_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
+          jump_tangential_stress_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
       }
     }
   }
-  ierr = VecGhostUpdateBegin(interface_tangential_force, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(jump_tangential_stress, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_local_size(); ++k) {
     p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_local_node(k);
     const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
@@ -2308,16 +2308,16 @@ void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
     }
 
     for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-      interface_tangential_force_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
+      jump_tangential_stress_p[P4EST_DIM*node_idx + dir] = 0.0; // initialize
       for (u_char der = 0; der < P4EST_DIM; ++der) {
         if(user_defined_nonconstant_surface_tension_p != NULL)
-          interface_tangential_force_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
+          jump_tangential_stress_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*local_grad_surf_tension[der];
         if(user_defined_interface_force_p != NULL)
-          interface_tangential_force_p[P4EST_DIM*node_idx + dir] += ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
+          jump_tangential_stress_p[P4EST_DIM*node_idx + dir] -= ((dir == der ? 1.0 : 0.0) - local_normal[dir]*local_normal[der])*user_defined_interface_force_p[P4EST_DIM*node_idx + der];
       }
     }
   }
-  ierr = VecGhostUpdateEnd(interface_tangential_force, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(jump_tangential_stress, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
   if(user_defined_nonconstant_surface_tension != NULL){
@@ -2326,7 +2326,7 @@ void my_p4est_two_phase_flows_t::build_total_interface_tangential_force()
   if(user_defined_interface_force != NULL){
     ierr = VecRestoreArrayRead(user_defined_interface_force, &user_defined_interface_force_p); CHKERRXX(ierr);
   }
-  ierr = VecGetArray(interface_tangential_force, &interface_tangential_force_p); CHKERRXX(ierr);
+  ierr = VecGetArray(jump_tangential_stress, &jump_tangential_stress_p); CHKERRXX(ierr);
   return;
 }
 
@@ -2341,11 +2341,11 @@ void my_p4est_two_phase_flows_t::solve_viscosity()
   {
     build_face_jump_solver();
     build_jump_in_normal_velocity(); // nothing done in there if nothing to do, no worries...
-    build_total_interface_tangential_force(); // nothing done in there if nothing to do, no worries...
+    build_total_jump_tangential_stress(); // nothing done in there if nothing to do, no worries...
     face_jump_solver->set_interface(interface_manager);
     face_jump_solver->set_mus(mu_minus, mu_plus);
     face_jump_solver->set_bc(bc_velocity);
-    face_jump_solver->set_jumps(jump_normal_velocity, interface_tangential_force);
+    face_jump_solver->set_jumps(jump_normal_velocity, jump_tangential_stress);
     face_jump_solver->set_compute_partition_on_the_fly(voronoi_on_the_fly);
     if(dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver) != NULL)
       dynamic_cast<my_p4est_poisson_jump_faces_xgfm_t*>(face_jump_solver)->set_validity_of_interface_neighbors_for_normal_derivatives(false);
@@ -2929,8 +2929,8 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
-    if(exhaustive && interface_tangential_force != NULL)
-      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_force, "interface_tangential_force"));
+    if(exhaustive && jump_tangential_stress != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(jump_tangential_stress, "jump_tangential_stress"));
   }
 
   Vec vnp1_minus_on_cells = NULL, vnp1_star_minus_on_cells = NULL;
@@ -2999,8 +2999,8 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(jump_normal_velocity, "jump_normal_velocity"));
-    if(exhaustive && interface_tangential_force != NULL)
-      node_vector_fields.push_back(Vec_for_vtk_export_t(interface_tangential_force, "interface_tangential_force"));
+    if(exhaustive && jump_tangential_stress != NULL)
+      node_vector_fields.push_back(Vec_for_vtk_export_t(jump_tangential_stress, "jump_tangential_stress"));
 
     my_p4est_vtk_write_all_general_lists(fine_p4est_n, fine_nodes_n, fine_ghost_n,
                                          P4EST_TRUE, P4EST_TRUE,
@@ -4125,7 +4125,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   user_defined_interface_force              = NULL; // we don't take a chance, the grid has probably changed, we reset this one
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_normal_velocity);         CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(interface_tangential_force);   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(jump_tangential_stress);       CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_minus); CHKERRXX(ierr);

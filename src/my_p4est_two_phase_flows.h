@@ -151,7 +151,7 @@ private:
   Vec jump_normal_velocity;         // scalar fields, jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_np1_xxyyzz;
-  Vec interface_tangential_force;   // vector field, P4EST_DIM-block-structured (tangential components of the interface-defined force and/or gradient of non-constant surface tension, i.e. Marangoni force)
+  Vec jump_tangential_stress;       // vector field, P4EST_DIM-block-structured (negative tangential components of the interface-defined force and/or gradient of non-constant surface tension, i.e. Marangoni force)
   // -------------------------------------------------------
   // - sampled at the nodes of the COMPUTATIONAL grid n:
   // -------------------------------------------------------
@@ -301,7 +301,7 @@ private:
   }
 
   void build_jump_in_normal_velocity(); // possible jump in normal velocity = mass flux*(jump in 1.0/rho)
-  void build_total_interface_tangential_force(); // possible Marangoni + possible component of user-defined
+  void build_total_jump_tangential_stress(); // possible Marangoni + possible component of user-defined
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
