@@ -88,8 +88,8 @@ param_t<int> DIM( nx (pl, 1, "nx", "number of trees in x-dimension"),
 param_t<int> lmin (pl, 5, "lmin", "min level of trees");
 param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 4, "lmin", "min level of trees");
-param_t<int> lmax (pl, 4, "lmax", "max level of trees");
+param_t<int> lmin (pl, 5, "lmin", "min level of trees");
+param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.2, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
@@ -124,9 +124,9 @@ param_t<bool>   smart_bc               (pl, 1,   "smart_bc", "");
 
 // polymer
 param_t<double> box_size (pl, 10, "box_size", "Box size in units of Rg");
-param_t<double> f        (pl, .3, "f", "Fraction of polymer A");
-param_t<double> XN       (pl, 30, "XN", "Flory-Higgins interaction parameter");
-param_t<int>    ns       (pl, 60, "ns", "Discretization of polymer chain");
+param_t<double> f        (pl, .45, "f", "Fraction of polymer A");
+param_t<double> XN       (pl, 20, "XN", "Flory-Higgins interaction parameter");
+param_t<int>    ns       (pl, 100, "ns", "Discretization of polymer chain");
 
 // output parameters
 param_t<bool> save_vtk        (pl, 1, "save_vtk", "");
@@ -1883,13 +1883,13 @@ int main (int argc, char* argv[])
                                scft.get_exchange_force()); CHKERRXX(ierr);
           }
 
-          if (scft_iteration == 100) {
-            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
-          }
+//          if (scft_iteration == 100) {
+//            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+//          }
 
           // do an SCFT step
-          scft.update_potentials();
-          if (scft_iteration % 100 == 0) {
+          scft.update_potentials(scft_iteration % 2 == 0, scft_iteration % 2 == 1);
+          if (scft_iteration % 1 == 0) {
             scft.sync_and_extend();
             scft.save_VTK(scft_iteration);
           }

@@ -72,9 +72,11 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   cube_refinement     = 1;
   time_discretization = 1;
 
+  field_update = 1;
+
   /* auxiliary variables */
   num_surfaces = 0;
-  lambda = 1;
+  lambda = 80;
   diag = 1;
   dxyz_min = 1;
   dxyz_max = 1;
@@ -554,6 +556,7 @@ double my_p4est_scft_t::compute_rho_b(double *integrand)
 
 void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
 {
+  // compute residuals
   double *rho_a_ptr;
   double *rho_b_ptr;
 
@@ -580,8 +583,8 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
   {
     if (mask_ptr[n] < 0.)
     {
-      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n] - 1.0*rho_avg;
-      force_m_ptr[n] = 2.0*mu_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
+      force_p_ptr[n] = (rho_a_ptr[n] + rho_b_ptr[n] - 1.0*rho_avg)/rho_avg;
+      force_m_ptr[n] = (2.0*mu_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n]);
 //      force_p_ptr[n] /= rho_avg;
 //      force_m_ptr[n] /= rho_avg;
     }
@@ -609,12 +612,56 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
 
   if (update_mu_m)
   {
-    ierr = VecAXPBYGhost(mu_m, -lambda, 1., force_m); CHKERRXX(ierr);
+    switch (field_update) {
+      case 0:
+        ierr = VecAXPBYGhost(mu_m, -lambda, 1., force_m); CHKERRXX(ierr);
+      break;
+      case 1:
+        ierr = VecAXPBYGhost(mu_m, -lambda/(1.+2.*lambda/XN), 1., force_m); CHKERRXX(ierr);
+      break;
+      default: throw;
+    }
   }
 
   if (update_mu_p)
   {
-    ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
+    switch (field_update) {
+      case 0:
+        ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
+      break;
+      case 1:
+      {
+        my_p4est_poisson_nodes_mls_t solver(ngbd);
+
+        for (int i = 0; i < num_surfaces; ++i) {
+          solver.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
+        }
+
+        solver.set_mu(.5*scaling*scaling);
+        solver.set_diag(1.+lambda);
+        solver.set_wc(neumann_cf, zero_cf);
+        solver.set_use_taylor_correction(true);
+        solver.set_kink_treatment(true);
+        solver.set_use_sc_scheme(0);
+        solver.set_store_finite_volumes(true);
+        solver.set_cube_refinement(1);
+        solver.set_integration_order(2);
+        solver.preassemble_linear_system();
+
+        solver.set_rhs(force_p);
+
+        Vec sol;
+        ierr = VecDuplicate(force_p, &sol); CHKERRXX(ierr);
+        solver.solve(sol);
+        ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
+        ierr = VecAXPBYGhost(mu_p,  -lambda*lambda, 1., sol); CHKERRXX(ierr);
+        ierr = VecDestroy(sol); CHKERRXX(ierr);
+        break;
+      }
+      default:
+        throw;
+    }
+
     mu_p_avg = integrate_over_domain_fast(mu_p)/volume;
     ierr = VecShiftGhost(mu_p, -mu_p_avg); CHKERRXX(ierr);
 //    ierr = VecShiftGhost(mu_p, energy_singular_part/volume*pow(scaling, P4EST_DIM)); CHKERRXX(ierr);

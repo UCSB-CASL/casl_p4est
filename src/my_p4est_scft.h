@@ -113,6 +113,7 @@ class my_p4est_scft_t
   int time_discretization;
   int integration_order;
   int cube_refinement;
+  int field_update; // 0 - explicit, 1 - approx SIS
 
   std::vector<Vec*> normal;
   std::vector<Vec>  kappa;
