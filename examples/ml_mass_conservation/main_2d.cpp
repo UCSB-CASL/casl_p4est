@@ -12,7 +12,6 @@
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
-#include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
@@ -21,10 +20,8 @@
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
-#include <src/my_p4est_semi_lagrangian_ml.h>
 #else
 #include <src/my_p8est_utils.h>
-#include <src/my_p8est_vtk.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
@@ -40,55 +37,6 @@
 #include <src/petsc_compatibility.h>
 #include <src/casl_geometry.h>
 #include "CoarseGrid.h"
-
-/**
- * Write VTK files.
- * @param [in] vtkIdx File index.
- * @param [in] p4est Pointer to p4est object.
- * @param [in] nodes Pointer to nodes object.
- * @param [in] ghost Pointer to ghost struct.
- * @param [in] phi Phi parallel vector.
- * @param [in] phiExact Exact phi parallel vector.
- * @param [in] vel Array of two-dimensional velocity components.
- */
-void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-			   const Vec& phi, const Vec& phiExact, const Vec vel[2] )
-{
-	char name[1024];
-	PetscErrorCode ierr;
-
-	const double *phiReadPtr, *phiExactReadPtr, *velReadPtr[2];		// Pointers to Vec contents.
-
-	sprintf( name, "visualization_%d", vtkIdx );
-	ierr = VecGetArrayRead( phi, &phiReadPtr );
-	CHKERRXX( ierr );
-	ierr = VecGetArrayRead( phiExact, &phiExactReadPtr );
-	CHKERRXX( ierr );
-	for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
-	{
-		ierr = VecGetArrayRead( vel[dir], &velReadPtr[dir] );
-		CHKERRXX( ierr );
-	}
-	my_p4est_vtk_write_all( p4est, nodes, ghost,
-							P4EST_TRUE, P4EST_TRUE,
-							2 + P4EST_DIM, 0, name,
-							VTK_POINT_DATA, "phi_f", phiReadPtr,
-							VTK_POINT_DATA, "phiExact_f", phiExactReadPtr,
-							VTK_POINT_DATA, "vel_x_f", velReadPtr[0],
-							VTK_POINT_DATA, "vel_y_f", velReadPtr[1]
-	);
-	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
-	CHKERRXX( ierr );
-	ierr = VecRestoreArrayRead( phiExact, &phiExactReadPtr );
-	CHKERRXX( ierr );
-	for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
-	{
-		ierr = VecRestoreArrayRead( vel[dir], &velReadPtr[dir] );
-		CHKERRXX( ierr );
-	}
-
-	std::cout << " -> Saving vtu files in " + std::string( name ) + ".vtu" << std::endl;
-}
 
 // Velocity field.
 struct UComponent : CF_2
@@ -149,6 +97,8 @@ int main( int argc, char** argv )
 	const double BAND_C = 2; 			// Minimum number of cells around interface in both grids.
 	const double BAND_F = BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL));
 
+	char msg[1024];						// Some string to write messages to standard ouput.
+
 	try
 	{
 		// Initializing parallel environment (although in reality we're working on a single process).
@@ -161,9 +111,11 @@ int main( int argc, char** argv )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		parStopWatch watch;
-		printf( ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d\n",
-				COARSE_MAX_RL, FINE_MAX_RL );
 		watch.start();
+
+		sprintf( msg, ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d\n", COARSE_MAX_RL, FINE_MAX_RL );
+		ierr = PetscPrintf( mpi.comm(), msg );
+		CHKERRXX( ierr );
 
 		// Define the velocity field arrays (valid for COARSE and FINE grids).
 		UComponent uComponent;
@@ -247,14 +199,15 @@ int main( int argc, char** argv )
 			sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
 
 		// Save the initial grid and fields into vtk.
-		writeVTK( 0, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.ghost, coarseGrid.phi, phiExact_c, coarseGrid.vel );
+		coarseGrid.writeVTK( 0, phiExact_c );
 
 		// Define time stepping variables.
 		double tn_c = 0;							// Current time for COARSE grid.
 		double tn_f = 0;							// Current time for FINE grid.
 		bool hasVelSwitched = false;
 		int iter = 0;
-		int vtkIdx = 1;								// Index for VTK files.
+		int vtkIdx = 1;								// Index for post VTK files.
+		int vtkIdxPrior = 0;						// Index for prior VTK files.
 		const double MAX_VEL_NORM = 1.0; 			// Maximum velocity norm known analitically.
 		double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;		// deltaT for COARSE grid.
 		double dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;					// FINE deltaT knowing that the CFL condition is
@@ -334,12 +287,20 @@ int main( int argc, char** argv )
 			// Restore FINE time step size.
 			dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;
 
-			// "Advecting" COARSE grid by using the FINE grid as reference.
-			coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+			// Collect samples from COARSE grid: must be done before "advecting" it.
+			coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c ); 	// Also allocates flagged nodes.
+			if( iter >= vtkIdxPrior * NUM_ITER_VTK )
+			{
+				coarseGrid.writeVTK( vtkIdxPrior );						// Prior-advection is one vtk index behind.
+				vtkIdxPrior++;
+			}
+
+			// "Advecting" COARSE grid by using the FINE grid as reference: updates internal phi and velocity vectors.
+			coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f, velocityField );
 
 			// Advance COARSE time step.
 			tn_c += dt_c;
-			tn_f = tn_c;									// Synchronize COARSE and FINE times.
+			tn_f = tn_c;												// Synchronize COARSE and FINE times.
 			iter++;
 			if( tn_c >= DURATION / 2.0 && !hasVelSwitched )
 			{
@@ -347,7 +308,8 @@ int main( int argc, char** argv )
 				uComponent.switch_direction();
 				vComponent.switch_direction();
 				hasVelSwitched = true;
-				std::cout << " *** Velocity switched ***" << std::endl;
+				ierr = PetscPrintf( mpi.comm(), "*** Velocity switched ***\n" );
+				CHKERRXX( ierr );
 			}
 
 			// Re-sample the exact initial COARSE level-set function.
@@ -358,7 +320,6 @@ int main( int argc, char** argv )
 			sample_cf_on_nodes( coarseGrid.p4est, coarseGrid.nodes, sphere, phiExact_c );
 
 			// Display iteration message.
-			char msg[1024];
 			sprintf( msg, "    Iteration %04d: t = %1.4f \n", iter, tn_c );
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
@@ -366,7 +327,7 @@ int main( int argc, char** argv )
 			// Save to vtk format.
 			if( iter >= vtkIdx * NUM_ITER_VTK || tn_c == DURATION )
 			{
-				writeVTK( vtkIdx, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.ghost, coarseGrid.phi, phiExact_c, coarseGrid.vel );
+				coarseGrid.writeVTK( vtkIdx, phiExact_c );
 				vtkIdx++;
 			}
 		}
@@ -416,7 +377,9 @@ int main( int argc, char** argv )
 
 		coarseGrid.destroy();
 
-		printf( "<< Finished data set generation after %f secs with error %f.\n", watch.get_duration_current(), error );
+		sprintf( msg, "<< Finished data set generation after %f secs with error %f.\n", watch.get_duration_current(), error );
+		ierr = PetscPrintf( mpi.comm(), msg );
+		CHKERRXX( ierr );
 		watch.stop();
 	}
 	catch( const std::exception &exception )

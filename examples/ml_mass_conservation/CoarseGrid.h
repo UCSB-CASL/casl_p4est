@@ -12,8 +12,6 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_macros.h>
-#include <src/my_p4est_level_set.h>
-#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_semi_lagrangian_ml.h>
 
 /**
@@ -23,6 +21,7 @@
 class CoarseGrid
 {
 public:
+	const mpi_environment_t& mpi;				// Reference to MPI environment.
 	my_p4est_brick_t brick{};					// Brick and connectivity objects.
 	p4est_connectivity_t *connectivity;
 	p4est_t *p4est;								// Forest variables.
@@ -39,6 +38,7 @@ public:
 
 	Vec phi = nullptr;							// Level-set function values parallel vector.
 	Vec vel[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};			// Velocity field parallel vectors.
+	Vec gammaFlag = nullptr;					// A flag vector that stores 1s in nodes adjacent to Gamma, 0 otherwise.
 
 	splitting_criteria_cf_and_uniform_band_t *lsSplittingCriteria;		// Criteria created dynamically in constructor.
 
@@ -58,7 +58,7 @@ public:
 	CoarseGrid( const mpi_environment_t& mpi, const int nTreesPerDim[], const double xyzMin[], const double xyzMax[],
 			 	const int periodic[], double band, int maxRL, CF_DIM *initialInterface,
 			 	const CF_2 *velocityField[P4EST_DIM], bool sampleVecs=true )
-			 	: BAND( band ), MAX_RL( maxRL )
+			 	: BAND( band ), MAX_RL( maxRL ), mpi( mpi )
 	{
 
 		// Init macromesh via the brick and connectivity objects.
@@ -115,13 +115,23 @@ public:
 	/**
 	 * Use the FINE grid to "advect" or update the COARSE grid.  To achieve this, we use interpolation.  The COARSE grid
 	 * is upated until convergence.
+	 * @note You must collect samples before "advecting" COARSE grid.
 	 * @param [in] ngbd_f Pointer to FINE grid node neighborhood struct.
 	 * @param [in] phi_f Reference to parallel level-set function value vector for FINE grid.
+	 * @param [in] velocityField Veolocity field objects used for sampling "advected" COARSE grid.
 	 */
-	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f )
+	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const CF_2 *velocityField[P4EST_DIM] )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
+
+		// Invalidate the flag vector.  You must set re-allocate the vector when sampling.
+		if( gammaFlag )
+		{
+			ierr = VecDestroy( gammaFlag );
+			CHKERRXX( ierr );
+			gammaFlag = nullptr;
+		}
 
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
 
@@ -203,6 +213,16 @@ public:
 		CHKERRXX( ierr );
 		phi = phiNew;
 
+		// Re-sample the FINE velocity field on new grid.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			ierr = VecDestroy( vel[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
+			CHKERRXX( ierr );
+			sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+		}
+
 		// Free vectors with second derivatives.
 		for( auto& derivative : phi_f_xx )
 		{
@@ -218,6 +238,147 @@ public:
 		hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
 		nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
 		nodeNeighbors->init_neighbors();
+	}
+
+	/**
+	 * Collect sample from COARSE grid points next to the interface (all independent nodes).  This function must be
+	 * called *after* advecting the FINE grid an adequate number of times and *before* using the FINE grid to "advect"
+	 * the COARSE grid.
+	 * @param [in] ngbd_f Advected fine grid neighborhood struct.
+	 * @param [in] phi_f Advected fine grid level-set values vector.
+	 * @param [in] dt Coarse grid step size.
+	 */
+	void collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt )
+	{
+		assert( phi );	// Check we have a well defined coarse grid.
+		PetscErrorCode ierr;
+
+		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
+
+		// Invalidate the flag vector and reallocate it with the current grid status.
+		if( gammaFlag )
+		{
+			ierr = VecDestroy( gammaFlag );
+			CHKERRXX( ierr );
+			gammaFlag = nullptr;
+		}
+		ierr = VecCreateGhostNodes( p4est, nodes, &gammaFlag );
+		CHKERRXX( ierr );
+
+		// Compute second derivatives of FINE level-set function. We need these for quadratic interpolation of its phi
+		// values to draw the corresponding target phi values in the COARSE grid.
+		Vec phi_f_xx[P4EST_DIM];
+		for( auto& derivative : phi_f_xx )
+		{
+			ierr = VecCreateGhostNodes( ngbd_f->get_p4est(), ngbd_f->get_nodes(), &derivative );
+			CHKERRXX( ierr );
+		}
+		ngbd_f->second_derivatives_central( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ) );
+
+		my_p4est_interpolation_nodes_t interp( ngbd_f );	// Interpolation object on FINE grid phi values.
+
+		//////////////////////////////////////////////// Data collection ///////////////////////////////////////////////
+
+		char msg[1024];
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );		// Use a semi-Lagrangian
+		std::vector<slml::DataPacket *> dataPackets;										// scheme with a single vel
+		semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );						// step for backtracing to
+		sprintf( msg, "* %lu received packets!\n", dataPackets.size() );					// retrieve samples.
+		ierr = PetscPrintf( mpi.comm(), msg );
+		CHKERRXX( ierr );
+
+		// Finding the target phi values via interpolation from FINE grid.
+		double targetPhi[dataPackets.size()];
+		size_t outIndex;
+		for( outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
+			interp.add_point( outIndex, xyz );
+		}
+		interp.set_input( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ), interpolation_method::quadratic );
+		interp.interpolate( targetPhi );
+		interp.clear();
+
+		// TODO: Go through collected nodes and add the target value.  Populate the flag vector at the same time.
+		double *gammaFlagPtr;
+		ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
+		CHKERRXX( ierr );
+		for( auto dataPacket : dataPackets )
+			gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
+		ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
+		CHKERRXX( ierr );
+
+		// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated using
+		// machine learning even at processes that do not own those nodes.  If I don't do this, the flag set in one pro-
+		// cess can be reset to 0 by another (e.g., if the node is in the ghost layer of a process and, according to it,
+		// the node isn't next to the interface, while the owner process has determined that the node is next to Gamma).
+		ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+		VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+
+		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////
+
+		slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+
+		// Free vectors with second derivatives for FINE phi.
+		for( auto& derivative : phi_f_xx )
+		{
+			ierr = VecDestroy( derivative );
+			CHKERRXX( ierr );
+		}
+	}
+
+	/**
+	 * Write VTK files for prior or post advection.  Prior saves the flagged nodes along Gamma, post saves the exact
+	 * solution phi.
+	 * @param [in] vtkIdx File index.
+	 * @param [in] phiExact Exact phi parallel vector.  If given, post advection is saved, otherwise, prior advection is saved.
+ 	 */
+	void writeVTK( int vtkIdx, Vec phiExact=nullptr )
+	{
+		char name[1024];
+		PetscErrorCode ierr;
+
+		const double *phiReadPtr, *phiExactOrFlagReadPtr, *velReadPtr[2];		// Pointers to Vec contents.
+
+		// Depending on whether the flag vector is set (after sampling) or not (after fitting COARSE to FINE grid), we
+		// save different information.
+		// Prior: Means that we have not advected the COARSE grid.  So, we can show the flagged nodes.
+		// Post: Means that we have advected the coarse grid.  We can show the exact solution (as it counts on t=tn+1).
+		sprintf( name, (!phiExact)? "visualization_prior_%d" : "visualization_post_%d", vtkIdx );
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+		ierr = VecGetArrayRead( (!phiExact)? gammaFlag : phiExact, &phiExactOrFlagReadPtr );
+		CHKERRXX( ierr );
+		for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
+		{
+			ierr = VecGetArrayRead( vel[dir], &velReadPtr[dir] );
+			CHKERRXX( ierr );
+		}
+		my_p4est_vtk_write_all( p4est, nodes, ghost,
+								P4EST_TRUE, P4EST_TRUE,
+								2 + P4EST_DIM, 0, name,
+								VTK_POINT_DATA, "phi", phiReadPtr,
+								VTK_POINT_DATA, (!phiExact)? "flag" : "phiExact", phiExactOrFlagReadPtr,
+								VTK_POINT_DATA, "vel_x", velReadPtr[0],
+								VTK_POINT_DATA, "vel_y", velReadPtr[1]
+		);
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+		ierr = VecRestoreArrayRead( (!phiExact)? gammaFlag : phiExact, &phiExactOrFlagReadPtr );
+		CHKERRXX( ierr );
+		for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
+		{
+			ierr = VecRestoreArrayRead( vel[dir], &velReadPtr[dir] );
+			CHKERRXX( ierr );
+		}
+
+		char msg[1024];
+		sprintf( msg, " -> Saving vtu files in %s.vtu\n", name );
+		ierr = PetscPrintf( mpi.comm(), msg );
+		CHKERRXX( ierr );
 	}
 
 	/**
@@ -242,6 +403,13 @@ public:
 				CHKERRXX( ierr );
 				dir = nullptr;
 			}
+		}
+
+		if( gammaFlag )
+		{
+			ierr = VecDestroy( gammaFlag );
+			CHKERRXX( ierr );
+			gammaFlag = nullptr;
 		}
 
 		if( lsSplittingCriteria )
