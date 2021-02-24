@@ -461,7 +461,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
 
   compute_second_derivatives_of_n_velocities();
   compute_second_derivatives_of_nm1_velocities();
-  compute_second_derivatives_of_interface_velocity_n();
+  if(!static_interface && interface_velocity_n != NULL)
+    compute_second_derivatives_of_interface_velocity_n();
 
   set_cell_jump_solver(cell_jump_solver_to_use); // we use default
   set_face_jump_solvers(face_jump_solver_to_use);
