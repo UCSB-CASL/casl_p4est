@@ -87,11 +87,11 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
       FILE* fp_results = fopen(datafile.c_str(), "w");
       if(fp_results == NULL)
         throw std::runtime_error("initialize_exportations: could not open file for output of raw results.");
-      fprintf(fp_results, "%% tn | v_bubble_y | volume | dt/dt_visc | dt/dt_capillar \n");
+      fprintf(fp_results, "%% tn | v_bubble_itfc_y | v_bubble_volume_y | circularity | volume | dt/dt_visc | dt/dt_capillar \n");
       fclose(fp_results);
     }
     else
-      truncate_exportation_file_up_to_tstart(tstart, datafile, 5);
+      truncate_exportation_file_up_to_tstart(tstart, datafile, 7);
 
     char liveplot[PATH_MAX];
     sprintf(liveplot, "%s/live_monitor.gnu", results_dir.c_str());
@@ -103,17 +103,27 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
       fprintf(fp_liveplot, "set term wxt 0 position 0,50 noraise\n");
       fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot, "set xlabel \"Time\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot, "set ylabel \"Rising-velocity \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Rising-velocity (interface-average)\" font \"Arial,14\"\n");
       fprintf(fp_liveplot, "plot \"monitoring_results.dat\" using 1:2 notitle with lines lw 3\n");
       fprintf(fp_liveplot, "set term wxt 1 position 800,50 noraise\n");
       fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot, "set xlabel \"Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Rising-velocity (bubble-volume average) \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot \"monitoring_results.dat\" using 1:3 notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 2 position 1600,50 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set ylabel \"Circularity \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "plot \"monitoring_results.dat\" using 1:4 notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "set term wxt 3 position 0,800 noraise\n");
+      fprintf(fp_liveplot, "set key top right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot, "set ylabel \"Relative difference in bubble volume (in %%)\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot, "col = 3\n");
+      fprintf(fp_liveplot, "col = 5\n");
       fprintf(fp_liveplot, "row = 1\n");
       fprintf(fp_liveplot, "stats 'monitoring_results.dat' every ::row::row using col nooutput\n");
       fprintf(fp_liveplot, "original_volume = STATS_min\n");
-      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:(100 * ($3 - original_volume)/original_volume) notitle with lines lw 3\n");
+      fprintf(fp_liveplot, "plot  \"monitoring_results.dat\" using 1:(100 * (original_volume - $5)/original_volume) notitle with lines lw 3\n");
       fprintf(fp_liveplot, "reread");
       fclose(fp_liveplot);
     }
@@ -121,13 +131,15 @@ void initialize_exportations(const double &tstart, const mpi_environment_t& mpi,
   return;
 }
 
-void export_results(const double& tn, const double& v_bubble_y, const double& bubble_volume,
+void export_results(const double& tn, const double& v_bubble_interface_y, const double& v_bubble_volume_y,
+                    const double& circularity,
+                    const double& bubble_volume,
                     const double& dt_to_dt_visc, const double& dt_to_dt_capillary, const string& datafile)
 {
   FILE* fp_data = fopen(datafile.c_str(), "a");
   if(fp_data == NULL)
     throw std::invalid_argument("main for buoyant bubble: could not open file for output of raw results.");
-  fprintf(fp_data, "%g %g %g %g %g \n", tn, v_bubble_y, bubble_volume, dt_to_dt_visc, dt_to_dt_capillary);
+  fprintf(fp_data, "%g %g %g %g %g %g %g \n", tn, v_bubble_interface_y, v_bubble_volume_y, circularity, bubble_volume, dt_to_dt_visc, dt_to_dt_capillary);
   fclose(fp_data);
 }
 
@@ -417,11 +429,16 @@ int main (int argc, char* argv[])
       return EXIT_FAILURE;
     }
 
-    double avg_itfc_velocity[P4EST_DIM];
-    const double negative_volume = two_phase_flow_solver->volume_in_negative_domain();
-    two_phase_flow_solver->get_average_interface_velocity(avg_itfc_velocity);
+    double avg_itfc_velocity[P4EST_DIM], interface_length;
+    double avg_velocity_in_bubble[P4EST_DIM], bubble_volume;
+    two_phase_flow_solver->get_average_interface_velocity_and_interface_area(avg_itfc_velocity, interface_length);
+    two_phase_flow_solver->get_volume_and_average_velocity_in_domain(-1, avg_velocity_in_bubble, bubble_volume);
     if(mpi.rank() == 0)
-      export_results(two_phase_flow_solver->get_tnp1(), avg_itfc_velocity[1], negative_volume,
+      export_results(two_phase_flow_solver->get_tnp1(),
+                     avg_itfc_velocity[1],
+          avg_velocity_in_bubble[1],
+          (M_PI*initial_bubble_diameter)/interface_length,
+          bubble_volume,
           two_phase_flow_solver->get_dt_n()/dt_visc,
           two_phase_flow_solver->get_dt_n()/two_phase_flow_solver->get_capillary_dt(),
           datafile);
