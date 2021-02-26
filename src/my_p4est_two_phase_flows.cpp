@@ -3543,42 +3543,40 @@ void my_p4est_two_phase_flows_t::get_average_interface_velocity_and_interface_ar
   interp_itfc_velocity.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
 
   double integral_velocity_and_area[P4EST_DIM + 1] = {0.0, DIM(0.0, 0.0, 0.0)};
+  const bool fetch_fv_in_cell_solver = (cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
+      && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known);
+  my_p4est_finite_volume_t *fv = (fetch_fv_in_cell_solver ? NULL : new my_p4est_finite_volume_t);
 
   for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
     const p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
       const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
 
-      if((cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
-          && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known
-          && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
-         || interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, NULL))
+      if((fetch_fv_in_cell_solver && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
+         || (!fetch_fv_in_cell_solver && interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, fv)))
       {
         double xyz_quad[P4EST_DIM];
         const double *tree_xyz_min, *tree_xyz_max;
         const p4est_quadrant_t* quad;
         fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est_n, ghost_n);
         xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad);
-        my_p4est_finite_volume_t fv;
-        if(cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
-           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known
-           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
-          fv = dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad[quad_idx];
-        else
-          fv = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
+        if(fetch_fv_in_cell_solver)
+          fv = &(dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.at(quad_idx));
 
-        P4EST_ASSERT(fv.interfaces.size() <= 1);
-        for (size_t k = 0; k < fv.interfaces.size(); ++k) {
-          const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + fv.interfaces[k].centroid[0], xyz_quad[1] + fv.interfaces[k].centroid[1], xyz_quad[2] + fv.interfaces[k].centroid[2])};
+        P4EST_ASSERT(fv->interfaces.size() <= 1);
+        for (size_t k = 0; k < fv->interfaces.size(); ++k) {
+          const double xyz_interface_quadrature[P4EST_DIM] = {DIM(xyz_quad[0] + fv->interfaces[k].centroid[0], xyz_quad[1] + fv->interfaces[k].centroid[1], xyz_quad[2] + fv->interfaces[k].centroid[2])};
           double interface_velocity_at_quadrature_point[P4EST_DIM];
           interp_itfc_velocity(xyz_interface_quadrature, interface_velocity_at_quadrature_point);
           for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-            integral_velocity_and_area[dim] += interface_velocity_at_quadrature_point[dim]*fv.interfaces[k].area;
-          integral_velocity_and_area[P4EST_DIM] += fv.interfaces[k].area;
+            integral_velocity_and_area[dim] += interface_velocity_at_quadrature_point[dim]*fv->interfaces[k].area;
+          integral_velocity_and_area[P4EST_DIM] += fv->interfaces[k].area;
         }
       }
     }
   }
+  if(!fetch_fv_in_cell_solver)
+    delete fv;
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, integral_velocity_and_area, 1 + P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 
@@ -3626,6 +3624,9 @@ void my_p4est_two_phase_flows_t::get_volume_and_average_velocity_in_domain(const
   ierr = VecGetArrayRead(phi_np1_on_computational_nodes, &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
 
   double integral_velocity_and_volume[P4EST_DIM + 1] = {0.0, DIM(0.0, 0.0, 0.0)};
+  const bool fetch_fv_in_cell_solver = (cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
+      && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known);
+  my_p4est_finite_volume_t *fv = (fetch_fv_in_cell_solver ? NULL : new my_p4est_finite_volume_t);
 
   for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
     const p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
@@ -3639,7 +3640,11 @@ void my_p4est_two_phase_flows_t::get_volume_and_average_velocity_in_domain(const
 
       bool crossed_cell = false;
       for(u_char vv = 1; vv < P4EST_CHILDREN; vv++)
-        crossed_cell = (phi_np1_on_computational_nodes_p[nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + 0]] <= 0.0) != (phi_np1_on_computational_nodes_p[nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + vv]] <= 0.0);
+        crossed_cell = crossed_cell || ((phi_np1_on_computational_nodes_p[nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + 0]] <= 0.0) != (phi_np1_on_computational_nodes_p[nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + vv]] <= 0.0));
+
+      if(!crossed_cell && quad->level == interface_manager->get_max_level_computational_grid())
+        crossed_cell = crossed_cell || (fetch_fv_in_cell_solver ? (dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
+                                                                : interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx));
 
       if(!crossed_cell && ((phi_np1_on_computational_nodes_p[nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + 0]] <= 0.0) == (sgn < 0)))
       {
@@ -3651,25 +3656,25 @@ void my_p4est_two_phase_flows_t::get_volume_and_average_velocity_in_domain(const
       }
       else if(crossed_cell)
       {
-        my_p4est_finite_volume_t fv;
-        if(cell_jump_solver != NULL && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver) != NULL
-           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->are_required_finite_volumes_and_correction_functions_known
-           && dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.find(quad_idx) != dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.end())
-          fv = dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad[quad_idx];
+        if(fetch_fv_in_cell_solver)
+          fv =  &(dynamic_cast<my_p4est_poisson_jump_cells_fv_t*>(cell_jump_solver)->finite_volume_data_for_quad.at(quad_idx));
         else
-          fv = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
+          interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, fv); // could be a redundant task but that's seriously the last of my concerns, right now
 
-        P4EST_ASSERT(fv.interfaces.size() <= 1);
+        P4EST_ASSERT(fv->interfaces.size() <= 1);
         double velocity_at_quad_center[P4EST_DIM];
         interp_vnp1(xyz_quad, velocity_at_quad_center);
-        for (size_t k = 0; k < fv.interfaces.size(); ++k) {
+        for (size_t k = 0; k < fv->interfaces.size(); ++k) {
           for (u_char dim = 0; dim < P4EST_DIM; ++dim)
-            integral_velocity_and_volume[dim] += velocity_at_quad_center[dim]*(sgn < 0 ? fv.volume_in_negative_domain() : fv.volume_in_positive_domain());
-          integral_velocity_and_volume[P4EST_DIM] += (sgn < 0 ? fv.volume_in_negative_domain() : fv.volume_in_positive_domain());
+            integral_velocity_and_volume[dim] += velocity_at_quad_center[dim]*(sgn < 0 ? fv->volume_in_negative_domain() : fv->volume_in_positive_domain());
+          integral_velocity_and_volume[P4EST_DIM] += (sgn < 0 ? fv->volume_in_negative_domain() : fv->volume_in_positive_domain());
         }
       }
     }
   }
+
+  if(!fetch_fv_in_cell_solver)
+    delete fv;
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, integral_velocity_and_volume, 1 + P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 

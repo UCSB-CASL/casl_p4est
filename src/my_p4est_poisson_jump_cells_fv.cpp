@@ -164,16 +164,16 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k);
 
-    bool is_face_crossed[P4EST_FACES];
-    const bool is_quad_double_valued = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
-
-#ifdef CASL_THROWS
-    if(is_quad_double_valued && ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
-#endif
+    bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
+    my_p4est_finite_volume_t fv;
+    const bool is_quad_double_valued = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, &fv);
 
     if(is_quad_double_valued)
-      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_layer_quad);
+    {
+      fv.get_face_intersections(is_face_crossed, interface_relative_threshold);
+      finite_volume_data_for_quad[quad_idx] = fv;
+      build_and_store_correction_function_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_layer_quad);
+    }
 
     // figure out if required by another process and or if this process expects communications from another one
     std::set<int> ranks_to_communicate_correction_function_with; ranks_to_communicate_correction_function_with.clear();
@@ -245,14 +245,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
   for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k);
-    bool is_face_crossed[P4EST_FACES];
-    if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed))
+    bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
+    my_p4est_finite_volume_t fv;
+    if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, &fv))
     {
-#ifdef CASL_THROWS
-      if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-        throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_functions() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
-#endif
-      build_and_store_double_valued_info_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_inner_quad);
+      fv.get_face_intersections(is_face_crossed, interface_relative_threshold);
+      finite_volume_data_for_quad[quad_idx] = fv;
+      build_and_store_correction_function_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_inner_quad);
     }
   }
   P4EST_ASSERT(local_corr_fun_for_inner_quad.size() + local_corr_fun_for_layer_quad.size() == correction_function_for_quad.size()); // make sure we didn't miss one in there
@@ -315,19 +314,16 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
   are_required_finite_volumes_and_correction_functions_known = true;
 }
 
-void my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, map_of_local_quad_to_corr_fun_t* map_quad_to_cf)
+void my_p4est_poisson_jump_cells_fv_t::build_and_store_correction_function_for_quad_if_needed(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, map_of_local_quad_to_corr_fun_t* map_quad_to_cf)
 {
-  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end() &&
-     finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end())
+  P4EST_ASSERT(finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end());
+  if(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end())
     return;
 
 #ifdef CASL_THROWS
   if(quad_idx < 0 || quad_idx > p4est->local_num_quadrants)
     throw std::invalid_argument("my_p4est_poisson_jump_cells_fv_t::build_and_store_double_valued_info_for_quad_if_needed() cannot be called for nonlocal quadrants");
 #endif
-
-  // construct finite volume info
-  finite_volume_data_for_quad[quad_idx] = interface_manager->get_finite_volume_for_quad(quad_idx, tree_idx);
 
   // construct correction function
   const p4est_quadrant_t* quad;
@@ -535,12 +531,12 @@ void my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation
 
   std::set<p4est_locidx_t> local_quad_indices_involved;
   local_quad_indices_involved.insert(quad_idx); // this quad goes in, for sure
-  bool is_face_crossed[P4EST_FACES];
-  const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
-  const my_p4est_finite_volume_t* fv_quad = (is_quad_crossed ? &finite_volume_data_for_quad.at(quad_idx) : NULL);
+  bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
+  const my_p4est_finite_volume_t* fv_quad = (finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end() ? &finite_volume_data_for_quad.at(quad_idx) : NULL);
 
-  if(is_quad_crossed)
+  if(fv_quad != NULL)
   {
+    fv_quad->get_face_intersections(is_face_crossed, interface_relative_threshold);
 #ifdef CASL_THROWS
     if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end() || fv_quad == NULL)
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::get_numbers_of_cells_involved_in_equation_for_quad() \n couldn't find the correction function or the finite-volume info for local quad "
@@ -654,31 +650,25 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   const double &mu_this_side = (sgn_quad > 0 ? mu_plus : mu_minus);
   const PetscInt quad_gloidx = compute_global_index(quad_idx);
 
-  const my_p4est_finite_volume_t* finite_volume_of_quad       = NULL;
+  const my_p4est_finite_volume_t* finite_volume_of_quad       = (finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end() ? &finite_volume_data_for_quad.at(quad_idx) : NULL);
   const correction_function_t*    correction_function_of_quad = NULL;
-  bool is_face_crossed[P4EST_FACES];
-  const bool is_quad_crossed = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, is_face_crossed);
-  if(is_quad_crossed)
+  bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
+  if(finite_volume_of_quad != NULL)
   {
-    if(ANDD(!is_face_crossed[0] && !is_face_crossed[1], !is_face_crossed[2] && !is_face_crossed[3], !is_face_crossed[4] && !is_face_crossed[5]))
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() : you're playing with fire here, a cell contains an enclosed region of the interface but none of its faces is actually crossed by the interface.");
+    finite_volume_of_quad->get_face_intersections(is_face_crossed, interface_relative_threshold);
 
 #ifdef CASL_THROWS
     if(correction_function_for_quad.find(quad_idx) == correction_function_for_quad.end())
       throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the correction function for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
-    if(finite_volume_data_for_quad.find(quad_idx) == finite_volume_data_for_quad.end())
-      throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad() couldn't find the finite volume data for local quad " + std::to_string(quad_idx) + " on proc " + std::to_string(p4est->mpirank));
 #endif
     correction_function_of_quad = &correction_function_for_quad.at(quad_idx);
-    finite_volume_of_quad       = &finite_volume_data_for_quad.at(quad_idx);
   }
-  P4EST_ASSERT(!is_quad_crossed || (correction_function_of_quad != NULL && finite_volume_of_quad != NULL)); // if the quadrant is crossed, we *MUST* have access to those
 
   /* First add the diagonal terms */
-  const bool nonzero_diag_term = (is_quad_crossed ? MAX(fabs(add_diag_minus), fabs(add_diag_plus)) : (sgn_quad > 0 ? fabs(add_diag_plus) : fabs(add_diag_minus))) > EPS;
+  const bool nonzero_diag_term = (finite_volume_of_quad != NULL ? MAX(fabs(add_diag_minus), fabs(add_diag_plus)) : (sgn_quad > 0 ? fabs(add_diag_plus) : fabs(add_diag_minus))) > EPS;
   if(!matrix_is_set && nonzero_diag_term)
   {
-    if(is_quad_crossed){
+    if(finite_volume_of_quad != NULL){
       ierr = MatSetValue(A, quad_gloidx, quad_gloidx,
                          finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus + finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus, ADD_VALUES); CHKERRXX(ierr);
       P4EST_ASSERT(correction_function_of_quad != NULL);
@@ -692,7 +682,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
     if(nullspace_contains_constant_vector != NULL)
       *nullspace_contains_constant_vector = 0;
   }
-  if(!rhs_is_set && nonzero_diag_term && is_quad_crossed)
+  if(!rhs_is_set && nonzero_diag_term && finite_volume_of_quad != NULL)
     rhs_p[quad_idx] -= (sgn_quad > 0 ? -finite_volume_of_quad->volume_in_negative_domain()*add_diag_minus : +finite_volume_of_quad->volume_in_positive_domain()*add_diag_plus)*correction_function_of_quad->jump_dependent_terms;
 
   // bulk terms (volumetric terms and integral of fluxes across the interface) coming into the discretized rhs
@@ -700,12 +690,12 @@ void my_p4est_poisson_jump_cells_fv_t::build_discretization_for_quad(const p4est
   {
     if(with_cell_sampled_rhs)
     {
-      if(is_quad_crossed)
+      if(finite_volume_of_quad != NULL)
         rhs_p[quad_idx] += finite_volume_of_quad->volume_in_negative_domain()*user_rhs_minus_p[quad_idx] + finite_volume_of_quad->volume_in_positive_domain()*user_rhs_plus_p[quad_idx];
       else
         rhs_p[quad_idx] += (sgn_quad < 0 ? user_rhs_minus_p[quad_idx] : user_rhs_plus_p[quad_idx])*cell_volume;
     }
-    if(is_quad_crossed)
+    if(finite_volume_of_quad != NULL)
     {
       P4EST_ASSERT(finite_volume_of_quad->interfaces.size() <= 1); // could be 0 if only one point is 0.0 and the rest are > 0.0, but we are not dealing yet with > 1 interfaces...
       for (size_t k = 0; k < finite_volume_of_quad->interfaces.size(); ++k)
@@ -922,7 +912,8 @@ void my_p4est_poisson_jump_cells_fv_t::local_projection_for_face(const p4est_loc
   double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_face[dim] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*cell_dxyz[dim];
   const char sgn_face   = (interface_manager->phi_at_point(xyz_face) <= 0.0 ? -1 : 1);
   const char sgn_q      = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : 1);
-  const bool is_face_crossed = interface_manager->is_face_crossed_by_interface(f_idx, dim);
+  const my_p4est_finite_volume_t* fv_quad = (finite_volume_data_for_quad.find(quad_idx) != finite_volume_data_for_quad.end() ? &finite_volume_data_for_quad.at(quad_idx) : NULL);
+  const bool is_face_crossed = (fv_quad != NULL ? fv_quad->is_face_intersected(oriented_dir, interface_relative_threshold) : false);
 
   PetscErrorCode ierr;
   const double *extrapolation_minus_p = NULL, *extrapolation_plus_p = NULL;

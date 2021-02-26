@@ -201,7 +201,7 @@ class my_p4est_interface_manager_t
   my_p4est_interface_manager_t& operator=(const my_p4est_interface_manager_t& other);
 
   void detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                    bool &intersection_found, bool which_face_is_intersected[P4EST_FACES] = NULL, const u_char& check_only_this_face = UCHAR_MAX) const;
+                                    bool &intersection_found, my_p4est_finite_volume_t* fv = NULL) const;
 
   double find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir, const bool& is_neighbor_wall) const;
 
@@ -441,11 +441,7 @@ public:
    */
   void compute_subvolumes_in_cell(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, double& negative_volume, double& positive_volume) const;
 
-  bool is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, bool which_face_is_intersected[P4EST_FACES]) const;
-
-  bool is_face_crossed_by_interface(const p4est_locidx_t& face_idx, const u_char dim) const;
-
-  my_p4est_finite_volume_t get_finite_volume_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx) const;
+  bool is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, my_p4est_finite_volume_t* fv = NULL) const;
 
   /*!
    * \brief phi_at_point evaluates the levelset value at a given point

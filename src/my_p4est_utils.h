@@ -3078,6 +3078,17 @@ struct my_p4est_finite_volume_t
     }
     return;
   }
+
+  inline void get_face_intersections(bool face_intersection[P4EST_FACES], const double& threshold = EPS) const
+  {
+    for(u_char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
+      face_intersection[face_dir] = is_face_intersected(face_dir, threshold);
+    return;
+  }
+  inline bool is_face_intersected(const u_char& face_dir, const double& threshold = EPS) const
+  {
+    return (face_area[face_dir] >= MAX(EPS, threshold)*full_face_area[face_dir]) && (face_area[face_dir] <= (1.0 - MAX(EPS, threshold))*full_face_area[face_dir]);
+  }
 };
 
 /*!

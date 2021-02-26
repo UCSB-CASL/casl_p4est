@@ -612,15 +612,16 @@ void my_p4est_interface_manager_t::compute_subvolumes_in_cell(const p4est_locidx
 }
 
 void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
-                                                                bool &intersection_found, bool which_face_is_intersected[P4EST_FACES], const u_char& check_only_this_face) const
+                                                                bool &intersection_found, my_p4est_finite_volume_t* fv) const
 {
   const double *phi_on_computational_nodes_p = NULL;
   if(phi_on_computational_nodes != NULL){
     PetscErrorCode ierr = VecGetArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
-
   const double *tree_xyz_min, *tree_xyz_max;
   const p4est_quadrant_t* quad;
   fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  const double min_diag = ABSD(tree_xyz_max[0] - tree_xyz_min[0], tree_xyz_max[1] - tree_xyz_min[1], tree_xyz_max[2] - tree_xyz_min[2])/((double) (1 << max_level_p4est));
+
   double xyz_mmm[P4EST_DIM]; xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_mmm);
   const double dxyz_quad[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
                                        (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
@@ -631,15 +632,13 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
 
   const double phi_mmm = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx                      ]] : interp_phi(xyz_mmm));
   const double phi_ppp = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + P4EST_CHILDREN - 1 ]] : interp_phi(xyz_ppp));
-  const bool check_all_points = (check_only_this_face >= P4EST_FACES);
-  intersection_found = (check_all_points ? signs_of_phi_are_different(phi_mmm, phi_ppp) : false);
-  if(which_face_is_intersected != NULL)
-    for (u_char face_dir = 0; face_dir < P4EST_FACES; ++face_dir)
-      which_face_is_intersected[face_dir] = false;
-  const double& phi_ref = ((check_all_points || check_only_this_face%2 == 0) ? phi_mmm : phi_ppp);
+  double min_abs_phi = MIN(fabs(phi_mmm), fabs(phi_ppp));
 
-  u_int kxyz_min[P4EST_DIM] = {DIM(0, 0, 0)}; if(!check_all_points) kxyz_min[check_only_this_face/2] = (check_only_this_face%2 == 0 ? 0 : 1);
-  u_int kxyz_max[P4EST_DIM] = {DIM(1, 1, 1)}; if(!check_all_points) kxyz_max[check_only_this_face/2] = kxyz_min[check_only_this_face/2];
+  intersection_found = signs_of_phi_are_different(phi_mmm, phi_ppp);
+  const double& phi_ref = phi_mmm;
+
+  u_int kxyz_min[P4EST_DIM] = {DIM(0, 0, 0)};
+  u_int kxyz_max[P4EST_DIM] = {DIM(1, 1, 1)};
 
   // check the vertices first
   for (u_int kx = kxyz_min[0]; kx <= kxyz_max[0]; ++kx)
@@ -652,22 +651,18 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
           continue;
         const double phi_vertex = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + SUMD(kx, 2*ky, 4*kz)]] :
                                    interp_phi(DIM(xyz_mmm[0] + kx*dxyz_quad[0], xyz_mmm[1] + ky*dxyz_quad[1], xyz_mmm[2] + kz*dxyz_quad[2])));
+        min_abs_phi = MIN(min_abs_phi, fabs(phi_vertex));
         intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_vertex);
-
-        if(which_face_is_intersected != NULL)
-        {
-          which_face_is_intersected[2*dir::x + kx] = which_face_is_intersected[2*dir::x + kx] || signs_of_phi_are_different((kx == 0 ? phi_mmm : phi_ppp), phi_vertex);
-          which_face_is_intersected[2*dir::y + ky] = which_face_is_intersected[2*dir::y + ky] || signs_of_phi_are_different((ky == 0 ? phi_mmm : phi_ppp), phi_vertex);
-#ifdef P4_TO_P8
-          which_face_is_intersected[2*dir::z + kz] = which_face_is_intersected[2*dir::z + kz] || signs_of_phi_are_different((kz == 0 ? phi_mmm : phi_ppp), phi_vertex);
-#endif
-        }
       }
   if(phi_on_computational_nodes_p != NULL){
     PetscErrorCode ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
 
-  if(intersection_found && !check_all_points) // shortcut the rest if you can
+  if(intersection_found) // shortcut the rest if you can
+  {
+    if(fv != NULL)
+      construct_finite_volume(*fv, quad_idx, tree_idx, p4est, &interp_phi, interpolation_degree(), subcell_resolution());
     return;
+  }
 
   const u_int n_mls_points_per_dimension = (1 << subcell_resolution())*interpolation_degree() + 1;
   if(n_mls_points_per_dimension > 2) // more points to check
@@ -675,8 +670,8 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
     const double dxyz_mls[P4EST_DIM]  = {DIM(dxyz_quad[0]/(double) (n_mls_points_per_dimension - 1), dxyz_quad[1]/(double) (n_mls_points_per_dimension - 1), dxyz_quad[2]/(double) (n_mls_points_per_dimension - 1))};
 
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
-      kxyz_min[dim] = (check_all_points || dim != check_only_this_face/2 ?                               0  : (check_only_this_face%2 == 0 ? 0 : n_mls_points_per_dimension - 1));
-      kxyz_max[dim] = (check_all_points || dim != check_only_this_face/2 ? (n_mls_points_per_dimension - 1) : (check_only_this_face%2 == 0 ? 0 : n_mls_points_per_dimension - 1));
+      kxyz_min[dim] = 0;
+      kxyz_max[dim] = n_mls_points_per_dimension - 1;
     }
 
     for (u_int kx = kxyz_min[0]; kx <= kxyz_max[0]; ++kx)
@@ -689,25 +684,45 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
             continue;
           const double xyz_mls_point[P4EST_DIM] = {DIM(xyz_mmm[0] + ((double) kx)*dxyz_mls[0], xyz_mmm[1] + ((double) ky)*dxyz_mls[1], xyz_mmm[2] + ((double) kz)*dxyz_mls[2])};
           const double phi_mls_point = interp_phi(xyz_mls_point);
+          min_abs_phi = MIN(min_abs_phi, fabs(phi_mls_point));
 
           intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_mls_point);
-          if(which_face_is_intersected != NULL && ORD(kx == 0 || kx == n_mls_points_per_dimension - 1, ky == 0 || ky == n_mls_points_per_dimension - 1, kz == 0 || kz == n_mls_points_per_dimension - 1)) // mls point on face
-          {
-            if(kx == 0 || kx == n_mls_points_per_dimension - 1)
-              which_face_is_intersected[2*dir::x + (kx == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::x + (kx == 0 ? 0 : 1)] || signs_of_phi_are_different((kx == 0 ? phi_mmm : phi_ppp), phi_mls_point);
-            if(ky == 0 || ky == n_mls_points_per_dimension - 1)
-              which_face_is_intersected[2*dir::y + (ky == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::y + (ky == 0 ? 0 : 1)] || signs_of_phi_are_different((ky == 0 ? phi_mmm : phi_ppp), phi_mls_point);
-#ifdef P4_TO_P8
-            if(kz == 0 || kz == n_mls_points_per_dimension - 1)
-              which_face_is_intersected[2*dir::z + (kz == 0 ? 0 : 1)] = which_face_is_intersected[2*dir::z + (kz == 0 ? 0 : 1)] || signs_of_phi_are_different((kz == 0 ? phi_mmm : phi_ppp), phi_mls_point);
-#endif
-          }
         }
   }
+  /*
+   * may have not detected sneaky interface intersection like
+   * o------------o------------o
+   * |                         |
+   * |                         |
+   * |                         |
+   * |                         |
+   * |                         |
+   * o            o            o
+   * |                         |/
+   * |                         /
+   * |                        /|
+   * |                        \|
+   * |                         \
+   * o------------o------------o\
+   *
+   * --> need to actually build the mls FV to be sure about such cases
+   * (do it only if you found absolute values of phi smaller than 2 smallest diagonals)
+   */
+  if((intersection_found && fv != NULL) || (!intersection_found && min_abs_phi < 2.0*min_diag)) // build the fv data (either because you want it back, or to make sure you didn't miss some sneaky intersection)
+  {
+    my_p4est_finite_volume_t* dummy = (fv == NULL ? new my_p4est_finite_volume_t : NULL);
+    my_p4est_finite_volume_t& fv_to_build = (fv == NULL ? *dummy : *fv);
+    construct_finite_volume(fv_to_build, quad_idx, tree_idx, p4est, &interp_phi, interpolation_degree(), subcell_resolution());
+
+    intersection_found = intersection_found || (fv_to_build.interfaces.size() > 0);
+    if(dummy != NULL)
+      delete dummy;
+  }
+
   return;
 }
 
-bool my_p4est_interface_manager_t::is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, bool which_face_is_intersected[P4EST_FACES]) const
+bool my_p4est_interface_manager_t::is_quad_crossed_by_interface(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, my_p4est_finite_volume_t* fv) const
 {
   const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
 
@@ -719,47 +734,13 @@ bool my_p4est_interface_manager_t::is_quad_crossed_by_interface(const p4est_loci
     if(intersection_found)
       throw std::logic_error("my_p4est_interface_manager_t::is_quad_crossed_by_interface() : found a cell bigger than expected containing an interface intersection.");
 #endif
-    if(which_face_is_intersected != NULL)
-      for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
-        which_face_is_intersected[oriented_dir] = false;
     return false;
   }
 
   bool intersection_found;
-  detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found, which_face_is_intersected);
+  detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found, fv);
 
   return intersection_found;
-}
-
-bool my_p4est_interface_manager_t::is_face_crossed_by_interface(const p4est_locidx_t& face_idx, const u_char dim) const
-{
-  p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx;
-  faces->f2q(face_idx, dim, quad_idx, tree_idx);
-  const u_char oriented_dir = 2*dim + (faces->q2f(quad_idx, 2*dim) == face_idx ? 0 : + 1);
-
-  const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
-
-  if(quad->level < (int8_t) max_level_p4est)
-  {
-#ifdef CASL_THROWS
-    bool intersection_found;
-    detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found, NULL, oriented_dir);
-    if(intersection_found)
-      throw std::logic_error("my_p4est_interface_manager_t::is_face_crossed_by_interface() : found a cell bigger than expected containing an interface intersection on one of its faces.");
-#endif
-    return false;
-  }
-  bool intersection_found;
-  detect_mls_interface_in_quad(quad_idx, tree_idx, intersection_found, NULL, oriented_dir);
-  return intersection_found;
-}
-
-my_p4est_finite_volume_t my_p4est_interface_manager_t::get_finite_volume_for_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx) const
-{
-  my_p4est_finite_volume_t fv_to_build;
-  construct_finite_volume(fv_to_build, quad_idx, tree_idx, p4est, &interp_phi, interpolation_degree(), subcell_resolution());
-  return fv_to_build;
 }
 
 #ifdef DEBUG
