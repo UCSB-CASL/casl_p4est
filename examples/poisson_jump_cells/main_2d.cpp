@@ -241,22 +241,42 @@ struct convergence_analyzer_for_jump_cell_solver_t {
       }
     }
 
-    for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; tree_idx++){
-      const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-      for(size_t q = 0; q < tree->quadrants.elem_count; q++)
-      {
-        const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-
-        for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    if(cell_sampled_sharp_flux_error_p != NULL)
+    {
+      for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; tree_idx++){
+        const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+        for(size_t q = 0; q < tree->quadrants.elem_count; q++)
         {
-          cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] = 0.0;
-          set_of_neighboring_quadrants ngbd_cells;
-          jump_cell_solver->get_cell_ngbd()->find_neighbor_cells_of_cell(ngbd_cells, quad_idx, tree_idx, 2*dim);
-          if(ngbd_cells.size() > 1)
+          const p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+
+          for(u_char dim = 0; dim < P4EST_DIM; dim++)
           {
-            for(set_of_neighboring_quadrants::const_iterator it = ngbd_cells.begin(); it != ngbd_cells.end(); it++)
+            cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] = 0.0;
+            set_of_neighboring_quadrants ngbd_cells;
+            jump_cell_solver->get_cell_ngbd()->find_neighbor_cells_of_cell(ngbd_cells, quad_idx, tree_idx, 2*dim);
+            if(ngbd_cells.size() > 1)
             {
-              p4est_locidx_t face_idx = faces->q2f(it->p.piggy3.local_num, 2*dim + 1);
+              for(set_of_neighboring_quadrants::const_iterator it = ngbd_cells.begin(); it != ngbd_cells.end(); it++)
+              {
+                p4est_locidx_t face_idx = faces->q2f(it->p.piggy3.local_num, 2*dim + 1);
+                double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
+                const double phi_face = interface_manager->phi_at_point(xyz_face);
+                if(phi_face > 0.0)
+                {
+                  const double mu_ = test_problem->get_mu_plus();
+                  cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+                }
+                else
+                {
+                  const double mu_ = test_problem->get_mu_minus();
+                  cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
+                }
+              }
+              cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] /= ngbd_cells.size();
+            }
+            else
+            {
+              p4est_locidx_t face_idx = faces->q2f(quad_idx, 2*dim);
               double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
               const double phi_face = interface_manager->phi_at_point(xyz_face);
               if(phi_face > 0.0)
@@ -269,23 +289,6 @@ struct convergence_analyzer_for_jump_cell_solver_t {
                 const double mu_ = test_problem->get_mu_minus();
                 cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
               }
-            }
-            cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] /= ngbd_cells.size();
-          }
-          else
-          {
-            p4est_locidx_t face_idx = faces->q2f(quad_idx, 2*dim);
-            double xyz_face[P4EST_DIM]; faces->xyz_fr_f(face_idx, dim, xyz_face);
-            const double phi_face = interface_manager->phi_at_point(xyz_face);
-            if(phi_face > 0.0)
-            {
-              const double mu_ = test_problem->get_mu_plus();
-              cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_plus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
-            }
-            else
-            {
-              const double mu_ = test_problem->get_mu_minus();
-              cell_sampled_sharp_flux_error_p[P4EST_DIM*quad_idx + dim] += fabs(sharp_flux_components_p[dim][face_idx] - mu_*test_problem->first_derivative_solution_minus(dim, DIM(xyz_face[0], xyz_face[1], xyz_face[2])));
             }
           }
         }
@@ -540,10 +543,15 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
                                          interface_capturing_node_scalar_fields, interface_capturing_node_vector_fields,
                                          interface_capturing_cell_scalar_fields, NULL);
 
-    delete interface_capturing_node_scalar_fields;
-    delete interface_capturing_node_vector_fields;
-    delete interface_capturing_cell_scalar_fields;
+    interface_capturing_node_scalar_fields->clear();  delete interface_capturing_node_scalar_fields;
+    interface_capturing_node_vector_fields->clear();  delete interface_capturing_node_vector_fields;
+    interface_capturing_cell_scalar_fields->clear();  delete interface_capturing_cell_scalar_fields;
   }
+  comp_node_scalar_fields.clear();
+  comp_node_vector_fields.clear();
+  comp_cell_scalar_fields.clear();
+  comp_cell_vector_fields.clear();
+
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", out_dir.c_str());
   return;
