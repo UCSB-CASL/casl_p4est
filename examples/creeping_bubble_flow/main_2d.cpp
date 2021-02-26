@@ -81,34 +81,6 @@ const string default_work_folder = "/scratch/regan/creeping_bubble_flow";
 const string default_work_folder = "/home/regan/workspace/projects/creeping_bubble_flow";
 #endif
 
-std::istream& operator>> (std::istream& is, jump_solver_tag& solver_to_test)
-{
-  std::string str;
-  is >> str;
-
-  std::vector<size_t> substr_found_at;
-  case_insensitive_find_substr_in_str(str, "GFM", substr_found_at);
-  for (size_t k = 0; k < substr_found_at.size(); ++k)
-    if (substr_found_at[k] == 0 || !case_insenstive_char_compare(str[substr_found_at[k] - 1], 'x')) // make sure it's 'GFM' and not 'xGFM'
-    {
-      solver_to_test = GFM;
-      return is;
-    }
-
-  case_insensitive_find_substr_in_str(str, "xGFM", substr_found_at);
-  if(substr_found_at.size() > 0)
-  {
-    solver_to_test = xGFM;
-    return is;
-  }
-
-//  case_insensitive_find_substr_in_str(str, "FV", substr_found_at);
-//  if(substr_found_at.size() > 0)
-//    solvers_to_test.push_back(FV);
-  return is;
-}
-
-
 class LEVEL_SET : public CF_DIM {
   const double xyz_c[P4EST_DIM];
   const double bubble_radius;
@@ -1150,10 +1122,7 @@ int main (int argc, char* argv[])
     jump_solver_faces->solve_for_sharp_solution();
 
     if(extrapolate_solution)
-    {
-      jump_solver_faces->set_validity_of_interface_neighbors_for_extrapolation(true);
       jump_solver_faces->extrapolate_solution_from_either_side_to_the_other((int) ceil(10*analyzer.extrapolation_band_check_to_diag));
-    }
 
     analyzer.jump_face_solver = jump_solver_faces;
     analyzer.measure_errors(faces);
