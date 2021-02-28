@@ -37,6 +37,8 @@
 #include <src/petsc_compatibility.h>
 #include <src/casl_geometry.h>
 #include "CoarseGrid.h"
+#include "VelocityField.h"
+#include <random>
 
 // Velocity field.
 struct UComponent : CF_2
@@ -197,6 +199,12 @@ int main( int argc, char** argv )
 		// Sample the velocity field at t = 0 at all independent nodes of FINE grid.
 		for( unsigned int dir = 0; dir < P4EST_DIM; dir++ )
 			sample_cf_on_nodes( p4est_f, nodes_f, *velocityField[dir], vel_f[dir] );
+
+		// TODO: Testing random divergence-free velocity field.
+		const double meshLen[] = {MAX_D - MIN_D, MAX_D - MIN_D, MAX_D - MIN_D};
+		std::mt19937 gen; 		// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
+		RandomVelocityField randomVelocityField( gen );
+		randomVelocityField.normalize( xyz_min, meshLen, 100, true );
 
 		// Save the initial grid and fields into vtk.
 		coarseGrid.writeVTK( 0, phiExact_c );
