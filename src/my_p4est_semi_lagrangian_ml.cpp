@@ -189,7 +189,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 	// Since we don't care about the full stencils of nodes, we use the alternative method from NodesAlongInterface to
 	// retrieve all independent nodes (local and ghost) that the partition is aware of.
 	auto* p4estUserData = (splitting_criteria_t*)p4est->user_pointer;
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd_phi, (signed char)p4estUserData->max_lvl );
+	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd_n, (signed char)p4estUserData->max_lvl );
 	std::unordered_set<p4est_locidx_t> indices;
 	nodesAlongInterface.getIndepIndices( &phi, ghost, indices );
 
@@ -215,6 +215,11 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 		CHKERRXX( ierr );
 	}
 
+	// Prepare an interpolation object on the current grid.  We need this to retrieve the numerical solution to the
+	// advection problem.  This numerical approximation would then be compared to the target value (collected with a
+	// finer grid.
+	my_p4est_interpolation_nodes_t numericalInterp( ngbd_n );
+
 	// Initialize infrastructure.  We'll use the interpolation across processes infraestructure and hack the interpolate
 	// method.  To do this, we need to instantiate dummy vectors that will pretend to work as empty "fields".  That way,
 	// upon return, the multi-process interpolation will send back the data for the four (eight) quad (oct) corners:
@@ -232,8 +237,8 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 	const int N_FIELDS = 1 + P4EST_DIM + (1 + P4EST_DIM) * P4EST_CHILDREN;	// Number of fields to receive.
 	const int N_GIVEN_INPUT_FIELDS = 1 + P4EST_DIM;				// Actual number of true fields to send (phi and vel).
 
-	// Collect nodes along the interface and add their backtraced departure points to "interpolation" buffer.
-	// Filter out any node whose backtraced departure point fall outside of domain (if no periodicity is allowed in that
+	// Collect nodes along the interface and add their backtracked departure points to "interpolation" buffer.
+	// Filter out any node whose backtracked departure point fall outside of domain (if no periodicity is allowed in that
 	// direction).
 	double xyz_d[P4EST_DIM];						// Departure point.
 	double xyz_a[P4EST_DIM];						// Arrival point.
@@ -247,7 +252,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 													// Helps prevent inconsistent training samples.
 	for( const auto nodeIdx : indices )
 	{
-		// Backtracing the point using one step in the negative velocity direction.
+		// Backtracking the point using one step in the negative velocity direction.
 		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz_a );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			xyz_d[dir] = xyz_a[dir] - dt * velReadPtr[dir][nodeIdx];
@@ -260,7 +265,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 			continue;
 		}
 
-		// Euclidean distance between arrival and backtraced departure point.
+		// Euclidean distance between arrival and backtracked departure point.
 		double d = 0;
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			d += SQR( xyz_d[dir] - xyz_a[dir] );
@@ -273,6 +278,9 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 		// Add the normalized distance from x_d to x_a.
 		distances.push_back( d / dxyz_min );
 
+		// Add request for numerical interpolation.
+		numericalInterp.add_point( outIdx, xyz_d );
+
 		outIdx++;
 	}
 
@@ -283,7 +291,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 		Vec fields[N_FIELDS] = {phi, DIM(vel[0], vel[1], vel[2])};	// Input fields.
 		for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )		// Dummy fields are initialized with zeros.
 		{
-			ierr = VecCreateGhostNodes( ngbd_phi->get_p4est(), ngbd_phi->get_nodes(), &fields[i] );
+			ierr = VecCreateGhostNodes( ngbd_n->get_p4est(), ngbd_n->get_nodes(), &fields[i] );
 			CHKERRXX( ierr );
 		}
 
@@ -295,6 +303,12 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 		dataFetcher.setInput( fields, N_FIELDS );
 		dataFetcher.interpolate( output );
 		dataFetcher.clear();
+
+		// Allocate output array for computed, numerically approximated phi value at departure point.
+		double outputDepartureNumericalPhi[outIdx];
+		numericalInterp.set_input( phi, interpolation_method::linear );
+		numericalInterp.interpolate( outputDepartureNumericalPhi );
+		numericalInterp.clear();
 
 		// Go through the output fields to build the data packet objects that will be returned to caller.
 		// This will be a semi deserialization by splitting the output contents into the different attributes of the
@@ -312,6 +326,8 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 				for( int dim = 0; dim < P4EST_DIM; dim++ )
 					dataPacket->vel_a[dim] = velReadPtr[dim][nodeIdx];
 				dataPacket->distance = distances[i];			// Normalized distance from departure to arrival point.
+
+				dataPacket->numBacktrackedPhi_d = outputDepartureNumericalPhi[i];	// Numerically backtracked phi.
 
 				// Splitting serialized info in the output fields.
 				int fIndex = 1;									// Field index.

@@ -38,11 +38,12 @@ namespace slml
 		p4est_locidx_t nodeIdx;			// Node index in the PETSc parallel vector.
 		double phi_a;					// Level-set function value at arrival point.
 		double vel_a[P4EST_DIM];		// Velocity at arrival point (u, v, and w components).
+		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
 		double distance;				// Distance between arrival and departure point normalized to (min) cell width.
 		double xyz_d[P4EST_DIM];		// Position of departure point in normalized coords (i.e., in [0,1]^{P4EST_DIM}).
-		double phi_d[P4EST_CHILDREN];	// Level-set function values at corners of cell containing the (backtraced) departure point.
+		double phi_d[P4EST_CHILDREN];	// Level-set function values at corners of cell containing the (backtracked) departure point.
 		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the
-													// (backtraced) departure point.  Order is vel_u, vel_v [, vel_w].
+													// (ked) departure point.  Order is vel_u, vel_v [, vel_w].
 													// For each vel component, there are P4EST_CHILDREN values.
 	};
 
@@ -50,9 +51,9 @@ namespace slml
 	//////////////////////////////////////////////////// DataFetcher ///////////////////////////////////////////////////
 
 	/**
-	 * A implementation of a data fetcher to retrieve data for backtraced points in space.  It leverages the
+	 * A implementation of a data fetcher to retrieve data for backtracked points in space.  It leverages the
 	 * parallel communication mechanisms existing in the library interpolation class.  Instead of interpolation, we
-	 * retrieve the contents of the quad/oct containing a (backtraced) point.
+	 * retrieve the contents of the quad/oct containing a (backtracked) point.
 	 * To allow the "interpolate" method to fetch all the quad information and place it in a results array, we set up a
 	 * large number of "dummy" input fields.  These input fields include:
 	 *  - the level-set function values and

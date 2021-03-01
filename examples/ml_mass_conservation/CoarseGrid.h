@@ -290,14 +290,11 @@ public:
 		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );		// Use a semi-Lagrangian
 		std::vector<slml::DataPacket *> dataPackets;										// scheme with a single vel
 		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );		// step for backtracing to
-		sprintf( msg, "* %lu received packets!\n", dataPackets.size() );					// retrieve samples.
-		ierr = PetscPrintf( mpi.comm(), msg );
-		CHKERRXX( ierr );
+																							// retrieve samples.
 
 		// Finding the target phi values via interpolation from FINE grid.
 		double targetPhi[dataPackets.size()];
-		size_t outIndex;
-		for( outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
+		for( size_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
@@ -311,8 +308,14 @@ public:
 		double *gammaFlagPtr;
 		ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
 		CHKERRXX( ierr );
-		for( auto dataPacket : dataPackets )
+		double maxRelError = 0;									// Maximum relative error.
+		for( size_t i = 0; i < dataPackets.size(); i++ )
+		{
+			const slml::DataPacket *dataPacket = dataPackets[i];
 			gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
+			double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
+			maxRelError = MAX( maxRelError, relError );
+		}
 		ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
 		CHKERRXX( ierr );
 
@@ -323,6 +326,10 @@ public:
 		ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
 		CHKERRXX( ierr );
 		VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
+		CHKERRXX( ierr );
+
+		sprintf( msg, "* %lu received packets with max rel error %g!\n", dataPackets.size(), maxRelError );
+		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 
 		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////

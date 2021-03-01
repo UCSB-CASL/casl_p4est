@@ -48,7 +48,7 @@
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const double DURATION = 2.0;		// Duration of the simulation.
+	const double DURATION = 2.0;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
 	const int FINE_MAX_RL = 8;
 
@@ -102,7 +102,7 @@ int main( int argc, char** argv )
 		double y0 = uniformDistributionAroundCenter( gen );
 		double minRadius = 5 * dxyz_min_c;					// Let's choose a radius between 5 and 10 coarse min cell width.
 		double maxRadius = MAX_D / 4;
-		geom::Sphere sphere( DIM( x0, y0, 0 ), minRadius );
+		geom::Sphere sphere( DIM( x0, y0, 0 ), (maxRadius + minRadius) / 2 );
 
 		// Declaration of the FINE macromesh via the brick and connectivity objects.
 		my_p4est_brick_t brick_f;
