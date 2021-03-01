@@ -1846,8 +1846,7 @@ inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM
 
 /**
  * Clip coordinates within domain and return whether the resulting coordinates are valid.  A valid set of coordinates is
- * one where the point is inside the domain or if the point was circled due to periodicity in a Cartesian direction.  An
- * invalid coordinate is one that lies outside of the domain in any direction where periodicity is not allowed.
+ * one where the point is inside the domain regardless of periodicity in any Cartesian direction.
  * @note This function was introduced to create machine-learning samples that are as constrained as possible.  For
  * example, a truncated point is problematic because it doesn't follow the expected/continuous behavior assumed a priori
  * by a neural model.
@@ -1855,7 +1854,7 @@ inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM
  * @param [in] xyz_min Minimum value in each Cartesian direction.
  * @param [in] xyz_max Maximum value in each Cartesian direction.
  * @param [in] periodic Whether the domain is periodic in each Cartesian direction.
- * @return True if point xyz is within the domain or if the point was circled due to periodicity; false otherwise.
+ * @return True if point xyz is within the domain; false otherwise.
  */
 inline bool clip_in_domain_with_check( double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM],
 									   const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM] )
@@ -1865,7 +1864,7 @@ inline bool clip_in_domain_with_check( double xyz[P4EST_DIM], const double xyz_m
   {
     if( xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir] )
     {
-      if( periodic[dir] )	// It's OK to circle along any axis.
+      if( periodic[dir] )
 	  {
       	xyz[dir] = xyz[dir] -
       			   floor( (xyz[dir] - xyz_min[dir]) / (xyz_max[dir] - xyz_min[dir]) ) * (xyz_max[dir] - xyz_min[dir]);
@@ -1873,8 +1872,8 @@ inline bool clip_in_domain_with_check( double xyz[P4EST_DIM], const double xyz_m
       else
 	  {
       	xyz[dir] = MAX( xyz_min[dir], MIN( xyz_max[dir], xyz[dir] ) );
-      	valid = false;		// Coordinate has been truncated!
 	  }
+      valid = false;	// Point lies outside of domain.
     }
   }
 

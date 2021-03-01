@@ -174,7 +174,7 @@ size_t slml::SemiLagrangian::freeDataPacketArray( vector<DataPacket *>& dataPack
 }
 
 
-void slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec phi,
+bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec phi,
 										   std::vector<DataPacket *>& dataPackets ) const
 {
 	PetscErrorCode ierr;
@@ -242,6 +242,9 @@ void slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 	std::vector<double> distances;					// Vector to store the distance between arrival and departure points.
 	distances.reserve( indices.size() );
 	int outIdx = 0;									// Index in "interpolation" output.
+	bool allInside = true;							// Warning flag: false if at least one point along the interface is
+													// backtracked outside the domain.
+													// Helps prevent inconsistent training samples.
 	for( const auto nodeIdx : indices )
 	{
 		// Backtracing the point using one step in the negative velocity direction.
@@ -249,10 +252,13 @@ void slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			xyz_d[dir] = xyz_a[dir] - dt * velReadPtr[dir][nodeIdx];
 
-		// Check if node falls within the domain (or if it's correctly circled due to periodicity in any direction).
-		// We don't admit truncated backtraced points to avoid inconsistency in the training patterns.
+		// Check if node falls within the domain.
+		// We don't admit truncated/circled backtracked points to avoid inconsistency in the training patterns.
 		if( !clip_in_domain_with_check( xyz_d, xyz_min, xyz_max, periodicity ) )
+		{
+			allInside = false;
 			continue;
+		}
 
 		// Euclidean distance between arrival and backtraced departure point.
 		double d = 0;
@@ -354,4 +360,6 @@ void slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 
 	ierr = PetscLogEventEnd( log_SemiLagrangianML_collectSamples, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
+
+	return allInside;
 }

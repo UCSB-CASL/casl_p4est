@@ -52,12 +52,12 @@ public:
 	 * @param [in] band Minimum number of (min) cells around the interface.
 	 * @param [in] maxRL Maximum refinement level.
 	 * @param [in] initialInterface Object to define the initial interface and the initial splitting criteria.
-	 * @param [in] velocityField Velocity object with as many components as velocities.
+	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 * @param [in] sampleVecs Whether or not to sample the level-set function and velocity field on the initial grid.
 	 */
 	CoarseGrid( const mpi_environment_t& mpi, const int nTreesPerDim[], const double xyzMin[], const double xyzMax[],
 			 	const int periodic[], double band, int maxRL, CF_DIM *initialInterface,
-			 	const CF_2 *velocityField[P4EST_DIM], bool sampleVecs=true )
+			 	const CF_2 *velocityField[P4EST_DIM]=nullptr, bool sampleVecs=true )
 			 	: BAND( band ), MAX_RL( maxRL ), mpi( mpi )
 	{
 
@@ -106,9 +106,12 @@ public:
 			// Sampling the level-set function.
 			sample_cf_on_nodes( p4est, nodes, *initialInterface, phi );
 
-			// Sampling the velocity field.
-			for( unsigned int dir = 0; dir < P4EST_DIM; dir++ )
-				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+			// Sampling the velocity field if given.
+			if( velocityField )
+			{
+				for( unsigned int dir = 0; dir < P4EST_DIM; dir++ )
+					sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+			}
 		}
 	}
 
@@ -118,9 +121,10 @@ public:
 	 * @note You must collect samples before "advecting" COARSE grid.
 	 * @param [in] ngbd_f Pointer to FINE grid node neighborhood struct.
 	 * @param [in] phi_f Reference to parallel level-set function value vector for FINE grid.
-	 * @param [in] velocityField Veolocity field objects used for sampling "advected" COARSE grid.
+	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
-	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const CF_2 *velocityField[P4EST_DIM] )
+	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f,
+					 	const CF_2 *velocityField[P4EST_DIM]=nullptr )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -213,14 +217,16 @@ public:
 		CHKERRXX( ierr );
 		phi = phiNew;
 
-		// Re-sample the FINE velocity field on new grid.
+		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 		{
 			ierr = VecDestroy( vel[dir] );
 			CHKERRXX( ierr );
 			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
 			CHKERRXX( ierr );
-			sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+
+			if( velocityField )
+				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
 		}
 
 		// Free vectors with second derivatives.
@@ -247,8 +253,9 @@ public:
 	 * @param [in] ngbd_f Advected fine grid neighborhood struct.
 	 * @param [in] phi_f Advected fine grid level-set values vector.
 	 * @param [in] dt Coarse grid step size.
+	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
-	void collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt )
+	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -282,7 +289,7 @@ public:
 		char msg[1024];
 		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );		// Use a semi-Lagrangian
 		std::vector<slml::DataPacket *> dataPackets;										// scheme with a single vel
-		semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );						// step for backtracing to
+		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );		// step for backtracing to
 		sprintf( msg, "* %lu received packets!\n", dataPackets.size() );					// retrieve samples.
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
@@ -328,6 +335,8 @@ public:
 			ierr = VecDestroy( derivative );
 			CHKERRXX( ierr );
 		}
+
+		return allInside;	// True if all backtracked points along the interface fell within domain.
 	}
 
 	/**

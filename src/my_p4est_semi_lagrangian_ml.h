@@ -190,8 +190,10 @@ namespace slml
 		 * @param [in] dt Time step.
 		 * @param [in] phi Level-set function values at time n.
 		 * @param [out] dataPackets Vector of pointers to data packet objects.
+		 * @return true if all backtracked queried points from nodes along interface lie inside within domain, false
+		 * otherwise.  This serves as a warning flag.
 		 */
-		void collectSamples( Vec vel[P4EST_DIM], double dt, Vec phi, std::vector<DataPacket *>& dataPackets ) const;
+		bool collectSamples( Vec vel[P4EST_DIM], double dt, Vec phi, std::vector<DataPacket *>& dataPackets ) const;
 
 		/**
 		 * Utility function to deallocate the dynamically created data packets in collectSamples.
