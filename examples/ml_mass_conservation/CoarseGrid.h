@@ -311,10 +311,13 @@ public:
 		double maxRelError = 0;									// Maximum relative error.
 		for( size_t i = 0; i < dataPackets.size(); i++ )
 		{
-			const slml::DataPacket *dataPacket = dataPackets[i];
+			slml::DataPacket *dataPacket = dataPackets[i];
 			gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
 			double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
 			maxRelError = MAX( maxRelError, relError );
+
+			dataPacket->rotate90();
+			std::cout << "rotated!" << std::endl;
 		}
 		ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
 		CHKERRXX( ierr );
@@ -334,6 +337,7 @@ public:
 
 		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////
 
+		// Don't forget to destroy dynamic objects.
 		slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 
 		// Free vectors with second derivatives for FINE phi.

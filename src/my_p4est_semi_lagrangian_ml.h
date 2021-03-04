@@ -45,7 +45,46 @@ namespace slml
 		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the
 													// (ked) departure point.  Order is vel_u, vel_v [, vel_w].
 													// For each vel component, there are P4EST_CHILDREN values.
+
+#ifndef P4_TO_P8
+		/**
+		 * Rotate a sample data packet by 90 degrees counter-clockwise.
+		 * @note This function is just tested for 2D.
+		 */
+		void rotate90()
+		{
+			// Lambda function to perform rotation of a 2D vector by 90 degrees.
+			auto _rotate90 = []( double& x, double& y ){
+				std::swap( x, (y *= -1) );
+			};
+
+			// Lambda function to rotate the children in a 2D quad by 90 degrees.
+			auto _rotateChildren = []( double children[P4EST_CHILDREN] ){
+				double c[P4EST_CHILDREN] = {children[1], children[3], children[0], children[2]};
+				for( int i = 0; i < P4EST_CHILDREN; i++ )
+					children[i] = c[i];
+			};
+
+			// phi_a remains unchanged.
+			// Rotate velocity at departure point.
+			_rotate90( vel_a[0], vel_a[1] );
+
+			// numBacktrackedPhi_d remains unchanged.
+			// distance remains unchanged.
+			// Rotate departure coords: (x, y) -> (1-y, x).
+			std::swap( xyz_d[0], (xyz_d[1] = 1.0 - xyz_d[1]) );
+
+			// Rotate phi_d.
+			_rotateChildren( phi_d );
+
+			// Rotate vel_d.  Requires two steps: first rotate children, then rotate the actual velocity vectors.
+			_rotateChildren( &vel_d[0] );				// u component children.
+			_rotateChildren( &vel_d[P4EST_CHILDREN] );	// v component children.
+			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Rotate actual vectors.
+				_rotate90( vel_d[i], vel_d[i + P4EST_CHILDREN] );
+		}
 	};
+#endif
 
 
 	//////////////////////////////////////////////////// DataFetcher ///////////////////////////////////////////////////
