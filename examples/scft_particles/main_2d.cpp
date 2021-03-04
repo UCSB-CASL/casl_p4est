@@ -88,8 +88,8 @@ param_t<int> DIM( nx (pl, 1, "nx", "number of trees in x-dimension"),
 param_t<int> lmin (pl, 5, "lmin", "min level of trees");
 param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 5, "lmin", "min level of trees");
-param_t<int> lmax (pl, 5, "lmax", "max level of trees");
+param_t<int> lmin (pl, 6, "lmin", "min level of trees");
+param_t<int> lmax (pl, 6, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.2, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
@@ -127,6 +127,7 @@ param_t<double> box_size (pl, 10, "box_size", "Box size in units of Rg");
 param_t<double> f        (pl, .45, "f", "Fraction of polymer A");
 param_t<double> XN       (pl, 20, "XN", "Flory-Higgins interaction parameter");
 param_t<int>    ns       (pl, 100, "ns", "Discretization of polymer chain");
+param_t<bool>   grafted  (pl, 0, "grafted", "Switch between free and grafted polymer chains");
 
 // output parameters
 param_t<bool> save_vtk        (pl, 1, "save_vtk", "");
@@ -152,7 +153,7 @@ param_t<int>    n_seed       (pl, 1, "n_seed", "Seed: 0 - zero, "
                                                "3 - horizontal stripes, "
                                                "4 - dots, "
                                                "5 - spheres");
-param_t<int>    n_example    (pl, 20, "n_example", "Number of predefined example");
+param_t<int>    n_example    (pl, 30, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
 param_t<double> pairwise_potential_mag   (pl, 2.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
@@ -553,6 +554,94 @@ void set_parameters()
       num_scft_subiterations.val = 2;
       max_iterations.val = 1;
     break;
+    case 23: // flower-shaped simple scft test, grafted
+      grafted.val = 1;
+
+      geometry_ptcl.val = 0;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+
+      box_size.val = 10;
+      f.val        = .4;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      sqrtXN_free_avg.val     = 0.0;
+      sqrtXN_free_dif.val     = 0.0;
+
+      drop_r.val      = 5.;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.3;
+
+      max_scft_iterations.val = 1000;
+      num_scft_subiterations.val = 3;
+      max_iterations.val = 1;
+      n_seed.val = 3;
+
+    break;
+    case 30: // grafted rod
+      grafted.val = 1;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+      box_size.val = 5;
+
+      f.val        = .37;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 4;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      sqrtXN_free_avg.val     = 0.0;
+      sqrtXN_free_dif.val     = 0.0;
+
+      drop_r.val      = 2.0;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.1;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 0;
+      rod_radius.val = 0.5;
+      rod_length.val = 0.5;
+
+      restrict_motion_x.val = 0;
+      restrict_motion_y.val = 0;
+//      restrict_motion_z.val = ;
+      restrict_rotation.val = 0;
+      num_submotions.val = 10;
+
+      max_scft_iterations.val = 1000;
+      num_scft_subiterations.val = 3;
+      max_iterations.val = 1;
+      n_seed.val = 3;
+
+      num_ptcl_x.val = 1;
+      num_ptcl_y.val = 1;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 0;
+      pairwise_potential_width.val = 3;
+
+      sqrtXN_ptcl_dif_max.val = 0;
+      sqrtXN_ptcl_dif_min.val = 0;
+
+      num_pre_iterations.val = 0;
+      break;
     default:
       throw std::invalid_argument("Invalid exmaple number.\n");
   }
@@ -707,11 +796,11 @@ public:
       case 1: return 0.1*XN()*(2.*double(rand())/double(RAND_MAX)-1.);
       case 2: {
         double nx = (xmax()-xmin())/lam_bulk_period(); if (px() == 1) nx = round(nx);
-        return .5*XN()*cos(2.*PI*x/(xmax()-xmin())*nx);
+        return .05*XN()*cos(2.*PI*x/(xmax()-xmin())*nx);
       }
       case 3: {
         double ny = (ymax()-ymin())/lam_bulk_period(); if (py() == 1) ny = round(ny);
-        return .5*XN()*sin(2.*PI*y/(ymax()-ymin())*ny);
+        return .05*XN()*sin(2.*PI*y/(ymax()-ymin())*ny);
       }
       case 4: {
         double nx = (xmax()-xmin())/lam_bulk_period(); if (px() == 1) nx = round(nx);
@@ -1828,10 +1917,10 @@ int main (int argc, char* argv[])
         // set geometry
         scft.add_boundary(phi_free, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
         scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
-        if (iteration != 0 || num_pre_iterations.val == 0) scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf);
+        if (iteration != 0 || num_pre_iterations.val == 0) scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf, grafted());
 
         scft.set_scaling(scaling);
-        scft.set_polymer(f(), XN());
+        scft.set_polymer(f(), XN(), grafted());
         scft.set_rho_avg(rho_avg);
 
         // initialize potentials
@@ -1883,15 +1972,21 @@ int main (int argc, char* argv[])
                                scft.get_exchange_force()); CHKERRXX(ierr);
           }
 
-//          if (scft_iteration == 100) {
-//            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
-//          }
+          if (scft_iteration == 100) {
+            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
+          }
 
           // do an SCFT step
-          scft.update_potentials(scft_iteration % 2 == 0, scft_iteration % 2 == 1);
+//          scft.update_potentials(scft_iteration % 2 == 0, scft_iteration % 2 == 1);
+          scft.update_potentials(1, 1);
           if (scft_iteration % 1 == 0) {
+            for (int kk = 0; kk < scft.get_ns(); ++kk)
+            {
+              scft.save_VTK_q(kk);
+            }
             scft.sync_and_extend();
             scft.save_VTK(scft_iteration);
+//            return 0;
           }
 
           ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",

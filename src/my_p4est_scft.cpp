@@ -72,17 +72,19 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   cube_refinement     = 1;
   time_discretization = 1;
 
-  field_update = 1;
+  field_update = 0;
 
   /* auxiliary variables */
   num_surfaces = 0;
-  lambda = 80;
+  lambda = 1;
   diag = 1;
   dxyz_min = 1;
   dxyz_max = 1;
   dxyz_close_interface = 1;
 
   volume = 0;
+
+  grafting_area = 0;
 
   ierr = VecDuplicate(mu_m, &exp_w_a); CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &exp_w_b); CHKERRXX(ierr);
@@ -92,6 +94,7 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
 
   phi_smooth = NULL;
   mask       = NULL;
+  mask_wo_bc = NULL;
 
   /* DSA stuff */
   mu_t = NULL;
@@ -134,6 +137,7 @@ my_p4est_scft_t::~my_p4est_scft_t()
 
   if (exp_w_a != NULL) { ierr = VecDestroy(exp_w_a); CHKERRXX(ierr); }
   if (exp_w_b != NULL) { ierr = VecDestroy(exp_w_b); CHKERRXX(ierr); }
+  if (mask_wo_bc != NULL) { ierr = VecDestroy(mask_wo_bc); CHKERRXX(ierr); }
 
   for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++) {
     for (int dim = 0; dim < P4EST_DIM; dim++) {
@@ -161,10 +165,11 @@ my_p4est_scft_t::~my_p4est_scft_t()
   if (force_nu_p != NULL)    { ierr = VecDestroy(force_nu_p); CHKERRXX(ierr); }
 }
 
-void my_p4est_scft_t::set_polymer(double f, double XN)
+void my_p4est_scft_t::set_polymer(double f, double XN, bool grafted)
 {
   this->f   = f;
   this->XN  = XN;
+  this->grafted = grafted;
 
   /* Discretization along the chain
    * ns       - total beads
@@ -184,13 +189,14 @@ void my_p4est_scft_t::set_polymer(double f, double XN)
   ns_b = ns-fns+1;
 }
 
-void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B)
+void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting)
 {
   this->phi.push_back(phi);
   this->action.push_back(acn);
   this->color.push_back(num_surfaces);
   this->gamma_a.push_back(&surf_energy_A);
   this->gamma_b.push_back(&surf_energy_B);
+  this->grafting.push_back(grafting);
   num_surfaces++;
 }
 
@@ -209,8 +215,8 @@ void my_p4est_scft_t::initialize_solvers()
   solver_a.set_use_sc_scheme(true);
   solver_a.set_use_sc_scheme(0);
   solver_a.set_store_finite_volumes(true);
-  solver_a.set_cube_refinement(1);
-  solver_a.set_integration_order(2);
+  solver_a.set_cube_refinement(cube_refinement);
+  solver_a.set_integration_order(integration_order);
   solver_a.preassemble_linear_system();
 
   // chain propogator b
@@ -226,8 +232,8 @@ void my_p4est_scft_t::initialize_solvers()
   solver_b.set_use_sc_scheme(true);
   solver_b.set_use_sc_scheme(0);
   solver_b.set_store_finite_volumes(true);
-  solver_b.set_cube_refinement(1);
-  solver_b.set_integration_order(2);
+  solver_b.set_cube_refinement(cube_refinement);
+  solver_b.set_integration_order(integration_order);
   solver_b.preassemble_linear_system();
 
   mask       = solver_a.get_mask();
@@ -256,6 +262,55 @@ void my_p4est_scft_t::initialize_solvers()
     solver_a.set_bc(i, ROBIN, pw_bc_values[i], pw_bc_values[i], pw_bc_coeffs_a[i]);
     solver_b.set_bc(i, ROBIN, pw_bc_values[i], pw_bc_values[i], pw_bc_coeffs_b[i]);
   }
+
+
+  // calculate grafting area
+  if (grafted)
+  {
+    grafting_area = 0;
+    for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+    {
+      if (grafting[i]) {
+        boundary_conditions_t *bc = solver_a.get_bc(i);
+
+        for (int idx = 0; idx < bc->num_value_pts(); ++idx) {
+          grafting_area += bc->areas[idx];
+        }
+      }
+    }
+
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &grafting_area, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+
+    if (grafting_area == 0) {
+      throw std::invalid_argument("No grafting surfaces found");
+    }
+  }
+
+  // create mask without boundary nodes
+  if (mask_wo_bc != NULL) { ierr = VecDestroy(mask_wo_bc); CHKERRXX(ierr); }
+  ierr = VecDuplicate(mu_m, &mask_wo_bc); CHKERRXX(ierr);
+  ierr = VecCopyGhost(mask, mask_wo_bc); CHKERRXX(ierr);
+
+  double *mask_ptr;
+  ierr = VecGetArray(mask_wo_bc, &mask_ptr); CHKERRXX(ierr);
+
+  std::vector<my_p4est_finite_volume_t> *fvs;
+  std::vector<int> *fvs_map;
+
+  solver_a.get_boundary_finite_volumes(fvs, fvs_map);
+
+  foreach_local_node(n, nodes) {
+    if (fvs_map->at(n) != -1) {
+//      if (fvs->at(fvs_map->at(n)).interfaces.size() > 0) {
+        mask_ptr[n] = 1;
+//      }
+    }
+  }
+
+  ierr = VecRestoreArray(mask_wo_bc, &mask_ptr); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(mask_wo_bc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (mask_wo_bc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 //  ierr = PetscPrintf(p4est->mpicomm, "new volume %e\n", volume); CHKERRXX(ierr);
 }
@@ -324,8 +379,14 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive, int bc_scheme)
               interp.set_input(rho_b, linear); rho_b_val = interp.value(xyz);
             }
 
-            pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*rho_b_val/(rho_a_val+rho_b_val)*scaling;
-            pw_bc_coeffs_b[i][j] = (gamma_b[i]->value(xyz)-gamma_a[i]->value(xyz))*rho_a_val/(rho_a_val+rho_b_val)*scaling;
+            pw_bc_coeffs_a[i][j] = ((gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*rho_b_val)/(rho_a_val+rho_b_val)*scaling;
+            pw_bc_coeffs_b[i][j] = ((gamma_b[i]->value(xyz)-gamma_a[i]->value(xyz))*rho_a_val)/(rho_a_val+rho_b_val)*scaling;
+
+            if (grafting[i])
+            {
+              pw_bc_coeffs_a[i][j] = 0.5*volume/grafting_area/(rho_a_val+rho_b_val);
+              pw_bc_coeffs_b[i][j] = 0.5*volume/grafting_area/(rho_a_val+rho_b_val);
+            }
 
             // calculate addition to energy from surface tensions
 //            solver_a.pw_bc_xyz_value_pt(i, j, xyz);
@@ -445,6 +506,109 @@ void my_p4est_scft_t::solve_for_propogators()
   for (int is = 1;   is <= fns-1; is++) diffusion_step(solver_a, ds_a, qf[is], qf[is-1]);
   for (int is = fns; is <= ns -1; is++) diffusion_step(solver_b, ds_b, qf[is], qf[is-1]);
 
+  if (grafted)
+  {
+    ierr = VecGhostUpdateBegin(qf[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (qf[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    Q = 0;
+
+    // extend over smoothed interface
+    if (phi_smooth != NULL)
+    {
+      my_p4est_level_set_t ls(ngbd);
+      ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+
+      double *qf_ptr;
+      double *qb_ptr;
+      double *integrating_vec_ptr;
+
+      ierr = VecSet(qb[ns-1], 0); CHKERRXX(ierr);
+
+      ierr = VecGetArray(qf[ns-1], &qf_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(qb[ns-1], &qb_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(integrating_vec, &integrating_vec_ptr); CHKERRXX(ierr);
+
+      my_p4est_interpolation_nodes_t interp(ngbd);
+      interp.set_input(qf[ns-1], linear);
+
+      std::vector<my_p4est_finite_volume_t> *fvs;
+      std::vector<int> *fvs_map;
+
+      solver_a.get_boundary_finite_volumes(fvs, fvs_map);
+
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if (fvs_map->at(n) != -1)
+        {
+          my_p4est_finite_volume_t fv = fvs->at(fvs_map->at(n));
+
+          double xyz_C[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz_C);
+
+          for (size_t i = 0; i < fv.interfaces.size(); ++i){
+            if (grafting[fv.interfaces[i].id]) {
+
+              double qf_value = interp(DIM(xyz_C[0] + fv.interfaces[i].centroid[0],
+                  xyz_C[1] + fv.interfaces[i].centroid[1],
+                  xyz_C[2] + fv.interfaces[i].centroid[2]));
+
+              qb_ptr[n] += fv.interfaces[i].area/fv.volume/qf_value;
+
+              if (fv.volume == 0)
+                throw std::domain_error("A finite volume has zero volume");
+
+              if (qf_value > 0) {
+                Q += log(qf_value)*fv.interfaces[i].area;
+              } else {
+                ierr = PetscPrintf(p4est->mpicomm, "Warning: chain propagator is negative");
+              }
+            }
+          }
+        }
+      }
+
+//      for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+//      {
+//        if (grafting[i] && solver_a.pw_bc_num_value_pts(i) > 0) {
+//          boundary_conditions_t *bc = solver_a.get_bc(i);
+
+//          for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+//          {
+//            if (bc->num_value_pts(n) > 0) {
+//              int idx = bc->idx_value_pt(n, 0);
+
+//              double xyz[P4EST_DIM];
+//              bc->xyz_value_pt(idx, xyz);
+
+//              interp.set_input(qf[ns-1], linear);
+//              double qf_value = interp.value(xyz);
+
+//              qb_ptr[n] += qf_value*bc->areas[idx]/integrating_vec_ptr[n];
+
+//              if (integrating_vec_ptr[n] == 0)
+//                throw;
+
+//              if (qf_value > 0) {
+//                Q += log(qf_value)*bc->areas[idx];
+//              } else {
+//                ierr = PetscPrintf(p4est->mpicomm, "Warning: chain propagator is negative");
+//              }
+//            }
+//          }
+//        }
+//      }
+
+      ierr = VecRestoreArray(qf[ns-1], &qf_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(qb[ns-1], &qb_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(integrating_vec, &integrating_vec_ptr); CHKERRXX(ierr);
+    }
+
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &Q, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+
+    Q /= grafting_area;
+  }
+
   // backward propagator
   for (int is = ns -2; is >= fns-1; is--) diffusion_step(solver_b, ds_b, qb[is], qb[is+1]);
   for (int is = fns-2; is >= 0;     is--) diffusion_step(solver_a, ds_a, qb[is], qb[is+1]);
@@ -521,22 +685,36 @@ void my_p4est_scft_t::calculate_densities()
   }
 
   ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
-  Q = integrate_over_domain_fast(qf[ns-1])/volume;
-//  Q = .5*(integrate_over_domain_fast(qf[ns-1])+integrate_over_domain_fast(qb[0]))/volume;
-//  Q = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
-
-  ierr = VecScaleGhost(rho_a, 1.0/Q); CHKERRXX(ierr);
-  ierr = VecScaleGhost(rho_b, 1.0/Q); CHKERRXX(ierr);
 
   rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
+  double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
 
   delete[] time_integrand;
   delete[] qf_ptr;
   delete[] qb_ptr;
 
-  double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
 
-  energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scaling, P4EST_DIM);
+  if (!grafted) {
+    Q = integrate_over_domain_fast(qf[ns-1])/volume;
+    //  Q = .5*(integrate_over_domain_fast(qf[ns-1])+integrate_over_domain_fast(qb[0]))/volume;
+    //  Q = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
+
+    ierr = VecScaleGhost(rho_a, 1.0/Q); CHKERRXX(ierr);
+    ierr = VecScaleGhost(rho_b, 1.0/Q); CHKERRXX(ierr);
+
+    rho_avg /= Q;
+
+    energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scaling, P4EST_DIM);
+
+  } else {
+    ierr = VecScaleGhost(rho_a, volume/grafting_area); CHKERRXX(ierr);
+    ierr = VecScaleGhost(rho_b, volume/grafting_area); CHKERRXX(ierr);
+
+    rho_avg *= volume/grafting_area;
+
+    energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*Q)/pow(scaling, P4EST_DIM);
+  }
+
 
 }
 
@@ -644,8 +822,8 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
         solver.set_kink_treatment(true);
         solver.set_use_sc_scheme(0);
         solver.set_store_finite_volumes(true);
-        solver.set_cube_refinement(1);
-        solver.set_integration_order(2);
+        solver.set_cube_refinement(cube_refinement);
+        solver.set_integration_order(integration_order);
         solver.preassemble_linear_system();
 
         solver.set_rhs(force_p);
@@ -750,7 +928,7 @@ void my_p4est_scft_t::save_VTK(int compt, const char* absolute_path_to_folder)
   //
 
   // get access to data fields
-  double *phi_p, *rho_a_p, *rho_b_p, *mu_p_p, *mu_m_p, *mask_p;
+  double *phi_p, *rho_a_p, *rho_b_p, *mu_p_p, *mu_m_p, *mask_p, *mask_wo_bc_p;
 
 //  ierr = VecGetArray(phi->at(0), &phi_p); CHKERRXX(ierr);
 //  ierr = VecGetArray(qf[ns-1], &rho_a_p); CHKERRXX(ierr);
@@ -762,17 +940,19 @@ void my_p4est_scft_t::save_VTK(int compt, const char* absolute_path_to_folder)
   ierr = VecGetArray(mu_m, &mu_m_p); CHKERRXX(ierr);
   ierr = VecGetArray(mu_p, &mu_p_p); CHKERRXX(ierr);
   ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+  ierr = VecGetArray(mask_wo_bc, &mask_wo_bc_p); CHKERRXX(ierr);
 
   // write into file
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
-                         6, 1, oss.str().c_str(),
+                         7, 1, oss.str().c_str(),
                          VTK_POINT_DATA, "phi", phi_p,
                          VTK_POINT_DATA, "rho_a", rho_a_p,
                          VTK_POINT_DATA, "rho_b", rho_b_p,
                          VTK_POINT_DATA, "mu_m", mu_m_p,
                          VTK_POINT_DATA, "mu_p", mu_p_p,
                          VTK_POINT_DATA, "mask", mask_p,
+                         VTK_POINT_DATA, "mask_wo_bc", mask_wo_bc_p,
                          VTK_CELL_DATA , "leaf_level", l_p);
 
   // restore access to data fields
@@ -786,6 +966,7 @@ void my_p4est_scft_t::save_VTK(int compt, const char* absolute_path_to_folder)
   ierr = VecRestoreArray(mu_m, &mu_m_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_p, &mu_p_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mask_wo_bc, &mask_wo_bc_p); CHKERRXX(ierr);
 
   //
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -1183,9 +1364,8 @@ double my_p4est_scft_t::integrate_over_domain_fast(Vec f)
   ierr = VecRestoreArray(f,               &f_ptr);                CHKERRXX(ierr);
 
   /* compute global sum */
-  double sum_global = 0;
-  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-  return sum_global;
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+  return sum;
 }
 
 double my_p4est_scft_t::integrate_over_domain_fast_squared(Vec f)
@@ -1206,9 +1386,8 @@ double my_p4est_scft_t::integrate_over_domain_fast_squared(Vec f)
   ierr = VecRestoreArray(f,               &f_ptr);                CHKERRXX(ierr);
 
   /* compute global sum */
-  double sum_global = 0;
-  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-  return sum_global;
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+  return sum;
 }
 
 double my_p4est_scft_t::integrate_over_domain_fast_two(Vec f0, Vec f1)
@@ -1231,9 +1410,8 @@ double my_p4est_scft_t::integrate_over_domain_fast_two(Vec f0, Vec f1)
   ierr = VecRestoreArray(f1,              &f1_ptr);               CHKERRXX(ierr);
 
   /* compute global sum */
-  double sum_global = 0;
-  ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-  return sum_global;
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+  return sum;
 }
 
 void my_p4est_scft_t::smooth_singularity_in_pressure_field()
@@ -1271,7 +1449,9 @@ void my_p4est_scft_t::sync_and_extend()
     ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
     ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
     ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 0, 0);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask_wo_bc);
   }
 }
 

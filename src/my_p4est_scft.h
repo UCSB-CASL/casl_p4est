@@ -65,6 +65,7 @@ class my_p4est_scft_t
   std::vector<CF_DIM *> gamma_a;
   std::vector<CF_DIM *> gamma_b;
   CF_DIM *gamma_air;
+  std::vector<bool> grafting;
 
   /* Robin coefficients */
   std::vector< std::vector<double> > pw_bc_values;
@@ -81,6 +82,8 @@ class my_p4est_scft_t
   double XN;
   int    ns, fns;
   double scaling;
+  bool   grafted;
+  double grafting_area;
 
   /* auxiliary variables */
   double ds_a, ds_b;
@@ -106,7 +109,8 @@ class my_p4est_scft_t
 
   Vec phi_smooth;
 
-  Vec mask;
+  Vec mask; // nodes where diffusion is solved (\phi < 0 and boundary nodes)
+  Vec mask_wo_bc; // mask excluding boundary nodes
   Vec integrating_vec;
   Vec q_tmp;
 
@@ -127,8 +131,8 @@ public:
   ~my_p4est_scft_t();
 
   void set_lambda(double value) { lambda = value; }
-  void set_polymer(double f, double XN);
-  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B);
+  void set_polymer(double f, double XN, bool grafted=0);
+  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting=0);
 
   void initialize_solvers();
   void initialize_bc_simple(); // a naive method that produces singularities in the pressure field
@@ -181,6 +185,8 @@ public:
   inline void set_scaling(double value) { scaling = value; }
 
   void save_VTK_q(int compt);
+
+  int get_ns() { return ns; }
 
   /* Density Optimization */
   Vec mu_t;
