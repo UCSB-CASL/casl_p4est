@@ -1976,7 +1976,7 @@ void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f)
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, Vec f)
 {
   double *f_p;
   PetscErrorCode ierr;
@@ -2006,7 +2006,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, i);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
     p4est_topidx_t v_m = t2v[P4EST_CHILDREN*tree_id + 0];
@@ -2033,7 +2033,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f)
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f)
 {
   double *f_p;
   PetscInt bs;
@@ -2075,7 +2075,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM
 }
 
 
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f)
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f)
 {
 #ifdef CASL_THROWS
   {
@@ -2095,7 +2095,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
   {
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, i);
     p4est_topidx_t tree_id = node->p.piggy3.which_tree;
 
     p4est_topidx_t v_m = t2v[P4EST_CHILDREN*tree_id + 0];
@@ -2120,7 +2120,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM
   }
 }
 
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM& cf, Vec f)
+void sample_cf_on_cells(const p4est_t *p4est, const p4est_ghost_t *ghost, const CF_DIM& cf, Vec f)
 {
   double *f_p;
   PetscErrorCode ierr;
@@ -2168,7 +2168,7 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM
   // sample on ghost quadrants
   for (size_t q = 0; q < ghost->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_const_array_index(&ghost->ghosts, q);
     p4est_topidx_t tree_id  = quad->p.piggy3.which_tree;
     p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
 

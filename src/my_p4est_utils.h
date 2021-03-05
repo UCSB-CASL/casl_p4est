@@ -2156,10 +2156,10 @@ inline int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghos
  * is performed to ensure enough memory is available in the Vec object.
  */
 void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
+void sample_cf_on_cells(const p4est_t *p4est, const p4est_ghost_t *ghost, const CF_DIM& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f);
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
                  const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
