@@ -24,38 +24,38 @@ const double mu_plus                  = 1.0; // those are constant, not freely d
 const double default_domain[P4EST_DIM] = {DIM(10.0, 40.0, 10.0)};
 const bool default_periodic[P4EST_DIM] = {DIM(false, false, false)};
 const double default_ratio_rho  = 1000.0; // rho_plus/rho_minus
-const double default_ratio_mu   = 100.0;  // mu_plus/mu_minus
-const double default_Eotvos     = 8.67;   // case a) in Figure 1 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
-const double default_Morton     = 711;    // case a) in Figure 1 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
+const double default_ratio_mu   = 1000.0;  // mu_plus/mu_minus
+const double default_Eotvos     = 8.67;   // case a) in Figure 2 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
+const double default_Morton     = 711;    // case a) in Figure 2 from Bhaga and Weber, JFM (1981), vol. 105, pp. 61-85
 // grid-related
-const int default_lmin = 2;
-const int default_lmax = 6;
-const double default_vorticity_threshold      = DBL_MAX;
+const int default_lmin = 5;
+const int default_lmax = 9;
+const double default_vorticity_threshold      = 0.02;
 const double default_uniform_band_to_radius   = 0.15;
 const int default_ntree[P4EST_DIM] = {DIM(1, 4, 1)};
 // simulation-related:
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
 const bool default_subrefinement = false;
 const bool default_use_second_order_theta = (default_interp_method_phi == linear ? false : true); // relevant only if using (x)GFM cell solver
-const int default_nviscous_subiter  = INT_MAX;
+const int default_nviscous_subiter  = 10;
+const int default_niter             = 3;
 const int default_sl_order          = 2;
 const int default_sl_order_itfc     = 2;
-const double default_cfl_advection  = 1.0;
-const double default_cfl_visco_capillary = 0.95;
-const double default_cfl_capillary  = 0.95;
+const double default_cfl_advection        = 1.0;
+const double default_cfl_visco_capillary  = 0.95;
+const double default_cfl_capillary        = 0.95;
 const jump_solver_tag default_cell_solver = FV;
 const jump_solver_tag default_face_solver = xGFM;
 const int default_n_reinit = 1;
-const double default_nondimensional_t_end = 10.0;
-const double default_vmax_abort = 100.0;
+const double default_t_end = 10.0;
+const double default_vmax_abort = 1000.0;
 const double default_projection_threshold = 0.01;
-const int default_niter = 5;
 // exportation-related
 const bool default_save_vtk = true;
-const double default_nondimensional_vtk_dt    = 0.5;
+const double default_vtk_dt     = 0.5;
 const int default_vtk_idx_start = 0;
 const int default_save_nstates  = 0;
-const double default_nondimensional_save_state_dt  = 0.1;
+const double default_save_state_dt  = 0.1;
 
 #if defined(STAMPEDE)
 const string default_work_folder = "/scratch/04965/tg842642/two_phase_flow/buoyant_bubble/" + to_string(P4EST_DIM) + "D";
@@ -176,8 +176,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const double domain_size[P4EST_DIM]   = {DIM(cmd.get<double>("length", default_domain[0]),
                                            cmd.get<double>("height", default_domain[1]),
                                            cmd.get<double>("width", default_domain[2]))};
-  const double xyz_min[P4EST_DIM]       = { DIM(-0.5*domain_size[0], -0.15*domain_size[1], -0.5*domain_size[2]) };
-  const double xyz_max[P4EST_DIM]       = { DIM( 0.5*domain_size[0],  0.85*domain_size[1],  0.5*domain_size[2]) };
+  const double xyz_min[P4EST_DIM]       = { DIM(-0.5*domain_size[0], -0.2*domain_size[1], -0.5*domain_size[2]) };
+  const double xyz_max[P4EST_DIM]       = { DIM( 0.5*domain_size[0],  0.8*domain_size[1],  0.5*domain_size[2]) };
   const int periodic[P4EST_DIM]         = { DIM(cmd.get<bool>("xperiodic", default_periodic[0]),
                                             cmd.get<bool>("yperiodic", default_periodic[1]),
                                             cmd.get<bool>("zperiodic", default_periodic[2]))};
@@ -350,8 +350,8 @@ int main (int argc, char* argv[])
   cmd.add_option("Eotvos", "The desired Eotvos number Eo = rho_plus*SQR(initial_bubble_diameter)*gravity/surface_tension. Default value is " + streamObj.str());
   streamObj.str(""); streamObj << default_Morton;
   cmd.add_option("Morton", "The desired Morton number Mo = gravity*pow(mu_plus, 4.0)/(rho_plus*pow(surface_tension, 3.0)). Default value is " + streamObj.str());
-  streamObj.str(""); streamObj << default_nondimensional_t_end;
-  cmd.add_option("t_end", "The final simulation time (nondimensional, i.e. in units of D*mu_plus/gamma). Default t_end is " + streamObj.str());
+  streamObj.str(""); streamObj << default_t_end;
+  cmd.add_option("t_end", "The final simulation time in units of D*mu_plus/gamma. Default t_end is " + streamObj.str());
   // method-related parameters
   cmd.add_option("second_order_ls", "flag activating second order F-D interface fetching if set to true or 1. Default is " + string(default_use_second_order_theta ? "true" : "false"));
   cmd.add_option("sl_order", "the order for the semi lagrangian advection terms, either 1 or 2, default is " + to_string(default_sl_order));
@@ -375,18 +375,17 @@ int main (int argc, char* argv[])
   cmd.add_option("niter", "max number of fix-point iterations for every time step. Default value is " + streamObj.str());
   // output-control parameters
   cmd.add_option("save_vtk", "flag activating  the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
-  streamObj.str(""); streamObj << default_nondimensional_vtk_dt;
-  cmd.add_option("vtk_dt", "vtk_dt = time step between two vtk exportation (nondimendional), default is " + streamObj.str());
+  streamObj.str(""); streamObj << default_vtk_dt;
+  cmd.add_option("vtk_dt", "vtk_dt = time step between two vtk exportation, in units of D*mu_plus/gamma, default is " + streamObj.str());
   streamObj.str(""); streamObj << default_vtk_idx_start;
   cmd.add_option("vtk_idx_start", "first desired index of exported vtk files, default is " + streamObj.str());
   cmd.add_option("work_dir", "root exportation directory, subfolders will be created therein (read from input if not defined otherwise in the environment variable OUT_DIR). \n\tThis is required for vtk files and for data files. Default is " + default_work_folder);
   streamObj.str(""); streamObj << default_interp_method_phi;
   cmd.add_option("phi_interp", "interpolation method for the node-sampled levelset function. Default is " + streamObj.str());
   cmd.add_option("subrefinement", "flag activating the usage of a subrefined interface-capturing grid if set to true or 1, deactivating if set to false or 0. Default is " + string(default_subrefinement ? "with" : "without") + " subrefinement");
-  streamObj.str(""); streamObj << default_nondimensional_save_state_dt;
-  cmd.add_option("save_state_dt", "if save_nstates > 0, the solver state is saved every save_state_dt*(D*mu_plus/gamma) time increments in backup_ subfolders. Default is " + streamObj.str());
+  streamObj.str(""); streamObj << default_save_state_dt;
+  cmd.add_option("save_state_dt", "time interval between two saved states, in units of D*mu_plus/gamma. Saved in backup_ subfolders. Default is " + streamObj.str());
   cmd.add_option("save_nstates",  "determines how many solver states must be memorized in backup_ folders (default is " + to_string(default_save_nstates) + ")");
-
 
   if(cmd.parse(argc, argv, main_description))
     return 0;
@@ -436,14 +435,14 @@ int main (int argc, char* argv[])
   splitting_criteria_t* subrefined_data = (two_phase_flow_solver->get_fine_p4est_n() != NULL ? (splitting_criteria_t*) two_phase_flow_solver->get_fine_p4est_n()->user_pointer : NULL); // same, to delete it appropriately, eventually
 
   const double time_unit  = two_phase_flow_solver->get_mu_plus()*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension();
-  const double t_end      = cmd.get<double> ("t_end",         default_nondimensional_t_end)*time_unit;
+  const double t_end      = cmd.get<double> ("t_end",         default_t_end)*time_unit;
   two_phase_flow_solver->set_final_time(t_end);
   const bool save_vtk     = cmd.get<bool>   ("save_vtk",      default_save_vtk);
-  const double vtk_dt     = cmd.get<double> ("vtk_dt",        default_nondimensional_vtk_dt)*time_unit;
+  const double vtk_dt     = cmd.get<double> ("vtk_dt",        default_vtk_dt)*time_unit;
   if(vtk_dt <= 0.0)
     throw std::invalid_argument("main for buoyant bubble: the value of vtk_dt must be strictly positive.");
   const int save_nstates      = cmd.get<int>    ("save_nstates",  default_save_nstates);
-  const double save_state_dt  = cmd.get<double> ("save_state_dt", default_nondimensional_save_state_dt)*time_unit;
+  const double save_state_dt  = cmd.get<double> ("save_state_dt", default_save_state_dt)*time_unit;
 
   const splitting_criteria_t* sp = (splitting_criteria_t*) two_phase_flow_solver->get_p4est_n()->user_pointer;
   streamObj.str("");
@@ -497,19 +496,21 @@ int main (int argc, char* argv[])
 
     if(two_phase_flow_solver->get_max_velocity() > vmax_abort)
     {
+      if(save_nstates > 0)
+        two_phase_flow_solver->save_state(export_dir.c_str(), backup_index(two_phase_flow_solver, save_state_dt) + 1);
       if(save_vtk)
         two_phase_flow_solver->save_vtk(vtk_dir, ++vtk_idx, true);
       ierr = PetscPrintf(mpi.comm(), "The maximum velocity of %g exceeded the tolerated threshold of %g... \n", two_phase_flow_solver->get_max_velocity(), vmax_abort); CHKERRXX(ierr);
       break;
     }
 
-    double avg_itfc_velocity[P4EST_DIM];
-    const double negative_volume = two_phase_flow_solver->volume_in_negative_domain();
-    two_phase_flow_solver->get_average_interface_velocity(avg_itfc_velocity);
+    double avg_bubble_velocity[P4EST_DIM], bubble_volume;
+    two_phase_flow_solver->get_average_velocity_in_domain(-1, avg_bubble_velocity, &bubble_volume);
     if(mpi.rank() == 0)
-      export_results(two_phase_flow_solver->get_tnp1()/time_unit, avg_itfc_velocity[1]*two_phase_flow_solver->get_rho_plus()*initial_bubble_diameter/two_phase_flow_solver->get_mu_plus(),
-          two_phase_flow_solver->get_rho_plus()*SQR(avg_itfc_velocity[1])*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension(),
-          negative_volume,
+      export_results(two_phase_flow_solver->get_tnp1()/time_unit,
+                     avg_bubble_velocity[1]*two_phase_flow_solver->get_rho_plus()*initial_bubble_diameter/two_phase_flow_solver->get_mu_plus(),
+          two_phase_flow_solver->get_rho_plus()*SQR(avg_bubble_velocity[1])*initial_bubble_diameter/two_phase_flow_solver->get_surface_tension(),
+          bubble_volume,
           two_phase_flow_solver->get_dt_n()/dt_visc,
           two_phase_flow_solver->get_dt_n()/two_phase_flow_solver->get_capillary_dt(),
           datafile);
