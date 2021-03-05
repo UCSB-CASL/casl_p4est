@@ -38,13 +38,47 @@ namespace slml
 		p4est_locidx_t nodeIdx;			// Node index in the PETSc parallel vector.
 		double phi_a;					// Level-set function value at arrival point.
 		double vel_a[P4EST_DIM];		// Velocity at arrival point (u, v, and w components).
-		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
 		double distance;				// Distance between arrival and departure point normalized to (min) cell width.
 		double xyz_d[P4EST_DIM];		// Position of departure point in normalized coords (i.e., in [0,1]^{P4EST_DIM}).
 		double phi_d[P4EST_CHILDREN];	// Level-set function values at corners of cell containing the (backtracked) departure point.
 		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the
 													// (ked) departure point.  Order is vel_u, vel_v [, vel_w].
 													// For each vel component, there are P4EST_CHILDREN values.
+		double targetPhi_d;				// Reserved for expected/target phi value at departure point.
+		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
+
+		/**
+		 * Serialize data packet into a vector.
+		 * The order is: phi_a, vel_a (by component), distance, xyz_d (by coordinate), phi_d (by child), vel_d
+		 * (by component and child), targetPhi_d, numBacktrackedPhi_d.
+		 * @param [out] data Output vector container.
+		 * @param [in] includeNodeIdx Whether to serialize node index or not.
+		 */
+		void serialize( std::vector<double>& data, bool includeNodeIdx=false ) const
+		{
+			if( includeNodeIdx )					// Node index.
+				data.push_back( nodeIdx );
+
+			data.push_back( phi_a );				// Level-set value at arrival point.
+
+			for( const auto& component : vel_a )	// Components of velocity at arrival point.
+				data.push_back( component );
+
+			data.push_back( distance );				// Scaled distance to departure point.
+
+			for( const auto& coord : xyz_d )		// Scaled departure point w.r.t. child at lowest quad/oct coords.
+				data.push_back( coord );
+
+			for( const auto& phi : phi_d )			// Level-set values at quad/oct children.
+				data.push_back( phi );
+
+			for( const auto& componentAtChild : vel_d )		// Velocity components at quad/oct children.
+				data.push_back( componentAtChild );
+
+			data.push_back( targetPhi_d );			// Target level-set value at departure point.
+
+			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
+		}
 
 #ifndef P4_TO_P8
 		/**
@@ -69,7 +103,6 @@ namespace slml
 			// Rotate velocity at departure point.
 			_rotate90( vel_a[0], vel_a[1] );
 
-			// numBacktrackedPhi_d remains unchanged.
 			// distance remains unchanged.
 			// Rotate departure coords: (x, y) -> (1-y, x).
 			std::swap( xyz_d[0], (xyz_d[1] = 1.0 - xyz_d[1]) );
@@ -82,6 +115,9 @@ namespace slml
 			_rotateChildren( &vel_d[P4EST_CHILDREN] );	// v component children.
 			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Rotate actual vectors.
 				_rotate90( vel_d[i], vel_d[i + P4EST_CHILDREN] );
+
+			// targetPhi_d remains unchanged.
+			// numBacktrackedPhi_d remains unchanged.
 		}
 	};
 #endif

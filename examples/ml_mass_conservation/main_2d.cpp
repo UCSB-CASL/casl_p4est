@@ -37,6 +37,7 @@
 #include <src/casl_geometry.h>
 #include "CoarseGrid.h"
 #include "VelocityField.h"
+#include "Utils.h"
 #include <random>
 
 /**
@@ -48,9 +49,10 @@
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const double DURATION = 2.0;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
+	const double DURATION = 1.0;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
 	const int FINE_MAX_RL = 8;
+	const int REINIT_NUM_ITER = 20;		// Number of iterations for level-set renitialization.
 
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
 	const auto PHI_INTERP_MTHD = interpolation_method::quadratic;		// Phi interpolation method.
@@ -66,6 +68,22 @@ int main( int argc, char** argv )
 	const double BAND_F = BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL));
 
 	char msg[1024];						// Some string to write messages to standard ouput.
+
+	// Destination folder and file.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/massLoss/";
+	const std::string FILE_PATH = DATA_PATH + "data_" + std::to_string( COARSE_MAX_RL ) + "_"
+													  + std::to_string( FINE_MAX_RL ) + ".csv";
+	const int NUM_COLUMNS = 20;			// Number of columns in resulting dataset.
+	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
+											 "u_a", "v_a", 			// Velocity components at arrival point.
+											 "d",					// Scaled distance (by 1/dx_coarse).
+											 "x_d", "y_d",			// Scaled departure coords with respect to quad's lower corner.
+											 "phi_d_mm", "phi_d_mp", "phi_d_pm", "phi_d_pp",	// Level-set values at departure quad's children.
+											 "u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
+											 "v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
+											 "target_phi_d",		// Expected/target phi value at departure point.
+											 "numerical_phi_d"		// Numerically computed phi value at departure point.
+	};
 
 	try
 	{
@@ -86,6 +104,15 @@ int main( int argc, char** argv )
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 
+		// Prepare output file.
+		std::ofstream file;
+		utils::openFile( FILE_PATH, 15, file );
+
+		// Write header columns.
+		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+			file << "\"" << COLUMN_NAMES[i] << "\",";
+		file << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"" << std::endl;
+
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
 		const double xyz_min[] = {MIN_D, MIN_D, MIN_D};
@@ -97,12 +124,18 @@ int main( int argc, char** argv )
 		std::mt19937 gen; 		// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 		std::uniform_real_distribution<double> uniformDistributionAroundCenter( MIN_D / 2.0, MAX_D / 2.0 );
 
+		// TODO: Start looping right here.
+
+		// Defining a random velocity field, normalized to unit length.
+		RandomVelocityField randomVelocityField( gen );
+		randomVelocityField.normalize( xyz_min, mesh_len, 1 << FINE_MAX_RL );
+
 		// Define the initial interface (valid for COARSE and FINE grids).
 		double x0 = uniformDistributionAroundCenter( gen );
 		double y0 = uniformDistributionAroundCenter( gen );
 		double minRadius = 5 * dxyz_min_c;					// Let's choose a radius between 5 and 10 coarse min cell width.
 		double maxRadius = MAX_D / 4;
-		geom::Sphere sphere( DIM( x0, y0, 0 ), (maxRadius + minRadius) / 2 );
+		geom::SphereNSD sphere( DIM( x0, y0, 0 ), (maxRadius + minRadius) / 2 );
 
 		// Declaration of the FINE macromesh via the brick and connectivity objects.
 		my_p4est_brick_t brick_f;
@@ -135,10 +168,6 @@ int main( int argc, char** argv )
 		auto *nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
 		nodeNeighbors_f->init_neighbors();
 
-		// Defining a random velocity field, normalized to unit length.
-		RandomVelocityField randomVelocityField( gen );
-		randomVelocityField.normalize( xyz_min, mesh_len, 1 << FINE_MAX_RL );
-
 		// Create a coarse grid.
 		CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere );
 
@@ -168,6 +197,13 @@ int main( int argc, char** argv )
 		randomVelocityField.evaluate( mesh_len, p4est_f, nodes_f, vel_f );
 		randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
 
+		// Reinitialize both the FINE and COARSE grids before we start advections as we are using a non-signed distance
+		// level-set function.
+		my_p4est_level_set_t levelSet_f( nodeNeighbors_f );				// FINE grid.
+		levelSet_f.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER );
+		my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// Coarse grid.
+		levelSet_c.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
+
 		// Define time stepping variables.
 		double tn_c = 0;							// Current time for COARSE grid.
 		double tn_f = 0;							// Current time for FINE grid.
@@ -183,11 +219,21 @@ int main( int argc, char** argv )
 		// Advection loop.
 		// For each COARSE step, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
 		const int N_FINE_STEPS_PER_COARSE_STEP = 1u << (FINE_MAX_RL - COARSE_MAX_RL);
+		unsigned long nSamplesPerLoop = 0;			// Count how many samples we collect for a simulation loop.
+		double maxRelError = 0;						// Maximum relative error (w.r.t. COARSE cell width) for loop.
+
+		ierr = PetscPrintf( mpi.comm(), " * Receiving: " );		// Will show: " * Receiving: x y", number of packets.
+		CHKERRXX( ierr );
 		while( allInside && tn_c + 0.1 * dt_c < DURATION )
 		{
 			// Clip leading COARSE time step if it's going to go over the final time.
 			if( tn_c + dt_c > DURATION )
 				dt_c = DURATION - tn_c;
+
+			// Display current iteration.
+			sprintf( msg, "[%03d]: ", iter );
+			ierr = PetscPrintf( mpi.comm(), msg );
+			CHKERRXX( ierr );
 
 			// Update up to N_FINE_STEPS_PER_COARSE_STEP times the FINE grid.
 			for( int step = 0; step < N_FINE_STEPS_PER_COARSE_STEP; step++ )
@@ -230,8 +276,8 @@ int main( int argc, char** argv )
 				nodeNeighbors_f->init_neighbors();
 
 				// Reinitialize FINE level-set function.
-				my_p4est_level_set_t levelSet_f( nodeNeighbors_f );
-				levelSet_f.reinitialize_2nd_order( phi_f, 20 );
+				my_p4est_level_set_t levelSet_f1( nodeNeighbors_f );
+				levelSet_f1.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER );
 
 				// Advance FINE time.
 				tn_f += dt_f;
@@ -250,18 +296,53 @@ int main( int argc, char** argv )
 			// Restore FINE time step size.
 			dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;
 
-			// TODO: Collect samples from COARSE grid: must be done before "advecting" it.
-			allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c ); 	// Also allocates flagged nodes.
+			// Collect samples from COARSE grid: must be done before "advecting" it.  Also allocates flagged nodes along
+			// Gamma.
+			std::vector<slml::DataPacket *> dataPackets;
+			double relError = 0;
+			allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError );
 
 			if( allInside )	// Continue processing of samples if all backtracked interface points lied inside the domain.
 			{
+				// Data augmentation and writing to output file.  We accumulate all samples first, and then write file.
+				std::vector<std::vector<double>> samples;
+				samples.reserve( dataPackets.size() * 4 );		// For each received data packet, we rotate it 4 times.
+				for( auto dataPacket : dataPackets )
+				{
+					for( int i = 0; i < 4; i++ )				// Rotate data packet four times.
+					{
+						samples.emplace_back( std::vector<double>() );        // Serialize data.
+						samples.back().reserve( NUM_COLUMNS );
+						dataPacket->serialize( samples.back() );
+
+						dataPacket->rotate90();                                // Data augmentation.
+					}
+				}
+
+				// Write samples vector to file.
+				for( const auto& row : samples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( file, "," ) );	// Inner elements.
+					file << row.back() << std::endl;
+				}
+
+				// As a way to verify things are working well, we track the maximum relative error.
+				maxRelError = MAX( maxRelError, relError );
+				nSamplesPerLoop += samples.size();
+
+				if( (iter + 1) % NUM_ITER_VTK == 0 )
+				{
+					ierr = PetscPrintf( mpi.comm(), "\n              " );
+					CHKERRXX( ierr );
+				}
+
 				if( iter >= vtkIdxPrior * NUM_ITER_VTK )
 				{
 					coarseGrid.writeVTK( vtkIdxPrior );
 					vtkIdxPrior++;
 				}
 
-				// "Advecting" COARSE grid by using the FINE grid as reference: updates internal phi vector with no
+				// "Advecting" COARSE grid by using the FINE grid as reference: updates internal phi vector with NO
 				// reinitialization.
 				coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
 
@@ -273,20 +354,23 @@ int main( int argc, char** argv )
 				tn_f = tn_c;												// Synchronize COARSE and FINE times.
 				iter++;
 
-				// Display iteration message.
-				sprintf( msg, "    Iteration %04d: t = %1.4f \n", iter, tn_c );
-				ierr = PetscPrintf( mpi.comm(), msg );
-				CHKERRXX( ierr );
+				// Don't forget to destroy dynamic objects even if all points we backtracked outside the domain.
+				slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 			}
 		}
 
+		// Signal how we stopped the simulation loop.
 		if( !allInside )
-		{
-			sprintf( msg, "    Finished early before registering iteration %04d: t = %1.4f; \n"
-				 	 "at least one backtracked point fell outside domain \n", iter, tn_c );
-			ierr = PetscPrintf( mpi.comm(), msg );
-			CHKERRXX( ierr );
-		}
+			ierr = PetscPrintf( mpi.comm(), "///\n" );	// At least one point along Gamma was backtracked outside Omega.
+		else
+			ierr = PetscPrintf( mpi.comm(), "###\n" );	// All points along Gamma were backtracked inside Omega.
+		CHKERRXX( ierr );
+
+		// Status message.
+		sprintf( msg, "<< %lu samples collected, maxRelError = %g, after %g seconds.\n",
+		   		 nSamplesPerLoop, maxRelError, watch.get_duration_current() );
+		ierr = PetscPrintf( mpi.comm(), msg );
+		CHKERRXX( ierr );
 
 		// Destroy the dynamically allocated Vecs for FINE grid.
 		ierr = VecDestroy( phi_f );
@@ -311,9 +395,7 @@ int main( int argc, char** argv )
 
 		coarseGrid.destroy();
 
-		sprintf( msg, "<< Finished data set generation after %f secs.\n", watch.get_duration_current() );
-		ierr = PetscPrintf( mpi.comm(), msg );
-		CHKERRXX( ierr );
+		file.close();
 		watch.stop();
 	}
 	catch( const std::exception &exception )

@@ -247,18 +247,26 @@ public:
 	}
 
 	/**
-	 * Collect sample from COARSE grid points next to the interface (all independent nodes).  This function must be
+	 * Collect samples from COARSE grid points next to the interface (all independent nodes).  This function must be
 	 * called *after* advecting the FINE grid an adequate number of times and *before* using the FINE grid to "advect"
 	 * the COARSE grid.
+	 * If all samples returned by the semi-Lagrangian sampler are backtracked within the domain, the function populates
+	 * an array of pointers of data packets that have been allocated dynamically.
+	 * @note The caller function is responsible for deallocating the data packets by using the static utility function
+	 * slml::SemiLagrangian::freeDataPacketArray(.) this collectSamples returns true.
 	 * @param [in] ngbd_f Advected fine grid neighborhood struct.
 	 * @param [in] phi_f Advected fine grid level-set values vector.
 	 * @param [in] dt Coarse grid step size.
+	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
+	 * @param [out] maxRelError Maximum relative error (w.r.t. minimum cell width).
 	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
-	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt )
+	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
+					  	 std::vector<slml::DataPacket *>& dataPackets, double& maxRelError )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
+		maxRelError = 0;
 
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
 
@@ -286,59 +294,62 @@ public:
 
 		//////////////////////////////////////////////// Data collection ///////////////////////////////////////////////
 
+		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
-		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );		// Use a semi-Lagrangian
-		std::vector<slml::DataPacket *> dataPackets;										// scheme with a single vel
-		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );		// step for backtracing to
-																							// retrieve samples.
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );
+		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );
 
-		// Finding the target phi values via interpolation from FINE grid.
-		double targetPhi[dataPackets.size()];
-		for( size_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
+		// Continue process if all samples lie within computational domain.
+		if( allInside )
 		{
-			double xyz[P4EST_DIM];
-			node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
-			interp.add_point( outIndex, xyz );
-		}
-		interp.set_input( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ), interpolation_method::quadratic );
-		interp.interpolate( targetPhi );
-		interp.clear();
+			// Finding the target phi values via interpolation from FINE grid.
+			double targetPhi[dataPackets.size()];
+			for( size_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
+				interp.add_point( outIndex, xyz );
+			}
+			interp.set_input( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ), interpolation_method::quadratic );
+			interp.interpolate( targetPhi );
+			interp.clear();
 
-		// TODO: Go through collected nodes and add the target value.  Populate the flag vector at the same time.
-		double *gammaFlagPtr;
-		ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
-		CHKERRXX( ierr );
-		double maxRelError = 0;									// Maximum relative error.
-		for( size_t i = 0; i < dataPackets.size(); i++ )
+			// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
+			double *gammaFlagPtr;
+			ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
+			CHKERRXX( ierr );
+			for( size_t i = 0; i < dataPackets.size(); i++ )
+			{
+				slml::DataPacket *dataPacket = dataPackets[i];
+				gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
+				dataPacket->targetPhi_d = targetPhi[i];				// Populate expected phi value.
+
+				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
+				maxRelError = MAX( maxRelError, relError );
+			}
+			ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
+			CHKERRXX( ierr );
+
+			// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated using
+			// machine learning even at processes that do not own those nodes.  If I don't do this, the flag set in one pro-
+			// cess can be reset to 0 by another (e.g., if the node is in the ghost layer of a process and, according to it,
+			// the node isn't next to the interface, while the owner process has determined that the node is next to Gamma).
+			ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+			VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
+			CHKERRXX( ierr );
+
+			sprintf( msg, "%3lu   ", dataPackets.size() );
+			ierr = PetscPrintf( mpi.comm(), msg );
+			CHKERRXX( ierr );
+		}
+		else
 		{
-			slml::DataPacket *dataPacket = dataPackets[i];
-			gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
-			double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
-			maxRelError = MAX( maxRelError, relError );
-
-			dataPacket->rotate90();
-			std::cout << "rotated!" << std::endl;
+			// Don't forget to destroy dynamic objects even if all points we backtracked outside the domain.
+			slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 		}
-		ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
-		CHKERRXX( ierr );
-
-		// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated using
-		// machine learning even at processes that do not own those nodes.  If I don't do this, the flag set in one pro-
-		// cess can be reset to 0 by another (e.g., if the node is in the ghost layer of a process and, according to it,
-		// the node isn't next to the interface, while the owner process has determined that the node is next to Gamma).
-		ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
-		CHKERRXX( ierr );
-		VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
-		CHKERRXX( ierr );
-
-		sprintf( msg, "* %lu received packets with max rel error %g!\n", dataPackets.size(), maxRelError );
-		ierr = PetscPrintf( mpi.comm(), msg );
-		CHKERRXX( ierr );
 
 		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////
-
-		// Don't forget to destroy dynamic objects.
-		slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 
 		// Free vectors with second derivatives for FINE phi.
 		for( auto& derivative : phi_f_xx )
@@ -394,11 +405,6 @@ public:
 			ierr = VecRestoreArrayRead( vel[dir], &velReadPtr[dir] );
 			CHKERRXX( ierr );
 		}
-
-		char msg[1024];
-		sprintf( msg, " -> Saving vtu files in %s.vtu\n", name );
-		ierr = PetscPrintf( mpi.comm(), msg );
-		CHKERRXX( ierr );
 	}
 
 	/**

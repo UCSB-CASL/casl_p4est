@@ -16,6 +16,8 @@
 #include <vector>
 #include <random>
 
+#include "Utils.h"
+
 /**
  * Auxiliary class to create random divergence-free velocity fields.
  * Based on the paper "Learned discretizations for passive scalar advection in a 2-D turbulent flow" whose code base is
@@ -34,24 +36,6 @@ private:
 	std::vector<double> _yWaveVectors;
 	std::vector<double> _amplitudes;	// Wave amplitudes.
 	std::vector<double> _phaseShifts;	// Phase shift for waves.
-
-
-	/**
-	 * Utility function to open a file.
-	 * @param [in] fileName File name.
-	 * @param [in] precision Numerical precision.
-	 * @param [out] file Output file object.
-	 * @param [in] mode Opening mode.
-	 * @throws Runtime exception if opening file fails.
-	 */
-	static void _openFile( const std::string& fileName, int precision, std::ofstream& file,
-						   unsigned int mode=std::ofstream::trunc )
-	{
-		file.open( fileName, mode );
-		if( !file.is_open() )
-			throw std::runtime_error( "Output file " + fileName + " couldn't be opened!" );
-		file.precision( precision );
-	}
 
 public:
 
@@ -216,7 +200,7 @@ public:
 			for( int dim = 0; dim < P4EST_DIM; dim++ )
 			{
 				std::ofstream coordsFile;
-				_openFile( "coords" + std::to_string( dim ) + ".csv", PRECISION, coordsFile );
+				utils::openFile( "coords" + std::to_string( dim ) + ".csv", PRECISION, coordsFile );
 
 				// Writting a coords in one shot (almost).
 				std::copy( grid[dim].begin(), grid[dim].end() - 1, std::ostream_iterator<double>( coordsFile, "," ) );
@@ -227,8 +211,8 @@ public:
 
 			// Dumping velocity field components in separate files.
 			std::ofstream uFile, vFile;
-			_openFile( "u.csv", PRECISION, uFile );
-			_openFile( "v.csv", PRECISION, vFile );
+			utils::openFile( "u.csv", PRECISION, uFile );
+			utils::openFile( "v.csv", PRECISION, vFile );
 
 			for( int i = 0; i < grid[0].size(); i++ )
 			{
