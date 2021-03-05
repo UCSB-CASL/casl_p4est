@@ -505,8 +505,7 @@ public:
 
   inline double volume_in_negative_domain() const { return interface_manager->volume_in_negative_domain(); }
 
-  void get_average_interface_velocity_and_interface_area(double avg_itfc_velocity[P4EST_DIM], double& interface_area);
-  void get_volume_and_average_velocity_in_domain(const char& sgn, double avg_velocity[P4EST_DIM], double& volume);
+  void get_average_velocity_in_domain(const char& sgn, double avg_velocity[P4EST_DIM], double* volume_in_domain = NULL, double* interface_area = NULL);
 
   inline int get_rank() const { return p4est_n->mpirank; }
 
