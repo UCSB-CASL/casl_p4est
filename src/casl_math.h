@@ -442,7 +442,7 @@ inline void linspace( const double& start, const double& end, const unsigned int
 	const double dx = (end - start) / (n - 1);
 	values.push_back( start );						// values shall contain the start and end points by construction.
 	for( unsigned int i = 1; i < n - 1; i++ )
-		values.push_back( i * dx );					// Intermediate values in open range (start, end).
+		values.push_back( start + i * dx );			// Intermediate values in open range (start, end).
 	values.push_back( end );
 }
 

@@ -141,10 +141,11 @@ public:
 	 * @param [in] meshLen Mesh length in each cartesian direction.
 	 * @param [in] cellsPerUnit Cells per linear unit side length.
 	 * @param [in] dumpFiles Whether to dump or not the velocity components and the grid ranges along x and y directions.
+	 * @param [in] dumpIdx If dumping files, use this as file suffix.
 	 * @throws Runtime exception if writing dump files fails.
 	 */
 	void normalize( const double xyzMin[P4EST_DIM], const double meshLen[P4EST_DIM], int cellsPerUnit=128,
-				    bool dumpFiles=false )
+				    const bool& dumpFiles=false, const unsigned int& dumpIdx=0 )
 	{
 		std::vector<double> grid[P4EST_DIM];				// Grid coordinates on each Cartesian direction.
 		for( int dim = 0; dim < P4EST_DIM; dim++ )
@@ -200,7 +201,8 @@ public:
 			for( int dim = 0; dim < P4EST_DIM; dim++ )
 			{
 				std::ofstream coordsFile;
-				utils::openFile( "coords" + std::to_string( dim ) + ".csv", PRECISION, coordsFile );
+				utils::openFile( "coords" + std::to_string( dim ) + "_" + std::to_string( dumpIdx ) + ".csv",
+					 			 PRECISION, coordsFile );
 
 				// Writting a coords in one shot (almost).
 				std::copy( grid[dim].begin(), grid[dim].end() - 1, std::ostream_iterator<double>( coordsFile, "," ) );
@@ -211,8 +213,8 @@ public:
 
 			// Dumping velocity field components in separate files.
 			std::ofstream uFile, vFile;
-			utils::openFile( "u.csv", PRECISION, uFile );
-			utils::openFile( "v.csv", PRECISION, vFile );
+			utils::openFile( "u_" + std::to_string( dumpIdx ) + ".csv", PRECISION, uFile );
+			utils::openFile( "v_" + std::to_string( dumpIdx ) + ".csv", PRECISION, vFile );
 
 			for( int i = 0; i < grid[0].size(); i++ )
 			{
