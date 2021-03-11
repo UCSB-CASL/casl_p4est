@@ -64,7 +64,7 @@ int main( int argc, char** argv )
 
 	const int NUM_ITER_VTK = 8;			// Save VTK files every NUM_ITER_VTK iterations (break line too).
 
-	const int NUM_VEL_FIELDS = 4;		// Number of different random velocity fields to try out.
+	const int NUM_VEL_FIELDS = 7;		// Number of different random velocity fields to try out.
 	const int NUM_CENTERS = 4;			// Number of different center locations to try out per circle radius.
 
 	const double BAND_C = 2; 			// Minimum number of cells around interface in COARSE (C) and FINE (F) grids.
@@ -75,8 +75,8 @@ int main( int argc, char** argv )
 	// Destination folder and file.
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/massLoss/";
 	const std::string FILE_PATH = DATA_PATH + "data_" + std::to_string( COARSE_MAX_RL ) + "_"
-													  + std::to_string( FINE_MAX_RL ) + ".csv";
-	const int NUM_COLUMNS = 20;			// Number of columns in resulting dataset.
+													  + std::to_string( FINE_MAX_RL ) + "_k_minus.csv";
+	const int NUM_COLUMNS = 21;			// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
 											 "u_a", "v_a", 			// Velocity components at arrival point.
 											 "d",					// Scaled distance (by 1/dx_coarse).
@@ -85,7 +85,8 @@ int main( int argc, char** argv )
 											 "u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
 											 "v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
 											 "target_phi_d",		// Expected/target phi value at departure point.
-											 "numerical_phi_d"		// Numerically computed phi value at departure point.
+											 "numerical_phi_d",		// Numerically computed phi value at departure point.
+											 "numerical_kappa"		// Mean curvature at closest point to node on Gamma.
 	};
 
 	try
@@ -131,8 +132,21 @@ int main( int argc, char** argv )
 		std::vector<double> radii;
 		linspace( MIN_RADIUS, MAX_RADIUS, NUM_RADII, radii );
 
-		std::mt19937 gen; 		// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
+		std::mt19937 gen; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 		std::uniform_real_distribution<double> uniformDistributionAroundCenter( MIN_D / 2.0, MAX_D / 2.0 );
+
+		// Subsampling to reduce number of observations along flat regions.
+		std::mt19937 gen2( 37 );	// NOLINT Standard Mersenne Twister engine for subsampling.
+		auto subSampling = []( double kappa ){
+			kappa = ABS( kappa );
+			if( kappa <= 5 )		// Choose how manu "data augmentations" do we need depending on curvature.
+				return 1;
+			if( kappa <= 7.5 )
+				return 2;
+			if( kappa <= 10 )
+				return 3;
+			return 4;
+		};
 
 		// Looping through random velocity fields.
 		unsigned long nSamplesInTotal = 0;
@@ -338,13 +352,35 @@ int main( int argc, char** argv )
 							samples.reserve( dataPackets.size() * 4 );
 							for( auto dataPacket : dataPackets )
 							{
+								// As a way to simplify the resulting nnet architecture, I'll make everything match
+								// negative-curvature samples by flipping the sign of level-set values in data packet.
+								if( dataPacket->numK > 0 )
+								{
+									dataPacket->phi_a *= -1;
+									for( auto& phi_d : dataPacket->phi_d )
+										phi_d *= -1;
+									dataPacket->targetPhi_d *= -1;
+									dataPacket->numBacktrackedPhi_d *= -1;
+									dataPacket->numK *= -1;
+								}
+
+								// I'll record samples based on their curvature.  Anything below a threshold will be
+								// subsampled, and anything above will be given green light (and augmented four times).
+								int takeNSamples = subSampling( dataPacket->numK );
+								std::unordered_set<int> rotations;
+								if( takeNSamples < 4 )
+									utils::generateRandomSetOfNumbers( 0, 3, takeNSamples, rotations, gen2 );
+
 								for( int i = 0; i < 4; i++ )	// For each received data packet, rotate it 4 times.
 								{
-									samples.emplace_back( std::vector<double>() );        // Serialize data.
-									samples.back().reserve( NUM_COLUMNS );
-									dataPacket->serialize( samples.back() );
+									if( takeNSamples == 4 || rotations.find( i ) != rotations.end() )
+									{
+										samples.emplace_back( std::vector<double>());	// Serialize data.
+										samples.back().reserve( NUM_COLUMNS );
+										dataPacket->serialize( samples.back());
+									}
 
-									dataPacket->rotate90();                                // Data augmentation.
+									dataPacket->rotate90();								// Data augmentation.
 								}
 							}
 

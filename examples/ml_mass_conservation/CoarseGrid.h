@@ -280,6 +280,36 @@ public:
 		ierr = VecCreateGhostNodes( p4est, nodes, &gammaFlag );
 		CHKERRXX( ierr );
 
+		// Allocate PETSc vectors for normals and curvature.
+		Vec curvature, normal[P4EST_DIM];
+		ierr = VecDuplicate( phi, &curvature );
+		CHKERRXX( ierr );
+		for( auto& dim : normal )
+		{
+			ierr = VecCreateGhostNodes( p4est, nodes, &dim );
+			CHKERRXX( ierr );
+		}
+
+		// Compute curvature, which will be (linearly) interpolated at the interface.
+		compute_normals( *nodeNeighbors, phi, normal );
+		compute_mean_curvature( *nodeNeighbors, normal, curvature );
+
+		// Prepare curvature interpolation.
+		my_p4est_interpolation_nodes_t kappaInterp( nodeNeighbors );
+		kappaInterp.set_input( curvature, interpolation_method::linear );
+
+		// Also need read access to phi and normal vectors.
+		const double *phiReadPtr;
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+
+		const double *normalReadPtr[P4EST_DIM];
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			ierr = VecGetArrayRead( normal[i], &normalReadPtr[i] );
+			CHKERRXX( ierr );
+		}
+
 		// Compute second derivatives of FINE level-set function. We need these for quadratic interpolation of its phi
 		// values to draw the corresponding target phi values in the COARSE grid.
 		Vec phi_f_xx[P4EST_DIM];
@@ -324,6 +354,13 @@ public:
 				gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
 				dataPacket->targetPhi_d = targetPhi[i];				// Populate expected phi value.
 
+				double xyz[P4EST_DIM];								// Populate numerical curvature at Gamma.
+				node_xyz_fr_n( dataPacket->nodeIdx, p4est, nodes, xyz );
+				double p = phiReadPtr[dataPacket->nodeIdx];
+				dataPacket->numK = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][dataPacket->nodeIdx],
+										 			 xyz[1] - p * normalReadPtr[1][dataPacket->nodeIdx],
+										 			 xyz[2] - p * normalReadPtr[2][dataPacket->nodeIdx] ) );
+
 				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
 				maxRelError = MAX( maxRelError, relError );
 			}
@@ -351,10 +388,30 @@ public:
 
 		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////
 
+		// Restore read access.
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+		CHKERRXX( ierr );
+
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			ierr = VecRestoreArrayRead( normal[i], &normalReadPtr[i] );
+			CHKERRXX( ierr );
+		}
+
 		// Free vectors with second derivatives for FINE phi.
 		for( auto& derivative : phi_f_xx )
 		{
 			ierr = VecDestroy( derivative );
+			CHKERRXX( ierr );
+		}
+
+		// Free vectors for normals and curvature.
+		ierr = VecDestroy( curvature );
+		CHKERRXX( ierr );
+
+		for( auto& dim : normal )
+		{
+			ierr = VecDestroy( dim );
 			CHKERRXX( ierr );
 		}
 

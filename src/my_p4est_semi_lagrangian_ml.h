@@ -41,11 +41,12 @@ namespace slml
 		double distance;				// Distance between arrival and departure point normalized to (min) cell width.
 		double xyz_d[P4EST_DIM];		// Position of departure point in normalized coords (i.e., in [0,1]^{P4EST_DIM}).
 		double phi_d[P4EST_CHILDREN];	// Level-set function values at corners of cell containing the (backtracked) departure point.
-		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the
-													// (ked) departure point.  Order is vel_u, vel_v [, vel_w].
+		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the backtracked
+													// departure point.  Order is vel_u, vel_v [, vel_w].
 													// For each vel component, there are P4EST_CHILDREN values.
 		double targetPhi_d;				// Reserved for expected/target phi value at departure point.
 		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
+		double numK;					// Reserved for numerical curvature at the interface closest to node nodeIdx.
 
 		/**
 		 * Serialize data packet into a vector.
@@ -78,6 +79,8 @@ namespace slml
 			data.push_back( targetPhi_d );			// Target level-set value at departure point.
 
 			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
+
+			data.push_back( numK );					// Curvature at the interface.
 		}
 
 #ifndef P4_TO_P8
@@ -118,6 +121,7 @@ namespace slml
 
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
+			// numK remains unchanged.
 		}
 	};
 #endif
