@@ -203,6 +203,9 @@ public:
   inline void set_pinning_for_normal_derivatives_in_correction_functions(const bool& do_the_pinning) { pin_normal_derivative_for_correction_functions = do_the_pinning;}
 
   inline void set_ksp_fallback(const KSPType& fallback_ksp) { ksp_fallback = fallback_ksp;}
+
+  inline bool are_fv_and_cf_known() const {return are_required_finite_volumes_and_correction_functions_known; }
+  inline const map_of_finite_volume_t& get_fv_map() const { return finite_volume_data_for_quad; }
 };
 
 #endif // MY_P4EST_POISSON_JUMP_CELLS_FV_H

@@ -461,6 +461,7 @@ public:
   inline my_p4est_faces_t* get_faces_n() const                              { return faces_n ; }
   inline p4est_ghost_t* get_ghost_n() const                                 { return ghost_n; }
   inline my_p4est_node_neighbors_t* get_ngbd_n() const                      { return ngbd_n; }
+  inline my_p4est_poisson_jump_cells_t* get_cell_jump_solver() const        { return cell_jump_solver; }
 
   inline const my_p4est_interface_manager_t* get_interface_manager() const  { return interface_manager; }
   inline my_p4est_interface_manager_t* get_interface_manager()              { return interface_manager; } // in case we want to augment the interface_manager
