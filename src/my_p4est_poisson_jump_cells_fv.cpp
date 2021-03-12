@@ -3,6 +3,7 @@
 #else
 #include "my_p4est_poisson_jump_cells_fv.h"
 #endif
+#include <sc_notify.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_EVENTS
@@ -149,7 +150,6 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
 
   std::map<int, std::vector<global_correction_function_elementary_data_t> > serialized_global_correction_functions_to_send_to;
   serialized_global_correction_functions_to_send_to.clear();
-  std::set<int> ranks_to_receive_correction_functions_from; ranks_to_receive_correction_functions_from.clear();
   int mpiret;
   std::vector<MPI_Request> nonblocking_send_requests;
 
@@ -164,92 +164,79 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_layer_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_layer_quadrant(k);
 
-    bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
     my_p4est_finite_volume_t fv;
     const bool is_quad_double_valued = interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, &fv);
 
     if(is_quad_double_valued)
     {
-      fv.get_face_intersections(is_face_crossed, interface_relative_threshold);
       finite_volume_data_for_quad[quad_idx] = fv;
       build_and_store_correction_function_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_layer_quad);
-    }
-
-    // figure out if required by another process and or if this process expects communications from another one
-    std::set<int> ranks_to_communicate_correction_function_with; ranks_to_communicate_correction_function_with.clear();
-    const double *tree_xyz_min, *tree_xyz_max;
-    const p4est_quadrant_t* quad;
-    fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
-    double xyz_quad[P4EST_DIM], dxyz_quad[P4EST_DIM];
-    xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_quad, dxyz_quad);
-    const char sgn_quad = (interface_manager->phi_at_point(xyz_quad) <= 0.0 ? -1 : +1);
-    for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
-    {
-      if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
-        continue;
-      set_of_neighboring_quadrants neighbors_across_face;
-      cell_ngbd->find_neighbor_cells_of_cell(neighbors_across_face, quad_idx, tree_idx, oriented_dir);
-      P4EST_ASSERT(neighbors_across_face.size() > 0);
-      for (set_of_neighboring_quadrants::const_iterator it = neighbors_across_face.begin(); it != neighbors_across_face.end(); ++it) {
-        const p4est_quadrant_t& neighbor_across_face = *it;
-        if(neighbor_across_face.p.piggy3.local_num >= p4est->local_num_quadrants) // the neighbor is a ghost quad
-        {
-          double xyz_face[P4EST_DIM] = {DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])}; xyz_face[oriented_dir/2] += (oriented_dir%2 == 1 ? +0.5 : -0.5)*dxyz_quad[oriented_dir/2];
-          double xyz_neighbor[P4EST_DIM]; quad_xyz_fr_q(neighbor_across_face.p.piggy3.local_num, neighbor_across_face.p.piggy3.which_tree, p4est, ghost, xyz_neighbor);
-          const char sgn_face     = (interface_manager->phi_at_point(xyz_face)      <= 0.0 ? -1 : +1);
-          const char sgn_neighbor = (interface_manager->phi_at_point(xyz_neighbor)  <= 0.0 ? -1 : +1);
-          const int rank_owning_neighbor = quad_find_ghost_owner(ghost, neighbor_across_face.p.piggy3.local_num - p4est->local_num_quadrants);
-          if(is_quad_double_valued && (is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_quad))) // you need to send the correction function you have just constructed to that one
-            ranks_to_communicate_correction_function_with.insert(rank_owning_neighbor);
-          if(is_face_crossed[oriented_dir] || signs_of_phi_are_different(sgn_face, sgn_neighbor)) // you expect a correction function for the ghost quad
-            ranks_to_receive_correction_functions_from.insert(rank_owning_neighbor);
-        }
-      }
-    }
-    P4EST_ASSERT(is_quad_double_valued || ranks_to_communicate_correction_function_with.size() == 0); // nothing to send if you haven't constructed anything --> sanity check
-    if(is_quad_double_valued && ranks_to_communicate_correction_function_with.size() > 0) // you gotta send stuff
-    {
       P4EST_ASSERT(correction_function_for_quad.find(quad_idx) != correction_function_for_quad.end()); // make sure it is known and accessible
-      // serialize your message(s)
-      const correction_function_t& correction_function = correction_function_for_quad[quad_idx];
-      global_correction_function_elementary_data_t data_to_send;
-      for (std::set<int>::const_iterator it = ranks_to_communicate_correction_function_with.begin(); it != ranks_to_communicate_correction_function_with.end(); ++it)
+
+      // send CF to remote ghost neighbors (they *MAY* need it)
+      std::set<int> ranks_to_communicate_correction_function_with; ranks_to_communicate_correction_function_with.clear();
+      const p4est_quadrant_t* quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
+      for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
       {
-        const int& receiver_rank = *it;
-        data_to_send.quad_global_idx            = p4est->global_first_quadrant[p4est->mpirank] + quad_idx;  serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
-        data_to_send.jump_dependent_terms       = correction_function.jump_dependent_terms;                 serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
-        data_to_send.n_solution_dependent_terms = correction_function.solution_dependent_terms.size();      serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
-        for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k) {
-          data_to_send.solution_dependent_term_global_index = compute_global_index_of_quad(correction_function.solution_dependent_terms[k].dof_idx, p4est, ghost);
-          serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
-          data_to_send.solution_dependent_term_weight       = correction_function.solution_dependent_terms[k].weight;
-          serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+        if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
+          continue;
+        set_of_neighboring_quadrants neighbors_across_face;
+        cell_ngbd->find_neighbor_cells_of_cell(neighbors_across_face, quad_idx, tree_idx, oriented_dir);
+        P4EST_ASSERT(neighbors_across_face.size() > 0);
+        for (set_of_neighboring_quadrants::const_iterator it = neighbors_across_face.begin(); it != neighbors_across_face.end(); ++it)
+          if(it->p.piggy3.local_num >= p4est->local_num_quadrants) // the neighbor is a ghost quad
+            ranks_to_communicate_correction_function_with.insert(quad_find_ghost_owner(ghost, it->p.piggy3.local_num - p4est->local_num_quadrants));
+      }
+      if(ranks_to_communicate_correction_function_with.size() > 0) // you gotta send stuff
+      {
+        // serialize your message(s)
+        const correction_function_t& correction_function = correction_function_for_quad[quad_idx];
+        global_correction_function_elementary_data_t data_to_send;
+        for (std::set<int>::const_iterator it = ranks_to_communicate_correction_function_with.begin(); it != ranks_to_communicate_correction_function_with.end(); ++it)
+        {
+          const int& receiver_rank = *it;
+          data_to_send.quad_global_idx            = p4est->global_first_quadrant[p4est->mpirank] + quad_idx;  serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+          data_to_send.jump_dependent_terms       = correction_function.jump_dependent_terms;                 serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+          data_to_send.n_solution_dependent_terms = correction_function.solution_dependent_terms.size();      serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+          for (size_t k = 0; k < correction_function.solution_dependent_terms.size(); ++k) {
+            data_to_send.solution_dependent_term_global_index = compute_global_index_of_quad(correction_function.solution_dependent_terms[k].dof_idx, p4est, ghost);
+            serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+            data_to_send.solution_dependent_term_weight       = correction_function.solution_dependent_terms[k].weight;
+            serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+          }
+          data_to_send.using_fast_side = correction_function.not_reliable_for_extrapolation; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
+          data_to_send.local_corr_fun_idx = local_corr_fun_for_layer_quad[quad_idx]; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
         }
-        data_to_send.using_fast_side = correction_function.not_reliable_for_extrapolation; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
-        data_to_send.local_corr_fun_idx = local_corr_fun_for_layer_quad[quad_idx]; serialized_global_correction_functions_to_send_to[receiver_rank].push_back(data_to_send);
       }
     }
   }
 
   // Send (nonblocking) the (global) serialized correction functions to the relevant neighbor processes
+  // and figure out the communication pattern: who are you expecting message(s) from?
+  vector<int> receivers_rank;
   for (std::map<int, std::vector<global_correction_function_elementary_data_t> >::const_iterator it = serialized_global_correction_functions_to_send_to.begin();
        it != serialized_global_correction_functions_to_send_to.end(); ++it){
     const int& rank = it->first;
+    receivers_rank.push_back(rank);
     MPI_Request req;
     mpiret = MPI_Isend(it->second.data(), it->second.size()*sizeof (global_correction_function_elementary_data_t),
                        MPI_BYTE, rank, correction_function_communication_tag, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
     nonblocking_send_requests.push_back(req);
   }
+  vector<int> senders(p4est->mpisize);
+  int num_senders;
+  sc_notify(receivers_rank.data(), receivers_rank.size(), senders.data(), &num_senders, p4est->mpicomm);
+  std::set<int> senders_rank;
+  for(int k = 0; k < num_senders; k++)
+    senders_rank.insert(senders[k]);
 
   // loop through inner quadrants, build correction functions where needed (nothing else to do there)
   for (size_t k = 0; k < cell_ngbd->get_hierarchy()->get_inner_size(); ++k) {
     const p4est_locidx_t quad_idx = cell_ngbd->get_hierarchy()->get_local_index_of_inner_quadrant(k);
     const p4est_topidx_t tree_idx = cell_ngbd->get_hierarchy()->get_tree_index_of_inner_quadrant(k);
-    bool is_face_crossed[P4EST_FACES] = {DIM(false, false, false), DIM(false, false, false)};
     my_p4est_finite_volume_t fv;
     if(interface_manager->is_quad_crossed_by_interface(quad_idx, tree_idx, &fv))
     {
-      fv.get_face_intersections(is_face_crossed, interface_relative_threshold);
       finite_volume_data_for_quad[quad_idx] = fv;
       build_and_store_correction_function_for_quad_if_needed(quad_idx, tree_idx, &local_corr_fun_for_inner_quad);
     }
@@ -266,13 +253,13 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
   // 2) make the correction functions local (global -> local indices)
   // 3) insert in map
 
-  while (ranks_to_receive_correction_functions_from.size() > 0) {
+  while (!senders_rank.empty()) {
     int is_msg_pending;
     MPI_Status status;
     mpiret = MPI_Iprobe(MPI_ANY_SOURCE, correction_function_communication_tag, p4est->mpicomm, &is_msg_pending, &status); SC_CHECK_MPI(mpiret);
     if(is_msg_pending)
     {
-      P4EST_ASSERT(ranks_to_receive_correction_functions_from.find(status.MPI_SOURCE) != ranks_to_receive_correction_functions_from.end());
+      P4EST_ASSERT(senders_rank.find(status.MPI_SOURCE) != senders_rank.end());
       int byte_count;
       mpiret = MPI_Get_count(&status, MPI_BYTE, &byte_count); SC_CHECK_MPI(mpiret);
       P4EST_ASSERT(byte_count%sizeof (global_correction_function_elementary_data_t) == 0);
@@ -303,8 +290,7 @@ void my_p4est_poisson_jump_cells_fv_t::build_finite_volumes_and_correction_funct
         correction_function_for_quad.insert(std::pair<p4est_locidx_t, correction_function_t>(local_quad_idx, correction_function_for_ghost_quad));
       }
       P4EST_ASSERT(global_idx_of_ghost_corr_fun.size() == local_corr_fun_for_ghost_quad.size()); // make sure we didn't miss one
-      // remove the source from the set of expected messengers
-      ranks_to_receive_correction_functions_from.erase(status.MPI_SOURCE);
+      senders_rank.erase(status.MPI_SOURCE);
     }
   }
 

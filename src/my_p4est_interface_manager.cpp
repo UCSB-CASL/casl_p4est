@@ -621,6 +621,28 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
   const p4est_quadrant_t* quad;
   fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
   const double min_diag = ABSD(tree_xyz_max[0] - tree_xyz_min[0], tree_xyz_max[1] - tree_xyz_min[1], tree_xyz_max[2] - tree_xyz_min[2])/((double) (1 << max_level_p4est));
+  const double zero_distance_threshold = 0.001*MIN(tree_xyz_max[0] - tree_xyz_min[0], tree_xyz_max[1] - tree_xyz_min[1], tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN);
+  /* We introduce a "zero_distance_threshold" to detect cases of cells entirely
+   * in negative domain but with one (or several) vertex (vertices) (almost)
+   * exactly on the interface. For instance:
+   *
+   *  (\phi < 0)   (\phi < 0)   (\phi < 0)
+   * o------------o------------o
+   * |                         |
+   * |                         |
+   * |                         |
+   * |                         |
+   * |(\phi < 0)   (\phi < 0)  | (\phi < 0)
+   * o            o            o
+   * |                         |
+   * |                         |
+   * |                         |
+   * |                         |
+   * |(\phi < 0)   (\phi < 0)  | (\phi == 0)
+   * o------------o------------o
+   *
+   * --> We include them in our set of cells being "crossed" by the interface (safer)
+   */
 
   double xyz_mmm[P4EST_DIM]; xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_mmm);
   const double dxyz_quad[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN),
@@ -634,7 +656,7 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
   const double phi_ppp = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + P4EST_CHILDREN - 1 ]] : interp_phi(xyz_ppp));
   double min_abs_phi = MIN(fabs(phi_mmm), fabs(phi_ppp));
 
-  intersection_found = signs_of_phi_are_different(phi_mmm, phi_ppp);
+  intersection_found = signs_of_phi_are_different(phi_mmm, phi_ppp) || (min_abs_phi < zero_distance_threshold);
   const double& phi_ref = phi_mmm;
 
   u_int kxyz_min[P4EST_DIM] = {DIM(0, 0, 0)};
@@ -652,7 +674,7 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
         const double phi_vertex = (phi_on_computational_nodes_p != NULL ? phi_on_computational_nodes_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + SUMD(kx, 2*ky, 4*kz)]] :
                                    interp_phi(DIM(xyz_mmm[0] + kx*dxyz_quad[0], xyz_mmm[1] + ky*dxyz_quad[1], xyz_mmm[2] + kz*dxyz_quad[2])));
         min_abs_phi = MIN(min_abs_phi, fabs(phi_vertex));
-        intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_vertex);
+        intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_vertex) || (min_abs_phi < zero_distance_threshold);
       }
   if(phi_on_computational_nodes_p != NULL){
     PetscErrorCode ierr = VecRestoreArrayRead(phi_on_computational_nodes, &phi_on_computational_nodes_p); CHKERRXX(ierr); }
@@ -686,7 +708,7 @@ void my_p4est_interface_manager_t::detect_mls_interface_in_quad(const p4est_loci
           const double phi_mls_point = interp_phi(xyz_mls_point);
           min_abs_phi = MIN(min_abs_phi, fabs(phi_mls_point));
 
-          intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_mls_point);
+          intersection_found = intersection_found || signs_of_phi_are_different(phi_ref, phi_mls_point) || (min_abs_phi < zero_distance_threshold);
         }
   }
   /*
