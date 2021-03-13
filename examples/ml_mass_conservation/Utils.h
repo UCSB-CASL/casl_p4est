@@ -61,6 +61,35 @@ namespace utils
 		for( int i = 0; i < n; i++ )
 			numbers.insert( range[i] );
 	}
+
+	/**
+	 * Read a line from a stream and break it into tokens (which are assumed to be separated by commas).
+	 * @param [in,out] stream Input stream.
+	 * @return Array of tokens.
+	 */
+	std::vector<std::string> getNextLineAndSplitIntoTokens( std::istream& stream )
+	{
+		std::vector<std::string> result;
+		std::string line;
+		std::getline( stream, line );		// Read in full line.
+
+		std::stringstream lineStream( line );
+		std::string cell;
+
+		// Read tokens.
+		while( std::getline( lineStream, cell, ',' ) )
+		{
+			result.push_back( cell );
+		}
+
+		// This checks for a trailing comma with no data after it.
+		if( !lineStream && cell.empty() )
+		{
+			// If there was a trailing comma then add an empty element.
+			result.emplace_back( "" );
+		}
+		return result;
+	}
 }
 
 #endif //ML_MASS_CONSERVATION_UTILS_H
