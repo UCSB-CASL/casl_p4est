@@ -1,15 +1,20 @@
-function post_processing(datafile, rho_in, rho_out, mu_in, mu_out, gamma, R0, eps_0)
+function post_processing(datafile, ratio_rho, ratio_mu, Re, R0, eps_0)
     if(nargin < 2)
-        rho_in = 1;
-        rho_out = 0.001;
-        mu_in = 0.02;
-        mu_out = 0.00002;
-        gamma = 0.5;
+        ratio_rho = 0.001;
+        ratio_mu = 0.001;
+        Re = 35.5;
+    end
+    if(nargin < 5)
         R0 = 1;
         eps_0 = 0.01;
     end
-    sigma_lamb          = lamb_prediction(rho_in, rho_out, mu_in, mu_out, gamma, R0);
-    sigma_prosperetti   = prosperetti_prediction(rho_in, rho_out, mu_in, mu_out, gamma, R0);
+    rho_plus = 0.001;
+    rho_minus = rho_plus/ratio_rho;
+    mu_plus = 0.00002;
+    mu_minus = mu_plus/ratio_mu;
+    gamma = (mu_minus*Re)^2/(rho_minus*R0);
+    sigma_lamb          = lamb_prediction(rho_minus, rho_plus, mu_minus, mu_plus, gamma, R0);
+    sigma_prosperetti   = prosperetti_prediction(rho_minus, rho_plus, mu_minus, mu_plus, gamma, R0);
     
     
     file_to_load = sprintf(datafile);
