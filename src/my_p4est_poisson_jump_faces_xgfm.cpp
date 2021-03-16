@@ -610,7 +610,7 @@ const vector_field_component_xgfm_jump& my_p4est_poisson_jump_faces_xgfm_t::get_
         to_insert_in_map.known_jump_flux += mu_bar*((oriented_dir/2 == k ? 1.0 : 0.0) - normal[oriented_dir/2]*normal[k])*(local_grad_jump_u_dot_n[k]*normal[dim] + jump_normal_velocity_at_interface_point*local_grad_normal[P4EST_DIM*dim + k]);
         to_insert_in_map.known_jump_flux -= mu_bar*((dim == k ? 1.0 : 0.0)            - normal[dim]*normal[k]           )*(local_grad_jump_u_dot_n[k]*normal[oriented_dir/2]);
       }
-      to_insert_in_map.known_jump_flux -= normal[dim]*normal[oriented_dir/2]*local_curvature*jump_normal_velocity_at_interface_point;
+      to_insert_in_map.known_jump_flux -= mu_bar*normal[dim]*normal[oriented_dir/2]*local_curvature*jump_normal_velocity_at_interface_point;
     }
 
     if(!mus_are_equal())
