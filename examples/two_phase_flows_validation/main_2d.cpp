@@ -905,7 +905,7 @@ int main (int argc, char* argv[])
       if(test_problem->with_mass_flux())
       {
         ierr = interface_manager->create_vector_on_interface_capturing_nodes(mass_flux, 1); CHKERRXX(ierr);
-        test_problem->sample_variable_surface_tension(interface_manager, mass_flux);
+        test_problem->sample_mass_flux(interface_manager, mass_flux);
         two_phase_flow_solver->set_mass_flux(mass_flux);
       }
     }
