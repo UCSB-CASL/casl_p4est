@@ -2936,6 +2936,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
 
   Vec vnp1_minus_on_cells = NULL, vnp1_star_minus_on_cells = NULL;
   Vec vnp1_plus_on_cells = NULL , vnp1_star_plus_on_cells = NULL ;
+  Vec vnp1_star_on_cells = NULL;
   Vec discretized_div_u_star = NULL;
   if(exhaustive)
   {
@@ -2975,11 +2976,13 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     {
       ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_star_minus_on_cells); CHKERRXX(ierr);
       ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_star_plus_on_cells); CHKERRXX(ierr);
-      std::vector<const Vec*> to_transfer_to_cell;  to_transfer_to_cell.push_back(vnp1_face_star_minus_kp1);  to_transfer_to_cell.push_back(vnp1_face_star_minus_kp1);
-      std::vector<Vec> destination;                 destination.push_back(vnp1_star_minus_on_cells);          destination.push_back(vnp1_star_plus_on_cells);
+      ierr = VecCreateGhostCellsBlock(p4est_n, ghost_n, P4EST_DIM, &vnp1_star_on_cells); CHKERRXX(ierr);
+      std::vector<const Vec*> to_transfer_to_cell;  to_transfer_to_cell.push_back(vnp1_face_star_minus_kp1);  to_transfer_to_cell.push_back(vnp1_face_star_plus_kp1); to_transfer_to_cell.push_back(face_jump_solver->get_solution());
+      std::vector<Vec> destination;                 destination.push_back(vnp1_star_minus_on_cells);          destination.push_back(vnp1_star_plus_on_cells);         destination.push_back(vnp1_star_on_cells);
       transfer_face_sampled_fields_to_cells(to_transfer_to_cell, destination);
       cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_star_minus_on_cells,  "vnp1_star_minus"));
       cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_star_plus_on_cells,   "vnp1_star_plus"));
+      cell_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_star_on_cells,        "vnp1_star_sharp"));
     }
 
   }
@@ -3017,6 +3020,9 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   ierr = delete_and_nullify_vector(vnp1_minus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_plus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(sharp_pressure); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_star_minus_on_cells); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_star_plus_on_cells); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(vnp1_star_on_cells); CHKERRXX(ierr);
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s (snapshot %d)\n", vtk_directory.c_str(), index); CHKERRXX(ierr);
   return;
