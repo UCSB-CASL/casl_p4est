@@ -2889,6 +2889,67 @@ void my_p4est_two_phase_flows_t::build_sharp_pressure(Vec sharp_pressure) const
   return;
 }
 
+void my_p4est_two_phase_flows_t::build_sharp_vnp1(Vec sharp_vnp1) const
+{
+  P4EST_ASSERT(sharp_vnp1 != NULL);
+  const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
+  const double *phi_np1_on_computational_nodes_p = NULL;
+  double *sharp_vnp1_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(sharp_vnp1, &sharp_vnp1_p); CHKERRXX(ierr);
+
+  double xyz_node[P4EST_DIM];
+  if(interface_manager->get_phi_on_computational_nodes() != NULL)
+  {
+    ierr = VecGetArrayRead(interface_manager->get_phi_on_computational_nodes(), &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
+  }
+
+  for(size_t k = 0; k < ngbd_n->get_layer_size(); k++)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+    char sgn_node;
+    if(phi_np1_on_computational_nodes_p != NULL)
+      sgn_node = (phi_np1_on_computational_nodes_p[node_idx] <= 0.0 ? -1 : +1);
+    else
+    {
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      sgn_node = (interface_manager->phi_at_point(xyz_node) <= 0.0 ? -1 : +1);
+    }
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      sharp_vnp1_p[P4EST_DIM*node_idx + dim] = (sgn_node < 0 ? vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] : vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]);
+    }
+  }
+  ierr = VecGhostUpdateBegin(sharp_vnp1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(size_t k = 0; k < ngbd_n->get_local_size(); k++)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+    char sgn_node;
+    if(phi_np1_on_computational_nodes_p != NULL)
+      sgn_node = (phi_np1_on_computational_nodes_p[node_idx] <= 0.0 ? -1 : +1);
+    else
+    {
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      sgn_node = (interface_manager->phi_at_point(xyz_node) <= 0.0 ? -1 : +1);
+    }
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      sharp_vnp1_p[P4EST_DIM*node_idx + dim] = (sgn_node < 0 ? vnp1_nodes_minus_p[P4EST_DIM*node_idx + dim] : vnp1_nodes_plus_p[P4EST_DIM*node_idx + dim]);
+    }
+  }
+  ierr = VecGhostUpdateEnd(sharp_vnp1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(sharp_vnp1, &sharp_vnp1_p); CHKERRXX(ierr);
+  if(phi_np1_on_computational_nodes_p != NULL)
+  {
+    ierr = VecRestoreArrayRead(interface_manager->get_phi_on_computational_nodes(), &phi_np1_on_computational_nodes_p); CHKERRXX(ierr);
+  }
+  return;
+}
+
 void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive) const
 {
   PetscErrorCode ierr;
@@ -2898,12 +2959,20 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   std::vector<Vec_for_vtk_export_t> cell_vector_fields;
 
   // those are the primary variables of interest, we should always export them:
+  Vec sharp_vnp1 = NULL;
   if(phi_np1_on_computational_nodes != NULL)
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_np1_on_computational_nodes, "phi"));
   if(vnp1_nodes_minus != NULL)
     node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_minus, "vnp1_minus"));
   if(vnp1_nodes_plus != NULL)
     node_vector_fields.push_back(Vec_for_vtk_export_t(vnp1_nodes_plus, "vnp1_plus"));
+  if(vnp1_nodes_minus != NULL && vnp1_nodes_plus != NULL)
+  {
+    ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &sharp_vnp1); CHKERRXX(ierr);
+    build_sharp_vnp1(sharp_vnp1);
+    node_vector_fields.push_back(Vec_for_vtk_export_t(sharp_vnp1, "vnp1_sharp"));
+  }
+
   if(interface_velocity_np1 != NULL)
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_velocity_np1, "itfc_vnp1"));
   if(vorticity_magnitude_minus != NULL && vorticity_magnitude_plus != NULL)
@@ -3011,6 +3080,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
                                          (vtk_directory + "/subresolved_snapshot_" + std::to_string(index)).c_str(),
                                          &node_scalar_fields, &node_vector_fields, NULL, NULL);
   }
+
   // restore the pointers (in destructors of Vec_for_vtk_export_t)
   node_scalar_fields.clear();
   node_vector_fields.clear();
@@ -3020,6 +3090,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   ierr = delete_and_nullify_vector(vnp1_minus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_plus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(sharp_pressure); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(sharp_vnp1); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_minus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_plus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_on_cells); CHKERRXX(ierr);

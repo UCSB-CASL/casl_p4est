@@ -293,6 +293,7 @@ private:
   }
 
   void build_sharp_pressure(Vec sharp_pressure) const;
+  void build_sharp_vnp1(Vec sharp_vnp1) const;
 
   inline void compute_dt_np1()
   {
