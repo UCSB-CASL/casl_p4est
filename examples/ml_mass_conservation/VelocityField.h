@@ -163,11 +163,16 @@ public:
 		}
 
 		// Evaluating velocity field on ancillary uniform grid.
-		double U[grid[0].size()][grid[1].size()];			// Notice the indexing: i is for x, not y.
-		double V[grid[0].size()][grid[1].size()];
+		auto** U = new double*[grid[0].size()];
+		auto** V = new double*[grid[0].size()];
+		for( int row = 0; row < grid[0].size(); row++ )
+		{
+			U[row] = new double[grid[1].size()];
+			V[row] = new double[grid[1].size()];
+		}
 
 		double vMax = 0;									// Finding also the maximum velocity magnitude.
-		for( int i = 0; i < grid[0].size(); i++ )
+		for( int i = 0; i < grid[0].size(); i++ )			// Notice the indexing: i is for x, not y.
 		{
 			for( int j = 0; j < grid[1].size(); j++ )
 			{
@@ -231,6 +236,15 @@ public:
 			uFile.close();
 			vFile.close();
 		}
+
+		// Clean up.
+		for( int row = 0; row < grid[0].size(); row++ )
+		{
+			delete [] U[row];
+			delete [] V[row];
+		}
+		delete [] U;
+		delete [] V;
 	}
 
 };

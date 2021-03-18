@@ -2,12 +2,12 @@
  * Title: ml_mass_conservation
  *
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
- * advection.  We assume that all considered velocity fields are divergence-free.  To generate these velocity fields, we
- * obtain the skew gradient of random Gaussians.
+ * advection.  We assume that all considered velocity fields are divergence-free.
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민)
- * Date Created: 01-20-2021
+ * Date Created: 01/20/2021
+ * Modified: 03/16/2021
  */
 
 #ifndef P4_TO_P8
@@ -81,14 +81,14 @@ void loadNoiseStats( const std::string& filePath, double stats[][2] )
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const bool BUILD_NOISY_DATA_SETS = true;	// [CHANGE] Whether to build noisy or clean data sets.  Noisy data sets
+	const bool BUILD_NOISY_DATA_SETS = false;	// [CHANGE] Whether to build noisy or clean data sets.  Noisy data sets
 												// are constructed after clean data sets because they add some
 												// percentage of the error (per curvature group) in the numerical
 												// approximations of phi_d in the clean data sets.
 
 	const double DURATION = 0.5;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
-	const int FINE_MAX_RL = 8;
+	const int FINE_MAX_RL = 9;
 	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization.
 
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
@@ -105,7 +105,7 @@ int main( int argc, char** argv )
 	const int NUM_CENTERS = 4;			// Number of different center locations to try out per circle radius.
 
 	const double BAND_C = 2; 			// Minimum number of cells around interface in COARSE (C) and FINE (F) grids.
-	const double BAND_F = BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL));
+	const double BAND_F = 1.25 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
@@ -209,7 +209,7 @@ int main( int argc, char** argv )
 
 			// Defining a random velocity field, normalized to unit length (and dump velocity field files for analysis).
 			RandomVelocityField randomVelocityField( gen );
-			randomVelocityField.normalize( xyz_min, mesh_len, 1 << FINE_MAX_RL, true, nvel );
+			randomVelocityField.normalize( xyz_min, mesh_len, 1 << FINE_MAX_RL );
 
 			unsigned long nSamplesPerVelocityField = 0;
 
