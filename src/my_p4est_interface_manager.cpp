@@ -187,6 +187,8 @@ void my_p4est_interface_manager_t::build_curvature_locally()
   if(curvature_local == NULL){
     ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &curvature_local); CHKERRXX(ierr); }
 
+  const double max_resolvable_curvature = 1.0/MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
+
   double *curvature_p;
   const double *phi_p, *grad_phi_p;
   const double *phi_xxyyzz_p = NULL;
@@ -209,6 +211,8 @@ void my_p4est_interface_manager_t::build_curvature_locally()
     else
       interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
     curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+    if(fabs(curvature_p[node_idx]) > max_resolvable_curvature)
+      curvature_p[node_idx] = (curvature_p[node_idx] < 0.0 ? -1.0 : +1.0)*max_resolvable_curvature;
   }
   ierr = VecGhostUpdateBegin(curvature_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interpolation_node_ngbd->get_local_size(); ++k) {
@@ -218,6 +222,8 @@ void my_p4est_interface_manager_t::build_curvature_locally()
     else
       interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
     curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+    if(fabs(curvature_p[node_idx]) > max_resolvable_curvature)
+      curvature_p[node_idx] = (curvature_p[node_idx] < 0.0 ? -1.0 : +1.0)*max_resolvable_curvature;
   }
   ierr = VecGhostUpdateEnd(curvature_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
