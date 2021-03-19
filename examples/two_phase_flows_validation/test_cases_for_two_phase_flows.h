@@ -107,9 +107,9 @@ protected:
         double mag_wall_normal = 0.0;
         for (u_char dim = 0; dim < P4EST_DIM; ++dim)
         {
-          if (xyz[dim] - owner->domain.xyz_max[dim] < EPS*fabs(owner->domain.xyz_max[dim] - owner->domain.xyz_min[dim]))
+          if (fabs(xyz[dim] - owner->domain.xyz_max[dim]) < EPS*fabs(owner->domain.xyz_max[dim] - owner->domain.xyz_min[dim]))
             wall_normal[dim] = +1.0;
-          else if (xyz[dim] - owner->domain.xyz_min[dim] < EPS*fabs(owner->domain.xyz_max[dim] - owner->domain.xyz_min[dim]))
+          else if (fabs(xyz[dim] - owner->domain.xyz_min[dim]) < EPS*fabs(owner->domain.xyz_max[dim] - owner->domain.xyz_min[dim]))
             wall_normal[dim] = -1.0;
           mag_wall_normal += SQR(wall_normal[dim]);
         }
@@ -142,6 +142,9 @@ protected:
       : owner(owner_), sgn(sgn_), dir(dir_) { }
     inline double operator()(DIM(double x, double y, double z)) const
     {
+      if(owner->no_force_per_unit_mass)
+        return 0.0;
+
       const double xyz[P4EST_DIM] = {DIM(x, y, z)};
       double velocity_grad[SQR_P4EST_DIM];
       double velocity[P4EST_DIM];
@@ -208,6 +211,7 @@ protected:
   double rho_m, rho_p;
   double surface_tension;
   bool static_interface, surface_tension_is_constant, nonzero_mass_flux, levelset_cf_is_signed_distance, pressure_is_floating;
+  bool no_force_per_unit_mass, no_interface_defined_force;
   wall_pressure_bc_value_t wall_pressure_bc_value;
   wall_velocity_bc_value_t  DIM(wall_velocity_bc_value_u,   wall_velocity_bc_value_v,   wall_velocity_bc_value_w  );
   force_per_unit_mass_t     DIM(bulk_acceleration_minus_x,  bulk_acceleration_minus_y,  bulk_acceleration_minus_z );
@@ -244,6 +248,11 @@ public:
     if(variable_surface_tension == NULL || !VecIsSetForNodes(variable_surface_tension, nodes, p4est->mpicomm, 1))
       throw std::runtime_error("test_case_for_two_phase_flows_t::sample_variable_surface_tension() 'variable_surface_tension' is ill-defined");
     PetscErrorCode ierr;
+    if(surface_tension_is_constant)
+    {
+      ierr = VecSetGhost(variable_surface_tension, surface_tension); CHKERRXX(ierr);
+      return;
+    }
     double xyz_node[P4EST_DIM];
     double *variable_surface_tension_p;
     ierr = VecGetArray(variable_surface_tension, &variable_surface_tension_p); CHKERRXX(ierr);
@@ -273,6 +282,12 @@ public:
       throw std::runtime_error("test_case_for_two_phase_flows_t::sample_interface_stress_source() 'interfacial_force' is ill-defined");
 
     PetscErrorCode ierr;
+    if(no_interface_defined_force)
+    {
+      ierr = VecSetGhost(interfacial_force, 0.0); CHKERRXX(ierr);
+      return;
+    }
+
     interface_manager->set_grad_phi();
     interface_manager->set_curvature();
     Vec grad_phi = interface_manager->get_grad_phi();
@@ -354,6 +369,11 @@ public:
     if(mass_flux == NULL || !VecIsSetForNodes(mass_flux, nodes, p4est->mpicomm, 1))
       throw std::runtime_error("test_case_for_two_phase_flows_t::sample_mass_flux() 'mass_flux' is ill-defined");
     PetscErrorCode ierr;
+    if(!nonzero_mass_flux)
+    {
+      ierr = VecSetGhost(mass_flux, 0.0); CHKERRXX(ierr);
+      return;
+    }
     double xyz_node[P4EST_DIM];
     double *mass_flux_p;
     ierr = VecGetArray(mass_flux, &mass_flux_p); CHKERRXX(ierr);
@@ -530,6 +550,8 @@ public:
     nonzero_mass_flux = false;
     levelset_cf_is_signed_distance = true;
     pressure_is_floating = true;
+    no_force_per_unit_mass = false;
+    no_interface_defined_force = false;
 
     static_interface = true;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -801,6 +823,8 @@ public:
     nonzero_mass_flux = false;
     levelset_cf_is_signed_distance = true;
     pressure_is_floating = true;
+    no_force_per_unit_mass = false;
+    no_interface_defined_force = false;
 
     static_interface = false;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -1008,6 +1032,8 @@ public:
     nonzero_mass_flux = false;
     levelset_cf_is_signed_distance = false;
     pressure_is_floating = true;
+    no_force_per_unit_mass = false;
+    no_interface_defined_force = false;
 
     static_interface = true;
     for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
