@@ -3337,12 +3337,12 @@ void my_p4est_two_phase_flows_t::compute_viscosity_rhs()
         faces_n->xyz_fr_f(f_idx, dir, xyz_face);
         switch (bc_pressure->wallType(xyz_face)) {
         case DIRICHLET:
-          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallType(xyz_face) - pressure_minus_p[quad_idx])/cell_dx;
-          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallType(xyz_face) - pressure_plus_p[quad_idx])/cell_dx;
+          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallValue(xyz_face) - pressure_minus_p[quad_idx])/cell_dx;
+          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*2.0*(bc_pressure->wallValue(xyz_face) - pressure_plus_p[quad_idx])/cell_dx;
           break;
         case NEUMANN:
-          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallType(xyz_face);
-          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallType(xyz_face);
+          viscosity_rhs_minus_dir_p[f_idx]  -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallValue(xyz_face);
+          viscosity_rhs_plus_dir_p[f_idx]   -= (f_dir%2 == 1 ? +1.0 : -1.0)*bc_pressure->wallValue(xyz_face);
           break;
         default:
           throw std::runtime_error("my_p4est_two_phase_flows_t::compute_viscosity_rhs(): unknown pressure wall boundary type");
