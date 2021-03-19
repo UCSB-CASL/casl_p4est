@@ -2479,6 +2479,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
           neumann_wall[dd] = (is_wall[2*dd] ? -1 : (is_wall[2*dd + 1] ? +1 : 0));
           nb_neumann_walls += abs(neumann_wall[dd]);
         }
+      const bool corner_node = nb_neumann_walls > 1;
       const double min_w = 1e-6;
       const double inv_max_w = 1e-6;
 
@@ -2524,8 +2525,18 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
           else
           {
             P4EST_ASSERT(abs(neumann_wall[dim]) == 1);
-            rhs_lsqr[row_idx] -= neumann_wall[dim]*bc_velocity[dim].wallValue(xyz_node)*xyz_t[dim]*lsqr_scaling; // multiplication by w at the end
-            rhs_lsqr[row_idx] -= neumann_wall[dim]*bc_velocity[dir].wallValue(xyz_node)*xyz_t[dim]*lsqr_scaling; // multiplication by w at the end
+            double xyz_bc_sampling[P4EST_DIM] = {DIM(xyz_node[0], xyz_node[1], xyz_node[2])};
+            if(corner_node)
+            {
+              for(u_char jjj = 0; jjj < P4EST_DIM; jjj++)
+              {
+                if(jjj == dim)
+                  continue;
+                xyz_bc_sampling[jjj] -= neumann_wall[jjj]*0.5*dxyz_smallest_quad[jjj]; // alleviate ambiguity of bc sampling at corner nodes (--> component-by-component partial derivative)
+              }
+            }
+
+            rhs_lsqr[row_idx] -= neumann_wall[dim]*bc_velocity[dir].wallValue(xyz_bc_sampling)*xyz_t[dim]*lsqr_scaling; // multiplication by w at the end
           }
         }
         for (u_char dim = 0; dim < P4EST_DIM; ++dim)
