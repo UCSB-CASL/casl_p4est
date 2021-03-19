@@ -1219,6 +1219,192 @@ public:
     return;
   }
 } test_case_2;
+
+static class test_case_3_t : public test_case_for_two_phase_flows_t
+{
+  const double R0 = 0.001;
+  const double mdot = -0.1;
+  const double p_inf = 0.0;
+  double theoretical_radius() const { return R0 - (mdot/rho_m)*time; }
+  double dtheoretical_radius_dt() const { return -(mdot/rho_m); }
+  double A_t() const { return mdot*(1.0/rho_p - 1.0/rho_m)*theoretical_radius(); }
+  double dA_dt() const { return mdot*(1.0/rho_p - 1.0/rho_m)*dtheoretical_radius_dt(); }
+
+  inline double rr(const double* xyz) const
+  {
+    return MAX(ABSD(xyz[0], xyz[1], xyz[2]), EPS);
+  }
+
+  inline double u_plus_r(const double* xyz) const
+  {
+    return A_t()/rr(xyz);
+  }
+
+  inline double du_plus_r_dr(const double* xyz) const
+  {
+    return -A_t()/SQR(rr(xyz));
+  }
+
+  inline double du_plus_r_dt(const double* xyz) const
+  {
+    return dA_dt()/rr(xyz);
+  }
+
+  inline double er_dot_u_plus_dot_nabla_u_plus(const double* xyz) const
+  {
+    return -SQR(u_plus_r(xyz))/rr(xyz);
+  }
+
+  inline double d_p_plus_dr(const double* xyz) const
+  {
+    return -rho_p*(du_plus_r_dt(xyz) + er_dot_u_plus_dot_nabla_u_plus(xyz)); // viscous terms are exactly 0.0 in this case!
+  }
+
+  inline double er_dot_e(const u_char& i, const double* xyz) const
+  {
+    return xyz[i]/rr(xyz);
+  }
+
+  inline double dr_dx(const u_char& j, const double* xyz) const
+  {
+    return xyz[j]/rr(xyz);
+  }
+
+
+public:
+  test_case_3_t() : test_case_for_two_phase_flows_t()
+  {
+    mu_m  = 0.0000178;
+    rho_m = 1;
+    mu_p  = 0.001;
+    rho_p = 1000;
+    surface_tension = 0.07;
+    surface_tension_is_constant = true;
+    nonzero_mass_flux = true;
+    levelset_cf_is_signed_distance = true;
+    pressure_is_floating = false;
+    no_force_per_unit_mass = true;
+    no_interface_defined_force = true;
+
+    static_interface = false;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      domain.xyz_min[dim]     = -0.004;
+      domain.xyz_max[dim]     = +0.004;
+      domain.periodicity[dim] = 0;
+    }
+    t_end = 0.01;
+    pressure_wall_bc.setWallTypes(dirichlet_cf); // let's use "outflow" conditions in this case (non homogeneoous so that we match the expected analytical solution, though)
+    for(u_char dir = 0; dir < P4EST_DIM; dir++)
+      velocity_wall_bc[dir].setWallTypes(neumann_cf);
+
+    description =
+        std::string("* domain = [-0.004, 0.004] X [-0.004, 0.004] \n")
+        + std::string("* no periodicity \n")
+        + std::string("* levelset = sqrt(x^2 + y^2) - (R0 - (mass_flux/rho_m)*time)\n")
+        + std::string("* (The user cannot disable interface advection in this case (nonzero mass flux leading to bubble growth/collapse) \n")
+        + std::string("* mu_m = 0.0000178; \n")
+        + std::string("* mu_p = 0.001; \n")
+        + std::string("* rho_m = 1.00; \n")
+        + std::string("* rho_p = 1000.0; \n")
+        + std::string("* surface_tension = 0.07; \n")
+        + std::string("* R0 = 0.001; \n")
+        + std::string("* mdot = -0.1 (uniform in space, constant in time); \n")
+        + std::string("* u_m  =  0.0; \n")
+        + std::string("* v_m  =  0.0; \n")
+        + std::string("* u_p  = mass_flux*(1/rho_p - 1/rho_m)*((R0 - (mass_flux/rho_m)*time)/r)*(e_r\\cdot e_x); \n")
+        + std::string("* v_p  = mass_flux*(1/rho_p - 1/rho_m)*((R0 - (mass_flux/rho_m)*time)/r)*(e_r\\cdot e_y); \n")
+        + std::string("* pressure_minus = p_inf + 0.5*SQR(mdot)*(1.0/rho_p - rho_p/rho_m) + 2*mu_p*mdot*(1.0/rho_p - 1.0/rho_m)/R(t) + gamma/R(t); \n")
+        + std::string("* pressure_plus  = p_inf - rho_p*dA_dt*log(r/R(t)) - 0.5*rho_p*SQR(A_t/r); \n")
+        + std::string("* Dirichlet BC on all walls for pressure, and neumann for velocities (outflow-like conditions, but non-homogeneous for accuracy analysis); \n")
+        + std::string("* Validation test case 3 in 2D (from 'Benchmarks and numerical methods for the simulation of boiling flows')");
+    test_name = "test_case_3";
+    max_v_magnitude_0 = fabs(A_t()/R0);
+    max_surface_tension_0 = surface_tension;
+  }
+  inline void set_motion_of_interface(const bool& desired_interface_is_moving)
+  {
+    if(!desired_interface_is_moving)
+      throw std::invalid_argument("test_case_3_t::set_motion_of_interface(): the interface advection cannot be deactivated for this test problem");
+    static_interface = !desired_interface_is_moving;
+  }
+
+  inline double levelset_function(const double *xyz) const
+  {
+    return ABSD(xyz[0], xyz[1], xyz[2]) - theoretical_radius();
+  }
+  // negative velocity field
+  inline double velocity_minus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+  inline double time_derivative_velocity_minus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+  inline double first_derivative_velocity_minus(const u_char&, const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+  inline double laplacian_velocity_minus(const u_char &, const double *) const
+  {
+    return 0.0;
+  }
+  // positive velocity field
+  inline double velocity_plus(const u_char& dir, const double *xyz) const
+  {
+    return u_plus_r(xyz)*er_dot_e(dir, xyz);
+  }
+  inline double time_derivative_velocity_plus(const u_char& dir, const double* xyz) const
+  {
+    return du_plus_r_dt(xyz)*er_dot_e(dir, xyz);
+  }
+  inline double first_derivative_velocity_plus(const u_char& dir, const u_char& der, const double * xyz) const
+  {
+    return du_plus_r_dr(xyz)*dr_dx(der, xyz)*er_dot_e(dir, xyz) + u_plus_r(xyz)*((dir == der ? SQR(rr(xyz)) : 0.0) - xyz[dir]*xyz[der])/pow(rr(xyz), 3);
+  }
+
+  inline double laplacian_velocity_plus(const u_char &, const double *) const
+  {
+    return 0.0;
+  }
+  // mass flux
+  inline double local_mass_flux(const double *) const
+  {
+    return mdot;
+  }
+
+  // negative pressure field
+  inline double pressure_minus(const double *) const
+  {
+    return p_inf + 0.5*SQR(mdot)*(1.0/rho_p - rho_p/SQR(rho_m)) + 2.0*mu_p*mdot*(1.0/rho_p - 1.0/rho_m)/theoretical_radius() + surface_tension/theoretical_radius();
+  }
+  inline double first_derivative_pressure_minus(const u_char&, const double *) const
+  {
+    return 0.0;
+  }
+
+  // positive pressure field
+  inline double pressure_plus(const double *xyz) const
+  {
+    return p_inf - rho_p*dA_dt()*log(rr(xyz)/theoretical_radius()) - 0.5*rho_p*SQR(u_plus_r(xyz));
+  }
+  inline double first_derivative_pressure_plus(const u_char& der, const double *xyz) const
+  {
+    return d_p_plus_dr(xyz)*er_dot_e(der, xyz);
+  }
+
+  // useful if nonconstant surface tension
+  inline double local_surface_tension(const double *) const
+  {
+    return surface_tension;
+  }
+  inline void gradient_surface_tension(const double *, double grad_surf_tension[P4EST_DIM]) const
+  {
+    for (u_char dir = 0; dir < P4EST_DIM; ++dir)
+      grad_surf_tension[dir] = 0.0;
+    return;
+  }
+} test_case_3;
 #else
 
 #endif
@@ -1236,6 +1422,7 @@ public:
     list_of_test_problems.push_back(&test_case_0);
     list_of_test_problems.push_back(&test_case_1);
     list_of_test_problems.push_back(&test_case_2);
+    list_of_test_problems.push_back(&test_case_3);
 #endif
   }
 
