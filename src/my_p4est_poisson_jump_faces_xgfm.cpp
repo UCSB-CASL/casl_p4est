@@ -342,7 +342,13 @@ void my_p4est_poisson_jump_faces_xgfm_t::build_discretization_for_face(const u_c
               //
               // therefore we have
               if(!rhs_is_set[dir])
-                rhs_dir_p[face_idx] += neighbor_area*((sgn_wall_neighbor < 0 ? mu_minus : mu_plus)*bc[dir].wallValue(xyz_wall) + ((double) sgn_face)*(ff%2 == 1 ? +1.0 : -1.0)*0.0);
+              {
+                const vector_field_component_xgfm_jump& jump_info = get_xgfm_jump_between_faces(dir, face_idx, neighbor_face_idx, ff);
+                rhs_dir_p[face_idx] += neighbor_area*((sgn_wall_neighbor < 0 ? mu_minus : mu_plus)*bc[dir].wallValue(xyz_wall) + ((double) sgn_face)*(ff%2 == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, ff, is_in_positive_domain,
+                                                                                                                                                                                                                                         jump_info.jump_component,
+                                                                                                                                                                                                                                         jump_info.jump_flux_component(extension_p, viscous_extrapolation_p),
+                                                                                                                                                                                                                                         0.5*dxyz_local[ff/2]));
+              }
               // no subtraction/addition to diagonal in this, and a nullspace still exists
               break;
             }
@@ -1568,7 +1574,18 @@ void my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(const u_
                                                                                      (neighbor_face_idx >= 0 ? 1.0 : 0.5)*dxyz_local[der])/mu_this_side;
             }
             else // wall neighbor across the interface with Neumann boundary condition --> as for within the solver, take the wall BC and convert it to a Neumann condition on the field on this side
-              oriented_sharp_derivative = (mu_across*bc[dim].wallValue(xyz_neighbor) + ((double) sgn_face)*(orientation == 1 ? +1.0 : -1.0)*0.0)/mu_this_side;
+            {
+              const FD_interface_neighbor& face_interface_neighbor = interface_manager->get_face_FD_interface_neighbor_for(face_idx, neighbor_face_idx, dim, 2*der+ orientation);
+              const couple_of_dofs face_couple({face_idx, neighbor_face_idx});
+              map_of_vector_field_component_xgfm_jumps_t::const_iterator it = xgfm_jump_between_faces[dim].find(face_couple);
+              if(it == xgfm_jump_between_faces[dim].end())
+                throw std::runtime_error("my_p4est_poisson_jump_faces_xgfm_t::initialize_extrapolation_local(): found an interface neighbor that was not stored internally by the solver... Have you called solve()?");
+              const vector_field_component_xgfm_jump& jump_info = it->second;
+              oriented_sharp_derivative = (mu_across*bc[dim].wallValue(xyz_neighbor) + ((double) sgn_face)*(orientation == 1 ? +1.0 : -1.0)*face_interface_neighbor.GFM_jump_terms_for_flux_component(mu_this_side, mu_across, 2*der + orientation, is_in_positive_domain,
+                                                                                                                                                                                                      jump_info.jump_component,
+                                                                                                                                                                                                      jump_info.jump_flux_component(current_extension_p, current_viscous_extrapolation_p),
+                                                                                                                                                                                                      (neighbor_face_idx >= 0 ? 1.0 : 0.5)*dxyz_local[der]))/mu_this_side;
+            }
           }
 
           if(neighbor_face_idx >= 0 && !extrapolation_operators_are_stored_and_set[dim]) // if the neighbor is a wall, it is not relevant for any extrapolation operator (homogeneous neumann BC for extrapolation purposes...)
