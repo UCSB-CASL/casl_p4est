@@ -2525,6 +2525,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocities_at_node(const p4est_loci
           {
             P4EST_ASSERT(abs(neumann_wall[dim]) == 1);
             rhs_lsqr[row_idx] -= neumann_wall[dim]*bc_velocity[dim].wallValue(xyz_node)*xyz_t[dim]*lsqr_scaling; // multiplication by w at the end
+            rhs_lsqr[row_idx] -= neumann_wall[dim]*bc_velocity[dir].wallValue(xyz_node)*xyz_t[dim]*lsqr_scaling; // multiplication by w at the end
           }
         }
         for (u_char dim = 0; dim < P4EST_DIM; ++dim)
