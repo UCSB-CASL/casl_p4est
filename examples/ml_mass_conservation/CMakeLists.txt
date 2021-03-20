@@ -29,7 +29,7 @@ set( CMAKE_CXX_COMPILER mpicxx )
 ######################## Libraries ########################
 # These commands must be given prior to defining any target.
 
-find_package( MPI REQUIRED )
+# find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
 find_package( Boost COMPONENTS filesystem REQUIRED )
 
 # Library linking directories.
