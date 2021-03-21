@@ -88,7 +88,8 @@ int main( int argc, char** argv )
 
 	const double DURATION = 0.5;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
-	const int FINE_MAX_RL = 9;
+	const int FINE_MAX_RL = 8;
+	const int ADD_FINE_STEPS_X2 = 2;	// Some constant to add desired x2 steps to fine grid advection.
 	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization.
 
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
@@ -112,7 +113,9 @@ int main( int argc, char** argv )
 	// Destination folder and file.
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/massLoss/";
 	const std::string DATA_SUFFIX = "_" + std::to_string( COARSE_MAX_RL ) + "_" + std::to_string( FINE_MAX_RL )
-										+ "_k_minus.csv";
+										+ "_k_minus"
+										+ (ADD_FINE_STEPS_X2? "_x" + std::to_string( 1u << ADD_FINE_STEPS_X2 ) : "" )
+										+ ".csv";
 	const std::string FILE_PATH = DATA_PATH + (BUILD_NOISY_DATA_SETS? "noisy_" : "") + "data" + DATA_SUFFIX;
 	const int NUM_COLUMNS = 21;			// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
@@ -308,14 +311,14 @@ int main( int argc, char** argv )
 					int iter = 0;
 					const double MAX_VEL_NORM = 1.0; 	// Maximum velocity length known after normalizing random field.
 					double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;	// deltaT for COARSE grid.
-					double dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;				// FINE deltaT knowing that the CFL
-																				// cond. is (c * deltaT)/deltaX <= CFLN.
+					double dt_f = CFL * (dxyz_min_f / MAX_VEL_NORM) / (1u << ADD_FINE_STEPS_X2);	// FINE deltaT knowing that the CFL
+																									// cond. is (c * deltaT)/deltaX <= CFLN.
 					bool allInside = true;				// Turns false if at least one interface backtracked point in
 														// the coarse grid falls outside the computational domain.
 
 					// Advection loop.
 					// For each COARSE step, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
-					const int N_FINE_STEPS_PER_COARSE_STEP = 1u << (FINE_MAX_RL - COARSE_MAX_RL);
+					const int N_FINE_STEPS_PER_COARSE_STEP = 1u << (FINE_MAX_RL - COARSE_MAX_RL + ADD_FINE_STEPS_X2);
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
 
