@@ -467,6 +467,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   set_cell_jump_solver(cell_jump_solver_to_use); // we use default
   set_face_jump_solvers(face_jump_solver_to_use);
   final_time = DBL_MAX;
+  cell_jump_solver = NULL;
+  face_jump_solver = NULL;
 }
 
 void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder)
