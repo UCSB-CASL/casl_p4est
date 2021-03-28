@@ -82,7 +82,11 @@ function MURI_results(ratio_rho, ratio_mu, Re, niter)
     legend(LGD, 'Interpreter', 'Latex', 'fontsize', 24, 'location', 'SouthEast')
     xlabel('\fontsize{14}{0}\selectfont $t$', 'Interpreter', 'Latex');
     ylabel('\fontsize{14}{0}\selectfont $a_{2}$', 'Interpreter', 'Latex', 'rotation', 0, 'Units', 'Normalized', 'position', [-0.12, 0.93]);
-    title(['\fontsize{22}{0}\selectfont $a_{2}\left(t\right)$ with ' int2str(niter) ' iteration(s)'], 'Interpreter', 'Latex');
+    TITRE = ['\fontsize{22}{0}\selectfont $a_{2}\left(t\right)$ with ' int2str(niter) ' iteration'];
+    if(niter > 1)
+        TITRE = [TITRE 's'];
+    end
+    title(TITRE, 'Interpreter', 'Latex');
     set(gca, 'FontSize', 24)
     grid on
     hold off
