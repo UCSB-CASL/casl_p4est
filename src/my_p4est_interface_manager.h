@@ -3,8 +3,10 @@
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_faces.h>
+#include <src/my_p8est_solve_lsqr.h>
 #else
 #include <src/my_p4est_faces.h>
+#include <src/my_p4est_solve_lsqr.h>
 #endif
 
 #if __cplusplus >= 201103L
@@ -164,6 +166,7 @@ class my_p4est_interface_manager_t
   const p4est_ghost_t             *ghost;
   const p4est_nodes_t             *nodes;
   const double                    *dxyz_min;
+  const double                    dxyz_min_interpolation_node_ngbd[P4EST_DIM];
   Vec                             phi_on_computational_nodes;
   // object related to possibly subresolved interface-capturing feature
   const my_p4est_node_neighbors_t *interpolation_node_ngbd;
@@ -177,6 +180,7 @@ class my_p4est_interface_manager_t
   const int                       max_level_interpolation_p4est;
   bool                            use_second_derivative_when_computing_FD_theta;
   bool                            throw_if_ill_defined_grad;
+  bool                            use_lsqr_for_curvature_and_grad_of_normal;
 
   FD_interface_neighbor *tmp_FD_interface_neighbor; // unique element to be used at first construction/pass through map or if maps are not used at all (pointer so that I can keep most methods const hereunder);
   map_of_interface_neighbors_t *cell_FD_interface_neighbors;
@@ -204,6 +208,15 @@ class my_p4est_interface_manager_t
                                     bool &intersection_found, my_p4est_finite_volume_t* fv = NULL) const;
 
   double find_FD_interface_theta_in_cartesian_direction(const double* xyz_dof, const u_char& oriented_dir, const bool& is_neighbor_wall) const;
+
+  void get_lsqr_derivatives(const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors,
+                            const double* phi_p, std::vector<double>& lsqr_phi_derivatives) const;
+
+  double get_lsqr_curvature(const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors, const double* phi_p) const;
+  double get_standard_curvature(const p4est_locidx_t& node_idx, const double* phi_p, const double* grad_phi_p, const double* phi_xxyyzz_p) const;
+
+  void get_lsqr_gradient_of_normal(double* grad_normal_p, const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors, const double* phi_p) const;
+  void get_standard_gradient_of_normal(double* grad_normal_p, const p4est_locidx_t& node_idx, const double* phi_p, const double* grad_phi_p, const double* phi_xxyyzz_p) const;
 
 public:
   /*!
@@ -267,7 +280,9 @@ public:
    * (otherwise, the user is advised have to set it themselves using "set_under_resolved_levelset" if needed/desired)
    */
   void set_levelset(Vec phi, const interpolation_method& method_interp_phi = linear, Vec phi_xxyyzz = NULL,
-                    const bool& build_and_set_grad_phi_locally = false, const bool& build_and_set_curvature_locally = false);
+                    const bool& build_and_set_grad_phi_locally = false,
+                    const bool& build_and_set_curvature_locally = false,
+                    const bool& build_and_set_gradient_of_normal_locally = false);
 
   /*!
    * \brief set_grad_phi sets the vector of node-sampled gradient values of the interface-capturing levelset function.
@@ -368,6 +383,16 @@ public:
         interp_phi.set_input(phi, phi_xxyyzz_local, method); // faster levelset-sampling if the second derivatives are pre-computed
       }
     }
+    return;
+  }
+
+  /*!
+   * \brief use_lsqr_curvature_and_cross_derivatives self-explanatory
+   * \param [in] flag: the user's choice
+   * NOTE: (default flag value is set to true internally if this function is never called)
+   */
+  inline void use_lsqr_curvature_and_cross_derivatives(const bool& desired_action) {
+    use_lsqr_for_curvature_and_grad_of_normal = desired_action;
     return;
   }
 

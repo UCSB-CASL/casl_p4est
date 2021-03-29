@@ -10,6 +10,7 @@ using std::vector;
 
 class matrix_t
 {
+  friend class my_p4est_interface_manager_t;
 protected:
   int m, n;
   vector<double> values;
@@ -52,8 +53,10 @@ public:
   void tranpose_matvec(const vector<double>& x, vector<double>& b) const {tranpose_matvec(&x, &b, 1);}
   void tranpose_matvec(const vector<double> x[], vector<double> b[], const size_t &n_vectors) const;
 
-  // c = this*b
+  // c = this*b:
   void matrix_product(const matrix_t& b, matrix_t& c) const;
+  // c = this*(transpose of b): [light version, no actual transpose done]
+  void matrix_product_transpose(const matrix_t& b, matrix_t& c) const;
 
   double scale_by_maxabs(vector<double>& x) {return scale_by_maxabs(&x, 1); }
   double scale_by_maxabs(vector<double> x[], const size_t &n_vectors);

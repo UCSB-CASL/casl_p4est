@@ -7,6 +7,9 @@
 my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_t* faces_, const p4est_nodes_t* nodes_, const my_p4est_node_neighbors_t* interpolation_node_ngbd_)
   : faces(faces_), c_ngbd(faces_->get_ngbd_c()), p4est(faces_->get_p4est()), ghost(faces_->get_ghost()),
     nodes(nodes_), dxyz_min(faces_->get_smallest_dxyz()),
+    dxyz_min_interpolation_node_ngbd{DIM(faces_->get_tree_dimensions()[0]/((double) (1 << ((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)),
+                                     faces_->get_tree_dimensions()[1]/((double) (1 << ((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)),
+                                     faces_->get_tree_dimensions()[2]/((double) (1 << ((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)))},
     interpolation_node_ngbd(interpolation_node_ngbd_), interp_phi(interpolation_node_ngbd_),
     max_level_p4est(((splitting_criteria_t*) faces_->get_p4est()->user_pointer)->max_lvl),
     max_level_interpolation_p4est(((splitting_criteria_t*) interpolation_node_ngbd_->get_p4est()->user_pointer)->max_lvl)
@@ -33,6 +36,7 @@ my_p4est_interface_manager_t::my_p4est_interface_manager_t(const my_p4est_faces_
   phi_on_computational_nodes  = NULL;
   use_second_derivative_when_computing_FD_theta = false;
   throw_if_ill_defined_grad = false; // <-- set this one to true if you want to know when real interface shit is going on
+  use_lsqr_for_curvature_and_grad_of_normal = true;
 }
 
 my_p4est_interface_manager_t::~my_p4est_interface_manager_t()
@@ -92,7 +96,8 @@ void my_p4est_interface_manager_t::clear_all_FD_interface_neighbors()
 
 void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_method& method_interp_phi, Vec phi_xxyyzz,
                                                 const bool& build_and_set_grad_phi_locally,
-                                                const bool& build_and_set_curvature_locally)
+                                                const bool& build_and_set_curvature_locally,
+                                                const bool& build_and_set_gradient_of_normal_locally)
 {
   P4EST_ASSERT(phi != NULL);
   P4EST_ASSERT(VecIsSetForNodes(phi, interpolation_node_ngbd->get_nodes(), interpolation_node_ngbd->get_p4est()->mpicomm, 1));
@@ -126,6 +131,9 @@ void my_p4est_interface_manager_t::set_levelset(Vec phi, const interpolation_met
 
   if(build_and_set_curvature_locally)
     set_curvature();
+
+  if(build_and_set_gradient_of_normal_locally)
+    set_gradient_of_normal();
 
   return;
 }
@@ -162,7 +170,7 @@ void my_p4est_interface_manager_t::build_phi_xxyyzz_locally()
 {
 #ifdef CASL_THROWS
   if(interp_phi.get_input_fields().size() != 1 || interp_phi.get_blocksize_of_input_fields() != 1)
-    throw std::runtime_error("my_p4est_interface_manager_t::build_phi_xxyyzz_locally(): can't determine the gradient of the levelset function if the levelset function wasn't set first...");
+    throw std::runtime_error("my_p4est_interface_manager_t::build_phi_xxyyzz_locally(): can't determine the second derivatives of the levelset function if the levelset function wasn't set first...");
 #endif
 
   if(phi_xxyyzz_local == NULL){
@@ -170,6 +178,101 @@ void my_p4est_interface_manager_t::build_phi_xxyyzz_locally()
   interpolation_node_ngbd->second_derivatives_central(interp_phi.get_input_fields()[0], phi_xxyyzz_local);
 
   return;
+}
+
+void my_p4est_interface_manager_t::get_lsqr_derivatives(const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors,
+                                                        const double* phi_p, std::vector<double>& lsqr_phi_derivatives) const
+{
+  const double phi_000 = phi_p[node_000];
+  size_t row_idx = 0;
+  std::vector<double> rhs(second_degree_node_neighbors.size());
+  matrix_t A(second_degree_node_neighbors.size(), P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
+  double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_000, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_node);
+  for(const p4est_locidx_t& nn : second_degree_node_neighbors)
+  {
+    P4EST_ASSERT(nn >= 0 && nn != node_000);
+    double xyz_t[P4EST_DIM]; node_xyz_fr_n(nn, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_t);
+    for(u_char dim = 0; dim < P4EST_DIM; dim ++)
+    {
+      xyz_t[dim] -= xyz_node[dim];
+      if(is_periodic(p4est, dim))
+      {
+        const double pp = xyz_t[dim]/(c_ngbd->get_brick()->xyz_max[dim] - c_ngbd->get_brick()->xyz_min[dim]);
+        xyz_t[dim] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(c_ngbd->get_brick()->xyz_max[dim] - c_ngbd->get_brick()->xyz_min[dim]);
+      }
+    }
+
+    rhs[row_idx] = phi_p[nn] - phi_000;
+    size_t col_idx = 0;
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      A.set_value(row_idx, col_idx++, xyz_t[dim]/dxyz_min_interpolation_node_ngbd[dim]);
+
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    {
+      A.set_value(row_idx, col_idx++, 0.5*SQR(xyz_t[dim]/dxyz_min_interpolation_node_ngbd[dim]));
+      for(u_char cross_dim = dim + 1; cross_dim < P4EST_DIM; cross_dim++)
+        A.set_value(row_idx, col_idx++, (xyz_t[dim]/dxyz_min_interpolation_node_ngbd[dim])*(xyz_t[cross_dim]/dxyz_min_interpolation_node_ngbd[cross_dim]));
+    }
+    row_idx++;
+  }
+  P4EST_ASSERT(row_idx == second_degree_node_neighbors.size() && row_idx >= P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
+
+  A.scale_by_maxabs(rhs);
+  std::vector<double> At_rhs;
+  matrix_t At_A;
+  A.tranpose_matvec(rhs, At_rhs);
+  A.mtm_product(At_A);
+
+  if(solve_cholesky(At_A, &At_rhs, &lsqr_phi_derivatives, 1, 1.0e4))
+  {
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      lsqr_phi_derivatives[dim] /= dxyz_min_interpolation_node_ngbd[dim];
+    u_char idx = P4EST_DIM;
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+      for(u_char cross_dim = dim; cross_dim < P4EST_DIM; cross_dim++)
+        lsqr_phi_derivatives[idx++] /= (dxyz_min_interpolation_node_ngbd[dim]*dxyz_min_interpolation_node_ngbd[cross_dim]);
+  }
+  else
+    throw std::runtime_error("my_p4est_interface_manager_t::get_lsqr_derivatives_with_fine_uniform_second_degree_ngbd: failed to compute lsqr derivatives...");
+
+  return;
+}
+
+
+double my_p4est_interface_manager_t::get_lsqr_curvature(const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors,
+                                                        const double* phi_p) const
+{
+  std::vector<double> lsqr_derivatives;
+  get_lsqr_derivatives(node_000, second_degree_node_neighbors, phi_p, lsqr_derivatives);
+
+  const double mag_grad_phi = ABSD(lsqr_derivatives[0], lsqr_derivatives[1], lsqr_derivatives[2]);
+  if(mag_grad_phi  < EPS)
+    throw std::runtime_error("my_p4est_interface_manager_t::get_lsqr_curvature: ill-defined lsqr gradient of phi, my master told me not to divide stuff by 0...");
+
+  double curvature = (SUMD(lsqr_derivatives[P4EST_DIM], lsqr_derivatives[2*P4EST_DIM], lsqr_derivatives[3*P4EST_DIM - 1]))/mag_grad_phi;
+  curvature -= (SUMD(lsqr_derivatives[P4EST_DIM]*SQR(lsqr_derivatives[0]), lsqr_derivatives[2*P4EST_DIM]*SQR(lsqr_derivatives[1]), lsqr_derivatives[3*P4EST_DIM - 1]*SQR(lsqr_derivatives[2])))/pow(mag_grad_phi, 3.0);
+  curvature -= 2.0*lsqr_derivatives[0]*lsqr_derivatives[P4EST_DIM + 1]*lsqr_derivatives[1]/pow(mag_grad_phi, 3.0); // x*xy*y
+#ifdef P4_TO_P8
+  curvature -= 2.0*lsqr_derivatives[0]*lsqr_derivatives[P4EST_DIM + 2]*lsqr_derivatives[2]/pow(mag_grad_phi, 3.0); // x*xz*z
+  curvature -= 2.0*lsqr_derivatives[1]*lsqr_derivatives[2*P4EST_DIM + 1]*lsqr_derivatives[2]/pow(mag_grad_phi, 3.0); // y*yz*z
+#endif
+  return curvature;
+}
+
+double my_p4est_interface_manager_t::get_standard_curvature(const p4est_locidx_t& node_idx, const double* phi_p, const double* grad_phi_p, const double* phi_xxyyzz_p) const
+{
+  if(interpolation_node_ngbd->neighbors_are_initialized())
+  {
+    const quad_neighbor_nodes_of_node_t* qnnn_p;
+    interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    return qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+  }
+  else
+  {
+    quad_neighbor_nodes_of_node_t qnnn;
+    interpolation_node_ngbd->get_neighbors(node_idx, qnnn);
+    return qnnn.get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+  }
 }
 
 void my_p4est_interface_manager_t::build_curvature_locally()
@@ -187,7 +290,8 @@ void my_p4est_interface_manager_t::build_curvature_locally()
   if(curvature_local == NULL){
     ierr = VecCreateGhostNodes(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), &curvature_local); CHKERRXX(ierr); }
 
-  const double max_resolvable_curvature = 1.0/MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
+  const double max_resolvable_curvature = 1.0/MIN(DIM(dxyz_min_interpolation_node_ngbd[0], dxyz_min_interpolation_node_ngbd[1], dxyz_min_interpolation_node_ngbd[2]));
+  set_of_local_node_index_t second_degree_node_neighbors;
 
   double *curvature_p;
   const double *phi_p, *grad_phi_p;
@@ -200,28 +304,44 @@ void my_p4est_interface_manager_t::build_curvature_locally()
     ierr = VecGetArrayRead(interp_phi_xxyyzz->get_input_fields()[0], &phi_xxyyzz_p); CHKERRXX(ierr); }
   ierr = VecGetArray(curvature_local, &curvature_p); CHKERRXX(ierr);
 
-
-  quad_neighbor_nodes_of_node_t qnnn_buffer;
-  const quad_neighbor_nodes_of_node_t* qnnn_p = (interpolation_node_ngbd->neighbors_are_initialized() ? NULL : &qnnn_buffer);
-
   for (size_t k = 0; k < interpolation_node_ngbd->get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = interpolation_node_ngbd->get_layer_node(k);
-    if(interpolation_node_ngbd->neighbors_are_initialized())
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    if(use_lsqr_for_curvature_and_grad_of_normal)
+    {
+      interpolation_node_ngbd->fetch_second_degree_node_neighbors_of_interpolation_node(node_idx, second_degree_node_neighbors);
+      try {
+        curvature_p[node_idx] = get_lsqr_curvature(node_idx, second_degree_node_neighbors, phi_p);
+      } catch (std::exception& e) {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(node_idx, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_node);
+        std::cerr << "my_p4est_interface_manager_t::build_curvature_locally: lsqr curvature failed for node " << node_idx << " on proc " << p4est->mpirank << ", xyz_node = (" << xyz_node[0] << ", " << xyz_node[1] << ONLY3D(", " << xyz_node[2] <<) ") --> using standard differentiation instead!" << std::endl;
+        curvature_p[node_idx] = get_standard_curvature(node_idx, phi_p, grad_phi_p, phi_xxyyzz_p);
+      }
+    }
     else
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
-    curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+      curvature_p[node_idx] = get_standard_curvature(node_idx, phi_p, grad_phi_p, phi_xxyyzz_p); // whatever: we're far away from  the interface anyways (supposedly, at least)...
+
     if(fabs(curvature_p[node_idx]) > max_resolvable_curvature)
       curvature_p[node_idx] = (curvature_p[node_idx] < 0.0 ? -1.0 : +1.0)*max_resolvable_curvature;
   }
   ierr = VecGhostUpdateBegin(curvature_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interpolation_node_ngbd->get_local_size(); ++k) {
     const p4est_locidx_t node_idx = interpolation_node_ngbd->get_local_node(k);
-    if(interpolation_node_ngbd->neighbors_are_initialized())
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    if(use_lsqr_for_curvature_and_grad_of_normal)
+    {
+      interpolation_node_ngbd->fetch_second_degree_node_neighbors_of_interpolation_node(node_idx, second_degree_node_neighbors);
+      try {
+        curvature_p[node_idx] = get_lsqr_curvature(node_idx, second_degree_node_neighbors, phi_p);
+      } catch (std::exception& e) {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(node_idx, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_node);
+        std::cerr << "my_p4est_interface_manager_t::build_curvature_locally: lsqr curvature failed for node " << node_idx << " on proc " << p4est->mpirank << ", xyz_node = (" << xyz_node[0] << ", " << xyz_node[1] << ONLY3D(", " << xyz_node[2] <<) ") --> using standard differentiation instead!" << std::endl;
+        curvature_p[node_idx] = get_standard_curvature(node_idx, phi_p, grad_phi_p, phi_xxyyzz_p);
+      }
+    }
     else
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
-    curvature_p[node_idx] = qnnn_p->get_curvature(grad_phi_p, phi_p, phi_xxyyzz_p);
+      curvature_p[node_idx] = get_standard_curvature(node_idx, phi_p, grad_phi_p, phi_xxyyzz_p); // whatever: we're far away from  the interface anyways (supposedly, at least)...
+
     if(fabs(curvature_p[node_idx]) > max_resolvable_curvature)
       curvature_p[node_idx] = (curvature_p[node_idx] < 0.0 ? -1.0 : +1.0)*max_resolvable_curvature;
   }
@@ -233,6 +353,57 @@ void my_p4est_interface_manager_t::build_curvature_locally()
   ierr = VecRestoreArrayRead(grad_phi_to_read, &grad_phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(interp_phi.get_input_fields()[0], &phi_p); CHKERRXX(ierr);
   return;
+}
+
+void my_p4est_interface_manager_t::get_lsqr_gradient_of_normal(double* grad_normal_p, const p4est_locidx_t& node_000, const set_of_local_node_index_t& second_degree_node_neighbors, const double* phi_p) const
+{
+  std::vector<double> lsqr_derivatives;
+  get_lsqr_derivatives(node_000, second_degree_node_neighbors, phi_p, lsqr_derivatives);
+
+  const double mag_grad_phi = ABSD(lsqr_derivatives[0], lsqr_derivatives[1], lsqr_derivatives[2]);
+  if(mag_grad_phi  < EPS)
+    throw std::runtime_error("my_p4est_interface_manager_t::get_lsqr_gradient_of_normal_with_fine_uniform_second_degree_ngbd: ill-defined lsqr gradient of phi, my master told me not to divide stuff by 0...");
+
+  const double lsqr_normal[P4EST_DIM] = {DIM(lsqr_derivatives[0]/mag_grad_phi, lsqr_derivatives[1]/mag_grad_phi, lsqr_derivatives[2]/mag_grad_phi)};
+  double Hessian[P4EST_DIM][P4EST_DIM];
+  u_char lsqr_idx = P4EST_DIM;
+  for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    for(u_char c_dim = dim; c_dim < P4EST_DIM; c_dim++)
+    {
+      Hessian[dim][c_dim] = lsqr_derivatives[lsqr_idx];
+      Hessian[c_dim][dim] = Hessian[dim][c_dim]; // enforce symmetry!
+      lsqr_idx++;
+    }
+  P4EST_ASSERT(lsqr_idx == P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
+
+  for(u_char uu = 0; uu < P4EST_DIM; uu++)
+    for (u_char vv = 0; vv < P4EST_DIM; ++vv)
+    {
+      grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] = Hessian[vv][uu];
+      for(u_char ww = 0; ww < P4EST_DIM; ww++)
+        grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] -= lsqr_normal[uu]*Hessian[vv][ww]*lsqr_normal[ww];
+      grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] /= mag_grad_phi;
+    }
+  return;
+
+}
+
+void my_p4est_interface_manager_t::get_standard_gradient_of_normal(double* grad_normal_p, const p4est_locidx_t& node_idx, const double* phi_p, const double* grad_phi_p, const double* phi_xxyyzz_p) const
+{
+  if(interpolation_node_ngbd->neighbors_are_initialized())
+  {
+    const quad_neighbor_nodes_of_node_t* qnnn_p;
+    interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    qnnn_p->get_gradient_of_normal(grad_normal_p, phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+    return;
+  }
+  else
+  {
+    quad_neighbor_nodes_of_node_t qnnn;
+    interpolation_node_ngbd->get_neighbors(node_idx, qnnn);
+    qnnn.get_gradient_of_normal(grad_normal_p, phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+    return;
+  }
 }
 
 void my_p4est_interface_manager_t::build_grad_normal_locally()
@@ -250,6 +421,8 @@ void my_p4est_interface_manager_t::build_grad_normal_locally()
   if(gradient_of_normal_local == NULL){
     ierr = VecCreateGhostNodesBlock(interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), SQR_P4EST_DIM, &gradient_of_normal_local); CHKERRXX(ierr); }
 
+  set_of_local_node_index_t second_degree_node_neighbors;
+
   double *gradient_of_normal_local_p;
   const double *phi_p, *grad_phi_p;
   const double *phi_xxyyzz_p = NULL;
@@ -261,25 +434,40 @@ void my_p4est_interface_manager_t::build_grad_normal_locally()
     ierr = VecGetArrayRead(interp_phi_xxyyzz->get_input_fields()[0], &phi_xxyyzz_p); CHKERRXX(ierr); }
   ierr = VecGetArray(gradient_of_normal_local, &gradient_of_normal_local_p); CHKERRXX(ierr);
 
-  quad_neighbor_nodes_of_node_t qnnn_buffer;
-  const quad_neighbor_nodes_of_node_t* qnnn_p = (interpolation_node_ngbd->neighbors_are_initialized() ? NULL : &qnnn_buffer);
-
   for (size_t k = 0; k < interpolation_node_ngbd->get_layer_size(); ++k) {
     const p4est_locidx_t node_idx = interpolation_node_ngbd->get_layer_node(k);
-    if(interpolation_node_ngbd->neighbors_are_initialized())
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    if(use_lsqr_for_curvature_and_grad_of_normal)
+    {
+      interpolation_node_ngbd->fetch_second_degree_node_neighbors_of_interpolation_node(node_idx, second_degree_node_neighbors);
+      try {
+        get_lsqr_gradient_of_normal(gradient_of_normal_local_p, node_idx, second_degree_node_neighbors, phi_p);
+      } catch (std::exception& e) {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(node_idx, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_node);
+        std::cerr << "my_p4est_interface_manager_t::build_grad_normal_locally: lsqr grad of normal failed for node " << node_idx << " on proc " << p4est->mpirank << ", xyz_node = (" << xyz_node[0] << ", " << xyz_node[1] << ONLY3D(", " << xyz_node[2] <<) ") --> using standard differentiation instead!" << std::endl;
+        get_standard_gradient_of_normal(gradient_of_normal_local_p, node_idx, phi_p, grad_phi_p, phi_xxyyzz_p);
+      }
+    }
     else
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
-    qnnn_p->get_gradient_of_normal(gradient_of_normal_local_p, phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+      get_standard_gradient_of_normal(gradient_of_normal_local_p, node_idx, phi_p, grad_phi_p, phi_xxyyzz_p); // whatever: we're far away from  the interface anyways (supposedly, at least)...
   }
   ierr = VecGhostUpdateBegin(gradient_of_normal_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < interpolation_node_ngbd->get_local_size(); ++k) {
     const p4est_locidx_t node_idx = interpolation_node_ngbd->get_local_node(k);
-    if(interpolation_node_ngbd->neighbors_are_initialized())
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_p);
+    if(use_lsqr_for_curvature_and_grad_of_normal)
+    {
+      interpolation_node_ngbd->fetch_second_degree_node_neighbors_of_interpolation_node(node_idx, second_degree_node_neighbors);
+      try {
+        get_lsqr_gradient_of_normal(gradient_of_normal_local_p, node_idx, second_degree_node_neighbors, phi_p);
+      } catch (std::exception& e) {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(node_idx, interpolation_node_ngbd->get_p4est(), interpolation_node_ngbd->get_nodes(), xyz_node);
+        std::cerr << "my_p4est_interface_manager_t::build_grad_normal_locally: lsqr grad of normal failed for node " << node_idx << " on proc " << p4est->mpirank << ", xyz_node = (" << xyz_node[0] << ", " << xyz_node[1] << ONLY3D(", " << xyz_node[2] <<) ") --> using standard differentiation instead!" << std::endl;
+        get_standard_gradient_of_normal(gradient_of_normal_local_p, node_idx, phi_p, grad_phi_p, phi_xxyyzz_p);
+      }
+    }
     else
-      interpolation_node_ngbd->get_neighbors(node_idx, qnnn_buffer);
-    qnnn_p->get_gradient_of_normal(gradient_of_normal_local_p, phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+      get_standard_gradient_of_normal(gradient_of_normal_local_p, node_idx, phi_p, grad_phi_p, phi_xxyyzz_p); // whatever: we're far away from  the interface anyways (supposedly, at least)...
   }
   ierr = VecGhostUpdateEnd(gradient_of_normal_local, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 

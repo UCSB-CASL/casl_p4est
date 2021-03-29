@@ -104,6 +104,22 @@ void matrix_t::matrix_product(const matrix_t& b, matrix_t& c) const
     }
 }
 
+void matrix_t::matrix_product_transpose(const matrix_t& b, matrix_t& c) const
+{
+#ifdef CASL_THROWS
+  if(n != b.n) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product_transpose: the matrix sizes don't match");
+#endif
+  c.resize(m, b.m);
+  for(int i = 0; i < m; i++)
+    for(int k = 0; k < b.m; k++)
+    {
+      double sum = 0.0;
+      for(int j = 0; j < n; j++)
+        sum += values[i*n + j]*b.values[k*b.n + j];
+      c.values[i*b.m + k] = sum;
+    }
+}
+
 void matrix_t::mtm_product(matrix_t& M) const
 {
   M.resize(num_cols(), num_cols());
