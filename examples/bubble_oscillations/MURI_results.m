@@ -58,12 +58,12 @@ function MURI_results(ratio_rho, ratio_mu, Re, niter)
     LGD = [{'Prosperetti'}];
     plot(time_exact, eps_0*exp(-real(sigma_lamb)*time_exact).*cos(imag(sigma_lamb)*time_exact), 'b-.', 'linewidth', 3)
     LGD = [LGD {'Lamb'}];
-    if(ratio_rho == 0.001 && ratio_mu == 0.001 && Re == 35.5 && niter == 1)
-        datafile_4_6        = strcat(path, "lmin_4_lmax_6/results/monitoring_results.dat");
-        [t_4_6, a_2_4_6, a_2_R0_4_6, R_var_4_6, R0_4_6] = read_results(datafile_4_6);
-        plot(t_4_6, a_2_4_6, 'r-', 'linewidth', 3)
-        LGD = [LGD {'$\ell_{\min}/\ell_{\max} = 4/6$'}];
-    end
+%     if(ratio_rho == 0.001 && ratio_mu == 0.001 && Re == 35.5 && niter == 1)
+%         datafile_4_6        = strcat(path, "lmin_4_lmax_6/results/monitoring_results.dat");
+%         [t_4_6, a_2_4_6, a_2_R0_4_6, R_var_4_6, R0_4_6] = read_results(datafile_4_6);
+%         plot(t_4_6, a_2_4_6, 'r-', 'linewidth', 3)
+%         LGD = [LGD {'$\ell_{\min}/\ell_{\max} = 4/6$'}];
+%     end
     datafile_4_7        = strcat(path, "lmin_4_lmax_7/results/monitoring_results.dat");
     [t_4_7, a_2_4_7, a_2_R0_4_7, R_var_4_7, R0_4_7] = read_results(datafile_4_7);
     plot(t_4_7, a_2_4_7, 'm-', 'linewidth', 3)
