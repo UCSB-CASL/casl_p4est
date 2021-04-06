@@ -55,7 +55,7 @@ void get_ertuk_results(const double& Re, vector<pair<double, double>>& u_data, v
 #if defined(POD_CLUSTER)
   const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
 #elif defined(STAMPEDE)
-  const string directory = "/work/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+  const string directory = "/work2/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
 #elif defined(LAPTOP)
   const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
 #else
@@ -128,7 +128,7 @@ void get_ghia_results(const double& Re, vector<pair<double, double>>& u_data, ve
 #if defined(POD_CLUSTER)
   const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
 #elif defined(STAMPEDE)
-  const string directory = "/work/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+  const string directory = "/work2/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
 #elif defined(LAPTOP)
   const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
 #else

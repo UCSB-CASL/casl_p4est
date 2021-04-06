@@ -21,7 +21,7 @@ INCLUDEPATH   += $$(TACC_P4EST_INC)
 LIBS          += -Wl,-rpath,$$(TACC_P4EST_LIB) -L$$(TACC_P4EST_LIB) -lp4est -lsc
 
 # voro++
-VORO_DIR      = /work/04965/tg842642/stampede2/libs/voro++
+VORO_DIR      = /work2/04965/tg842642/stampede2/libs/voro++
 
 INCLUDEPATH   += $$(VORO_DIR)/include/voro++
 LIBS          += -Wl,-rpath,$$(VORO_DIR)/lib -L$$(VORO_DIR)/lib -lvoro++
