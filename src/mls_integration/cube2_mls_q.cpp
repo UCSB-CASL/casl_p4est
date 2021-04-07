@@ -103,7 +103,7 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, const std::ve
       }
     }
 
-
+    all_positive = all_negative = false; // temporary fix found with Daniil's help!
     if (all_positive)
     {
       if (acn[p] == CUBE_MLS_INTERSECTION)
