@@ -1,4 +1,6 @@
 #include "cube3_mls.h"
+#include "vtk/simplex3_mls_l_vtk.h"
+#include "vtk/simplex3_mls_q_vtk.h"
 
 void cube3_mls_t::initialize(const double xyz_min[], const double xyz_max[], const int mnk[], const int& order)
 {
@@ -200,3 +202,28 @@ void cube3_mls_t::quadrature_in_dir(int dir, std::vector<double> &W, std::vector
 
 }
 
+void cube3_mls_t::save_vtk(const std::string& directory, const std::string& suffix) const
+{
+  if(order_ == 1)
+  {
+    std::vector<simplex3_mls_l_t*>  tmp;
+    for(size_t k = 0; k < cubes_l_.size(); k++)
+    {
+      for(size_t uu = 0; uu < cubes_l_[k]->simplex.size(); uu++)
+        tmp.push_back(&cubes_l_[k]->simplex[uu]);
+    }
+    simplex3_mls_l_vtk::write_simplex_geometry(tmp, directory, suffix);
+  }
+  else if(order_ == 2)
+  {
+    std::vector<simplex3_mls_q_t*>  tmp;
+    for(size_t k = 0; k < cubes_q_.size(); k++)
+    {
+      for(size_t uu = 0; uu < cubes_q_[k]->simplex.size(); uu++)
+        tmp.push_back(&cubes_q_[k]->simplex[uu]);
+    }
+    simplex3_mls_q_vtk::write_simplex_geometry(tmp, directory, suffix);
+  }
+  else
+    throw;
+}

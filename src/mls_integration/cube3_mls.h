@@ -56,6 +56,9 @@ public:
   void quadrature_over_intersection(int num0, int num1,           std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
   void quadrature_over_intersection(int num0, int num1, int num2, std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
   void quadrature_in_dir           (int dir,                      std::vector<double> &W, std::vector<double> &X, std::vector<double> &Y, std::vector<double> &Z);
+
+  void save_vtk                    (const std::string& directory, const std::string& suffix) const;
+
 };
 
 #endif // CUBE3_MLS_H
