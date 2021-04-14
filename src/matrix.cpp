@@ -100,7 +100,7 @@ void matrix_t::matrix_product(const matrix_t& b, matrix_t& c) const
       double sum = 0.0;
       for(int j = 0; j < n; j++)
         sum += values[i*n + j]*b.values[j*b.n + k];
-      c.values[i*n + k] = sum;
+      c.values[i*b.n + k] = sum;
     }
 }
 
@@ -171,7 +171,7 @@ matrix_t matrix_t::tr()
   matrix_t out(n, m);
   for(int i = 0;i < m;i++)
     for(int j = 0;j < n;j++)
-      out.values[j*n + i] = values[i*n + j];
+      out.values[j*m + i] = values[i*n + j];
   return out;
 }
 
@@ -194,7 +194,7 @@ void matrix_t::sub(int im, int jm, int iM, int jM, matrix_t& M)
   M.resize(iM - im + 1, jM - jm + 1);
   for(int i = im; i <= iM; i++)
     for(int j = jm; j <= jM; j++)
-      M.values[(i - im)*n + (j - jm)] = get_value(i,j);
+      M.values[(i - im)*(jM - jm + 1) + (j - jm)] = get_value(i,j);
 }
 
 void matrix_t::truncate_matrix(int M, int N, const matrix_t& Mat)
