@@ -3426,7 +3426,23 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+    {
+      switch (itfc_velocity_type) {
+      case LIQUID:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus > rho_plus ? (vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)  : (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      case GAS:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus <= rho_plus ? (vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)  : (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      case MASS_AVERAGED:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus*(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + rho_plus*(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus))/(rho_minus + rho_plus);
+        break;
+      case AVERAGED:
+      default:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      }
+    }
   }
   ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
@@ -3439,7 +3455,23 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
       interface_manager->normal_vector_at_point(xyz_node, local_normal_vector);
     }
     for (u_char dir = 0; dir < P4EST_DIM; ++dir)
-      interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+    {
+      switch (itfc_velocity_type) {
+      case LIQUID:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus > rho_plus ? (vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)  : (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      case GAS:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus <= rho_plus ? (vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus)  : (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      case MASS_AVERAGED:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = (rho_minus*(vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + rho_plus*(vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus))/(rho_minus + rho_plus);
+        break;
+      case AVERAGED:
+      default:
+        interface_velocity_np1_p[P4EST_DIM*node_idx + dir] = 0.5*((vnp1_nodes_minus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_minus) + (vnp1_nodes_plus_p[P4EST_DIM*node_idx + dir] - local_mass_flux*local_normal_vector[dir]/rho_plus));
+        break;
+      }
+    }
   }
   ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
