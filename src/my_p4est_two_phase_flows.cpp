@@ -1281,7 +1281,7 @@ void my_p4est_two_phase_flows_t::set_phi_np1(Vec phi_np1_on_interface_capturing_
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(phi_np1_xxyyzz, P4EST_DIM); CHKERRXX(ierr);
     interface_manager->get_interface_capturing_ngbd_n().second_derivatives_central(phi_np1, phi_np1_xxyyzz);
   }
-  interface_manager->set_levelset(phi_np1, levelset_interpolation_method, phi_np1_xxyyzz, true, true);
+  interface_manager->set_levelset(phi_np1, levelset_interpolation_method, phi_np1_xxyyzz, true, true, (user_defined_mass_flux != NULL && mass_densities_are_equal()));
   interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
 #ifdef CASL_THROWS
