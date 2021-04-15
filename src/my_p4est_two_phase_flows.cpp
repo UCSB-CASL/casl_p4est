@@ -347,8 +347,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   set_cell_jump_solver(FV);   // default is finite-volume solver for projection step
   set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
+  itfc_velocity_type = MASS_AVERAGED;
   final_time = DBL_MAX;
-
 }
 
 my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state)
@@ -988,6 +988,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     data[idx++] = degree_guess_v_star_face_k;
     data[idx++] = n_viscous_subiterations;
     data[idx++] = (PetscInt) static_interface;
+    data[idx++] = static_cast<int>(itfc_velocity_type);
     break;
   }
   case LOAD:
@@ -1009,6 +1010,7 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     degree_guess_v_star_face_k = data[idx++];
     n_viscous_subiterations = data[idx++];
     static_interface = (bool) data[idx++];
+    itfc_velocity_type = static_cast<interface_velocity_t>(data[idx++]);
     break;
   }
   default:
@@ -1021,22 +1023,8 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
 void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, splitting_criteria_t* fine_splitting_criterion, save_or_load flag, const mpi_environment_t* mpi)
 {
   PetscErrorCode ierr;
-  // double parameters required to build the solver and/or to prepare it for restart
-  // tree_dimension, dxyz_smallest_quad, surface_tension, mu_minus, mu_plus, rho_minus, rho_plus,
-  // tn, dt_n, dt_nm1, uniform_band_minus, uniform_band_plus, threshold_split_cell, cfl_advection,
-  // cfl_visco_capillary, cfl_capillary, splitting_criterion->lip, fine_splitting_criterion->lip
-  // (other double parameters are either results of the current time step, e.g.
-  // max_L2_norm_velocity_*, dt_np1, or internal convergence parameters, e.g. max_velocity_*):
-  // --> that makes 2*P4EST_DIM + 16 doubles to save
-  const size_t ndouble_values =  2*P4EST_DIM + 16;
-  std::vector<PetscReal> double_parameters(ndouble_values);
-  // integer parameters required to build the solver and/or to prepare it for restart
-  // P4EST_DIM, cell_jump_solver_to_use, fetch_interface_FD_neighbors_with_second_order_accuracy, data->min_lvl, data->max_lvl,
-  // face_jump_solver_to_use, voronoi_on_the_fly, fine_data->min_lvl, fine_data->max_lvl, levelset_interpolation_method,
-  // sl_order, sl_order_interface, degree_guess_v_star_face_k, n_viscous_subiterations, static_interface
-  // that makes 15 integers
-  const size_t ninteger_values = 15;
-  std::vector<PetscInt> integer_parameters(ninteger_values);
+  std::vector<PetscReal> double_parameters(n_double_parameter_for_restart);
+  std::vector<PetscInt> integer_parameters(n_integer_parameter_for_restart);
   int fd;
   char diskfilename[PATH_MAX];
   switch (flag) {
@@ -1047,13 +1035,13 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       sprintf(diskfilename, "%s_integers", filename);
       fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, integer_parameters.data(), integer_parameters.size(), PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters.data(), n_integer_parameter_for_restart, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
       // Then we save the double parameters
       sprintf(diskfilename, "%s_doubles", filename);
       fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, double_parameters.data(), double_parameters.size(), PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters.data(), n_double_parameter_for_restart, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
     break;
@@ -1065,11 +1053,25 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       throw std::invalid_argument("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's integer parameters could not be found");
     if(mpi->rank() == 0)
     {
+      PetscInt count;
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, integer_parameters.data(), integer_parameters.size(), PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters.data(), n_integer_parameter_for_restart, &count, PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      if(count < (PetscInt) min_n_integer_parameter_for_restart)
+        throw std::runtime_error("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's integer parameters is not valid (not enough data therein)...");
+      for(int k = count; k < (PetscInt) n_integer_parameter_for_restart; k++)
+      {
+        switch (k) {
+        case 15:
+          integer_parameters[k] = static_cast<int>(AVERAGED); // default was that, before
+          break;
+        default:
+          throw std::runtime_error("my_p4est_two_phase_flows_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
+          break;
+        }
+      }
     }
-    int mpiret = MPI_Bcast(integer_parameters.data(), ninteger_values, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
+    int mpiret = MPI_Bcast(integer_parameters.data(), n_integer_parameter_for_restart, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion, fine_splitting_criterion);
     // Then we load the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
@@ -1077,11 +1079,22 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       throw std::invalid_argument("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's double parameters could not be found");
     if(mpi->rank() == 0)
     {
+      PetscInt count;
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, double_parameters.data(), double_parameters.size(), PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters.data(), n_double_parameter_for_restart, &count, PETSC_DOUBLE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      if(count < (PetscInt) min_n_double_parameter_for_restart)
+        throw std::runtime_error("my_p4est_two_phase_flows_t::save_or_load_parameters: the file storing the solver's double parameters is not valid (not enough data therein)...");
+      for(int k = count; k < (PetscInt) n_double_parameter_for_restart; k++)
+      {
+        switch (k) {
+        default:
+          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
+          break;
+        }
+      }
     }
-    mpiret = MPI_Bcast(double_parameters.data(), ndouble_values, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Bcast(double_parameters.data(), n_double_parameter_for_restart, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, fine_splitting_criterion);
     break;
   }

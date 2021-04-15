@@ -2916,7 +2916,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, double &tn)
+void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t *splitting_criterion, double &tn)
 {
   size_t idx = 0;
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
@@ -2987,10 +2987,10 @@ void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag,
       data[idx++] = max_L2_norm_u;
       data[idx++] = uniform_band;
       data[idx++] = vorticity_threshold_split_cell;
-//      data[idx++] = norm_grad_u_threshold_split_cell; not adding this one yet to avoid messing up with existing restarting files out there
       data[idx++] = n_times_dt;
       data[idx++] = smoke_thresh;
       data[idx++] = splitting_criterion->lip;
+      data[idx++] = norm_grad_u_threshold_split_cell;
       break;
     }
     case LOAD:
@@ -3003,10 +3003,10 @@ void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag,
       max_L2_norm_u                   = data[idx++];
       uniform_band                    = data[idx++];
       vorticity_threshold_split_cell  = data[idx++];
-//      norm_grad_u_threshold_split_cell= data[idx++]; not adding this one yet to avoid messing up with existing restarting files out there
       n_times_dt                      = data[idx++];
       smoke_thresh                    = data[idx++];
       splitting_criterion->lip        = data[idx++];
+      norm_grad_u_threshold_split_cell= data[idx++];
       break;
     }
     default:
@@ -3014,12 +3014,11 @@ void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag,
       break;
     }
   }
-  P4EST_ASSERT(idx == 4*P4EST_DIM + 11);
-//  P4EST_ASSERT(idx == 4*P4EST_DIM + 12); // --> if adding norm_grad_u_threshold_split_cell at some point
-
+  P4EST_ASSERT(idx == n_double_parameter_for_restart);
+  return;
 }
 
-void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt *data, splitting_criteria_t* splitting_criterion)
+void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion)
 {
   size_t idx = 0;
   switch (flag) {
@@ -3030,8 +3029,8 @@ void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag
     data[idx++] = splitting_criterion->min_lvl;
     data[idx++] = splitting_criterion->max_lvl;
     data[idx++] = sl_order;
-//    data[idx++] = static_cast<int>(interp_v_viscosity);
-//    data[idx++] = static_cast<int>(interp_v_update);
+    data[idx++] = static_cast<int>(interp_v_viscosity);
+    data[idx++] = static_cast<int>(interp_v_update);
     break;
   }
   case LOAD:
@@ -3043,29 +3042,22 @@ void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag
     splitting_criterion->min_lvl  = data[idx++];
     splitting_criterion->max_lvl  = data[idx++];
     sl_order                      = data[idx++];
-//    interp_v_viscosity            = static_cast<interpolation_method>(data[idx++]);
-//    interp_v_update               = static_cast<interpolation_method>(data[idx++]);
+    interp_v_viscosity            = static_cast<interpolation_method>(data[idx++]);
+    interp_v_update               = static_cast<interpolation_method>(data[idx++]);
     break;
   }
   default:
     throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_integer_data: unknown flag value");
     break;
   }
-  P4EST_ASSERT(idx == 5);
-//  P4EST_ASSERT(idx == 7); // if adding the velocity interpolation methods
+  P4EST_ASSERT(idx == n_integer_parameter_for_restart);
 }
 
 void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
 {
   PetscErrorCode ierr;
-  // dxyz_min, xyz_min, xyz_max, convert_to_xyz, mu, rho, tn, dt_n, dt_nm1, max_L2_norm_u, uniform_band, threshold_split_cell, n_times_dt, smoke_thresh, data->lip
-  // that makes 4*P4EST_DIM + 11 doubles to save
-  PetscReal double_parameters[4*P4EST_DIM + 11];
-//  PetscReal double_parameters[4*P4EST_DIM + 12]; // --> if adding norm_grad_u_threshold_split_cell at some point
-  // P4EST_DIM, refine_with_smoke (converted to int), data->min_lvl, data->max_lvl, sl_order
-  // that makes 5 integers
-  PetscInt integer_parameters[5];
-//  PetscInt integer_parameters[7]; // --> if adding the interpolation methods for v
+  std::vector<PetscReal> double_parameters(n_double_parameter_for_restart);
+  std::vector<PetscInt> integer_parameters(n_integer_parameter_for_restart);
   int fd;
   char diskfilename[PATH_MAX];
   switch (flag) {
@@ -3076,13 +3068,13 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
       sprintf(diskfilename, "%s_integers", filename);
       fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, integer_parameters, 5 /* 7 */, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters.data(), n_integer_parameter_for_restart, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
       // Then we save the double parameters
       sprintf(diskfilename, "%s_doubles", filename);
       fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, double_parameters, 4*P4EST_DIM + 11 /* 4*P4EST_DIM + 12 */, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters.data(), n_double_parameter_for_restart, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
     }
     break;
@@ -3094,11 +3086,26 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
       throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's integer parameters could not be found");
     if(mpi->rank() == 0)
     {
+      PetscInt count;
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, integer_parameters, 5 /* 7 */, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters.data(), n_integer_parameter_for_restart, &count, PETSC_INT); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      if(count < (PetscInt) min_n_integer_parameter_for_restart)
+        throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's integer parameters is not valid (not enough data therein)...");
+      for(int k = count; k < (PetscInt) n_integer_parameter_for_restart; k++)
+      {
+        switch (k) {
+        case 5:
+        case 6:
+          integer_parameters[k] = static_cast<int>(quadratic); // default was quadratic interpolation, before
+          break;
+        default:
+          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
+          break;
+        }
+      }
     }
-    int mpiret = MPI_Bcast(integer_parameters, 5 /* 7 */, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
+    int mpiret = MPI_Bcast(integer_parameters.data(), n_integer_parameter_for_restart, MPIU_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret); // "MPIU_INT" so that it still works if PetSc uses 64-bit integers (correct MPI type defined in Petscsys.h for you!)
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
     // Then we save the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
@@ -3106,11 +3113,25 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
       throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's double parameters could not be found");
     if(mpi->rank() == 0)
     {
+      PetscInt count;
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, double_parameters, 4*P4EST_DIM + 11 /* 4*P4EST_DIM + 12 */, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters.data(), n_double_parameter_for_restart, &count, PETSC_DOUBLE); CHKERRXX(ierr);
       ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      if(count < (PetscInt) min_n_double_parameter_for_restart)
+        throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's double parameters is not valid (not enough data therein)...");
+      for(int k = count; k < (PetscInt) n_double_parameter_for_restart; k++)
+      {
+        switch (k) {
+        case 4*P4EST_DIM + 11:
+          double_parameters[k] = DBL_MAX; // default was not using that, before
+          break;
+        default:
+          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
+          break;
+        }
+      }
     }
-    mpiret = MPI_Bcast(double_parameters, 4*P4EST_DIM + 11 /* 4*P4EST_DIM + 12 */, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Bcast(double_parameters.data(), n_double_parameter_for_restart, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
     fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
     break;
   }

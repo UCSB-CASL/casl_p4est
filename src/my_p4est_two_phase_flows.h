@@ -33,6 +33,14 @@
 
 using std::set;
 
+enum interface_velocity_t
+{
+  LIQUID,         // i.e. side where rho is larger
+  GAS,            // i.e. side where rho is smaller
+  AVERAGED,       // half sum of either side
+  MASS_AVERAGED   // self-explanatory
+};
+
 class my_p4est_two_phase_flows_t
 {
 private:
@@ -84,6 +92,8 @@ private:
   PCType preconditioner_for_face_problems;
   bool voronoi_on_the_fly;
   my_p4est_poisson_jump_faces_t *face_jump_solver;
+
+  interface_velocity_t      itfc_velocity_type;
 
   void build_face_jump_solver();
   void build_cell_jump_solver();
@@ -231,6 +241,12 @@ private:
   void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2);
   void compute_vorticities();
 
+  // integer parameters:
+  const size_t min_n_integer_parameter_for_restart = 15; // original backup files had 5 integer parameters for I/O --> can't have less
+  const size_t n_integer_parameter_for_restart     = 16;
+  // double parameters:
+  const size_t min_n_double_parameter_for_restart  = 2*P4EST_DIM + 16; // original backup files had 4*P4EST_DIM + 11 double parameters for I/O --> can't have less
+  const size_t n_double_parameter_for_restart      = 2*P4EST_DIM + 16; // current version
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
    * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
@@ -240,13 +256,17 @@ private:
    * - fetch_interface_FD_neighbors_with_second_order_accuracy
    * - data->min_lvl
    * - data->max_lvl
-   * - fine_data->min_lvl (value exported is the same as data->min_lvl if not using subrefinement)
-   * - fine_data->max_lvl (value exported is the same as data->max_lvl if not using subrefinement)
+   * - face_jump_solver_to_use
+   * - voronoi_on_the_fly
+   * - fine_data->min_lvl
+   * - fine_data->max_lvl
    * - levelset_interpolation_method
    * - sl_order
    * - sl_order_interface
+   * - degree_guess_v_star_face_k
    * - n_viscous_subiterations
-   * - voronoi_on_the_fly
+   * - static_interface
+   * - itfc_velocity_type
    * The double parameters/variables that are saved/loaded are (in this order):
    * - tree_dimension[0 : P4EST_DIM - 1]
    * - dxyz_smallest_quad[0 : P4EST_DIM - 1]
@@ -264,9 +284,12 @@ private:
    * - uniform_band_plus
    * - threshold_split_cell
    * - cfl_advection
-   * - cfl_surface_tension
+   * - cfl_visco_capillary
+   * - cfl_capillary
    * - splitting_criterion->lip
-   * - fine_splitting_criterion->lip (or a duplicate of the above value if not using subrefinement)
+   * - fine_splitting_criterion->lip
+   * (other double parameters are either results of the current time step, e.g.
+   * max_L2_norm_velocity_*, dt_np1, or internal convergence parameters, e.g. max_velocity_*).
    * The integer and double parameters are saved separately in two different files to avoid reading errors due to
    * byte padding (occurs in order to ensure data alignment when written in file)...
    * \param filename [in] : basename of the path to the files to be written or read (absolute path)
@@ -658,6 +681,11 @@ public:
   }
 
   inline void set_final_time(const double& final_time_) { final_time = final_time_; }
+
+  inline void set_interface_velocity_type(interface_velocity_t desired_interface_velocity_calculation)
+  {
+    itfc_velocity_type = desired_interface_velocity_calculation;
+  }
 
   /*!
    * \brief initialize_time_steps sets dt_nm1 = dt_n = time_step;

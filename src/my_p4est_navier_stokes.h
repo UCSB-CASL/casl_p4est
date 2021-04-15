@@ -294,6 +294,18 @@ protected:
     return (ANDD(bc_v[0].wallType(xyz_) == DIRICHLET, bc_v[1].wallType(xyz_) == DIRICHLET, bc_v[2].wallType(xyz_) == DIRICHLET) && bc_pressure->wallType(xyz_) == NEUMANN);
   }
 
+
+  // 7 integer parameters:
+  // P4EST_DIM, refine_with_smoke (converted), data->min_lvl, data->max_lvl, sl_order,
+  // interp_v_viscosity (converted), interp_v_update (converted). <-- added later on
+  const size_t min_n_integer_parameter_for_restart = 5;                // original backup files had 5 integer parameters for I/O --> can't have less
+  const size_t n_integer_parameter_for_restart     = 7;
+  // 4*P4EST_DIM + 12 double parameters:
+  // dxyz_min, xyz_min, xyz_max, convert_to_xyz, mu, rho, tn, dt_n, dt_nm1, max_L2_norm_u,
+  // uniform_band, threshold_split_cell, n_times_dt, smoke_thresh, data->lip,
+  // norm_grad_u_threshold_split_cell <-- added later on
+  const size_t min_n_double_parameter_for_restart  = 4*P4EST_DIM + 11; // original backup files had 4*P4EST_DIM + 11 double parameters for I/O --> can't have less
+  const size_t n_double_parameter_for_restart      = 4*P4EST_DIM + 12; // current version
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
    * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
@@ -303,6 +315,8 @@ protected:
    * - data->min_lvl
    * - data->max_lvl
    * - sl_order
+   * - interp_v_viscosity <-- could be absent from file on disk (added the option to change that thereafter)
+   * - interp_v_update    <-- could be absent from file on disk (added the option to change that thereafter)
    * The double parameters/variables that are saved/loaded are (in this order):
    * - dxyz_min[0:P4EST_DIM-1]
    * - xyz_min[0:P4EST_DIM-1]
@@ -319,6 +333,7 @@ protected:
    * - n_times_dt
    * - smoke_threshold
    * - data->lip
+   * - norm_grad_u_threshold_split_cell <-- could be absent from file on disk (added the option thereafter)
    * The integer and double parameters are saved separately in two different files to avoid reading errors due to
    * byte padding (occurs in order to ensure data alignment when written in file)...
    * \param filename[in]: basename of the path to the files to be written or read (absolute path)
@@ -334,8 +349,8 @@ protected:
    * Raphael EGAN
    */
   void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
-  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, double& tn);
-  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion);
+  void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion);
 
   /*!
    * \brief load_state loads a solver state that has been previously saved on disk
