@@ -2000,14 +2000,6 @@ void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec
 
 void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const
 {
-  get_all_neighbors(n, neighbors);
-  for (int i = 0; i < num_neighbors_cube; i++)
-    neighbor_exists[i] = (neighbors[i] >= 0);
-}
-
-
-void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const
-{
   for (int i = 0; i < num_neighbors_cube; i++) {
     neighbors[i] = -1;
   }
@@ -2151,4 +2143,29 @@ void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_
   if      (quad_mpm_idx >= 0) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
   if      (quad_ppm_idx >= 0) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
 #endif
+
+  if(neighbor_exists != NULL)
+    for (int i = 0; i < num_neighbors_cube; i++)
+      neighbor_exists[i] = (neighbors[i] >= 0);
+
+  return;
+}
+
+void my_p4est_node_neighbors_t::fetch_second_degree_node_neighbors_of_interpolation_node(const p4est_locidx_t& node_idx, set_of_local_node_index_t& second_degree_neighbor_nodes) const
+{
+  set_of_neighboring_quadrants quad_neighbors;
+  c_ngbd.gather_neighbor_cells_of_node(node_idx, nodes, quad_neighbors, true);
+
+  second_degree_neighbor_nodes.clear();
+  for(set_of_neighboring_quadrants::const_iterator it = quad_neighbors.begin(); it != quad_neighbors.end(); it++)
+  {
+    const p4est_locidx_t quad_idx = it->p.piggy3.local_num;
+    for(u_char vv = 0; vv < P4EST_CHILDREN; vv++)
+    {
+      p4est_locidx_t neighbor_node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + vv];
+      if(neighbor_node_idx != node_idx)
+        second_degree_neighbor_nodes.insert(neighbor_node_idx);
+    }
+  }
+  return;
 }

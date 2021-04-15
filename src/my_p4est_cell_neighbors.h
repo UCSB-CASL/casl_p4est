@@ -14,6 +14,7 @@
 #endif
 
 #include <vector>
+#include <set>
 
 /*!
  * \brief The my_p4est_cell_neighbors_t class acts as an interface tool that enables the user to
@@ -33,6 +34,7 @@ struct comparator_of_neighbor_cell
 };
 
 typedef std::set<p4est_quadrant_t, comparator_of_neighbor_cell> set_of_neighboring_quadrants;
+
 
 class my_p4est_cell_neighbors_t {
 private:

@@ -16,7 +16,6 @@
 #include <p4est.h>
 #endif
 
-#include <set>
 #include <vector>
 #include <stdexcept>
 

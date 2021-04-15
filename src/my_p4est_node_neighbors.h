@@ -24,6 +24,15 @@
 #include <vector>
 #include <sstream>
 
+#if __cplusplus >= 201103L
+#include <unordered_set>
+typedef std::unordered_set<p4est_locidx_t> set_of_local_node_index_t;
+#else
+#include <set>
+typedef std::set<p4est_locidx_t> set_of_local_node_index_t;
+#endif
+
+
 /*!
  * \brief The my_p4est_node_neighbors_t class provides the user with node neighborhood information,
  * but also with routines calculating first and second derivatives of node-sampled fields as well as
@@ -73,6 +82,7 @@ class my_p4est_node_neighbors_t {
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
+  const my_p4est_cell_neighbors_t c_ngbd;
   /*!
    * \brief neighbors: standard vector listing the node neighborhood for all node that
    * are locally known such that the neighborhood can be fully determined. This vector
@@ -186,7 +196,7 @@ public:
    * \param [in] nodes_     grid nodes
    */
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb), c_ngbd(hierarchy_)
   {
     periodic = hierarchy->get_periodicity();
     is_initialized = false;
@@ -594,9 +604,45 @@ public:
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), bs);
   }
 
-  // Daniil would have to commment on this one
-  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
-  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const;
+  /*!
+   * \brief get_all_neighbors fetches all possible first-degree node neighbors of a node:
+   * all surrounding quadrants are fetched and their corresponding vertices fill 'neighbors'
+   * on output. Watch out if using in non-uniform neighborhood (see note below): the node
+   * indices listed in 'neighbors' (if not -1) are consistent with the node_neighbor_cube_t
+   * enumeration type *only* in locally uniform neighborhood.
+   * \param [in] n:
+   *                node index whose first-degree node neighbors are sought
+   * \param [inout] neighbors:
+   *                pointer to an array of num_neighbors_cube local indices
+   *                --> all initialized to -1 on input;
+   *                --> the found first-degree node neighbors are filled into the array according
+   *                to the node_neighbor_cube_t enumeration type in locally uniform neighborhood.
+   * \param [inout] neighbor_exists [optional]:
+   *                pointer to an array of num_neighbors_cube boolean set to 'true' if the corresponding
+   *                neighbor node index was found (i.e. if it is not -1 on output)
+   * [NOTE 1: about T-junction nodes: in a case like the following (called on 'O'), one will have
+   *              neighbors[nn_m00] == neighbors[nn_mp0] == (local index of node 'A')
+   * on output, for instance... --> Watch out when using in non-uniform neighborhood!
+   *
+   * A________________________________
+   * |               |       |       |
+   * |               |       |       |
+   * |               O_______|_______|
+   * |               |       |       |
+   * |               |       |       |
+   * B_______________|_______|_______|
+   */
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists = NULL) const;
+
+  /*!
+   * \brief fetch_second_degree_node_neighbors_of_interpolation_node: self-explanatory!
+   * \param [in] node_idx:
+   *                node index whose second-degree node neighbors are inquired
+   * \param [inout] second_degree_neighbor_nodes:
+   *                set gathering the local indices of all node neighbors of node n up to second-degree neighbors,
+   *                i.e., including vertices of up to second-degree neighbor cells
+   */
+  void fetch_second_degree_node_neighbors_of_interpolation_node(const p4est_locidx_t& node_idx, set_of_local_node_index_t& second_degree_neighbor_nodes) const;
 
   /*!
    * \brief memory_estimate estimates the memory required to store this my-p4est_node_neighbors_t object in number of bytes

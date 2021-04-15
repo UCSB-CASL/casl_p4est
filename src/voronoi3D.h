@@ -3,6 +3,7 @@
 #include <float.h>
 #include <fstream>
 #include <vector>
+#include <set>
 
 // We are in 3D (you, idiot!), so include p8est headers immediately, no p4est...
 #include <src/my_p8est_utils.h>

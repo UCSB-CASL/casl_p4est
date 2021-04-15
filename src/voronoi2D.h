@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <vector>
+#include <set>
 
 #include <src/my_p4est_utils.h>
 #include <src/casl_math.h>
