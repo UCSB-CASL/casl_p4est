@@ -35,7 +35,7 @@ my_p4est_poisson_jump_cells_fv_t::my_p4est_poisson_jump_cells_fv_t(const my_p4es
   offset_corr_fun_on_proc.assign(p4est->mpisize + 1, 0);
   global_idx_of_ghost_corr_fun.clear();
   jump_dependent_terms_in_corr_fun = NULL;
-  ksp_fallback = KSPBCGSL; // reported to be "most" stable in some papers
+  fallback_counter = 0;
 }
 
 my_p4est_poisson_jump_cells_fv_t::~my_p4est_poisson_jump_cells_fv_t()
@@ -1062,18 +1062,89 @@ void my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution(const KSPType &k
 
   /* Set the linear system, the linear solver and solve it */
   setup_linear_system();
-  ierr = setup_linear_solver(ksp_type, pc_type); CHKERRXX(ierr);
-  try {
-    solve_linear_system();
-  } catch (std::runtime_error& e) {
-    ierr = PetscFPrintf(p4est->mpicomm, stderr, "The finite volume cell jump solver did not converge with KSP = %s. Attempting a fallback recovery 'solve' with ksp = %s", ksp_type, ksp_fallback);
-    ierr = setup_linear_solver(ksp_fallback, pc_type, true); CHKERRXX(ierr);
-    solve_linear_system();
+  ierr = setup_linear_solver(ksp_type, pc_type, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
+  while(!solve_linear_system())
+  {
+    falling_back();
   }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution, A, rhs, ksp, 0); CHKERRXX(ierr);
 
   return;
 }
+
+void my_p4est_poisson_jump_cells_fv_t::falling_back()
+{
+  // the last attempt to solve the linear system of equation was unsuccessful, we gotta try something different...
+  PetscErrorCode ierr;
+  // first figure out if it's the very first attempt and if we tried KSPBCGS + PCHYPRE (i.e. the supposedly default options)
+  // if not, make that your first fall back attempt!
+  if(fallback_counter == 0)
+  {
+    KSPType ksp_t;
+    PCType pc_t;
+    PC pc;
+    ierr = KSPGetType(ksp, &ksp_t); CHKERRXX(ierr);
+    ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
+    ierr = PCGetType(pc, &pc_t); CHKERRXX(ierr);
+    if(!(strcmp(ksp_t, KSPBCGS) == 0 && strcmp(pc_t, PCHYPRE) == 0 && fabs(pc_hypre_boomeramg_strong_threshold - (P4EST_DIM - 1)*0.25) < 0.01))
+      fallback_counter = -1; // we didn't start from what we expect to be default... --> try the 'default' setup first, i.e. fallback -1!
+  }
+  // print a warning: let the user know you're struggling here!
+  ierr = PetscPrintf(p4est->mpicomm, "my_p4est_poisson_jump_cells_fv_t::falling_back: my last attempt to solve the linear system of equations failed\n I'm going to try something different. (Fallback counter = %d)\n", fallback_counter); CHKERRXX(ierr);
+  // first delete the solution because it's nothing but trash right now (you don't want to use that as initial guess, say)
+  ierr = delete_and_nullify_vector(solution); CHKERRXX(ierr);
+  // second, we'll reset the ksp solver and/or its preconditoner
+  ierr = KSPReset(ksp); CHKERRXX(ierr);
+  linear_solver_is_set = false; // --> so that we actually reset stuff to a new solver + preconditioner
+  // try something else:
+  switch (fallback_counter) {
+  case -1:
+  {
+    // 0th fall back (should be default case, may be skipped): use KSPBCGS with PCHYPRE increase pc_hypre_boomeramg_strong_threshold
+    pc_hypre_boomeramg_strong_threshold = (P4EST_DIM - 1)*0.25;
+    ierr = setup_linear_solver(KSPBCGS, PCHYPRE, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
+  }
+    break;
+  case 0:
+  {
+    // first fall back: use KSPBCGS with PCHYPRE increase pc_hypre_boomeramg_strong_threshold
+    pc_hypre_boomeramg_strong_threshold = 0.9;
+    ierr = setup_linear_solver(KSPBCGS, PCHYPRE, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
+  }
+    break;
+  case 1:
+  {
+    // second fall back: use KSPBCGS with no preconditioniner (i.e. PCSOR) but 5 times more iterations:
+    max_ksp_iterations = 5000;
+    ierr = setup_linear_solver(KSPBCGS, PCSOR, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
+  }
+    break;
+    // hopefully never goes further ("Hail Mary" attempts, let us pray!)
+  case 2:
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "my_p4est_poisson_jump_cells_fv_t::falling_back: this is serious sh**, my friend: no guarantee I'll do things right hereafter...\n"); CHKERRXX(ierr);
+    // third fall back: use KSPGMRES with no preconditioniner (i.e. PCSOR) and 10,000 (cheap) iterations:
+    max_ksp_iterations = 10000;
+    ierr = setup_linear_solver(KSPGMRES, PCSOR, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
+  }
+    break;
+  case 3:
+  {
+    ierr = PetscPrintf(p4est->mpicomm, "my_p4est_poisson_jump_cells_fv_t::falling_back: my very last attempt, even if it 'works', results might be bull (my master has seen it in his tests)...\n"); CHKERRXX(ierr);
+    // fourth and last fall back: use KSPBCGSL ("reported to be "most" stable in some papers") with no preconditioniner (i.e. PCSOR)
+    // this is a "Hail Mary", we will do that even if nullspace is nonnull
+    max_ksp_iterations = 10000;
+    ierr = setup_linear_solver(KSPBCGSL, PCSOR, KSP_NORM_UNPRECONDITIONED, true); CHKERRXX(ierr);
+  }
+    break;
+  default:
+    throw std::runtime_error("my_p4est_poisson_jump_cells_fv_t::falling_back: I ran out of options, I'm throwing the towel, may God help you with your degree...");
+    break;
+  }
+  fallback_counter++; // count the fall back cause we don't pretend to save the world eventually...
+  return;
+}
+
 
 void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const double* sharp_solution_p,
                                                                       double* extrapolation_minus_p, double* extrapolation_plus_p,

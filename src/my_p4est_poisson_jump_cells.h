@@ -40,6 +40,7 @@ protected:
   // elementary computational grid parameters
   double dxyz_min[P4EST_DIM];
   inline double diag_min() const { return sqrt(ABSD(dxyz_min[0], dxyz_min[1], dxyz_min[2])); }
+  double pc_hypre_boomeramg_strong_threshold;
 
   // this solver needs an interface manager (and may contribute to building some of its interface cell-specific maps)
   my_p4est_interface_manager_t* interface_manager;
@@ -124,11 +125,18 @@ protected:
    *                                        IMPORTANT NOTE: PetSc recommends using GMRES for singular problems
    *                                        --> GMRES is enforces in that case and the provided ksp_type is irrelevant then (i.e. if A_null_space != NULL)
    * \param [in] pc_type                    preconditioner type desired by the user
+   * \param [in] norm_to_monitor            [optional] norm to be monitored by the KSP solver (taken into accont only if set and different than KSP_NORM_DEFAULT)
    * \param [in] even_if_nullspace_nonempty [optional] flag bypassing the above behavior in case of non-empty null space, if true
    * \return a PetscError code to check if anything went wrong
    */
-  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, bool even_if_nullspace_nonempty = false);
-  void solve_linear_system();
+  PetscErrorCode setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type,
+                                     const KSPNormType& norm_to_monitor = KSP_NORM_DEFAULT,
+                                     bool even_if_nullspace_nonempty = false);
+  /*!
+   * \brief solve_linear_system: self-explanatory
+   * \return true if the resolution of the linear system was successful (i.e. if KSPConvergedReason is > 0)!
+   */
+  bool solve_linear_system();
   inline void reset_rhs()           { rhs_is_set = false;                                         setup_linear_system(); }
   inline void reset_matrix()        { matrix_is_set = linear_solver_is_set = false;               setup_linear_system(); }
   inline void reset_linear_system() { matrix_is_set = linear_solver_is_set = rhs_is_set = false;  setup_linear_system(); }

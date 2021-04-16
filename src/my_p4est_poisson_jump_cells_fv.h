@@ -63,7 +63,6 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
     return ierr;
   }
   Vec jump_dependent_terms_in_corr_fun;
-  KSPType ksp_fallback;
 
   map_of_correction_functions_t correction_function_for_quad;
   map_of_finite_volume_t        finite_volume_data_for_quad;  // only required in local quadrants
@@ -73,6 +72,7 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
   double                        threshold_volume_ratio_for_extrapolation;
   double                        reference_face_area;
   bool                          pin_normal_derivative_for_correction_functions;
+  int                           fallback_counter;
 
   void build_finite_volumes_and_correction_functions();
 
@@ -102,6 +102,8 @@ class my_p4est_poisson_jump_cells_fv_t : public my_p4est_poisson_jump_cells_t
 
   void clear_node_sampled_jumps();
   void update_jump_terms_for_projection();
+
+  void falling_back();
 
 public:
   my_p4est_poisson_jump_cells_fv_t(const my_p4est_cell_neighbors_t *ngbd_c, const p4est_nodes_t *nodes_);
@@ -201,8 +203,6 @@ public:
    * \param do_the_pinning [in] action desired by the user;
    */
   inline void set_pinning_for_normal_derivatives_in_correction_functions(const bool& do_the_pinning) { pin_normal_derivative_for_correction_functions = do_the_pinning;}
-
-  inline void set_ksp_fallback(const KSPType& fallback_ksp) { ksp_fallback = fallback_ksp;}
 
   inline bool are_fv_and_cf_known() const {return are_required_finite_volumes_and_correction_functions_known; }
   inline const map_of_finite_volume_t& get_fv_map() const { return finite_volume_data_for_quad; }

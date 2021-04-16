@@ -45,7 +45,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   relative_tolerance    = 1.0e-12;
   absolute_tolerance    = PETSC_DEFAULT;
   divergence_tolerance  = PETSC_DEFAULT;
-  max_ksp_iterations    = PETSC_DEFAULT;
+  max_ksp_iterations    = 1000; // default is 10,000 that's a bit much, don't you think?
 
   const splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
 
@@ -53,6 +53,7 @@ my_p4est_poisson_jump_cells_t::my_p4est_poisson_jump_cells_t(const my_p4est_cell
   for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     dxyz_min[dim] = tree_dimensions[dim]/(double) (1 << data->max_lvl);
   reset_sharp_max_projection_flux();
+  pc_hypre_boomeramg_strong_threshold = (P4EST_DIM - 1)*0.25; // HYPRE manual suggests 0.25 for 2D problems, 0.5 for 3D
 }
 
 my_p4est_poisson_jump_cells_t::~my_p4est_poisson_jump_cells_t()
@@ -319,7 +320,7 @@ void my_p4est_poisson_jump_cells_t::pointwise_operation_with_sqrt_of_diag(size_t
   return;
 }
 
-void my_p4est_poisson_jump_cells_t::solve_linear_system()
+bool my_p4est_poisson_jump_cells_t::solve_linear_system()
 {
   PetscErrorCode ierr;
 
@@ -354,17 +355,14 @@ void my_p4est_poisson_jump_cells_t::solve_linear_system()
   }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_jump_cells_KSPSolve, solution, rhs, ksp, 0); CHKERRXX(ierr);
 
-#ifdef CASL_THROWS
   KSPConvergedReason termination_reason;
   ierr = KSPGetConvergedReason(ksp, &termination_reason); CHKERRXX(ierr);
-  if(termination_reason <= 0)
-    throw std::runtime_error("my_p4est_poisson_jump_cells_t::solve_linear_system() : the Krylov solver failed to converge for a linear system to solve, the KSPConvergedReason code is " + std::to_string(termination_reason)); // collective runtime_error throw
-#endif
   extrapolations_are_set = false;
-  return;
+  return (termination_reason > 0); // a positive value for
 }
 
-PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type, bool even_if_nullspace_nonempty)
+PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType& ksp_type, const PCType& pc_type,
+                                                                  const KSPNormType& norm_to_monitor, bool even_if_nullspace_nonempty)
 {
   if(linear_solver_is_set)
     return 0;
@@ -374,6 +372,9 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
   ierr = KSPSetType(ksp, (!even_if_nullspace_nonempty && A_null_space != NULL ? KSPGMRES : ksp_type)); CHKERRQ(ierr); // PetSc advises GMRES for problems with nullspaces
 
   ierr = KSPSetTolerances(ksp, relative_tolerance, absolute_tolerance, divergence_tolerance, max_ksp_iterations); CHKERRQ(ierr);
+  if(norm_to_monitor != KSP_NORM_DEFAULT){
+    ierr = KSPSetNormType(ksp, norm_to_monitor); CHKERRXX(ierr); }
+
   ierr = KSPSetFromOptions(ksp); CHKERRQ(ierr);
 
   // set pc type
@@ -391,8 +392,8 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
     // when using Daniil's FV solver with large ratios of diffusion coefficients. (The analysis was done for
     // the cell FV solver with no constant coefficient, i.e. for pure Poisson problems)
     // The value of this parameter should be in )0, 1( and HYPRE manual suggests 0.25 for 2D problems, 0.5
-    // for 3D. I believe those values are implicitly understood as "when considering the standard discretization
-    // of the Laplace operators on uniform grids", though.
+    // for 3D (hence the value set at construction). I believe those values are implicitly understood as
+    // "when considering the standard discretization of the Laplace operators on uniform grids", though...
     // I found that such low values lead to successful resolution of the linear systems only when scaling the
     // systems by their diagonals. Otherwise a (very) large value (e.g. 0.9) was required to make it work fine.
     // (from my understanding of the above paper, this parameter is basically a threshold determining whether or not
@@ -401,11 +402,33 @@ PetscErrorCode my_p4est_poisson_jump_cells_t::setup_linear_solver(const KSPType&
     // each other when coarsening. --> For jump problems with large coefficient ratios, you may actually need to exclude
     // points belonging to the other subdomain when coarsening your solution for best results... Hence the need for a
     // large (i.e. more selective) threshold value if not scaling the system by its diagonal
-#ifdef P4_TO_P8
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.50"); CHKERRQ(ierr);
-#else
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.25"); CHKERRQ(ierr);
-#endif
+    //
+    // [ADDITIONAL NOTES, Raphael, April 2021]:
+    // ----------------------------------------
+    // KSPSolve was found to still fail sort of randomly in 3D runs of two-phase flows. In fact, the issue
+    // seemed rather profound as it appeared that it was always related to KSPSolve terminating successfully
+    // in appearance, although the "true" residual did not decrease much (for FV jump solver). From detailed
+    // analyses of such situations, it seemed that the problem was originating from the use of the (left-)
+    // preconditioner in such instances: the preconditioner would introduce some spurious artifact dramatically
+    // increasing the value of the (preconditioned) residual in a limited number of cells. This value of the
+    // residual could be reduced by more than 12 orders of magnitude (sometimes even in one single iteration
+    // therein) without making the actual "true" residual decrease much (it was even increasing in some cases).
+    // This seemingly successful solve then produced spurious results which, in turn, made the overall solver
+    // crash in a later stage of the overall run.
+    // From those analyses, it was also observed that:
+    // 0) using a different node architectures (KNL vs. SKX) and/or a different number of processes could
+    //    alleviate the issue (the preconditioner seems to depend on that). However, that can't really be turned
+    //    into a practical "fix", right?
+    // 1) using a larger threhold for pc_hypre_boomeramg_strong_threshold (0.9) alleviated the problem;
+    // 2) by using KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED), the solver was monitoring the "true
+    //    residual" internally and successfully reported failure to converge in such cases
+    //   [NOTE: it seems like it also enforces right-preconditioning under the hood, instead of left-preconditioning]
+    // 3) using no preconditioner (i.e., PCSOR) seemed to alleviate the issue as well (although requiring more,
+    //    but cheaper iterations of the KSP)
+    // This motivated the design for successive "fallback" strategies in FV jump solver...
+    std::ostringstream boomeramg_strong_thresh;
+    boomeramg_strong_thresh << MAX(0.0, MIN(1.0, pc_hypre_boomeramg_strong_threshold));
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", boomeramg_strong_thresh.str().c_str()); CHKERRQ(ierr);
 
     /* 2- Coarsening type
      * Available Options:
