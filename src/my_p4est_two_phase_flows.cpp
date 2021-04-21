@@ -4457,8 +4457,8 @@ void my_p4est_two_phase_flows_t::build_initial_computational_grids(const mpi_env
   {
     // the next splitting criterion uses diagonal of cells, while we used min dx, dy, dz here above
     // --> lest scale factors to match what to expect with the above if the ls was actually a signed distance
-    const p4est_topidx_t first_tree_first_vertex  = 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0];
-    const p4est_topidx_t first_tree_last_vertex   = 3*p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1];
+    const p4est_topidx_t first_tree_first_vertex  = p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0];
+    const p4est_topidx_t first_tree_last_vertex   = p4est_n->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1];
 
     const double min_tree_side = MIN(DIM(p4est_n->connectivity->vertices[3*first_tree_last_vertex + 0] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 0],
         p4est_n->connectivity->vertices[3*first_tree_last_vertex + 1] - p4est_n->connectivity->vertices[3*first_tree_first_vertex + 1],
