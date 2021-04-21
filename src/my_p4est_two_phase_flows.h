@@ -107,6 +107,9 @@ private:
   double surface_tension;
   double mu_minus, mu_plus;
   double rho_minus, rho_plus;
+  double specific_heat_capacity_minus, specific_heat_capacity_plus;
+  double thermal_conductivity_minus, thermal_conductivity_plus;
+  double latent_heat, saturation_temperature;
   //
   // ---------|-------------|------------------|--------------|------------------>
   //          t_nm1         t_n                t_np1          t_np2
@@ -120,9 +123,9 @@ private:
   double uniform_band_minus, uniform_band_plus;
   double threshold_split_cell;
   double cfl_advection, cfl_visco_capillary, cfl_capillary;
-  interpolation_method levelset_interpolation_method;
+  interpolation_method levelset_interpolation_method, velocity_interpolation_method, temperature_interpolation_method;
 
-  int sl_order, sl_order_interface, degree_guess_v_star_face_k;
+  int sl_order, sl_order_interface, degree_guess_v_star_face_k, sl_order_temperature;
   int n_viscous_subiterations;
   bool static_interface;
   double max_velocity_component_before_projection[2]; // 0 <--> minus domain, 1 <--> plus domain
@@ -132,20 +135,24 @@ private:
 
   BoundaryConditionsDIM *bc_pressure;
   BoundaryConditionsDIM *bc_velocity;
+  BoundaryConditionsDIM *wall_bc_temperature;
   FILE* log_file;
   int nsolve_calls;
   double tstart; // tn at the construction (0.0 or value as loaded from file)
 
   CF_DIM *force_per_unit_mass_minus[P4EST_DIM], *force_per_unit_mass_plus[P4EST_DIM];
+  CF_DIM *heat_source_minus, *heat_source_plus;
 
   // --------------------------------------------------------------
+  // ------------------- NOTHING BUT POINTER(S) -------------------
+  Vec mass_flux; // points either to user_defined_mass_flux or owned_mass_flux but that's the data the solver will use!
   // -------------- FIELDS *NOT* OWNED BY THE SOLVER --------------
   // (must be provided by the user at every time step, if relevant)
   // --------------------------------------------------------------
   // - sampled at the nodes of the INTERFACE-CAPTURING grid:
   // -------------------------------------------------------
   Vec user_defined_nonconstant_surface_tension;   // in case of nonconstant surface tension, user-defined
-  Vec user_defined_mass_flux;                     // mass flux across the interface, user-defined
+  Vec user_defined_mass_flux;                     // mass flux across the interface, if defined by user
   Vec user_defined_interface_force;               // vector field, P4EST_DIM-block-structured, interface-defined force term (ON TOP of surface tension effects!!!)
 
   // --------------------------------------------------------------
@@ -159,6 +166,8 @@ private:
   Vec phi_np1;
   Vec non_viscous_pressure_jump;    // pressure jump terms due to all but binormal viscous stress term
   Vec jump_normal_velocity;         // scalar fields, jump_in_normal_velocity == mass_flux*(jump in inverse mass density)
+  Vec owned_mass_flux;              // mass flux across the interface, if locally built and 'owned'
+  Vec temperature_np1_minus, temperature_np1_plus;  // scalar temperature fields at time np1 (i.e. that we solve for)
   // vector fields and/or other P4EST_DIM-block-structured
   Vec phi_np1_xxyyzz;
   Vec jump_tangential_stress;       // vector field, P4EST_DIM-block-structured (negative tangential components of the interface-defined force and/or gradient of non-constant surface tension, i.e. Marangoni force)
@@ -168,6 +177,7 @@ private:
   // scalar fields
   Vec phi_np1_on_computational_nodes;
   Vec vorticity_magnitude_minus, vorticity_magnitude_plus;
+  Vec temperature_n_minus, temperature_n_plus;      // scalar temperature fields at time n (from previous time step, but transfered to the "coarse" grid)
   // vector fields and/or other P4EST_DIM-block-structured
   Vec vnp1_nodes_minus,  vnp1_nodes_plus;
   Vec vn_nodes_minus,    vn_nodes_plus;
@@ -191,6 +201,8 @@ private:
   // -------------------------------------------------------
   // - sampled at the nodes of the COMPUTATIONAL grid nm1:
   // -------------------------------------------------------
+  // scalar fields
+  Vec temperature_nm1_minus, temperature_nm1_plus;  // scalar temperature fields at time nm1
   // vector fields, P4EST_DIM-block-structured
   Vec vnm1_nodes_minus,  vnm1_nodes_plus;
   Vec interface_velocity_n;
@@ -201,9 +213,11 @@ private:
 
   // The value of the dir velocity component at the points at time n and nm1 backtraced from the face of orientation dir and local index f_idx are
   // backtraced_vn_faces[dir][f_idx] and backtraced_vnm1_faces[dir][f_idx].
-  bool semi_lagrangian_backtrace_is_done;
+  bool semi_lagrangian_backtrace_is_done, semi_lagrangian_backtrace_temperature_is_done;
   std::vector<double> backtraced_vn_faces_minus[P4EST_DIM], backtraced_vn_faces_plus[P4EST_DIM];
   std::vector<double> backtraced_vnm1_faces_minus[P4EST_DIM], backtraced_vnm1_faces_plus[P4EST_DIM]; // used only if sl_order == 2
+  std::vector<double> backtraced_temperature_n_minus, backtraced_temperature_n_plus;
+  std::vector<double> backtraced_temperature_nm1_minus, backtraced_temperature_nm1_plus; // used only if sl_order_temperature == 2
 
   inline char sgn_of_wall_neighbor_of_face(const p4est_locidx_t& face_idx, const u_char &dir, const u_char &wall_dir, const double *xyz_wall = NULL)
   {
@@ -224,6 +238,9 @@ private:
   inline double BDF_advection_alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
   inline double BDF_advection_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
 
+  inline double BDF_temperature_alpha() const { return (sl_order_temperature == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
+  inline double BDF_temperature_beta() const  { return (sl_order_temperature == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
+
   inline double jump_mass_density() const { return (rho_plus - rho_minus); }
   inline double jump_inverse_mass_density() const { return (1.0/rho_plus - 1.0/rho_minus); }
   inline double jump_viscosity() const { return (mu_plus - mu_minus); }
@@ -236,17 +253,20 @@ private:
   void compute_backtraced_velocities();
   void compute_viscosity_rhs();
 
+  void compute_backtraced_temperatures();
+  void compute_temperature_rhs(Vec temperature_rhs_minus, Vec temperature_rhs_plus);
+
   void advect_interface(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2,
                         const p4est_nodes_t *known_nodes_np2 = NULL, Vec known_phi_np2 = NULL);
   void sample_static_levelset_on_nodes(const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1, Vec phi_np2);
   void compute_vorticities();
 
   // integer parameters:
-  const size_t min_n_integer_parameter_for_restart = 15; // original backup files had 5 integer parameters for I/O --> can't have less
-  const size_t n_integer_parameter_for_restart     = 16;
+  const size_t min_n_integer_parameter_for_restart = 15; // 'original' backup files had 5 integer parameters for I/O --> can't have less
+  const size_t n_integer_parameter_for_restart     = 19;
   // double parameters:
-  const size_t min_n_double_parameter_for_restart  = 2*P4EST_DIM + 16; // original backup files had 4*P4EST_DIM + 11 double parameters for I/O --> can't have less
-  const size_t n_double_parameter_for_restart      = 2*P4EST_DIM + 16; // current version
+  const size_t min_n_double_parameter_for_restart  = 2*P4EST_DIM + 16; // 'original' backup files had 4*P4EST_DIM + 16 double parameters for I/O --> can't have less
+  const size_t n_double_parameter_for_restart      = 2*P4EST_DIM + 22; // current version
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
    * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
@@ -267,6 +287,9 @@ private:
    * - n_viscous_subiterations
    * - static_interface
    * - itfc_velocity_type
+   * - velocity_interpolation_method
+   * - temperature_interpolation_method
+   * - sl_order_temperature
    * The double parameters/variables that are saved/loaded are (in this order):
    * - tree_dimension[0 : P4EST_DIM - 1]
    * - dxyz_smallest_quad[0 : P4EST_DIM - 1]
@@ -288,6 +311,12 @@ private:
    * - cfl_capillary
    * - splitting_criterion->lip
    * - fine_splitting_criterion->lip
+   * - specific_heat_capacity_minus
+   * - specific_heat_capacity_plus
+   * - thermal_conductivity_minus
+   * - thermal_conductivity_plus
+   * - latent_heat
+   * - saturation_temperature
    * (other double parameters are either results of the current time step, e.g.
    * max_L2_norm_velocity_*, dt_np1, or internal convergence parameters, e.g. max_velocity_*).
    * The integer and double parameters are saved separately in two different files to avoid reading errors due to
@@ -327,6 +356,18 @@ private:
   void build_jump_in_normal_velocity(); // possible jump in normal velocity = mass flux*(jump in 1.0/rho)
   void build_total_jump_tangential_stress(); // possible Marangoni + possible component of user-defined
 
+  inline bool is_thermal_problem_set() const
+  {
+    bool ans = (!ISNAN(specific_heat_capacity_minus) && specific_heat_capacity_minus > 0.0)
+        && (!ISNAN(specific_heat_capacity_plus) && specific_heat_capacity_plus > 0.0)
+        && (!ISNAN(thermal_conductivity_minus) && thermal_conductivity_minus > 0.0)
+        && (!ISNAN(thermal_conductivity_plus) && thermal_conductivity_plus > 0.0)
+        && !ISNAN(latent_heat) && !ISNAN(saturation_temperature);
+    if(ORD(!periodicity[0], !periodicity[1], !periodicity[2]))
+      ans = ans && wall_bc_temperature != NULL;
+    return ans;
+  }
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces_n_,
                              my_p4est_node_neighbors_t *fine_ngbd_n = NULL);
@@ -349,10 +390,11 @@ public:
     return cfl_advection * MIN(DIM(dxyz_smallest_quad[0], dxyz_smallest_quad[1], dxyz_smallest_quad[2]))/MAX(max_L2_norm_velocity_minus, max_L2_norm_velocity_plus);
   }
 
-  inline void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p)
+  inline void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p, BoundaryConditionsDIM *wall_bc_temp = NULL)
   {
     bc_velocity = bc_v;
     bc_pressure = bc_p;
+    wall_bc_temperature = wall_bc_temp;
   }
 
   // use this in real life
@@ -393,8 +435,10 @@ public:
 
   inline void set_mass_flux(Vec mass_flux_)
   {
+    PetscErrorCode ierr = delete_and_nullify_vector(owned_mass_flux); CHKERRXX(ierr); // make sure there is no possibility to use that one
     P4EST_ASSERT(VecIsSetForNodes(mass_flux_, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
     user_defined_mass_flux = mass_flux_;
+    mass_flux = user_defined_mass_flux;
   }
 
   inline void set_interface_force(Vec interface_force_)
@@ -406,6 +450,46 @@ public:
   {
     rho_minus = rho_m_;
     rho_plus  = rho_p_;
+  }
+
+  inline void set_phase_change_parameters(const double& latent_heat_, const double& sat_temp_)
+  {
+    latent_heat = latent_heat_;
+    saturation_temperature = sat_temp_;
+  }
+
+  inline void set_specific_heats(const double& cp_m_, const double& cp_p_)
+  {
+    specific_heat_capacity_minus = cp_m_;
+    specific_heat_capacity_plus  = cp_p_;
+  }
+
+  inline void set_thermal_conductivities(const double& k_m_, const double& k_p_)
+  {
+    thermal_conductivity_minus = k_m_;
+    thermal_conductivity_plus = k_p_;
+  }
+
+  inline void set_heat_sources(CF_DIM* heat_source_minus_, CF_DIM* heat_source_plus_)
+  {
+    heat_source_minus = heat_source_minus_;
+    heat_source_plus  = heat_source_plus_;
+  }
+  inline void set_heat_source(CF_DIM* heat_source_)
+  {
+    set_heat_sources(heat_source_, heat_source_);
+  }
+
+  // default is quadratic_non_oscillatory_continuous_v2
+  inline void set_temperature_interpolation(const interpolation_method& interp_method_for_temperature)
+  {
+    temperature_interpolation_method = interp_method_for_temperature;
+  }
+
+  // default is quadratic (by analogy with single-phase flow solver, believe it or not)
+  inline void set_velocity_interpolation(const interpolation_method& interp_method_for_velocity)
+  {
+    velocity_interpolation_method = interp_method_for_velocity;
   }
 
   void set_phi_np1(Vec phi_np1_on_interface_capturing_nodes, const interpolation_method& method = linear, Vec phi_np1_on_computational_nodes_ = NULL);
@@ -441,6 +525,10 @@ public:
   inline void set_semi_lagrangian_order_interface(const int& sl_)
   {
     sl_order_interface = sl_;
+  }
+  inline void set_semi_lagrangian_order_temperature(const int& sl_)
+  {
+    sl_order_temperature = sl_;
   }
   inline void set_n_viscous_subiterations(const int& nn) { n_viscous_subiterations = nn; }
 
@@ -502,13 +590,24 @@ public:
   inline double get_rho_plus() const                                        { return rho_plus; }
   inline double get_surface_tension() const                                 { return surface_tension; }
 
-
   void compute_non_viscous_pressure_jump();
   void solve_for_pressure_guess();
   void solve_viscosity();
   void solve_projection();
   void subtract_mu_div_star_from_pressure();
 
+  void solve_for_mass_flux();
+  inline void set_temperatures_nm1(Vec temperature_nm1_minus_, Vec temperature_nm1_plus_)
+  {
+    temperature_nm1_minus = temperature_nm1_minus_;
+    temperature_nm1_plus  = temperature_nm1_plus_;
+  }
+  inline void set_temperatures_n(Vec temperature_n_minus_, Vec temperature_n_plus_)
+  {
+    temperature_n_minus = temperature_n_minus_;
+    temperature_n_plus  = temperature_n_plus_;
+  }
+  void initialize_temperature_fields();
   void solve_time_step(const double& velocity_relative_threshold, const int& max_niter);
 
   void set_cell_jump_solver(const jump_solver_tag& solver_to_use,   const KSPType& KSP_ = "default", const PCType& PC_ = "default");

@@ -4,12 +4,14 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_two_phase_flows.h>
 #include <src/my_p8est_solve_lsqr.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #else
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_trajectory_of_point.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_two_phase_flows.h>
 #include <src/my_p4est_solve_lsqr.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #endif
 
 #ifndef CASL_LOG_EVENTS
@@ -213,9 +215,16 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   cfl_advection = 1.0;
   cfl_visco_capillary = 0.95;
   cfl_capillary = 0.95;
+  specific_heat_capacity_minus = NAN;
+  specific_heat_capacity_plus = NAN;
+  thermal_conductivity_minus = NAN;
+  thermal_conductivity_plus = NAN;
+  latent_heat = NAN;
+  saturation_temperature = NAN;
 
   sl_order = 2;
   sl_order_interface = 2;
+  sl_order_temperature = 2;
   degree_guess_v_star_face_k = 1; // (better safe than sorry...)
   n_viscous_subiterations = INT_MAX;
   static_interface = false;
@@ -238,11 +247,14 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   bc_velocity = NULL;
   bc_pressure = NULL;
+  wall_bc_temperature = NULL;
   for(u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     force_per_unit_mass_minus[dim]  = NULL;
     force_per_unit_mass_plus[dim]   = NULL;
   }
+  heat_source_minus = NULL;
+  heat_source_plus = NULL;
   log_file = stdout; // STANDARD OUTPUT is default;
   nsolve_calls = 0;
 
@@ -253,8 +265,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   phi_np1                                   = NULL;
   non_viscous_pressure_jump                 = NULL;
   jump_normal_velocity                      = NULL;
+  owned_mass_flux                           = NULL;
   user_defined_nonconstant_surface_tension  = NULL;
   user_defined_mass_flux                    = NULL;
+  mass_flux                                 = NULL;
+  temperature_np1_minus                     = NULL;
+  temperature_np1_plus                      = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_np1_xxyyzz                = NULL;
   jump_tangential_stress        = NULL;
@@ -266,41 +282,46 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   phi_np1_on_computational_nodes  = NULL;
   vorticity_magnitude_minus       = NULL;
   vorticity_magnitude_plus        = NULL;
+  temperature_n_minus             = NULL;
+  temperature_n_plus              = NULL;
   // vector fields
-  vnp1_nodes_minus              = NULL;
-  vnp1_nodes_plus               = NULL;
-  vn_nodes_minus                = NULL;
-  vn_nodes_plus                 = NULL;
-  interface_velocity_np1        = NULL;
-  interface_velocity_n          = NULL;
+  vnp1_nodes_minus                = NULL;
+  vnp1_nodes_plus                 = NULL;
+  vn_nodes_minus                  = NULL;
+  vn_nodes_plus                   = NULL;
+  interface_velocity_np1          = NULL;
+  interface_velocity_n            = NULL;
   // tensor/matrix fields
-  vn_nodes_minus_xxyyzz         = NULL;
-  vn_nodes_plus_xxyyzz          = NULL;
-  interface_velocity_np1_xxyyzz = NULL;
-  interface_velocity_n_xxyyzz   = NULL;
+  vn_nodes_minus_xxyyzz           = NULL;
+  vn_nodes_plus_xxyyzz            = NULL;
+  interface_velocity_np1_xxyyzz   = NULL;
+  interface_velocity_n_xxyyzz     = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // scalar fields
-  pressure_minus                = NULL;
-  pressure_plus                 = NULL;
+  pressure_minus                  = NULL;
+  pressure_plus                   = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    vnp1_face_star_minus_k[dir]    = NULL;
-    vnp1_face_star_plus_k[dir]     = NULL;
-    vnp1_face_star_minus_kp1[dir]  = NULL;
-    vnp1_face_star_plus_kp1[dir]   = NULL;
-    vnp1_face_minus[dir]      = NULL;
-    vnp1_face_plus[dir]       = NULL;
-    viscosity_rhs_minus[dir]    = NULL;
-    viscosity_rhs_plus[dir]     = NULL;
+    vnp1_face_star_minus_k[dir]   = NULL;
+    vnp1_face_star_plus_k[dir]    = NULL;
+    vnp1_face_star_minus_kp1[dir] = NULL;
+    vnp1_face_star_plus_kp1[dir]  = NULL;
+    vnp1_face_minus[dir]          = NULL;
+    vnp1_face_plus[dir]           = NULL;
+    viscosity_rhs_minus[dir]      = NULL;
+    viscosity_rhs_plus[dir]       = NULL;
   }
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
   // -------------------------------------------------------------------------
+  // scalar fields
+  temperature_nm1_minus   = NULL;
+  temperature_nm1_plus    = NULL;
   // vector fields
   vnm1_nodes_minus        = NULL;
   vnm1_nodes_plus         = NULL;
@@ -335,7 +356,10 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
     backtraced_vn_faces_minus[dir].clear();   backtraced_vn_faces_plus[dir].clear();
     backtraced_vnm1_faces_minus[dir].clear(); backtraced_vnm1_faces_plus[dir].clear();
   }
+  backtraced_temperature_n_minus.clear();   backtraced_temperature_n_plus.clear();
+  backtraced_temperature_nm1_minus.clear(); backtraced_temperature_nm1_plus.clear();
   semi_lagrangian_backtrace_is_done = false;
+  semi_lagrangian_backtrace_temperature_is_done = false;
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
@@ -349,6 +373,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   set_face_jump_solvers(xGFM); // default is finite-difference xGFM solver for viscosity step
   itfc_velocity_type = MASS_AVERAGED;
   final_time = DBL_MAX;
+  velocity_interpolation_method = quadratic;
+  temperature_interpolation_method = quadratic_non_oscillatory_continuous_v2;
 }
 
 my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& mpi, const char* path_to_saved_state)
@@ -372,6 +398,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
     force_per_unit_mass_minus[dim]  = NULL;
     force_per_unit_mass_plus[dim]   = NULL;
   }
+  heat_source_minus = NULL;
+  heat_source_plus = NULL;
   log_file = stdout; // STANDARD OUTPUT is default;
   nsolve_calls = 0;
 
@@ -382,8 +410,12 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   phi_np1                                   = NULL;
   non_viscous_pressure_jump                 = NULL;
   jump_normal_velocity                      = NULL;
+  owned_mass_flux                           = NULL;
   user_defined_nonconstant_surface_tension  = NULL;
   user_defined_mass_flux                    = NULL;
+  mass_flux                                 = NULL;
+  temperature_np1_minus                     = NULL;
+  temperature_np1_plus                      = NULL;
   // vector fields and/or other P4EST_DIM-block-structured
   phi_np1_xxyyzz                = NULL;
   jump_tangential_stress        = NULL;
@@ -395,22 +427,24 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   phi_np1_on_computational_nodes  = NULL;
   vorticity_magnitude_minus       = NULL;
   vorticity_magnitude_plus        = NULL;
+  temperature_n_minus             = NULL;
+  temperature_n_plus              = NULL;
   // vector fields
-  vnp1_nodes_minus              = NULL;
-  vnp1_nodes_plus               = NULL;
-  vn_nodes_minus                = NULL;
-  vn_nodes_plus                 = NULL;
-  interface_velocity_np1        = NULL;
+  vnp1_nodes_minus                = NULL;
+  vnp1_nodes_plus                 = NULL;
+  vn_nodes_minus                  = NULL;
+  vn_nodes_plus                   = NULL;
+  interface_velocity_np1          = NULL;
   // tensor/matrix fields
-  vn_nodes_minus_xxyyzz         = NULL;
-  vn_nodes_plus_xxyyzz          = NULL;
-  interface_velocity_np1_xxyyzz = NULL;
+  vn_nodes_minus_xxyyzz           = NULL;
+  vn_nodes_plus_xxyyzz            = NULL;
+  interface_velocity_np1_xxyyzz   = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // scalar fields
-  pressure_minus                = NULL;
-  pressure_plus                 = NULL;
+  pressure_minus                  = NULL;
+  pressure_plus                   = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -428,6 +462,9 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
   // -------------------------------------------------------------------------
+  // scalar fields
+  temperature_nm1_minus   = NULL;
+  temperature_nm1_plus    = NULL;
   // vector fields
   interface_velocity_n    = NULL;
   vnm1_nodes_minus        = NULL;
@@ -445,7 +482,10 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(const mpi_environment_t& 
     backtraced_vn_faces_minus[dir].clear();   backtraced_vn_faces_plus[dir].clear();
     backtraced_vnm1_faces_minus[dir].clear(); backtraced_vnm1_faces_plus[dir].clear();
   }
+  backtraced_temperature_n_minus.clear();   backtraced_temperature_n_plus.clear();
+  backtraced_temperature_nm1_minus.clear(); backtraced_temperature_nm1_plus.clear();
   semi_lagrangian_backtrace_is_done = false;
+  semi_lagrangian_backtrace_temperature_is_done = false;
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
@@ -525,6 +565,26 @@ void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const 
     fields_to_load.push_back(to_add);
   }
 
+  sprintf(absolute_path_to_file, "%s/temperature_n_minus.petscbin", path_to_folder);
+  if(file_exists(absolute_path_to_file))
+  {
+    to_add.name = "temperature_n_minus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_n_minus;
+    fields_to_load.push_back(to_add);
+  }
+
+  sprintf(absolute_path_to_file, "%s/temperature_n_plus.petscbin", path_to_folder);
+  if(file_exists(absolute_path_to_file))
+  {
+    to_add.name = "temperature_n_plus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_n_plus;
+    fields_to_load.push_back(to_add);
+  }
+
   sprintf(absolute_path_to_file, "%s/vnp1_face_star_minus_k.petscbin", path_to_folder);
   if(file_exists(absolute_path_to_file))
   {
@@ -577,6 +637,26 @@ void my_p4est_two_phase_flows_t::load_state(const mpi_environment_t& mpi, const 
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = &vnm1_nodes_plus;
   fields_to_load.push_back(to_add);
+
+  sprintf(absolute_path_to_file, "%s/temperature_nm1_minus.petscbin", path_to_folder);
+  if(file_exists(absolute_path_to_file))
+  {
+    to_add.name = "temperature_nm1_minus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_nm1_minus;
+    fields_to_load.push_back(to_add);
+  }
+
+  sprintf(absolute_path_to_file, "%s/temperature_nm1_plus.petscbin", path_to_folder);
+  if(file_exists(absolute_path_to_file))
+  {
+    to_add.name = "temperature_nm1_plus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_nm1_plus;
+    fields_to_load.push_back(to_add);
+  }
 
   if(!static_interface)
   {
@@ -816,6 +896,19 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
     to_add.pointer_to_vecs = &phi_np1_on_computational_nodes;
     fields_to_save.push_back(to_add);
   }
+  if(temperature_n_minus != NULL && temperature_n_plus != NULL)
+  {
+    to_add.name = "temperature_n_minus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_n_minus;
+    fields_to_save.push_back(to_add);
+    to_add.name = "temperature_n_plus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_n_plus;
+    fields_to_save.push_back(to_add);
+  }
   // add vnp1_face_star_minus_k if possible (since they feed the solver for pressure guess)
   if(ANDD(vnp1_face_star_minus_k[0] != NULL,  vnp1_face_star_minus_k[1] != NULL,  vnp1_face_star_minus_k[2] != NULL) &&
      ANDD(vnp1_face_star_plus_k[0] != NULL,   vnp1_face_star_plus_k[1] != NULL,   vnp1_face_star_plus_k[2] != NULL))
@@ -855,6 +948,19 @@ void my_p4est_two_phase_flows_t::save_state(const char* path_to_root_directory, 
   to_add.nvecs = 1;
   to_add.pointer_to_vecs = &vnm1_nodes_plus;
   fields_to_save.push_back(to_add);
+  if(temperature_nm1_minus != NULL && temperature_nm1_plus != NULL)
+  {
+    to_add.name = "temperature_nm1_minus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_nm1_minus;
+    fields_to_save.push_back(to_add);
+    to_add.name = "temperature_nm1_plus";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = &temperature_nm1_plus;
+    fields_to_save.push_back(to_add);
+  }
   // add interface_velocity_n
   if(!static_interface)
   {
@@ -937,6 +1043,12 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       data[idx++] = cfl_capillary;
       data[idx++] = splitting_criterion->lip;
       data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip);
+      data[idx++] = specific_heat_capacity_minus;
+      data[idx++] = specific_heat_capacity_plus;
+      data[idx++] = thermal_conductivity_minus;
+      data[idx++] = thermal_conductivity_plus;
+      data[idx++] = latent_heat;
+      data[idx++] = saturation_temperature;
       break;
     }
     case LOAD:
@@ -957,6 +1069,12 @@ void my_p4est_two_phase_flows_t::fill_or_load_double_parameters(save_or_load fla
       cfl_capillary = data[idx++];
       splitting_criterion->lip = data[idx++];
       (fine_splitting_criterion != NULL ? fine_splitting_criterion->lip : splitting_criterion->lip) = data[idx++];
+      specific_heat_capacity_minus = data[idx++];
+      specific_heat_capacity_plus = data[idx++];
+      thermal_conductivity_minus = data[idx++];
+      thermal_conductivity_plus = data[idx++];
+      latent_heat = data[idx++];
+      saturation_temperature = data[idx++];
       break;
     }
     default:
@@ -974,21 +1092,24 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
   case SAVE:
   {
     data[idx++] = P4EST_DIM;
-    data[idx++] = (PetscInt) cell_jump_solver_to_use;
-    data[idx++] = (PetscInt) fetch_interface_FD_neighbors_with_second_order_accuracy;
+    data[idx++] = static_cast<PetscInt>(cell_jump_solver_to_use);
+    data[idx++] = static_cast<PetscInt>(fetch_interface_FD_neighbors_with_second_order_accuracy);
     data[idx++] = splitting_criterion->min_lvl;
     data[idx++] = splitting_criterion->max_lvl;
-    data[idx++] = (PetscInt) face_jump_solver_to_use;
-    data[idx++] = (PetscInt) voronoi_on_the_fly;
+    data[idx++] = static_cast<PetscInt>(face_jump_solver_to_use);
+    data[idx++] = static_cast<PetscInt>(voronoi_on_the_fly);
     data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->min_lvl : splitting_criterion->min_lvl);
     data[idx++] = (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl);
-    data[idx++] = (PetscInt) levelset_interpolation_method;
+    data[idx++] = static_cast<PetscInt>(levelset_interpolation_method);
     data[idx++] = sl_order;
     data[idx++] = sl_order_interface;
     data[idx++] = degree_guess_v_star_face_k;
     data[idx++] = n_viscous_subiterations;
-    data[idx++] = (PetscInt) static_interface;
-    data[idx++] = static_cast<int>(itfc_velocity_type);
+    data[idx++] = static_cast<PetscInt>(static_interface);
+    data[idx++] = static_cast<PetscInt>(itfc_velocity_type);
+    data[idx++] = static_cast<PetscInt>(velocity_interpolation_method);
+    data[idx++] = static_cast<PetscInt>(temperature_interpolation_method);
+    data[idx++] = sl_order_temperature;
     break;
   }
   case LOAD:
@@ -996,21 +1117,24 @@ void my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(save_or_load fl
     PetscInt P4EST_DIM_COPY       = data[idx++];
     if(P4EST_DIM_COPY != P4EST_DIM)
       throw std::runtime_error("my_p4est_two_phase_flows_t::fill_or_load_integer_parameters(...): you're trying to load 2D (resp. 3D) data with a 3D (resp. 2D) program...");
-    cell_jump_solver_to_use = (jump_solver_tag) data[idx++];
-    fetch_interface_FD_neighbors_with_second_order_accuracy = (bool) data[idx++];
+    cell_jump_solver_to_use = static_cast<jump_solver_tag> (data[idx++]);
+    fetch_interface_FD_neighbors_with_second_order_accuracy = static_cast<bool> (data[idx++]);
     splitting_criterion->min_lvl  = data[idx++];
     splitting_criterion->max_lvl  = data[idx++];
-    face_jump_solver_to_use = (jump_solver_tag) data[idx++];
-    voronoi_on_the_fly = (bool) data[idx++];
+    face_jump_solver_to_use = static_cast<jump_solver_tag> (data[idx++]);
+    voronoi_on_the_fly = static_cast<bool>(data[idx++]);
     (fine_splitting_criterion != NULL ? fine_splitting_criterion->min_lvl : splitting_criterion->min_lvl) = data[idx++];
     (fine_splitting_criterion != NULL ? fine_splitting_criterion->max_lvl : splitting_criterion->max_lvl) = data[idx++];
-    levelset_interpolation_method = (interpolation_method) data[idx++];
+    levelset_interpolation_method = static_cast<interpolation_method> (data[idx++]);
     sl_order = data[idx++];
     sl_order_interface = data[idx++];
     degree_guess_v_star_face_k = data[idx++];
     n_viscous_subiterations = data[idx++];
-    static_interface = (bool) data[idx++];
+    static_interface = static_cast<bool>(data[idx++]);
     itfc_velocity_type = static_cast<interface_velocity_t>(data[idx++]);
+    velocity_interpolation_method = static_cast<interpolation_method>(data[idx++]);
+    temperature_interpolation_method = static_cast<interpolation_method>(data[idx++]);
+    sl_order_temperature = data[idx++];
     break;
   }
   default:
@@ -1063,7 +1187,16 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       {
         switch (k) {
         case 15:
-          integer_parameters[k] = static_cast<int>(AVERAGED); // default was that, before
+          integer_parameters[k] = static_cast<PetscInt>(AVERAGED); // default was that, before
+          break;
+        case 16:
+          integer_parameters[k] = static_cast<PetscInt>(quadratic); // default was that, before
+          break;
+        case 17:
+          integer_parameters[k] = static_cast<PetscInt>(quadratic_non_oscillatory_continuous_v2); // default was that, before
+          break;
+        case 18:
+          integer_parameters[k] = 2; // sl_order_temperature, irrelevant if not exported before (no thermal coupling)
           break;
         default:
           throw std::runtime_error("my_p4est_two_phase_flows_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
@@ -1088,6 +1221,16 @@ void my_p4est_two_phase_flows_t::save_or_load_parameters(const char* filename, s
       for(int k = count; k < (PetscInt) n_double_parameter_for_restart; k++)
       {
         switch (k) {
+        case 2*P4EST_DIM + 16:
+        case 2*P4EST_DIM + 17:
+        case 2*P4EST_DIM + 18:
+        case 2*P4EST_DIM + 19:
+        case 2*P4EST_DIM + 20:
+        case 2*P4EST_DIM + 21:
+        {
+          double_parameters[k] = NAN; // thermal parameters
+          break;
+        }
         default:
           throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown default parameter to fill in missing data from backup file...");
           break;
@@ -1115,11 +1258,16 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(phi_np1);                            CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_normal_velocity);               CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(owned_mass_flux);                    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_np1_minus);              CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_np1_plus);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(phi_np1_xxyyzz);                     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_tangential_stress);             CHKERRXX(ierr);
   // node-sampled fields on the computational grids n
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);          CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);           CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_n_minus);                CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_n_plus);                 CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_nodes_minus);                   CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_nodes_plus);                    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vn_nodes_minus);                     CHKERRXX(ierr);
@@ -1132,6 +1280,8 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(pressure_minus);                     CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(pressure_plus);                      CHKERRXX(ierr);
   // node-sampled fields on the computational grids nm1
+  ierr = delete_and_nullify_vector(temperature_nm1_minus);              CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_nm1_plus);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_n);               CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);        CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_minus);                   CHKERRXX(ierr);
@@ -1140,10 +1290,10 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   ierr = delete_and_nullify_vector(vnm1_nodes_plus_xxyyzz);             CHKERRXX(ierr);
   // face-sampled fields, computational grid n
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = delete_and_nullify_vector(vnp1_face_star_minus_k[dir]);           CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_star_plus_k[dir]);            CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_star_minus_kp1[dir]);         CHKERRXX(ierr);
-    ierr = delete_and_nullify_vector(vnp1_face_star_plus_kp1[dir]);          CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_star_minus_k[dir]);      CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_star_plus_k[dir]);       CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_star_minus_kp1[dir]);    CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(vnp1_face_star_plus_kp1[dir]);     CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_minus[dir]);             CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(vnp1_face_plus[dir]);              CHKERRXX(ierr);
     ierr = delete_and_nullify_vector(viscosity_rhs_minus[dir]);         CHKERRXX(ierr);
@@ -1294,7 +1444,7 @@ void my_p4est_two_phase_flows_t::set_phi_np1(Vec phi_np1_on_interface_capturing_
     ierr = interface_manager->create_vector_on_interface_capturing_nodes(phi_np1_xxyyzz, P4EST_DIM); CHKERRXX(ierr);
     interface_manager->get_interface_capturing_ngbd_n().second_derivatives_central(phi_np1, phi_np1_xxyyzz);
   }
-  interface_manager->set_levelset(phi_np1, levelset_interpolation_method, phi_np1_xxyyzz, true, true, (user_defined_mass_flux != NULL && mass_densities_are_equal()));
+  interface_manager->set_levelset(phi_np1, levelset_interpolation_method, phi_np1_xxyyzz, true, true, (mass_flux != NULL && mass_densities_are_equal()));
   interface_manager->evaluate_FD_theta_with_quadratics(fetch_interface_FD_neighbors_with_second_order_accuracy);
 
 #ifdef CASL_THROWS
@@ -1500,7 +1650,7 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
 
   const double* phi_p = NULL;
   const double* curvature_p = NULL;
-  const double* user_defined_mass_flux_p = NULL;
+  const double* mass_flux_p = NULL;
   const double* user_defined_interface_force_p = NULL;
   const double* user_defined_nonconstant_surface_tension_p = NULL;
   const double* grad_phi_p = NULL;
@@ -1518,10 +1668,10 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
     ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
   }
 
-  if(user_defined_mass_flux != NULL && !mass_densities_are_equal()){ // 0.0 contribution if mass densities are equal...
-    ierr = VecGetArrayRead(user_defined_mass_flux, &user_defined_mass_flux_p); CHKERRXX(ierr);
+  if(mass_flux != NULL && !mass_densities_are_equal()){ // 0.0 contribution if mass densities are equal...
+    ierr = VecGetArrayRead(mass_flux, &mass_flux_p); CHKERRXX(ierr);
   }
-  if(user_defined_nonconstant_surface_tension_p != NULL || fabs(surface_tension) > EPS || user_defined_mass_flux_p != NULL)
+  if(user_defined_nonconstant_surface_tension_p != NULL || fabs(surface_tension) > EPS || mass_flux_p != NULL)
   {
     if(!interface_manager->is_curvature_set())
       interface_manager->set_curvature(); // Maybe we'd want to flatten it...
@@ -1542,8 +1692,8 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
       if(user_defined_nonconstant_surface_tension_p != NULL && fabs(phi_p[node_idx]) < 2.0*smallest_diagonal)
         max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, user_defined_nonconstant_surface_tension_p[node_idx]);
     }
-    if(user_defined_mass_flux_p != NULL)
-      non_viscous_pressure_jump_p[node_idx] -= SQR(user_defined_mass_flux_p[node_idx])*jump_inverse_mass_density();
+    if(mass_flux_p != NULL)
+      non_viscous_pressure_jump_p[node_idx] -= SQR(mass_flux_p[node_idx])*jump_inverse_mass_density();
     if(user_defined_interface_force_p != NULL)
     {
       const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
@@ -1567,8 +1717,8 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
       if(user_defined_nonconstant_surface_tension_p != NULL && fabs(phi_p[node_idx]) < 2.0*smallest_diagonal)
         max_surface_tension_in_band_of_two_cells = MAX(max_surface_tension_in_band_of_two_cells, user_defined_nonconstant_surface_tension_p[node_idx]);
     }
-    if(user_defined_mass_flux_p != NULL)
-      non_viscous_pressure_jump_p[node_idx] -= SQR(user_defined_mass_flux_p[node_idx])*jump_inverse_mass_density();
+    if(mass_flux_p != NULL)
+      non_viscous_pressure_jump_p[node_idx] -= SQR(mass_flux_p[node_idx])*jump_inverse_mass_density();
     if(user_defined_interface_force_p != NULL)
     {
       const double mag_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1], grad_phi_p[P4EST_DIM*node_idx + 2]);
@@ -1593,8 +1743,8 @@ void my_p4est_two_phase_flows_t::compute_non_viscous_pressure_jump()
   if(curvature_p != NULL){
     ierr = VecRestoreArrayRead(interface_manager->get_curvature(), &curvature_p); CHKERRXX(ierr);
   }
-  if(user_defined_mass_flux_p != NULL){
-    ierr = VecRestoreArrayRead(user_defined_mass_flux, &user_defined_mass_flux_p); CHKERRXX(ierr);
+  if(mass_flux_p != NULL){
+    ierr = VecRestoreArrayRead(mass_flux, &mass_flux_p); CHKERRXX(ierr);
   }
   if(grad_phi_p != NULL){
     ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
@@ -1922,8 +2072,8 @@ void my_p4est_two_phase_flows_t::set_face_jump_solvers(const jump_solver_tag& so
 //  /* construct the right hand side */
 //  compute_backtraced_velocities();
 //  my_p4est_interpolation_nodes_t interp_n_minus(ngbd_n), interp_n_plus(ngbd_n);
-//  interp_n_minus.set_input(vn_nodes_minus, vn_nodes_minus_xxyyzz, quadratic, P4EST_DIM);
-//  interp_n_plus.set_input(vn_nodes_plus, vn_nodes_plus_xxyyzz, quadratic, P4EST_DIM);
+//  interp_n_minus.set_input(vn_nodes_minus, vn_nodes_minus_xxyyzz, velocity_interpolation_method, P4EST_DIM);
+//  interp_n_plus.set_input(vn_nodes_plus, vn_nodes_plus_xxyyzz, velocity_interpolation_method, P4EST_DIM);
 //  const double alpha = BDF_alpha();
 //  const double beta = BDF_beta();
 //  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
@@ -2238,7 +2388,7 @@ void my_p4est_two_phase_flows_t::set_face_jump_solvers(const jump_solver_tag& so
 void my_p4est_two_phase_flows_t::build_jump_in_normal_velocity()
 {
   PetscErrorCode ierr;
-  if(user_defined_mass_flux == NULL || mass_densities_are_equal()) // no jump in normal velocity if no mass flux or if equal mass densities
+  if(mass_flux == NULL || mass_densities_are_equal()) // no jump in normal velocity if no mass flux or if equal mass densities
   {
     ierr = delete_and_nullify_vector(jump_normal_velocity); CHKERRXX(ierr);
     return;
@@ -2251,9 +2401,9 @@ void my_p4est_two_phase_flows_t::build_jump_in_normal_velocity()
   }
 
   ierr = interface_manager->create_vector_on_interface_capturing_nodes(jump_normal_velocity); CHKERRXX(ierr);
-  P4EST_ASSERT(VecIsSetForNodes(user_defined_mass_flux, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
+  P4EST_ASSERT(VecIsSetForNodes(mass_flux, interface_manager->get_interface_capturing_ngbd_n().get_nodes(), p4est_n->mpicomm, 1));
   const double jump_inverse_rho = jump_inverse_mass_density();
-  ierr = VecAXPBYGhost(jump_normal_velocity, jump_inverse_rho, 0.0, user_defined_mass_flux);
+  ierr = VecAXPBYGhost(jump_normal_velocity, jump_inverse_rho, 0.0, mass_flux);
   return;
 }
 
@@ -3163,9 +3313,9 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
   double *outputs[2]          = {vnp1_minus.data(),     vnp1_plus.data()};
 
   if (use_second_derivatives_n)
-    interp_np1.set_input(input_fields, input_fields_xxyyzz, quadratic, 2, P4EST_DIM);
+    interp_np1.set_input(input_fields, input_fields_xxyyzz, velocity_interpolation_method, 2, P4EST_DIM);
   else
-    interp_np1.set_input(input_fields, quadratic, 2, P4EST_DIM);
+    interp_np1.set_input(input_fields, velocity_interpolation_method, 2, P4EST_DIM);
   interp_np1.interpolate(outputs);
 
   /* find xyz_star */
@@ -3197,23 +3347,23 @@ void my_p4est_two_phase_flows_t::compute_backtraced_velocities()
   std::vector<double> vnm1_star_plus(P4EST_DIM*total_number_of_faces);
   if(use_second_derivatives_n)
   {
-    interp_n_minus.set_input  (vn_nodes_minus,    vn_nodes_minus_xxyyzz,    quadratic, P4EST_DIM);
-    interp_n_plus.set_input   (vn_nodes_plus,     vn_nodes_plus_xxyyzz,     quadratic, P4EST_DIM);
+    interp_n_minus.set_input  (vn_nodes_minus,    vn_nodes_minus_xxyyzz,    velocity_interpolation_method, P4EST_DIM);
+    interp_n_plus.set_input   (vn_nodes_plus,     vn_nodes_plus_xxyyzz,     velocity_interpolation_method, P4EST_DIM);
   }
   else
   {
-    interp_n_minus.set_input  (vn_nodes_minus,    quadratic, P4EST_DIM);
-    interp_n_plus.set_input   (vn_nodes_plus,     quadratic, P4EST_DIM);
+    interp_n_minus.set_input  (vn_nodes_minus,    velocity_interpolation_method, P4EST_DIM);
+    interp_n_plus.set_input   (vn_nodes_plus,     velocity_interpolation_method, P4EST_DIM);
   }
   if(use_second_derivatives_nm1)
   {
-    interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  quadratic, P4EST_DIM);
-    interp_nm1_plus.set_input (vnm1_nodes_plus,   vnm1_nodes_plus_xxyyzz,   quadratic, P4EST_DIM);
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  velocity_interpolation_method, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   vnm1_nodes_plus_xxyyzz,   velocity_interpolation_method, P4EST_DIM);
   }
   else
   {
-    interp_nm1_minus.set_input(vnm1_nodes_minus,  quadratic, P4EST_DIM);
-    interp_nm1_plus.set_input (vnm1_nodes_plus,   quadratic, P4EST_DIM);
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  velocity_interpolation_method, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   velocity_interpolation_method, P4EST_DIM);
   }
   interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
   interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
@@ -3405,10 +3555,10 @@ void my_p4est_two_phase_flows_t::set_interface_velocity_np1()
 
   double *interface_velocity_np1_p  = NULL;
   my_p4est_interpolation_nodes_t *interp_mass_flux = NULL; // it's important to use the user-defined mass-flux in this case since we may have mass_flux != 0 although jump_normal_velocity == 0 (if rho_m = rho_p)
-  if(user_defined_mass_flux != NULL)
+  if(mass_flux != NULL)
   {
     interp_mass_flux = new my_p4est_interpolation_nodes_t(&interface_manager->get_interface_capturing_ngbd_n());
-    interp_mass_flux->set_input(user_defined_mass_flux, linear);
+    interp_mass_flux->set_input(mass_flux, linear);
   }
   const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
   ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p);  CHKERRXX(ierr);
@@ -3536,13 +3686,13 @@ void my_p4est_two_phase_flows_t::advect_interface(const p4est_t *p4est_np1, cons
   P4EST_ASSERT(dt_np1 > 0.0);
 
   my_p4est_interpolation_nodes_t interp_np1(ngbd_n);
-  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
+  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, velocity_interpolation_method, P4EST_DIM);
   const bool second_order = (sl_order_interface == 2 && interface_velocity_n != NULL);
   my_p4est_interpolation_nodes_t* interp_n = NULL;
   if(second_order){
     interp_n = new my_p4est_interpolation_nodes_t(ngbd_nm1);
     P4EST_ASSERT(VecIsSetForNodes(interface_velocity_n, ngbd_nm1->get_nodes(), ngbd_nm1->get_p4est()->mpicomm, P4EST_DIM));
-    interp_n->set_input(interface_velocity_n, interface_velocity_n_xxyyzz, quadratic, P4EST_DIM);
+    interp_n->set_input(interface_velocity_n, interface_velocity_n_xxyyzz, velocity_interpolation_method, P4EST_DIM);
   }
   P4EST_ASSERT(!second_order || interp_n != NULL);
 
@@ -3676,7 +3826,7 @@ void my_p4est_two_phase_flows_t::get_average_velocity_in_domain(const char& sgn,
     throw std::invalid_argument("my_p4est_two_phase_flows_t::get_average_velocity_in_domain() : the first argument must be +1 or -1 (positive or negative domain)");
 
   my_p4est_interpolation_nodes_t interp_vnp1(ngbd_n);
-  interp_vnp1.set_input((sgn < 0 ? vnp1_nodes_minus : vnp1_nodes_plus), quadratic, P4EST_DIM);
+  interp_vnp1.set_input((sgn < 0 ? vnp1_nodes_minus : vnp1_nodes_plus), velocity_interpolation_method, P4EST_DIM);
   PetscErrorCode ierr;
   const double *vnp1_of_interest_p;
   ierr = VecGetArrayRead((sgn < 0 ? vnp1_nodes_minus : vnp1_nodes_plus), &vnp1_of_interest_p); CHKERRXX(ierr);
@@ -3947,6 +4097,34 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
     ierr = delete_and_nullify_vector(phi_np2_on_origin_computational_nodes); CHKERRXX(ierr);
   }
 
+  if(temperature_np1_minus != NULL && temperature_np1_plus != NULL)
+  {
+    // transfer those two fields from the current interface-capturing nodes to the new computational nodes
+    Vec temperature_np1_minus_on_new_computational_nodes = NULL;
+    Vec temperature_np1_plus_on_new_computational_nodes = NULL;
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &temperature_np1_minus_on_new_computational_nodes); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &temperature_np1_plus_on_new_computational_nodes); CHKERRXX(ierr);
+    my_p4est_interpolation_nodes_t interp_temp(&interface_manager->get_interface_capturing_ngbd_n());
+    Vec input[2]  = {temperature_np1_minus, temperature_np1_plus};
+    Vec output[2] = {temperature_np1_minus_on_new_computational_nodes, temperature_np1_plus_on_new_computational_nodes};
+    interp_temp.set_input(input, temperature_interpolation_method, 2);
+    for(p4est_locidx_t node_idx = 0; node_idx < nodes_np1->num_owned_indeps; node_idx++)
+    {
+      double xyz_node[P4EST_DIM];
+      node_xyz_fr_n(node_idx, p4est_np1, nodes_np1, xyz_node);
+      interp_temp.add_point(node_idx, xyz_node);
+    }
+    interp_temp.interpolate(output); interp_temp.clear();
+    ierr = VecGhostUpdateBegin(temperature_np1_minus_on_new_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(temperature_np1_plus_on_new_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(temperature_np1_minus_on_new_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(temperature_np1_plus_on_new_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(temperature_np1_minus); CHKERRXX(ierr);
+    ierr = delete_and_nullify_vector(temperature_np1_plus); CHKERRXX(ierr);
+    temperature_np1_minus = temperature_np1_minus_on_new_computational_nodes;
+    temperature_np1_plus  = temperature_np1_plus_on_new_computational_nodes;
+  }
+
   // we are done with the computational grid np1
   p4est_t *fine_p4est_np1 = NULL;
   p4est_ghost_t *fine_ghost_np1 = NULL;
@@ -4109,7 +4287,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
     }
     Vec inputs[2]   = {vnp1_nodes_minus,              vnp1_nodes_plus};
     Vec outputs[2]  = {vnp1_nodes_minus_on_new_grid,  vnp1_nodes_plus_on_new_grid};
-    interp_nodes.set_input(inputs, quadratic, 2, P4EST_DIM);
+    interp_nodes.set_input(inputs, velocity_interpolation_method, 2, P4EST_DIM);
     interp_nodes.interpolate(outputs); interp_nodes.clear();
     // clear those
     ierr = delete_and_nullify_vector(vnp1_nodes_minus); CHKERRXX(ierr);
@@ -4178,26 +4356,26 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
       double *outputs_nm1[2]  = {interp_vnm1_face_minus.data(), interp_vnm1_face_plus.data()};
 
       if(use_second_derivatives_np1)
-        interp_nodes_np1.set_input(inputs_np1, inputs_xxyyzz_np1, quadratic, 2, P4EST_DIM);
+        interp_nodes_np1.set_input(inputs_np1, inputs_xxyyzz_np1, velocity_interpolation_method, 2, P4EST_DIM);
       else
-        interp_nodes_np1.set_input(inputs_np1, quadratic, 2, P4EST_DIM);
+        interp_nodes_np1.set_input(inputs_np1, velocity_interpolation_method, 2, P4EST_DIM);
       interp_nodes_np1.interpolate(outputs_np1, dir);   interp_nodes_np1.clear();
 
       if(degree_guess_v_star_face_k >= 1)
       {
         if(use_second_derivatives_n)
-          interp_nodes_n.set_input(inputs_n, inputs_xxyyzz_n, quadratic, 2, P4EST_DIM);
+          interp_nodes_n.set_input(inputs_n, inputs_xxyyzz_n, velocity_interpolation_method, 2, P4EST_DIM);
         else
-          interp_nodes_n.set_input(inputs_n, quadratic, 2, P4EST_DIM);
+          interp_nodes_n.set_input(inputs_n, velocity_interpolation_method, 2, P4EST_DIM);
         interp_nodes_n.interpolate(outputs_n, dir);       interp_nodes_n.clear();
       }
 
       if(degree_guess_v_star_face_k >= 2)
       {
         if(use_second_derivatives_nm1)
-          interp_nodes_nm1->set_input(inputs_nm1, inputs_xxyyzz_nm1, quadratic, 2, P4EST_DIM);
+          interp_nodes_nm1->set_input(inputs_nm1, inputs_xxyyzz_nm1, velocity_interpolation_method, 2, P4EST_DIM);
         else
-          interp_nodes_nm1->set_input(inputs_nm1, quadratic, 2, P4EST_DIM);
+          interp_nodes_nm1->set_input(inputs_nm1, velocity_interpolation_method, 2, P4EST_DIM);
         interp_nodes_nm1->interpolate(outputs_nm1, dir); interp_nodes_nm1->clear();
       }
 
@@ -4245,6 +4423,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
 
   /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data... */
   // discard nm1 data
+  ierr = delete_and_nullify_vector(temperature_nm1_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_nm1_plus);  CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_minus); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_plus);  CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnm1_nodes_minus_xxyyzz);  CHKERRXX(ierr);
@@ -4263,6 +4443,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   if(ngbd_nm1 != ngbd_n)
     delete ngbd_nm1;
   // slide n -> nm1 fields and grid data
+  temperature_nm1_minus       = temperature_n_minus;
+  temperature_nm1_plus        = temperature_n_plus;
   vnm1_nodes_minus            = vn_nodes_minus;
   vnm1_nodes_plus             = vn_nodes_plus;
   vnm1_nodes_minus_xxyyzz     = vn_nodes_minus_xxyyzz;
@@ -4275,6 +4457,8 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   hierarchy_nm1 = hierarchy_n;
   ngbd_nm1      = ngbd_n;
   // slide np1 -> n fields and grid data
+  temperature_n_minus   = temperature_np1_minus;
+  temperature_n_plus    = temperature_np1_plus;
   vn_nodes_minus        = vnp1_nodes_minus;
   vn_nodes_plus         = vnp1_nodes_plus;
   vn_nodes_minus_xxyyzz = vnp1_nodes_minus_xxyyzz;
@@ -4315,8 +4499,12 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
   user_defined_nonconstant_surface_tension  = NULL; // we don't take a chance, the grid has probably changed, we reset this one
   user_defined_mass_flux                    = NULL; // we don't take a chance, the grid has probably changed, we reset this one
   user_defined_interface_force              = NULL; // we don't take a chance, the grid has probably changed, we reset this one
+  mass_flux                                 = NULL; // reset that!
+  temperature_np1_minus                     = NULL; // will be solved for in next time step if needed
+  temperature_np1_plus                      = NULL; // will be solved for in next time step if needed
   ierr = delete_and_nullify_vector(non_viscous_pressure_jump);    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_normal_velocity);         CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(owned_mass_flux);              CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(jump_tangential_stress);       CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_minus);    CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vorticity_magnitude_plus);     CHKERRXX(ierr);
@@ -4353,6 +4541,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
 
   // clear grid-related buffers, flags and backtrace semi-lagrangian points
   semi_lagrangian_backtrace_is_done = false;
+  semi_lagrangian_backtrace_temperature_is_done = false;
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     backtraced_vn_faces_minus[dir].resize(faces_n->num_local[dir]);
     backtraced_vn_faces_plus[dir].resize(faces_n->num_local[dir]);
@@ -4415,7 +4604,7 @@ void my_p4est_two_phase_flows_t::build_initial_computational_grids(const mpi_env
   if(faces != NULL)
     delete faces;
   if(phi_np1_computational_nodes != NULL){
-    ierr = VecDestroy(phi_np1_computational_nodes); CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(phi_np1_computational_nodes); CHKERRXX(ierr); }
 
   // build computational grid data at time (n - 1) and n
   p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
@@ -4537,7 +4726,7 @@ void my_p4est_two_phase_flows_t::build_initial_interface_capturing_grid(p4est_t*
   if(subrefined_ngbd_n != NULL)
     delete subrefined_ngbd_n;
   if(subrefined_phi != NULL) {
-    ierr = VecDestroy(subrefined_phi); CHKERRXX(ierr); }
+    ierr = delete_and_nullify_vector(subrefined_phi); CHKERRXX(ierr); }
 
   subrefined_p4est = p4est_copy(p4est_n, P4EST_FALSE); // we need matching local domain partitions!
   subrefined_p4est->user_pointer = (void*) subrefined_data_with_phi_np1;
@@ -4554,3 +4743,513 @@ void my_p4est_two_phase_flows_t::build_initial_interface_capturing_grid(p4est_t*
   sample_cf_on_nodes(subrefined_p4est, subrefined_nodes, *subrefined_data_with_phi_np1->phi, subrefined_phi);
   return;
 }
+
+
+void my_p4est_two_phase_flows_t::compute_backtraced_temperatures()
+{
+  if(semi_lagrangian_backtrace_temperature_is_done)
+    return;
+
+  P4EST_ASSERT((vnm1_nodes_minus_xxyyzz == NULL && vnm1_nodes_plus_xxyyzz == NULL && vn_nodes_minus_xxyyzz == NULL && vn_nodes_plus_xxyyzz == NULL) ||
+               (vnm1_nodes_minus_xxyyzz != NULL && vnm1_nodes_plus_xxyyzz != NULL && vn_nodes_minus_xxyyzz != NULL && vn_nodes_plus_xxyyzz != NULL));
+
+  /* first find the velocity n at the np1 points */
+  my_p4est_interpolation_nodes_t interp_np1(ngbd_n);
+  const bool use_second_derivatives_n   = (vn_nodes_minus_xxyyzz    != NULL && vn_nodes_plus_xxyyzz   != NULL);
+  const bool use_second_derivatives_nm1 = (vnm1_nodes_minus_xxyyzz  != NULL && vnm1_nodes_plus_xxyyzz != NULL);
+
+  const p4est_locidx_t nnodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes()->num_owned_indeps;
+  vector<double> xyz_np1(P4EST_DIM*nnodes);    // coordinates of the origin point, i.e. nodes --> same for minus and plus...
+  vector<double> vnp1_minus(P4EST_DIM*nnodes);
+  vector<double> vnp1_plus(P4EST_DIM*nnodes);
+
+  const p4est_nodes_t* interface_capturing_nodes = interface_manager->get_interface_capturing_ngbd_n().get_nodes();
+  const p4est_t* interface_capturing_p4est = interface_manager->get_interface_capturing_ngbd_n().get_p4est();
+  for(p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; node_idx++)
+  {
+    double xyz_node[P4EST_DIM];
+    node_xyz_fr_n(node_idx, interface_capturing_p4est, interface_capturing_nodes, xyz_node);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      xyz_np1[P4EST_DIM*node_idx + dim] = xyz_node[dim];
+
+    interp_np1.add_point(node_idx, xyz_node);
+  }
+
+  Vec input_fields[2]         = {vn_nodes_minus,        vn_nodes_plus};
+  Vec input_fields_xxyyzz[2]  = {vn_nodes_minus_xxyyzz, vn_nodes_plus_xxyyzz};
+  double *outputs[2]          = {vnp1_minus.data(),     vnp1_plus.data()};
+
+  if (use_second_derivatives_n)
+    interp_np1.set_input(input_fields, input_fields_xxyyzz, velocity_interpolation_method, 2, P4EST_DIM);
+  else
+    interp_np1.set_input(input_fields, velocity_interpolation_method, 2, P4EST_DIM);
+  interp_np1.interpolate(outputs);
+
+  /* find xyz_star */
+  my_p4est_interpolation_nodes_t interp_nm1_minus(ngbd_nm1), interp_nm1_plus(ngbd_nm1);
+  my_p4est_interpolation_nodes_t interp_n_minus  (ngbd_n  ), interp_n_plus  (ngbd_n  );
+  for (p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; node_idx++) {
+    double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      xyz_star_minus[dim] = xyz_np1[P4EST_DIM*node_idx + dim] - 0.5*dt_n*vnp1_minus[P4EST_DIM*node_idx + dim];
+      xyz_star_plus[dim]  = xyz_np1[P4EST_DIM*node_idx + dim] - 0.5*dt_n*vnp1_plus[P4EST_DIM*node_idx + dim];
+    }
+    clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
+    clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
+
+    interp_nm1_minus.add_point(node_idx, xyz_star_minus);
+    interp_nm1_plus.add_point(node_idx, xyz_star_plus);
+
+    interp_n_minus.add_point(node_idx, xyz_star_minus);
+    interp_n_plus.add_point(node_idx, xyz_star_plus);
+  }
+
+  /* compute the velocities at the intermediate point */
+  std::vector<double> vn_star_minus(P4EST_DIM*nnodes);
+  std::vector<double> vn_star_plus(P4EST_DIM*nnodes);
+  std::vector<double> vnm1_star_minus(P4EST_DIM*nnodes);
+  std::vector<double> vnm1_star_plus(P4EST_DIM*nnodes);
+  if(use_second_derivatives_n)
+  {
+    interp_n_minus.set_input  (vn_nodes_minus,    vn_nodes_minus_xxyyzz,    velocity_interpolation_method, P4EST_DIM);
+    interp_n_plus.set_input   (vn_nodes_plus,     vn_nodes_plus_xxyyzz,     velocity_interpolation_method, P4EST_DIM);
+  }
+  else
+  {
+    interp_n_minus.set_input  (vn_nodes_minus,    velocity_interpolation_method, P4EST_DIM);
+    interp_n_plus.set_input   (vn_nodes_plus,     velocity_interpolation_method, P4EST_DIM);
+  }
+  if(use_second_derivatives_nm1)
+  {
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  vnm1_nodes_minus_xxyyzz,  velocity_interpolation_method, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   vnm1_nodes_plus_xxyyzz,   velocity_interpolation_method, P4EST_DIM);
+  }
+  else
+  {
+    interp_nm1_minus.set_input(vnm1_nodes_minus,  velocity_interpolation_method, P4EST_DIM);
+    interp_nm1_plus.set_input (vnm1_nodes_plus,   velocity_interpolation_method, P4EST_DIM);
+  }
+  interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
+  interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
+  interp_n_minus.interpolate(vn_star_minus.data());     interp_n_minus.clear();
+  interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
+
+  /* now find the departure point at time n and interpolate the appropriate temperature field there */
+  backtraced_temperature_n_minus.resize(nnodes);
+  backtraced_temperature_n_plus.resize(nnodes);
+  my_p4est_interpolation_nodes_t interp_temperature_n_minus(ngbd_n), interp_temperature_n_plus(ngbd_n);
+  interp_temperature_n_minus.set_input(temperature_n_minus, temperature_interpolation_method);
+  interp_temperature_n_plus.set_input(temperature_n_plus, temperature_interpolation_method);
+  for (p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; node_idx++) {
+    double xyz_backtraced_n_minus[P4EST_DIM], xyz_backtraced_n_plus[P4EST_DIM];
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      xyz_backtraced_n_minus[dim] = xyz_np1[P4EST_DIM*node_idx + dim]
+          - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_minus[P4EST_DIM*node_idx + dim] - .5*(dt_n/dt_nm1)*vnm1_star_minus[P4EST_DIM*node_idx + dim]);
+      xyz_backtraced_n_plus[dim] = xyz_np1[P4EST_DIM*node_idx + dim]
+          - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star_plus[P4EST_DIM*node_idx + dim] - .5*(dt_n/dt_nm1)*vnm1_star_plus[P4EST_DIM*node_idx + dim]);
+    }
+    clip_in_domain(xyz_backtraced_n_minus, xyz_min, xyz_max, periodicity);
+    clip_in_domain(xyz_backtraced_n_plus, xyz_min, xyz_max, periodicity);
+    interp_temperature_n_minus.add_point(node_idx, xyz_backtraced_n_minus);
+    interp_temperature_n_plus.add_point(node_idx, xyz_backtraced_n_plus);
+  }
+  interp_temperature_n_minus.interpolate(backtraced_temperature_n_minus.data()); interp_temperature_n_minus.clear();
+  interp_temperature_n_plus.interpolate(backtraced_temperature_n_plus.data());  interp_temperature_n_plus.clear();
+
+  // EXTRA STUFF FOR FINDING xyz_nm1 ONLY (for second-order bdf temperature advection terms)
+  if(sl_order_temperature == 2)
+  {
+    /* proceed similarly for the departure point at time nm1 */
+    for (p4est_locidx_t node_idx = 0; node_idx < interface_capturing_nodes->num_owned_indeps; ++node_idx) {
+      double xyz_star_minus[P4EST_DIM], xyz_star_plus[P4EST_DIM];
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      {
+        xyz_star_minus[dim]  = xyz_np1[P4EST_DIM*node_idx + dim] - 0.5*(dt_n + dt_nm1)*vnp1_minus[P4EST_DIM*node_idx + dim];
+        xyz_star_plus[dim]   = xyz_np1[P4EST_DIM*node_idx + dim] - 0.5*(dt_n + dt_nm1)*vnp1_plus[P4EST_DIM*node_idx + dim];
+      }
+      clip_in_domain(xyz_star_minus, xyz_min, xyz_max, periodicity);
+      clip_in_domain(xyz_star_plus, xyz_min, xyz_max, periodicity);
+
+      interp_nm1_minus.add_point(node_idx, xyz_star_minus);
+      interp_nm1_plus.add_point(node_idx, xyz_star_plus);
+      interp_n_minus.add_point(node_idx, xyz_star_minus);
+      interp_n_plus.add_point(node_idx, xyz_star_plus);
+    }
+
+    /* compute the velocities at the intermediate point */
+    interp_nm1_minus.interpolate(vnm1_star_minus.data()); interp_nm1_minus.clear();
+    interp_nm1_plus.interpolate(vnm1_star_plus.data());   interp_nm1_plus.clear();
+    interp_n_minus.interpolate(vn_star_minus.data());     interp_n_minus.clear();
+    interp_n_plus.interpolate(vn_star_plus.data());       interp_n_plus.clear();
+
+    /* now find the departure point at time nm1 and interpolate the appropriate velocity component there */
+    backtraced_temperature_nm1_minus.resize(nnodes);
+    backtraced_temperature_nm1_plus.resize(nnodes);
+    my_p4est_interpolation_nodes_t interp_temperature_nm1_minus(ngbd_nm1), interp_temperature_nm1_plus(ngbd_nm1);
+    interp_temperature_nm1_minus.set_input(temperature_nm1_minus, temperature_interpolation_method);
+    interp_temperature_nm1_plus.set_input(temperature_nm1_plus, temperature_interpolation_method);
+    for (p4est_locidx_t node_idx = 0; node_idx < nnodes; ++node_idx) {
+      double xyz_backtraced_nm1_minus[P4EST_DIM], xyz_backtraced_nm1_plus[P4EST_DIM];
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      {
+        xyz_backtraced_nm1_minus[dim] = xyz_np1[P4EST_DIM*node_idx + dim]
+            - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_minus[P4EST_DIM*node_idx + dim] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_minus[P4EST_DIM*node_idx + dim]);
+        xyz_backtraced_nm1_plus[dim] = xyz_np1[P4EST_DIM*node_idx + dim]
+            - (dt_n + dt_nm1)*((1.0 + .5*(dt_n - dt_nm1)/dt_nm1)*vn_star_plus[P4EST_DIM*node_idx + dim] - .5*((dt_n - dt_nm1)/dt_nm1)*vnm1_star_plus[P4EST_DIM*node_idx + dim]);
+      }
+      clip_in_domain(xyz_backtraced_nm1_minus, xyz_min, xyz_max, periodicity);
+      clip_in_domain(xyz_backtraced_nm1_plus, xyz_min, xyz_max, periodicity);
+
+      interp_temperature_nm1_minus.add_point(node_idx, xyz_backtraced_nm1_minus);
+      interp_temperature_nm1_plus.add_point(node_idx, xyz_backtraced_nm1_plus);
+    }
+    interp_temperature_nm1_minus.interpolate(backtraced_temperature_nm1_minus.data()); interp_temperature_nm1_minus.clear();
+    interp_temperature_nm1_plus.interpolate(backtraced_temperature_nm1_plus.data());   interp_temperature_nm1_plus.clear();
+  }
+  semi_lagrangian_backtrace_temperature_is_done = true;
+  return;
+}
+
+void my_p4est_two_phase_flows_t::compute_temperature_rhs(Vec temperature_rhs_minus, Vec temperature_rhs_plus)
+{
+  // NOTE: we ignore viscous dissipation for now... (not clear how to do it, in fact)
+
+  PetscErrorCode ierr;
+  double *temperature_rhs_minus_p, *temperature_rhs_plus_p;
+  ierr = VecGetArray(temperature_rhs_minus, &temperature_rhs_minus_p);  CHKERRXX(ierr);
+  ierr = VecGetArray(temperature_rhs_plus, &temperature_rhs_plus_p);    CHKERRXX(ierr);
+
+  for(size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_layer_size(); ++k)
+  {
+    p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_layer_node(k);
+
+    if(sl_order_temperature == 1)
+    {
+      temperature_rhs_minus_p[node_idx] = (rho_minus*specific_heat_capacity_minus/dt_n)*backtraced_temperature_n_minus[node_idx];
+      temperature_rhs_plus_p[node_idx]  = (rho_plus*specific_heat_capacity_plus/dt_n)*backtraced_temperature_n_plus[node_idx];
+    }
+    else
+    {
+      temperature_rhs_minus_p[node_idx] = rho_minus*specific_heat_capacity_minus*(BDF_temperature_alpha()/dt_n - BDF_temperature_beta()/dt_nm1)*backtraced_temperature_n_minus[node_idx]
+          + rho_minus*specific_heat_capacity_minus*(BDF_temperature_beta()/dt_nm1)*backtraced_temperature_nm1_minus[node_idx];
+      temperature_rhs_plus_p[node_idx]  = rho_plus*specific_heat_capacity_plus*(BDF_temperature_alpha()/dt_n - BDF_temperature_beta()/dt_nm1)*backtraced_temperature_n_plus[node_idx]
+          + rho_plus*specific_heat_capacity_plus*(BDF_temperature_beta()/dt_nm1)*backtraced_temperature_nm1_plus[node_idx];
+    }
+
+    if(heat_source_minus != NULL || heat_source_plus != NULL)
+    {
+      double xyz_node[P4EST_DIM];
+      node_xyz_fr_n(node_idx, interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_manager->get_interface_capturing_ngbd_n().get_nodes(), xyz_node);
+      if(heat_source_minus != NULL)
+        temperature_rhs_minus_p[node_idx] += (*heat_source_minus)(xyz_node);
+      if(heat_source_plus != NULL)
+        temperature_rhs_plus_p[node_idx]  += (*heat_source_plus)(xyz_node);
+    }
+  }
+  ierr = VecGhostUpdateBegin(temperature_rhs_minus, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(temperature_rhs_plus, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
+
+  for(size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_local_size(); ++k)
+  {
+    p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_local_node(k);
+
+    if(sl_order_temperature == 1)
+    {
+      temperature_rhs_minus_p[node_idx] = (rho_minus*specific_heat_capacity_minus/dt_n)*backtraced_temperature_n_minus[node_idx];
+      temperature_rhs_plus_p[node_idx]  = (rho_plus*specific_heat_capacity_plus/dt_n)*backtraced_temperature_n_plus[node_idx];
+    }
+    else
+    {
+      temperature_rhs_minus_p[node_idx] = rho_minus*specific_heat_capacity_minus*(BDF_temperature_alpha()/dt_n - BDF_temperature_beta()/dt_nm1)*backtraced_temperature_n_minus[node_idx]
+          + rho_minus*specific_heat_capacity_minus*(BDF_temperature_beta()/dt_nm1)*backtraced_temperature_nm1_minus[node_idx];
+      temperature_rhs_plus_p[node_idx]  = rho_plus*specific_heat_capacity_plus*(BDF_temperature_alpha()/dt_n - BDF_temperature_beta()/dt_nm1)*backtraced_temperature_n_plus[node_idx]
+          + rho_plus*specific_heat_capacity_plus*(BDF_temperature_beta()/dt_nm1)*backtraced_temperature_nm1_plus[node_idx];
+    }
+
+    if(heat_source_minus != NULL || heat_source_plus != NULL)
+    {
+      double xyz_node[P4EST_DIM];
+      node_xyz_fr_n(node_idx, interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_manager->get_interface_capturing_ngbd_n().get_nodes(), xyz_node);
+      temperature_rhs_minus_p[node_idx] += (*heat_source_minus)(xyz_node);
+      temperature_rhs_plus_p[node_idx]  += (*heat_source_plus)(xyz_node);
+    }
+  }
+  ierr = VecRestoreArray(temperature_rhs_minus, &temperature_rhs_minus_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArray(temperature_rhs_plus, &temperature_rhs_plus_p);    CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(temperature_rhs_minus, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(temperature_rhs_plus, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
+
+  return;
+}
+
+void my_p4est_two_phase_flows_t::solve_for_mass_flux()
+{
+  if(!is_thermal_problem_set())
+    throw std::runtime_error("my_p4est_two_phase_flows_t::solve_for_mass_flux(): the thermal problem is not fully determined, I can't proceed");
+
+  if(user_defined_mass_flux != NULL)
+    user_defined_mass_flux = NULL; // reset that one
+
+  compute_backtraced_temperatures();
+  PetscErrorCode ierr;
+  Vec temperature_rhs_minus, temperature_rhs_plus;
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(temperature_rhs_minus); CHKERRXX(ierr);
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(temperature_rhs_plus); CHKERRXX(ierr);
+  compute_temperature_rhs(temperature_rhs_minus, temperature_rhs_plus);
+
+  Vec phi_np1_xxyyzz_array[P4EST_DIM] = {DIM(NULL, NULL, NULL)}; // poisson_nodes_mls needs them separately...
+  if(phi_np1_xxyyzz != NULL)
+  {
+    const double *phi_np1_xxyyzz_p;
+    double *phi_np1_xxyyzz_array_p[P4EST_DIM];
+    ierr = VecGetArrayRead(phi_np1_xxyyzz, &phi_np1_xxyyzz_p); CHKERRXX(ierr);
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    {
+      ierr = interface_manager->create_vector_on_interface_capturing_nodes(phi_np1_xxyyzz_array[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_np1_xxyyzz_array[dim], &phi_np1_xxyyzz_array_p[dim]); CHKERRXX(ierr);
+    }
+
+    for(size_t k = 0; k < interface_manager->get_interface_capturing_ngbd_n().get_nodes()->indep_nodes.elem_count; k++)
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        phi_np1_xxyyzz_array_p[dim][k] = phi_np1_xxyyzz_p[P4EST_DIM*k + dim];
+
+    ierr = VecRestoreArrayRead(phi_np1_xxyyzz, &phi_np1_xxyyzz_p); CHKERRXX(ierr);
+    for(u_char dim = 0; dim < P4EST_DIM; dim++)
+    {
+      ierr = VecRestoreArray(phi_np1_xxyyzz_array[dim], &phi_np1_xxyyzz_array_p[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  // for Dirichlet interface T = T_sat:
+  cf_const_t itfc_temperature(saturation_temperature), dummy(NAN);
+  // solve in negative domain
+  my_p4est_poisson_nodes_mls_t* node_solver = new my_p4est_poisson_nodes_mls_t(&interface_manager->get_interface_capturing_ngbd_n());
+  if(wall_bc_temperature != NULL) // may be unset if full periodic for instance
+    node_solver->set_wc(wall_bc_temperature->getWallType(), wall_bc_temperature->getWallValue());
+  node_solver->add_boundary(MLS_INTERSECTION, phi_np1, phi_np1_xxyyzz_array, DIRICHLET, itfc_temperature, dummy);
+  node_solver->set_diag(rho_minus*specific_heat_capacity_minus*BDF_temperature_alpha()/dt_n);
+  node_solver->set_mu(thermal_conductivity_minus);
+  node_solver->set_rhs(temperature_rhs_minus);
+
+  if(temperature_np1_minus == NULL){
+    ierr = interface_manager->create_vector_on_interface_capturing_nodes(temperature_np1_minus); CHKERRXX(ierr);
+  }
+  node_solver->solve(temperature_np1_minus);
+  // extrapolate T^{-}:
+  my_p4est_level_set_t ls(&interface_manager->get_interface_capturing_ngbd_n());
+  ls.extend_Over_Interface_TVD(phi_np1, temperature_np1_minus);
+
+  // reverse the levelset:
+  ierr = VecScaleGhost(phi_np1, -1.0); CHKERRXX(ierr);
+  if(phi_np1_xxyyzz != NULL)
+    for(u_char dim = 0; dim < P4EST_DIM; dim++){
+      ierr = VecScaleGhost(phi_np1_xxyyzz_array[dim], -1.0); CHKERRXX(ierr);
+    }
+
+  // clear solver and do the same in positive domain:
+  delete node_solver;
+  node_solver = new my_p4est_poisson_nodes_mls_t(&interface_manager->get_interface_capturing_ngbd_n());
+  if(wall_bc_temperature != NULL) // may be unset if full periodic for instance
+    node_solver->set_wc(wall_bc_temperature->getWallType(), wall_bc_temperature->getWallValue());
+  node_solver->add_boundary(MLS_INTERSECTION, phi_np1, phi_np1_xxyyzz_array, DIRICHLET, itfc_temperature, dummy);
+  node_solver->set_diag(rho_plus*specific_heat_capacity_plus*BDF_temperature_alpha()/dt_n);
+  node_solver->set_mu(thermal_conductivity_plus);
+  node_solver->set_rhs(temperature_rhs_plus);
+  if(temperature_np1_plus == NULL){
+    ierr = interface_manager->create_vector_on_interface_capturing_nodes(temperature_np1_plus); CHKERRXX(ierr);
+  }
+  node_solver->solve(temperature_np1_plus);
+  delete node_solver;
+  // extrapolate T^{+}:
+  ls.extend_Over_Interface_TVD(phi_np1, temperature_np1_plus);
+
+  ierr = delete_and_nullify_vector(temperature_rhs_minus); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_rhs_plus); CHKERRXX(ierr);
+  if(phi_np1_xxyyzz != NULL)
+  {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = delete_and_nullify_vector(phi_np1_xxyyzz_array[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  // reset the levelset:
+  ierr = VecScaleGhost(phi_np1, -1.0); CHKERRXX(ierr);
+
+  // compute mass flux:
+  ierr = delete_and_nullify_vector(owned_mass_flux); CHKERRXX(ierr);
+  ierr = interface_manager->create_vector_on_interface_capturing_nodes(owned_mass_flux); CHKERRXX(ierr);
+  double *owned_mass_flux_p;
+  const double *temperature_np1_plus_p, *temperature_np1_minus_p, *grad_phi_p;
+  ierr = VecGetArray(owned_mass_flux, &owned_mass_flux_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(temperature_np1_minus, &temperature_np1_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(temperature_np1_plus, &temperature_np1_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+  double grad_temperature_local_minus[P4EST_DIM], grad_temperature_local_plus[P4EST_DIM];
+  const double *inputs[2] = {temperature_np1_minus_p, temperature_np1_plus_p};
+  double *outputs[2] = {grad_temperature_local_minus, grad_temperature_local_plus};
+  quad_neighbor_nodes_of_node_t qnnn;
+  const my_p4est_node_neighbors_t& itfc_captuting_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
+  for (size_t k = 0; k < itfc_captuting_ngbd_n.get_layer_size(); ++k) {
+    const p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_layer_node(k);
+    const double norm_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1],grad_phi_p[P4EST_DIM*node_idx + 2]);
+    if(norm_grad_phi < EPS)
+    {
+      owned_mass_flux_p[node_idx] = 0.0; // either that or NAN, what can I say...
+      continue;
+    }
+    double normal[P4EST_DIM] = {DIM(grad_phi_p[P4EST_DIM*node_idx + 0]/norm_grad_phi, grad_phi_p[P4EST_DIM*node_idx + 1]/norm_grad_phi, grad_phi_p[P4EST_DIM*node_idx + 2]/norm_grad_phi)};
+    itfc_captuting_ngbd_n.get_neighbors(node_idx, qnnn);
+    qnnn.gradient(inputs, outputs, 2);
+    owned_mass_flux_p[node_idx] = (thermal_conductivity_plus*SUMD(grad_temperature_local_plus[0]*normal[0], grad_temperature_local_plus[1]*normal[1], grad_temperature_local_plus[2]*normal[2])
+        - thermal_conductivity_minus*SUMD(grad_temperature_local_minus[0]*normal[0], grad_temperature_local_minus[1]*normal[1], grad_temperature_local_minus[2]*normal[2]))/latent_heat;
+  }
+  ierr = VecGhostUpdateBegin(owned_mass_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < itfc_captuting_ngbd_n.get_local_size(); ++k) {
+    const p4est_locidx_t node_idx = interface_manager->get_interface_capturing_ngbd_n().get_local_node(k);
+    const double norm_grad_phi = ABSD(grad_phi_p[P4EST_DIM*node_idx + 0], grad_phi_p[P4EST_DIM*node_idx + 1],grad_phi_p[P4EST_DIM*node_idx + 2]);
+    if(norm_grad_phi < EPS)
+    {
+      owned_mass_flux_p[node_idx] = 0.0; // either that or NAN, what can I say...
+      continue;
+    }
+    double normal[P4EST_DIM] = {DIM(grad_phi_p[P4EST_DIM*node_idx + 0]/norm_grad_phi, grad_phi_p[P4EST_DIM*node_idx + 1]/norm_grad_phi, grad_phi_p[P4EST_DIM*node_idx + 2]/norm_grad_phi)};
+    itfc_captuting_ngbd_n.get_neighbors(node_idx, qnnn);
+    qnnn.gradient(inputs, outputs, 2);
+    owned_mass_flux_p[node_idx] = (thermal_conductivity_plus*SUMD(grad_temperature_local_plus[0]*normal[0], grad_temperature_local_plus[1]*normal[1], grad_temperature_local_plus[2]*normal[2])
+        - thermal_conductivity_minus*SUMD(grad_temperature_local_minus[0]*normal[0], grad_temperature_local_minus[1]*normal[1], grad_temperature_local_minus[2]*normal[2]))/latent_heat;
+  }
+  ierr = VecGhostUpdateEnd(owned_mass_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(owned_mass_flux, &owned_mass_flux_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(temperature_np1_minus, &temperature_np1_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(temperature_np1_plus, &temperature_np1_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p); CHKERRXX(ierr);
+
+  Vec flat_owned_mass_flux;
+  interface_manager->create_vector_on_interface_capturing_nodes(flat_owned_mass_flux); CHKERRXX(ierr);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_np1, owned_mass_flux, flat_owned_mass_flux, 20, NULL, 2, 10, NULL, interface_manager->get_grad_phi());
+
+  ierr = delete_and_nullify_vector(owned_mass_flux); CHKERRXX(ierr);
+  owned_mass_flux = flat_owned_mass_flux;
+  mass_flux = owned_mass_flux;
+
+  return;
+}
+
+void my_p4est_two_phase_flows_t::initialize_temperature_fields()
+{
+  if(!is_thermal_problem_set())
+    throw std::runtime_error("my_p4est_two_phase_flows_t::initialize_temperature_fields(): the thermal problem is not fully determined, I can't proceed");
+
+  PetscErrorCode ierr;
+  ierr = delete_and_nullify_vector(temperature_nm1_minus);  CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_nm1_plus);   CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_n_minus);    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_n_minus);    CHKERRXX(ierr);
+
+  if(phi_np1_on_computational_nodes == NULL)
+  {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_np1_on_computational_nodes); CHKERRXX(ierr);
+    my_p4est_interpolation_nodes_t& interp_phi = interface_manager->get_interp_phi(); interp_phi.clear();
+    for(p4est_locidx_t node_idx = 0; node_idx < nodes_n->num_owned_indeps; node_idx++)
+    {
+      double xyz_node[P4EST_DIM];
+      node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz_node);
+      interp_phi.add_point(node_idx, xyz_node);
+    }
+    interp_phi.interpolate(phi_np1_on_computational_nodes); interp_phi.clear();
+    ierr = VecGhostUpdateBegin(phi_np1_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(phi_np1_on_computational_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  Vec rhs;
+  Vec phi_np1_xxyyzz_on_computational_nodes[P4EST_DIM];
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &rhs); CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++){
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_np1_xxyyzz_on_computational_nodes[dim]); CHKERRXX(ierr);
+  }
+  ngbd_n->second_derivatives_central(phi_np1_on_computational_nodes, phi_np1_xxyyzz_on_computational_nodes);
+
+  interface_manager->get_phi_on_computational_nodes();
+
+  // for Dirichlet interface T = T_sat:
+  cf_const_t itfc_temperature(saturation_temperature), dummy(NAN);
+  // solve in negative domain
+  my_p4est_poisson_nodes_mls_t* node_solver = new my_p4est_poisson_nodes_mls_t(ngbd_n);
+  if(wall_bc_temperature != NULL) // may be unset if full periodic for instance
+    node_solver->set_wc(wall_bc_temperature->getWallType(), wall_bc_temperature->getWallValue());
+  node_solver->add_boundary(MLS_INTERSECTION, phi_np1_on_computational_nodes, phi_np1_xxyyzz_on_computational_nodes, DIRICHLET, itfc_temperature, dummy);
+  node_solver->set_diag(0.0);
+  node_solver->set_mu(thermal_conductivity_minus);
+  if(heat_source_minus == NULL){
+    ierr = VecSetGhost(rhs, 0.0); CHKERRXX(ierr); }
+  else
+    sample_cf_on_nodes(p4est_n, nodes_n, *heat_source_minus, rhs);
+  node_solver->set_rhs(rhs);
+
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &temperature_n_minus); CHKERRXX(ierr);
+  node_solver->solve(temperature_n_minus);
+  // extrapolate T^{-}:
+  my_p4est_level_set_t ls(ngbd_n);
+  ls.extend_Over_Interface_TVD(phi_np1_on_computational_nodes, temperature_n_minus);
+
+  // reverse the levelset:
+  ierr = VecScaleGhost(phi_np1_on_computational_nodes, -1.0); CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++){
+    ierr = VecScaleGhost(phi_np1_xxyyzz_on_computational_nodes[dim], -1.0); CHKERRXX(ierr);
+  }
+
+  // solve in positive domain
+  delete node_solver;
+  node_solver = new my_p4est_poisson_nodes_mls_t(ngbd_n);
+  if(wall_bc_temperature != NULL) // may be unset if full periodic for instance
+    node_solver->set_wc(wall_bc_temperature->getWallType(), wall_bc_temperature->getWallValue());
+  node_solver->add_boundary(MLS_INTERSECTION, phi_np1_on_computational_nodes, phi_np1_xxyyzz_on_computational_nodes, DIRICHLET, itfc_temperature, dummy);
+  node_solver->set_diag(0.0);
+  node_solver->set_mu(thermal_conductivity_plus);
+  if(heat_source_plus == NULL){
+    ierr = VecSetGhost(rhs, 0.0); CHKERRXX(ierr); }
+  else
+    sample_cf_on_nodes(p4est_n, nodes_n, *heat_source_plus, rhs);
+  node_solver->set_rhs(rhs);
+
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &temperature_n_plus); CHKERRXX(ierr);
+  node_solver->solve(temperature_n_plus);
+  // extrapolate T^{+}:
+  ls.extend_Over_Interface_TVD(phi_np1_on_computational_nodes, temperature_n_plus);
+
+  // reset the levelset:
+  ierr = VecScaleGhost(phi_np1_on_computational_nodes, -1.0); CHKERRXX(ierr);
+
+  // destroy what you created locally:
+  ierr = delete_and_nullify_vector(rhs); CHKERRXX(ierr);
+  for(u_char dim = 0; dim < P4EST_DIM; dim++){
+    ierr = delete_and_nullify_vector(phi_np1_xxyyzz_on_computational_nodes[dim]); CHKERRXX(ierr);
+  }
+  delete node_solver;
+
+  // "copy" the fields on the nm1 grids:
+  ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &temperature_nm1_minus); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &temperature_nm1_plus); CHKERRXX(ierr);
+  my_p4est_interpolation_nodes_t interp_temp(ngbd_n);
+  Vec input[2] = {temperature_n_minus, temperature_n_plus};
+  interp_temp.set_input(input, temperature_interpolation_method, 2);
+  for(p4est_locidx_t node_idx = 0; node_idx < nodes_nm1->num_owned_indeps; node_idx++)
+  {
+    double xyz_node[P4EST_DIM];
+    node_xyz_fr_n(node_idx, p4est_nm1, nodes_nm1, xyz_node);
+    interp_temp.add_point(node_idx, xyz_node);
+  }
+  Vec outputs[2] = {temperature_nm1_minus, temperature_nm1_plus};
+  interp_temp.interpolate(outputs); interp_temp.clear();
+  ierr = VecGhostUpdateBegin(temperature_nm1_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(temperature_nm1_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(temperature_nm1_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(temperature_nm1_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  return;
+}
+
+
