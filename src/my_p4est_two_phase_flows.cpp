@@ -3127,6 +3127,40 @@ void my_p4est_two_phase_flows_t::build_sharp_vnp1(Vec sharp_vnp1) const
   return;
 }
 
+void my_p4est_two_phase_flows_t::build_sharp_temperature_np1(Vec sharp_temperature_np1) const
+{
+  P4EST_ASSERT(sharp_temperature_np1 != NULL);
+  const double *temperature_np1_minus_p, *temperature_np1_plus_p;
+  const double *phi_np1_p = NULL;
+  double *sharp_temperature_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArrayRead(temperature_np1_minus,  &temperature_np1_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(temperature_np1_plus,   &temperature_np1_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(interface_manager->get_phi(), &phi_np1_p); CHKERRXX(ierr);
+  ierr = VecGetArray(sharp_temperature_np1, &sharp_temperature_p); CHKERRXX(ierr);
+
+  const my_p4est_node_neighbors_t& itfc_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
+  for(size_t k = 0; k < itfc_capturing_ngbd_n.get_layer_size(); k++)
+  {
+    p4est_locidx_t node_idx = itfc_capturing_ngbd_n.get_layer_node(k);
+    sharp_temperature_p[node_idx] = (phi_np1_p[node_idx] <= 0.0 ? temperature_np1_minus_p[node_idx] : temperature_np1_plus_p[node_idx]);
+  }
+  ierr = VecGhostUpdateBegin(sharp_temperature_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  for(size_t k = 0; k < itfc_capturing_ngbd_n.get_local_size(); k++)
+  {
+    p4est_locidx_t node_idx = itfc_capturing_ngbd_n.get_local_node(k);
+    sharp_temperature_p[node_idx] = (phi_np1_p[node_idx] <= 0.0 ? temperature_np1_minus_p[node_idx] : temperature_np1_plus_p[node_idx]);
+  }
+  ierr = VecGhostUpdateEnd(sharp_temperature_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(temperature_np1_minus,  &temperature_np1_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(temperature_np1_plus,   &temperature_np1_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(interface_manager->get_phi(), &phi_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(sharp_temperature_np1, &sharp_temperature_p); CHKERRXX(ierr);
+  return;
+}
+
 void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, const int& index, const bool& exhaustive) const
 {
   PetscErrorCode ierr;
@@ -3137,6 +3171,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
 
   // those are the primary variables of interest, we should always export them:
   Vec sharp_vnp1 = NULL;
+  Vec sharp_temperature_np1 = NULL;
   if(phi_np1_on_computational_nodes != NULL)
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_np1_on_computational_nodes, "phi"));
   if(vnp1_nodes_minus != NULL)
@@ -3148,6 +3183,11 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     ierr = VecCreateGhostNodesBlock(p4est_n, nodes_n, P4EST_DIM, &sharp_vnp1); CHKERRXX(ierr);
     build_sharp_vnp1(sharp_vnp1);
     node_vector_fields.push_back(Vec_for_vtk_export_t(sharp_vnp1, "vnp1_sharp"));
+  }
+  if(temperature_np1_minus != NULL && temperature_np1_plus != NULL)
+  {
+    ierr = interface_manager->create_vector_on_interface_capturing_nodes(sharp_temperature_np1); CHKERRXX(ierr);
+    build_sharp_temperature_np1(sharp_temperature_np1);
   }
 
   if(interface_velocity_np1 != NULL)
@@ -3172,6 +3212,12 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   {
     node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
+    if(temperature_np1_minus != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(temperature_np1_minus, "T_minus"));
+    if(temperature_np1_plus != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(temperature_np1_plus, "T_plus"));
+    if(sharp_temperature_np1)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(sharp_temperature_np1, "T_sharp"));
     if(exhaustive && non_viscous_pressure_jump != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
@@ -3245,6 +3291,12 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
     node_scalar_fields.push_back(Vec_for_vtk_export_t(phi_np1, "phi"));
     node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_curvature(), "curvature"));
     node_vector_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_grad_phi(), "grad_phi"));
+    if(temperature_np1_minus != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(temperature_np1_minus, "T_minus"));
+    if(temperature_np1_plus != NULL)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(temperature_np1_plus, "T_plus"));
+    if(sharp_temperature_np1)
+      node_scalar_fields.push_back(Vec_for_vtk_export_t(sharp_temperature_np1, "T_sharp"));
     if(exhaustive && non_viscous_pressure_jump != NULL)
       node_scalar_fields.push_back(Vec_for_vtk_export_t(non_viscous_pressure_jump, "non_viscous_pressure_jump"));
     if(exhaustive && jump_normal_velocity != NULL)
@@ -3268,6 +3320,7 @@ void my_p4est_two_phase_flows_t::save_vtk(const std::string& vtk_directory, cons
   ierr = delete_and_nullify_vector(vnp1_plus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(sharp_pressure); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(sharp_vnp1); CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(sharp_temperature_np1); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_minus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_plus_on_cells); CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(vnp1_star_on_cells); CHKERRXX(ierr);
