@@ -29,8 +29,8 @@
 
 
 /**
- * Generate the sample row of level-set function values and target h\kappa for a node that has been found next to the
- * sine wave interface.  We assume that this query node is effectively adjacent to \Gamma.
+ * Generate the sample row of level-set function values and target h*kappa for a node that has been found next to the
+ * sine wave interface.  We assume that this query node is effectively adjacent to Gamma.
  * @param [in] nodeIdx Query node adjancent or on the interface.
  * @param [in] NUM_COLUMNS Number of columns in output file.
  * @param [in] H Spacing (smallest quad/oct side-length).
@@ -40,20 +40,22 @@
  * @param [in] neighbors Pointer to neighbors data structure.
  * @param [in] phiReadPtr Pointer to level-set function values, backed by a parallel PETSc ghosted vector.
  * @param [in] sine The level-set function with a sinusoidal interface.
- * @param [in] gen Random number generator.
- * @param [in] normalDistribution A standard normal random distribution generator.
  * @param [out] distances True normal distances from full neighborhood to sine wave using Newton-Raphson's root-finding.
+ * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
+ * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
+ * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
  * @return Vector with sampled phi values and target dimensionless curvature.
  * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
-	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
-	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
-	std::mt19937& gen, std::normal_distribution<double>& normalDistribution, std::vector<double>& distances )
+																 const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
+																 const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
+																 std::vector<double>& distances, double& xOnGamma, double& yOnGamma,
+																 std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
 {
-	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h\kappa.
+	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h*kappa.
 	distances.clear();
-	distances.reserve( NUM_COLUMNS );					// Include h\kappa as well.
+	distances.reserve( NUM_COLUMNS );					// Include h*kappa as well.
 
 	int s;												// Index to fill in the sample vector.
 	double grad[P4EST_DIM];
@@ -61,7 +63,7 @@
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
 	const quad_neighbor_nodes_of_node_t *qnnnPtr;
-	double u, v, valOfDerivative, centerU;
+	double u, centerU;
 	double dx, dy, newDistance;
 	for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 	{
@@ -77,39 +79,52 @@
 		pOnInterfaceX = xyz[0] - grad[0] / gradNorm * sample[s];
 		pOnInterfaceY = xyz[1] - grad[1] / gradNorm * sample[s];
 
+		if( s == 4 )	// Rough estimation of point on interface, where curvature will be interpolated.
+		{
+			xOnGamma = pOnInterfaceX;
+			yOnGamma = pOnInterfaceY;
+		}
+
 		// Transform point on interface to sine-wave canonical coordinates.
 		sine.toCanonicalCoordinates( xyz[0], xyz[1] );
 		sine.toCanonicalCoordinates( pOnInterfaceX, pOnInterfaceY );
-		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on \Gamma.
+		pOnInterfaceY = sine.getA() * sin( sine.getOmega() * pOnInterfaceX );	// Better approximation to y on Gamma.
 
-		// Compute current distance to \Gamma using the improved y.
+		// Compute current distance to Gamma using the improved y.
 		dx = xyz[0] - pOnInterfaceX;
 		dy = xyz[1] - pOnInterfaceY;
 		distances.push_back( sqrt( SQR( dx ) + SQR( dy ) ) );
 
 		// Find parameter u that yields "a" minimum distance between point and sine-wave using Newton-Raphson's method.
-		u = distThetaDerivative( stencil[s], xyz[0], xyz[1], sine, gen, normalDistribution, valOfDerivative, newDistance );
-		v = sine.getA() * sin( sine.getOmega() * u );			// Recalculating point on interface (still in canonical coords).
+		// We should have this information in the memoization map.
+		assert( visitedNodes.find( stencil[s] ) != visitedNodes.end() );
 
-		if( newDistance - distances[s] > EPS )
+		u = visitedNodes[stencil[s]].x;				// First component is the parameter u (in local coordinate system).
+		newDistance = visitedNodes[stencil[s]].y;	// Second component is the signed distance to Gamma.
+
+//		if( s == 4 )
+//		{
+//			double v = sine.getA() * sin( sine.getOmega() * u );	// Recalculating point on interface (still in canonical coords).
+//		}
+
+		double relDiff = (ABS( newDistance ) - distances[s]) / distances[s];
+		if( relDiff > 1e-4  )							// Verify that new point is closer than previous approximation.
 		{
 			std::ostringstream stream;
-			stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
-				   << std::fixed << std::setprecision( 15 ) << ".  New dist: " << newDistance
-				   << ".  Old dist: " << distances[s];
+			stream << "Failure with node " << stencil[s] << " in stencil of " << nodeIdx
+				   << std::scientific << std::setprecision( 15 ) << ".  New dist: " << ABS( newDistance )
+				   << ".  Old dist: " << distances[s]
+				   << ".  Rel diff: " << relDiff;
 			throw std::runtime_error( stream.str() );
 		}
 
-		distances[s] = newDistance;					// Root finding was successful: keep minimum distance.
+		distances[s] = newDistance;						// Root finding was successful: keep minimum distance.
 
-		if( sample[s] < 0 )							// Fix sign.
-			distances[s] *= -1;
-
-		if( s == 4 )								// For center node we need the parameter u to yield curvature.
+		if( s == 4 )									// For center node we need the parameter u to yield curvature.
 			centerU = u;
 	}
 
-	sample[s] = H * sine.curvature( centerU );		// Last column holds h\kappa.
+	sample[s] = H * sine.curvature( centerU );			// Last column holds h*kappa.
 	distances.push_back( sample[s] );
 
 	return sample;
@@ -122,21 +137,21 @@ int main ( int argc, char* argv[] )
 
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
+	const int MAX_REFINEMENT_LEVEL = 6;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 	const double MIN_A = 1.5 * H;				// An almost flat wave.
 	const double MAX_A = 0.25;					// Tallest wave.
-	const double MAX_HKAPPA_LB = 1.0 / 6.0;		// Lower and upper bounds for maximum h\kappa (used for discriminating
-	const double MAX_HKAPPA_UB = 2.0 / 3.0;		// which samples to keep -- see below for details).
+	const double MAX_HKAPPA_LB = H * (21. + 1 / 3.);	// Lower and upper bounds for maximum h*kappa (used for
+	const double MAX_HKAPPA_UB = H * (85. + 1 / 3.);	// discriminating samples --see below for details).
 
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 1;	// Number of columns in resulting dataset.
+	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::random_device rd;  					// Will be used to obtain a seed for the random number engine.
-	std::mt19937 gen; 					// Standard mersenne_twister_engine seeded with rd().
+	std::mt19937 gen{}; 						// NOLINT Standard mersenne_twister_engine seeded with rd().
 	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
-	std::normal_distribution<double> normalDistribution;
+	std::uniform_real_distribution<double> uniformDistribution;
 
 	try
 	{
@@ -175,9 +190,10 @@ int main ( int argc, char* argv[] )
 		// Definining the level-set function to be reinitialized.
 		const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;		// Adding some padding of 2H.
 		const double A = MAX_A;
-		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );
-		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );
-		ArcLengthParameterizedSine sine( A, MAX_OMEGA, T[0], T[1], 0, HALF_AXIS_LEN, gen, normalDistribution );
+		const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / (H * A) );	// Range of frequencies to ensure that the max
+		const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / (H * A) );	// kappa is in the range of [21+1/3, 85+1/3].
+		const double OMEGA_PEAK_DIST = M_PI_2 * (1 / MIN_OMEGA - 1 / MAX_OMEGA);	// Distance between u-values with highest peaks for omega max and min.
+		ArcLengthParameterizedSine sine( A, MAX_OMEGA, T[0], T[1], 0, HALF_AXIS_LEN, gen, uniformDistribution );
 		splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sine );
 
 		// Create the forest using a level-set as refinement criterion.
@@ -203,15 +219,41 @@ int main ( int argc, char* argv[] )
 		ierr = VecCreateGhostNodes( p4est, nodes, &phi );
 		CHKERRXX( ierr );
 
-		// Calculate the level-set function values for each independent node (i.e. locally owned and ghost nodes).
-		sample_cf_on_nodes( p4est, nodes, sine, phi );
+		// Calculate the level-set function values for each independent node (i.e. locally owned and ghost
+		// nodes).  Save the exact signed distance to the sine interface at the same time to avoid double
+		// work (wasted iterations for bisection/Newton-Raphson).
+		double *phiPtr;
+		ierr = VecGetArray( phi, &phiPtr );
+		CHKERRXX( ierr );
+
+		std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
+		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			sine.toCanonicalCoordinates( xyz[0], xyz[1] );		// Change of coordinates.
+			double valOfDerivative = 1, distance;
+			double u = distThetaDerivative( n, xyz[0], xyz[1], sine, gen, uniformDistribution, valOfDerivative, distance );
+			double comparativeY = sine.getA() * sin( sine.getOmega() * xyz[0] );
+
+			// Fix sign: points above sine wave are negative, points below are positive.
+			if( xyz[1] > comparativeY )
+				distance *= -1;
+
+			// Save values.
+			phiPtr[n] = distance;						// To be reinitialized.
+			visitedNodes[n] = Point2( u, distance );	// Memorize information for visited node.
+		}
+
+		ierr = VecRestoreArray( phi, &phiPtr );
+		CHKERRXX( ierr );
 
 		// Reinitialize level-set function using the fast sweeping method.
-		FastSweeping fsm;
-		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
-		fsm.reinitializeLevelSetFunction( &phi, 8 );
-//		my_p4est_level_set_t ls( &nodeNeighbors );
-//		ls.reinitialize_2nd_order( phi, 5 );
+//		FastSweeping fsm;
+//		fsm.prepare( p4est, nodes, &nodeNeighbors, xyz_min, xyz_max );
+//		fsm.reinitializeLevelSetFunction( &phi, 8 );
+		my_p4est_level_set_t ls( &nodeNeighbors );
+		ls.reinitialize_2nd_order( phi, 10 );
 
 		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are
 		// the points we'll use to create our sample files.
@@ -275,20 +317,21 @@ int main ( int argc, char* argv[] )
 			{
 				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 				{
-					std::vector<double> distances;
-					std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
-						nodes, &nodeNeighbors, phiReadPtr, sine, gen, normalDistribution, distances );
-					hCurvaturePtr[n] = sample[NUM_COLUMNS-1];
+					double xOnGamma, yOnGamma;
+					std::vector<double> distances;		// Holds the signed distances.
+					std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
+						p4est, nodes, &nodeNeighbors, phiReadPtr, sine, distances, xOnGamma, yOnGamma, visitedNodes );
+					hCurvaturePtr[n] = data[NUM_COLUMNS - 2];
 					interfaceFlagPtr[n] = 1;
 
 					// Error metric for validation.
-					for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+					for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 					{
-						vErrorPtr[stencil[i]] = ( distances[i] - sample[i] ) / H;
+						vErrorPtr[stencil[i]] = (distances[i] - data[i]) / H;
 						maxRE = MAX( maxRE, ABS( vErrorPtr[stencil[i]] ) );
 					}
 
-					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ", " << sample[NUM_COLUMNS-1] << ";" << std::endl;
+					std::cout << n << ", " << xyz[0] << ", " << xyz[1] << ", " << data[NUM_COLUMNS - 2] << ";" << std::endl;
 				}
 			}
 			catch( std::exception &e )
@@ -346,6 +389,4 @@ int main ( int argc, char* argv[] )
 	{
 		std::cerr << e.what() << std::endl;
 	}
-
-	return 0;
 }

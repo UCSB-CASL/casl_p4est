@@ -23,6 +23,7 @@
  *
  * Developer: Luis Ángel.
  * Date: July 22, 2020.
+ * Updated: April 24, 2021.
  */
 
 // System.
@@ -208,15 +209,11 @@ int main ( int argc, char* argv[] )
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [0,1]^{P4EST_DIM}.
-	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
+	const int MAX_REFINEMENT_LEVEL = 6;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
-	const double FLAT_LIM_HK = 0.004;			// [ATTENTION] Flatness limit for dimensionless curvature must match the
-												// one used in sinusoidal and circular data sets.
 
-	char strFlatLimHk[10];
-	sprintf( strFlatLimHk, "%.3f", FLAT_LIM_HK );
-	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data-" + std::string( strFlatLimHk ) + "/"
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/"
 							+ std::to_string( MAX_REFINEMENT_LEVEL ) + "/star/";		// Destination folder.
 	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
@@ -235,15 +232,15 @@ int main ( int argc, char* argv[] )
 
 		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
 		// sets to files.
-		if( mpi.rank() > 1 )
+		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		//////////////////////////////////// Star-shaped interface parameter setup /////////////////////////////////////
 
 		// [CHANGE] Change these values to modify the shape of star interface.
 		// Using a=0.075 and b=0.350 for smooth star, and a=0.120 and b=0.305 for sharp star.
-		const double A = 0.120;
-		const double B = 0.305;
+		const double A = 0.075;
+		const double B = 0.350;
 		const int P = 5;
 		geom::Star star( A, B, P );
 		const double STAR_SIDE_LENGTH = star.getInscribingSquareSideLength();

@@ -10,7 +10,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
- * Updated: November 7, 2020.
+ * Updated: April 21, 2021.
  *
  * [¡Important Note!]  This used to sample the level-set function from a look-up table.  However, that turned out being
  * impractical for domains where the maximum level of refinement was greater than 8.  An important observation that led
@@ -169,20 +169,20 @@ int main ( int argc, char* argv[] )
 	const int NUM_REINIT_ITERS = 10;			// Number of iterations for PDE reintialization.
 	const double MIN_D = -0.5, MAX_D = -MIN_D;								// The canonical space is [-1/2, +1/2]^2.
 	const double HALF_D = ( MAX_D - MIN_D ) / 2;							// Half domain.
-	const int MAX_REFINEMENT_LEVEL = 7;										// Maximum level of refinement.
+	const int MAX_REFINEMENT_LEVEL = 6;										// Maximum level of refinement.
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes/dim.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Mesh size.
 	const double FLAT_LIM_HK = 0.5 * H;			// Flatness limit for h*kappa (note it depends now on H).
 	const int NUM_AMPLITUDES = 33;				// Originally: (int)pow( 2, 5 ) + 1; number of distinct sine amplitudes.
-	const double H_BASE = 1. / pow( 2, 7 );		// Base sampling on the mesh size for a max lvl of ref = 7.
+	const double H_BASE = 1. / pow( 2, MIN( MAX_REFINEMENT_LEVEL, 7 ) );	// Base sampling on the mesh size for a max lvl of ref = 6 (used to be 7).
 
 	const double MIN_A = 1.5 * H_BASE;			// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
 	const double MAX_HKAPPA_LB = H * (21. + 1 / 3.);	// Lower and upper bounds for maximum h*kappa (used for
 	const double MAX_HKAPPA_UB = H * (85. + 1 / 3.);	// discriminating samples --see below for details).
-	const double MAX_HKAPPA_MIDPOINT = ( MAX_HKAPPA_LB + MAX_HKAPPA_UB ) / 2;
+	const double MAX_HKAPPA_MIDPOINT = (MAX_HKAPPA_LB + MAX_HKAPPA_UB) / 2;
 
-	const double HALF_AXIS_LEN = ( MAX_D - MIN_D ) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
+	const double HALF_AXIS_LEN = (MAX_D - MIN_D) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
 
 	const double MIN_THETA = -M_PI_4;			// For each amplitude, we vary the rotation of the wave with respect
 	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4, without the end point.
@@ -209,7 +209,7 @@ int main ( int argc, char* argv[] )
 
 		// To generate datasets we don't admit more than a single process to avoid race conditions when writing datasets
 		// to files.
-		if( mpi.rank() > 1 )
+		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		std::cout << "Collecting samples from a sinusoidal wave function..." << std::endl;
@@ -221,7 +221,8 @@ int main ( int argc, char* argv[] )
 			NUM_AMPLITUDES, MAX_REFINEMENT_LEVEL, H );
 		watch.start();
 
-		// Prepare samples files: sine_rls_X.csv for reinitialized level-set, sine_sdf_X.csv for signed-distance function values.
+		// Prepare samples files: sine_rls_X.csv for reinitialized level-set function and sine_sdf_X.csv for
+		// signed distance function values.
 		std::ofstream rlsFile;
 		std::string rlsFileName = DATA_PATH + "sine_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
 		rlsFile.open( rlsFileName, std::ofstream::trunc );
@@ -246,12 +247,12 @@ int main ( int argc, char* argv[] )
 		sdfFile.precision( 15 );
 
 		// Variables to control the spread of sine waves' amplitudes, which must vary uniformly from MIN_A to MAX_A.
-		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5/H_BASE, 0.5], inclusive.
+		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5*H_BASE, 0.5], inclusive.
 		double linspaceA[NUM_AMPLITUDES];
 		for( int i = 0; i < NUM_AMPLITUDES; i++ )			// Uniform linear space from 0 to 1, with NUM_AMPLITUDES steps.
 			linspaceA[i] = (double)( i ) / (NUM_AMPLITUDES - 1.0);
 
-		// Variables to control the spread of ratation angles per amplitude, which must vary uniformly from MIN_THETA to
+		// Variables to control the spread of rotation angles per amplitude, which must vary uniformly from MIN_THETA to
 		// MAX_THETA, in a finite number of steps.
 		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/4, +pi/4).
 		double linspaceTheta[NUM_THETAS];
@@ -267,16 +268,17 @@ int main ( int argc, char* argv[] )
 		// Printing header for log.
 		std::cout << "Amplitude Idx, Omega Idx, Amplitude Val, Omega Val, Max Rel Error, Min Rel Error, Num Samples, Time" << std::endl;
 
-		int nSamples = 0;
+		unsigned long nSamples = 0;
 		int na = 0;
+		double maxRelAbsError = 0;
 		for( ; na < NUM_AMPLITUDES; na++ )					// Go through all wave amplitudes evaluated.
 		{
 			const double A = MIN_A + linspaceA[na] * A_DIST;			// Amplitude to be evaluated.
 
-			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / ( H * A ) );	// Range of frequencies to ensure that the max
-			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / ( H * A ) );	// h*kappa is in the range of [1/6, 2/3].
+			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / (H * A) );	// Range of frequencies to ensure that the max
+			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / (H * A) );	// kappa is in the range of [21+1/3, 85+1/3].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
-			const double OMEGA_PEAK_DIST = M_PI_2 * ( 1 / MIN_OMEGA - 1 / MAX_OMEGA );	// Distance between u-values with highest peaks.
+			const double OMEGA_PEAK_DIST = M_PI_2 * (1 / MIN_OMEGA - 1 / MAX_OMEGA);	// Shortest u-distance between crests obtained with omega max and min.
 			const double LIN_PROPORTION = 1. + log2( H_BASE / H ) / 3.;					// Linearly from 1 to 2 as max lvl of ref goes from 7 to 10.
 			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST / H_BASE * LIN_PROPORTION ) + 1;	// Num. of omegas per amplitude.
 			double linspaceOmega[NUM_OMEGAS];
@@ -411,7 +413,7 @@ int main ( int argc, char* argv[] )
 						try
 						{
 							// Randomly deciding if we proceed with these node or not.  Otherwise, we'll get enourmous
-							// data sets for resolutions higher than the base of max refinement level of 7.
+							// data sets for resolutions higher than the base of max refinement level of MIN( lvl, 7 ).
 							if( uniformDistribution( gen ) > H / H_BASE )
 								continue;
 
@@ -516,6 +518,8 @@ int main ( int argc, char* argv[] )
 				std::cout << na + 1 << ", " << no + 1 << ", " << A << ", " << OMEGA << ", " << maxRE << ", "
 						  << minRE << ", " << rlsSamples.size() << ", " << watch.get_duration_current() << ";"
 						  << std::endl;
+
+				maxRelAbsError = MAX( maxRE, maxRelAbsError );
 			}
 		}
 
@@ -523,14 +527,12 @@ int main ( int argc, char* argv[] )
 		rlsFile.close();
 		sdfFile.close();
 
-		printf( "<< Finished generating %i distinct amplitudes and %i samples in %f secs.\n",
-			na, nSamples, watch.get_duration_current() );
+		printf( "<< Finished generating %i distinct amplitudes and %lu samples with max rel error %f in %f secs.\n",
+			na, nSamples, maxRelAbsError, watch.get_duration_current() );
 		watch.stop();
 	}
 	catch( const std::exception &e )
 	{
 		std::cerr << e.what() << std::endl;
 	}
-
-	return 0;
 }

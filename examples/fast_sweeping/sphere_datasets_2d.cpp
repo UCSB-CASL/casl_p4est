@@ -12,6 +12,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
+ * Updated: April 23, 2021.
  */
 
 // System.
@@ -54,27 +55,27 @@ int main ( int argc, char* argv[] )
 	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
 	// Modified to allow comparison between different levels of refinement.  Instead of considering h*kappa, we need
 	// to base our computations on kappa only.
-	// We depart from our previous calculations with h = 1 / 2^7.
+	// We used to depart from our previous calculations with h = 1 / 2^7.
 
-	const int MAX_REFINEMENT_LEVEL = 7;						// Always take H from unit squares with this maximum
+	const int MAX_REFINEMENT_LEVEL = 6;						// Always take H from unit squares with this maximum
 	const double H = 1. / pow( 2, MAX_REFINEMENT_LEVEL );	// level of refinement.
-	const double H_BASE = 1. / pow( 2, 7 );					// To avoid data explosion, the number of samples depends on
-															// a base value for mesh size (equiv. to max. lvl. = 7).
+	const double H_BASE = 1. / pow( 2, MIN( MAX_REFINEMENT_LEVEL, 7 ) );	// To avoid data explosion, the number of samples depends on
+															// a base value for mesh size (equiv. to max. lvl. at most 7).
 	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
 	const double MIN_KAPPA = 0.5;							// Minimum and maximum curvature values.  Computed by
 	const double MAX_KAPPA = 85. + 1 / 3.;					// considering H_BASE: hk_max = h/(1.5h), and hk_min = 0.5h.
 	const double MIN_RADIUS = 1. / MAX_KAPPA;				// All resolutions must meet these radius constraints.
 	const double MAX_RADIUS = 1. / MIN_KAPPA;
-	const double FLAT_LIM_KAPPA = 5;						// Flatness limit for triggering hybrid method.
+	const double FLAT_LIM_KAPPA = 2.5;						// Flatness limit for triggering hybrid method using a multiple of this (used to be 5, use 2.5 for lvl 6).
 	const double FLAT_LIM_RADIUS = 1. / FLAT_LIM_KAPPA;		// All resolutions adhere to this constraint.  Then, the
 															// hybrid model is used whenever:
-															// h7 * kLim  = 0.0390625,  (for max lvl of ref = 7),
-															// h8 * kLim  = 0.01953125,
-															// h9 * kLim  = 0.009765625,
-															// h10 * kLim = 0.0048828125.
+															// 1 * h7 * kLim  = 0.0390625,  (for max lvl of ref = 7),
+															// 2 * h8 * kLim  = 0.0390625,
+															// 3 * h9 * kLim  = 0.029296875, (4 * h9 * kLim all of these should be 0.0390625)
+															// 4 * h10 * kLim = 0.01953125. (8 * h10 * klim)
 	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
 
-	// Number of circles is proportional to radii difference and to H_BASE ration to H.
+	// Number of circles is proportional to radii difference and to H_BASE ratio to H.
 	// Originally, 2 circles per finest quad/oct.
 	const int NUM_CIRCLES = ceil( 2 * ((MAX_RADIUS - MIN_RADIUS) / H_BASE + 1) * (log2( H_BASE / H ) + 1) );
 
@@ -107,7 +108,7 @@ int main ( int argc, char* argv[] )
 
 		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
 		// sets to files.
-		if( mpi.rank() > 1 )
+		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
@@ -409,6 +410,4 @@ int main ( int argc, char* argv[] )
 	{
 		std::cerr << e.what() << std::endl;
 	}
-
-	return 0;
 }

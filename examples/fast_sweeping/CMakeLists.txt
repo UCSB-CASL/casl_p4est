@@ -1,6 +1,6 @@
 # This CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
 # To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
-cmake_minimum_required( VERSION 3.16 )
+cmake_minimum_required( VERSION 3.17 )
 project( fast_sweeping )
 
 set( CMAKE_CXX_STANDARD 11 )
@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC sinusoidal_datasets_2d.cpp )
+	list( APPEND SRC star_datasets_2d.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
@@ -29,7 +29,7 @@ set( CMAKE_CXX_COMPILER mpicxx )
 ######################## Libraries ########################
 # These commands must be given prior to defining any target.
 
-find_package( MPI REQUIRED )
+# find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
 find_package( Boost COMPONENTS filesystem REQUIRED )
 
 # Library linking directories.
