@@ -5,9 +5,9 @@
  * advection.  We assume that all considered velocity fields are divergence-free.
  * @note Not yet tested on 3D.
  *
- * Author: Luis Ángel (임 영민)
- * Date Created: 01/20/2021
- * Modified: 03/16/2021
+ * Author: Luis Ángel (임 영민).
+ * Date Created: 01/20/2021.
+ * Modified: 05/01/2021.
  */
 
 #ifndef P4_TO_P8
@@ -42,37 +42,6 @@
 #include <algorithm>
 
 /**
- * Read the stats file and load it into a matrix containing two columns: means and stds.
- * @param [in] filePath  Stats file path.
- * @param [out] stats Output matrix with one row per curvature group (of size 4).
- */
-void loadNoiseStats( const std::string& filePath, double stats[][2] )
-{
-	std::ifstream statsFile( filePath );
-	utils::getNextLineAndSplitIntoTokens( statsFile );		// Skip the header.
-	while( !statsFile.eof() )
-	{
-		std::vector<std::string> tokens = utils::getNextLineAndSplitIntoTokens( statsFile );
-
-		if( tokens.empty() )
-			continue;
-
-		// Remove spaces from index token.
-		std::string::iterator endPos = std::remove( tokens[0].begin(), tokens[0].end(), ' ' );
-		tokens[0].erase( endPos, tokens[0].end() );
-		if( tokens[0].empty() )
-			continue;
-
-		int idx = std::stoi( tokens[0] );					// Extract stats.
-		double mean = std::stod( tokens[1] );
-		double std = std::stod( tokens[2] );
-		stats[idx][0] = mean;
-		stats[idx][1] = std;
-	}
-}
-
-
-/**
  * Main function.
  * @param argc Number of input arguments.
  * @param argv Actual arguments.
@@ -81,11 +50,6 @@ void loadNoiseStats( const std::string& filePath, double stats[][2] )
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const bool BUILD_NOISY_DATA_SETS = false;	// [CHANGE] Whether to build noisy or clean data sets.  Noisy data sets
-												// are constructed after clean data sets because they add some
-												// percentage of the error (per curvature group) in the numerical
-												// approximations of phi_d in the clean data sets.
-
 	const double DURATION = 0.5;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
 	const int FINE_MAX_RL = 8;
@@ -116,7 +80,7 @@ int main( int argc, char** argv )
 										+ "_k_minus"
 										+ (ADD_FINE_STEPS_X2? "_x" + std::to_string( 1u << ADD_FINE_STEPS_X2 ) : "" )
 										+ ".csv";
-	const std::string FILE_PATH = DATA_PATH + (BUILD_NOISY_DATA_SETS? "noisy_" : "") + "data" + DATA_SUFFIX;
+	const std::string FILE_PATH = DATA_PATH + "data" + DATA_SUFFIX;
 	const int NUM_COLUMNS = 21;			// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
 											 "u_a", "v_a", 			// Velocity components at arrival point.
@@ -129,12 +93,6 @@ int main( int argc, char** argv )
 											 "numerical_phi_d",		// Numerically computed phi value at departure point.
 											 "numerical_kappa"		// Mean curvature at closest point to node on Gamma.
 	};
-
-	// Constants for noisy data sets.
-	const double NOISE_PERCENT = 0.075;		// How much of the error in phi_d^* - phi_d we add to samples next to Gamma.
-	const int K_GROUP_WIDTH = 4;			// Curvature group size.
-	const int N_K_GROUPS = (1u << COARSE_MAX_RL) / K_GROUP_WIDTH;	// Number of curvature groups.
-	double noiseStats[N_K_GROUPS][2];		// For each curvature group: first column is mean, second is std.
 
 	try
 	{
@@ -163,10 +121,6 @@ int main( int argc, char** argv )
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 			file << "\"" << COLUMN_NAMES[i] << "\",";
 		file << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"" << std::endl;
-
-		// If building noisy sets, populate stats matrix.
-		if( BUILD_NOISY_DATA_SETS )
-			loadNoiseStats( DATA_PATH + "stats" + DATA_SUFFIX, noiseStats );
 
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
@@ -198,9 +152,6 @@ int main( int argc, char** argv )
 				return 3;
 			return 4;
 		};
-
-		// Random sampler for noisy data sets (if so chosen).
-		std::mt19937 gen3( 73 );	// NOLINT Standard Mersenne Twister engine for normal noise.
 
 		// Looping through random velocity fields.
 		unsigned long nSamplesInTotal = 0;
@@ -300,11 +251,6 @@ int main( int argc, char** argv )
 					my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// Coarse grid.
 					levelSet_c.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
 
-					// If building noisy data sets, perturb nodes along Gamma by adding noise that depends on curvature,
-					// then, retinitialize again to spread noise.
-					if( BUILD_NOISY_DATA_SETS )
-						coarseGrid.addNoise( gen3, noiseStats, N_K_GROUPS, K_GROUP_WIDTH, NOISE_PERCENT, REINIT_NUM_ITER );
-
 					// Define time stepping variables.
 					double tn_c = 0;					// Current time for COARSE grid.
 					double tn_f = 0;					// Current time for FINE grid.
@@ -398,10 +344,11 @@ int main( int argc, char** argv )
 						dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;
 
 						// Collect samples from COARSE grid: must be done before "advecting" COARSE grid.
-						// Also allocates flagged nodes along Gamma.
+						// Also, flag nodes along Gamma.
 						std::vector<slml::DataPacket *> dataPackets;
+						std::vector<double *> stencils;			// Allocated only if all samples lie inside Omega.
 						double relError = 0;
-						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError );
+						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, stencils, relError );
 
 						if( allInside )	// Continue processing samples if all backtracked interface points lied inside
 						{				// the domain.
@@ -466,11 +413,6 @@ int main( int argc, char** argv )
 							// with NO reinitialization afterwards.
 							coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
 
-							// If building noisy data sets, perturb nodes along Gamma by adding curvature-dependent
-							// noise.  Then, retinitialize coarse grid to spread noise in a narrow band.
-							if( BUILD_NOISY_DATA_SETS )
-								coarseGrid.addNoise( gen3, noiseStats, N_K_GROUPS, K_GROUP_WIDTH, NOISE_PERCENT, REINIT_NUM_ITER );
-
 							// Resample the random velocity field on new COARSE grid.
 							randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
 
@@ -482,6 +424,10 @@ int main( int argc, char** argv )
 							// Don't forget to destroy dynamic objects.  If not all points were backtracked inside the
 							// domain, CoarseGrid::collectSamples has called freed packets already.
 							slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+
+							for( auto& stencil : stencils )		// Deallocate stencils of level-set values.
+									delete [] stencil;
+							stencils.clear();
 						}
 					}
 

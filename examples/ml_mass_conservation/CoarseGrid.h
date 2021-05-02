@@ -176,7 +176,7 @@ public:
 			// Use FINE grid to "advect" COARSE grid by using interpolation.
 			// Interpolation object based on FINE grid.  It's used to find the values at the nodes of COARSE grid.
 			my_p4est_interpolation_nodes_t interp( ngbd_f );
-			for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+			for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 			{
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( n, p4est, nodes, xyz );
@@ -260,11 +260,13 @@ public:
 	 * @param [in] phi_f Advected fine grid level-set values vector.
 	 * @param [in] dt Coarse grid step size.
 	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
+	 * @param [out] stencils Array of level-set value nine-point stencils to compute curvature with a hybrid approach.
 	 * @param [out] maxRelError Maximum relative error (w.r.t. minimum cell width).
 	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
-					  	 std::vector<slml::DataPacket *>& dataPackets, double& maxRelError )
+					  	 std::vector<slml::DataPacket *>& dataPackets, std::vector<double *>& stencils,
+					  	 double& maxRelError )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -336,7 +338,7 @@ public:
 		{
 			// Finding the target phi values via interpolation from FINE grid.
 			double targetPhi[dataPackets.size()];
-			for( size_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
+			for( p4est_locidx_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
 			{
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
@@ -347,13 +349,25 @@ public:
 			interp.clear();
 
 			// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
+			// Note: Let's collect the nine-point stencils of locally owned nodes as well, and keep only those nodes
+			// that have such full stencils.  These stencils will be used to compute kappa with the curvature nnets.
+			// Even though retrieving stencils will discard ghost nodes, in a real advection scenario, we must obtain
+			// the level-set value at departure points for locally owned nodes with full stencils, set their gammaFlag,
+			// and then scatter forward both the flag and the level-set at departure point (computed neurally).
+			// Afterward, numerical advection is used in the rest of the nodes that are not flagged (including ghost
+			// nodes), and we proceed with the refinement/coarsening process.
+			auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
+			NodesAlongInterface nodesAlongInterface( p4est, nodes, nodeNeighbors, (signed char)splittingCriteria->max_lvl );
+
+			stencils.clear();
+			stencils.resize( dataPackets.size() );					// The indices in dataPackets and stencils match.
+
 			double *gammaFlagPtr;
 			ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
 			CHKERRXX( ierr );
 			for( size_t i = 0; i < dataPackets.size(); i++ )
 			{
 				slml::DataPacket *dataPacket = dataPackets[i];
-				gammaFlagPtr[dataPacket->nodeIdx] = 1.0;			// Turn on "bit" for node next to Gamma.
 				dataPacket->targetPhi_d = targetPhi[i];				// Populate expected phi value.
 
 				double xyz[P4EST_DIM];								// Populate numerical curvature at Gamma.
@@ -365,6 +379,27 @@ public:
 
 				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
 				maxRelError = MAX( maxRelError, relError );
+
+				// Retrieve level-set values at the four neighbors to neural computation of curvature.
+				stencils[i] = nullptr;					// If a node has a well-defined stencil, this won't be null.
+				try
+				{
+					const int STENCIL_SIZE = (int)pow( 3, P4EST_DIM );
+					std::vector<p4est_locidx_t> stencilIndices( STENCIL_SIZE );
+					if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
+					{
+						// Populate stencils by dynamic memory allocation.
+						stencils[i] = new double [STENCIL_SIZE];
+						for( int j = 0; j < STENCIL_SIZE; j++ )
+							stencils[i][j] = phiReadPtr[stencilIndices[j]];
+
+						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
+					}
+				}
+				catch( const std::exception &exception )
+				{
+					std::cerr << exception.what() << std::endl;
+				}
 			}
 			ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
 			CHKERRXX( ierr );
@@ -384,7 +419,7 @@ public:
 		}
 		else
 		{
-			// Don't forget to destroy dynamic objects even if all points we backtracked outside the domain.
+			// Don't forget to destroy dynamic objects even if all points we backtracked fell outside the domain.
 			slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 		}
 
@@ -419,101 +454,6 @@ public:
 
 		return allInside;	// True if all backtracked points along the interface fell within domain.
 	}
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "readability-make-member-function-const"
-	/**
-	 * Add noise to nodes next to interface, at a distance of one min cell diagonal from Gamma.  After adding noise, the
-	 * level-set function is reinitialized to "spread" the noise from the interface outwards (up to 3 min diags away).
-	 * @note Call this function after the level-set values are settled (e.g., after fitting to fine grid).
-	 * @param [in,out] gen Uniform random sampling engine.
-	 * @param [in] noiseStats A matrix of error stats, containing the mean and std for each curvature group.
-	 * @param [in] nKGroups Number of curvature groups in stats matrix.
-	 * @param [in] kGroupWidth Curvature group width.
-	 * @param [in] noisePercent Amount of noise to add to nodes next to the interface.
-	 * @param [in] nIterations Number of iterations to reinitialize level-set function.
-	 */
-	void addNoise( std::mt19937 gen, const double noiseStats[][2], const int& nKGroups=16, const int& kGroupWidth=4,
-				   const double& noisePercent=0.1, const int& nIterations=10 )
-	{
-		std::normal_distribution<double> randn;
-
-		// Allocate PETSc vectors for normals and curvature.
-		Vec curvature, normal[P4EST_DIM];
-		PetscErrorCode ierr = VecDuplicate( phi, &curvature );
-		CHKERRXX( ierr );
-		for( auto& dim : normal )
-		{
-			ierr = VecCreateGhostNodes( p4est, nodes, &dim );
-			CHKERRXX( ierr );
-		}
-
-		// Compute curvature, which will be (linearly) interpolated at the interface.
-		compute_normals( *nodeNeighbors, phi, normal );
-		compute_mean_curvature( *nodeNeighbors, normal, curvature );
-
-		// Prepare curvature interpolation.
-		my_p4est_interpolation_nodes_t kappaInterp( nodeNeighbors );
-		kappaInterp.set_input( curvature, interpolation_method::linear );
-
-		// Also need read access to phi and normal vectors.
-		double *phiPtr;
-		ierr = VecGetArray( phi, &phiPtr );
-		CHKERRXX( ierr );
-
-		const double *normalReadPtr[P4EST_DIM];
-		for( int i = 0; i < P4EST_DIM; i++ )
-		{
-			ierr = VecGetArrayRead( normal[i], &normalReadPtr[i] );
-			CHKERRXX( ierr );
-		}
-
-		// Perturb nodes along the interface at some diagonal distance from it.
-		double xyz[P4EST_DIM];
-		foreach_node( n, nodes )
-		{
-			if( ABS( phiPtr[n] ) <= minCellDiag )
-			{
-				node_xyz_fr_n( n, p4est, nodes, xyz );
-				double k = kappaInterp( DIM( xyz[0] - phiPtr[n] * normalReadPtr[0][n],		// Curvature at closest
-								 			 xyz[1] - phiPtr[n] * normalReadPtr[1][n],		// point on the interface.
-								 			 xyz[2] - phiPtr[n] * normalReadPtr[2][n] ) );
-				int idx = int( ABS( k ) / kGroupWidth );	// Which noise group to use.
-				idx = MIN( idx, nKGroups - 1 );				// Everything steeper than a circle of radius of 1 cell is placed in last group.
-				double newPhi = phiPtr[n] + noisePercent * (noiseStats[idx][1] * randn( gen ) + noiseStats[idx][0]);
-
-				if( newPhi * phiPtr[n] < 0 )				// Did it flip sign?
-					newPhi = (phiPtr[n] < 0? -MAX_RL : MAX_RL) * PETSC_MACHINE_EPSILON;	// Make sure it preserves sign.
-
-				phiPtr[n] = newPhi;
-			}
-		}
-
-		// Reinitialize to spread noise across nodes (at a distance of 3 min diagonals away).
-		my_p4est_level_set_t levelSet_c( nodeNeighbors );
-		levelSet_c.reinitialize_2nd_order( phi, nIterations, 3 * minCellDiag );
-
-		// Restore read access.
-		ierr = VecRestoreArray( phi, &phiPtr );
-		CHKERRXX( ierr );
-
-		for( int i = 0; i < P4EST_DIM; i++ )
-		{
-			ierr = VecRestoreArrayRead( normal[i], &normalReadPtr[i] );
-			CHKERRXX( ierr );
-		}
-
-		// Free vectors for normals and curvature.
-		ierr = VecDestroy( curvature );
-		CHKERRXX( ierr );
-
-		for( auto& dim : normal )
-		{
-			ierr = VecDestroy( dim );
-			CHKERRXX( ierr );
-		}
-	}
-#pragma clang diagnostic pop
 
 	/**
 	 * Write VTK files for prior or post advection.  Prior saves the flagged nodes along Gamma, post saves the exact
