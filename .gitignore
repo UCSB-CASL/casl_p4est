@@ -44,20 +44,12 @@ Info.plist
 *[Bb]uild*
 *[Xx]code*
 Default/
-.idea/
-CMakeLists.txt
-**/cmake-build-*
-
-# For QMake/ we ignore all *.pri files except some important ones.
-# qmake/*.pri
-# !qmake/common.pri
-# !qmake/libparcasl.pri
-# !qmake/linux.pri
-# !qmake/macx.pri
-# !qmake/stampede.pri
 
 *.orig
 *_BACKUP_*
 *_BASE_*
 *_LOCAL_*
 *_REMOTE_*
+
+# CLion.
+.idea/
