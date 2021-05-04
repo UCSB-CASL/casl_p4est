@@ -1,7 +1,7 @@
 /**
  * Generate datasets for training a feedforward neural network on level-set functions with sinusoidal interfaces.
  * The level-set is implemented as the signed-distance function to a parameterized sine wave that is subject to an
- * affine transformation to allow for pattern variations.  See arclength_parameterized_sin_2d.h for more details.
+ * affine transformation to allow for pattern variations.  See arclength_parameterized_sine_2d.h for more details.
  *
  * To avoid a disproportionate ratio of h*kappa ~ 0 samples, we collect samples that are close to zero using a
  * probabilistic approach.  Seek the [SAMPLING] subsection in this file.
@@ -10,7 +10,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
- * Updated: April 21, 2021.
+ * Updated: May 3, 2021.
  *
  * [¡Important Note!]  This used to sample the level-set function from a look-up table.  However, that turned out being
  * impractical for domains where the maximum level of refinement was greater than 8.  An important observation that led
@@ -19,6 +19,10 @@
  * generating our "reinitialized" samples.  In reality, using bisection and Newton Raphson with unbounded iterations
  * was way more efficient than the look-up process that we initially planned.  The arclength_parameterized_sine_2d.h
  * file has been modified to reflect these changes.
+ *
+ * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
+ * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
+ * the local coordinate system centered at the 00 node.  This tries to simplify the architecture of the neural network.
  *
  * TODO: Source code needs further refactoring now that we discarded the look-up table approach.
  * TODO: Improve sampleNodeAdjacentToInterface.
@@ -75,6 +79,7 @@
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
  * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
+ * @param [out] grad Gradient at center node.
  * @return Vector with sampled phi values and target dimensionless curvature.
  * @throws runtime exception if Newton-Raphson's didn't converge to a global minimum.
  */
@@ -82,14 +87,13 @@
 	const double H, const std::vector<p4est_locidx_t>& stencil, const p4est_t *p4est, const p4est_nodes_t *nodes,
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const ArcLengthParameterizedSine& sine,
 	std::vector<double>& distances, double& xOnGamma, double& yOnGamma,
-	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
+	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes, double grad[P4EST_DIM] )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// (Reinitialized) level-set function values and target h*kappa.
 	distances.clear();
 	distances.reserve( NUM_COLUMNS );					// Include h*kappa as well.
 
 	int s;												// Index to fill in the sample vector.
-	double grad[P4EST_DIM];
 	double gradNorm;
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
@@ -184,16 +188,16 @@ int main ( int argc, char* argv[] )
 
 	const double HALF_AXIS_LEN = (MAX_D - MIN_D) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
 
-	const double MIN_THETA = -M_PI_4;			// For each amplitude, we vary the rotation of the wave with respect
-	const double MAX_THETA = +M_PI_4;			// to the horizontal axis from -pi/4 to +pi/4, without the end point.
+	const double MIN_THETA = -M_PI_2;			// For each amplitude, we vary the rotation of the wave with respect
+	const double MAX_THETA = +M_PI_2;			// to the horizontal axis from -pi/2 to +pi/2, without the end point.
 	const int NUM_THETAS = 34;					// Originally: (int)pow( 2, MAX_REFINEMENT_LEVEL - 2 ) + 2;
-												// where the last 2 is to account for skipping +pi/4.
+												// where the last 2 is to account for skipping +pi/4 (in -pi/4 to pi/4).
 
 	// Destination folder.
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-0521/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
+	const int NUM_COLUMNS = num_neighbors_cube + 2;	// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
-	generateColumnHeaders( COLUMN_NAMES );
+	kutils::generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
@@ -254,7 +258,7 @@ int main ( int argc, char* argv[] )
 
 		// Variables to control the spread of rotation angles per amplitude, which must vary uniformly from MIN_THETA to
 		// MAX_THETA, in a finite number of steps.
-		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/4, +pi/4).
+		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/2, +pi/2).
 		double linspaceTheta[NUM_THETAS];
 		for( int i = 0; i < NUM_THETAS; i++ )				// Uniform linear space from 0 to 1, with NUM_TETHAS steps.
 			linspaceTheta[i] = (double)( i ) / (NUM_THETAS - 1.0);
@@ -419,10 +423,11 @@ int main ( int argc, char* argv[] )
 
 							if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 							{
-								double xOnGamma, yOnGamma;
-								std::vector<double> distances;		// Holds the signed distances.
+								double xOnGamma, yOnGamma, gradient[P4EST_DIM];
+								std::vector<double> distances;						// Holds the signed distances.
 								std::vector<double> data = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil,
-									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, distances, xOnGamma, yOnGamma, visitedNodes );
+									p4est, nodes, &nodeNeighbors, phiReadPtr, sine, distances, xOnGamma, yOnGamma,
+									visitedNodes, gradient );
 
 								if( ABS( data[NUM_COLUMNS - 2] ) < FLAT_LIM_HK )	// Skip flat surfaces.
 									continue;
@@ -444,16 +449,23 @@ int main ( int argc, char* argv[] )
 											data[i] *= -1.0;
 											distances[i] *= -1.0;
 										}
+
+										for( auto& component : gradient )	// Flip sign of gradient too.
+											component *= -1.0;
 									}
 
-									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
-									{								// three times.
-										rlsSamples.push_back( data );
-										sdfSamples.push_back( distances );
+									// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
+									kutils::rotateStencilToFirstQuadrant( data, gradient );
+									kutils::rotateStencilToFirstQuadrant( distances, gradient );
 
-										rotatePhiValues90( data, NUM_COLUMNS );
-										rotatePhiValues90( distances, NUM_COLUMNS );
-									}
+									rlsSamples.push_back( data );			// Store original sample.
+									sdfSamples.push_back( distances );
+
+									// Data augmentation by reflection along y=x line.
+									kutils::reflectStencil_yEqx( data );
+									kutils::reflectStencil_yEqx( distances );
+									rlsSamples.push_back( data );			// Store augmented sample too.
+									sdfSamples.push_back( distances );
 
 									// Error metric for validation.
 									for( int i = 0; i < NUM_COLUMNS - 2; i++ )

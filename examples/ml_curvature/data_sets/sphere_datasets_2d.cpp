@@ -12,7 +12,11 @@
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
- * Updated: April 23, 2021.
+ * Updated: May 3, 2021.
+ *
+ * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
+ * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
+ * the local coordinate system centered at the 00 node.  This tries to simplify the architecture of the neural network.
  */
 
 // System.
@@ -71,8 +75,8 @@ int main ( int argc, char* argv[] )
 															// hybrid model is used whenever:
 															// 1 * h7 * kLim  = 0.0390625,  (for max lvl of ref = 7),
 															// 2 * h8 * kLim  = 0.0390625,
-															// 3 * h9 * kLim  = 0.029296875, (4 * h9 * kLim all of these should be 0.0390625)
-															// 4 * h10 * kLim = 0.01953125. (8 * h10 * klim)
+															// 4 * h9 * kLim  = 0.0390625,
+															// 8 * h10 * klim = 0.0390625.
 	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
 
 	// Number of circles is proportional to radii difference and to H_BASE ratio to H.
@@ -90,10 +94,10 @@ int main ( int argc, char* argv[] )
 	const int MAX_SAMPLES_PER_RADIUS = ceil( 5 * M_PI / SQR( H_BASE ) * (SQR( FLAT_LIM_RADIUS ) - SQR( FLAT_LIM_RADIUS - H_BASE )) );
 
 	// Destination folder.
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;	// Number of columns in resulting dataset.
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-0521/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
+	const int NUM_COLUMNS = num_neighbors_cube + 2;			// Number of columns in resulting dataset.
 	std::string COLUMN_NAMES[NUM_COLUMNS];					// Column headers following the x-y truth table of
-	generateColumnHeaders( COLUMN_NAMES );					// 3-state variables.
+	kutils::generateColumnHeaders( COLUMN_NAMES );			// 3-state variables.
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
@@ -308,11 +312,19 @@ int main ( int argc, char* argv[] )
 							double gradNorm = sqrt( SUMD( SQR( grad[0] ), SQR( grad[1] ), SQR( grad[2] ) ) );	// Get the unit gradient.
 
 							for( int i = 0; i < P4EST_DIM; i++ )	// Translation: this is where we need to interpolate
-								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];	// the numerical curvature.
+							{										// the numerical curvature.
+								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];
+								grad[i] *= -1.0;					// After using the gradient, let's negate it to use it below.
+							}
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
 							rlsDataNve.push_back( -iHKappa );		// Attach interpolated h*kappa to reinit. data only.
 							sdfDataNve.push_back( -0 );				// For signed distance function data, add dummy -0's.
+
+							// Rotate stencil so that (negated) gradient at node 00 has an angle in first quadrant.
+
+							kutils::rotateStencilToFirstQuadrant( rlsDataNve, grad );
+							kutils::rotateStencilToFirstQuadrant( sdfDataNve, grad );
 
 							// Accumulating samples.
 							sdfSamples.push_back( sdfDataNve );

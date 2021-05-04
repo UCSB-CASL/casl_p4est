@@ -23,7 +23,11 @@
  *
  * Developer: Luis Ángel.
  * Date: July 22, 2020.
- * Updated: April 24, 2021.
+ * Updated: May 3, 2021.
+ *
+ * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
+ * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
+ * the local coordinate system centered at the 00 node.
  */
 
 // System.
@@ -83,6 +87,7 @@
  * @param [out] xOnGamma x-coordinate of normal projection of grid node onto interface.
  * @param [out] yOnGamma y-coordinate of normal projection of grid node onto interface.
  * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
+ * @param [out] grad Gradient at center node.
  * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
  */
 [[nodiscard]] std::vector<double> sampleNodeAdjacentToInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
@@ -90,14 +95,13 @@
 	const my_p4est_node_neighbors_t *neighbors, const double *phiReadPtr, const geom::Star& star, std::mt19937& gen,
 	std::normal_distribution<double>& normalDistribution,
 	std::ofstream& pointsFile, std::ofstream& anglesFile, std::vector<double>& distances, double& xOnGamma, double& yOnGamma,
-	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes )
+	std::unordered_map<p4est_locidx_t, Point2>& visitedNodes, double grad[P4EST_DIM] )
 {
 	std::vector<double> sample( NUM_COLUMNS, 0 );		// Level-set function values and target h*kappa.
 	distances.clear();
 	distances.reserve( NUM_COLUMNS );					// True distances and target h/kappa as well.
 
 	int s;												// Index to fill in the sample vector.
-	double grad[P4EST_DIM];
 	double gradNorm;
 	double xyz[P4EST_DIM];
 	double pOnInterfaceX, pOnInterfaceY;
@@ -213,11 +217,11 @@ int main ( int argc, char* argv[] )
 	const int NUM_UNIFORM_NODES_PER_DIM = (int)pow( 2, MAX_REFINEMENT_LEVEL ) + 1;		// Number of uniform nodes per dimension.
 	const double H = ( MAX_D - MIN_D ) / (double)( NUM_UNIFORM_NODES_PER_DIM - 1 );		// Highest spatial resolution in x/y directions.
 
-	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-1120/data/"
+	std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-0521/data/"
 							+ std::to_string( MAX_REFINEMENT_LEVEL ) + "/star/";		// Destination folder.
-	const int NUM_COLUMNS = (int)pow( 3, P4EST_DIM ) + 2;					// Number of columns in resulting dataset.
-	std::string COLUMN_NAMES[NUM_COLUMNS];									// Column headers following the x-y truth table of 3-state variables.
-	generateColumnHeaders( COLUMN_NAMES );
+	const int NUM_COLUMNS = num_neighbors_cube + 2;	// Number of columns in resulting dataset.
+	std::string COLUMN_NAMES[NUM_COLUMNS];			// Column headers following the x-y truth table of 3-state variables.
+	kutils::generateColumnHeaders( COLUMN_NAMES );
 
 	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 	std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
@@ -497,13 +501,31 @@ int main ( int argc, char* argv[] )
 				{
 					if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 					{
-						double xOnGamma, yOnGamma;
+						double xOnGamma, yOnGamma, gradient[P4EST_DIM];	// This gradient does use the correction in the called function.
 						std::vector<double> distances;	// Holds the signed distances for error measuring.
 						std::vector<double> sample = sampleNodeAdjacentToInterface( n, NUM_COLUMNS, H, stencil, p4est,
 							nodes, &nodeNeighbors, reinitPhiReadPtrs[key], star, gen, normalDistribution,
-							pointsFilesMap[key], anglesFilesMap[key], distances, xOnGamma, yOnGamma, visitedNodes );
+							pointsFilesMap[key], anglesFilesMap[key], distances, xOnGamma, yOnGamma, visitedNodes, gradient );
 						sample[NUM_COLUMNS - 1] = H * interpolation( xOnGamma, yOnGamma );	// Attach interpolated h*kappa.
 						distances.push_back( 0 );											// Dummy column.
+
+						// Flip sign of stencil if interpolated curvature at the interface is positive.
+						if( sample[NUM_COLUMNS - 1] > 0 )
+						{
+							for( int i = 0; i < NUM_COLUMNS - 2; i++ )	// Avoid flipping sign of target and interpolated k.
+							{											// because ihk is still used during inference.
+								sample[i] *= -1.0;
+								distances[i] *= -1.0;
+							}
+
+							for( auto& component : gradient )			// Flip sign of gradient too.
+								component *= -1.0;
+						}
+
+						// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
+						kutils::rotateStencilToFirstQuadrant( sample, gradient );
+						kutils::rotateStencilToFirstQuadrant( distances, gradient );
+
 						samples.push_back( sample );
 						sdfSamples.push_back( distances );
 						nSamples++;

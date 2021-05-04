@@ -393,6 +393,8 @@ public:
 						for( int j = 0; j < STENCIL_SIZE; j++ )
 							stencils[i][j] = phiReadPtr[stencilIndices[j]];
 
+						// TODO: Normalize stencils to one quadrant by using gradient.
+
 						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
 					}
 				}
