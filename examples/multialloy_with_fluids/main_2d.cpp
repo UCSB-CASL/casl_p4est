@@ -2036,7 +2036,8 @@ public:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
         else{
-          return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface
+          //return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface -- INCORRECT, FOUND SIGN ERROR IN DERIVATION, 5/4/21
+          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
         }
       }
       case NS_GIBOU_EXAMPLE:
@@ -3854,7 +3855,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     Ts.get_array();
     v_int.get_array();
   }
-  if (solve_navier_stokes){
+  if (solve_navier_stokes && !no_flow){
     v_NS.get_array();
     press.get_array();
     vorticity.get_array();
@@ -3893,7 +3894,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     point_data.push_back(v_int.ptr[1]);
   }
 
-  if(solve_navier_stokes){
+  if(solve_navier_stokes && !no_flow){
     point_names.push_back("u");
     point_data.push_back(v_NS.ptr[0]);
 
@@ -3925,7 +3926,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     Ts.restore_array();
     v_int.restore_array();
   }
-  if(solve_navier_stokes){
+  if(solve_navier_stokes && !no_flow){
     v_NS.restore_array();
     press.restore_array();
     vorticity.restore_array();
@@ -5385,10 +5386,15 @@ int main(int argc, char** argv) {
           sprintf(name_fluid_forces,"%s/fluid_forces_Re_%0.2f_lmin_%d_lmax_%d_advection_order_%d.dat",
                   out_dir_fluid_forces,Re,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order);
 
-          ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time fx fy \n");CHKERRXX(ierr);
-          ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
-
+          if(no_flow){
+            ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time A \n");CHKERRXX(ierr);
+            ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
+          }
+          else{
+            ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time fx fy A \n");CHKERRXX(ierr);
+            ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);}
         }
           break;
       }
@@ -5971,6 +5977,37 @@ int main(int argc, char** argv) {
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
       } // End of "if solve navier stokes"
+
+      // If not solving NS but you still want area data:
+
+      if((example_ == ICE_AROUND_CYLINDER || example_ == MELTING_ICE_SPHERE) && (save_fluid_forces) && (no_flow)){
+        // ELYCE DEBUGGING HERE
+        // Get total solid domain
+        // (including the cylinder bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
+
+        //PetscPrintf(mpi.comm(),"We are in here ! ");
+        // --> First, need to scale phi
+        VecScaleGhost(phi.vec,-1.0);
+
+        // --> Compute area of negative domain (aka ice bulk)
+        double ice_area;
+        ice_area = area_in_negative_domain(p4est_np1,nodes_np1,phi.vec);
+
+        //--> Scale phi back to normal:
+        VecScaleGhost(phi.vec,-1.0);
+
+
+        PetscPrintf(mpi.comm(),"tn = %g, A = %0.6f \n",tn+dt,ice_area);
+        ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
+
+        ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"%g %g\n",tn+dt,ice_area);CHKERRXX(ierr);
+        ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
+        PetscPrintf(mpi.comm(),"forces saved \n");
+
+      }
+
+
+
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
