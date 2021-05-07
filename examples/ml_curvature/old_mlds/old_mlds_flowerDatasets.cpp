@@ -27,7 +27,7 @@
 #include <fstream>
 
 // Root finding.
-#include "../star_theta_root_finding.h"
+#include "data_sets/star_theta_root_finding.h"
 #include "../local_utils.h"
 
 /**

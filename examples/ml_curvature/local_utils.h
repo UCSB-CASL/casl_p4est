@@ -47,53 +47,6 @@ void generateColumnHeaders( std::string header[] )
 	header[i+2] = "ihk";
 }
 
-
-/**
- * Verify if a directory exists.  If not, create it.
- * @param [in] path Directory valid path.
- * @throws Runtime error if directory can't be created or if the path exists and is not a directory.
- */
-void checkOrCreateDirectory( const std::string& path )
-{
-	struct stat info{};
-	if( stat( path.c_str(), &info ) != 0 )							// Directory doesn't exist?
-	{
-		if( mkdir( path.c_str(), 0777 ) == -1 )						// Try to create it.
-			throw std::runtime_error( "Cannot create " + path + " directory: " + strerror(errno) + "!" );
-	}
-	else if( !( info.st_mode & (unsigned)S_IFDIR ) )
-		throw std::runtime_error( path + " is not a directory!" );
-}
-
-
-/**
- * Compute the numerical curvature of the input 9-point stencil.  Use the following facts:
- * Idx | xy |  Meaning
- *  0  | mm | (i-1, j-1)
- *  1  | m0 | (i-1,   j)
- *  2  | mp | (i-1, j+1)
- *  3  | 0m | (  i, j-1)
- *  4  | 00 | (  i,   j)
- *  5  | 0p | (  i, j+1)
- *  6  | pm | (i+1, j-1)
- *  7  | p0 | (i+1,   j)
- *  8  | pp | (i+1, j+1)
- * @param [in] p Vector with level-set function values.
- * @param [in] H Spacing.
- * @return kappa.
- */
-double computeNumericalCurvature( const std::vector<double>& p, const double H )
-{
-	double phi_x = ( p[7] - p[1] ) / ( 2 * H );
-	double phi_y = ( p[5] - p[3] ) / ( 2 * H );
-	double phi_xx = ( p[7] - 2 * p[4] + p[1] ) / SQR( H );
-	double phi_yy = ( p[5] - 2 * p[4] + p[3] ) / SQR( H );
-	double phi_x_ijP1 = ( p[8] - p[2] ) / ( 2 * H );
-	double phi_x_ijM1 = ( p[6] - p[0] ) / ( 2 * H );
-	double phi_xy = ( phi_x_ijP1 - phi_x_ijM1 ) / ( 2 * H );
-	return (SQR( phi_x ) * phi_yy - 2 * phi_x * phi_y * phi_xy + SQR( phi_y ) * phi_xx) / pow( SQR( phi_x ) + SQR( phi_y ), 1.5 );
-}
-
 /**
  * Rotate the level-set function values in a sample vector by 90 degrees counter-clockwise.
  * This is used to augment data sets.  Input samples are modified in place.  Dimensionless curvature remains the same.

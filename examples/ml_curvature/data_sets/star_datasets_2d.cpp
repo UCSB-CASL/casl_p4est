@@ -253,10 +253,10 @@ int main ( int argc, char* argv[] )
 		char auxA[10], auxB[10];
 		sprintf( auxA, "%.3f", A );
 		DATA_PATH += "a_" + std::string( auxA ) + "/";
-		checkOrCreateDirectory( DATA_PATH );								// First part of path: a.
+		create_directory( DATA_PATH, mpi.rank() );							// First part of path: a.
 		sprintf( auxB, "%.3f", B );
 		DATA_PATH += "b_" + std::string( auxB ) + "/";
-		checkOrCreateDirectory( DATA_PATH );								// Second part of path: b.
+		create_directory( DATA_PATH, mpi.rank() );							// Second part of path: b.
 
 		// Prepare files where to write sample level-set function values reinitialized with fast sweeping and with pde-
 		// based equation using 5, 10, and 20 iterations.

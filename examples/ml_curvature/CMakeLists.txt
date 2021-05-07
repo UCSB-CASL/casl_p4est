@@ -1,18 +1,18 @@
 # This CMakeLists.txt file has been built manually from the common.pri and libparcasl.pri config files under qmake/
 # To create different configurations, look into https://www.jetbrains.com/help/clion/quick-cmake-tutorial.html
 cmake_minimum_required( VERSION 3.17 )
-project( fast_sweeping )
+project( ml_curvature )
 
 set( CMAKE_CXX_STANDARD 11 )
 
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d.cpp )
+	list( APPEND SRC data_sets/star_datasets_2d.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC main_3d.cpp )
+#	list( APPEND SRC sphere_datasets_3d.cpp )
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
@@ -59,5 +59,5 @@ include_directories(
 
 include( ${PARCASL}/libparcasl.cmake )
 
-add_executable( fast_sweeping
+add_executable( ml_curvature
 		${SRC} ${HEADERS} ${SOURCES} )
