@@ -88,8 +88,8 @@ param_t<int> DIM( nx (pl, 1, "nx", "number of trees in x-dimension"),
 param_t<int> lmin (pl, 5, "lmin", "min level of trees");
 param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #else
-param_t<int> lmin (pl, 6, "lmin", "min level of trees");
-param_t<int> lmax (pl, 6, "lmax", "max level of trees");
+param_t<int> lmin (pl, 5, "lmin", "min level of trees");
+param_t<int> lmax (pl, 5, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.2, "lip", "Lipschitz constant");
 param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
@@ -99,18 +99,18 @@ param_t<bool>   refine_only_inside (pl, 1, "refine_only_inside", "Refine only in
 //param_t<int>    ladd (pl, 0, "lmax", "max level of trees");
 
 // advection parameters
-param_t<double> cfl                     (pl, 1.5,    "cfl", "CFL number");
+param_t<double> cfl                     (pl, 1.5,   "cfl", "CFL number");
 param_t<double> cfl_v_min               (pl, 0.1,   "cfl_v_min", "");
-param_t<double> cfl_v_max               (pl, 0.75,   "cfl_v_max", "");
+param_t<double> cfl_v_max               (pl, 0.75,  "cfl_v_max", "");
 param_t<double> cfl_w_min               (pl, 0.1,   "cfl_w_min", "");
-param_t<double> cfl_w_max               (pl, 0.75,   "cfl_w_max", "");
-param_t<double> cfl_change_rate         (pl, 0.5,    "cfl_change_rate", "");
-param_t<bool>   use_neumann             (pl, 1,      "use_neumann", "Impose contact angle use Neumann BC 0/1");
-param_t<bool>   compute_exact           (pl, 0,      "compute_exact", "Compute exact final shape (only for pure-curvature) 0/1");
-param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special");
-param_t<int>    volume_corrections      (pl, 2,      "volume_corrections", "Number of volume correction after each move");
+param_t<double> cfl_w_max               (pl, 0.75,  "cfl_w_max", "");
+param_t<double> cfl_change_rate         (pl, 0.5,   "cfl_change_rate", "");
+param_t<bool>   use_neumann             (pl, 1,     "use_neumann", "Impose contact angle use Neumann BC 0/1");
+param_t<bool>   compute_exact           (pl, 0,     "compute_exact", "Compute exact final shape (only for pure-curvature) 0/1");
+param_t<int>    contact_angle_extension (pl, 0,     "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special");
+param_t<int>    volume_corrections      (pl, 2,     "volume_corrections", "Number of volume correction after each move");
 param_t<int>    max_iterations          (pl, 500,   "max_iterations", "Maximum number of advection steps");
-param_t<double> tolerance               (pl, 1.0e-8, "tolerance", "Stopping criteria");
+param_t<double> tolerance               (pl, 1.0e-8,"tolerance", "Stopping criteria");
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
 
@@ -119,8 +119,8 @@ param_t<bool>   use_scft               (pl, 1,   "use_scft", "Turn on/off SCFT 0
 param_t<int>    max_scft_iterations    (pl, 100, "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    num_scft_subiterations (pl, 2,   "num_scft_subiterations", "Maximum SCFT iterations");
 param_t<double> scft_tol               (pl, 1.e-4, "scft_tol", "Tolerance for SCFT");
-param_t<int>    num_pre_iterations     (pl, 100,   "num_pre_iterations", "Maximum SCFT iterations");
-param_t<bool>   smart_bc               (pl, 1,   "smart_bc", "");
+param_t<int>    num_pre_iterations     (pl, 100,   "num_pre_iterations", "Number of iterations before updating scft fields");
+param_t<bool>   smart_bc               (pl, 0,   "smart_bc", "");
 
 // polymer
 param_t<double> box_size (pl, 10, "box_size", "Box size in units of Rg");
@@ -153,7 +153,7 @@ param_t<int>    n_seed       (pl, 1, "n_seed", "Seed: 0 - zero, "
                                                "3 - horizontal stripes, "
                                                "4 - dots, "
                                                "5 - spheres");
-param_t<int>    n_example    (pl, 30, "n_example", "Number of predefined example");
+param_t<int>    n_example    (pl, 35, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
 param_t<double> pairwise_potential_mag   (pl, 2.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
@@ -167,6 +167,10 @@ param_t<double> sqrtXN_ptcl_dif_min (pl,-1.0, "sqrtXN_ptcl_dif_min", "Polymer-pa
 param_t<double> sqrtXN_wall_dif_max (pl, 0.5, "sqrtXN_wall_dif_max", "Polymer-wall surface energy strength: difference");
 param_t<double> sqrtXN_wall_dif_min (pl, 0.5, "sqrtXN_wall_dif_min", "Polymer-wall surface energy strength: difference");
 param_t<double> sqrtXN_wall_avg     (pl, 1.0, "sqrtXN_wall_avg", "Polymer-wall surface energy strength: difference");
+
+param_t<double> grafting_density_min(pl, 0.1, "grafting_density_min", "Minimal value of grafting density (for non-uniform graftings)");
+param_t<int> grafting_density_k(pl, 1, "grafting_density_k", "");
+
 
 
 param_t<int> air_wall_energy_type (pl, 1, "air_energy_type", "Method for setting wall surface energy: "
@@ -216,6 +220,7 @@ param_t<int> DIM( num_ptcl_x (pl, 4, "num_ptcl_x", ""),
                   num_ptcl_y (pl, 4, "num_ptcl_y", ""),
                   num_ptcl_z (pl, 1, "num_ptcl_z", "") );
 param_t<double> initial_rotation (pl, -0.25*PI, "initial_rotation", "");
+param_t<double> initial_location_rand (pl, 0.1, "initial_rotation_rand", "");
 param_t<double> initial_rotation_rand (pl, -0.25*PI, "initial_rotation_rand", "");
 param_t<double> rod_radius (pl, 0.1, "rod_radius", "");
 param_t<double> rod_length (pl, 0.5, "rod_length", "");
@@ -223,9 +228,9 @@ param_t<double> rod_length (pl, 0.5, "rod_length", "");
 param_t<bool> DIM( restrict_motion_x (pl, 0, "restrict_motion_x", ""),
                    restrict_motion_y (pl, 0, "restrict_motion_y", ""),
                    restrict_motion_z (pl, 0, "restrict_motion_z", "") );
-param_t<bool> restrict_rotation (pl, 0, "restrict_rotation", "");
+param_t<bool> restrict_rotation (pl, 0, "restrict_rotation", "Restrict particle rotation");
 
-param_t<int> num_submotions (pl, 10, "num_submotions", "");
+param_t<int> num_submotions (pl, 10, "num_submotions", "Splitting of particle motion step");
 
 inline double lam_bulk_period()
 {
@@ -554,7 +559,7 @@ void set_parameters()
       num_scft_subiterations.val = 2;
       max_iterations.val = 1;
     break;
-    case 23: // flower-shaped simple scft test, grafted
+    case 30: // flower-shaped simple scft test, grafted
       grafted.val = 1;
 
       geometry_ptcl.val = 0;
@@ -587,7 +592,70 @@ void set_parameters()
       n_seed.val = 3;
 
     break;
-    case 30: // grafted rod
+    case 31: // test grafted shape derivative: free surface
+      grafted.val = 1;
+
+      xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 0; nz.val = 1;
+#endif
+      box_size.val = 5.0;
+
+      f.val        = .37;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 4;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      // free surface parameters
+      sqrtXN_free_avg.val     = 10.0;
+      sqrtXN_free_dif.val     = 0.0;
+
+      drop_r.val      = 2.5;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.05;
+
+      // particle parameters
+      sqrtXN_ptcl_dif_max.val = 0;
+      sqrtXN_ptcl_dif_min.val = 0;
+
+      num_ptcl_x.val = 1;
+      num_ptcl_y.val = 1;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 0;
+      rod_radius.val = 0.5;
+      rod_length.val = 0.5;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 0;
+      pairwise_potential_width.val = 3;
+
+      // advection parameters
+      minimize.val = 1;
+      ptcl_velo.val = 0;
+      ptcl_rotn.val = 1;
+      free_velo.val = 0;
+
+      max_scft_iterations.val = 100;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 50;
+      n_seed.val = 3;
+
+      num_pre_iterations.val = 0;
+
+      restrict_motion_x.val = 0;
+      restrict_motion_y.val = 0;
+      restrict_rotation.val = 0;
+      num_submotions.val = 10;
+
+      break;
+    case 32: // test grafted shape derivative: particle
       grafted.val = 1;
 
       xmin.val = -1; xmax.val = 1; px.val = 0; nx.val = 1;
@@ -625,6 +693,11 @@ void set_parameters()
       restrict_rotation.val = 0;
       num_submotions.val = 10;
 
+      minimize.val = 0;
+      ptcl_velo.val = 0;
+      ptcl_rotn.val = 0;
+      free_velo.val = 0;
+
       max_scft_iterations.val = 1000;
       num_scft_subiterations.val = 3;
       max_iterations.val = 1;
@@ -641,6 +714,205 @@ void set_parameters()
       sqrtXN_ptcl_dif_min.val = 0;
 
       num_pre_iterations.val = 0;
+      break;
+    case 33: // test grafted shape derivative: three rotating particles
+      grafted.val = 1;
+
+      xmin.val = -2; xmax.val = 2; px.val = 0; nx.val = 1;
+      ymin.val = -2; ymax.val = 2; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -2; zmax.val = 2; pz.val = 0; nz.val = 1;
+#endif
+      box_size.val = 6.0;
+
+      f.val        = .6;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 2;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      grafting_density_min.val = 0.1;
+
+      // free surface parameters
+      sqrtXN_free_avg.val     = 10.0;
+      sqrtXN_free_dif.val     = 0.0;
+
+      drop_r.val      = 5.5;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.0;
+
+      // particle parameters
+      sqrtXN_ptcl_dif_max.val = 0;
+      sqrtXN_ptcl_dif_min.val = 0;
+
+      num_ptcl_x.val = 1;
+      num_ptcl_y.val = 1;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 0;
+      rod_radius.val = 0.5;
+      rod_length.val = 0.5;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 0;
+      pairwise_potential_width.val = 3;
+
+      // advection parameters
+      minimize.val = 1;
+      ptcl_velo.val = 4;
+      ptcl_rotn.val = 1;
+      free_velo.val = 0;
+
+      max_scft_iterations.val = 100;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 200;
+      n_seed.val = 3;
+
+      num_pre_iterations.val = 0;
+
+      restrict_motion_x.val = 0;
+      restrict_motion_y.val = 0;
+      restrict_rotation.val = 0;
+      num_submotions.val = 1;
+
+      break;
+    case 34: // 3x3 grid of grafted particles
+      grafted.val = 1;
+
+      xmin.val = -1; xmax.val = 1; px.val = 1; nx.val = 1;
+      ymin.val = -1; ymax.val = 1; py.val = 1; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -1; zmax.val = 1; pz.val = 1; nz.val = 1;
+#endif
+      box_size.val = 6.0;
+
+      f.val        = .7;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 5;
+      geometry_free.val = 0;
+      geometry_wall.val = 0;
+
+      grafting_density_min.val = 0.0;
+      grafting_density_k.val = 3;
+
+      // free surface parameters
+      sqrtXN_free_avg.val     = 10.0;
+      sqrtXN_free_dif.val     = 0.0;
+
+      drop_r.val      = 5.5;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.0;
+
+      // particle parameters
+      sqrtXN_ptcl_dif_max.val = 0;
+      sqrtXN_ptcl_dif_min.val = 0;
+
+      num_ptcl_x.val = 3;
+      num_ptcl_y.val = 3;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 2.*PI;
+      initial_location_rand.val = 1.0;
+      rod_radius.val = 0.5;
+      rod_length.val = 1.0;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 2;
+      pairwise_potential_width.val = 3;
+
+      // advection parameters
+      minimize.val = 1;
+      ptcl_velo.val = 4;
+      ptcl_rotn.val = 1;
+      free_velo.val = 0;
+
+      max_scft_iterations.val = 100;
+      num_scft_subiterations.val = 2;
+      max_iterations.val = 500;
+      n_seed.val = 1;
+
+      num_pre_iterations.val = 0;
+
+      restrict_motion_x.val = 0;
+      restrict_motion_y.val = 0;
+      restrict_rotation.val = 0;
+      num_submotions.val = 10;
+
+      break;
+    case 35: // 3x3 grid of grafted particles
+      grafted.val = 1;
+
+      xmin.val = -2; xmax.val = 2; px.val = 0; nx.val = 1;
+      ymin.val = -2; ymax.val = 2; py.val = 0; ny.val = 1;
+#ifdef P4_TO_P8
+      zmin.val = -2; zmax.val = 2; pz.val = 0; nz.val = 1;
+#endif
+      box_size.val = 6.0;
+
+      f.val        = .4;
+      XN.val       = 20;
+      ns.val       = 60;
+
+      geometry_ptcl.val = 5;
+      geometry_free.val = 1;
+      geometry_wall.val = 0;
+
+      grafting_density_min.val = 0.0;
+      grafting_density_k.val = 1;
+
+      // free surface parameters
+      sqrtXN_free_avg.val     = 4.0;
+      sqrtXN_free_dif.val     = -1.0;
+
+      drop_r.val      = 5.0;
+      drop_x.val      = 0.02;
+      drop_y.val      = 0.03;
+      drop_k.val      = 5;
+      drop_deform.val = 0.0;
+
+      // particle parameters
+      sqrtXN_ptcl_dif_max.val = 0;
+      sqrtXN_ptcl_dif_min.val = 0;
+
+      num_ptcl_x.val = 1;
+      num_ptcl_y.val = 1;
+
+      initial_rotation.val = 0.25*PI;
+      initial_rotation_rand.val = 2.*PI;
+      initial_location_rand.val = 0.4;
+      rod_radius.val = 0.7;
+      rod_length.val = 2.0;
+
+      pairwise_potential_type.val = 0;
+      pairwise_potential_mag.val = 2;
+      pairwise_potential_width.val = 3;
+
+      // advection parameters
+      minimize.val = 0;
+      ptcl_velo.val = 1;
+      ptcl_rotn.val = 0;
+      free_velo.val = 0;
+
+      max_scft_iterations.val = 100;
+      num_scft_subiterations.val = 3;
+      max_iterations.val = 5;
+      n_seed.val = 3;
+
+      num_pre_iterations.val = 0;
+
+      restrict_motion_x.val = 0;
+      restrict_motion_y.val = 0;
+      restrict_rotation.val = 0;
+      num_submotions.val = 10;
+
       break;
     default:
       throw std::invalid_argument("Invalid exmaple number.\n");
@@ -851,16 +1123,22 @@ inline void interpolate_between_grids(my_p4est_interpolation_nodes_t &interp, p4
 
 struct particle_t
 {
+  // particle position and orientation
   double xyz [P4EST_DIM];
   double axis[P4EST_DIM];
   double rot;
 
+  // particle shape
   CF_DIM *phi_cf;
   CF_DIM DIM( *phix_cf, *phiy_cf, *phiz_cf );
   CF_DIM *kappa_cf;
 
+  // surface tensions
   CF_DIM *gA_cf, DIM( *gAx_cf, *gAy_cf, *gAz_cf);
   CF_DIM *gB_cf, DIM( *gBx_cf, *gBy_cf, *gBz_cf);
+
+  // grafting density
+  CF_DIM *gd_cf, DIM( *gdx_cf, *gdy_cf, *gdz_cf);
 
   particle_t()
   {
@@ -874,6 +1152,7 @@ struct particle_t
     kappa_cf = NULL;
     gA_cf    = NULL; EXECD( gAx_cf  = NULL, gAy_cf  = NULL, gAz_cf  = NULL);
     gB_cf    = NULL; EXECD( gBx_cf  = NULL, gBy_cf  = NULL, gBz_cf  = NULL);
+    gd_cf    = NULL; EXECD( gdx_cf  = NULL, gdy_cf  = NULL, gdz_cf  = NULL);
   }
 
   inline void wrap_periodically(DIM(double &x, double &y, double &z))
@@ -937,17 +1216,21 @@ struct particle_t
   inline double kappa(DIM(double x, double y, double z)) { return sample_func(kappa_cf, DIM(x,y,z)); }
   inline double gA   (DIM(double x, double y, double z)) { return sample_func(gA_cf,    DIM(x,y,z)); }
   inline double gB   (DIM(double x, double y, double z)) { return sample_func(gB_cf,    DIM(x,y,z)); }
+  inline double gd   (DIM(double x, double y, double z)) { return sample_func(gd_cf,    DIM(x,y,z)); }
 
   inline double gAx  (DIM(double x, double y, double z)) { return sample_func_x(DIM(gAx_cf,  gAy_cf,  gAz_cf ), DIM(x,y,z)); }
   inline double gBx  (DIM(double x, double y, double z)) { return sample_func_x(DIM(gBx_cf,  gBy_cf,  gBz_cf ), DIM(x,y,z)); }
+  inline double gdx  (DIM(double x, double y, double z)) { return sample_func_x(DIM(gdx_cf,  gdy_cf,  gdz_cf ), DIM(x,y,z)); }
   inline double phix (DIM(double x, double y, double z)) { return sample_func_x(DIM(phix_cf, phiy_cf, phiz_cf), DIM(x,y,z)); }
 
   inline double gAy  (DIM(double x, double y, double z)) { return sample_func_y(DIM(gAx_cf,  gAy_cf,  gAz_cf ), DIM(x,y,z)); }
   inline double gBy  (DIM(double x, double y, double z)) { return sample_func_y(DIM(gBx_cf,  gBy_cf,  gBz_cf ), DIM(x,y,z)); }
+  inline double gdy  (DIM(double x, double y, double z)) { return sample_func_y(DIM(gdx_cf,  gdy_cf,  gdz_cf ), DIM(x,y,z)); }
   inline double phiy (DIM(double x, double y, double z)) { return sample_func_y(DIM(phix_cf, phiy_cf, phiz_cf), DIM(x,y,z)); }
 #ifdef P4_TO_P8
   inline double gAz  (DIM(double x, double y, double z)) { return sample_func_z(DIM(gAx_cf,  gAy_cf,  gAz_cf ), DIM(x,y,z)); }
   inline double gBz  (DIM(double x, double y, double z)) { return sample_func_z(DIM(gBx_cf,  gBy_cf,  gBz_cf ), DIM(x,y,z)); }
+  inline double gdz  (DIM(double x, double y, double z)) { return sample_func_z(DIM(gdx_cf,  gdy_cf,  gdz_cf ), DIM(x,y,z)); }
   inline double phiz (DIM(double x, double y, double z)) { return sample_func_z(DIM(phix_cf, phiy_cf, phiz_cf), DIM(x,y,z)); }
 #endif
 };
@@ -1121,45 +1404,48 @@ void initalize_ptcl(std::vector<particle_t> &particles)
 
     case 2:
     {
-      static radial_shaped_domain_t sphere(0.2, DIM(0,0,0), -1, 0, 0.0, 0.0);
-      static radial_shaped_domain_t star(0.2, DIM(0,0,0), -1, 3, 0.3, 0.0);
-      static capsule_domain_t capsule(0.1, DIM(0,0,0), 0.3, -1);
+      static radial_shaped_domain_t sphere(0.2*box_size(), DIM(0,0,0), -1, 0, 0.0, 0.0);
+      static radial_shaped_domain_t star(0.2*box_size(), DIM(0,0,0), -1, 3, 0.3, 0.0);
+      static capsule_domain_t capsule(0.1*box_size(), DIM(0,0,0), 0.3*box_size(), -1);
 
       static radial_gamma_t sphere_gA(gamma_Ap_min(), gamma_Ap_max(), 1);
       static radial_gamma_t sphere_gB(gamma_Bp_min(), gamma_Bp_max(), 1);
+      static radial_gamma_t sphere_gd(grafting_density_min(), 1, 1);
 
       static radial_gamma_t capsule_gA(gamma_Ap_min(), gamma_Ap_max(), 0);
       static radial_gamma_t capsule_gB(gamma_Bp_min(), gamma_Bp_max(), 0);
+      static radial_gamma_t capsule_gd(grafting_density_min(), 1, 2);
 
       static radial_gamma_t star_gA(gamma_Ap_min(), gamma_Ap_max(), 3);
       static radial_gamma_t star_gB(gamma_Bp_min(), gamma_Bp_max(), 3);
+      static radial_gamma_t star_gd(1, 1, 1);
 
-      p.phi_cf   = &sphere.phi;   p.gA_cf  = &sphere_gA.val; p.gB_cf  = &sphere_gB.val;
-      p.phix_cf  = &sphere.phi_x; p.gAx_cf = &sphere_gA.ddx; p.gBx_cf = &sphere_gB.ddx;
-      p.phiy_cf  = &sphere.phi_y; p.gAy_cf = &sphere_gA.ddy; p.gBy_cf = &sphere_gB.ddy;
+      p.phi_cf   = &sphere.phi;   p.gA_cf  = &sphere_gA.val; p.gB_cf  = &sphere_gB.val; p.gd_cf  = &sphere_gd.val;
+      p.phix_cf  = &sphere.phi_x; p.gAx_cf = &sphere_gA.ddx; p.gBx_cf = &sphere_gB.ddx; p.gdx_cf = &sphere_gd.ddx;
+      p.phiy_cf  = &sphere.phi_y; p.gAy_cf = &sphere_gA.ddy; p.gBy_cf = &sphere_gB.ddy; p.gdy_cf = &sphere_gd.ddy;
 #ifdef P4_TO_P8
-      p.phiz_cf  = &sphere.phi_z; p.gAz_cf = &sphere_gA.ddz; p.gBz_cf = &sphere_gB.ddz;
+      p.phiz_cf  = &sphere.phi_z; p.gAz_cf = &sphere_gA.ddz; p.gBz_cf = &sphere_gB.ddz; p.gdz_cf = &sphere_gd.ddz;
 #endif
       p.kappa_cf = &sphere.phi_c;
-      EXECD( p.xyz[0] = -0.30, p.xyz[1] = -0.30, p.xyz[2] = 0); particles.push_back(p);
+      EXECD( p.xyz[0] = -0.30*box_size(), p.xyz[1] = -0.30*box_size(), p.xyz[2] = 0); particles.push_back(p);
 
-      p.phi_cf   = &star.phi;   p.gA_cf  = &star_gA.val; p.gB_cf  = &star_gB.val;
-      p.phix_cf  = &star.phi_x; p.gAx_cf = &star_gA.ddx; p.gBx_cf = &star_gB.ddx;
-      p.phiy_cf  = &star.phi_y; p.gAy_cf = &star_gA.ddy; p.gBy_cf = &star_gB.ddy;
+      p.phi_cf   = &star.phi;   p.gA_cf  = &star_gA.val; p.gB_cf  = &star_gB.val; p.gd_cf  = &star_gd.val;
+      p.phix_cf  = &star.phi_x; p.gAx_cf = &star_gA.ddx; p.gBx_cf = &star_gB.ddx; p.gdx_cf = &star_gd.ddx;
+      p.phiy_cf  = &star.phi_y; p.gAy_cf = &star_gA.ddy; p.gBy_cf = &star_gB.ddy; p.gdy_cf = &star_gd.ddy;
 #ifdef P4_TO_P8
-      p.phiz_cf  = &star.phi_z; p.gAz_cf = &star_gA.ddz; p.gBz_cf = &star_gB.ddz;
+      p.phiz_cf  = &star.phi_z; p.gAz_cf = &star_gA.ddz; p.gBz_cf = &star_gB.ddz; p.gdz_cf = &star_gd.ddz;
 #endif
       p.kappa_cf = &star.phi_c;
-      EXECD( p.xyz[0] = +0.40, p.xyz[1] = -0.20, p.xyz[2] = 0); particles.push_back(p);
+      EXECD( p.xyz[0] = +0.40*box_size(), p.xyz[1] = -0.20*box_size(), p.xyz[2] = 0); particles.push_back(p);
 
-      p.phi_cf   = &capsule.phi;   p.gA_cf  = &capsule_gA.val; p.gB_cf  = &capsule_gB.val;
-      p.phix_cf  = &capsule.phi_x; p.gAx_cf = &capsule_gA.ddx; p.gBx_cf = &capsule_gB.ddx;
-      p.phiy_cf  = &capsule.phi_y; p.gAy_cf = &capsule_gA.ddy; p.gBy_cf = &capsule_gB.ddy;
+      p.phi_cf   = &capsule.phi;   p.gA_cf  = &capsule_gA.val; p.gB_cf  = &capsule_gB.val; p.gd_cf  = &capsule_gd.val;
+      p.phix_cf  = &capsule.phi_x; p.gAx_cf = &capsule_gA.ddx; p.gBx_cf = &capsule_gB.ddx; p.gdx_cf = &capsule_gd.ddx;
+      p.phiy_cf  = &capsule.phi_y; p.gAy_cf = &capsule_gA.ddy; p.gBy_cf = &capsule_gB.ddy; p.gdy_cf = &capsule_gd.ddy;
 #ifdef P4_TO_P8
-      p.phiz_cf  = &capsule.phi_z; p.gAz_cf = &capsule_gA.ddz; p.gBz_cf = &capsule_gB.ddz;
+      p.phiz_cf  = &capsule.phi_z; p.gAz_cf = &capsule_gA.ddz; p.gBz_cf = &capsule_gB.ddz; p.gdz_cf = &capsule_gd.ddz;
 #endif
       p.kappa_cf = &capsule.phi_c;
-      EXECD( p.xyz[0] = -0.20, p.xyz[1] = +0.25, p.xyz[2] = 0); particles.push_back(p);
+      EXECD( p.xyz[0] = -0.20*box_size(), p.xyz[1] = +0.25*box_size(), p.xyz[2] = 0); particles.push_back(p);
     }
       break;
 
@@ -1203,6 +1489,9 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       static capsule_domain_t domain(rod_radius.val, DIM(0,0,0), rod_length.val, -1);
       static radial_gamma_t gA(gamma_Ap_min(), gamma_Ap_max(), 1);
       static radial_gamma_t gB(gamma_Bp_min(), gamma_Bp_max(), 1);
+
+      static radial_gamma_t gd(grafting_density_min(), 1, grafting_density_k(), .5*PI);
+
       int DIM( n = num_ptcl_x.val,
                m = num_ptcl_y.val,
                l = num_ptcl_z.val );
@@ -1215,10 +1504,66 @@ void initalize_ptcl(std::vector<particle_t> &particles)
 
       p.gA_cf  = &gA.val; EXECD( p.gAx_cf = &gA.ddx, p.gAy_cf = &gA.ddy, p.gAz_cf = &gA.ddz);
       p.gB_cf  = &gB.val; EXECD( p.gBx_cf = &gB.ddx, p.gBy_cf = &gB.ddy, p.gBz_cf = &gB.ddz);
+      p.gd_cf  = &gd.val; EXECD( p.gdx_cf = &gd.ddx, p.gdy_cf = &gd.ddy, p.gdz_cf = &gd.ddz);
 
-      double DIM( space_x = (nx.val == 1 ? (xmax()-xmin())/double(n) : (xmax()-xmin())/double(n)),
-                  space_y = (ny.val == 1 ? (ymax()-ymin())/double(m) : (ymax()-ymin())/double(m)),
-                  space_z = (nz.val == 1 ? (zmax()-zmin())/double(l) : (zmax()-zmin())/double(l)) );
+//      double DIM( space_x = (nx.val == 1 ? (xmax()-xmin())/double(n) : (xmax()-xmin())/double(n)),
+//                  space_y = (ny.val == 1 ? (ymax()-ymin())/double(m) : (ymax()-ymin())/double(m)),
+//                  space_z = (nz.val == 1 ? (zmax()-zmin())/double(l) : (zmax()-zmin())/double(l)) );
+
+      double DIM( space_x = (nx.val == 1 ? (2.*box_size.val)/double(n) : (2.*box_size.val)/double(n)),
+                  space_y = (ny.val == 1 ? (2.*box_size.val)/double(m) : (2.*box_size.val)/double(m)),
+                  space_z = (nz.val == 1 ? (2.*box_size.val)/double(l) : (2.*box_size.val)/double(l)) );
+
+
+      srand(246246);
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < m; ++j)
+          ONLY3D( for (int k = 0; k < l; ++k))
+          {
+            EXECD( p.xyz[0] = 0 + double(i-n/2)*space_x + double(1-n%2)*.5*space_x + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+                   p.xyz[1] = 0 + double(j-m/2)*space_y + double(1-m%2)*.5*space_y + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+                   p.xyz[2] = 0 + double(k-l/2)*space_z + double(1-l%2)*.5*space_z + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.) );
+            p.rot = initial_rotation.val + initial_rotation_rand.val*double(rand())/double(RAND_MAX);
+            particles.push_back(p);
+          }
+//      for (int i = 0; i < n; ++i)
+//        for (int j = 0; j < m; ++j)
+//          ONLY3D( for (int k = 0; k < l; ++k))
+//          {
+//            EXECD( p.xyz[0] = .5*(xmin()+xmax()) + double(i-n/2)*space_x + double(1-n%2)*.5*space_x + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+//                   p.xyz[1] = .5*(ymin()+ymax()) + double(j-m/2)*space_y + double(1-m%2)*.5*space_y + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+//                   p.xyz[2] = .5*(zmin()+zmax()) + double(k-l/2)*space_z + double(1-l%2)*.5*space_z + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.) );
+//            p.rot = initial_rotation.val + initial_rotation_rand.val*double(rand())/double(RAND_MAX);
+//            particles.push_back(p);
+//          }
+    }
+    break;
+
+    case 5: // perturbed grid of stars
+    {
+      static radial_shaped_domain_t domain(rod_length(), DIM(0,0,0), -1, 4, 0.1, 0.0);
+      static radial_gamma_t gA(gamma_Ap_min(), gamma_Ap_max(), 1);
+      static radial_gamma_t gB(gamma_Bp_min(), gamma_Bp_max(), 1);
+
+      static radial_gamma_t gd(grafting_density_min(), 1, grafting_density_k(), PI/3.*0);
+
+      int DIM( n = num_ptcl_x.val,
+               m = num_ptcl_y.val,
+               l = num_ptcl_z.val );
+
+      p.phi_cf   = &domain.phi;
+      EXECD( p.phix_cf  = &domain.phi_x,
+             p.phiy_cf  = &domain.phi_y,
+             p.phiz_cf  = &domain.phi_z );
+      p.kappa_cf = &domain.phi_c;
+
+      p.gA_cf  = &gA.val; EXECD( p.gAx_cf = &gA.ddx, p.gAy_cf = &gA.ddy, p.gAz_cf = &gA.ddz);
+      p.gB_cf  = &gB.val; EXECD( p.gBx_cf = &gB.ddx, p.gBy_cf = &gB.ddy, p.gBz_cf = &gB.ddz);
+      p.gd_cf  = &gd.val; EXECD( p.gdx_cf = &gd.ddx, p.gdy_cf = &gd.ddy, p.gdz_cf = &gd.ddz);
+
+      double DIM( space_x = (nx.val == 1 ? (2.*box_size())/double(n) : (2.*box_size())/double(n)),
+                  space_y = (ny.val == 1 ? (2.*box_size())/double(m) : (2.*box_size())/double(m)),
+                  space_z = (nz.val == 1 ? (2.*box_size())/double(l) : (2.*box_size())/double(l)) );
 
       srand(246246);
 
@@ -1226,9 +1571,9 @@ void initalize_ptcl(std::vector<particle_t> &particles)
         for (int j = 0; j < m; ++j)
           ONLY3D( for (int k = 0; k < l; ++k))
           {
-            EXECD( p.xyz[0] = .5*(xmin()+xmax()) + double(i-n/2)*space_x + double(1-n%2)*.5*space_x,
-                   p.xyz[1] = .5*(ymin()+ymax()) + double(j-m/2)*space_y + double(1-m%2)*.5*space_y,
-                   p.xyz[2] = .5*(zmin()+zmax()) + double(k-l/2)*space_z + double(1-l%2)*.5*space_z );
+            EXECD( p.xyz[0] = .5*(xmin()+xmax()) + double(i-n/2)*space_x + double(1-n%2)*.5*space_x + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+                   p.xyz[1] = .5*(ymin()+ymax()) + double(j-m/2)*space_y + double(1-m%2)*.5*space_y + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.),
+                   p.xyz[2] = .5*(zmin()+zmax()) + double(k-l/2)*space_z + double(1-l%2)*.5*space_z + initial_location_rand.val*(2.*double(rand())/double(RAND_MAX)-1.) );
             p.rot = initial_rotation.val + initial_rotation_rand.val*double(rand())/double(RAND_MAX);
             particles.push_back(p);
           }
@@ -1248,8 +1593,8 @@ public:
   {
     switch (ptcl_velo())
     {
-      case -1: return 0;
-      case  0:
+      case 0: return 0;
+      case 1:
         switch (what) {
           case V_X: return 1;
           case V_Y: return 0;
@@ -1258,7 +1603,7 @@ public:
 #endif
           default: throw;
         }
-      case  1:
+      case 2:
         switch (what) {
           case V_X: return 0;
           case V_Y: return 1;
@@ -1267,7 +1612,7 @@ public:
 #endif
           default: throw;
         }
-      case  2:
+      case 3:
         switch (what) {
           case V_X: return 1;
           case V_Y: return 1;
@@ -1276,7 +1621,7 @@ public:
 #endif
           default: throw;
         }
-      case  3:
+      case 4:
         switch (what) {
           case V_X: return -sqrt(SQR(x)+SQR(y))*sin(atan2(y,x));
           case V_Y: return  sqrt(SQR(x)+SQR(y))*cos(atan2(y,x));
@@ -1356,6 +1701,19 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     return particles->at(int((*number)(DIM(x, y, z)))).gB(DIM(x, y, z));
+  }
+};
+
+class grafting_density_cf_t : public CF_DIM
+{
+  std::vector<particle_t> *particles;
+  CF_DIM *number;
+public:
+  grafting_density_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
+    : particles(&particles), number(&number) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return particles->at(int((*number)(DIM(x, y, z)))).gd(DIM(x, y, z));
   }
 };
 
@@ -1474,6 +1832,7 @@ int main (int argc, char* argv[])
 
   gamma_Ap_cf_t gamma_Ap_cf(particles, particles_number_cf);
   gamma_Bp_cf_t gamma_Bp_cf(particles, particles_number_cf);
+  grafting_density_cf_t grafting_density_cf(particles, particles_number_cf);
 
   // ------------------------------------------------------------------------------------------------------------------
   // create initial grid
@@ -1529,6 +1888,7 @@ int main (int argc, char* argv[])
   Vec     shape_grad;
   double *shape_grad_ptr;
 
+  // designate mu_m as a template for other fields
   ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &mu_p);                CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &phi_free);            CHKERRXX(ierr);
@@ -1799,12 +2159,18 @@ int main (int argc, char* argv[])
     Vec     integrand;
 //    double *integrand_ptr;
 
+    Vec     qf;
+//    double *qf_ptr;
+
+    Vec     qf_grad[P4EST_DIM];
+
     foreach_dimension(dim)
     {
       ierr = VecCreateGhostNodes(p4est, nodes, &normal_free  [dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(normal_free[dim],    &normal_wall  [dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(normal_free[dim],    &mu_m_grad    [dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(normal_free[dim],    &surf_tns_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(normal_free[dim],    &qf_grad      [dim]); CHKERRXX(ierr);
     }
 
     ierr = VecDuplicate(mu_m, &phi_effe);             CHKERRXX(ierr);
@@ -1819,6 +2185,7 @@ int main (int argc, char* argv[])
     ierr = VecDuplicate(mu_m, &velo_free_full);       CHKERRXX(ierr);
     ierr = VecDuplicate(mu_m, &particles_number);     CHKERRXX(ierr);
     ierr = VecDuplicate(mu_m, &integrand);            CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_m, &qf);                   CHKERRXX(ierr);
 
     sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
     sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
@@ -1904,8 +2271,7 @@ int main (int argc, char* argv[])
     // ------------------------------------------------------------------------------------------------------------------
     double rho_avg = rho_old;
     double energy  = 0;
-
-    bool adaptive = false;
+    double grafted_area = 0;
 
 //    if (iteration == 0 || iteration > num_pre_iterations.val)
     if (iteration % (num_pre_iterations.val+1) == 0)
@@ -1917,7 +2283,9 @@ int main (int argc, char* argv[])
         // set geometry
         scft.add_boundary(phi_free, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
         scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
-        if (iteration != 0 || num_pre_iterations.val == 0) scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf, grafted());
+        if (iteration != 0 || num_pre_iterations.val == 0 || grafted()) {
+          scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Ap_cf, gamma_Bp_cf, grafted(), &grafting_density_cf);
+        }
 
         scft.set_scaling(scaling);
         scft.set_polymer(f(), XN(), grafted());
@@ -1955,6 +2323,11 @@ int main (int argc, char* argv[])
         int    scft_iteration = 0;
         double scft_error     = 2.*scft_tol()+1.;
         while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol())) {
+
+
+//          if (scft_iteration == 25 || scft_iteration == 50 || scft_iteration == 75 || scft_iteration == 100) {
+//            ierr = VecSetGhost(mu_p_tmp, 0.00); CHKERRXX(ierr);
+//          }
           //      while ((scft_iteration < max_scft_iterations() && scft_error > scft_tol()) || (iteration == 0 && scft_iteration < 200)) {
           for (int i = 0; i < num_scft_subiterations(); i++) {
 //            scft.save_VTK(scft_iteration*num_scft_subiterations()+i);
@@ -1970,10 +2343,6 @@ int main (int argc, char* argv[])
                                scft.get_energy(),
                                scft.get_pressure_force(),
                                scft.get_exchange_force()); CHKERRXX(ierr);
-          }
-
-          if (scft_iteration == 100) {
-            ierr = VecSetGhost(mu_p_tmp, 0); CHKERRXX(ierr);
           }
 
           // do an SCFT step
@@ -2008,11 +2377,17 @@ int main (int argc, char* argv[])
 
         ierr = VecCopyGhost(mu_m_tmp, mu_m); CHKERRXX(ierr);
         ierr = VecCopyGhost(mu_p_tmp, mu_p); CHKERRXX(ierr);
+
+        if (grafted()) {
+          ierr = VecCopyGhost(scft.get_qf(scft.get_ns()-1), qf); CHKERRXX(ierr);
+          grafted_area = scft.get_grafted_area();
+        }
       }
       else
       {
         sample_cf_on_nodes(p4est, nodes, mu_cf, mu_m);
         ierr = VecSetGhost(mu_p, 0); CHKERRXX(ierr);
+        ierr = VecSetGhost(qf, 0); CHKERRXX(ierr);
         ierr = VecSetGhost(shape_grad, 0);      CHKERRXX(ierr);
       }
     }
@@ -2320,14 +2695,19 @@ int main (int argc, char* argv[])
       Vec     gamma_ptcl_dif;
       double *gamma_ptcl_dif_ptr;
 
+      Vec     grafting_density_vec;
+      double *grafting_density_ptr;
+
       ierr = VecDuplicate(mu_m, &gamma_ptcl_avg); CHKERRXX(ierr);
       ierr = VecDuplicate(mu_m, &gamma_ptcl_dif); CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_m, &grafting_density_vec); CHKERRXX(ierr);
 
       if (geometry_ptcl() != 0)
       {
         ierr = VecGetArray(gamma_ptcl_avg, &gamma_ptcl_avg_ptr); CHKERRXX(ierr);
         ierr = VecGetArray(gamma_ptcl_dif, &gamma_ptcl_dif_ptr); CHKERRXX(ierr);
         ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(grafting_density_vec, &grafting_density_ptr); CHKERRXX(ierr);
 
         foreach_node(n, nodes)
         {
@@ -2341,11 +2721,13 @@ int main (int argc, char* argv[])
 
           gamma_ptcl_avg_ptr[n] = .5*(ga+gb);
           gamma_ptcl_dif_ptr[n] = .5*(ga-gb);
+          grafting_density_ptr[n] = particles[i].gd(DIM(xyz[0], xyz[1], xyz[2]));
         }
 
         ierr = VecRestoreArray(gamma_ptcl_avg, &gamma_ptcl_avg_ptr); CHKERRXX(ierr);
         ierr = VecRestoreArray(gamma_ptcl_dif, &gamma_ptcl_dif_ptr); CHKERRXX(ierr);
         ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(grafting_density_vec, &grafting_density_ptr); CHKERRXX(ierr);
       }
 
       ierr = VecGetArray(leaf_level,       &leaf_level_ptr);       CHKERRXX(ierr);
@@ -2368,10 +2750,11 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(gamma_ptcl_dif,   &gamma_ptcl_dif_ptr);   CHKERRXX(ierr);
       ierr = VecGetArray(shape_grad_free,  &shape_grad_free_ptr);  CHKERRXX(ierr);
       ierr = VecGetArray(shape_grad_ptcl,  &shape_grad_ptcl_ptr);  CHKERRXX(ierr);
+      ierr = VecGetArray(grafting_density_vec, &grafting_density_ptr); CHKERRXX(ierr);
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             19, 1, oss.str().c_str(),
+                             20, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi",       phi_effe_ptr,
                              VTK_POINT_DATA, "phi_wall",  phi_wall_ptr,
                              VTK_POINT_DATA, "phi_free",  phi_free_ptr,
@@ -2391,6 +2774,7 @@ int main (int argc, char* argv[])
                              VTK_POINT_DATA, "gamma_diff", gamma_ptcl_dif_ptr,
                              VTK_POINT_DATA, "shape_grad_free", shape_grad_free_ptr,
                              VTK_POINT_DATA, "shape_grad_ptcl", shape_grad_ptcl_ptr,
+                             VTK_POINT_DATA, "grafting_density", grafting_density_ptr,
                              VTK_CELL_DATA , "leaf_level", leaf_level_ptr);
 
       ierr = VecRestoreArray(leaf_level,       &leaf_level_ptr);       CHKERRXX(ierr);
@@ -2413,11 +2797,13 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(gamma_ptcl_dif,   &gamma_ptcl_dif_ptr);   CHKERRXX(ierr);
       ierr = VecRestoreArray(shape_grad_free,  &shape_grad_free_ptr);  CHKERRXX(ierr);
       ierr = VecRestoreArray(shape_grad_ptcl,  &shape_grad_ptcl_ptr);  CHKERRXX(ierr);
+      ierr = VecRestoreArray(grafting_density_vec, &grafting_density_ptr); CHKERRXX(ierr);
 
       ierr = VecDestroy(phi_exact);  CHKERRXX(ierr);
       ierr = VecDestroy(gamma_ptcl_avg);  CHKERRXX(ierr);
       ierr = VecDestroy(gamma_ptcl_dif);  CHKERRXX(ierr);
       ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+      ierr = VecDestroy(grafting_density_vec); CHKERRXX(ierr);
 
 //      PetscPrintf(mpi.comm(), "VTK saved in %s\n", oss.str().c_str());
     }
@@ -2440,6 +2826,9 @@ int main (int argc, char* argv[])
       vector<double> dt_ptcl_w(np, 1);
 
       ngbd->first_derivatives_central(mu_m, mu_m_grad);
+      if (grafted()) {
+        ngbd->first_derivatives_central(qf, qf_grad);
+      }
 
       sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
 
@@ -2478,7 +2867,7 @@ int main (int argc, char* argv[])
           phi_cf[2] = &interp_local;
 
           my_p4est_finite_volume_t fv;
-          construct_finite_volume(fv, n, p4est, nodes, phi_cf, opn, 1, 1);
+          construct_finite_volume(fv, n, p4est, nodes, phi_cf, opn, 2, 1);
 
           for (size_t j = 0; j < fv.interfaces.size(); ++j)
           {
@@ -2532,7 +2921,7 @@ int main (int argc, char* argv[])
             EXECD(phix /= norm, phiy /= norm, phiz /= norm);
 
             interp_local.set_input(shape_grad_ptcl, linear); double velo_val = interp_local.value(xyz_ptcl);
-            interp_local.set_input(mu_m,            linear); double mu_m     = interp_local.value(xyz_ptcl);
+            interp_local.set_input(mu_m,            linear); double mu0_m    = interp_local.value(xyz_ptcl);
             interp_local.set_input(mu_m_grad[0],    linear); double mux_m    = interp_local.value(xyz_ptcl);
             interp_local.set_input(mu_m_grad[1],    linear); double muy_m    = interp_local.value(xyz_ptcl);
 #ifdef P4_TO_P8
@@ -2552,10 +2941,10 @@ int main (int argc, char* argv[])
                         gbz = particles[i].gBz(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2])) );
 
 
-            double g_eff  = (.5*(ga +gb )*rho_avg + mu_m/XN()*(ga -gb ));
-            double DIM( gx_eff = (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx) + mux_m/XN()*(ga-gb)),
-                        gy_eff = (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby) + muy_m/XN()*(ga-gb)),
-                        gz_eff = (.5*(gaz+gbz)*rho_avg + mu_m/XN()*(gaz-gbz) + muz_m/XN()*(ga-gb)) );
+            double g_eff  = (.5*(ga + gb)*rho_avg + mu0_m/XN()*(ga - gb));
+            double DIM( gx_eff = (.5*(gax+gbx)*rho_avg + mu0_m/XN()*(gax-gbx) + mux_m/XN()*(ga-gb)),
+                        gy_eff = (.5*(gay+gby)*rho_avg + mu0_m/XN()*(gay-gby) + muy_m/XN()*(ga-gb)),
+                        gz_eff = (.5*(gaz+gbz)*rho_avg + mu0_m/XN()*(gaz-gbz) + muz_m/XN()*(ga-gb)) );
 
             double G = SUMD(phix*gx_eff,
                             phiy*gy_eff,
@@ -2563,9 +2952,32 @@ int main (int argc, char* argv[])
                        + g_eff*phic*factor
                        + velo_val;
 
-            double DIM( Gx = G*phix - (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx))*factor,
-                        Gy = G*phiy - (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby))*factor,
-                        Gz = G*phiz - (.5*(gaz+gbz)*rho_avg + mu_m/XN()*(gaz-gbz))*factor );
+            double DIM( Gx = G*phix - (.5*(gax+gbx)*rho_avg + mu0_m/XN()*(gax-gbx))*factor,
+                        Gy = G*phiy - (.5*(gay+gby)*rho_avg + mu0_m/XN()*(gay-gby))*factor,
+                        Gz = G*phiz - (.5*(gaz+gbz)*rho_avg + mu0_m/XN()*(gaz-gbz))*factor );
+
+            if (grafted()) {
+
+              interp_local.set_input(qf,         linear); double qf_0 = interp_local.value(xyz_ptcl);
+              interp_local.set_input(qf_grad[0], linear); double qf_x = interp_local.value(xyz_ptcl);
+              interp_local.set_input(qf_grad[1], linear); double qf_y = interp_local.value(xyz_ptcl);
+  #ifdef P4_TO_P8
+              interp_local.set_input(qf_grad[2], linear); double qf_z = interp_local.value(xyz_ptcl);
+  #endif
+              double gd  = particles[i].gd (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+              double DIM( gdx = particles[i].gdx(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2])),
+                          gdy = particles[i].gdy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2])),
+                          gdz = particles[i].gdz(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2])) );
+
+              double G_grafted = SUMD((gd*qf_x/qf_0+gdx*log(qf_0))*phix,
+                                      (gd*qf_y/qf_0+gdy*log(qf_0))*phiy,
+                                      (gd*qf_z/qf_0+gdz*log(qf_0))*phiz)
+                                 + phic*gd*log(qf_0);
+
+              Gx -= (G_grafted*phix - gdx*log(qf_0))/grafted_area*volume;
+              Gy -= (G_grafted*phiy - gdy*log(qf_0))/grafted_area*volume;
+//              Gz -= (G_grafted*phiz - gdz*log(qf_0))/grafted_area;
+            }
 
             double DIM( delx = xyz_ptcl[0]-particles[i].xyz[0],
                         dely = xyz_ptcl[1]-particles[i].xyz[1],
@@ -2593,8 +3005,8 @@ int main (int argc, char* argv[])
             EXECD( gv[0][i] += Gx*area_ptcl,
                    gv[1][i] += Gy*area_ptcl,
                    gv[2][i] += Gz*area_ptcl );
-            gw[i]    += Gxy*area_ptcl;
-            surf_energy  += g_eff*area_ptcl*factor;
+            gw[i] += Gxy*area_ptcl;
+            surf_energy += g_eff*area_ptcl*factor;
 
             // take into account artificial repulsion between particles, walls and free surface
             double G_pp = 0;
@@ -3420,6 +3832,7 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(mu_m_grad    [dim]); CHKERRXX(ierr);
       ierr = VecDestroy(normal_wall  [dim]); CHKERRXX(ierr);
       ierr = VecDestroy(normal_free  [dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(qf_grad      [dim]); CHKERRXX(ierr);
     }
 
     ierr = VecDestroy(phi_effe);             CHKERRXX(ierr);
@@ -3434,6 +3847,7 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(velo_free_full);       CHKERRXX(ierr);
     ierr = VecDestroy(particles_number);     CHKERRXX(ierr);
     ierr = VecDestroy(integrand);            CHKERRXX(ierr);
+    ierr = VecDestroy(qf);                   CHKERRXX(ierr);
 
     iteration++;
     energy_old = energy;

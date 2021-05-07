@@ -67,6 +67,9 @@ class my_p4est_scft_t
   CF_DIM *gamma_air;
   std::vector<bool> grafting;
 
+  /* grafting density */
+  std::vector<CF_DIM *> grafting_density;
+
   /* Robin coefficients */
   std::vector< std::vector<double> > pw_bc_values;
   std::vector< std::vector<double> > pw_bc_coeffs_a;
@@ -132,7 +135,7 @@ public:
 
   void set_lambda(double value) { lambda = value; }
   void set_polymer(double f, double XN, bool grafted=0);
-  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting=0);
+  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting=0, CF_DIM *grafting_density=NULL);
 
   void initialize_solvers();
   void initialize_bc_simple(); // a naive method that produces singularities in the pressure field
@@ -186,7 +189,12 @@ public:
 
   void save_VTK_q(int compt);
 
-  int get_ns() { return ns; }
+  inline int get_ns() { return ns; }
+
+  inline double get_grafted_area() { return grafting_area; }
+  inline Vec get_qf(int i) { return qf[i]; }
+  inline Vec get_qb(int i) { return qb[i]; }
+
 
   /* Density Optimization */
   Vec mu_t;

@@ -340,7 +340,6 @@ private:
 
   bool   second_derivatives_owned_;
   bool   use_superconvergent_robin_;
-  bool   use_superconvergent_jump_; // not used atm
   bool   use_points_on_interface_;
   bool   poisson_use_nonzero_guess_;
   bool   extension_use_nonzero_guess_;
@@ -350,26 +349,13 @@ private:
   double min_volume_;
   double volume_thresh_;
   double extension_band_use_;
-  double extension_band_check_;
   double extension_band_extend_;
-  double extension_tol_;
 
   int    num_extend_iterations_;
   int    cube_refinement_;
   int    integration_order_;
   int    iteration_scheme_; // 0 - fp, 1 - old, 2 - new, 3 - new (two stage)
-  int    dirichlet_scheme_; // 0 - sw, 1 - gf (modified and extended)
-
-  enum var_scheme_t
-  {
-    VALUE,
-    ABS_VALUE,
-    QUADRATIC,
-    ABS_ALTER,
-    ABS_SMTH1,
-    ABS_SMTH2,
-    ABS_SMTH3
-  } var_scheme_;
+  int    dirichlet_scheme_; // 0 - SW, 1 - gf (modified and extended), 2 - extended SW
 
 public:
   inline void set_iteration_scheme          (int          value) { iteration_scheme_          = value; }
@@ -377,9 +363,7 @@ public:
   inline void set_integration_order         (int          value) { integration_order_         = value; }
   inline void set_update_c0_robin           (int          value) { update_c0_robin_           = value; }
   inline void set_use_superconvergent_robin (bool         value) { use_superconvergent_robin_ = value; }
-  inline void set_use_superconvergent_jump  (bool         value) { use_superconvergent_jump_  = value; }
   inline void set_use_points_on_interface   (bool         value) { use_points_on_interface_   = value; }
-  inline void set_scheme                    (var_scheme_t value) { var_scheme_                = value; }
   inline void set_verbose_mode              (bool         value) { verbose_                   = value; }
   inline void set_dirichlet_scheme          (int          value) { dirichlet_scheme_          = value; }
 

@@ -221,10 +221,9 @@ protected:
   int    cube_refinement_;
   int    jump_scheme_;
   int    fv_scheme_;
-  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid
+  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid, 2 - extended Shortley-Weller
   int    gf_order_;
   int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
-
 
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
@@ -240,12 +239,14 @@ protected:
   interpolation_method interp_method_;
 
   // auxiliary variables
-  Vec volumes_m_; double *volumes_m_ptr;
-  Vec volumes_p_; double *volumes_p_ptr;
-  Vec areas_m_;   double *areas_m_ptr;
-  Vec areas_p_;   double *areas_p_ptr;
-  Vec mask_m_;    double *mask_m_ptr;
-  Vec mask_p_;    double *mask_p_ptr;
+  Vec volumes_m_;  double *volumes_m_ptr;
+  Vec volumes_p_;  double *volumes_p_ptr;
+  Vec areas_m_;    double *areas_m_ptr;
+  Vec areas_p_;    double *areas_p_ptr;
+  Vec mask_m_;     double *mask_m_ptr;
+  Vec mask_p_;     double *mask_p_ptr;
+  Vec extended_sw_; double *extended_sw_ptr; // tells whether a node is a part of extended SW discretization
+  // (follows level-set notation, i.e., < 0 is yes and > 0 is no)
 
   bool volumes_computed_;
   bool volumes_owned_;
@@ -301,6 +302,11 @@ protected:
   void discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                double infc_phi_eff_000, bool is_wall[],
                                std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
+
+  void discretize_dirichlet_sw_ext(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                                   double infc_phi_eff_000, bool is_wall[],
+                                   std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
+
 
   void discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                double infc_phi_eff_000, bool is_wall[],

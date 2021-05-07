@@ -69,8 +69,7 @@ class my_p4est_level_set_t {
   interpolation_method interpolation_on_interface;
   bool                 use_neumann_for_contact_angle;
   int                  contact_angle_extension;
-  bool                 show_convergence;
-  double               show_convergence_band;
+  double               bc_rel_thresh;
   bool                 use_two_step_extrapolation;
 
 public:
@@ -78,7 +77,7 @@ public:
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       interpolation_on_interface(quadratic_non_oscillatory),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
-      show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
+      bc_rel_thresh(1.e-9), use_two_step_extrapolation(false)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -171,13 +170,29 @@ public:
 
   /* extend a quantity over the interface with the TVD algorithm */
   void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2,
-                                 double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                 double band_use=-DBL_MAX, double band_extend=DBL_MAX,
                                  Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
                                  bool use_nonzero_guess=false, Vec q_n=NULL, Vec q_nn=NULL) const;
 
-  /* extend a quantity over the interface with the TVD algorithm (all derivatives are extended, not just q_n and q_nn) */
+  /*!
+   * \brief extend_Over_Interface_TVD_Full extends a quantity over the interface with the TVD algorithm
+   * (all derivatives are extended, not just q_n and q_nn)
+   * \param phi               [in]      level-set function representing interface
+   * \param q                 [in, out] field to extends
+   * \param iterations        [in]      number of iterations
+   * \param order             [out]     order of extrapolation
+   * \param band_use          [in]      how deep
+   * \param band_extend       [in]
+   * \param normal            [in]      provides normal vector field (
+   * \param mask              [in]
+   * \param bc                [in]
+   * \param use_nonzero_guess [in]
+   * \param q_d               [in]
+   * \param q_dd              [in]
+   * \return
+   */
   void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations=20, int order=2,
-                                      double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                      double band_use=-DBL_MAX, double band_extend=DBL_MAX,
                                       Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
                                       bool use_nonzero_guess=false, Vec *q_d=NULL, Vec *q_dd=NULL) const;
 
@@ -250,8 +265,7 @@ public:
   inline void set_interpolation_on_interface   (interpolation_method value) { interpolation_on_interface = value; }
   inline void set_use_neumann_for_contact_angle(bool   value) { use_neumann_for_contact_angle = value; }
   inline void set_contact_angle_extension      (int    value) { contact_angle_extension       = value; }
-  inline void set_show_convergence             (bool   value) { show_convergence              = value; }
-  inline void set_show_convergence_band        (double value) { show_convergence_band         = value; }
+  inline void set_bc_rel_thresh                (bool   value) { bc_rel_thresh                 = value; }
   inline void set_use_two_step_extrapolation   (bool   value) { use_two_step_extrapolation    = value; }
 };
 

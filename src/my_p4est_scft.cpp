@@ -189,7 +189,7 @@ void my_p4est_scft_t::set_polymer(double f, double XN, bool grafted)
   ns_b = ns-fns+1;
 }
 
-void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting)
+void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting, CF_DIM *grafting_density)
 {
   this->phi.push_back(phi);
   this->action.push_back(acn);
@@ -197,6 +197,7 @@ void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A
   this->gamma_a.push_back(&surf_energy_A);
   this->gamma_b.push_back(&surf_energy_B);
   this->grafting.push_back(grafting);
+  this->grafting_density.push_back(grafting_density);
   num_surfaces++;
 }
 
@@ -274,7 +275,11 @@ void my_p4est_scft_t::initialize_solvers()
         boundary_conditions_t *bc = solver_a.get_bc(i);
 
         for (int idx = 0; idx < bc->num_value_pts(); ++idx) {
-          grafting_area += bc->areas[idx];
+
+          double xyz[P4EST_DIM];
+          bc->xyz_robin_pt(idx, xyz);
+
+          grafting_area += bc->areas[idx]*grafting_density[i]->value(xyz);
         }
       }
     }
@@ -356,8 +361,8 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive, int bc_scheme)
 
           if (phi_smooth != NULL) {
             my_p4est_level_set_t ls(ngbd);
-            ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 25, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-            ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 25, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+            ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 25, 2, DBL_MAX, DBL_MAX, NULL, mask);
+            ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 25, 2, DBL_MAX, DBL_MAX, NULL, mask);
           }
         }
 
@@ -384,8 +389,9 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive, int bc_scheme)
 
             if (grafting[i])
             {
-              pw_bc_coeffs_a[i][j] = 0.5*volume/grafting_area/(rho_a_val+rho_b_val);
-              pw_bc_coeffs_b[i][j] = 0.5*volume/grafting_area/(rho_a_val+rho_b_val);
+              double den = grafting_density[i]->value(xyz);
+              pw_bc_coeffs_a[i][j] = 0.5*volume*den/grafting_area/(rho_a_val+rho_b_val);
+              pw_bc_coeffs_b[i][j] = 0.5*volume*den/grafting_area/(rho_a_val+rho_b_val);
             }
 
             // calculate addition to energy from surface tensions
@@ -423,7 +429,7 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive, int bc_scheme)
           if (phi_smooth != NULL)
           {
             my_p4est_level_set_t ls(ngbd);
-            ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+            ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, DBL_MAX, DBL_MAX, NULL, mask);
           }
 
           interp.set_input(mu_m, linear);
@@ -517,7 +523,7 @@ void my_p4est_scft_t::solve_for_propogators()
     if (phi_smooth != NULL)
     {
       my_p4est_level_set_t ls(ngbd);
-      ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+      ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
 
       double *qf_ptr;
       double *qb_ptr;
@@ -547,19 +553,26 @@ void my_p4est_scft_t::solve_for_propogators()
           node_xyz_fr_n(n, p4est, nodes, xyz_C);
 
           for (size_t i = 0; i < fv.interfaces.size(); ++i){
-            if (grafting[fv.interfaces[i].id]) {
 
-              double qf_value = interp(DIM(xyz_C[0] + fv.interfaces[i].centroid[0],
-                  xyz_C[1] + fv.interfaces[i].centroid[1],
-                  xyz_C[2] + fv.interfaces[i].centroid[2]));
+            int phi_idx = fv.interfaces[i].id;
 
-              qb_ptr[n] += fv.interfaces[i].area/fv.volume/qf_value;
+            if (grafting[phi_idx]) {
+
+              double xyz_centroid[] = { DIM(xyz_C[0] + fv.interfaces[i].centroid[0],
+                                        xyz_C[1] + fv.interfaces[i].centroid[1],
+                                        xyz_C[2] + fv.interfaces[i].centroid[2]) };
+
+              double qf_value = interp(xyz_centroid);
+
+              double den = grafting_density[phi_idx]->value(xyz_centroid);
+
+              qb_ptr[n] += fv.interfaces[i].area/fv.volume/qf_value*den;
 
               if (fv.volume == 0)
                 throw std::domain_error("A finite volume has zero volume");
 
               if (qf_value > 0) {
-                Q += log(qf_value)*fv.interfaces[i].area;
+                Q += log(qf_value)*fv.interfaces[i].area*den;
               } else {
                 ierr = PetscPrintf(p4est->mpicomm, "Warning: chain propagator is negative");
               }
@@ -1444,14 +1457,14 @@ void my_p4est_scft_t::sync_and_extend()
   if (phi_smooth != NULL)
   {
     my_p4est_level_set_t ls(ngbd);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, qb[0], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 0, 0);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask_wo_bc);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, qb[0], 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 0);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask_wo_bc);
   }
 }
 
@@ -1503,17 +1516,31 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo, boo
     }
   }
 
-  foreach_node(n, nodes)
-  {
-    energy_shape_deriv_ptr[n] = 0.0*energy_shape_deriv_volumetric
-        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n]*rho_avg)
-        - 0.5*(qf_ptr[n]+qb_ptr[n])/Q;
+  if (grafted) {
+    foreach_node(n, nodes)
+    {
+      energy_shape_deriv_ptr[n] = (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n]*rho_avg)
+                                  - 0.5*qb_ptr[n]*volume/grafting_area;
 
-    if (!assume_convergence) {
-      energy_shape_deriv_ptr[n] += .5*SUMD(rho_t_dd_ptr[0][n], rho_t_dd_ptr[1][n], rho_t_dd_ptr[2][n]);
+      if (!assume_convergence) {
+        energy_shape_deriv_ptr[n] += .5*SUMD(rho_t_dd_ptr[0][n], rho_t_dd_ptr[1][n], rho_t_dd_ptr[2][n]);
+      }
+
+      energy_shape_deriv_ptr[n] /= pow(scaling, P4EST_DIM);
     }
+  } else {
+    foreach_node(n, nodes)
+    {
+      energy_shape_deriv_ptr[n] = 0.0*energy_shape_deriv_volumetric
+                                  + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n]*rho_avg)
+                                  - 0.5*(qf_ptr[n]+qb_ptr[n])/Q;
 
-    energy_shape_deriv_ptr[n] /= pow(scaling, P4EST_DIM);
+      if (!assume_convergence) {
+        energy_shape_deriv_ptr[n] += .5*SUMD(rho_t_dd_ptr[0][n], rho_t_dd_ptr[1][n], rho_t_dd_ptr[2][n]);
+      }
+
+      energy_shape_deriv_ptr[n] /= pow(scaling, P4EST_DIM);
+    }
   }
 
   if (!assume_convergence) {
@@ -1979,10 +2006,10 @@ void my_p4est_scft_t::dsa_sync_and_extend()
 
   // extend over smoothed interface
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, zf[ns-1], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, zb[0000], 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, nu_m, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, nu_p, 50, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+  ls.extend_Over_Interface_TVD_Full(phi_smooth, zf[ns-1], 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+  ls.extend_Over_Interface_TVD_Full(phi_smooth, zb[0000], 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+  ls.extend_Over_Interface_TVD_Full(phi_smooth, nu_m, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+  ls.extend_Over_Interface_TVD_Full(phi_smooth, nu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
 }
 
 void my_p4est_scft_t::dsa_compute_shape_gradient(int phi_idx, Vec velo)

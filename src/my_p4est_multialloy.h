@@ -66,7 +66,6 @@ private:
   vec_and_ptr_t contr_phi_;
   vec_and_ptr_t front_phi_;
   vec_and_ptr_t front_curvature_;
-  vec_and_ptr_t front_curvature_filtered_;
 
   vec_and_ptr_dim_t contr_phi_dd_;
   vec_and_ptr_dim_t front_phi_dd_;
@@ -111,6 +110,7 @@ private:
   vec_and_ptr_array_t solid_cl_; // composition of solidified region
   vec_and_ptr_array_t solid_part_coeff_; // partition coefficient at freezing
   vec_and_ptr_t       solid_seed_; // seed tag
+  vec_and_ptr_t       solid_smoothed_nodes_; // is used to track nodes that were artificially solidified during front regularization
 
   //--------------------------------------------------
   // physical parameters
@@ -160,14 +160,11 @@ private:
   //--------------------------------------------------
   int max_iterations_;
   int update_c0_robin_;
-  int front_smoothing_;
 
   double proximity_smoothing_;
 
   double bc_tolerance_;
   double cfl_number_;
-  double curvature_smoothing_;
-  int    curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
@@ -194,6 +191,8 @@ private:
   double         dt_min_;
   double         dt_max_;
   double         front_velo_norm_max_;
+  vec_and_ptr_t  smoothed_nodes_; // is used to track nodes that were artificially solidified during front regularization
+  vec_and_ptr_t  front_phi_unsmooth_; // is used to track nodes that were artificially solidified during front regularization
 
   static my_p4est_node_neighbors_t *v_ngbd;
   static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
@@ -508,10 +507,6 @@ public:
 
   inline void set_update_c0_robin          (int value)    { update_c0_robin_           = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
-  inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
-  inline void set_curvature_smoothing      (double value,
-                                            int    steps) { curvature_smoothing_       = value;
-                                                            curvature_smoothing_steps_ = steps; }
 
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }
   inline void set_cfl                      (double value) { cfl_number_                = value; }
@@ -520,11 +515,9 @@ public:
   inline void set_volumetric_heat          (CF_DIM &value){ vol_heat_gen_              =&value; }
   inline void set_proximity_smoothing      (double value) { proximity_smoothing_       = value; }
 
-
-  void regularize_front();
+  void regularize_front(Vec front_phi_old);
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();
-  void compute_filtered_curvature();
   void compute_velocity();
   void compute_solid();
 

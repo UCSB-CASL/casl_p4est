@@ -103,7 +103,6 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   second_derivatives_owned_  = false;
   use_superconvergent_robin_ = false;
-  use_superconvergent_jump_  = false;
   update_c0_robin_           = 0;
   use_points_on_interface_   = true;
   verbose_                   = false;
@@ -125,16 +124,12 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM));
   extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM));
-  extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM));
-  extension_tol_  = 1.e-14;
   extension_use_nonzero_guess_ = false;
 
-//  poisson_use_nonzero_guess_ = true;
-  poisson_use_nonzero_guess_ = false;
+  poisson_use_nonzero_guess_ = true;
 
   iteration_scheme_ = 2;
-
-  dirichlet_scheme_ = 0;
+  dirichlet_scheme_ = 2;
 }
 
 my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
@@ -348,21 +343,21 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
   // precompute first and second derivatives for extension purposes
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normal_.vec, NULL, NULL, 1, tl_d_.vec, tl_dd_.vec.data());
-  ls.extend_Over_Interface_TVD_Full(solid_phi_.vec,  ts_.vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normal_.vec,  NULL, NULL, 1, ts_d_.vec, ts_dd_.vec.data());
+  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, 0, 1, extension_band_use_, extension_band_extend_, liquid_normal_.vec, NULL, NULL, 1, tl_d_.vec, tl_dd_.vec.data());
+  ls.extend_Over_Interface_TVD_Full(solid_phi_.vec,  ts_.vec, 0, 1, extension_band_use_, extension_band_extend_, solid_normal_.vec,  NULL, NULL, 1, ts_d_.vec, ts_dd_.vec.data());
   for (int i = 0; i < num_comps_; ++i)
   {
-    ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[i].vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normal_.vec, NULL, NULL, 1, c_d_[i].vec, c_dd_[i].vec.data());
+    ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[i].vec, 0, 1, extension_band_use_, extension_band_extend_, liquid_normal_.vec, NULL, NULL, 1, c_d_[i].vec, c_dd_[i].vec.data());
   }
 
-  if (psi_tl != NULL) ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_tl_.vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normal_.vec, NULL, NULL, 1, psi_tl_d_.vec, NULL);
-  if (psi_ts != NULL) ls.extend_Over_Interface_TVD_Full(solid_phi_.vec,  psi_ts_.vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normal_.vec,  NULL, NULL, 1, psi_ts_d_.vec, NULL);
+  if (psi_tl != NULL) ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_tl_.vec, 0, 1, extension_band_use_, extension_band_extend_, liquid_normal_.vec, NULL, NULL, 1, psi_tl_d_.vec, NULL);
+  if (psi_ts != NULL) ls.extend_Over_Interface_TVD_Full(solid_phi_.vec,  psi_ts_.vec, 0, 1, extension_band_use_, extension_band_extend_, solid_normal_.vec,  NULL, NULL, 1, psi_ts_d_.vec, NULL);
 
   if (psi_cl != NULL)
   {
     for (int i = 0; i < num_comps_; ++i)
     {
-      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[i].vec, 0, 1, 0, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normal_.vec, NULL, NULL, 1, psi_c_d_[i].vec);
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[i].vec, 0, 1, extension_band_use_, extension_band_extend_, liquid_normal_.vec, NULL, NULL, 1, psi_c_d_[i].vec);
     }
   }
 
@@ -478,9 +473,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
   if (psi_ts != NULL)
   {
-    ls.set_show_convergence(verbose_);
     ls.extend_Over_Interface_TVD_Full(solid_phi_.vec, psi_ts_.vec, num_extend_iterations_, 1,
-                                      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                      extension_band_use_, extension_band_extend_,
                                       solid_normal_.vec, NULL, NULL,
                                       false, psi_ts_d_.vec, NULL);
   }
@@ -555,6 +549,9 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
       solver_conc_leading_->set_gf_order(2);
       solver_conc_leading_->set_gf_thresh(-0.1);
       solver_conc_leading_->set_gf_stabilized(2);
+    break;
+    case 2:
+      solver_conc_leading_->set_dirichlet_scheme(2);
     break;
     default:
       throw;
@@ -683,9 +680,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 void my_p4est_poisson_nodes_multialloy_t::solve_t()
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  if (verbose_)
-  {
+  if (verbose_) {
     ierr = PetscPrintf(p4est_->mpicomm, "Solving for temperature... \n"); CHKERRXX(ierr);
   }
 
@@ -745,20 +740,18 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   sol.destroy();
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, num_extend_iterations_, 2,
-                                    extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                    extension_band_use_, extension_band_extend_,
                                     liquid_normal_.vec, NULL, NULL,
-                                    false, tl_d_.vec, tl_dd_.vec.data());
+                                    extension_use_nonzero_guess_, tl_d_.vec, tl_dd_.vec.data());
   ls.extend_Over_Interface_TVD_Full(solid_phi_.vec,  ts_.vec, num_extend_iterations_, 2,
-                                    extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                    extension_band_use_, extension_band_extend_,
                                     solid_normal_.vec, NULL, NULL,
-                                    false, ts_d_.vec, ts_dd_.vec.data());
+                                    extension_use_nonzero_guess_, ts_d_.vec, ts_dd_.vec.data());
 
 //  node_neighbors_->second_derivatives_central(tl_.vec, tl_dd_.vec.data());
 
-  if (verbose_)
-  {
+  if (verbose_) {
     ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -767,9 +760,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_t, 0, 0, 0, 0); CHKERRXX(ierr);
-  if (verbose_)
-  {
-  ierr = PetscPrintf(p4est_->mpicomm, "Solving for temperature multiplier... \n"); CHKERRXX(ierr);
+  if (verbose_) {
+    ierr = PetscPrintf(p4est_->mpicomm, "Solving for temperature multiplier... \n"); CHKERRXX(ierr);
   }
 
   solver_temp_->set_wc(wall_bc_type_temp_, zero_cf, false);
@@ -811,10 +803,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   psi_ts_    .get_array();
   sol        .get_array();
 
-  foreach_node(n, nodes_)
-  {
-    if (liquid_phi_.ptr[n] < 0)
-    {
+  foreach_node(n, nodes_) {
+    if (liquid_phi_.ptr[n] < 0) {
       psi_tl_.ptr[n] = sol.ptr[n];
       if (fabs(sol.ptr[n]) > psi_tl_max) psi_tl_max = fabs(sol.ptr[n]);
     }
@@ -832,17 +822,14 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &psi_tl_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_tl_.vec, num_extend_iterations_, 1,
-                                    extension_tol_*psi_tl_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                    extension_band_use_, extension_band_extend_,
                                     liquid_normal_.vec, NULL, NULL,
-                                    false, psi_tl_d_.vec);
+                                    extension_use_nonzero_guess_, psi_tl_d_.vec);
 
 //  node_neighbors_->second_derivatives_central(psi_t_.vec, psi_t_dd_.vec);
 
-  if (verbose_)
-  {
-    ierr = PetscPrintf(p4est_->mpicomm, "Max value: %e. \n", psi_tl_max); CHKERRXX(ierr);
+  if (verbose_) {
     ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_psi_t, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -869,7 +856,6 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   solver_conc_leading_->solve(c_[0].vec, poisson_use_nonzero_guess_);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   switch (dirichlet_scheme_) {
@@ -877,23 +863,32 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
     {
       boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
       ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
-          extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
-          liquid_normal_.vec, NULL, bc,
-          false, c_d_[0].vec, c_dd_[0].vec.data());
+          extension_band_use_, extension_band_extend_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), bc,
+          extension_use_nonzero_guess_, c_d_[0].vec, c_dd_[0].vec.data());
       break;
     }
     case 1:
       ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
-          extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+          extension_band_use_, extension_band_extend_,
           liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
-          false, c_d_[0].vec, c_dd_[0].vec.data());
+          extension_use_nonzero_guess_, c_d_[0].vec, c_dd_[0].vec.data());
     break;
+    case 2:
+    {
+      boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
+          extension_band_use_, extension_band_extend_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), bc,
+          extension_use_nonzero_guess_, c_d_[0].vec, c_dd_[0].vec.data());
+      break;
+    }
     default:
       throw;
   }
 
 //  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[0].vec, num_extend_iterations_, 2,
-//      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+//      extension_band_use_, extension_band_extend_,
 //      liquid_normal_.vec, NULL, NULL,
 //      false, c_d_[0].vec, c_dd_[0].vec.data());
 
@@ -1043,7 +1038,6 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &psi_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   switch (dirichlet_scheme_) {
@@ -1051,23 +1045,32 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
     {
       boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
       ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
-          extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
-          liquid_normal_.vec, NULL, bc,
-          false, psi_c_d_[0].vec);
+          extension_band_use_, extension_band_extend_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), bc,
+          extension_use_nonzero_guess_, psi_c_d_[0].vec);
       break;
     }
     case 1:
       ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
-          extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+          extension_band_use_, extension_band_extend_,
           liquid_normal_.vec, solver_conc_leading_->get_mask(), NULL,
-          false, psi_c_d_[0].vec);
+          extension_use_nonzero_guess_, psi_c_d_[0].vec);
     break;
+    case 2:
+    {
+      boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
+      ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
+          extension_band_use_, extension_band_extend_,
+          liquid_normal_.vec, solver_conc_leading_->get_mask(), bc,
+          extension_use_nonzero_guess_, psi_c_d_[0].vec);
+      break;
+    }
     default:
       throw;
   }
 
 //  ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[0].vec, num_extend_iterations_, 1,
-//      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+//      extension_band_use_, extension_band_extend_,
 //      liquid_normal_.vec, NULL, NULL,
 //      false, psi_c_d_[0].vec);
 
@@ -1087,13 +1090,11 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
 void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
-  if (verbose_)
-  {
-  ierr = PetscPrintf(p4est_->mpicomm, "Solve for concentrations... \n"); CHKERRXX(ierr);
+  if (verbose_) {
+    ierr = PetscPrintf(p4est_->mpicomm, "Solve for concentrations... \n"); CHKERRXX(ierr);
   }
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   for (int i = start; i < start+num; ++i)
@@ -1112,16 +1113,15 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
     Vec mask = solver_conc_[i]->get_mask();
 
     ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, c_[i].vec, num_extend_iterations_, 2,
-                                      extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                      extension_band_use_, extension_band_extend_,
                                       liquid_normal_.vec, mask, NULL,
-                                      false, c_d_[i].vec, c_dd_[i].vec.data());
+                                      extension_use_nonzero_guess_, c_d_[i].vec, c_dd_[i].vec.data());
 
 //    node_neighbors_->second_derivatives_central(c_[i].vec, c_dd_[i].vec.data());
   }
 
-  if (verbose_)
-  {
-  ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
+  if (verbose_) {
+    ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1129,13 +1129,11 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_c(int start, int num)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_c1, 0, 0, 0, 0); CHKERRXX(ierr);
-  if (verbose_)
-  {
-  ierr = PetscPrintf(p4est_->mpicomm, "Solve for concentrations multipliers... \n"); CHKERRXX(ierr);
+  if (verbose_) {
+    ierr = PetscPrintf(p4est_->mpicomm, "Solve for concentrations multipliers... \n"); CHKERRXX(ierr);
   }
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
   for (int i = start; i < start+num; ++i)
   {
@@ -1153,37 +1151,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c(int start, int num)
 
     Vec mask = solver_conc_[i]->get_mask();
 
-    double psi_max = 0;
-    psi_c_[i].get_array();
-    liquid_phi_.get_array();
-
-    foreach_local_node(n, nodes_)
-    {
-      if (liquid_phi_.ptr[n] < 0)
-        if (fabs(psi_c_[i].ptr[n]) > psi_max)
-          psi_max = fabs(psi_c_[i].ptr[n]);
-    }
-
-    psi_c_[i].restore_array();
-    liquid_phi_.restore_array();
-
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &psi_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
     ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_c_[i].vec, num_extend_iterations_, 1,
-                                      extension_tol_*psi_max, extension_band_use_, extension_band_extend_, extension_band_check_,
+                                      extension_band_use_, extension_band_extend_,
                                       liquid_normal_.vec, mask, NULL,
                                       false, psi_c_d_[i].vec);
-
-//    node_neighbors_->second_derivatives_central(psi_c_[i].vec, psi_c_dd_[i].vec);
-
-    if (verbose_)
-    {
-      ierr = PetscPrintf(p4est_->mpicomm, "Max value: %e. \n", psi_max); CHKERRXX(ierr);
-    }
   }
 
-  if (verbose_)
-  {
+  if (verbose_) {
     ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
   }
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_psi_c1, 0, 0, 0, 0); CHKERRXX(ierr);

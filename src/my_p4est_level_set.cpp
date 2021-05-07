@@ -1225,26 +1225,6 @@ void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_
     ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
 #endif
 
-    if (show_convergence)
-    {
-      double dxyz[P4EST_DIM];
-      ::dxyz_min(p4est, dxyz);
-
-      double change = 0;
-      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      {
-        if (fabs(phi[n]) < show_convergence_band*dxyz[0])
-        {
-          double change_loc = 0.5*fabs(p2[n] - phi[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
-    }
-
     /* update phi */
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       phi[n] = .5 * (phi[n] + p2[n]);
@@ -1640,26 +1620,6 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
 #ifdef P4_TO_P8
     ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
 #endif
-
-    if (show_convergence)
-    {
-      double dxyz[P4EST_DIM];
-      ::dxyz_min(p4est, dxyz);
-
-      double change = 0;
-      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      {
-        if (fabs(phi_p[n]) < show_convergence_band*dxyz[0])
-        {
-          double change_loc = fabs(p1_p[n] - phi_p[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
-    }
 
     /* update phi */
     memcpy(phi_p, p1_p, nodes->indep_nodes.elem_count*sizeof(double));
@@ -2980,8 +2940,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
 }
 
 
-void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterations, int order,
-                                                     double tol, double band_use, double band_extend, double band_check,
+void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterations, int order, double band_use, double band_extend,
                                                      Vec normal[], Vec mask, boundary_conditions_t *bc,
                                                      bool use_nonzero_guess, Vec q_n, Vec q_nn) const
 {
@@ -2995,20 +2954,19 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
   double *mask_p;
-  if (mask != NULL)
-  {
+  if (mask != NULL) {
     ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
   }
   else mask_p = phi_p;
 
+  // band_use is assumed to be negative but user can specify a positive value
   if (band_use > 0) band_use = -band_use;
-
-  int num_iters_min = 10;
 
   Vec b_qn_well_defined;  double *b_qn_well_defined_p;
   Vec b_qnn_well_defined; double *b_qnn_well_defined_p;
 
   double *q_p;
+
   Vec qn;  double *qn_p;
   Vec qnn; double *qnn_p;
 
@@ -3021,20 +2979,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   Vec tmp; double *tmp_p;
   ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
 
+  double diag;
   double dxyz[P4EST_DIM];
-
-  dxyz_min(p4est, dxyz);
-
-#ifdef P4_TO_P8
-  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
-#else
-  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
-#endif
-
-  double rel_thresh = 1.e-2;
-
-  double tol_d  = tol/diag;
-  double tol_dd = tol_d/diag;
+  get_dxyz_min(p4est, dxyz, NULL, &diag);
 
   /* init the neighborhood information if needed */
   ngbd->init_neighbors();
@@ -3073,237 +3020,229 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   /* initialize qn */
-  if(order >=1 )
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &qx);  CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &qy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecCreateGhostNodes(p4est, nodes, &qz);  CHKERRXX(ierr);
-#endif
+  if(order >=1 ) {
 
-    // first-order derivatives
-    if (q_n == NULL)
-    {
+    EXECD( ierr = VecCreateGhostNodes(p4est, nodes, &qx); CHKERRXX(ierr),
+           ierr = VecCreateGhostNodes(p4est, nodes, &qy); CHKERRXX(ierr),
+           ierr = VecCreateGhostNodes(p4est, nodes, &qz); CHKERRXX(ierr) );
+
+    if (q_n == NULL) {
       ierr = VecCreateGhostNodes(p4est, nodes, &qn); CHKERRXX(ierr);
+    } else {
+      qn = q_n;
     }
-    else qn = q_n;
 
     ierr = VecCreateGhostNodes(p4est, nodes, &b_qn_well_defined); CHKERRXX(ierr);
-
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
     ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr); );
 
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (phi_p[n] > band_use)
-        {
+        if (phi_p[n] > band_use) { // skips if too deep inside the negative domain (specified by band_use)
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-          if (qnnn.is_stencil_in_negative_domain(mask_p))
-          {
-            b_qn_well_defined_p[n] = -1;
 
-            XCODE( qx_p[n] = qnnn.dx_central(q_p) );
-            YCODE( qy_p[n] = qnnn.dy_central(q_p) );
-            ZCODE( qz_p[n] = qnnn.dz_central(q_p) );
+          if (qnnn.is_stencil_in_negative_domain(mask_p)) {
+            // use central differences if all neighbors have well defined values
+            b_qn_well_defined_p[n] = -1;
+            EXECD( qx_p[n] = qnnn.dx_central(q_p),
+                   qy_p[n] = qnnn.dy_central(q_p),
+                   qz_p[n] = qnnn.dz_central(q_p) );
 
             qn_p[n] = SUMD(nx[n]*qx_p[n], ny[n]*qy_p[n], nz[n]*qz_p[n]);
-          }
-          else if (mask_p[qnnn.node_000]<-EPS && bc != NULL)
-          {
+          } else if (mask_p[qnnn.node_000]<-EPS && bc != NULL) {
+            // we process separately the case when the center node has a well defined value but not all neighbors
+            // however pointwise boundary conditions (Dirichlet) are provided
+
+            // default calculations in case the following correction fails
             b_qn_well_defined_p[n] = 1;
 
-            if (bc->type == DIRICHLET && bc->pointwise && bc->num_value_pts(n) < P4EST_DIM+1 && bc->num_value_pts(n) > 0)
-            {
-              double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
-              double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
-#ifdef P4_TO_P8
-              double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
-#endif
+            if (bc->type == DIRICHLET && bc->pointwise && bc->num_value_pts(n) < P4EST_DIM+1 && bc->num_value_pts(n) > 0) {
+              // get stencil arms
+              double DIMPM( d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00,
+                            d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0,
+                            d_00m = qnnn.d_00m, d_00p = qnnn.d_00p );
 
-              // assuming grid is uniform near the interface
-              double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
-              double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
-#ifdef P4_TO_P8
-              double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
-#endif
+              // check which neighbors have well defined values
+              bool DIMPM( nei_m00 = mask_p[qnnn.neighbor_m00()] < -EPS, nei_p00 = mask_p[qnnn.neighbor_p00()] < -EPS,
+                          nei_0m0 = mask_p[qnnn.neighbor_0m0()] < -EPS, nei_0p0 = mask_p[qnnn.neighbor_0p0()] < -EPS,
+                          nei_00m = mask_p[qnnn.neighbor_00m()] < -EPS, nei_00p = mask_p[qnnn.neighbor_00p()] < -EPS );
+
+              // get values at grid nodes (assuming grid is uniform near the interface)
               double q_000 = q_p[n];
+              double DIMPM( q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p),
+                            q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p),
+                            q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p) );
 
+              // adjust stencil arms and values near interface
               double d_min = diag;
-              for (unsigned int i = 0; i < bc->num_value_pts(n); ++i)
-              {
-                int idx = bc->idx_value_pt(n,i);
-                interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
-                switch (pt->dir)
-                {
-                  case 0: d_m00 = pt->dist; q_m00 = bc->get_value_pw(n,i); break;
-                  case 1: d_p00 = pt->dist; q_p00 = bc->get_value_pw(n,i); break;
-                  case 2: d_0m0 = pt->dist; q_0m0 = bc->get_value_pw(n,i); break;
-                  case 3: d_0p0 = pt->dist; q_0p0 = bc->get_value_pw(n,i); break;
+
+              if (phi_p[n] < 0) { // regular Shortley-Weller
+
+                for (unsigned int i = 0; i < bc->num_value_pts(n); ++i) {
+                  int idx = bc->idx_value_pt(n,i);
+                  interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
+                  switch (pt->dir)
+                  {
+                    case dir::f_m00: d_m00 = pt->dist; q_m00 = bc->get_value_pw(n,i); nei_m00 = true; break;
+                    case dir::f_p00: d_p00 = pt->dist; q_p00 = bc->get_value_pw(n,i); nei_p00 = true; break;
+
+                    case dir::f_0m0: d_0m0 = pt->dist; q_0m0 = bc->get_value_pw(n,i); nei_0m0 = true; break;
+                    case dir::f_0p0: d_0p0 = pt->dist; q_0p0 = bc->get_value_pw(n,i); nei_0p0 = true; break;
 #ifdef P4_TO_P8
-                  case 4: d_00m = pt->dist; q_00m = bc->get_value_pw(n,i); break;
-                  case 5: d_00p = pt->dist; q_00p = bc->get_value_pw(n,i); break;
+                    case dir::f_00m: d_00m = pt->dist; q_00m = bc->get_value_pw(n,i); nei_00m = true; break;
+                    case dir::f_00p: d_00p = pt->dist; q_00p = bc->get_value_pw(n,i); nei_00p = true; break;
 #endif
+                  }
+                  d_min = MIN(d_min, pt->dist);
                 }
 
-                d_min = MIN(d_min, pt->dist);
+              } else { // extended Shortley-Weller
+
+                for (unsigned int i = 0; i < bc->num_value_pts(n); ++i) {
+                  int idx = bc->idx_value_pt(n,i);
+                  interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
+                  switch (pt->dir) {
+                    case dir::f_p00: d_m00 = -pt->dist; q_m00 = bc->get_value_pw(n,i); nei_m00 = true; break;
+                    case dir::f_m00: d_p00 = -pt->dist; q_p00 = bc->get_value_pw(n,i); nei_p00 = true; break;
+
+                    case dir::f_0p0: d_0m0 = -pt->dist; q_0m0 = bc->get_value_pw(n,i); nei_0m0 = true; break;
+                    case dir::f_0m0: d_0p0 = -pt->dist; q_0p0 = bc->get_value_pw(n,i); nei_0p0 = true; break;
+#ifdef P4_TO_P8
+                    case dir::f_00p: d_00m = -pt->dist; q_00m = bc->get_value_pw(n,i); nei_00m = true; break;
+                    case dir::f_00m: d_00p = -pt->dist; q_00p = bc->get_value_pw(n,i); nei_00p = true; break;
+#endif
+                  }
+                  d_min = MIN(d_min, pt->dist);
+                }
               }
 
-              if (d_min > rel_thresh*diag)
+              bool well_defined = ANDD(nei_m00 && nei_p00,
+                                       nei_0m0 && nei_0p0,
+                                       nei_00m && nei_00p );
+
+              if (d_min > bc_rel_thresh*diag && well_defined)
               {
                 b_qn_well_defined_p[n] = -1;
 
-                XCODE( qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) );
-                YCODE( qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0) );
-                ZCODE( qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p) );
+                EXECD( qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00),
+                       qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0),
+                       qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p) );
               }
             }
 
-            if (b_qn_well_defined_p[n] < 0)
-            {
-              qn_p[n] = SUMD(nx[n]*qx_p[n], ny[n]*qy_p[n], nz[n]*qz_p[n]);
-            }
-            else
-            {
-              if (use_nonzero_guess)
-              {
+            if (b_qn_well_defined_p[n] < 0) {
+              qn_p[n] = SUMD(nx[n]*qx_p[n],
+                             ny[n]*qy_p[n],
+                             nz[n]*qz_p[n]);
+            } else {
+              if (use_nonzero_guess) {
                 qn_p[n] = SUMD( nx[n]*qnnn.dx_central(q_p),
                                 ny[n]*qnnn.dy_central(q_p),
                                 nz[n]*qnnn.dz_central(q_p) );
-              }
-              else if (q_n == NULL)
-              {
+              } else if (q_n == NULL) {
                 qn_p[n] = 0;
               }
 
-              XCODE( qx_p[n] = 0 );
-              YCODE( qy_p[n] = 0 );
-              ZCODE( qz_p[n] = 0 );
+              EXECD( qx_p[n] = 0,
+                     qy_p[n] = 0,
+                     qz_p[n] = 0 );
             }
 
-          }
-          else
-          {
+          } else {
             b_qn_well_defined_p[n] = 1;
 
-            if (use_nonzero_guess)
-            {
+            if (use_nonzero_guess) {
               qn_p[n] = SUMD( nx[n]*qnnn.dx_central(q_p),
                               ny[n]*qnnn.dy_central(q_p),
                               nz[n]*qnnn.dz_central(q_p) );
-            }
-            else if (q_n == NULL)
-            {
+            } else if (q_n == NULL) {
               qn_p[n] = 0;
             }
 
-            XCODE( qx_p[n] = 0 );
-            YCODE( qy_p[n] = 0 );
-            ZCODE( qz_p[n] = 0 );
+            EXECD( qx_p[n] = 0,
+                   qy_p[n] = 0,
+                   qz_p[n] = 0 );
           }
 
-        }
-        else
-        {
+        } else {
           b_qn_well_defined_p[n] = -1;
           qn_p[n] = 0;
-
-          XCODE( qx_p[n] = 0 );
-          YCODE( qy_p[n] = 0 );
-          ZCODE( qz_p[n] = 0 );
+          EXECD( qx_p[n] = 0,
+                 qy_p[n] = 0,
+                 qz_p[n] = 0 );
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
         ierr = VecGhostUpdateBegin(qn,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(qx,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(qy,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-        ierr = VecGhostUpdateBegin(qz,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-      }
-      else
-      {
-        /* end update communication */
-        ierr = VecGhostUpdateEnd(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        EXECD( ierr = VecGhostUpdateBegin(qx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateBegin(qy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateBegin(qz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
 
+      } else { // end update communication
+        ierr = VecGhostUpdateEnd(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(qn,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(qx,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(qy,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-        ierr = VecGhostUpdateEnd(qz,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+        EXECD( ierr = VecGhostUpdateEnd(qx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateEnd(qy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateEnd(qz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
       }
     }
 
     ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
-
     ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
   }
 
   /* initialize qnn */
-  if(order == 2)
-  {
-    if (q_nn == NULL)
-    {
+  if(order == 2) {
+    if (q_nn == NULL) {
       ierr = VecCreateGhostNodes(p4est, nodes, &qnn); CHKERRXX(ierr);
+    } else {
+      qnn = q_nn;
     }
-    else qnn = q_nn;
 
     ierr = VecDuplicate(b_qn_well_defined, &b_qnn_well_defined); CHKERRXX(ierr);
 
-    ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr) );
+
     ierr = VecGetArray(qn , &qn_p ); CHKERRXX(ierr);
     ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
 
     ierr = VecGetArray(b_qn_well_defined , &b_qn_well_defined_p ); CHKERRXX(ierr);
     ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
 
-    /* first do the layer nodes */
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (phi_p[n] > band_use)
-        {
+        if (phi_p[n] > band_use) {
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
           b_qnn_well_defined_p[n] = 1;
-          if (qnnn.is_stencil_in_negative_domain(mask_p))
-          {
+          if (qnnn.is_stencil_in_negative_domain(mask_p)) {
+            // if values for standard stencil are well defined we know we will be able to compute
+            // ``pure'' second derivatives (i.e., xx, yy, and zz)
+            // however we don't know whether cross derivatives are well defined
+            // so we first try to compute cross derivatives
             double Qxy = 0;
 #ifdef P4_TO_P8
             double Qyz = 0;
             double Qzx = 0;
 #endif
-            // try to compute cross derivatives
-            if (qnnn.is_stencil_in_negative_domain(b_qn_well_defined_p))
-            {
+            if (qnnn.is_stencil_in_negative_domain(b_qn_well_defined_p)) {
+              // simple case: all necessary first derivatives are well-defined
               b_qnn_well_defined_p[n] = -1;
 
               Qxy = .5*(qnnn.dx_central(qy_p) + qnnn.dy_central(qx_p));
@@ -3311,32 +3250,26 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
               Qyz = .5*(qnnn.dy_central(qz_p) + qnnn.dz_central(qy_p));
               Qzx = .5*(qnnn.dz_central(qx_p) + qnnn.dx_central(qz_p));
 #endif
-            }
-            else
-            {
+            } else {
+              // if simple case fails, we try to compute cross derivatives directly
               p4est_locidx_t neighbors       [num_neighbors_cube];
               bool           neighbors_exists[num_neighbors_cube];
 
               ngbd->get_all_neighbors(n, neighbors, neighbors_exists);
 
               bool all_neighbors_exist =
-    #ifdef P4_TO_P8
-                  neighbors_exists[nn_m0m] && neighbors_exists[nn_m0p] && neighbors_exists[nn_p0m] && neighbors_exists[nn_p0p] &&
-                  neighbors_exists[nn_0mm] && neighbors_exists[nn_0pm] && neighbors_exists[nn_0mp] && neighbors_exists[nn_0pp] &&
-    #endif
-                  neighbors_exists[nn_mm0] && neighbors_exists[nn_pm0] && neighbors_exists[nn_mp0] && neighbors_exists[nn_pp0];
+                  CODE3D( neighbors_exists[nn_m0m] && neighbors_exists[nn_m0p] && neighbors_exists[nn_p0m] && neighbors_exists[nn_p0p] &&
+                          neighbors_exists[nn_0mm] && neighbors_exists[nn_0pm] && neighbors_exists[nn_0mp] && neighbors_exists[nn_0pp] && )
+                          neighbors_exists[nn_mm0] && neighbors_exists[nn_pm0] && neighbors_exists[nn_mp0] && neighbors_exists[nn_pp0];
 
               if (all_neighbors_exist)
               {
                 bool all_neighbors_in_egative_domain =
-    #ifdef P4_TO_P8
-                    mask_p[neighbors[nn_m0m]]<0 && mask_p[neighbors[nn_m0p]]<0 && mask_p[neighbors[nn_p0m]]<0 && mask_p[neighbors[nn_p0p]]<0 &&
-                    mask_p[neighbors[nn_0mm]]<0 && mask_p[neighbors[nn_0pm]]<0 && mask_p[neighbors[nn_0mp]]<0 && mask_p[neighbors[nn_0pp]]<0 &&
-    #endif
-                    mask_p[neighbors[nn_mm0]]<0 && mask_p[neighbors[nn_pm0]]<0 && mask_p[neighbors[nn_mp0]]<0 && mask_p[neighbors[nn_pp0]]<0;
+                    CODE3D( mask_p[neighbors[nn_m0m]]<0 && mask_p[neighbors[nn_m0p]]<0 && mask_p[neighbors[nn_p0m]]<0 && mask_p[neighbors[nn_p0p]]<0 &&
+                            mask_p[neighbors[nn_0mm]]<0 && mask_p[neighbors[nn_0pm]]<0 && mask_p[neighbors[nn_0mp]]<0 && mask_p[neighbors[nn_0pp]]<0 && )
+                            mask_p[neighbors[nn_mm0]]<0 && mask_p[neighbors[nn_pm0]]<0 && mask_p[neighbors[nn_mp0]]<0 && mask_p[neighbors[nn_pp0]]<0;
 
-                if (all_neighbors_in_egative_domain)
-                {
+                if (all_neighbors_in_egative_domain) {
                   Qxy = (q_p[neighbors[nn_pp0]] + q_p[neighbors[nn_mm0]] - q_p[neighbors[nn_mp0]] - q_p[neighbors[nn_pm0]])/(qnnn.d_m00+qnnn.d_p00)/(qnnn.d_0m0+qnnn.d_0p0);
 #ifdef P4_TO_P8
                   Qyz = (q_p[neighbors[nn_0pp]] + q_p[neighbors[nn_0mm]] - q_p[neighbors[nn_0mp]] - q_p[neighbors[nn_0pm]])/(qnnn.d_0m0+qnnn.d_0p0)/(qnnn.d_00m+qnnn.d_00p);
@@ -3345,22 +3278,22 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
                   b_qnn_well_defined_p[n] = -1;
                 }
               }
-
             }
 
+            // if cross derivatives are successfully computed we go ahead and compute ``pure'' derivatives
             if (b_qnn_well_defined_p[n] < 0)
             {
-              XCODE( double Qxx = qnnn.dxx_central(q_p) );
-              YCODE( double Qyy = qnnn.dyy_central(q_p) );
-              ZCODE( double Qzz = qnnn.dzz_central(q_p) );
+              double DIM( Qxx = qnnn.dxx_central(q_p),
+                          Qyy = qnnn.dyy_central(q_p),
+                          Qzz = qnnn.dzz_central(q_p) );
 
-              XCODE( double Qx = qx_p[n] );
-              YCODE( double Qy = qy_p[n] );
-              ZCODE( double Qz = qz_p[n] );
+              double DIM( Qx = qx_p[n],
+                          Qy = qy_p[n],
+                          Qz = qz_p[n] );
 
-              XCODE( double Nx = nx[n] );
-              YCODE( double Ny = ny[n] );
-              ZCODE( double Nz = nz[n] );
+              double DIM( Nx = nx[n],
+                          Ny = ny[n],
+                          Nz = nz[n] );
 
               double Nxx = qnnn.dx_central(nx);
               double Nyx = qnnn.dx_central(ny);
@@ -3382,50 +3315,34 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
               qnn_p[n] = Nx*(Nx*Qxx + 2.*Ny*Qxy + Qx*Nxx + Qy*Nyx) +
                          Ny*(Ny*Qyy             + Qx*Nxy + Qy*Nyy);
 #endif
-
             }
-          }
-          else
-          {
-            if (use_nonzero_guess && phi_p[n] < band_check)
-            {
+          } else {
+            if (use_nonzero_guess) {
               qnn_p[n] = SUMD( nx[n]*qnnn.dx_central(qn_p),
                                ny[n]*qnnn.dy_central(qn_p),
                                nz[n]*qnnn.dz_central(qn_p) );
-            }
-            else if (q_nn == NULL || (use_nonzero_guess && phi_p[n] >= band_check))
-            {
+            } else if (q_nn == NULL) {
               qnn_p[n] = 0;
             }
-
           }
-        }
-        else
-        {
+        } else {
           b_qnn_well_defined_p[n] = -1;
           qnn_p[n] = 0;
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateBegin(qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      }
-      else
-      {
-        /* end update communication */
+      } else { // end update communication
         ierr = VecGhostUpdateEnd(b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(qnn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       }
     }
 
-    ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
 
     ierr = VecRestoreArray(qn , &qn_p ); CHKERRXX(ierr);
     ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
@@ -3434,53 +3351,36 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     ierr = VecRestoreArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
   }
 
-  if (order >= 1)
-  {
-    ierr = VecDestroy(qx);  CHKERRXX(ierr);
-    ierr = VecDestroy(qy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(qz);  CHKERRXX(ierr);
-#endif
+  if (order >= 1) {
+    EXECD( ierr = VecDestroy(qx);  CHKERRXX(ierr),
+           ierr = VecDestroy(qy);  CHKERRXX(ierr),
+           ierr = VecDestroy(qz);  CHKERRXX(ierr) );
   }
 
   ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
 
   /* extrapolate qnn */
-  if(order==2)
-  {
+  if (order == 2) {
     ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
 
     ierr = VecCopyGhost(qnn, tmp); CHKERRXX(ierr);
 
-    int    it     = 0;
-    double change = tol_dd+1;
-
-    while (it < iterations && change > tol_dd)
-    {
-      ++it;
-      change = 0;
+    for (int it = 0; it < iterations; ++it) {
 
       ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
       ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-      for (int map_idx = 0; map_idx < 2; ++map_idx)
-      {
+      for (int map_idx = 0; map_idx < 2; ++map_idx) {
         const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-        for(size_t n_map=0; n_map<map.size(); ++n_map)
-        {
+        for(size_t n_map=0; n_map<map.size(); ++n_map) {
           p4est_locidx_t n = map[n_map];
 
           if (b_qnn_well_defined_p[n] > 0 && phi_p[n] < band_extend)
           {
             const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-            double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-            dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-            dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-            dt /= 3;
-#else
-            dt /= 2;
-#endif
+            double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                             MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                        / double(P4EST_DIM);
 
             /* first order one sided derivative */
             double qnnx = nx[n]>0 ? (qnn_p[n] - qnnn.f_m00_linear(qnn_p)) / qnnn.d_m00
@@ -3491,23 +3391,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             double qnnz = nz[n]>0 ? (qnn_p[n] - qnnn.f_00m_linear(qnn_p)) / qnnn.d_00m
                                   : (qnnn.f_00p_linear(qnn_p) - qnn_p[n]) / qnnn.d_00p;
 #endif
-            double change_loc = dt*SUMD( nx[n]*qnnx, ny[n]*qnny, nz[n]*qnnz );
-
-            tmp_p[n] = qnn_p[n] - change_loc;
-
-            if (phi_p[n] < band_check)
-            {
-              if (fabs(change_loc) > change) change = fabs(change_loc);
-            }
+            tmp_p[n] = qnn_p[n] - dt*SUMD( nx[n]*qnnx, ny[n]*qnny, nz[n]*qnnz );
           }
         }
 
-        if (map_idx == 0)
-        {
-          /* initiate the communication */
+        if (map_idx == 0) { // initiate the communication
           ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        } else {
-          /* end update communication */
+        } else { // end update communication
           ierr = VecGhostUpdateEnd(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         }
       }
@@ -3515,20 +3405,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
       ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(qnn, &qnn_p); CHKERRXX(ierr);
 
-      /* get global max change */
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      if (show_convergence)
-      {
-        PetscPrintf(p4est->mpicomm, "Extending second derivative, iteration: %d, error: %e\n", it, change);
-      }
-
+      // swap pointers instead of swapping data
       Vec swap_tmp;
       swap_tmp = tmp; tmp = qnn; qnn = swap_tmp;
     }
 
-    if (it%2 != 0)
-    {
+    // transfer data from temporary variable if there was an odd number of pointer swaps
+    if (iterations%2 == 1) {
       Vec swap_tmp;
       swap_tmp = tmp; tmp = qnn; qnn = swap_tmp;
 
@@ -3539,10 +3422,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   }
 
   /* extrapolate qn */
-  if (order>=1)
-  {
-    if (order==2)
-    {
+  if (order >= 1) {
+    if (order == 2) {
       ierr = VecGetArray(qnn, &qnn_p); CHKERRXX(ierr);
     }
 
@@ -3550,35 +3431,21 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
     ierr = VecCopyGhost(qn, tmp); CHKERRXX(ierr);
 
-    int    it     = 0;
-    double change = tol+1;
-
-    while (it < iterations && change > tol_d)
-    {
-      ++it;
-      change = 0;
+    for (int it = 0; it < iterations; ++it) {
 
       ierr = VecGetArray(qn , &qn_p ); CHKERRXX(ierr);
       ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-      for (int map_idx = 0; map_idx < 2; ++map_idx)
-      {
+      for (int map_idx = 0; map_idx < 2; ++map_idx) {
         const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-        for(size_t n_map=0; n_map<map.size(); ++n_map)
-        {
+        for(size_t n_map=0; n_map<map.size(); ++n_map) {
           p4est_locidx_t n = map[n_map];
 
-          if (b_qn_well_defined_p[n]>0 && phi_p[n] < band_extend)
-          {
+          if (b_qn_well_defined_p[n]>0 && phi_p[n] < band_extend) {
             const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-            double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-            dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-            dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-            dt /= 3;
-#else
-            dt /= 2;
-#endif
+            double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                             MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                        / double(P4EST_DIM);
 
             /* first order one sided derivative */
             double qnx = nx[n]>0 ? (qn_p[n] - qnnn.f_m00_linear(qn_p)) / qnnn.d_m00
@@ -3589,24 +3456,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             double qnz = nz[n]>0 ? (qn_p[n] - qnnn.f_00m_linear(qn_p)) / qnnn.d_00m
                                  : (qnnn.f_00p_linear(qn_p) - qn_p[n]) / qnnn.d_00p;
 #endif
-            double change_loc = dt*(SUMD( nx[n]*qnx, ny[n]*qny, nz[n]*qnz ) - (order==2 ? qnn_p[n] : 0));
-            tmp_p[n] = qn_p[n] - change_loc;
-
-            if (phi_p[n] < band_check)
-            {
-              if (fabs(change_loc) > change) change = fabs(change_loc);
-            }
+            tmp_p[n] = qn_p[n] - dt*(SUMD( nx[n]*qnx, ny[n]*qny, nz[n]*qnz ) - (order==2 ? qnn_p[n] : 0));
           }
         }
 
-        if (map_idx == 0)
-        {
-          /* initiate the communication */
+        if (map_idx == 0){ // initiate the communication
           ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        }
-        else
-        {
-          /* end update communication */
+        } else { // end update communication
           ierr = VecGhostUpdateEnd(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         }
       }
@@ -3614,20 +3470,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
       ierr = VecRestoreArray(qn , &qn_p ); CHKERRXX(ierr);
       ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-      /* get global max change */
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      if (show_convergence)
-      {
-        PetscPrintf(p4est->mpicomm, "Extending first derivative, iteration: %d, error: %e\n", it, change);
-      }
-
+      // swap pointers instead of swapping data
       Vec swap_tmp;
       swap_tmp = tmp; tmp = qn; qn = swap_tmp;
     }
 
-    if (it%2 != 0)
-    {
+    // transfer data from temporary variable if there was an odd number of pointer swaps
+    if (iterations%2 == 1) {
       Vec swap_tmp;
       swap_tmp = tmp; tmp = qn; qn = swap_tmp;
 
@@ -3643,65 +3492,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     }
   }
 
-  if(order>=1) { ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr); }
-  if(order==2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
+  if (order >= 1) { ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr); }
+  if (order == 2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
 
   /* extrapolate q */
-  Vec qxx, qyy;
-  double *qxx_p, *qyy_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec qzz;
-  double *qzz_p;
-  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
-#endif
+  Vec DIM(qxx, qyy, qzz);
+  double DIM(*qxx_p, *qyy_p, *qzz_p);
 
-  if (order>=1) { ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr); }
+  EXECD( ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr),
+         ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr),
+         ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr) );
 
-  XCODE( VecSetGhost(qxx, 0.) );
-  YCODE( VecSetGhost(qyy, 0.) );
-  ZCODE( VecSetGhost(qzz, 0.) );
+  if (order >= 1) { ierr = VecGetArray(qn, &qn_p); CHKERRXX(ierr); }
+
+  EXECD( ierr = VecSetGhost(qxx, 0.); CHKERRXX(ierr),
+         ierr = VecSetGhost(qyy, 0.); CHKERRXX(ierr),
+         ierr = VecSetGhost(qzz, 0.); CHKERRXX(ierr) );
 
   ierr = VecCopyGhost(q, tmp); CHKERRXX(ierr);
 
-  int    it     = 0;
-  double change = tol+1;
-
-  while (it < iterations && change > tol)
-  {
-    ++it;
-    change = 0;
+  for (int it = 0; it < iterations; ++it) {
 
     ngbd->second_derivatives_central(q, DIM(qxx, qyy, qzz));
 
-    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr) );
 
     ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
     ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (mask_p[n] > -EPS && phi_p[n] < band_extend)
-        {
+        if (mask_p[n] > -EPS && phi_p[n] < band_extend) {
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-          dt /= 3;
-#else
-          dt /= 2;
-#endif
+          double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                           MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                      / double(P4EST_DIM);
 
           /* first order one sided derivatives */
           double qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
@@ -3718,6 +3548,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
           {
             double qxx_m00 = qnnn.f_m00_linear(qxx_p);
             double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+
             double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
             double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
@@ -3728,6 +3559,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             /* minmod operation */
             qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
             qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+
             qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
             qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
 #ifdef P4_TO_P8
@@ -3737,6 +3569,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
             if (nx[n] < 0) qx -= .5*qnnn.d_p00*qxx_p00;
             else           qx += .5*qnnn.d_m00*qxx_m00;
+
             if (ny[n] < 0) qy -= .5*qnnn.d_0p0*qyy_0p0;
             else           qy += .5*qnnn.d_0m0*qyy_0m0;
 #ifdef P4_TO_P8
@@ -3747,73 +3580,51 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
           double change_loc = dt*(SUMD( nx[n]*qx, ny[n]*qy, nz[n]*qz ) - (order>=1 ? qn_p[n] : 0));
           tmp_p[n] = q_p[n] - change_loc;
-
-          if (phi_p[n] < band_check)
-          {
-            if (fabs(change_loc) > change) change = fabs(change_loc);
-          }
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      }
-      else
-      {
-        /* end update communication */
+      } else { // end update communication
         ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       }
     }
 
-    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr) );
     ierr = VecRestoreArray(q  , &q_p  ); CHKERRXX(ierr);
     ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
 
+    // option to do an RK2
     if (use_two_step_extrapolation && order == 2)
     {
-      change = 0;
-
       Vec swap=q; q=tmp; tmp=swap;
 
       ngbd->second_derivatives_central(q, DIM(qxx, qyy, qzz));
 
-      ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
-      ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr),
+             ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr),
+             ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr) );
 
       ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
       ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-      for (int map_idx = 0; map_idx < 2; ++map_idx)
-      {
+      for (int map_idx = 0; map_idx < 2; ++map_idx) {
         const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-        for (size_t n_map=0; n_map<map.size(); ++n_map)
-        {
+        for (size_t n_map=0; n_map<map.size(); ++n_map) {
           p4est_locidx_t n = map[n_map];
 
-          if (mask_p[n] > -EPS && phi_p[n] < band_extend)
-          {
+          if (mask_p[n] > -EPS && phi_p[n] < band_extend) {
             const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-            double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-            dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-            dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-            dt /= 3;
-#else
-            dt /= 2;
-#endif
+            double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                             MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                        / double(P4EST_DIM);
 
             /* first order one sided derivatives */
             double qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
                                 : (qnnn.f_p00_linear(q_p) - q_p[n]) / qnnn.d_p00;
+
             double qy = ny[n]>0 ? (q_p[n] - qnnn.f_0m0_linear(q_p)) / qnnn.d_0m0
                                 : (qnnn.f_0p0_linear(q_p) - q_p[n]) / qnnn.d_0p0;
 #ifdef P4_TO_P8
@@ -3824,6 +3635,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             /* second order derivatives */
             double qxx_m00 = qnnn.f_m00_linear(qxx_p);
             double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+
             double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
             double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
@@ -3834,6 +3646,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             /* minmod operation */
             qxx_m00 = MINMOD(qxx_p[n], qxx_m00);
             qxx_p00 = MINMOD(qxx_p[n], qxx_p00);
+
             qyy_0m0 = MINMOD(qyy_p[n], qyy_0m0);
             qyy_0p0 = MINMOD(qyy_p[n], qyy_0p0);
 #ifdef P4_TO_P8
@@ -3843,6 +3656,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
             if(nx[n]<0) qx -= .5*qnnn.d_p00*qxx_p00;
             else        qx += .5*qnnn.d_m00*qxx_m00;
+
             if(ny[n]<0) qy -= .5*qnnn.d_0p0*qyy_0p0;
             else        qy += .5*qnnn.d_0m0*qyy_0m0;
 #ifdef P4_TO_P8
@@ -3854,75 +3668,52 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
             change_loc = .5*(q_p[n] - change_loc - tmp_p[n]);
             tmp_p[n] = tmp_p[n] + change_loc;
-
-            if (phi_p[n] < band_check)
-            {
-              if (fabs(change_loc) > change) change = fabs(change_loc);
-            }
-          }
-          else
+          } else {
             tmp_p[n] = q_p[n];
+          }
         }
 
-        if (map_idx == 0)
-        {
-          /* initiate the communication */
+        if (map_idx == 0) { // initiate the communication
           ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        }
-        else
-        {
-          /* end update communication */
+        } else { // end update communication
           ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         }
       }
 
-      ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr) );
       ierr = VecRestoreArray(q  , &q_p  ); CHKERRXX(ierr);
       ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
 
+      // swaping pointers instead of physically copying data
       swap=q; q=tmp; tmp=swap;
-    }
-    else
-    {
+    } else {
       Vec swap_tmp = tmp; tmp = q; q = swap_tmp;
-    }
-
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-    if (show_convergence)
-    {
-      PetscPrintf(p4est->mpicomm, "Extending values, iteration: %d, error: %e\n", it, change);
     }
   }
 
-  if (it%2 != 0 && !(use_two_step_extrapolation && order == 2))
-  {
+  // transfer data from temporary variable if there was an odd number of pointer swaps
+  if (iterations%2 == 1 && !(use_two_step_extrapolation && order == 2)) {
     Vec swap_tmp = tmp; tmp = q; q = swap_tmp;
     ierr = VecCopyGhost(tmp, q); CHKERRXX(ierr);
   }
 
-  if (order>=1)
-  {
+  // clean up and restore pointers
+  if (order >= 1) {
     ierr = VecRestoreArray(qn, &qn_p); CHKERRXX(ierr);
     if (q_n == NULL) { ierr = VecDestroy(qn); CHKERRXX(ierr); }
   }
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  if (mask != NULL)
-  {
+  if (mask != NULL) {
     ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
   }
 
-  ierr = VecDestroy(qxx); CHKERRXX(ierr);
-  ierr = VecDestroy(qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(qzz); CHKERRXX(ierr);
-#endif
+  EXECD( ierr = VecDestroy(qxx); CHKERRXX(ierr),
+         ierr = VecDestroy(qyy); CHKERRXX(ierr),
+         ierr = VecDestroy(qzz); CHKERRXX(ierr) );
 
   ierr = VecDestroy(tmp); CHKERRXX(ierr);
 
@@ -3946,7 +3737,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
 
 void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations, int order,
-                                                          double tol, double band_use, double band_extend, double band_check,
+                                                          double band_use, double band_extend,
                                                           Vec normal[P4EST_DIM], Vec mask, boundary_conditions_t *bc,
                                                           bool use_nonzero_guess, Vec *q_d, Vec *q_dd) const
 {
@@ -3960,15 +3751,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
   double *mask_p;
-  if (mask != NULL)
-  {
+  if (mask != NULL) {
     ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
   }
   else mask_p = phi_p;
 
+  // band_use is assumed to be negative but user can specify a positive value
   if (band_use > 0) band_use = -band_use;
-
-  int num_iters_min = 10;
 
   Vec b_qn_well_defined;  double *b_qn_well_defined_p;
   Vec b_qnn_well_defined; double *b_qnn_well_defined_p;
@@ -3990,20 +3779,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   Vec qzx; double *qzx_p;
 #endif
 
+  double diag;
   double dxyz[P4EST_DIM];
-
-  dxyz_min(p4est, dxyz);
-
-#ifdef P4_TO_P8
-  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
-#else
-  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
-#endif
-
-  double rel_thresh = 1.e-2;
-
-  double tol_d  = tol/diag;
-  double tol_dd = tol_d/diag;
+  get_dxyz_min(p4est, dxyz, NULL, &diag);
 
   /* init the neighborhood information if needed */
   ngbd->init_neighbors();
@@ -4011,245 +3789,211 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   /* compute the normals */
   double DIM(*nx, *ny, *nz);
 
-  if (normal != NULL)
-  {
-    ierr = VecGetArray(normal[0], &nx); CHKERRXX(ierr);
-    ierr = VecGetArray(normal[1], &ny); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(normal[2], &nz); CHKERRXX(ierr);
-#endif
-  }
-  else
-  {
-    nx = new double[nodes->num_owned_indeps];
-    ny = new double[nodes->num_owned_indeps];
-#ifdef P4_TO_P8
-    nz = new double[nodes->num_owned_indeps];
-#endif
+  if (normal != NULL) {
+    EXECD( ierr = VecGetArray(normal[0], &nx); CHKERRXX(ierr),
+           ierr = VecGetArray(normal[1], &ny); CHKERRXX(ierr),
+           ierr = VecGetArray(normal[2], &nz); CHKERRXX(ierr) );
+  } else {
+    EXECD( nx = new double[nodes->num_owned_indeps],
+           ny = new double[nodes->num_owned_indeps],
+           nz = new double[nodes->num_owned_indeps] );
 
-    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-    {
-      if (phi_p[n] > band_use && phi_p[n] < band_extend)
-      {
+    foreach_local_node(n, nodes) {
+      if (phi_p[n] > band_use && phi_p[n] < band_extend) { // calculate only in the region where it will be used
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-        nx[n] = qnnn.dx_central(phi_p);
-        ny[n] = qnnn.dy_central(phi_p);
-#ifdef P4_TO_P8
-        nz[n] = qnnn.dz_central(phi_p);
-        double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n] + nz[n]*nz[n]);
-#else
-        double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
-#endif
 
-        if(norm>EPS)
-        {
-          nx[n] /= norm;
-          ny[n] /= norm;
-#ifdef P4_TO_P8
-          nz[n] /= norm;
-#endif
-        }
-        else
-        {
-          nx[n] = 0;
-          ny[n] = 0;
-#ifdef P4_TO_P8
-          nz[n] = 0;
-#endif
+        EXECD( nx[n] = qnnn.dx_central(phi_p),
+               ny[n] = qnnn.dy_central(phi_p),
+               nz[n] = qnnn.dz_central(phi_p) );
+
+        double norm = ABSD(nx[n], ny[n], nz[n]);
+        if (norm > EPS) {
+          EXECD( nx[n] /= norm,
+                 ny[n] /= norm,
+                 nz[n] /= norm );
+        } else {
+          EXECD( nx[n] = 0,
+                 ny[n] = 0,
+                 nz[n] = 0 );
         }
       }
     }
   }
+  // note that we do not need to update ghost values of normals
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
   const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
-  /* initialize first derivatives */
-  if(order >=1 )
-  {
-    // first-order derivatives
-    if (q_d == NULL)
-    {
-      ierr = VecCreateGhostNodes(p4est, nodes, &qx);  CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est, nodes, &qy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecCreateGhostNodes(p4est, nodes, &qz);  CHKERRXX(ierr);
-#endif
-    }
-    else
-    {
-      qx = q_d[0];
-      qy = q_d[1];
-#ifdef P4_TO_P8
-      qz = q_d[2];
-#endif
+  /* initialize first order derivatives */
+  if (order >=1 ) {
+
+    if (q_d == NULL) {
+      EXECD( ierr = VecCreateGhostNodes(p4est, nodes, &qx); CHKERRXX(ierr),
+             ierr = VecCreateGhostNodes(p4est, nodes, &qy); CHKERRXX(ierr),
+             ierr = VecCreateGhostNodes(p4est, nodes, &qz); CHKERRXX(ierr) );
+    } else {
+      EXECD( qx = q_d[0],
+             qy = q_d[1],
+             qz = q_d[2] );
     }
 
-    ierr = VecGetArray(qx,  &qx_p);  CHKERRXX(ierr);
-    ierr = VecGetArray(qy,  &qy_p);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qz,  &qz_p);  CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr); );
 
     ierr = VecCreateGhostNodes(p4est, nodes, &b_qn_well_defined); CHKERRXX(ierr);
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (phi_p[n] > band_use)
-        {
+        if (phi_p[n] > band_use) { // skips if too deep inside the negative domain (specified by band_use)
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-          if (qnnn.is_stencil_in_negative_domain(mask_p))
-          {
+
+          if (qnnn.is_stencil_in_negative_domain(mask_p)) {
+            // use central differences if all neighbors have well defined values
             b_qn_well_defined_p[n] = -1;
+            EXECD( qx_p[n] = qnnn.dx_central(q_p),
+                   qy_p[n] = qnnn.dy_central(q_p),
+                   qz_p[n] = qnnn.dz_central(q_p) );
 
-            XCODE( qx_p[n] = qnnn.dx_central(q_p) );
-            YCODE( qy_p[n] = qnnn.dy_central(q_p) );
-            ZCODE( qz_p[n] = qnnn.dz_central(q_p) );
-          }
-          else if (mask_p[qnnn.node_000]<-EPS && bc != NULL)
-          {
+          } else if (mask_p[qnnn.node_000]<-EPS && bc != NULL) {
+            // we process separately the case when the center node has a well defined value but not all neighbors
+            // however pointwise boundary conditions (Dirichlet) are provided
+
+            // default calculations in case the following correction fails
             b_qn_well_defined_p[n] = 1;
-
-            if (use_nonzero_guess)
-            {
-              XCODE( qx_p[n] = qnnn.dx_central(q_p) );
-              YCODE( qy_p[n] = qnnn.dy_central(q_p) );
-              ZCODE( qz_p[n] = qnnn.dz_central(q_p) );
-            }
-            else if (q_d == NULL)
-            {
-              XCODE( qx_p[n] = 0 );
-              YCODE( qy_p[n] = 0 );
-              ZCODE( qz_p[n] = 0 );
+            if (use_nonzero_guess) {
+              EXECD( qx_p[n] = qnnn.dx_central(q_p),
+                     qy_p[n] = qnnn.dy_central(q_p),
+                     qz_p[n] = qnnn.dz_central(q_p) );
+            } else if (q_d == NULL) {
+              EXECD( qx_p[n] = 0,
+                     qy_p[n] = 0,
+                     qz_p[n] = 0 );
             }
 
             // correct for boundary conditions if provided
-            if (bc->type == DIRICHLET && bc->pointwise && bc->num_value_pts(n) < P4EST_DIM+1 && bc->num_value_pts(n) > 0)
-            {
-              double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
-              double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
-#ifdef P4_TO_P8
-              double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
-#endif
+            if (bc->type == DIRICHLET && bc->pointwise && bc->num_value_pts(n) < P4EST_DIM+1 && bc->num_value_pts(n) > 0) {
+              // get stencil arms
+              double DIMPM( d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00,
+                            d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0,
+                            d_00m = qnnn.d_00m, d_00p = qnnn.d_00p );
 
-              bool nei_m00 = mask_p[qnnn.neighbor_m00()] < -EPS, nei_p00 = mask_p[qnnn.neighbor_p00()] < -EPS;
-              bool nei_0m0 = mask_p[qnnn.neighbor_0m0()] < -EPS, nei_0p0 = mask_p[qnnn.neighbor_0p0()] < -EPS;
-#ifdef P4_TO_P8
-              bool nei_00m = mask_p[qnnn.neighbor_00m()] < -EPS, nei_00p = mask_p[qnnn.neighbor_00p()] < -EPS;
-#endif
+              // check which neighbors have well defined values
+              bool DIMPM( nei_m00 = mask_p[qnnn.neighbor_m00()] < -EPS, nei_p00 = mask_p[qnnn.neighbor_p00()] < -EPS,
+                          nei_0m0 = mask_p[qnnn.neighbor_0m0()] < -EPS, nei_0p0 = mask_p[qnnn.neighbor_0p0()] < -EPS,
+                          nei_00m = mask_p[qnnn.neighbor_00m()] < -EPS, nei_00p = mask_p[qnnn.neighbor_00p()] < -EPS );
 
-              // assuming grid is uniform near the interface
-              double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
-              double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
-#ifdef P4_TO_P8
-              double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
-#endif
+              // get values at grid nodes (assuming grid is uniform near the interface)
               double q_000 = q_p[n];
+              double DIMPM( q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p),
+                            q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p),
+                            q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p) );
 
+              // adjust stencil arms and values near interface
               double d_min = diag;
-              for (unsigned int i = 0; i < bc->num_value_pts(n); ++i)
-              {
-                int idx = bc->idx_value_pt(n,i);
-                interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
-                switch (pt->dir)
-                {
-                  case 0: d_m00 = pt->dist; q_m00 = bc->get_value_pw(n,i); nei_m00 = true; break;
-                  case 1: d_p00 = pt->dist; q_p00 = bc->get_value_pw(n,i); nei_p00 = true; break;
-                  case 2: d_0m0 = pt->dist; q_0m0 = bc->get_value_pw(n,i); nei_0m0 = true; break;
-                  case 3: d_0p0 = pt->dist; q_0p0 = bc->get_value_pw(n,i); nei_0p0 = true; break;
+
+              if (phi_p[n] < 0) { // regular Shortley-Weller
+
+                for (unsigned int i = 0; i < bc->num_value_pts(n); ++i) {
+                  int idx = bc->idx_value_pt(n,i);
+                  interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
+                  switch (pt->dir)
+                  {
+                    case dir::f_m00: d_m00 = pt->dist; q_m00 = bc->get_value_pw(n,i); nei_m00 = true; break;
+                    case dir::f_p00: d_p00 = pt->dist; q_p00 = bc->get_value_pw(n,i); nei_p00 = true; break;
+
+                    case dir::f_0m0: d_0m0 = pt->dist; q_0m0 = bc->get_value_pw(n,i); nei_0m0 = true; break;
+                    case dir::f_0p0: d_0p0 = pt->dist; q_0p0 = bc->get_value_pw(n,i); nei_0p0 = true; break;
 #ifdef P4_TO_P8
-                  case 4: d_00m = pt->dist; q_00m = bc->get_value_pw(n,i); nei_00m = true; break;
-                  case 5: d_00p = pt->dist; q_00p = bc->get_value_pw(n,i); nei_00p = true; break;
+                    case dir::f_00m: d_00m = pt->dist; q_00m = bc->get_value_pw(n,i); nei_00m = true; break;
+                    case dir::f_00p: d_00p = pt->dist; q_00p = bc->get_value_pw(n,i); nei_00p = true; break;
 #endif
+                  }
+                  d_min = MIN(d_min, pt->dist);
                 }
-                d_min = MIN(d_min, pt->dist);
+
+              } else { // extended Shortley-Weller
+
+                for (unsigned int i = 0; i < bc->num_value_pts(n); ++i) {
+                  int idx = bc->idx_value_pt(n,i);
+                  interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
+                  switch (pt->dir) {
+                    case dir::f_p00: d_m00 = -pt->dist; q_m00 = bc->get_value_pw(n,i); nei_m00 = true; break;
+                    case dir::f_m00: d_p00 = -pt->dist; q_p00 = bc->get_value_pw(n,i); nei_p00 = true; break;
+
+                    case dir::f_0p0: d_0m0 = -pt->dist; q_0m0 = bc->get_value_pw(n,i); nei_0m0 = true; break;
+                    case dir::f_0m0: d_0p0 = -pt->dist; q_0p0 = bc->get_value_pw(n,i); nei_0p0 = true; break;
+#ifdef P4_TO_P8
+                    case dir::f_00p: d_00m = -pt->dist; q_00m = bc->get_value_pw(n,i); nei_00m = true; break;
+                    case dir::f_00m: d_00p = -pt->dist; q_00p = bc->get_value_pw(n,i); nei_00p = true; break;
+#endif
+                  }
+                  d_min = MIN(d_min, pt->dist);
+                }
               }
 
-              bool well_defined = nei_m00 && nei_p00 && nei_0m0 && nei_0p0 CODE3D( && nei_00m && nei_00p );
+              bool well_defined = ANDD(nei_m00 && nei_p00,
+                                       nei_0m0 && nei_0p0,
+                                       nei_00m && nei_00p );
 
-              if (d_min > rel_thresh*diag && well_defined)
-              {
+              // use boundary points only if boundary not too close (defined by bc_rel_thresh)
+              if (d_min > bc_rel_thresh*diag && well_defined) {
                 b_qn_well_defined_p[n] = -1;
-                XCODE( qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00) );
-                YCODE( qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0) );
-                ZCODE( qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p) );
+                EXECD( qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00),
+                       qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0),
+                       qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p) );
               }
             }
-          }
-          else
-          {
+          } else {
             b_qn_well_defined_p[n] = 1;
-
-            if (use_nonzero_guess)
-            {
-              XCODE( qx_p[n] = qnnn.dx_central(q_p) );
-              YCODE( qy_p[n] = qnnn.dy_central(q_p) );
-              ZCODE( qz_p[n] = qnnn.dz_central(q_p) );
-            }
-            else if (q_d == NULL)
-            {
-              XCODE( qx_p[n] = 0 );
-              YCODE( qy_p[n] = 0 );
-              ZCODE( qz_p[n] = 0 );
+            if (use_nonzero_guess) {
+              EXECD( qx_p[n] = qnnn.dx_central(q_p),
+                     qy_p[n] = qnnn.dy_central(q_p),
+                     qz_p[n] = qnnn.dz_central(q_p) );
+            } else if (q_d == NULL) {
+              EXECD( qx_p[n] = 0,
+                     qy_p[n] = 0,
+                     qz_p[n] = 0 );
             }
           }
-        }
-        else
-        {
+        } else {
           b_qn_well_defined_p[n] = -1;
 
-          XCODE( qx_p[n] = 0 );
-          YCODE( qy_p[n] = 0 );
-          ZCODE( qz_p[n] = 0 );
+          EXECD( qx_p[n] = 0,
+                 qy_p[n] = 0,
+                 qz_p[n] = 0 );
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-        ierr = VecGhostUpdateBegin(qx,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(qy,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-        ierr = VecGhostUpdateBegin(qz,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
-      }
-      else
-      {
-        /* end update communication */
+        EXECD( ierr = VecGhostUpdateBegin(qx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateBegin(qy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateBegin(qz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
+      } else { // end update communication
         ierr = VecGhostUpdateEnd(b_qn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-        ierr = VecGhostUpdateEnd(qx,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(qy,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-        ierr = VecGhostUpdateEnd(qz,  INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-#endif
+        EXECD( ierr = VecGhostUpdateEnd(qx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateEnd(qy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+               ierr = VecGhostUpdateEnd(qz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
       }
     }
 
-    ierr = VecRestoreArray(qx,  &qx_p);  CHKERRXX(ierr);
-    ierr = VecRestoreArray(qy,  &qy_p);  CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qz,  &qz_p);  CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
 
     ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
   }
 
   /* initialize second derivatives */
-  if(order == 2)
-  {
-    if (q_dd == NULL)
-    {
+  if(order == 2) {
+    if (q_dd == NULL) {
       ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &qxy); CHKERRXX(ierr);
@@ -4258,9 +4002,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       ierr = VecCreateGhostNodes(p4est, nodes, &qyz); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &qzx); CHKERRXX(ierr);
 #endif
-    }
-    else
-    {
+    } else {
       qxx = q_dd[0];
       qyy = q_dd[1];
       qxy = q_dd[P4EST_DIM];
@@ -4273,11 +4015,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
     ierr = VecDuplicate(b_qn_well_defined, &b_qnn_well_defined); CHKERRXX(ierr);
 
-    ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr) );
 
     ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
     ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -4291,22 +4031,21 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     ierr = VecGetArray(b_qn_well_defined , &b_qn_well_defined_p ); CHKERRXX(ierr);
     ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
 
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (phi_p[n] > band_use)
-        {
+        if (phi_p[n] > band_use) {
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
           b_qnn_well_defined_p[n] = 1;
-          if (qnnn.is_stencil_in_negative_domain(mask_p))
-          {
-            // try to compute cross derivatives
-            if (qnnn.is_stencil_in_negative_domain(b_qn_well_defined_p))
-            {
+          if (qnnn.is_stencil_in_negative_domain(mask_p)) {
+            // if values for standard stencil are well defined we know we will be able to compute
+            // ``pure'' second derivatives (i.e., xx, yy, and zz)
+            // however we don't know whether cross derivatives are well defined
+            // so we first try to compute cross derivatives
+            if (qnnn.is_stencil_in_negative_domain(b_qn_well_defined_p)) {
+              // simple case: all necessary first derivatives are well-defined
               b_qnn_well_defined_p[n] = -1;
 
               qxy_p[n] = .5*(qnnn.dx_central(qy_p) + qnnn.dy_central(qx_p));
@@ -4314,32 +4053,25 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               qyz_p[n] = .5*(qnnn.dy_central(qz_p) + qnnn.dz_central(qy_p));
               qzx_p[n] = .5*(qnnn.dz_central(qx_p) + qnnn.dx_central(qz_p));
 #endif
-            }
-            else
-            {
+            } else {
+              // if simple case fails, we try to compute cross derivatives directly
               p4est_locidx_t neighbors       [num_neighbors_cube];
               bool           neighbors_exists[num_neighbors_cube];
 
               ngbd->get_all_neighbors(n, neighbors, neighbors_exists);
 
               bool all_neighbors_exist =
-    #ifdef P4_TO_P8
-                  neighbors_exists[nn_m0m] && neighbors_exists[nn_m0p] && neighbors_exists[nn_p0m] && neighbors_exists[nn_p0p] &&
-                  neighbors_exists[nn_0mm] && neighbors_exists[nn_0pm] && neighbors_exists[nn_0mp] && neighbors_exists[nn_0pp] &&
-    #endif
-                  neighbors_exists[nn_mm0] && neighbors_exists[nn_pm0] && neighbors_exists[nn_mp0] && neighbors_exists[nn_pp0];
+                  CODE3D( neighbors_exists[nn_m0m] && neighbors_exists[nn_m0p] && neighbors_exists[nn_p0m] && neighbors_exists[nn_p0p] &&
+                          neighbors_exists[nn_0mm] && neighbors_exists[nn_0pm] && neighbors_exists[nn_0mp] && neighbors_exists[nn_0pp] && )
+                          neighbors_exists[nn_mm0] && neighbors_exists[nn_pm0] && neighbors_exists[nn_mp0] && neighbors_exists[nn_pp0];
 
-              if (all_neighbors_exist)
-              {
+              if (all_neighbors_exist) {
                 bool all_neighbors_in_egative_domain =
-    #ifdef P4_TO_P8
-                    mask_p[neighbors[nn_m0m]]<0 && mask_p[neighbors[nn_m0p]]<0 && mask_p[neighbors[nn_p0m]]<0 && mask_p[neighbors[nn_p0p]]<0 &&
-                    mask_p[neighbors[nn_0mm]]<0 && mask_p[neighbors[nn_0pm]]<0 && mask_p[neighbors[nn_0mp]]<0 && mask_p[neighbors[nn_0pp]]<0 &&
-    #endif
-                    mask_p[neighbors[nn_mm0]]<0 && mask_p[neighbors[nn_pm0]]<0 && mask_p[neighbors[nn_mp0]]<0 && mask_p[neighbors[nn_pp0]]<0;
+                    CODE3D( mask_p[neighbors[nn_m0m]]<0 && mask_p[neighbors[nn_m0p]]<0 && mask_p[neighbors[nn_p0m]]<0 && mask_p[neighbors[nn_p0p]]<0 &&
+                            mask_p[neighbors[nn_0mm]]<0 && mask_p[neighbors[nn_0pm]]<0 && mask_p[neighbors[nn_0mp]]<0 && mask_p[neighbors[nn_0pp]]<0 && )
+                            mask_p[neighbors[nn_mm0]]<0 && mask_p[neighbors[nn_pm0]]<0 && mask_p[neighbors[nn_mp0]]<0 && mask_p[neighbors[nn_pp0]]<0;
 
-                if (all_neighbors_in_egative_domain)
-                {
+                if (all_neighbors_in_egative_domain) {
                   qxy_p[n] = (q_p[neighbors[nn_pp0]] + q_p[neighbors[nn_mm0]] - q_p[neighbors[nn_mp0]] - q_p[neighbors[nn_pm0]])/(qnnn.d_m00+qnnn.d_p00)/(qnnn.d_0m0+qnnn.d_0p0);
 #ifdef P4_TO_P8
                   qyz_p[n] = (q_p[neighbors[nn_0pp]] + q_p[neighbors[nn_0mm]] - q_p[neighbors[nn_0mp]] - q_p[neighbors[nn_0pm]])/(qnnn.d_0m0+qnnn.d_0p0)/(qnnn.d_00m+qnnn.d_00p);
@@ -4350,17 +4082,14 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               }
             }
 
-            if (b_qnn_well_defined_p[n] < 0)
-            {
-              XCODE( qxx_p[n] = qnnn.dxx_central(q_p) );
-              YCODE( qyy_p[n] = qnnn.dyy_central(q_p) );
-              ZCODE( qzz_p[n] = qnnn.dzz_central(q_p) );
+            // if cross derivatives are successfully computed we go ahead and compute ``pure'' derivatives too
+            if (b_qnn_well_defined_p[n] < 0) {
+              EXECD( qxx_p[n] = qnnn.dxx_central(q_p),
+                     qyy_p[n] = qnnn.dyy_central(q_p),
+                     qzz_p[n] = qnnn.dzz_central(q_p) );
             }
-          }
-          else
-          {
-            if (use_nonzero_guess && phi_p[n] < band_check)
-            {
+          } else {
+            if (use_nonzero_guess) {
               qxx_p[n] = qnnn.dxx_central(q_p);
               qxy_p[n] = .5*(qnnn.dx_central(qy_p) + qnnn.dy_central(qx_p));
               qyy_p[n] = qnnn.dyy_central(q_p);
@@ -4369,9 +4098,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               qzz_p[n] = qnnn.dzz_central(q_p);
               qzx_p[n] = .5*(qnnn.dz_central(qx_p) + qnnn.dx_central(qz_p));
 #endif
-            }
-            else if (q_dd == NULL || (use_nonzero_guess && phi_p[n] >= band_check))
-            {
+            } else if (q_dd == NULL) {
               qxx_p[n] = 0;
               qxy_p[n] = 0;
               qyy_p[n] = 0;
@@ -4382,9 +4109,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
             }
           }
-        }
-        else
-        {
+        } else {
           b_qnn_well_defined_p[n] = -1;
 
           qxx_p[n] = 0;
@@ -4398,9 +4123,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
         ierr = VecGhostUpdateBegin(qxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -4411,10 +4134,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
         ierr = VecGhostUpdateBegin(qzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateBegin(qzx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
-      }
-      else
-      {
-        /* end update communication */
+      } else { // end update communication
         ierr = VecGhostUpdateEnd(b_qnn_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
         ierr = VecGhostUpdateEnd(qxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -4428,11 +4148,9 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       }
     }
 
-    ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
 
     ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(qxy, &qxy_p); CHKERRXX(ierr);
@@ -4449,9 +4167,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
 
-  /* extrapolate qnn */
-  if (order==2)
-  {
+  /* extrapolate second order derivatives */
+  if (order == 2) {
     ierr = VecGetArray(b_qnn_well_defined, &b_qnn_well_defined_p); CHKERRXX(ierr);
 
     Vec tmp_xx; double *tmp_xx_p; ierr = VecDuplicate(qxx, &tmp_xx); CHKERRXX(ierr);
@@ -4472,13 +4189,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     VecCopyGhost(qzx, tmp_zx);
 #endif
 
-    int    it     = 0;
-    double change = tol_dd+1;
-
-    while ((it < iterations && change > tol_dd) || (it < num_iters_min))
-    {
-      ++it;
-      change = 0;
+    for (int it = 0; it < iterations; ++it) {
 
       ierr = VecGetArray(tmp_xx, &tmp_xx_p); CHKERRXX(ierr);
       ierr = VecGetArray(tmp_xy, &tmp_xy_p); CHKERRXX(ierr);
@@ -4498,24 +4209,17 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       ierr = VecGetArray(qzx, &qzx_p); CHKERRXX(ierr);
 #endif
 
-      for (int map_idx = 0; map_idx < 2; ++map_idx)
-      {
+      for (int map_idx = 0; map_idx < 2; ++map_idx) {
         const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-        for (size_t n_map=0; n_map<map.size(); ++n_map)
-        {
+        for (size_t n_map=0; n_map<map.size(); ++n_map) {
           p4est_locidx_t n = map[n_map];
 
-          if (b_qnn_well_defined_p[n] > 0 && phi_p[n] < band_extend)
-          {
+          if (b_qnn_well_defined_p[n] > 0 && phi_p[n] < band_extend) {
+
             const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-            double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-            dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-            dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-            dt /= 3;
-#else
-            dt /= 2;
-#endif
+            double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                             MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                        / double(P4EST_DIM);
 
             /* first order one sided derivative */
             double qxxd_dot_n = 0;
@@ -4526,8 +4230,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
             double qzzd_dot_n = 0;
             double qzxd_dot_n = 0;
 #endif
-            if (nx[n] > 0)
-            {
+            if (nx[n] > 0) {
               qxxd_dot_n += nx[n]*(qxx_p[n] - qnnn.f_m00_linear(qxx_p)) / qnnn.d_m00;
               qxyd_dot_n += nx[n]*(qxy_p[n] - qnnn.f_m00_linear(qxy_p)) / qnnn.d_m00;
               qyyd_dot_n += nx[n]*(qyy_p[n] - qnnn.f_m00_linear(qyy_p)) / qnnn.d_m00;
@@ -4536,9 +4239,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               qzzd_dot_n += nx[n]*(qzz_p[n] - qnnn.f_m00_linear(qzz_p)) / qnnn.d_m00;
               qzxd_dot_n += nx[n]*(qzx_p[n] - qnnn.f_m00_linear(qzx_p)) / qnnn.d_m00;
 #endif
-            }
-            else
-            {
+            } else {
               qxxd_dot_n += nx[n]*(qnnn.f_p00_linear(qxx_p) - qxx_p[n]) / qnnn.d_p00;
               qxyd_dot_n += nx[n]*(qnnn.f_p00_linear(qxy_p) - qxy_p[n]) / qnnn.d_p00;
               qyyd_dot_n += nx[n]*(qnnn.f_p00_linear(qyy_p) - qyy_p[n]) / qnnn.d_p00;
@@ -4549,8 +4250,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
             }
 
-            if (ny[n] > 0)
-            {
+            if (ny[n] > 0) {
               qxxd_dot_n += ny[n]*(qxx_p[n] - qnnn.f_0m0_linear(qxx_p)) / qnnn.d_0m0;
               qxyd_dot_n += ny[n]*(qxy_p[n] - qnnn.f_0m0_linear(qxy_p)) / qnnn.d_0m0;
               qyyd_dot_n += ny[n]*(qyy_p[n] - qnnn.f_0m0_linear(qyy_p)) / qnnn.d_0m0;
@@ -4559,9 +4259,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               qzzd_dot_n += ny[n]*(qzz_p[n] - qnnn.f_0m0_linear(qzz_p)) / qnnn.d_0m0;
               qzxd_dot_n += ny[n]*(qzx_p[n] - qnnn.f_0m0_linear(qzx_p)) / qnnn.d_0m0;
 #endif
-            }
-            else
-            {
+            } else {
               qxxd_dot_n += ny[n]*(qnnn.f_0p0_linear(qxx_p) - qxx_p[n]) / qnnn.d_0p0;
               qxyd_dot_n += ny[n]*(qnnn.f_0p0_linear(qxy_p) - qxy_p[n]) / qnnn.d_0p0;
               qyyd_dot_n += ny[n]*(qnnn.f_0p0_linear(qyy_p) - qyy_p[n]) / qnnn.d_0p0;
@@ -4573,62 +4271,34 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
             }
 
 #ifdef P4_TO_P8
-            if (nz[n] > 0)
-            {
+            if (nz[n] > 0) {
               qxxd_dot_n += nz[n]*(qxx_p[n] - qnnn.f_00m_linear(qxx_p)) / qnnn.d_00m;
               qxyd_dot_n += nz[n]*(qxy_p[n] - qnnn.f_00m_linear(qxy_p)) / qnnn.d_00m;
               qyyd_dot_n += nz[n]*(qyy_p[n] - qnnn.f_00m_linear(qyy_p)) / qnnn.d_00m;
               qyzd_dot_n += nz[n]*(qyz_p[n] - qnnn.f_00m_linear(qyz_p)) / qnnn.d_00m;
               qzzd_dot_n += nz[n]*(qzz_p[n] - qnnn.f_00m_linear(qzz_p)) / qnnn.d_00m;
               qzxd_dot_n += nz[n]*(qzx_p[n] - qnnn.f_00m_linear(qzx_p)) / qnnn.d_00m;
-
-            }
-            else
-            {
+            } else {
               qxxd_dot_n += nz[n]*(qnnn.f_00p_linear(qxx_p) - qxx_p[n]) / qnnn.d_00p;
               qxyd_dot_n += nz[n]*(qnnn.f_00p_linear(qxy_p) - qxy_p[n]) / qnnn.d_00p;
               qyyd_dot_n += nz[n]*(qnnn.f_00p_linear(qyy_p) - qyy_p[n]) / qnnn.d_00p;
               qyzd_dot_n += nz[n]*(qnnn.f_00p_linear(qyz_p) - qyz_p[n]) / qnnn.d_00p;
               qzzd_dot_n += nz[n]*(qnnn.f_00p_linear(qzz_p) - qzz_p[n]) / qnnn.d_00p;
               qzxd_dot_n += nz[n]*(qnnn.f_00p_linear(qzx_p) - qzx_p[n]) / qnnn.d_00p;
-
             }
 #endif
-
-            qxxd_dot_n *= dt;
-            qxyd_dot_n *= dt;
-            qyyd_dot_n *= dt;
+            tmp_xx_p[n] = qxx_p[n] - qxxd_dot_n*dt;
+            tmp_xy_p[n] = qxy_p[n] - qxyd_dot_n*dt;
+            tmp_yy_p[n] = qyy_p[n] - qyyd_dot_n*dt;
 #ifdef P4_TO_P8
-            qyzd_dot_n *= dt;
-            qzzd_dot_n *= dt;
-            qzxd_dot_n *= dt;
+            tmp_yz_p[n] = qyz_p[n] - qyzd_dot_n*dt;
+            tmp_zz_p[n] = qzz_p[n] - qzzd_dot_n*dt;
+            tmp_zx_p[n] = qzx_p[n] - qzxd_dot_n*dt;
 #endif
-
-            tmp_xx_p[n] = qxx_p[n] - qxxd_dot_n;
-            tmp_xy_p[n] = qxy_p[n] - qxyd_dot_n;
-            tmp_yy_p[n] = qyy_p[n] - qyyd_dot_n;
-#ifdef P4_TO_P8
-            tmp_yz_p[n] = qyz_p[n] - qyzd_dot_n;
-            tmp_zz_p[n] = qzz_p[n] - qzzd_dot_n;
-            tmp_zx_p[n] = qzx_p[n] - qzxd_dot_n;
-#endif
-            if (phi_p[n] < band_check)
-            {
-              if (fabs(qxxd_dot_n) > change) change = fabs(qxxd_dot_n);
-              if (fabs(qxyd_dot_n) > change) change = fabs(qxyd_dot_n);
-              if (fabs(qyyd_dot_n) > change) change = fabs(qyyd_dot_n);
-#ifdef P4_TO_P8
-              if (fabs(qyzd_dot_n) > change) change = fabs(qyzd_dot_n);
-              if (fabs(qzzd_dot_n) > change) change = fabs(qzzd_dot_n);
-              if (fabs(qzxd_dot_n) > change) change = fabs(qzxd_dot_n);
-#endif
-            }
           }
         }
 
-        if (map_idx == 0)
-        {
-          /* initiate the communication */
+        if (map_idx == 0) { // initiate the communication
           ierr = VecGhostUpdateBegin(tmp_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateBegin(tmp_xy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateBegin(tmp_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -4637,8 +4307,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
           ierr = VecGhostUpdateBegin(tmp_zz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateBegin(tmp_zx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     #endif
-        } else {
-          /* end update communication */
+        } else { // end update communication
           ierr = VecGhostUpdateEnd(tmp_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateEnd(tmp_xy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateEnd(tmp_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -4668,14 +4337,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       ierr = VecRestoreArray(qzx, &qzx_p); CHKERRXX(ierr);
 #endif
 
-      /* get global max change */
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      if (show_convergence)
-      {
-        ierr = PetscPrintf(p4est->mpicomm, "Extending second derivative, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
-      }
-
+      // swap pointers instead of swapping data
       Vec swap_tmp;
       swap_tmp = tmp_xx; tmp_xx = qxx; qxx = swap_tmp;
       swap_tmp = tmp_xy; tmp_xy = qxy; qxy = swap_tmp;
@@ -4687,8 +4349,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
     }
 
-    if (it%2 != 0)
-    {
+    // transfer data from temporary variable if there was an odd number of pointer swaps
+    if (iterations%2 == 1) {
       Vec swap_tmp;
       swap_tmp = tmp_xx; tmp_xx = qxx; qxx = swap_tmp;
       swap_tmp = tmp_xy; tmp_xy = qxy; qxy = swap_tmp;
@@ -4722,10 +4384,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   }
 
   /* extrapolate qn */
-  if (order >= 1)
-  {
-    if (order == 2)
-    {
+  if (order >= 1) {
+    if (order == 2) {
       ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
       ierr = VecGetArray(qxy, &qxy_p); CHKERRXX(ierr);
       ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -4736,229 +4396,136 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
     }
 
-    Vec tmp_x; double *tmp_x_p; ierr = VecDuplicate(qx, &tmp_x); CHKERRXX(ierr);
-    Vec tmp_y; double *tmp_y_p; ierr = VecDuplicate(qy, &tmp_y); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    Vec tmp_z; double *tmp_z_p; ierr = VecDuplicate(qz, &tmp_z); CHKERRXX(ierr);
-#endif
+    EXECD( Vec tmp_x; double *tmp_x_p; ierr = VecDuplicate(qx, &tmp_x); CHKERRXX(ierr) ,
+           Vec tmp_y; double *tmp_y_p; ierr = VecDuplicate(qy, &tmp_y); CHKERRXX(ierr) ,
+           Vec tmp_z; double *tmp_z_p; ierr = VecDuplicate(qz, &tmp_z); CHKERRXX(ierr) );
 
-    VecCopyGhost(qx, tmp_x);
-    VecCopyGhost(qy, tmp_y);
-#ifdef P4_TO_P8
-    VecCopyGhost(qz, tmp_z);
-#endif
+    EXECD( VecCopyGhost(qx, tmp_x) ,
+           VecCopyGhost(qy, tmp_y) ,
+           VecCopyGhost(qz, tmp_z) );
 
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
     // precompute right hand side
-    std::vector<double> qxn(nodes->num_owned_indeps, 0);
-    std::vector<double> qyn(nodes->num_owned_indeps, 0);
-    std::vector<double> qzn(nodes->num_owned_indeps, 0);
+    std::vector<double> DIM( qxn(nodes->num_owned_indeps, 0),
+                             qyn(nodes->num_owned_indeps, 0),
+                             qzn(nodes->num_owned_indeps, 0) );
 
-    if (order == 2)
-    {
-      foreach_local_node(n, nodes)
-      {
-        if (b_qn_well_defined_p[n] > 0 && phi_p[n] < band_extend)
-        {
-          qxn[n] = SUMD(nx[n]*qxx_p[n], ny[n]*qxy_p[n], nz[n]*qzx_p[n]);
-          qyn[n] = SUMD(nx[n]*qxy_p[n], ny[n]*qyy_p[n], nz[n]*qyz_p[n]);
-#ifdef P4_TO_P8
-          qzn[n] = SUMD(nx[n]*qzx_p[n], ny[n]*qyz_p[n], nz[n]*qzz_p[n]);
-#endif
+    if (order == 2) {
+      foreach_local_node(n, nodes) {
+        if (b_qn_well_defined_p[n] > 0 && phi_p[n] < band_extend) {
+          EXECD( qxn[n] = SUMD(nx[n]*qxx_p[n], ny[n]*qxy_p[n], nz[n]*qzx_p[n]) ,
+                 qyn[n] = SUMD(nx[n]*qxy_p[n], ny[n]*qyy_p[n], nz[n]*qyz_p[n]) ,
+                 qzn[n] = SUMD(nx[n]*qzx_p[n], ny[n]*qyz_p[n], nz[n]*qzz_p[n]) );
         }
       }
     }
-    int    it     = 0;
-    double change = tol+1;
 
-    while ((it < iterations && change > tol_d) || it < num_iters_min)
-    {
-      ++it;
-      change = 0;
+    for (int it = 0; it < iterations; ++it) {
 
-      ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr);
-      ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr) ,
+             ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr) ,
+             ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr) );
 
-      ierr = VecGetArray(tmp_x, &tmp_x_p); CHKERRXX(ierr);
-      ierr = VecGetArray(tmp_y, &tmp_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecGetArray(tmp_z, &tmp_z_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecGetArray(tmp_x, &tmp_x_p); CHKERRXX(ierr) ,
+             ierr = VecGetArray(tmp_y, &tmp_y_p); CHKERRXX(ierr) ,
+             ierr = VecGetArray(tmp_z, &tmp_z_p); CHKERRXX(ierr) );
 
-      for (int map_idx = 0; map_idx < 2; ++map_idx)
-      {
+      for (int map_idx = 0; map_idx < 2; ++map_idx) {
         const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-        for(size_t n_map=0; n_map<map.size(); ++n_map)
-        {
+        for(size_t n_map=0; n_map<map.size(); ++n_map) {
           p4est_locidx_t n = map[n_map];
 
-          if (b_qn_well_defined_p[n] > 0 && phi_p[n] < band_extend)
-          {
+          if (b_qn_well_defined_p[n] > 0 && phi_p[n] < band_extend) {
             const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-            double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-            dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-            dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-            dt /= 3;
-#else
-            dt /= 2;
-#endif
+            double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                             MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                        / double(P4EST_DIM);
 
             /* first order one sided derivative */
-            double qxd_dot_n = 0;
-            double qyd_dot_n = 0;
-#ifdef P4_TO_P8
-            double qzd_dot_n = 0;
-#endif
+            double DIM( qxd_dot_n = 0,
+                        qyd_dot_n = 0,
+                        qzd_dot_n = 0 );
 
-            if (nx[n] > 0)
-            {
-              qxd_dot_n += nx[n]*(qx_p[n] - qnnn.f_m00_linear(qx_p)) / qnnn.d_m00;
-              qyd_dot_n += nx[n]*(qy_p[n] - qnnn.f_m00_linear(qy_p)) / qnnn.d_m00;
-#ifdef P4_TO_P8
-              qzd_dot_n += nx[n]*(qz_p[n] - qnnn.f_m00_linear(qz_p)) / qnnn.d_m00;
-#endif
-            }
-            else
-            {
-              qxd_dot_n += nx[n]*(qnnn.f_p00_linear(qx_p) - qx_p[n]) / qnnn.d_p00;
-              qyd_dot_n += nx[n]*(qnnn.f_p00_linear(qy_p) - qy_p[n]) / qnnn.d_p00;
-#ifdef P4_TO_P8
-              qzd_dot_n += nx[n]*(qnnn.f_p00_linear(qz_p) - qz_p[n]) / qnnn.d_p00;
-#endif
+            if (nx[n] > 0) {
+              EXECD( qxd_dot_n += nx[n]*(qx_p[n] - qnnn.f_m00_linear(qx_p)) / qnnn.d_m00,
+                     qyd_dot_n += nx[n]*(qy_p[n] - qnnn.f_m00_linear(qy_p)) / qnnn.d_m00,
+                     qzd_dot_n += nx[n]*(qz_p[n] - qnnn.f_m00_linear(qz_p)) / qnnn.d_m00 );
+            } else {
+              EXECD( qxd_dot_n += nx[n]*(qnnn.f_p00_linear(qx_p) - qx_p[n]) / qnnn.d_p00,
+                     qyd_dot_n += nx[n]*(qnnn.f_p00_linear(qy_p) - qy_p[n]) / qnnn.d_p00,
+                     qzd_dot_n += nx[n]*(qnnn.f_p00_linear(qz_p) - qz_p[n]) / qnnn.d_p00 );
             }
 
-            if (ny[n] > 0)
-            {
-              qxd_dot_n += ny[n]*(qx_p[n] - qnnn.f_0m0_linear(qx_p)) / qnnn.d_0m0;
-              qyd_dot_n += ny[n]*(qy_p[n] - qnnn.f_0m0_linear(qy_p)) / qnnn.d_0m0;
-#ifdef P4_TO_P8
-              qzd_dot_n += ny[n]*(qz_p[n] - qnnn.f_0m0_linear(qz_p)) / qnnn.d_0m0;
-#endif
-            }
-            else
-            {
-              qxd_dot_n += ny[n]*(qnnn.f_0p0_linear(qx_p) - qx_p[n]) / qnnn.d_0p0;
-              qyd_dot_n += ny[n]*(qnnn.f_0p0_linear(qy_p) - qy_p[n]) / qnnn.d_0p0;
-#ifdef P4_TO_P8
-              qzd_dot_n += ny[n]*(qnnn.f_0p0_linear(qz_p) - qz_p[n]) / qnnn.d_0p0;
-#endif
+            if (ny[n] > 0) {
+              EXECD( qxd_dot_n += ny[n]*(qx_p[n] - qnnn.f_0m0_linear(qx_p)) / qnnn.d_0m0,
+                     qyd_dot_n += ny[n]*(qy_p[n] - qnnn.f_0m0_linear(qy_p)) / qnnn.d_0m0,
+                     qzd_dot_n += ny[n]*(qz_p[n] - qnnn.f_0m0_linear(qz_p)) / qnnn.d_0m0 );
+            } else {
+              EXECD( qxd_dot_n += ny[n]*(qnnn.f_0p0_linear(qx_p) - qx_p[n]) / qnnn.d_0p0,
+                     qyd_dot_n += ny[n]*(qnnn.f_0p0_linear(qy_p) - qy_p[n]) / qnnn.d_0p0,
+                     qzd_dot_n += ny[n]*(qnnn.f_0p0_linear(qz_p) - qz_p[n]) / qnnn.d_0p0 );
             }
 
 #ifdef P4_TO_P8
-            if (nz[n] > 0)
-            {
+            if (nz[n] > 0) {
               qxd_dot_n += nz[n]*(qx_p[n] - qnnn.f_00m_linear(qx_p)) / qnnn.d_00m;
               qyd_dot_n += nz[n]*(qy_p[n] - qnnn.f_00m_linear(qy_p)) / qnnn.d_00m;
               qzd_dot_n += nz[n]*(qz_p[n] - qnnn.f_00m_linear(qz_p)) / qnnn.d_00m;
-            }
-            else
-            {
+            } else {
               qxd_dot_n += nz[n]*(qnnn.f_00p_linear(qx_p) - qx_p[n]) / qnnn.d_00p;
               qyd_dot_n += nz[n]*(qnnn.f_00p_linear(qy_p) - qy_p[n]) / qnnn.d_00p;
               qzd_dot_n += nz[n]*(qnnn.f_00p_linear(qz_p) - qz_p[n]) / qnnn.d_00p;
             }
 #endif
 
-            qxd_dot_n -= qxn[n];
-            qyd_dot_n -= qyn[n];
-#ifdef P4_TO_P8
-            qzd_dot_n -= qzn[n];
-#endif
-
-            qxd_dot_n *= dt;
-            qyd_dot_n *= dt;
-#ifdef P4_TO_P8
-            qzd_dot_n *= dt;
-#endif
-            tmp_x_p[n] = qx_p[n] - qxd_dot_n;
-            tmp_y_p[n] = qy_p[n] - qyd_dot_n;
-#ifdef P4_TO_P8
-            tmp_z_p[n] = qz_p[n] - qzd_dot_n;
-#endif
-            if (phi_p[n] < band_check)
-            {
-              if (fabs(qxd_dot_n) > change) change = fabs(qxd_dot_n);
-              if (fabs(qyd_dot_n) > change) change = fabs(qyd_dot_n);
-#ifdef P4_TO_P8
-              if (fabs(qzd_dot_n) > change) change = fabs(qzd_dot_n);
-#endif
-            }
+            EXECD( tmp_x_p[n] = qx_p[n] - (qxd_dot_n-qxn[n])*dt ,
+                   tmp_y_p[n] = qy_p[n] - (qyd_dot_n-qyn[n])*dt ,
+                   tmp_z_p[n] = qz_p[n] - (qzd_dot_n-qzn[n])*dt );
           }
         }
 
-        if (map_idx == 0)
-        {
-          /* initiate the communication */
-          ierr = VecGhostUpdateBegin(tmp_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-          ierr = VecGhostUpdateBegin(tmp_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    #ifdef P4_TO_P8
-          ierr = VecGhostUpdateBegin(tmp_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    #endif
-        }
-        else
-        {
-          /* end update communication */
-          ierr = VecGhostUpdateEnd(tmp_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-          ierr = VecGhostUpdateEnd(tmp_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    #ifdef P4_TO_P8
-          ierr = VecGhostUpdateEnd(tmp_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    #endif
+        if (map_idx == 0){ // initiate the communication
+          EXECD( ierr = VecGhostUpdateBegin(tmp_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+                 ierr = VecGhostUpdateBegin(tmp_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+                 ierr = VecGhostUpdateBegin(tmp_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
+        } else { // end update communication
+          EXECD( ierr = VecGhostUpdateEnd(tmp_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+                 ierr = VecGhostUpdateEnd(tmp_y, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr),
+                 ierr = VecGhostUpdateEnd(tmp_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr) );
         }
       }
 
-      ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
 
-      ierr = VecRestoreArray(tmp_x, &tmp_x_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(tmp_y, &tmp_y_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecRestoreArray(tmp_z, &tmp_z_p); CHKERRXX(ierr);
-#endif
+      EXECD( ierr = VecRestoreArray(tmp_x, &tmp_x_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(tmp_y, &tmp_y_p); CHKERRXX(ierr),
+             ierr = VecRestoreArray(tmp_z, &tmp_z_p); CHKERRXX(ierr) );
 
-      /* get global max change */
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      if (show_convergence)
-      {
-        ierr = PetscPrintf(p4est->mpicomm, "Extending first derivative, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
-      }
-
+      // swap pointers instead of swapping data
       Vec swap_tmp;
-      swap_tmp = tmp_x; tmp_x = qx; qx = swap_tmp;
-      swap_tmp = tmp_y; tmp_y = qy; qy = swap_tmp;
-#ifdef P4_TO_P8
-      swap_tmp = tmp_z; tmp_z = qz; qz = swap_tmp;
-#endif
+      EXECD( swap_tmp = tmp_x; tmp_x = qx; qx = swap_tmp,
+             swap_tmp = tmp_y; tmp_y = qy; qy = swap_tmp,
+             swap_tmp = tmp_z; tmp_z = qz; qz = swap_tmp );
     }
 
-    if (it%2 != 0)
-    {
+    // transfer data from temporary variable if there was an odd number of pointer swaps
+    if (iterations%2 == 1) {
       Vec swap_tmp;
-      swap_tmp = tmp_x; tmp_x = qx; qx = swap_tmp;
-      swap_tmp = tmp_y; tmp_y = qy; qy = swap_tmp;
-#ifdef P4_TO_P8
-      swap_tmp = tmp_z; tmp_z = qz; qz = swap_tmp;
-#endif
+      EXECD( swap_tmp = tmp_x; tmp_x = qx; qx = swap_tmp,
+             swap_tmp = tmp_y; tmp_y = qy; qy = swap_tmp,
+             swap_tmp = tmp_z; tmp_z = qz; qz = swap_tmp );
 
-      VecCopyGhost(tmp_x, qx);
-      VecCopyGhost(tmp_y, qy);
-#ifdef P4_TO_P8
-      VecCopyGhost(tmp_z, qz);
-#endif
+      EXECD( VecCopyGhost(tmp_x, qx),
+             VecCopyGhost(tmp_y, qy),
+             VecCopyGhost(tmp_z, qz) );
     }
 
     ierr = VecRestoreArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
-    if (order == 2)
-    {
+    if (order == 2) {
       ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(qxy, &qxy_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -4969,44 +4536,31 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
     }
 
-    ierr = VecDestroy(tmp_x); CHKERRXX(ierr);
-    ierr = VecDestroy(tmp_y); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecDestroy(tmp_z); CHKERRXX(ierr);
-#endif
+    EXECD( ierr = VecDestroy(tmp_x); CHKERRXX(ierr),
+           ierr = VecDestroy(tmp_y); CHKERRXX(ierr),
+           ierr = VecDestroy(tmp_z); CHKERRXX(ierr) );
   }
 
   if (order >= 1) { ierr = VecDestroy(b_qn_well_defined ); CHKERRXX(ierr); }
   if (order == 2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
 
   /* extrapolate q */
-  if (order >= 1)
-  {
-    ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+  if (order >= 1) {
+    EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr) );
   }
 
-  if (order == 2)
-  {
-    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+  if (order == 2) {
+    EXECD( ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr),
+           ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr) );
   }
 
   Vec tmp; double *tmp_p; ierr = VecDuplicate(q, &tmp); CHKERRXX(ierr);
   VecCopyGhost(q, tmp);
 
-  int    it     = 0;
-  double change = tol+1;
-  while ((it < iterations && change > tol) || it < num_iters_min)
-  {
-    ++it;
-    change = 0;
+  for (int it = 0; it < iterations; ++it) {
 
     ierr = VecGetArray(q  , &q_p  ); CHKERRXX(ierr);
     ierr = VecGetArray(tmp, &tmp_p); CHKERRXX(ierr);
@@ -5014,27 +4568,22 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     // precompute right hand-side
     std::vector<double> qn(nodes->num_owned_indeps, 0);
 
-    if (order >= 1)
-    {
-      foreach_local_node(n, nodes)
-      {
-        if (mask_p[n] > -EPS && phi_p[n] < band_extend)
-        {
+    if (order >= 1) {
+      foreach_local_node(n, nodes) {
+        if (mask_p[n] > -EPS && phi_p[n] < band_extend) {
           qn[n] = SUMD(nx[n]*qx_p[n], ny[n]*qy_p[n], nz[n]*qz_p[n]);
         }
       }
     }
 
-    if (order == 2)
-    {
-      foreach_local_node(n, nodes)
-      {
-        if (mask_p[n] > -EPS && phi_p[n] < band_extend)
-        {
+    if (order == 2) {
+      foreach_local_node(n, nodes) {
+        if (mask_p[n] > -EPS && phi_p[n] < band_extend) {
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
 
           double qxx_m00 = qnnn.f_m00_linear(qxx_p);
           double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+
           double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
           double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
@@ -5045,6 +4594,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
           /* minmod operation */
           qxx_m00 = MINMOD(qxx_p[n], qxx_m00);
           qxx_p00 = MINMOD(qxx_p[n], qxx_p00);
+
           qyy_0m0 = MINMOD(qyy_p[n], qyy_0m0);
           qyy_0p0 = MINMOD(qyy_p[n], qyy_0p0);
 #ifdef P4_TO_P8
@@ -5054,6 +4604,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
           if (nx[n]<0) qn[n] += nx[n]*.5*qnnn.d_p00*qxx_p00;
           else         qn[n] -= nx[n]*.5*qnnn.d_m00*qxx_m00;
+
           if (ny[n]<0) qn[n] += ny[n]*.5*qnnn.d_0p0*qyy_0p0;
           else         qn[n] -= ny[n]*.5*qnnn.d_0m0*qyy_0m0;
 #ifdef P4_TO_P8
@@ -5064,28 +4615,21 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       }
     }
 
-    for (int map_idx = 0; map_idx < 2; ++map_idx)
-    {
+    for (int map_idx = 0; map_idx < 2; ++map_idx) {
       const std::vector<p4est_locidx_t>& map = map_idx == 0 ? layer_nodes : local_nodes;
-      for(size_t n_map=0; n_map<map.size(); ++n_map)
-      {
+      for(size_t n_map=0; n_map<map.size(); ++n_map) {
         p4est_locidx_t n = map[n_map];
 
-        if (mask_p[n] > -EPS && phi_p[n] < band_extend)
-        {
+        if (mask_p[n] > -EPS && phi_p[n] < band_extend) {
           const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
-          double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
-          dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
-#ifdef P4_TO_P8
-          dt  =  MIN( dt, fabs(qnnn.d_00m) , fabs(qnnn.d_00p) );
-          dt /= 3;
-#else
-          dt /= 2;
-#endif
+          double dt = MIN( MIN( DIM( fabs(qnnn.d_m00), fabs(qnnn.d_0m0), fabs(qnnn.d_00m) ) ),
+                           MIN( DIM( fabs(qnnn.d_p00), fabs(qnnn.d_0p0), fabs(qnnn.d_00p) ) ) )
+                      / double(P4EST_DIM);
 
           /* first order one sided derivatives */
           double Qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
                               :-(q_p[n] - qnnn.f_p00_linear(q_p)) / qnnn.d_p00;
+
           double Qy = ny[n]>0 ? (q_p[n] - qnnn.f_0m0_linear(q_p)) / qnnn.d_0m0
                               :-(q_p[n] - qnnn.f_0p0_linear(q_p)) / qnnn.d_0p0;
 #ifdef P4_TO_P8
@@ -5093,22 +4637,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
                               :-(q_p[n] - qnnn.f_00p_linear(q_p)) / qnnn.d_00p;
 #endif
 
-          double change_loc = dt*(SUMD(nx[n]*Qx, ny[n]*Qy, nz[n]*Qz) - qn[n]);
-
-          if (phi_p[n] < band_check && fabs(change_loc) > change) change = fabs(change_loc);
-
-          tmp_p[n] = q_p[n] - change_loc;
+          tmp_p[n] = q_p[n] - (SUMD(nx[n]*Qx, ny[n]*Qy, nz[n]*Qz) - qn[n])*dt;
         }
       }
 
-      if (map_idx == 0)
-      {
-        /* initiate the communication */
+      if (map_idx == 0) { // initiate the communication
         ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      }
-      else
-      {
-        /* end update communication */
+      } else { // end update communication
         ierr = VecGhostUpdateEnd  (tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       }
     }
@@ -5116,53 +4651,37 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     ierr = VecRestoreArray(q  , &q_p  ); CHKERRXX(ierr);
     ierr = VecRestoreArray(tmp, &tmp_p); CHKERRXX(ierr);
 
-    /* get global max change */
-    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-    if (show_convergence)
-    {
-      ierr = PetscPrintf(p4est->mpicomm, "Extending values, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
-    }
-
+    // swaping pointers instead of physically copying data
     Vec swap_tmp = tmp; tmp = q; q = swap_tmp;
   }
 
-  if (it%2 != 0)
-  {
+  // transfer data from temporary variable if there was an odd number of pointer swaps
+  if (iterations%2 == 1) {
     Vec swap_tmp = tmp; tmp = q; q = swap_tmp;
     VecCopyGhost(tmp, q);
   }
 
   ierr = VecDestroy(tmp); CHKERRXX(ierr);
 
-  if(order>=1)
-  {
-    ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
-#endif
+  // clean up and restore pointers
+  if(order>=1) {
+    EXECD( ierr = VecRestoreArray(qx, &qx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qy, &qy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr) );
 
-    if (q_d == NULL)
-    {
-      ierr = VecDestroy(qx); CHKERRXX(ierr);
-      ierr = VecDestroy(qy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecDestroy(qz); CHKERRXX(ierr);
-#endif
+    if (q_d == NULL) {
+      EXECD( ierr = VecDestroy(qx); CHKERRXX(ierr),
+             ierr = VecDestroy(qy); CHKERRXX(ierr),
+             ierr = VecDestroy(qz); CHKERRXX(ierr) );
     }
   }
 
-  if (order == 2 && q_dd == NULL)
-  {
-    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+  if (order == 2 && q_dd == NULL) {
+    EXECD( ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr),
+           ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr) );
 
-    if (q_dd == NULL)
-    {
+    if (q_dd == NULL) {
       ierr = VecDestroy(qxx); CHKERRXX(ierr);
       ierr = VecDestroy(qxy); CHKERRXX(ierr);
       ierr = VecDestroy(qyy); CHKERRXX(ierr);
@@ -5176,26 +4695,18 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-  if (mask != NULL)
-  {
+  if (mask != NULL) {
     ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
   }
 
-  if (normal != NULL)
-  {
-    ierr = VecRestoreArray(normal[0], &nx); CHKERRXX(ierr);
-    ierr = VecRestoreArray(normal[1], &ny); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecRestoreArray(normal[2], &nz); CHKERRXX(ierr);
-#endif
-  }
-  else
-  {
-    delete[] nx;
-    delete[] ny;
-#ifdef P4_TO_P8
-    delete[] nz;
-#endif
+  if (normal != NULL) {
+    EXECD( ierr = VecRestoreArray(normal[0], &nx); CHKERRXX(ierr),
+           ierr = VecRestoreArray(normal[1], &ny); CHKERRXX(ierr),
+           ierr = VecRestoreArray(normal[2], &nz); CHKERRXX(ierr) );
+  } else {
+    EXECD( delete[] nx,
+           delete[] ny,
+           delete[] nz );
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
@@ -5963,21 +5474,6 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 
     /* finish communication for q2 */
     ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    if (show_convergence) {
-      double change = 0;
-
-      foreach_node(n, nodes) {
-        if (fabs(phi_p[n]) < show_convergence_band*dl) {
-          double change_loc = 0.5*fabs(q2_p[n] - q_p[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-      ierr = PetscPrintf(p4est->mpicomm, "Extending in normal direction, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
-    }
 
     //---------------------------------------------------------------------
     // The third step of TVD RK-2 : q = .5*(q + q2)
@@ -7361,7 +6857,7 @@ void my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const V
 
           extend_Over_Interface_TVD_regional(phi_wall, phi_wall, region, phi, 50, 2); break;
         }
-      case 3: extend_Over_Interface_TVD_Full(phi_wall, phi, 50, 2, 0, DBL_MAX, 2000*dx); break;
+      case 3: extend_Over_Interface_TVD_Full(phi_wall, phi, 50, 2, DBL_MAX, 2000*dx); break;
     }
   }
 

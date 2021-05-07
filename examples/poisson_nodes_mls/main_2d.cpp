@@ -224,7 +224,7 @@ param_t<int>    infc_01_flux_jump  (pl, 0, "infc_01_flux_jump", "0 - automatic, 
 param_t<int>    infc_02_flux_jump  (pl, 0, "infc_02_flux_jump", "0 - automatic, others - hardcoded");
 param_t<int>    infc_03_flux_jump  (pl, 0, "infc_03_flux_jump", "0 - automatic, others - hardcoded");
 
-param_t<int>    example (pl, 4, "example", "Predefined example:\n"
+param_t<int>    example (pl, 1, "example", "Predefined example:\n"
                                             "0 - no interfaces, no boudaries\n"
                                             "1 - sphere interior\n"
                                             "2 - sphere exterior\n"
@@ -250,7 +250,9 @@ param_t<int>    example (pl, 4, "example", "Predefined example:\n"
                                             "22 - same as no. 1 + nonlinear sinh term\n"
                                             "23 - same as no. 5 + nonlinear sinh term\n"
                                             "24 - same as no. 9 + nonlinear sinh term\n"
-                                            "25 - same as no. 12 + nonlinear sinh term\n");
+                                            "25 - same as no. 12 + nonlinear sinh term\n"
+                                            "30 - intersection of two circles\n"
+                                            "31 - union of two circles\n");
 
 //-------------------------------------
 // solver parameters
@@ -260,7 +262,7 @@ param_t<int>    integration_order (pl, 2, "integration_order", "Integration orde
 param_t<bool>   fv_scheme         (pl, 0, "fv_scheme",         "Scheme for finite volume discretization on boundaries: 0 - symmetric, 1 - superconvergent");
 
 param_t<bool>   store_finite_volumes   (pl, 0, "store_finite_volumes", "");
-param_t<bool>   apply_bc_pointwise     (pl, 0, "apply_bc_pointwise", "");
+param_t<bool>   apply_bc_pointwise     (pl, 1, "apply_bc_pointwise", "");
 param_t<bool>   use_centroid_always    (pl, 0, "use_centroid_always", "");
 param_t<bool>   sample_bc_node_by_node (pl, 0, "sample_bc_node_by_node", "");
 
@@ -293,7 +295,7 @@ param_t<double> infc_perturb_pow (pl, 2,     "infc_perturb_pow", "Order of level
 // convergence study parameters
 //-------------------------------------
 param_t<bool>   compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number (requires MATLAB)");
-param_t<int>    extend_solution        (pl, 0, "extend_solution", "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
+param_t<int>    extend_solution        (pl, 2, "extend_solution", "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
 param_t<double> mask_thresh            (pl, 0, "mask_thresh", "Mask threshold for excluding points in convergence study");
 param_t<bool>   compute_grad_between   (pl, 0, "compute_grad_between", "Computes gradient between points if yes");
 param_t<bool>   scale_errors           (pl, 0, "scale_errors", "Scale errors by max solution/gradient value");
@@ -892,6 +894,46 @@ void set_example(int example)
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
       nonlinear_term_p_mult.val = 1;
+
+      break;
+
+    case 30: // shperical interface
+
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 10; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
+
+      num_infc.val = 1;
+      num_bdry.val = 1;
+
+      infc_00_present.val = 1; infc_00_geometry.val = 10; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
+
+      bdry_00_present.val = 1; bdry_00_geometry.val = 1; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
+
+      break;
+
+    case 31: // shperical interface
+
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 5; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
+
+      num_infc.val = 1;
+      num_bdry.val = 1;
+
+      infc_00_present.val = 1; infc_00_geometry.val = 11; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
+
+      bdry_00_present.val = 1; bdry_00_geometry.val = 1; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
@@ -1972,6 +2014,46 @@ public:
           ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
+      case 10: // intersection of two circles
+      {
+        static double r0 = 0.4;
+        static double r1 = 0.5;
+        static double DIM( xc0 = 0.25, yc0 = 0.30, zc0 = 0.35 );
+        static double DIM( xc1 =-0.15, yc1 =-0.10, zc1 =-0.05 );
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0), 0, -1);
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1), 0,  1);
+
+        double val0 = circle0.phi(DIM(x,y,z));
+        double val1 = circle1.phi(DIM(x,y,z));
+
+        switch (what) {
+          _CODE( case VAL: return MAX(val0, val1) );
+          XCODE( case DDX: return (fabs(val0) < fabs(val1) ? circle0.phi_x(DIM(x,y,z)) : circle1.phi_x(DIM(x,y,z))) );
+          YCODE( case DDY: return (fabs(val0) < fabs(val1) ? circle0.phi_y(DIM(x,y,z)) : circle1.phi_y(DIM(x,y,z)))  );
+          ZCODE( case DDZ: return (fabs(val0) < fabs(val1) ? circle0.phi_z(DIM(x,y,z)) : circle1.phi_z(DIM(x,y,z)))  );
+        }
+      }
+      case 11: // union of two circles
+      {
+        static double r0 = 0.4;
+        static double r1 = 0.5;
+        static double DIM( xc0 = 0.25, yc0 = 0.30, zc0 = 0.35 );
+        static double DIM( xc1 =-0.15, yc1 =-0.10, zc1 =-0.05 );
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0), 0, 1);
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1), 0, 1);
+
+        double val0 = circle0.phi(DIM(x,y,z));
+        double val1 = circle1.phi(DIM(x,y,z));
+
+        switch (what) {
+          _CODE( case VAL: return MIN(val0, val1) );
+          XCODE( case DDX: return (fabs(val0) < fabs(val1) ? circle0.phi_x(DIM(x,y,z)) : circle1.phi_x(DIM(x,y,z))) );
+          YCODE( case DDY: return (fabs(val0) < fabs(val1) ? circle0.phi_y(DIM(x,y,z)) : circle1.phi_y(DIM(x,y,z)))  );
+          ZCODE( case DDZ: return (fabs(val0) < fabs(val1) ? circle0.phi_z(DIM(x,y,z)) : circle1.phi_z(DIM(x,y,z)))  );
+        }
+      }
+      default:
+        throw;
     }
   }
 };
@@ -2583,7 +2665,9 @@ int main (int argc, char* argv[])
                     solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], zero_cf, zero_cf);
                   else
                     solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+//                std::cout << (BoundaryConditionType) *bc_type_all[i];
                 }
+
               // adding interface is exactly similar
               for (int i = 0; i < num_infc_max; ++i)
                 if (*infc_present_all[i] == true)
@@ -2603,10 +2687,10 @@ int main (int argc, char* argv[])
 
               solver.set_use_taylor_correction(taylor_correction());
               solver.set_kink_treatment(kink_special_treatment());
-              solver.set_dirichlet_scheme(1);
-              solver.set_gf_order(3);
-              solver.set_gf_thresh(-0.1);
-              solver.set_gf_stabilized(0);
+//              solver.set_dirichlet_scheme(1);
+//              solver.set_gf_order(3);
+//              solver.set_gf_thresh(-0.1);
+//              solver.set_gf_stabilized(0);
 
 
               vector< vector<double> > pw_bc_values(num_bdry());
@@ -3236,16 +3320,18 @@ int main (int argc, char* argv[])
                 bc = solver.get_bc(0);
               }
 
-              ls.set_show_convergence(0);
+//              ls.set_show_convergence(0);
               switch (extend_solution())
               {
                 case 1:
-                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max, extension_band_extend()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max, extension_band_extend()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
                   break;
                 case 2:
-                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, NULL, use_nonzero_guess()); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max, NULL, mask_m, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max, NULL, mask_p, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
                   break;
               }
 

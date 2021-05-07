@@ -50,6 +50,7 @@
 class my_p4est_node_neighbors_t;
 class quad_neighbor_nodes_of_node_t;
 
+#define SEMICOL ;
 #define COMMA ,
 #define P4(a) a
 
@@ -68,6 +69,7 @@ class quad_neighbor_nodes_of_node_t;
 #define CODE3D(a) a
 
 #define EXECD(a,b,c) a; b; c;
+#define EXECDPM(am, ap, bm, bp, cm, cp) am; ap; bm; bp; cm; cp;
 
 #define CODE2D(a)
 #define CODE3D(a) a
@@ -106,6 +108,7 @@ class quad_neighbor_nodes_of_node_t;
 #define CODE3D(a)
 
 #define EXECD(a,b,c) a; b;
+#define EXECDPM(am, ap, bm, bp, cm, cp) am; ap; bm; bp;
 
 #define CODE2D(a) a
 #define CODE3D(a)

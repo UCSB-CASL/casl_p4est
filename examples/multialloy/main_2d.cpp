@@ -74,7 +74,7 @@ param_t<double> ymax (pl, 8, "ymax", "Box ymax");
 param_t<double> zmax (pl, 1, "zmax", "Box zmax");
 
 param_t<double> xc   (pl, .51, "xc", "Centering point x");
-param_t<double> yc   (pl, .52, "yc", "Centering point y");
+param_t<double> yc   (pl, .32, "yc", "Centering point y");
 param_t<double> zc   (pl, .53, "zc", "Centering point z");
 
 //-------------------------------------
@@ -84,33 +84,31 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 4, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
 param_t<int> sub_split_num (pl, 0, "sub_split_num", "");
 
-param_t<double> lip  (pl, 2.0, "lip",  "Fine-to-coarse grid transition width");
-param_t<double> band (pl, 2.0, "band", "Uniform band width around interfaces");
+param_t<double> lip  (pl, 1.5, "lip",  "Fine-to-coarse grid transition width");
+param_t<double> band (pl, 1.5, "band", "Uniform band width around interfaces");
 
 //-------------------------------------
 // solver parameters
 //-------------------------------------
 param_t<bool> use_points_on_interface   (pl, 1, "use_points_on_interface", "");
-param_t<bool> use_superconvergent_robin (pl, 0, "use_superconvergent_robin", "");
+param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
-param_t<int>    order_in_time   (pl, 1,     "order_in_time",   "");
-param_t<int>    max_iterations  (pl, 10,    "max_iterations",  "");
+param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
+param_t<int>    max_iterations  (pl, 7,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 0.4,   "cfl_number",      "");
-param_t<double> base_cfl        (pl, 0.1111,   "base_cfl",      "");
+param_t<double> cfl_number      (pl, 3*0.2,   "cfl_number",      "");
+//param_t<double> base_cfl        (pl, pow(1.0,1.5)*0.0811,   "base_cfl",      "");
+param_t<double> base_cfl        (pl, 0.111,   "base_cfl",      "");
 
-param_t<int>    front_smoothing           (pl, 0,   "front_smoothing",           "");
-param_t<double> curvature_smoothing       (pl, 0.0, "curvature_smoothing",       "");
-param_t<int>    curvature_smoothing_steps (pl, 0,   "curvature_smoothing_steps", "");
-param_t<double> proximity_smoothing       (pl, 1.1, "proximity_smoothing",       "");
+param_t<double> proximity_smoothing       (pl, 1.01, "proximity_smoothing",       "");
 
 //-------------------------------------
 // output parameters
@@ -128,7 +126,7 @@ param_t<bool>   save_p4est_solid     (pl, 1, "save_p4est_solid", "");
 param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
 
 param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
-param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
+param_t<double> save_every_dl (pl, 0.025, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
 param_t<int>    save_type (pl, 0, "save_type", "0 - every n iterations (pl, 1 - every dl of growth (pl, 2 - every dt of time");
@@ -203,7 +201,7 @@ double* part_coeff_all[] = { &part_coeff_0.val,
                              &part_coeff_2.val,
                              &part_coeff_3.val };
 
-param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
+param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -212,7 +210,7 @@ param_t<int> alloy (pl, 3, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "", "
                                     "7: a made-up penta-alloy");
 
-double scale = 1000;
+double scale = 10;
 
 //-------------------------------------
 // problem parameters
@@ -220,20 +218,21 @@ double scale = 1000;
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
 param_t<double> cooling_velocity        (pl, 0.001*scale,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
-param_t<bool>   start_from_moving_front (pl, 1, "start_from_moving_front", "Relevant only for geometry==0");
+param_t<double> temp_gradient           (pl, 100, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
 param_t<double> starting_time    (pl, 0.e-3, "starting_time",    "Time for cooling/heating to fully switch on (pl, s");
 
 param_t<BoundaryConditionType> bc_type_conc (pl, NEUMANN, "bc_type_conc", "DIRICHLET/NEUMANN");
 param_t<BoundaryConditionType> bc_type_temp (pl, NEUMANN, "bc_type_temp", "DIRICHLET/NEUMANN");
+//param_t<BoundaryConditionType> bc_type_temp (pl, DIRICHLET, "bc_type_temp", "DIRICHLET/NEUMANN");
 
 param_t<int>    step_limit           (pl, INT_MAX, "step_limit",   "");
 //param_t<int>    step_limit           (pl, 200, "step_limit",   "");
 param_t<double> time_limit           (pl, DBL_MAX, "time_limit",   "");
-param_t<double> growth_limit         (pl, 8, "growth_limit", "");
-param_t<double> init_perturb         (pl, 1.e-2,  "init_perturb",         "");
+param_t<double> growth_limit         (pl, 15, "growth_limit", "");
+param_t<double> init_perturb         (pl, 1.e-10,  "init_perturb",         "");
 param_t<bool>   enforce_planar_front (pl, 0,       "enforce_planar_front", "");
 
 param_t<double> front_location         (pl, 0.100,     "front_location",         "");
@@ -246,7 +245,7 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.05/sqrt(scale), "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.08/sqrt(scale), "box_size", "Physical width (in x) of the box in cm");
 
 param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
@@ -258,6 +257,7 @@ param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidifi
                                               " 4 - radial directional solidification out,"
                                               " 5 - three spherical seeds,"
                                               " 6 - planar front and three spherical seeds");
+
 
 
 // ----------------------------------------
@@ -338,9 +338,9 @@ void set_alloy_parameters()
       initial_conc_0.val   = 0.107;    // at frac.
       initial_conc_1.val   = 0.094;    // at frac.
 
-      eps_c.val = 1.0e-5;
+      eps_c.val = 1.0e-5/1.;
       eps_v.val = 1.0e-2;
-      eps_a.val = 0.05;
+      eps_a.val = 0.05*1.;
       symmetry.val = 4;
 
       // linearized phase diagram
@@ -490,15 +490,15 @@ void set_alloy_parameters()
       solute_diff_0.val    = 1.e-5;
       solute_diff_1.val    = 2.e-5;
       solute_diff_2.val    = 4.e-5;
-      solute_diff_3.val    = 8.e-5;
-      initial_conc_0.val   = 0.1;
+      solute_diff_3.val    = 6.e-5;
+      initial_conc_0.val   = 0.15;
       initial_conc_1.val   = 0.1;
-      initial_conc_2.val   = 0.1;
-      initial_conc_3.val   = 0.1;
+      initial_conc_2.val   = 0.05;
+      initial_conc_3.val   = 0.05;
 
-      eps_c.val = 0.e-6;
+      eps_c.val = 1.e-5;
       eps_v.val = 0;
-      eps_a.val = 0.0;
+      eps_a.val = 0.05;
       symmetry.val = 4;
 
       // linearized phase diagram
@@ -960,6 +960,7 @@ bool periodicity(int dir)
     case  4: return false;
     case  5: return true;
     case  6: return (dir == 0 ? 1 : 0);
+    case  7: return (dir == 0 ? 1 : 0);
     default: throw;
   }
 }
@@ -979,7 +980,7 @@ public:
       case -2: return analytic::rf_exact(t) - ABS2(x-xc(),
                                                    y-yc());
       case -1: return analytic::rf_exact(t) - ABS1(y-ymin());
-      case 0: return -(y - front_location()) + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.25))  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
+      case 0: return -(y - front_location()) + 0.000/(1.+100.*fabs(x/(xmin.val+xmax.val)-.5))*double(rand())/double(RAND_MAX)  + 0.000/(1.+1000.*fabs(x/(xmin.val+xmax.val)-.75));
       case 1: return -(ABS2(x-xc(), y-yc())-seed_radius());
       case 2: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
       case 3: return  (ABS2(x-xc(), y-yc())-(container_radius_outer()-front_location()));
@@ -1000,6 +1001,14 @@ public:
         double dist2 = ABS2(x-(xc()+seed_dist()*cos(2.*PI/3.*2. + seed_rot())), y-(yc()+seed_dist()*sin(2.*PI/3.*2. + seed_rot())));
 
         return MAX(front, seed_radius() - MIN(dist0, dist1, dist2));
+      }
+      case 7:
+      {
+        double front = -(y - front_location());
+        double dist0 = ABS2(x-(xc()+.25*(xmax()-xmin())), y-yc());
+        double dist1 = ABS2(x-(xc()-.25*(xmax()-xmin())), y-yc());
+
+        return MAX(front, seed_radius() - MIN(dist0, dist1));
       }
       default: throw;
     }
@@ -1029,6 +1038,7 @@ public:
                            +container_radius_inner() - ABS2(x-xc(), y-yc()) );
       case  5: return -1;
       case  6: return -1;
+      case  7: return -1;
       default: throw;
     }
   }
@@ -1082,6 +1092,16 @@ public:
         if (dist2 <= MIN(dist0, dist1, front)) return 2;
         return 3;
       }
+      case 7:
+      {
+        double front = fabs(y - front_location());
+        double dist0 = ABS2(x-(xc()+.25*(xmax()-xmin())), y-yc());
+        double dist1 = ABS2(x-(xc()-.25*(xmax()-xmin())), y-yc());
+
+        if (dist0 <= MIN(dist1, front)) return 0;
+        if (dist1 <= MIN(dist0, front)) return 1;
+        return 2;
+      }
       default: throw;
     }
   }
@@ -1103,6 +1123,7 @@ int num_seeds()
     case 4: return 1;
     case 5: return 3;
     case 6: return 4;
+    case 7: return 3;
     default: throw;
   }
 }
@@ -1145,6 +1166,14 @@ double theta0(int seed)
           case 1: return crystal_orientation.val +PI/6.;
           case 2: return crystal_orientation.val -PI/5.;
           case 3: return 0.;
+          default: throw;
+        }
+      case 7:
+        switch (seed)
+        {
+          case 0: return crystal_orientation.val -PI/7.;
+          case 1: return crystal_orientation.val +PI/6.;
+          case 2: return 0.;
           default: throw;
         }
       default: throw;
@@ -1213,6 +1242,7 @@ public:
       case  4:
       case  5:
       case  6:
+      case  7:
         if (start_from_moving_front.val) {
           return (*initial_conc_all[idx])*(1. + (1.-analytic::kp[idx])/analytic::kp[idx]*
                                            exp(-cooling_velocity.val/(*solute_diff_all[idx])*(-front_phi_cf(DIM(x,y,z)-0*cooling_velocity.val*t))));
@@ -1250,7 +1280,8 @@ public:
       case  3:
       case  4:
       case  5:
-      case  6: return analytic::Cstar[idx];
+      case  6:
+      case  7: return analytic::Cstar[idx];
       default: throw;
     }
   }
@@ -1285,6 +1316,7 @@ public:
       case  4: return analytic::Tstar + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())));
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
+      case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient();
       default: throw;
     }
   }
@@ -1309,6 +1341,7 @@ public:
       case  4: return analytic::Tstar + container_radius_outer()*temp_gradient()*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner()+front_location())))*thermal_cond_l()/thermal_cond_s();
       case  5: return analytic::Tstar;
       case  6: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
+      case  7: return analytic::Tstar + (y - (front_location.val + cooling_velocity.val*t))*temp_gradient()*thermal_cond_l.val/thermal_cond_s.val;
       default: throw;
     }
   }
@@ -1331,7 +1364,8 @@ public:
       case  3:
       case  4:
       case  5:
-      case  6: return analytic::Tstar;
+      case  6:
+      case  7: return analytic::Tstar;
       default: throw;
     }
   }
@@ -1452,7 +1486,8 @@ public:
           case  3:
           case  4:
           case  5:
-          case  6: return 0;
+          case  6:
+          case  7: return 0;
           default: throw;
         }
       case NEUMANN:
@@ -1486,7 +1521,8 @@ public:
               return -thermal_cond_l.val*temp_gradient.val*container_radius_outer.val/container_radius_inner.val;
             }
           case  5: return 0;
-          case  6: return y > .5*(ymin.val+ymax.val) ? temp_gradient.val : -(temp_gradient.val + cooling_velocity.val*latent_heat.val/thermal_cond_s.val * smooth_start(t));
+          case  6: return y > .5*(ymin.val+ymax.val) ? temp_gradient.val : -(temp_gradient.val*thermal_cond_l.val/thermal_cond_s.val + cooling_velocity.val*(latent_heat.val+density_l.val*temp_gradient.val*heat_capacity_l.val*(ymax.val-ymin.val))/thermal_cond_s.val * smooth_start(t));
+          case  7: return y > .5*(ymin.val+ymax.val) ? temp_gradient.val : -(temp_gradient.val*thermal_cond_l.val/thermal_cond_s.val + cooling_velocity.val*(latent_heat.val+density_l.val*temp_gradient.val*heat_capacity_l.val*(ymax.val-ymin.val))/thermal_cond_s.val * smooth_start(t));
           default: throw;
         }
       default: throw;
@@ -1515,7 +1551,8 @@ public:
           case  3:
           case  4:
           case  5:
-          case  6: return *initial_conc_all[idx];
+          case  6:
+          case  7: return *initial_conc_all[idx];
           default: throw;
         }
       case NEUMANN:
@@ -1531,7 +1568,8 @@ public:
           case  3:
           case  4:
           case  5:
-          case  6: return 0;
+          case  6:
+          case  7: return 0;
           default: throw;
         }
       default: throw;
@@ -1833,7 +1871,7 @@ int main (int argc, char* argv[])
 
   foreach_node(n, nodes)
   {
-    front_phi.ptr[n] += init_perturb.val*dx*(double)(rand()%1000)/1000.;
+    front_phi.ptr[n] += init_perturb.val*dx*double(rand())/double(RAND_MAX);
   }
 
   front_phi.restore_array();
@@ -1893,8 +1931,6 @@ int main (int argc, char* argv[])
   mas.set_bc_tolerance             (bc_tolerance.val);
   mas.set_max_iterations           (max_iterations.val);
   mas.set_cfl                      (cfl_number.val);
-  mas.set_front_smoothing          (front_smoothing.val);
-  mas.set_curvature_smoothing      (curvature_smoothing.val, curvature_smoothing_steps.val);
   mas.set_proximity_smoothing      (proximity_smoothing.val);
 
   mas.set_use_superconvergent_robin(use_superconvergent_robin.val);

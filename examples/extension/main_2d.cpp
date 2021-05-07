@@ -55,16 +55,16 @@ param_list_t pl;
 
 // grid parameters
 param_t<int>    lmin                 (pl, -1,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<int>    lmax                 (pl, 14,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmax                 (pl, 5,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
 param_t<double> lip                  (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
 param_t<double> uniform_band         (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
-param_t<int>    num_splits           (pl, 1,   "num_splits",           "Number of successive refinements (default: 5)");
+param_t<int>    num_splits           (pl, 10,   "num_splits",           "Number of successive refinements (default: 5)");
 param_t<int>    num_splits_per_split (pl, 1,   "num_splits_per_split", "Number of additional refinements (default: 1)");
 param_t<bool>   aggressive_coarsening(pl, 1,   "aggressive_corsening", "Enfornce lip = 0 (i.e. no smooth transition from uniform band to coarse grid");
 
 
 // problem set-up (points of iterpolation and function to interpolate)
-param_t<int> test_domain(pl, 3, "test_domain", "Test domain (default: 0):\n"
+param_t<int> test_domain(pl, 0, "test_domain", "Test domain (default: 0):\n"
                                                "    0 - sphere \n"
                                                "    1 - flower shaped"
                                                "    2 - union of two spheres"
@@ -79,7 +79,7 @@ param_t<bool>   reinit_level_set(pl, 1,  "reinit_level_set", "Reinitialize level
 param_t<bool>   rerefine        (pl, 1,  "rerefine"        , "Refine according to signed distance (default: 0)");
 param_t<bool>   show_convergence(pl, 0,  "show_convergence", "Show convergence as iterations performed (default: 0)");
 param_t<bool>   use_full        (pl, 0,  "use_full"        , "Extend only normal derivatives (0) or all derivatives in Cartesian directions (1) (default: 0)");
-param_t<int>    num_iterations  (pl, 50, "num_iterations"  , "Number of iterations (default: 50)\n");
+param_t<int>    num_iterations  (pl, 51, "num_iterations"  , "Number of iterations (default: 50)\n");
 param_t<double> band            (pl, 2,  "band"            , "Band around interface (in diagonal lengths) to check for accuracy (default: 2)\n");
 
 // output settings
@@ -415,29 +415,23 @@ int main(int argc, char** argv)
 
       if (reinit_level_set()) ls.reinitialize_2nd_order(phi);
 
-      if (show_convergence())
-      {
-        ls.set_show_convergence(1);
-        ls.set_show_convergence_band(band()*diag_min);
-      }
+//      Vec phi_smoothed;
 
-      Vec phi_smoothed;
+//      ierr = VecDuplicate( phi, &phi_smoothed ); CHKERRXX( ierr );
+//      ierr = VecCopyGhost( phi, phi_smoothed ); CHKERRXX( ierr );
 
-      ierr = VecDuplicate( phi, &phi_smoothed ); CHKERRXX( ierr );
-      ierr = VecCopyGhost( phi, phi_smoothed ); CHKERRXX( ierr );
+//      ierr = VecShiftGhost( phi_smoothed, 2.0*diag_min ); CHKERRXX( ierr );
 
-      ierr = VecShiftGhost( phi_smoothed, 2.0*diag_min ); CHKERRXX( ierr );
+//      ls.reinitialize_1st_order( phi_smoothed );
+//      ierr = VecShiftGhost( phi_smoothed, -2.0*diag_min ); CHKERRXX( ierr );
 
-      ls.reinitialize_1st_order( phi_smoothed );
-      ierr = VecShiftGhost( phi_smoothed, -2.0*diag_min ); CHKERRXX( ierr );
+//      Vec normal_smoothed[P4EST_DIM];
 
-      Vec normal_smoothed[P4EST_DIM];
+//      foreach_dimension(dim) {
+//        ierr = VecCreateGhostNodes(p4est, nodes, &normal_smoothed[dim]); CHKERRXX(ierr);
+//      }
 
-      foreach_dimension(dim) {
-        ierr = VecCreateGhostNodes(p4est, nodes, &normal_smoothed[dim]); CHKERRXX(ierr);
-      }
-
-      compute_normals(ngbd, phi_smoothed, normal_smoothed);
+//      compute_normals(ngbd, phi_smoothed, normal_smoothed);
 
       parStopWatch timer;
       double time_const;
@@ -451,16 +445,16 @@ int main(int argc, char** argv)
       }
       else
       {
-//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration_current(); // constant extrapolation
-//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration_current(); // linear extrapolation
-//        w.start(); ls.extend_Over_Interface_TVD     (phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration_current(); // quadratic extrapolationn
+        w.start(); ls.extend_Over_Interface_TVD     (phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration_current(); // constant extrapolation
+        w.start(); ls.extend_Over_Interface_TVD     (phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration_current(); // linear extrapolation
+        w.start(); ls.extend_Over_Interface_TVD     (phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration_current(); // quadratic extrapolationn
 
-        my_p4est_grid_aligned_extension_t ext_c(&ngbd);
-        my_p4est_grid_aligned_extension_t ext_l(&ngbd);
-        my_p4est_grid_aligned_extension_t ext_q(&ngbd);
-        w.start(); ext_c.initialize(phi, 0, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_c.extend(1, &f_const);     time_const     = w.get_duration_current();
-        w.start(); ext_l.initialize(phi, 1, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_l.extend(1, &f_linear);    time_linear    = w.get_duration_current();
-        w.start(); ext_q.initialize(phi, 3, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_q.extend(1, &f_quadratic); time_quadratic = w.get_duration_current();
+//        my_p4est_grid_aligned_extension_t ext_c(&ngbd);
+//        my_p4est_grid_aligned_extension_t ext_l(&ngbd);
+//        my_p4est_grid_aligned_extension_t ext_q(&ngbd);
+//        w.start(); ext_c.initialize(phi, 0, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_c.extend(1, &f_const);     time_const     = w.get_duration_current();
+//        w.start(); ext_l.initialize(phi, 1, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_l.extend(1, &f_linear);    time_linear    = w.get_duration_current();
+//        w.start(); ext_q.initialize(phi, 3, true, num_iterations(), band()+1, band(), normal_smoothed, NULL); ext_q.extend(1, &f_quadratic); time_quadratic = w.get_duration_current();
       }
 
       ls.extend_from_interface_to_whole_domain_TVD(phi, f_exact, f_flat, num_iterations()); // constant extrapolation in both directions (flattening)
@@ -584,8 +578,8 @@ int main(int argc, char** argv)
           l_p[p4est->local_num_quadrants+q] = quad->level;
         }
 
-//        ierr = VecGetArray(phi,             &phi_ptr);
-        ierr = VecGetArray(phi_smoothed,    &phi_ptr);
+        ierr = VecGetArray(phi,             &phi_ptr);
+//        ierr = VecGetArray(phi_smoothed,    &phi_ptr);
         ierr = VecGetArray(phi_reinit,      &phi_reinit_ptr);
         ierr = VecGetArray(f_exact,         &f_exact_ptr);
         ierr = VecGetArray(f_const,         &f_const_ptr);
@@ -611,8 +605,8 @@ int main(int argc, char** argv)
                                VTK_POINT_DATA, "error_quadratic", error_quadratic_ptr,
                                VTK_CELL_DATA, "level", l_p);
 
-//        ierr = VecRestoreArray(phi,             &phi_ptr);
-        ierr = VecRestoreArray(phi_smoothed,    &phi_ptr);
+        ierr = VecRestoreArray(phi,             &phi_ptr);
+//        ierr = VecRestoreArray(phi_smoothed,    &phi_ptr);
         ierr = VecRestoreArray(phi_reinit,      &phi_reinit_ptr);
         ierr = VecRestoreArray(f_exact,         &f_exact_ptr);
         ierr = VecRestoreArray(f_const,         &f_const_ptr);
