@@ -384,16 +384,13 @@ public:
 				stencils[i] = nullptr;					// If a node has a well-defined stencil, this won't be null.
 				try
 				{
-					const int STENCIL_SIZE = (int)pow( 3, P4EST_DIM );
-					std::vector<p4est_locidx_t> stencilIndices( STENCIL_SIZE );
+					std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
 					if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
 					{
 						// Populate stencils by dynamic memory allocation.
-						stencils[i] = new double [STENCIL_SIZE];
-						for( int j = 0; j < STENCIL_SIZE; j++ )
+						stencils[i] = new double [num_neighbors_cube];
+						for( int j = 0; j < num_neighbors_cube; j++ )
 							stencils[i][j] = phiReadPtr[stencilIndices[j]];
-
-						// TODO: Normalize stencils to one quadrant by using gradient.
 
 						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
 					}

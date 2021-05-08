@@ -242,9 +242,9 @@ int main ( int argc, char* argv[] )
 		//////////////////////////////////// Star-shaped interface parameter setup /////////////////////////////////////
 
 		// [CHANGE] Change these values to modify the shape of star interface.
-		// Using a=0.075 and b=0.350 for smooth star, and a=0.120 and b=0.305 for sharp star.
-		const double A = 0.075;
-		const double B = 0.350;
+		// Using a=0.075 and b=0.350 for smooth star, and a=0.120 and b=0.305 for sharp star, and a=0.111 and b=0.314 for less sharp star.
+		const double A = 0.111;
+		const double B = 0.314;
 		const int P = 5;
 		geom::Star star( A, B, P );
 		const double STAR_SIDE_LENGTH = star.getInscribingSquareSideLength();
@@ -486,6 +486,9 @@ int main ( int argc, char* argv[] )
 			ierr = VecGetArrayRead( reinitPhis[key], &reinitPhiReadPtrs[key] );
 			CHKERRXX( ierr );
 
+			double minK = std::numeric_limits<double>::max();		// Let's keep track of min and max expected
+			double maxK = 0;										// curvatures (in absolute value).
+
 			// Now, collect samples with reinitialized and exact signed-distance level-set function values and target h*kappa.
 			int nSamples = 0;
 			std::vector<std::vector<double>> samples;
@@ -541,6 +544,9 @@ int main ( int argc, char* argv[] )
 							gradIndicatorPtr[n] = gradError;
 						}
 
+						minK = MIN( minK, ABS( sample[NUM_COLUMNS - 2] ) / H );		// Min and max expected absolute
+						maxK = MAX( maxK, ABS( sample[NUM_COLUMNS - 2] ) / H );		// curvatures.
+
 						// Also, check error for each reinitialization method using the "true" distances from above.
 						for( int i = 0; i < NUM_COLUMNS - 2; i++ )
 						{
@@ -573,6 +579,7 @@ int main ( int argc, char* argv[] )
 
 			std::cout << "   Generated " << nSamples << " samples for reinitialization " << key << std::endl;
 			std::cout << "   Max (relative) absolute error for " << key << " was " << maxREMap[key] << std::endl;
+			std::cout << "   Min curvature = " << minK << ",    Max curvature = " << maxK << std::endl;
 			std::cout << "   Timing: " << watch.get_duration_current() << std::endl;
 			watch.stop();
 		}

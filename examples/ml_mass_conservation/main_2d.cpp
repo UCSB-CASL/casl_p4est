@@ -40,6 +40,7 @@
 #include "Utils.h"
 #include <random>
 #include <algorithm>
+#include "../ml_curvature/local_utils.h"
 
 /**
  * Main function.
@@ -144,7 +145,7 @@ int main( int argc, char** argv )
 		std::mt19937 gen2( 37 );	// NOLINT Standard Mersenne Twister engine for subsampling.
 		auto subSampling = []( double kappa ){
 			kappa = ABS( kappa );
-			if( kappa <= 5 )		// Choose how manu "data augmentations" do we need depending on curvature.
+			if( kappa <= 5 )		// Choose how many "data augmentations" do we need depending on curvature.
 				return 1;
 			if( kappa <= 7.5 )
 				return 2;
@@ -356,8 +357,26 @@ int main( int argc, char** argv )
 							// Accumulate all samples first, and then write file.
 							std::vector<std::vector<double>> samples;
 							samples.reserve( dataPackets.size() * 4 );
-							for( auto dataPacket : dataPackets )
+
+							// Also need read access to coarse phi vector.
+							const double *cPhiReadPtr;
+							ierr = VecGetArrayRead( coarseGrid.phi, &cPhiReadPtr );
+							CHKERRXX( ierr );
+
+							for( int idx = 0; idx < dataPackets.size(); idx++ )
 							{
+								if( !stencils[idx] )	// Skip nodes for which we couldn't get their 9-point stencils.
+									continue;
+
+								slml::DataPacket *dataPacket = dataPackets[idx];
+
+								// To compute curvature using first-quadrant normalization, we need the gradient at this
+								// grid point.
+								double grad[P4EST_DIM];
+								const quad_neighbor_nodes_of_node_t *qnnnPtr;
+								coarseGrid.nodeNeighbors->get_neighbors( dataPacket->nodeIdx, qnnnPtr );
+								qnnnPtr->gradient( cPhiReadPtr, grad );
+
 								// As a way to simplify the resulting nnet architecture, I'll make everything match
 								// negative-curvature samples by flipping the sign of level-set values in data packet.
 								if( dataPacket->numK > 0 )
@@ -368,7 +387,15 @@ int main( int argc, char** argv )
 									dataPacket->targetPhi_d *= -1;
 									dataPacket->numBacktrackedPhi_d *= -1;
 									dataPacket->numK *= -1;
+
+									for( auto& component : grad )	// Flip gradient and nine-point stencil too.
+										component *= -1;
+									for( int j = 0; j < num_neighbors_cube; j++ )
+										stencils[idx][j] *= -1;
 								}
+
+								// Normalize 9-point stencil so that gradient has a angle between 0 and pi/2 inclusive.
+								kutils::rotateStencilToFirstQuadrant( stencils[idx], grad );
 
 								// I'll record samples based on their curvature.  Anything below a threshold will be
 								// subsampled, and anything above will be given green light (and augmented four times).
@@ -389,6 +416,10 @@ int main( int argc, char** argv )
 									dataPacket->rotate90();								// Data augmentation.
 								}
 							}
+
+							// Restore read access for coarse phi vector.
+							ierr = VecRestoreArrayRead( coarseGrid.phi, &cPhiReadPtr );
+							CHKERRXX( ierr );
 
 							// Write samples vector to file.
 							for( const auto& row : samples )

@@ -67,7 +67,7 @@ int main ( int argc, char* argv[] )
 															// a base value for mesh size (equiv. to max. lvl. at most 7).
 	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
 	const double MIN_KAPPA = 0.5;							// Minimum and maximum curvature values.  Computed by
-	const double MAX_KAPPA = 85. + 1 / 3.;					// considering H_BASE: hk_max = h/(1.5h), and hk_min = 0.5h.
+	const double MAX_KAPPA = 1. / H;						// considering H_BASE: hk_max = h/(1.5h) (kmax used to be 85+1/3), and hk_min = 0.5h.
 	const double MIN_RADIUS = 1. / MAX_KAPPA;				// All resolutions must meet these radius constraints.
 	const double MAX_RADIUS = 1. / MIN_KAPPA;
 	const double FLAT_LIM_KAPPA = 2.5;						// Flatness limit for triggering hybrid method using a multiple of this (used to be 5, use 2.5 for lvl 6).
@@ -80,7 +80,7 @@ int main ( int argc, char* argv[] )
 	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
 
 	// Number of circles is proportional to radii difference and to H_BASE ratio to H.
-	// Originally, 2 circles per finest quad/oct.
+	// Originally, 2 circles per finest quad/oct.  Change constant from 2 to 3 for lvl=6.
 	const int NUM_CIRCLES = ceil( 2 * ((MAX_RADIUS - MIN_RADIUS) / H_BASE + 1) * (log2( H_BASE / H ) + 1) );
 
 	// Expected number of samples per distinct radius.

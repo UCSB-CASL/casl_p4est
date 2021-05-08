@@ -182,8 +182,9 @@ int main ( int argc, char* argv[] )
 
 	const double MIN_A = 1.5 * H_BASE;			// An almost flat wave.
 	const double MAX_A = HALF_D / 2;			// Tallest wave amplitude.
+	const double MAX_KAPPA = 1. / H;			// Used to be 85+1/3.
 	const double MAX_HKAPPA_LB = H * (21. + 1 / 3.);	// Lower and upper bounds for maximum h*kappa (used for
-	const double MAX_HKAPPA_UB = H * (85. + 1 / 3.);	// discriminating samples --see below for details).
+	const double MAX_HKAPPA_UB = H * MAX_KAPPA;	// discriminating samples --see below for details).
 	const double MAX_HKAPPA_MIDPOINT = (MAX_HKAPPA_LB + MAX_HKAPPA_UB) / 2;
 
 	const double HALF_AXIS_LEN = (MAX_D - MIN_D) * M_SQRT2 / 2 + 2 * H;	// Adding some padding of 2H to wave main axis.
@@ -280,7 +281,7 @@ int main ( int argc, char* argv[] )
 			const double A = MIN_A + linspaceA[na] * A_DIST;			// Amplitude to be evaluated.
 
 			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / (H * A) );	// Range of frequencies to ensure that the max
-			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / (H * A) );	// kappa is in the range of [21+1/3, 85+1/3].
+			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / (H * A) );	// kappa is in the range of [21+1/3, MAX_KAPPA].
 			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * (1 / MIN_OMEGA - 1 / MAX_OMEGA);	// Shortest u-distance between crests obtained with omega max and min.
 			const double LIN_PROPORTION = 1. + log2( H_BASE / H ) / 3.;					// Linearly from 1 to 2 as max lvl of ref goes from 7 to 10.
