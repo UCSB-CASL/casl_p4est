@@ -21,7 +21,7 @@
  * file has been modified to reflect these changes.
  *
  * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
- * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
+ * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
  * the local coordinate system centered at the 00 node.  This tries to simplify the architecture of the neural network.
  *
  * TODO: Source code needs further refactoring now that we discarded the look-up table approach.

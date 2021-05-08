@@ -46,10 +46,10 @@ namespace kutils
 
 	/**
 	 * Rotate stencil of level-set function values in a sample vector by 90 degrees counter or clockwise.
-	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 * @param [in,out] stencil Array of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
 	 * @param [in] dir Rotation direction: > 0 for counterclockwise, <= 0 for clockwise.
 	 */
-	void rotateStencil90( std::vector<double>& stencil, const int& dir=1 )
+	void rotateStencil90( double stencil[], const int& dir=1 )
 	{
 		double phiVals[num_neighbors_cube];
 		if( dir > 0 )									// Counterclockwise rotation?
@@ -82,6 +82,16 @@ namespace kutils
 	}
 
 	/**
+	 * Rotate stencil of level-set function values in a sample vector by 90 degrees counter or clockwise.
+	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 * @param [in] dir Rotation direction: > 0 for counterclockwise, <= 0 for clockwise.
+	 */
+	void rotateStencil90( std::vector<double>& stencil, const int& dir=1 )
+	{
+		rotateStencil90( stencil.data(), dir );
+	}
+
+	/**
 	 * Reflect stencil of level-set values along line y = x.
 	 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
 	 * coordinate system whose origin is at the center of the stencil.  Exploits fact that curvature is invariant to
@@ -100,13 +110,14 @@ namespace kutils
 	 * horizontal in the range of [0, pi/2].
 	 * @note Exploits the fact that curvature is invariant to rotation.  Prior to calling this function you must have
 	 * flipped the sign of the stencil (and gradient) so that the curvature is negative.
-	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 * @param [in,out] stencil Array of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
 	 * @param [in] gradient Gradient at the center node.
 	 */
-	void rotateStencilToFirstQuadrant( std::vector<double>& stencil, const double gradient[P4EST_DIM] )
+	void rotateStencilToFirstQuadrant( double stencil[], const double gradient[P4EST_DIM] )
 	{
-		double theta = atan2( gradient[1], gradient[2] );
-		theta = (theta < 0)? M_2_PI + theta : theta;		// Make sure current angle lies in [0, 2pi].
+		double theta = atan2( gradient[1], gradient[0] );
+		const double TWO_PI = 2. * M_PI;
+		theta = (theta < 0)? TWO_PI + theta : theta;		// Make sure current angle lies in [0, 2pi].
 
 		// Rotate only if theta not in [0, pi/2].
 		if( theta > M_PI_2 )
@@ -127,6 +138,16 @@ namespace kutils
 		}
 	}
 
+	/**
+	 * Rotate stencil in such a way that the gradient computed at center node 00 has an with respect to the (local)
+	 * horizontal in the range of [0, pi/2].
+	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 * @param [in] gradient Gradient at the center node.
+	 */
+	void rotateStencilToFirstQuadrant( std::vector<double>& stencil, const double gradient[P4EST_DIM] )
+	{
+		rotateStencilToFirstQuadrant( stencil.data(), gradient );
+	}
 }
 
 #endif // ML_CURVATURE_LOCAL_UTILS_H
