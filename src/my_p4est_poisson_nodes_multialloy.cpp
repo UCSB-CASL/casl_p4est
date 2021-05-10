@@ -124,7 +124,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM));
   extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM));
-  extension_use_nonzero_guess_ = false;
+  extension_use_nonzero_guess_ = true;
 
   poisson_use_nonzero_guess_ = true;
 
