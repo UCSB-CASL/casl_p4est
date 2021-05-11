@@ -363,27 +363,21 @@ void set_geometry(){
     }
     case DENDRITE_TEST:{
       // Domain size:
-      xmin = 0.; xmax = 30.;
-      ymin = 0.; ymax = 40.;
+      xmin = 0.; xmax = 10.;
+      ymin = 0.; ymax = 10.;
 
       // Number of trees and periodicity:
-      nx = 3; ny = 4;
+      nx = 2; ny = 2;
       px = 1; py = 0;
 
-      // band:
-      uniform_band = 4.;
+//      // band:
+//      uniform_band = 4.;
 
       // level set size (initial seed size)
       r0 = 0.5; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
-      //d0 = 2.517e-9;
-      //d_seed = 250.*d0/*50.*(1.3e-8)*/; // calculated using 2003 Dantzig paper "dendritic growth with fluid flow in pure materials"
 
-      // Updated 11-24-20:
-      d0 = 1.3e-8;
-      //d_seed = 30.*d0;
-      d_seed = 60.*d0;
-      //d_seed = 1000.*d0;
-      // physical property paper ""
+
+      // capillary length scale and etc is set in set_physical_properties() 5/3/21
       break;
     }
   }
@@ -433,6 +427,8 @@ double rho_s;
 double cp_s;
 double mu_l;
 
+
+double n_times_d0; // multiplier on d0 we use to get dseed
 void set_physical_properties(){
   double nu;
   switch(example_){
@@ -604,17 +600,29 @@ void set_physical_properties(){
       nu = 2.6e-6;
       mu_l = nu*rho_l; // [Pa s]
 
-      sigma = 1.6393e-10;
+      sigma = 1.92e-10;
 
       printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma);
       // BC info:
-      double delta = -0.55;//-0.55;
-      Tinterface = 331.23;
-      Twall = delta*(L/cp_s) + Tinterface;
-      deltaT = Twall-Tinterface;
+      // Tinterface = 331.23;
+      // Twall = deltaT*(L/cp_s) + Tinterface;
+      // deltaT = Twall-Tinterface;
 
+      deltaT = -0.55;
       theta_wall=0.;
-      theta_interface = 1.;
+      theta_interface = 1.0;
+
+      Tinterface = 331.23;
+      Twall = Tinterface - deltaT;
+
+      // Set length scales:
+      // Updated 5/3/21:
+      double Tmelt = 331.23;
+      double gamma = 8.9e-3;
+      d0 = (Tmelt * gamma * cp_s)/(rho_s * SQR(L));
+      n_times_d0 = 500.0;
+      d_seed = n_times_d0 * d0; // like Al-Rawahi paper 2002
+      // physical property paper ""
 
       break;
     }
@@ -736,6 +744,7 @@ int select_stefan_formulation(){
 // For defining appropriate nondimensional groups:
 double time_nondim_to_dim;
 double vel_nondim_to_dim;
+
 void set_nondimensional_groups(){
    if(stefan_condition_type==NONDIM_YES_FLUID){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
@@ -743,6 +752,7 @@ void set_nondimensional_groups(){
        d_length_scale=d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
+
        d_length_scale = d_seed;
 
        printf("sigma/d_seed = %0.4e \n",sigma/d_seed);
@@ -753,7 +763,7 @@ void set_nondimensional_groups(){
 
      Pr = mu_l/(alpha_l*rho_l);
      Pe = Re*Pr;
-     St = cp_s*fabs(deltaT)/L;
+     St = fabs(deltaT); //cp_s*fabs(deltaT)/L;
 
      u_inf= Re*mu_l/rho_l/d_length_scale;
      vel_nondim_to_dim = u_inf;
@@ -770,7 +780,7 @@ void set_nondimensional_groups(){
      }
 
      Pr = mu_l/(alpha_l*rho_l);
-     St = cp_s*fabs(deltaT)/L;
+     St = fabs(deltaT);//cp_s*fabs(deltaT)/L;
      Re = 0.; Pe = 0.;
 
      time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
@@ -864,11 +874,12 @@ void simulation_time_info(){
       //double tau = 3.12e-7;
       //tfinal = (30.*tau)/(time_nondim_to_dim);
 
-      tfinal = (10000.*SQR(d0)/alpha_s)/time_nondim_to_dim;
+      tfinal = (1.e6*SQR(d0)/alpha_s)/time_nondim_to_dim;
       tstart=0.;
       dt_max_allowed = tfinal/(100);
-      save_using_dt = 1;
-      save_every_dt = tfinal/100.;
+      save_using_iter = 1;
+      save_every_iter = 1;
+      //save_every_dt = tfinal/100.;
       break;
     }
 
@@ -1432,7 +1443,7 @@ public:
       case DENDRITE_TEST:{
         double noise = 0.3;
         double xc =xmax/2.0;
-        double yc =2.*ymax/3.0;
+        double yc =ymax/2.0;
         double theta = atan2(y-yc,x-xc);
         return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
       }
@@ -1530,7 +1541,7 @@ public:
       kappa_interp->set_input(kappa,linear);
     }
   }
-  double Gibbs_Thomson(double sigma_, double T0, double dval,DIM(double x, double y, double z)) const {
+  double Gibbs_Thomson(double sigma_, double T0, double dval, DIM(double x, double y, double z)) const {
     //printf("theta_interface = %0.4f, kappa = %0.4f, sigma = %0.4e, dval = %0.4e,sigma/dval = %0.4e \n",theta_interface*(1.0 - (sigma_/dval)*((*kappa_interp)(x,y))),(*kappa_interp)(x,y),sigma_,dval,sigma_/dval);
     if(print_stuff){printf("Tint : %0.4f \n",theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y))));}
 
@@ -1582,8 +1593,8 @@ public:
 //          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
 
         //double sigma_ = sigma;
-        return Gibbs_Thomson(sigma_,Tinterface,d_seed,DIM(x,y,z));
-        //return theta_interface;
+        return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
+//        return theta_interface;
       }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: {
@@ -2652,6 +2663,17 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       }
 
       */
+
+      vec_and_ptr_t vgamma_n;
+      vgamma_n.create(p4est, nodes);
+      vgamma_n.get_array();
+
+      vec_and_ptr_dim_t normal;
+      normal.create(p4est, nodes);
+
+      compute_normals(*ngbd, phi.vec, normal.vec);
+      normal.get_array();
+
       // Create vector to hold the jump values:
       jump.create(p4est,nodes);
 
@@ -2661,6 +2683,8 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_s_d.get_array();
       phi.get_array();
       //kappa.get_array();
+
+
 
       double kappa_=1.0; // leave as is for now, will eventually actually add curvature arguments
       // First, compute jump in the layer nodes:
@@ -2683,6 +2707,16 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                 }
                 */
             } // end of loop over dimensions
+
+            // Do the dot product to make sure we are going in the normal direction:
+            vgamma_n.ptr[n] = (jump.ptr[0][n] * normal.ptr[0][n]) + (jump.ptr[1][n] * normal.ptr[1][n]) CODE3D(+ (jump.ptr[2][n] * normal.ptr[2][n]));
+
+
+            // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
+            foreach_dimension(d){
+              jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+            }
+
         }
        }
 
@@ -2711,6 +2745,14 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                 }
                 */
               } // end over loop on dimensions
+
+              // Do the dot product to make sure we are going in the normal direction:
+              vgamma_n.ptr[n] = (jump.ptr[0][n] * normal.ptr[0][n]) + (jump.ptr[1][n] * normal.ptr[1][n]) CODE3D(+ (jump.ptr[2][n] * normal.ptr[2][n]));
+
+              // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
+              foreach_dimension(d){
+                jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
+              }
           }
         }
 
@@ -2724,6 +2766,14 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_l_d.restore_array();
       T_s_d.restore_array();
       //kappa.restore_array();
+
+
+      // Elyce trying something:
+      normal.restore_array();
+      normal.destroy();
+      vgamma_n.restore_array();
+      vgamma_n.destroy();
+
 
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
       foreach_dimension(d){
