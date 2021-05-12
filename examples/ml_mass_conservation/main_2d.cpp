@@ -75,14 +75,14 @@ int main( int argc, char** argv )
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
-	// Destination folder and file.
+	// Destination folder and file for semi-Lagrangian data.
 	const std::string DATA_PATH = "/Volumes/YoungMinEXT/massLoss/";
 	const std::string DATA_SUFFIX = "_" + std::to_string( COARSE_MAX_RL ) + "_" + std::to_string( FINE_MAX_RL )
 										+ "_k_minus"
 										+ (ADD_FINE_STEPS_X2? "_x" + std::to_string( 1u << ADD_FINE_STEPS_X2 ) : "" )
 										+ ".csv";
-	const std::string FILE_PATH = DATA_PATH + "data" + DATA_SUFFIX;
-	const int NUM_COLUMNS = 21;			// Number of columns in resulting dataset.
+	const std::string FILE_PATH = DATA_PATH + "sl_data" + DATA_SUFFIX;
+	const int NUM_COLUMNS = 20;			// Number of columns in base data set.
 	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
 											 "u_a", "v_a", 			// Velocity components at arrival point.
 											 "d",					// Scaled distance (by 1/dx_coarse).
@@ -91,9 +91,14 @@ int main( int argc, char** argv )
 											 "u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
 											 "v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
 											 "target_phi_d",		// Expected/target phi value at departure point.
-											 "numerical_phi_d",		// Numerically computed phi value at departure point.
-											 "numerical_kappa"		// Mean curvature at closest point to node on Gamma.
+											 "numerical_phi_d"		// Numerically computed phi value at departure point.
 	};
+
+	// Destination file for h*kappa data (i.e., the 9-point stencil of level-set values + ihk in last column).
+	const std::string  K_FILE_PATH = DATA_PATH + "k_data" + DATA_SUFFIX;
+	const int K_NUM_COLUMNS = num_neighbors_cube + 1;	// Number of columns in corresponding curvature data set.
+	std::string K_COLUMN_NAMES[K_NUM_COLUMNS];			// Notice it includes "ihk", but not "hk" (target curvature).
+	kutils::generateColumnHeaders( K_COLUMN_NAMES, false );
 
 	try
 	{
@@ -114,14 +119,21 @@ int main( int argc, char** argv )
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 
-		// Prepare output file.
+		// Prepare output file for semi-Lagrangian data.
 		std::ofstream file;
 		utils::openFile( FILE_PATH, 15, file );
 
-		// Write header columns.
-		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+		for( int i = 0; i < NUM_COLUMNS - 1; i++ )		// Write header columns.
 			file << "\"" << COLUMN_NAMES[i] << "\",";
 		file << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"" << std::endl;
+
+		// Prepare output file for curvature data.
+		std::ofstream kfile;
+		utils::openFile( K_FILE_PATH, 15, kfile );
+
+		for( int i = 0; i < K_NUM_COLUMNS - 1; i++ )	// Write header columns.
+			kfile << "\"" << K_COLUMN_NAMES[i] << "\",";
+		kfile << "\"" << K_COLUMN_NAMES[K_NUM_COLUMNS - 1] << "\"" << std::endl;
 
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
@@ -129,29 +141,37 @@ int main( int argc, char** argv )
 		const double xyz_max[] = {MAX_D, MAX_D, MAX_D};
 		const double mesh_len[] = {MAX_D - MIN_D, MAX_D - MIN_D, MAX_D - MIN_D};
 		const int periodic[] = {1, 1, 1};
-		const double dxyz_min_c = (mesh_len[0] / NUM_TREES_PER_DIM) / double(1 << COARSE_MAX_RL);	// Min coarse cell width.
+		const double H_C = (mesh_len[0] / NUM_TREES_PER_DIM) / double(1 << COARSE_MAX_RL);	// Min coarse cell width.
 
 		// Let's choose radii between 5 COARSE min cell width and an eighth of domain side length.
-		const double MIN_RADIUS = 5 * dxyz_min_c;
+		const double MIN_RADIUS = 5 * H_C;
 		const double MAX_RADIUS = MAX_D / 4;
-		const int NUM_RADII = (int)ceil( 3 * (MAX_RADIUS - MIN_RADIUS) / dxyz_min_c ) + 1;
+		const int NUM_RADII = (int)ceil( 3 * (MAX_RADIUS - MIN_RADIUS) / H_C ) + 1;
 		std::vector<double> radii;
 		linspace( MIN_RADIUS, MAX_RADIUS, NUM_RADII, radii );
 
 		std::mt19937 gen; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 		std::uniform_real_distribution<double> uniformDistributionAroundCenter( MIN_D / 2.0, MAX_D / 2.0 );
 
-		// Subsampling to reduce number of observations along flat regions.
+		// Probabilistic data augmentation.
+		//      ^
+		//      |        .... 1
+		//      |       /:
+		// Pr   |     .  :       ramp function from kappa = 5 to 10.
+		//      |    /   :
+		//      +---.----:---->  kappa
+		//    0     5    10
 		std::mt19937 gen2( 37 );	// NOLINT Standard Mersenne Twister engine for subsampling.
-		auto subSampling = []( double kappa ){
+		std::uniform_real_distribution<double> uniformDistribution;
+		auto augmentData = [&gen2, &uniformDistribution]( double kappa ){
 			kappa = ABS( kappa );
-			if( kappa <= 5 )		// Choose how many "data augmentations" do we need depending on curvature.
-				return 1;
-			if( kappa <= 7.5 )
-				return 2;
-			if( kappa <= 10 )
-				return 3;
-			return 4;
+			if( kappa <= 5 )
+				return false;
+			if( kappa >= 10 )
+				return true;
+			double bound = (kappa - 5.) / (10. - 5.);
+			double prob = uniformDistribution( gen2 );
+			return prob < bound;
 		};
 
 		// Looping through random velocity fields.
@@ -353,10 +373,13 @@ int main( int argc, char** argv )
 
 						if( allInside )	// Continue processing samples if all backtracked interface points lied inside
 						{				// the domain.
-							// Data augmentation and writing to output file.
-							// Accumulate all samples first, and then write file.
-							std::vector<std::vector<double>> samples;
-							samples.reserve( dataPackets.size() * 4 );
+							// Data augmentation and writing to output files.
+							// Accumulate all samples first, and then write files.
+							std::vector<std::vector<double>> samples;		// Semi-Lagrangian samples.
+							samples.reserve( dataPackets.size() * 2 );
+
+							std::vector<std::vector<double>> ksamples;		// Curvature samples.
+							ksamples.reserve( dataPackets.size() * 2 );
 
 							// Also need read access to coarse phi vector.
 							const double *cPhiReadPtr;
@@ -365,8 +388,8 @@ int main( int argc, char** argv )
 
 							for( int idx = 0; idx < dataPackets.size(); idx++ )
 							{
-								if( !stencils[idx] )	// Skip nodes for which we couldn't get their 9-point stencils.
-									continue;
+								if( !stencils[idx] )	// Skip nodes for which we couldn't get their 9-point stencils;
+									continue;			// these are needed for curvature data file.
 
 								slml::DataPacket *dataPacket = dataPackets[idx];
 
@@ -394,26 +417,28 @@ int main( int argc, char** argv )
 										stencils[idx][j] *= -1;
 								}
 
-								// Normalize 9-point stencil so that gradient has a angle between 0 and pi/2 inclusive.
+								// Normalize semi-Lagrangian data so that -v_a has an angle in the range of [0, pi/2].
+								dataPacket->rotateToFirstQuadrant();
+
+								// Normalize 9-point stencil so that gradient has a angle between 0 and pi/2, inclusive.
 								kutils::rotateStencilToFirstQuadrant( stencils[idx], grad );
 
-								// I'll record samples based on their curvature.  Anything below a threshold will be
-								// subsampled, and anything above will be given green light (and augmented four times).
-								int takeNSamples = subSampling( dataPacket->numK );
-								std::unordered_set<int> rotations;
-								if( takeNSamples < 4 )
-									utils::generateRandomSetOfNumbers( 0, 3, takeNSamples, rotations, gen2 );
-
-								for( int i = 0; i < 4; i++ )	// For each received data packet, rotate it 4 times.
+								// Save samples.
+								for( int s = 0; s < 2; s++ )
 								{
-									if( takeNSamples == 4 || rotations.find( i ) != rotations.end() )
-									{
-										samples.emplace_back( std::vector<double>());	// Serialize data.
-										samples.back().reserve( NUM_COLUMNS );
-										dataPacket->serialize( samples.back());
-									}
+									samples.emplace_back( std::vector<double>() );			// Semi-Lagrangian data.
+									samples.back().reserve( NUM_COLUMNS );
+									dataPacket->serialize( samples.back(), false, false );	// Don't serialize num_k.
 
-									dataPacket->rotate90();								// Data augmentation.
+									ksamples.emplace_back( std::vector<double>( stencils[idx], stencils[idx] + num_neighbors_cube ) );
+									ksamples.back().emplace_back( dataPacket->numK * H_C );	// Curvature data (including num_k).
+
+									// Augment probabilistically at most once.
+									if( s!= 0 || !augmentData( dataPacket->numK ) )
+										break;
+
+									dataPacket->reflect_yEqx();		// Reflect both semi-Lagrangian and curvature data.
+									kutils::reflectStencil_yEqx( stencils[idx] );
 								}
 							}
 
@@ -421,15 +446,24 @@ int main( int argc, char** argv )
 							ierr = VecRestoreArrayRead( coarseGrid.phi, &cPhiReadPtr );
 							CHKERRXX( ierr );
 
-							// Write samples vector to file.
+							// Write semi-Lagrangian samples vector to file.
 							for( const auto& row : samples )
 							{
-								// Write inner elements separted by commas and leave the last without trailing comma.
+								// Write inner elements separted by commas and leave the last with no trailing comma.
 								std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( file, "," ) );
 								file << row.back() << std::endl;
 							}
 
-							// As a way to verify things are working well, we track the maximum relative error.
+							// Write curvature samples vector to file.
+							for( const auto& row : ksamples )
+							{
+								// Write inner elements separated by commas and leave the last with no trailing comma.
+								std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( kfile, "," ) );
+								kfile << row.back() << std::endl;
+							}
+
+							// As a way to verify things are working well, we track the maximum relative error for
+							// level-set value at departure point.
 							maxRelError = MAX( maxRelError, relError );
 							nSamplesPerLoop += samples.size();
 
@@ -519,7 +553,10 @@ int main( int argc, char** argv )
 			CHKERRXX( ierr );
 		}
 
-		file.close();
+		// Closing files.
+		file.close();			// Semi-Lagrangian data.
+		kfile.close();			// Curvature data.
+
 		watch.stop();
 
 		// Status message for whole data collection.

@@ -54,8 +54,9 @@ namespace slml
 		 * (by component and child), targetPhi_d, numBacktrackedPhi_d.
 		 * @param [out] data Output vector container.
 		 * @param [in] includeNodeIdx Whether to serialize node index or not.
+		 * @param [in] includeNumK Whether to serialize numerical curvature or not.
 		 */
-		void serialize( std::vector<double>& data, bool includeNodeIdx=false ) const
+		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeNumK=false ) const
 		{
 			if( includeNodeIdx )					// Node index.
 				data.push_back( nodeIdx );
@@ -80,25 +81,33 @@ namespace slml
 
 			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
 
-			data.push_back( numK );					// Curvature at the interface.
+			if( includeNumK )
+				data.push_back( numK );				// Curvature at the interface.
 		}
 
 #ifndef P4_TO_P8
 		/**
-		 * Rotate a sample data packet by 90 degrees counter-clockwise.
+		 * Rotate a sample data packet by 90 degrees counter- or clockwise.
+		 * @param [in] dir Rotation direction: +1 for counterclockwise, -1 for clockwise.
 		 * @note This function is just tested for 2D.
 		 */
-		void rotate90()
+		void rotate90( const int& dir=1 )
 		{
-			// Lambda function to perform rotation of a 2D vector by 90 degrees.
-			auto _rotate90 = []( double& x, double& y ){
-				std::swap( x, (y *= -1) );
+			// Lambda function to perform rotation of a 2D vector.
+			auto _rotate90 = (dir >= 1)? []( double& x, double& y ){
+				std::swap( x, (y *= -1) );			// Rotate by positive 90 degrees (counterclockwise).
+			} : []( double& x, double& y ){
+				std::swap( (x *= -1), y );			// Rotate by negative 90 degrees (clockwise).
 			};
 
-			// Lambda function to rotate the children in a 2D quad by 90 degrees.
-			auto _rotateChildren = []( double children[P4EST_CHILDREN] ){
+			// Lambda function to rotate the children in a 2D quad.
+			auto _rotateChildren = (dir >= 1)? []( double children[P4EST_CHILDREN] ){
 				double c[P4EST_CHILDREN] = {children[1], children[3], children[0], children[2]};
-				for( int i = 0; i < P4EST_CHILDREN; i++ )
+				for( int i = 0; i < P4EST_CHILDREN; i++ )		// Rotate by positive 90 degrees.
+					children[i] = c[i];
+			} : []( double children[P4EST_CHILDREN] ){
+				double c[P4EST_CHILDREN] = {children[2], children[0], children[3], children[1]};
+				for( int i = 0; i < P4EST_CHILDREN; i++ )		// Rotate by negative 90 degrees.
 					children[i] = c[i];
 			};
 
@@ -107,8 +116,11 @@ namespace slml
 			_rotate90( vel_a[0], vel_a[1] );
 
 			// distance remains unchanged.
-			// Rotate departure coords: (x, y) -> (1-y, x).
-			std::swap( xyz_d[0], (xyz_d[1] = 1.0 - xyz_d[1]) );
+			// Rotate departure coords.
+			if( dir >= 1 )
+				std::swap( xyz_d[0], (xyz_d[1] = 1.0 - xyz_d[1]) );	// (x, y) -> (1-y, x).
+			else
+				std::swap( (xyz_d[0] = 1.0 - xyz_d[0]), xyz_d[1] ); // (x, y) -> (y, 1-x).
 
 			// Rotate phi_d.
 			_rotateChildren( phi_d );
@@ -118,6 +130,66 @@ namespace slml
 			_rotateChildren( &vel_d[P4EST_CHILDREN] );	// v component children.
 			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Rotate actual vectors.
 				_rotate90( vel_d[i], vel_d[i + P4EST_CHILDREN] );
+
+			// targetPhi_d remains unchanged.
+			// numBacktrackedPhi_d remains unchanged.
+			// numK remains unchanged.
+		}
+
+		/**
+		 * Rotate packet in such a way that the backtracking (i.e., negated) velocity at the arrival point has an angle
+		 * has an with respect to the horizontal in the range of [0, pi/2].
+		 * is negative.
+	 	 */
+		void rotateToFirstQuadrant()
+		{
+			double negVel_a[P4EST_DIM] = {DIM( -vel_a[0], -vel_a[1], -vel_a[2] )};	// This is the negated velocity at
+			double theta = atan2( negVel_a[1], negVel_a[0] );						// arrival point used a reference.
+			const double TWO_PI = 2. * M_PI;
+			theta = (theta < 0)? TWO_PI + theta : theta;	// Make sure current angle lies in [0, 2pi].
+
+			// Rotate only if theta not in [0, pi/2].
+			if( theta > M_PI_2 )
+			{
+				if( theta <= M_PI )				// Quadrant II?
+				{
+					rotate90( -1 );				// Rotate by -pi/2.
+				}
+				else if( theta < M_PI_2 * 3 )	// Quadrant III?
+				{
+					rotate90();					// Rotate by pi.
+					rotate90();
+				}
+				else							// Quadrant IV?
+				{
+					rotate90();					// Rotate by pi/2.
+				}
+			}
+		}
+
+		/**
+		 * Reflect packet along line y = x.
+		 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
+		 * coordinate system whose origin is at the arrival point.
+		 */
+		void reflect_yEqx()
+		{
+			// phi_a remains unchanged.
+			// Swap components of velocity at departure point.
+			std::swap( vel_a[0], vel_a[1] );
+
+			// distance remains unchanged.
+			// Swap local departure coords.
+			std::swap( xyz_d[0], xyz_d[1] );
+
+			// Swap opposite corners of phi_d.
+			std::swap( phi_d[1], phi_d[2] );
+
+			// Swap vel_d components.  Requires two steps for opposite corners: first swap them, then change components.
+			std::swap( vel_d[0 + 1], vel_d[0 + 2] );							// u component of opposite corners.
+			std::swap( vel_d[P4EST_CHILDREN + 1], vel_d[P4EST_CHILDREN + 2] );	// v component.
+			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Now, swap actual velocity vector components.
+				std::swap( vel_d[i], vel_d[i + P4EST_CHILDREN] );
 
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
@@ -263,7 +335,8 @@ namespace slml
 
 		/**
 		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with a single velocity step along
-		 * the characteristics to define the departure points.
+		 * the characteristics to define the departure points.  Collect samples only for grid points next to the inter-
+		 * face whose velocity is essentially nonzero.
 		 * @note Here, we create data packets dynamically, and you must not forget free those objects by calling the
 		 * utility function freeDataPacketArray.
 		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time n.

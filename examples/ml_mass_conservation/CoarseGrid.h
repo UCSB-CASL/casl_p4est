@@ -261,7 +261,7 @@ public:
 	 * @param [in] dt Coarse grid step size.
 	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
 	 * @param [out] stencils Array of level-set value nine-point stencils to compute curvature with a hybrid approach.
-	 * @param [out] maxRelError Maximum relative error (w.r.t. minimum cell width).
+	 * @param [out] maxRelError Maximum relative error of phi at departure point (w.r.t. minimum cell width).
 	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,

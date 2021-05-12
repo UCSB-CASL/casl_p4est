@@ -22,11 +22,12 @@ namespace kutils
 	 *		"pm"  =>  (i+1, j-1)
 	 *		"p0"  =>  (i+1,   j)
 	 *		"pp"  =>  (i+1, j+1)
-	 *		"hk"  =>  Exact target h * kappa
+	 *		"hk"  =>  Exact target h * kappa (optional)
 	 *		"ihk" =>  Interpolated h * kappa
  	* @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
+	 * @param [in] includeTargetHK Whether to include or not the "hk" column.
 	 */
-	void generateColumnHeaders( std::string header[] )
+	void generateColumnHeaders( std::string header[], bool includeTargetHK=true )
 	{
 		const int STEPS = 3;
 		std::string states[] = {"m", "0", "p"};			// States for x, y, and z directions.
@@ -40,8 +41,9 @@ namespace kutils
 				i = SUMD( x * (int)pow( STEPS, P4EST_DIM - 1 ), y * (int)pow( STEPS, P4EST_DIM - 2 ), z );
 				header[i] = SUMD( states[x], states[y], states[z] );
 			}
-		header[i+1] = "hk";								// Don't forget the h*kappa column!
-		header[i+2] = "ihk";
+		if( includeTargetHK )
+			header[++i] = "hk";							// Don't forget the h*kappa column if requested!
+		header[++i] = "ihk";
 	}
 
 	/**
@@ -52,7 +54,7 @@ namespace kutils
 	void rotateStencil90( double stencil[], const int& dir=1 )
 	{
 		double phiVals[num_neighbors_cube];
-		if( dir > 0 )									// Counterclockwise rotation?
+		if( dir >= 1 )									// Counterclockwise rotation?
 		{
 			phiVals[0] = stencil[2];
 			phiVals[1] = stencil[5];
@@ -96,13 +98,25 @@ namespace kutils
 	 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
 	 * coordinate system whose origin is at the center of the stencil.  Exploits fact that curvature is invariant to
 	 * reflections and rotations.
-	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 * @param [in,out] stencil Array of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
 	 */
-	void reflectStencil_yEqx( std::vector<double>& stencil )
+	void reflectStencil_yEqx( double stencil[] )
 	{
 		std::swap( stencil[1], stencil[3] );
 		std::swap( stencil[2], stencil[6] );
 		std::swap( stencil[5], stencil[7] );
+	}
+
+	/**
+	 * Reflect stencil of level-set values along line y = x.
+	 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
+	 * coordinate system whose origin is at the center of the stencil.  Exploits fact that curvature is invariant to
+	 * reflections and rotations.
+	 * @param [in,out] stencil Vector of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+	 */
+	void reflectStencil_yEqx( std::vector<double>& stencil )
+	{
+		reflectStencil_yEqx( stencil.data() );
 	}
 
 	/**

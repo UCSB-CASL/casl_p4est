@@ -252,6 +252,13 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], double dt, Vec ph
 													// Helps prevent inconsistent training samples.
 	for( const auto nodeIdx : indices )
 	{
+		// Let's skip nodes for which the velocity field is practically zero.
+		double velMagnitude = 0;
+		for( auto& dir : velReadPtr )
+			velMagnitude += dir[nodeIdx];
+		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON )
+			continue;
+
 		// Backtracking the point using one step in the negative velocity direction.
 		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz_a );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
