@@ -814,7 +814,7 @@ DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a s
 DEFINE_PARAMETER(pl,int,startup_iterations,-1,"Number of startup iterations to do before entering real time loop, used for verification tests to allow v_interface and NS fields to stabilize. Default:-1, to use this, set number to positive integer value.");
 DEFINE_PARAMETER(pl,double,startup_nondim_time,-10.0,"Startup time in nondimesional time, before the simulation allows interfacial growth to occur (Default : 0)");
 DEFINE_PARAMETER(pl,double,startup_dim_time,-10.0,"Startup time in dimesional time (seconds), before the simulation allows interfacial growth to occur (Default : 0)");
-DEFINE_PARAMETER(pl,bool,perturb_initial_flow,true,"Perturb initial flow? For melting refinement case. Default: true. Applies to initial condition for velocity field. ");
+DEFINE_PARAMETER(pl,bool,perturb_initial_flow,false,"Perturb initial flow? For melting refinement case. Default: true. Applies to initial condition for velocity field. ");
 
 void simulation_time_info(){
   t_ramp /= time_nondim_to_dim; // divide input in seconds by time_nondim_to_dim because we are going from dim--> nondim
