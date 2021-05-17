@@ -289,11 +289,12 @@ void set_geometry(){
       py = 1;
 
       // Problem geometry:
-      r_cyl = 0.5;     // Computational radius of the cylinder
+      r_cyl = 0.5;     // Computational radius of the cylinder (mini level set)
       //r_cyl=1.0;
       /*r0 = r_cyl*1.17;*/ // Computational radius of initial ice height // should set r0 = r_cyl*1.0572 to get height_init = 1mm, matching the experiments (or at least matching the Okada model)
       //r0 = r_cyl*1.0572;
-      r0 = r_cyl*1.10;
+
+      r0 = r_cyl*1.10; // Comp radius of ice (level set)
 //      r0 = r_cyl*1.7;
       //d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
       // d_cyl gets set by the user (default is 35 e-3)
@@ -313,7 +314,7 @@ void set_geometry(){
 
       uniform_band = 6.0;
       // Problem geometry:
-      r0 = 0.5;     // Computational radius of the cylinder
+      r0 = 0.5;     // Computational radius of the sphere
       break;
     }
 
@@ -763,7 +764,7 @@ void set_nondimensional_groups(){
 
      Pr = mu_l/(alpha_l*rho_l);
      Pe = Re*Pr;
-     St = fabs(deltaT); //cp_s*fabs(deltaT)/L;
+     St = cp_s*fabs(deltaT)/L;
 
      u_inf= Re*mu_l/rho_l/d_length_scale;
      vel_nondim_to_dim = u_inf;
@@ -780,7 +781,7 @@ void set_nondimensional_groups(){
      }
 
      Pr = mu_l/(alpha_l*rho_l);
-     St = fabs(deltaT);//cp_s*fabs(deltaT)/L;
+     St = cp_s*fabs(deltaT)/L;
      Re = 0.; Pe = 0.;
 
      time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
@@ -2048,6 +2049,7 @@ public:
         if(!solve_stefan) return 0.;
         else{
           //return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface -- INCORRECT, FOUND SIGN ERROR IN DERIVATION, 5/4/21
+          //printf("\n dir = %d, BC_val = %0.2f \n", dir, (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)));
           return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
         }
       }
@@ -2636,34 +2638,6 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
       my_p4est_level_set_t ls(ngbd);
 
-      /*
-      // Compute the curvature of the solid, used for Stefan condition:
-      vec_and_ptr_t kappa;
-      vec_and_ptr_dim_t normal_s;
-
-      kappa.create(p4est,nodes);
-      normal_s.create(p4est,nodes);
-
-      // --> first, scale phi by -1 to get solid phi, then compute those normals, then scale back
-      VecScaleGhost(phi.vec,-1.0);
-      // --> compute normals of solid interface
-      compute_normals(*ngbd,phi.vec,normal_s.vec);
-      // --> compute curvature of solid interface
-      compute_curvature(phi,normal_s,kappa,ngbd,ls);
-      // --> now scale level set values back to LSF of the fluid, to be used for the rest of the function
-      VecScaleGhost(phi.vec,-1.0);
-
-      // Determine characteristic length scale if this is a non-dim problem:
-      double dval = 1.;
-      if(example_ == DENDRITE_TEST){
-        dval = d_seed;
-      }
-      else{
-        dval = d_cyl;
-      }
-
-      */
-
       vec_and_ptr_t vgamma_n;
       vgamma_n.create(p4est, nodes);
       vgamma_n.get_array();
@@ -2682,41 +2656,26 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_l_d.get_array();
       T_s_d.get_array();
       phi.get_array();
-      //kappa.get_array();
 
-
-
-      double kappa_=1.0; // leave as is for now, will eventually actually add curvature arguments
       // First, compute jump in the layer nodes:
       for(size_t i=0; i<ngbd->get_layer_size();i++){
         p4est_locidx_t n = ngbd->get_layer_node(i);
 
         if(fabs(phi.ptr[n])<extension_band){ // TO-DO: should be nondim for ALL cases
+
+            vgamma_n.ptr[n] = 0.; // Initialize
             foreach_dimension(d){
                 jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
-                /*
-                if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
-                    jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
-                    //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
-                }
-                else if (stefan_condition_type == NONDIM_NO_FLUID){
-                  jump.ptr[d][n] = (St)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
-                }
-                else{
-                    jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
-                }
-                */
+
+                // Calculate V_gamma,n using dot product:
+                vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
+
             } // end of loop over dimensions
-
-            // Do the dot product to make sure we are going in the normal direction:
-            vgamma_n.ptr[n] = (jump.ptr[0][n] * normal.ptr[0][n]) + (jump.ptr[1][n] * normal.ptr[1][n]) CODE3D(+ (jump.ptr[2][n] * normal.ptr[2][n]));
-
 
             // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
             foreach_dimension(d){
               jump.ptr[d][n] = vgamma_n.ptr[n] * normal.ptr[d][n];
             }
-
         }
        }
 
@@ -2729,25 +2688,14 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
           if(fabs(phi.ptr[n])<extension_band){
+              vgamma_n.ptr[n] = 0.; // initialize
               foreach_dimension(d){
                   jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
 
-                /*
-                if(stefan_condition_type == NONDIM_YES_FLUID){ // for this example, we solve nondimensionalized problem
-                    jump.ptr[d][n] = (St/Pe)*(alpha_s/alpha_l)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
-                    //(St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]); // <-- INCORRECTLY DERIVED
-                }
-                else if (stefan_condition_type == NONDIM_NO_FLUID){
-                  jump.ptr[d][n] = (St)*(T_s_d.ptr[d][n] - (k_l/k_s)*T_l_d.ptr[d][n]);
-                }
-                else{
-                    jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
-                }
-                */
-              } // end over loop on dimensions
+                  // calculate the dot product to find V_gamma,n
+                  vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
 
-              // Do the dot product to make sure we are going in the normal direction:
-              vgamma_n.ptr[n] = (jump.ptr[0][n] * normal.ptr[0][n]) + (jump.ptr[1][n] * normal.ptr[1][n]) CODE3D(+ (jump.ptr[2][n] * normal.ptr[2][n]));
+              } // end over loop on dimensions
 
               // Now, go back and set jump equal to the enforced normal velocity (a scalar) multiplied by the normal --> to get a velocity vector:
               foreach_dimension(d){
@@ -2765,7 +2713,6 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       jump.restore_array();
       T_l_d.restore_array();
       T_s_d.restore_array();
-      //kappa.restore_array();
 
 
       // Elyce trying something:
@@ -2792,9 +2739,6 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       T_s_d.destroy();
       jump.destroy();
 
-      // Destroy the curvature and normals that we created:
-      //normal_s.destroy();
-      //kappa.destroy();
   }
   else{ // Case where we are forcing interfacial velocity to zero
       foreach_dimension(d){
