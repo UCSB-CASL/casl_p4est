@@ -2050,7 +2050,8 @@ public:
         else{
           //return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface -- INCORRECT, FOUND SIGN ERROR IN DERIVATION, 5/4/21
           //printf("\n dir = %d, BC_val = %0.2f \n", dir, (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)));
-          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
+          //return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
+          return (*v_interface_interp)(x,y); // trying out the simple no-slip condition
         }
       }
       case NS_GIBOU_EXAMPLE:
