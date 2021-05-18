@@ -72,6 +72,15 @@ public:
 
   }
 
+  inline void update(my_p4est_hierarchy_t *hierarchy_)
+  {
+    hierarchy = hierarchy_;
+    p4est     = hierarchy_->p4est;
+    ghost     = hierarchy_->ghost;
+    myb       = hierarchy_->myb;
+  }
+
+
   /*!
    * \brief find_neighbor_cells_of_cell finds (all) the neighbor cell(s) of a cell in the direction (dir_x, dir_y [, dir_z]), any
    * combination of directions is accepted.

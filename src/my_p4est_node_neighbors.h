@@ -82,7 +82,7 @@ class my_p4est_node_neighbors_t {
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
-  const my_p4est_cell_neighbors_t c_ngbd;
+  my_p4est_cell_neighbors_t c_ngbd;
   /*!
    * \brief neighbors: standard vector listing the node neighborhood for all node that
    * are locally known such that the neighborhood can be fully determined. This vector

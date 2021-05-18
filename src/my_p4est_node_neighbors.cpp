@@ -73,6 +73,7 @@ void my_p4est_node_neighbors_t::clear_neighbors()
                                                                                                 const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
 void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_)
 {
+  c_ngbd.update(hierarchy);
   p4est = p4est_;
   ghost = ghost_;
   nodes = nodes_;
