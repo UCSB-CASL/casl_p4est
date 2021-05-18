@@ -580,6 +580,10 @@ public:
   inline my_p4est_interface_manager_t* get_interface_manager()              { return interface_manager; } // in case we want to augment the interface_manager
   inline Vec get_vnp1_nodes_minus() const                                   { return vnp1_nodes_minus;  }
   inline Vec get_vnp1_nodes_plus() const                                    { return vnp1_nodes_plus;   }
+  inline Vec get_vn_nodes_minus() const                                     { return vn_nodes_minus;    }
+  inline Vec get_vn_nodes_plus() const                                      { return vn_nodes_plus;     }
+  inline Vec get_vnm1_nodes_minus() const                                   { return vnm1_nodes_minus;  }
+  inline Vec get_vnm1_nodes_plus() const                                    { return vnm1_nodes_plus;   }
   inline const Vec* get_vnp1_face_minus() const                             { return vnp1_face_minus;   }
   inline const Vec* get_vnp1_face_plus() const                              { return vnp1_face_plus;    }
   inline Vec get_pressure_minus() const                                     { return pressure_minus;    }
@@ -590,6 +594,10 @@ public:
   inline double get_rho_minus() const                                       { return rho_minus; }
   inline double get_rho_plus() const                                        { return rho_plus; }
   inline double get_surface_tension() const                                 { return surface_tension; }
+  inline double get_T_sat() const                                           { return saturation_temperature; }
+  inline double get_latent_heat() const                                     { return latent_heat; }
+  inline double get_specific_heat_minus() const                             { return specific_heat_capacity_minus; }
+  inline double get_specific_heat_plus() const                              { return specific_heat_capacity_plus; }
 
   void compute_non_viscous_pressure_jump();
   void solve_for_pressure_guess();
@@ -781,6 +789,12 @@ public:
   }
 
   inline void set_final_time(const double& final_time_) { final_time = final_time_; }
+
+  inline void start_from_time(const double& t0)
+  {
+    tstart = t0;
+    t_n = t0;
+  }
 
   inline void set_interface_velocity_type(interface_velocity_t desired_interface_velocity_calculation)
   {

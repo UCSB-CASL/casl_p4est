@@ -12,7 +12,7 @@ function MURI_results(ratio_rho, ratio_mu, Re, niter)
     mu_plus = 0.00002;
     mu_minus = mu_plus/ratio_mu;
     gamma = (mu_minus*Re)^2/(rho_minus*R0);
-    path = "/home/regan/workspace/projects/two_phase_flow/bubble_oscillations/3D/";
+    path = "/data_backup/regan/two_phase_flows/bubble_oscillations_3D/";
     if(niter == 1)
         path = strcat(path, "one_iter/");
     elseif (niter == 3)

@@ -5200,7 +5200,7 @@ void my_p4est_two_phase_flows_t::initialize_temperature_fields()
   ierr = delete_and_nullify_vector(temperature_nm1_minus);  CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(temperature_nm1_plus);   CHKERRXX(ierr);
   ierr = delete_and_nullify_vector(temperature_n_minus);    CHKERRXX(ierr);
-  ierr = delete_and_nullify_vector(temperature_n_minus);    CHKERRXX(ierr);
+  ierr = delete_and_nullify_vector(temperature_n_plus);    CHKERRXX(ierr);
 
   if(phi_np1_on_computational_nodes == NULL)
   {
