@@ -1086,7 +1086,7 @@ void my_p4est_poisson_jump_cells_fv_t::falling_back()
     ierr = KSPGetType(ksp, &ksp_t); CHKERRXX(ierr);
     ierr = KSPGetPC(ksp, &pc); CHKERRXX(ierr);
     ierr = PCGetType(pc, &pc_t); CHKERRXX(ierr);
-    if(!(strcmp(ksp_t, KSPBCGS) == 0 && strcmp(pc_t, PCHYPRE) == 0 && fabs(pc_hypre_boomeramg_strong_threshold - (P4EST_DIM - 1)*0.25) < 0.01))
+    if(!(strcmp(ksp_t, (A_null_space != NULL ? KSPGMRES : KSPBCGS)) == 0 && strcmp(pc_t, PCHYPRE) == 0 && fabs(pc_hypre_boomeramg_strong_threshold - (P4EST_DIM - 1)*0.25) < 0.01))
       fallback_counter = -1; // we didn't start from what we expect to be default... --> try the 'default' setup first, i.e. fallback -1!
   }
   // print a warning: let the user know you're struggling here!
@@ -1100,7 +1100,7 @@ void my_p4est_poisson_jump_cells_fv_t::falling_back()
   switch (fallback_counter) {
   case -1:
   {
-    // 0th fall back (should be default case, may be skipped): use KSPBCGS with PCHYPRE increase pc_hypre_boomeramg_strong_threshold
+    // 0th fall back (should be default case, may be skipped): use KSPBCGS with PCHYPRE and pc_hypre_boomeramg_strong_threshold = recommended value from manual
     pc_hypre_boomeramg_strong_threshold = (P4EST_DIM - 1)*0.25;
     ierr = setup_linear_solver(KSPBCGS, PCHYPRE, KSP_NORM_UNPRECONDITIONED); CHKERRXX(ierr);
   }
