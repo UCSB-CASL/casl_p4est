@@ -7,7 +7,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Date Created: 01/20/2021.
- * Modified: 05/01/2021.
+ * Modified: 05/22/2021.
  */
 
 #ifndef P4_TO_P8
@@ -40,7 +40,7 @@
 #include "Utils.h"
 #include <random>
 #include <algorithm>
-#include "../ml_curvature/local_utils.h"
+#include "examples/ml_curvature/local_utils.h"
 
 /**
  * Main function.
@@ -402,14 +402,14 @@ int main( int argc, char** argv )
 
 								// As a way to simplify the resulting nnet architecture, I'll make everything match
 								// negative-curvature samples by flipping the sign of level-set values in data packet.
-								if( dataPacket->numK > 0 )
+								if( dataPacket->hk_a > 0 )
 								{
 									dataPacket->phi_a *= -1;
 									for( auto& phi_d : dataPacket->phi_d )
 										phi_d *= -1;
 									dataPacket->targetPhi_d *= -1;
 									dataPacket->numBacktrackedPhi_d *= -1;
-									dataPacket->numK *= -1;
+									dataPacket->hk_a *= -1;
 
 									for( auto& component : grad )	// Flip gradient and nine-point stencil too.
 										component *= -1;
@@ -431,10 +431,10 @@ int main( int argc, char** argv )
 									dataPacket->serialize( samples.back(), false, false );	// Don't serialize num_k.
 
 									ksamples.emplace_back( std::vector<double>( stencils[idx], stencils[idx] + num_neighbors_cube ) );
-									ksamples.back().emplace_back( dataPacket->numK * H_C );	// Curvature data (including num_k).
+									ksamples.back().emplace_back( dataPacket->hk_a );		// Curvature data.
 
 									// Augment probabilistically at most once.
-									if( s!= 0 || !augmentData( dataPacket->numK ) )
+									if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
 										break;
 
 									dataPacket->reflect_yEqx();		// Reflect both semi-Lagrangian and curvature data.
@@ -569,4 +569,6 @@ int main( int argc, char** argv )
 	{
 		std::cerr << exception.what() << std::endl;
 	}
+
+	return 0;
 }

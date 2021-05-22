@@ -1663,11 +1663,10 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1_one_vel_step( double dt, V
 	/////////////////////////////////////////// Finding velocity at G^{n+1} ////////////////////////////////////////////
 	// Using quadratic interpolation to find u^{n+1} by means of G^{n}.
 	std::vector<double> velNew[P4EST_DIM];
-	for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
 		double xyz[P4EST_DIM];
 		node_xyz_fr_n( n, p4est, nodes, xyz );
-		clip_in_domain( xyz, xyz_min, xyz_max, periodicity );		// Check boundaries.
 		interp.add_point( n, xyz );				// Defining points X^{n+1} where we need the velocity.
 	}
 
@@ -1682,7 +1681,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1_one_vel_step( double dt, V
 
 	//////////////////////////////////////////// Find the backtracing value ////////////////////////////////////////////
 	// Using the semi-Lagrangian interpolation chosen by caller for phi.
-	for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
 		double xyz[P4EST_DIM];
 		node_xyz_fr_n( n, p4est, nodes, xyz );

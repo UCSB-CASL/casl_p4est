@@ -46,7 +46,7 @@ namespace slml
 													// For each vel component, there are P4EST_CHILDREN values.
 		double targetPhi_d;				// Reserved for expected/target phi value at departure point.
 		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
-		double numK;					// Reserved for numerical curvature at the interface closest to node nodeIdx.
+		double hk_a;					// Dimensionless curvature at the point on Gamma closest to node nodeIdx.
 
 		/**
 		 * Serialize data packet into a vector.
@@ -54,9 +54,9 @@ namespace slml
 		 * (by component and child), targetPhi_d, numBacktrackedPhi_d.
 		 * @param [out] data Output vector container.
 		 * @param [in] includeNodeIdx Whether to serialize node index or not.
-		 * @param [in] includeNumK Whether to serialize numerical curvature or not.
+		 * @param [in] includeHK Whether to serialize numerical curvature or not.
 		 */
-		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeNumK=false ) const
+		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeHK=false ) const
 		{
 			if( includeNodeIdx )					// Node index.
 				data.push_back( nodeIdx );
@@ -81,11 +81,12 @@ namespace slml
 
 			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
 
-			if( includeNumK )
-				data.push_back( numK );				// Curvature at the interface.
+			if( includeHK )
+				data.push_back( hk_a );				// Curvature at the interface.
 		}
 
 #ifndef P4_TO_P8
+
 		/**
 		 * Rotate a sample data packet by 90 degrees counter- or clockwise.
 		 * @param [in] dir Rotation direction: +1 for counterclockwise, -1 for clockwise.
@@ -237,7 +238,7 @@ namespace slml
 	 *			+---								+--- x
 	 *		  	  x								   /z
 	 */
-	class DataFetcher: public my_p4est_interpolation_t
+	class DataFetcher : public my_p4est_interpolation_t
 	{
 	private:
 		p4est_nodes_t const *_nodes;	// Pointer to nodes struct, needed to access a quad's child vertices.
@@ -278,7 +279,7 @@ namespace slml
 		 * Input fields order or indices, as they should be given when setting up the inputs of the Data Fetcher object.
 		 * The LAST type is only used for iteration purposes.
 		 */
-		enum InputFields : int {PHI = 0, VEL_U __unused, VEL_V __unused, ONLY3D( VEL_W COMMA ) LAST};
+		enum InputFields : int {PHI = 0, VEL_U __unused, VEL_V __unused, ONLY3D( VEL_W __unused COMMA ) LAST};
 
 		/**
 		 * Constructor.
@@ -315,13 +316,118 @@ namespace slml
 		void operator()( const double *xyz, double *results ) const override;
 	};
 
+
+	/////////////////////////////////////////////////// CacheFetcher ///////////////////////////////////////////////////
+
+	/**
+	 * A implementation of a cache fetcher to retrieve improved level-set function values for nodes located next to the
+	 * interface at time tn.  It leverages the parallel communication mechanisms existing in the library interpolation
+	 * class.  Instead of interpolation, we retrieve the level-set value of the grid point and whether it was computed
+	 * with the neural network.
+	 * To allow the "interpolate" method to fetch the cache state and place it in a results array, we set up the input
+	 * fields:
+	 *  - the level-set function values at time Gn from the cache, and
+	 *  - the neural flag (1 if computation was improved with neural network, 0 otherwhise)
+	 * in that order.  This amounts to 2 input fields regardless of spatial dimensions.
+	 * Upon response, the results array contains also 2 fields:
+	 *  - the level-set value computed with the neural network or a meaningless value if query point doesn't match a
+	 *    grid point at Gn for which we used the neural network, and
+	 *  - a flag value: 1 if level-set value is valid, 0 if not.
+	 */
+	class Cache : public my_p4est_interpolation_t
+	{
+	private:
+		p4est_nodes_t const *_nodes;	// Pointer to nodes struct, needed to access a quad's child vertices.
+
+	public:
+		using my_p4est_interpolation_t::interpolate;
+
+		/**
+		 * Input fields order or indices, as they should be given when setting up the inputs of the CacheFetcher object.
+		 * The LAST type is only used for iteration purposes.
+		 */
+		enum Fields : int {PHI = 0, FLAG};
+		static const int N_FIELDS;
+
+		/**
+		 * Constructor.
+		 * @param [in] ngbd Pointer to node neighborhood struct at time tn (i.e., Gn).
+		 */
+		explicit Cache( const my_p4est_node_neighbors_t *ngbd );
+
+		/**
+		 * Get ready by initializing the infrastructure containing the information to retrieve.
+		 * @param [in] fields Input fields.
+		 * @param [in] nFields Number of fields.
+		 */
+		void setInput( Vec fields[], const int& nFields );
+
+		/**
+		 * Fetch cached data for a query grid point (at Gnp1 -- the grid a time tnp1).
+		 * @note The name is misleading: we use `interpolate` to meet the implementation requirement of the virtual
+		 * function of the same name in the base class.  This function leverages the multiprocess communication infra-
+		 * structure existing in the base interpolation class.
+		 * @param [in] quad Local or ghost quadrant owning the query point.
+		 * @param [in] xyz Query point global Cartesian coordinates.
+		 * @param [out] results Array of results on output (as many as input fields were supplied).
+		 * @param [in] comp Components to be considered (in this case, only ALL_COMPONENTS is allowed).
+		 */
+		void interpolate( const p4est_quadrant_t& quad, const double *xyz, double *results, const unsigned int& comp )
+		const override;
+
+		/**
+		 * Interpolate on the fly.
+		 * @note Not implemented yet!  Added just to meet the requirement from the base class.
+		 * @param [in] xyz Query point global Cartesian coordinates.
+		 * @param [out] results Pointer to an array of results.
+		 */
+		void operator()( const double *xyz, double *results ) const override;
+	};
+
+
+
 	////////////////////////////////////////////////// SemiLangrangian /////////////////////////////////////////////////
 
 	/**
  	 * A semi-Lagrangian implementation using Machine Learning and Neural Networks.
  	 */
-	class SemiLagrangian: public my_p4est_semi_lagrangian_t
+	class SemiLagrangian : public my_p4est_semi_lagrangian_t
 	{
+	private:
+		const double BAND;			// Band width around the interface: must match what was used for training (>=2).
+		Vec _mlFlag = nullptr;		// A flag vector that stores 1s in nodes adjacent to Gamma for which we have
+									// computed phi with the nnet, 0 otherwise.  It also distinguishes grid points with
+									// valid phi stencils (i.e., uniform in each direction) to compute curvature with
+									// the corresponding nnet.
+		Vec _mlPhi = nullptr;		// Parallel vector to store advected phi for time tnp1 computed with nnet.
+
+		enum HowUpdated : int {NUM = 0, NUM_BAND, NNET};	// States for determining how a grid point was updated.
+
+		/**
+		 * Compute semi-Lagrangian advection for all points and correct level-set values at time tnp1 for grid points
+		 * lying next to interface at time tn by using the neural network.
+		 * @note Function resets and populates _mlFlag and _mlPhi for points next to the interface.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+		 * @param [in] dt Time step.
+		 * @param [in] phi Parallel vector with level-set values for grid at time tn.
+		 * @param [in] hk Dimensionless curvature parallel vector.  For points next to Gamma, it is hk at the closest location on the interface.
+		 */
+		void _computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk );
+
+		/**
+		 * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler
+		 * along the characteristics.
+		 * @param [in] dt Time step.
+		 * @param [in] h Minimum cell width (assuming 1:1:1 ratios).
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+		 * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction.
+		 * @param [in] phi Level-set function values at time n.
+		 * @param [in,out] phi_np1Ptr Advected level-set function values.
+		 * @param [in,out] howUpdated_np1Ptr Debugging values to indicate how the level-set was updated.
+		 */
+		void _advectFromNToNp1( const double& dt, const double& h, Vec vel[], Vec *vel_xx[], Vec phi,
+						  		double *phi_np1Ptr, double *howUpdated_np1Ptr );
+
 	public:
 		/**
 		 * Constructor.
@@ -329,9 +435,10 @@ namespace slml
 		 * @param [in,out] nodesNp1 Pointer to a nodes' object pointer.
 		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
+		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-				  		my_p4est_node_neighbors_t *ngbdN );
+				  		my_p4est_node_neighbors_t *ngbdN, const double& band=2 );
 
 		/**
 		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with a single velocity step along
@@ -346,7 +453,8 @@ namespace slml
 		 * @return true if all backtracked queried points from nodes along interface lie inside within domain, false
 		 * otherwise.  This serves as a warning flag.
 		 */
-		bool collectSamples( Vec vel[P4EST_DIM], double dt, Vec phi, std::vector<DataPacket *>& dataPackets ) const;
+		bool collectSamples( Vec vel[P4EST_DIM], const double& dt, Vec phi,
+					   		 std::vector<DataPacket *>& dataPackets ) const;
 
 		/**
 		 * Utility function to deallocate the dynamically created data packets in collectSamples.
@@ -354,6 +462,22 @@ namespace slml
 		 * @return Number of freed objects.
 		 */
 		static size_t freeDataPacketArray( std::vector<DataPacket *>& dataPackets );
+
+		/**
+		 * Update a p4est from tn to tnp1, using a combined semi-Lagrangian scheme: numberical and machine-learning
+		 * based, with a single velocity step (no midpoint) with Euler along the characteristics.
+		 * The forest at time tn is copied and then refined/coarsened and balance iteratively until convergence.
+		 * The method is adapted from:
+		 * [*] M. Mirzadeh, A. Guittet, C. Burstedde, and F. Gibou, Parallel Level-Set Method on Adaptive Tree-Based Grids.
+		 * @note You need to update the node neighborhood and hierarchy objects yourself upon exit!
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+		 * @param [in] dt Time step.
+		 * @param [in,out] phi Level-set function values at time n, and then updated at time n + 1.
+		 * @param [in] hk Dimensionless curvature.  For points next to Gamma, it is hk at the closest point on Gamma.
+		 * @param [in,out] howUpdated Optional parallel vector for debugging how the level-set values were updated: 0 if
+		 * 		  numerically, 1 if numerically but within a band around new interface location, 2 if using neural net.
+		 */
+		void updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated=nullptr );
 	};
 }
 

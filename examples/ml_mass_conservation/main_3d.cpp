@@ -1,3 +1,3 @@
 #include <src/my_p4est_to_p8est.h>
-#include "main_2d.cpp"
+#include "data_sets/generate_data_sets_2d.cpp"
 

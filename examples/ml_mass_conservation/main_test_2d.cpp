@@ -37,7 +37,7 @@
 #include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
 #include <src/casl_geometry.h>
-#include "CoarseGrid.h"
+#include "data_sets/CoarseGrid.h"
 
 // Velocity field.
 struct UComponent : CF_2

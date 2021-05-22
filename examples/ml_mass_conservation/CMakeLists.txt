@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 11 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d.cpp )
+	list( APPEND SRC data_sets/generate_data_sets_2d.cpp)
 endif()
 
 #if( DIMENSION MATCHES 3d )

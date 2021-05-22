@@ -370,12 +370,13 @@ public:
 				slml::DataPacket *dataPacket = dataPackets[i];
 				dataPacket->targetPhi_d = targetPhi[i];				// Populate expected phi value.
 
-				double xyz[P4EST_DIM];								// Populate numerical curvature at Gamma.
+				double xyz[P4EST_DIM];								// Populate dimensionless curvature at Gamma.
 				node_xyz_fr_n( dataPacket->nodeIdx, p4est, nodes, xyz );
 				double p = phiReadPtr[dataPacket->nodeIdx];
-				dataPacket->numK = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][dataPacket->nodeIdx],
+				dataPacket->hk_a = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][dataPacket->nodeIdx],
 										 			 xyz[1] - p * normalReadPtr[1][dataPacket->nodeIdx],
 										 			 xyz[2] - p * normalReadPtr[2][dataPacket->nodeIdx] ) );
+				dataPacket->hk_a *= minCellWidth;
 
 				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
 				maxRelError = MAX( maxRelError, relError );
