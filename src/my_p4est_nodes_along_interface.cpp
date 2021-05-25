@@ -209,7 +209,18 @@ NodesAlongInterface::NodesAlongInterface( const p4est_t *p4est, const p4est_node
 	if( ABS( dx - dy ) <= _zEPS ONLY3D( && ABS( dx - dz ) <= _zEPS ) )
 		_h = dx;
 	else
-		throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::FullUniformStencil: smallest quad is not uniform!" );
+		throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::Constructor: smallest quad is not uniform!" );
+
+	// Retrieve domain information that is needed for wrapping coordinates in stencils if Omega is periodic.
+	const double *xyz_min = _neighbors->get_brick()->xyz_min;
+	const double *xyz_max = _neighbors->get_brick()->xyz_max;
+	_periodicity = _neighbors->get_hierarchy()->get_periodicity();
+	for( int i = 0; i < P4EST_DIM; i++ )
+	{
+		_xyz_dist[i] = xyz_max[i] - xyz_min[i];
+		if( _xyz_dist[i] <= 0 )
+			throw std::runtime_error( "[CASL_ERROR]: NodesAlongInterface::Constructor: invalid domain information!" );
+	}
 }
 
 void NodesAlongInterface::getIndices( const Vec *phi, std::vector<p4est_locidx_t>& indices )
@@ -234,13 +245,25 @@ void NodesAlongInterface::getIndices( const Vec *phi, std::vector<p4est_locidx_t
 		if( tree->maxlevel == _maxLevelOfRefinement )							// quads/octs with max level of refinement.
 		{
 			// Check each quadrant in local trees.
-			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
+			for( int quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
 			{
 				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
 				if( quad->level == _maxLevelOfRefinement )	// Is this quad/oct potentially crossed by the interface?
 					_processQuadOct( quadIdx + tree->quadrants_offset, indices );
 			}
 		}
+	}
+
+	// Second, go through ghost quadrants and repeat the previous process since some locally owned nodes may have
+	// escaped the previous sweep.  This is usually the case when at least one locally owned node participates in a
+	// ghost quadrant that is crossed by Gamma, but they are not accounted for because the other local quadrants they
+	// participate in are not crossed.
+	const p4est_ghost_t *ghost = _neighbors->get_ghost();
+	for( p4est_topidx_t ghostIdx = 0; ghostIdx < ghost->ghosts.elem_count; ghostIdx++ )
+	{
+		auto *quad = (const p4est_quadrant_t*)p4est_quadrant_array_index( &(const_cast<p4est_ghost_t*>(ghost)->ghosts), ghostIdx );
+		if( quad->level == _maxLevelOfRefinement )			// Is this quad/oct potentially crossed by the interface?
+			_processQuadOct( _p4est->local_num_quadrants + ghostIdx, indices );
 	}
 
 	ierr = VecRestoreArrayRead( *phi, &_phiPtr );	// Cleaning up.
@@ -341,14 +364,60 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 			// Checking the diagonal neighbors on the same horizontal or vertical plane as the center node.
 			// Sometimes the previous test passes, even though a diagonal neighbor is not part of a uniform neighborhood.
 #ifdef P4_TO_P8
-			if( outIdx == 1 || outIdx == 19 || outIdx == 7 || outIdx == 25 ||
-				outIdx == 11 || outIdx == 9 || outIdx == 17 || outIdx == 15 )
+			if( outIdx ==  1 || outIdx == 19 || outIdx ==  7 || outIdx == 25 ||
+				outIdx == 11 || outIdx ==  9 || outIdx == 17 || outIdx == 15 )
 #else
 			if( outIdx == 0 || outIdx == 2 || outIdx == 6 || outIdx == 8 )
 #endif
 			{
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( neighborsOfNode[inIdx], _p4est, _nodes, xyz );
+
+				// Unwrap according to periodicity.
+				if( _periodicity[0] )
+				{
+#ifdef P4_TO_P8
+					if( (outIdx == 19 || outIdx == 25) && xyz[0] < xyzCenter[0] )	// Expected to the right but found to the left?
+						xyz[0] += _xyz_dist[0];
+					if( (outIdx == 1 || outIdx == 7) && xyz[0] > xyzCenter[0] )		// Expected to the left but found to the right?
+						xyz[0] -= _xyz_dist[0];
+#else
+					if( (outIdx == 6 || outIdx == 8) && xyz[0] < xyzCenter[0] )		// Expected to the right but found to the left?
+						xyz[0] += _xyz_dist[0];
+					if( (outIdx == 0 || outIdx == 2) && xyz[0] > xyzCenter[0] )		// Expected to the left but found to the right?
+						xyz[0] -= _xyz_dist[0];
+#endif
+				}
+				if( _periodicity[1] )
+				{
+#ifdef P4_TO_P8
+					if( (outIdx == 7 || outIdx == 25) && xyz[1] < xyzCenter[1] )	// Expected above but found below?
+						xyz[1] += _xyz_dist[1];
+					if( (outIdx == 1 || outIdx == 19) && xyz[1] > xyzCenter[1] )	// Expected below but found above?
+						xyz[1] -= _xyz_dist[1];
+
+					if( (outIdx == 17 || outIdx == 15) && xyz[1] < xyzCenter[1] )	// Expected above but found below?
+						xyz[1] += _xyz_dist[1];
+					if( (outIdx == 11 || outIdx == 9) && xyz[1] > xyzCenter[1] )	// Expected below but found above?
+						xyz[1] -= _xyz_dist[1];
+#else
+
+					if( (outIdx == 2 || outIdx == 8) && xyz[1] < xyzCenter[1] )		// Expected above but found below?
+						xyz[1] += _xyz_dist[1];
+					if( (outIdx == 0 || outIdx == 6) && xyz[1] > xyzCenter[1] )		// Expected below but found above?
+						xyz[1] -= _xyz_dist[1];
+#endif
+				}
+#ifdef P4_TO_P8
+				if( _periodicity[2] )
+				{
+					if( (outIdx == 11 || outIdx == 17) && xyz[2] < xyzCenter[2] )	// Expected in front but found in the back?
+						xyz[2] += _xyz_dist[2];
+					if( (outIdx == 9 || outIdx == 15) && xyz[2] > xyzCenter[2] )	// Expected in the back but found in front?
+						xyz[2] -= _xyz_dist[2];
+				}
+#endif
+
 				double DIM( dx = xyz[0] - xyzCenter[0], dy = xyz[1] - xyzCenter[1], dz = xyz[2] - xyzCenter[2] );
 				double distance = sqrt( SUMD( SQR( dx ), SQR( dy ), SQR( dz ) ) );
 				if( distance < FLAT_DIAG_LOWER_B || distance > FLAT_DIAG_UPPER_B )
@@ -370,6 +439,30 @@ bool NodesAlongInterface::getFullStencilOfNode( const p4est_locidx_t nodeIdx, st
 			{
 				double xyz[P4EST_DIM];
 				node_xyz_fr_n( neighborsOfNode[inIdx], _p4est, _nodes, xyz );
+
+				// Unwrap according to periodicity.
+				if( _periodicity[0] )
+				{
+					if( (outIdx == 24 || outIdx == 26 || outIdx == 18 || outIdx == 20) && xyz[0] < xyzCenter[0] )	// Expected to the right but found to the left?
+						xyz[0] += _xyz_dist[0];
+					if( (outIdx ==  0 || outIdx ==  2 || outIdx ==  6 || outIdx ==  8) && xyz[0] > xyzCenter[0] )	// Expected to the left but found to the right?
+						xyz[0] -= _xyz_dist[0];
+				}
+				if( _periodicity[1] )
+				{
+					if( (outIdx == 26 || outIdx == 24 || outIdx == 6 || outIdx == 8) && xyz[1] < xyzCenter[1] )		// Expected above but found below?
+						xyz[1] += _xyz_dist[1];
+					if( (outIdx == 18 || outIdx == 20 || outIdx == 0 || outIdx == 2) && xyz[1] > xyzCenter[1] )		// Expected below but found above?
+						xyz[1] -= _xyz_dist[1];
+				}
+				if( _periodicity[2] )
+				{
+					if( (outIdx == 8 || outIdx == 26 || outIdx == 2 || outIdx == 20) && xyz[2] < xyzCenter[2] )		// Expected in front but found to the back?
+						xyz[2] += _xyz_dist[2];
+					if( (outIdx == 0 || outIdx == 18 || outIdx == 6 || outIdx == 24) && xyz[2] > xyzCenter[2] )		// Expected to the back but found in front?
+						xyz[2] -= _xyz_dist[2];
+				}
+
 				double DIM( dx = xyz[0] - xyzCenter[0], dy = xyz[1] - xyzCenter[1], dz = xyz[2] - xyzCenter[2] );
 				double distance = sqrt( SUMD( SQR( dx ), SQR( dy ), SQR( dz ) ) );
 				if( distance < CUBE_DIAG_LOWER_B || distance > CUBE_DIAG_UPPER_B )
@@ -409,7 +502,7 @@ void NodesAlongInterface::getIndepIndices( const Vec *phi, const p4est_ghost_t *
 		if( tree->maxlevel == _maxLevelOfRefinement )							// quads/octs with max level of refinement.
 		{
 			// Check each quadrant in local trees.
-			for( size_t quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
+			for( int quadIdx = 0; quadIdx < tree->quadrants.elem_count; quadIdx++ )
 			{
 				auto *quad = (const p4est_quadrant_t*)sc_array_index( &tree->quadrants, quadIdx );
 				if( quad->level == _maxLevelOfRefinement )	// Is this quad/oct potentially crossed by the interface?

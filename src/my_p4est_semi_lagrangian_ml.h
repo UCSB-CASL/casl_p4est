@@ -400,6 +400,8 @@ namespace slml
 									// valid phi stencils (i.e., uniform in each direction) to compute curvature with
 									// the corresponding nnet.
 		Vec _mlPhi = nullptr;		// Parallel vector to store advected phi for time tnp1 computed with nnet.
+		const interpolation_method VEL_INTERP_MTHD;			// Default interpolation methods
+		const interpolation_method PHI_INTERP_MTHD;			// for vel and level-set values.
 
 		enum HowUpdated : int {NUM = 0, NUM_BAND, NNET};	// States for determining how a grid point was updated.
 

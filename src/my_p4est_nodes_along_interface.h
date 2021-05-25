@@ -1,6 +1,9 @@
-//
-// Created by Im YoungMin on 5/17/20.
-//
+/**
+ * Created by Luis Ángel.
+ *
+ * Created on 05/17/2020.
+ * Updated on 05/24/2021.
+ */
 
 #ifndef FAST_SWEEPING_MY_P4EST_NODES_ALONG_INTERFACE_H
 #define FAST_SWEEPING_MY_P4EST_NODES_ALONG_INTERFACE_H
@@ -37,8 +40,8 @@
 #include <unordered_set>
 
 /**
- * Class to hold methods related to retrieving and processing nodes along the interface, such as collecting their and
- * full stencils with uniform distancing along the Cartesian directions.
+ * Class to hold methods related to retrieving and processing nodes along the interface, such as collecting their full
+ * stencils with uniform distancing along the Cartesian directions.
  */
 class NodesAlongInterface
 {
@@ -54,6 +57,8 @@ private:
 	const double *_phiPtr = nullptr;							// Read-pointer for a queried level-set function.
 	std::vector<bool> _visited;									// Cache vector of visited nodes when collecting points
 																// by the interface.
+	const bool *_periodicity = nullptr;							// Domain information: periodicity and length.
+	double _xyz_dist[P4EST_DIM] = {DIM( 0, 0, 0 )};
 
 	/**
 	 * Organize quad/oct information into a struct with node indices and level-set values.  Also, check if all nodes in

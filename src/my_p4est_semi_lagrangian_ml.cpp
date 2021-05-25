@@ -225,7 +225,13 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
 									  my_p4est_node_neighbors_t *ngbdN, const double& band )
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
-									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN ){}
+									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
+									  PHI_INTERP_MTHD( interpolation_method::linear ),
+									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
+{
+	if( band < 2 )
+		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+}
 
 
 size_t slml::SemiLagrangian::freeDataPacketArray( vector<DataPacket *>& dataPackets )
@@ -387,7 +393,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 
 		// Allocate output array for computed, numerically approximated phi value at departure point.
 		double outputDepartureNumericalPhi[outIdx];
-		numericalInterp.set_input( phi, interpolation_method::linear );
+		numericalInterp.set_input( phi, PHI_INTERP_MTHD );
 		numericalInterp.interpolate( outputDepartureNumericalPhi );
 		numericalInterp.clear();
 
@@ -594,7 +600,8 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	////////// First step: compute level-set values for points next to Gamma using the machine learning model //////////
 	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
 	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon exit.
+	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon exit
+	// (see below).
 	_computeMLSolution( vel, dt, *phi, hk );
 
 	// Some pointers to structs for the Gn at time tn.
@@ -793,8 +800,8 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		vel_np1[dir].resize( nodes->indep_nodes.elem_count );
 		interpOutput[dir] = vel_np1[dir].data();
 	}
-	interp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), quadratic, P4EST_DIM );
-	interp.interpolate( interpOutput );			// Interpolate velocities.  Save these in velNew vector.
+	interp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), VEL_INTERP_MTHD, P4EST_DIM );
+	interp.interpolate( interpOutput );			// Interpolate velocities.  Save these in vel_np1 vector.
 	interp.clear();
 
 	/////////////////////////////////////////////// Find departure points //////////////////////////////////////////////
@@ -810,8 +817,8 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		interp_phi.add_point( n, xyz );
 		howUpdated_np1Ptr[n] = HowUpdated::NUM;
 	}
-	interp_phi.set_input( phi, interpolation_method::linear );
-	interp_phi.interpolate( phi_np1Ptr );			// New phi values at tnp1 based off Gn.
+	interp_phi.set_input( phi, PHI_INTERP_MTHD );
+	interp_phi.interpolate( phi_np1Ptr );			// New phi values at time tnp1 based off Gn.
 
 	////////// Load cached values computed with neural network for points in a band around new Gamma location //////////
 	Cache cache( ngbd_n );							// Fake cache using interpolation infraestructure.
