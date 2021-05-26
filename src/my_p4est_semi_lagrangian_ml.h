@@ -395,15 +395,30 @@ namespace slml
 	{
 	private:
 		const double BAND;			// Band width around the interface: must match what was used for training (>=2).
-		Vec _mlFlag = nullptr;		// A flag vector that stores 1s in nodes adjacent to Gamma for which we have
+		Vec _mlFlag = nullptr;		// A flag vector that stores rank+1 in nodes adjacent to Gamma for which we have
 									// computed phi with the nnet, 0 otherwise.  It also distinguishes grid points with
 									// valid phi stencils (i.e., uniform in each direction) to compute curvature with
 									// the corresponding nnet.
 		Vec _mlPhi = nullptr;		// Parallel vector to store advected phi for time tnp1 computed with nnet.
+
+		std::unordered_set<p4est_locidx_t> _localUniformIndices;			// Pointer to set of indices of local nodes
+		const std::unordered_set<p4est_locidx_t>* _localUniformIndicesPtr;	// next to Gamma with uniform stencils.
+																			// Former variable is created if user
+																			// doesn't supply it.  Use the pointer only!
+
 		const interpolation_method VEL_INTERP_MTHD;			// Default interpolation methods
 		const interpolation_method PHI_INTERP_MTHD;			// for vel and level-set values.
 
 		enum HowUpdated : int {NUM = 0, NUM_BAND, NNET};	// States for determining how a grid point was updated.
+
+		/**
+		 * Create the set of indices of nodes next to the interface that possess uniform stencils.
+		 * @param [in] ngbdN Pointer to neighborhood struct at time tn.
+		 * @param [in] phi Parallel vector of level-set values at time tn.
+		 * @return Address of newly created set of node indices.
+		 */
+		const std::unordered_set<p4est_locidx_t>* _computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN,
+																		 	   Vec phi );
 
 		/**
 		 * Compute semi-Lagrangian advection for all points and correct level-set values at time tnp1 for grid points
@@ -437,10 +452,24 @@ namespace slml
 		 * @param [in,out] nodesNp1 Pointer to a nodes' object pointer.
 		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
+		 * @param [in] localUniformIndices Pointer to set of indices of locally owned nodes next to Gamma with uniform stencils.
 		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-				  		my_p4est_node_neighbors_t *ngbdN, const double& band=2 );
+				  		my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
+				  		const double& band=2 );
+
+		/**
+		 * Constructor.
+		 * @param [in,out] p4estNp1 Pointer to a p4est object pointer.
+		 * @param [in,out] nodesNp1 Pointer to a nodes' object pointer.
+		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
+		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
+		 * @param [in] phi Level-set values to construct the set of indices of locally owned nodes next to Gamma with uniform stencils.
+		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
+		 */
+		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
+						my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band=2 );
 
 		/**
 		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with a single velocity step along

@@ -223,14 +223,59 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 //////////////////////////////////////////////////// SemiLagrangian ////////////////////////////////////////////////////
 
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN, const double& band )
+									  my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
+									  const double& band )
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
+									  _localUniformIndicesPtr( localUniformIndices ),
 									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
 									  PHI_INTERP_MTHD( interpolation_method::linear ),
 									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
 {
 	if( band < 2 )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+}
+
+
+slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
+									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band )
+									  : SemiLagrangian( p4estNp1, nodesNp1, ghostNp1, ngbdN,
+														_computeLocalUniformIndices( ngbdN, phi ), band ) {}
+
+
+const std::unordered_set<p4est_locidx_t>* slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
+{
+	if( !phi )
+		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: phi values must be supplied!" );
+
+	// Some pointers to structs for the the grid/forest at time tn.
+	p4est_t const *p4estN = ngbdN->get_p4est();
+	p4est_nodes_t const *nodesN = ngbdN->get_nodes();
+
+	_localUniformIndices.clear();
+	_localUniformIndices.reserve( nodesN->num_owned_indeps );
+
+	// We need the indices for nodes next to the interface (i.e., one of their irradiating edges is crossed by Gamma).
+	// Since curvature is used to flip samples, we need only locally owned nodes because we can use the curvature
+	// nnet with them as long as they have a uniform stencil.  We collect this indices once per semi-Lagrangian step
+	// only at the beginning of the process to save time.
+	auto* p4estUserData = (splitting_criteria_t*)p4estN->user_pointer;
+	NodesAlongInterface nodesAlongInterface( p4estN, nodesN, ngbdN, (signed char)p4estUserData->max_lvl );
+	vector<p4est_locidx_t> indices;
+	nodesAlongInterface.getIndices( &phi, indices );
+
+	// Check each node if it has a full uniform stencil.
+	for( auto nodeIdx : indices )
+	{
+		try
+		{
+			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
+			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ) )
+				_localUniformIndices.insert( nodeIdx );
+		}
+		catch( const std::exception &exception ) {}
+	}
+
+	return &_localUniformIndices;
 }
 
 
@@ -258,20 +303,11 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 
 	// Some pointers to structs for the the grid/forest at time tn.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
-	p4est_ghost_t const *ghost_n = ngbd_n->get_ghost();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
 	// Initialize output array.
 	freeDataPacketArray( dataPackets );		// Just in case, free and clear whatever is left in output array.
 	dataPackets.reserve( nodes_n->indep_nodes.elem_count );
-
-	// We need the indices for nodes next to the interface (i.e., one of their irradiating edges is crossed by Gamma).
-	// Since we don't care about the full stencils of nodes, we use the alternative method from NodesAlongInterface to
-	// retrieve all independent nodes (local and ghost) that the partition is aware of.
-	auto* p4estUserData = (splitting_criteria_t*)p4est_n->user_pointer;
-	NodesAlongInterface nodesAlongInterface( p4est_n, nodes_n, ngbd_n, (signed char)p4estUserData->max_lvl );
-	std::unordered_set<p4est_locidx_t> indices;
-	nodesAlongInterface.getIndepIndices( &phi, ghost_n, indices );		// TODO: Change this to retrieve only locally owned nodes.
 
 	// Domain features.
 	const double *xyz_min = get_xyz_min();
@@ -323,14 +359,14 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 	double xyz_d[P4EST_DIM];						// Departure point.
 	double xyz_a[P4EST_DIM];						// Arrival point.
 	std::vector<p4est_locidx_t> outIdxToNodeIdx;	// This is a map from out index to actual node index in PETSc Vecs.
-	outIdxToNodeIdx.reserve( indices.size() );
+	outIdxToNodeIdx.reserve( _localUniformIndicesPtr->size() );
 	std::vector<double> distances;					// Vector to store the distance between arrival and departure points.
-	distances.reserve( indices.size() );
+	distances.reserve( _localUniformIndicesPtr->size() );
 	int outIdx = 0;									// Index in "interpolation" output.
 	bool allInside = true;							// Warning flag: false if at least one point along the interface is
 													// backtracked outside the domain.
 													// Helps prevent inconsistent training samples.
-	for( const auto nodeIdx : indices )
+	for( const auto& nodeIdx : *_localUniformIndicesPtr )
 	{
 		// Let's skip nodes for which the velocity field is practically zero.
 		double velMagnitude = 0;
@@ -345,7 +381,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 			xyz_d[dir] = xyz_a[dir] - dt * velReadPtr[dir][nodeIdx];
 
 		// Check if departure point falls within the domain.
-		// We don't admit truncated/circled backtracked points to avoid inconsistency in the training patterns.
+		// We don't admit truncated backtracked points to avoid inconsistency in the training patterns.
 		if( !clip_in_domain_with_check( xyz_d, xyz_min, xyz_max, periodicity ) )
 		{
 			allInside = false;
@@ -496,20 +532,17 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	ierr = VecCreateGhostNodes( p4est_n, nodes_n, &_mlPhi );
 	CHKERRXX( ierr );
 
-	// Collect data packets for independent nodes (locally owned and ghost).
+	// Collect data packets for locally owned nodes (no ghost nodes).
 	std::vector<DataPacket *> dataPackets;
 	collectSamples( vel, dt, phi, dataPackets );
 
 	// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
 	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
 	// step because curvature should have been computed using the hybrid inference system only for those vertices with
-	// full stencils.  For them, we set their _mlFlag "bit", and then scatter forward both the flag and the level-set at
+	// full stencils.  For them, we set their _mlFlag value, and then scatter forward both the flag and the level-set at
 	// departure point (computed with nnet).  Afterward, numerical advection is used in the rest of the nodes that are
-	// not flagged (including ghost nodes), and we proceed with the refinement/coarsening process.  Notice that we still
-	// need to flip the level-set values according to the hk sign (i.e., we deal only with negative curvature spectrum).
-	auto *splittingCriteria = (splitting_criteria_t*) p4est_n->user_pointer;
-	NodesAlongInterface nodesAlongInterface( p4est_n, nodes_n, ngbd_n, (signed char)splittingCriteria->max_lvl );
-
+	// not flagged (including ghost nodes), and we proceed with the refinement/coarsening process.  Notice we still need
+	// to flip inferred level-set values depending on hk sign (i.e., we deal only with negative curvature spectrum).
 	const double *hkReadPtr;
 	ierr = VecGetArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
@@ -528,29 +561,22 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 															// or with nnet.  It can be positive or negative.
 
 		// Grab only locally owned nodes at maximum level of refinement and having a valid (uniform) neighborhood.
-		try
+		// We can access these through the pointer _localUniformIndicesPtr.
+		if( _localUniformIndicesPtr->find( dataPacket->nodeIdx ) != _localUniformIndicesPtr->end() )
 		{
-			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-			if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
-			{
-				_mlFlagPtr[dataPacket->nodeIdx] = 1;		// Set "bit" for valid node next to Gamma.
+			_mlFlagPtr[dataPacket->nodeIdx] = p4est_n->mpirank + 1;	// Set value for valid node next to Gamma: rank+1.
 
-				// Let's normalize data the way the nnet understands it.
-				if( dataPacket->hk_a > 0 )					// Working on the negative curvature spectrum.
-				{											// Flipping signs accordingly except for hk_a: that one
-					dataPacket->phi_a *= -1;				// statys the way it is to fip back predictions.
-					for( auto& phi_d : dataPacket->phi_d )
-						phi_d *= -1;
-					dataPacket->numBacktrackedPhi_d *= -1;
-				}
-
-				// Normalize semi-Lagrangian data so that -v_a has an angle in the range of [0, pi/2].
-				dataPacket->rotateToFirstQuadrant();
+			// Let's normalize data the way the nnet understands it.
+			if( dataPacket->hk_a > 0 )					// Working on the negative curvature spectrum.
+			{											// Flipping signs accordingly except for hk_a: that one
+				dataPacket->phi_a *= -1;				// statys the way it is to fip back predictions.
+				for( auto& phi_d : dataPacket->phi_d )
+					phi_d *= -1;
+				dataPacket->numBacktrackedPhi_d *= -1;
 			}
-		}
-		catch( const std::exception &exception )
-		{
-			std::cerr << exception.what() << std::endl;
+
+			// Normalize semi-Lagrangian data so that -v_a has an angle in the range of [0, pi/2].
+			dataPacket->rotateToFirstQuadrant();
 		}
 	}
 
@@ -558,7 +584,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	int i;
 	for( i = 0; i < dataPackets.size(); i++ )
 	{
-		if( _mlFlagPtr[dataPackets[i]->nodeIdx] == 1 )
+		if( _mlFlagPtr[dataPackets[i]->nodeIdx] > 0 )
 		{
 			_mlPhiPtr[dataPackets[i]->nodeIdx] = dataPackets[i]->numBacktrackedPhi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
 		}
@@ -591,7 +617,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 }
 
 
-void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated  )
+void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated )
 {
 	PetscErrorCode ierr;
 	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
@@ -601,7 +627,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
 	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
 	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon exit
-	// (see below).
+	// (see the very last part of this function).
 	_computeMLSolution( vel, dt, *phi, hk );
 
 	// Some pointers to structs for the Gn at time tn.
@@ -734,6 +760,11 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		ierr = VecDestroy( *howUpdated );
 		CHKERRXX( ierr );
 		*howUpdated = howUpdated_np1;
+	}
+	else		// If caller doesn't want the howUpdated flag, just destroy it the one we computed here.
+	{
+		ierr = VecDestroy( howUpdated_np1 );
+		CHKERRXX( ierr );
 	}
 
 	for( auto& dir : vel_xx )
