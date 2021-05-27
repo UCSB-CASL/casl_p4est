@@ -272,7 +272,7 @@ int main( int argc, char** argv )
 {
 	// Main global variables.
 	const double DURATION = 0.5;		// Duration of the simulation.
-	const int MAX_RL = 6;				// Grid's maximum refinement level.
+	const int MAX_RL = 5;				// Grid's maximum refinement level.
 	const int REINIT_NUM_ITER = 20;		// Number of iterations for level-set renitialization.
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
 
@@ -432,10 +432,13 @@ int main( int argc, char** argv )
 
 			// Create semi-Lagrangian object in machine learning module: linear interp. for phi, quadratic for velocity.
 			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, &localUniformIndices, BAND );
+//			my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
+//			semiLagrangian.set_phi_interpolation( interpolation_method::linear );
+//			semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
 
 			// Advect level-set function one step, then update the grid.
-//			semiLagrangian.updateP4EST( vel, dt, &phi, hk, &howUpdated );
-			semiLagrangian.update_p4est_one_vel_step( vel, dt, phi, BAND );
+			semiLagrangian.updateP4EST( vel, dt, &phi, hk, &howUpdated );
+//			semiLagrangian.update_p4est_one_vel_step( vel, dt, phi, BAND );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est );
@@ -452,6 +455,7 @@ int main( int argc, char** argv )
 			nodeNeighbors->init_neighbors();
 
 			// Reinitialize level-set function.
+			// TODO: Reinitialization affects any value set with the machine learning model!
 			my_p4est_level_set_t ls( nodeNeighbors );
 			ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
 

@@ -197,10 +197,10 @@ void slml::Cache::interpolate( const p4est_quadrant_t &quad, const double *xyz, 
 		if( ANDD( ABS( childCoords[0] - xyz[0] ) < PETSC_MACHINE_EPSILON,
 				  ABS( childCoords[1] - xyz[1] ) < PETSC_MACHINE_EPSILON,
 				  ABS( childCoords[2] - xyz[2] ) < PETSC_MACHINE_EPSILON )
-			  && fieldsReadPtr[Fields::FLAG][nodeIdx] == 1 )	// A match?
+			  && fieldsReadPtr[Fields::FLAG][nodeIdx] > 0 )	// A match?
 		{
 			results[Fields::PHI] = fieldsReadPtr[Fields::PHI][nodeIdx];
-			results[Fields::FLAG] = 1;
+			results[Fields::FLAG] = fieldsReadPtr[Fields::FLAG][nodeIdx];
 			break;
 		}
 	}
@@ -233,6 +233,9 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 {
 	if( band < 2 )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+
+	velo_interpolation = VEL_INTERP_MTHD;
+	phi_interpolation = PHI_INTERP_MTHD;
 }
 
 
@@ -307,7 +310,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 
 	// Initialize output array.
 	freeDataPacketArray( dataPackets );		// Just in case, free and clear whatever is left in output array.
-	dataPackets.reserve( nodes_n->indep_nodes.elem_count );
+	dataPackets.reserve( _localUniformIndicesPtr->size() );
 
 	// Domain features.
 	const double *xyz_min = get_xyz_min();
@@ -371,7 +374,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 		// Let's skip nodes for which the velocity field is practically zero.
 		double velMagnitude = 0;
 		for( auto& dir : velReadPtr )
-			velMagnitude += dir[nodeIdx];
+			velMagnitude += SQR( dir[nodeIdx] );
 		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON )
 			continue;
 
@@ -539,10 +542,10 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
 	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
 	// step because curvature should have been computed using the hybrid inference system only for those vertices with
-	// full stencils.  For them, we set their _mlFlag value, and then scatter forward both the flag and the level-set at
+	// full stencils.  For them, we set their _mlFlag value and then scatter forward both the flag and the level-set at
 	// departure point (computed with nnet).  Afterward, numerical advection is used in the rest of the nodes that are
 	// not flagged (including ghost nodes), and we proceed with the refinement/coarsening process.  Notice we still need
-	// to flip inferred level-set values depending on hk sign (i.e., we deal only with negative curvature spectrum).
+	// to flip inferred level-set values depending on hk sign (i.e., we deal only with the negative curvature spectrum).
 	const double *hkReadPtr;
 	ierr = VecGetArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
@@ -626,8 +629,8 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	////////// First step: compute level-set values for points next to Gamma using the machine learning model //////////
 	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
 	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon exit
-	// (see the very last part of this function).
+	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
+	// exiting the current function (see the very last part of this procedure).
 	_computeMLSolution( vel, dt, *phi, hk );
 
 	// Some pointers to structs for the Gn at time tn.
@@ -858,7 +861,7 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 	int outIdx = 0;
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
-		if( phi_np1Ptr[n] <= BAND * h )
+		if( ABS( phi_np1Ptr[n] ) <= BAND * h )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
@@ -884,7 +887,7 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		for( int i = 0; i < outIdx; i++ )
 		{
 			p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
-			if( output[Cache::Fields::FLAG][i] == 1 )		// Computed with neural network?
+			if( output[Cache::Fields::FLAG][i] > 0 )		// Computed with neural network?  Flagged rank + 1.
 			{
 				phi_np1Ptr[nodeIdx] = output[Cache::Fields::PHI][i];
 				howUpdated_np1Ptr[nodeIdx] = HowUpdated::NNET;
