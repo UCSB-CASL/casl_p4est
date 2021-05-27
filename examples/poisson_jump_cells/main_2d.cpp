@@ -1026,8 +1026,8 @@ int main (int argc, char* argv[])
       ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n->get_p4est(), interface_capturing_ngbd_n->get_nodes(), P4EST_DIM, &interface_capturing_phi_xxyyzz); CHKERRXX(ierr);
       interface_capturing_ngbd_n->second_derivatives_central(interface_capturing_phi, interface_capturing_phi_xxyyzz);
     }
-    interface_manager->evaluate_FD_theta_with_quadratics(use_second_order_theta);
     interface_manager->set_levelset(interface_capturing_phi, (use_subrefinement ? linear : phi_interp), interface_capturing_phi_xxyyzz, true); // last argument set to true cause we'll need the gradient of phi
+    interface_manager->evaluate_FD_theta_with_quadratics(use_second_order_theta);
     if(use_subrefinement)
       interface_manager->set_under_resolved_levelset(phi);
 
