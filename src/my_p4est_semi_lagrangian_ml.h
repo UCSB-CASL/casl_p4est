@@ -411,6 +411,9 @@ namespace slml
 
 		enum HowUpdated : int {NUM = 0, NUM_BAND, NNET};	// States for determining how a grid point was updated.
 
+		const unsigned long ITERATION;						// Iteration ID for current advection step.
+		bool _used = false;									// Prevents reusing a semi-Lagrangian instance of this obj.
+
 		/**
 		 * Create the set of indices of nodes next to the interface that possess uniform stencils.
 		 * @param [in] ngbdN Pointer to neighborhood struct at time tn.
@@ -454,10 +457,11 @@ namespace slml
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
 		 * @param [in] localUniformIndices Pointer to set of indices of locally owned nodes next to Gamma with uniform stencils.
 		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
+		 * @param [in] iteration Current ID for advection step.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
 				  		my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
-				  		const double& band=2 );
+				  		const double& band=2, const unsigned long& iteration=0 );
 
 		/**
 		 * Constructor.
@@ -467,9 +471,11 @@ namespace slml
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
 		 * @param [in] phi Level-set values to construct the set of indices of locally owned nodes next to Gamma with uniform stencils.
 		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
+		 * @param [in] iteration Current ID for advection step.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-						my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band=2 );
+						my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band=2,
+						const unsigned long& iteration=0 );
 
 		/**
 		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with a single velocity step along

@@ -431,7 +431,7 @@ int main( int argc, char** argv )
 			p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
 			// Create semi-Lagrangian object in machine learning module: linear interp. for phi, quadratic for velocity.
-			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, &localUniformIndices, BAND );
+			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, &localUniformIndices, BAND, iter );
 //			my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
 //			semiLagrangian.set_phi_interpolation( interpolation_method::linear );
 //			semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );

@@ -223,9 +223,11 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 //////////////////////////////////////////////////// SemiLagrangian ////////////////////////////////////////////////////
 
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
-									  const double& band )
+									  my_p4est_node_neighbors_t *ngbdN,
+									  const std::unordered_set<p4est_locidx_t> *localUniformIndices,
+									  const double& band, const unsigned long& iteration )
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
+									  ITERATION( iteration ),
 									  _localUniformIndicesPtr( localUniformIndices ),
 									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
 									  PHI_INTERP_MTHD( interpolation_method::linear ),
@@ -240,9 +242,10 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 
 
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band )
+									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band,
+									  const unsigned long& iteration )
 									  : SemiLagrangian( p4estNp1, nodesNp1, ghostNp1, ngbdN,
-														_computeLocalUniformIndices( ngbdN, phi ), band ) {}
+														_computeLocalUniformIndices( ngbdN, phi ), band, iteration ) {}
 
 
 const std::unordered_set<p4est_locidx_t>* slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
@@ -410,87 +413,86 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 		outIdx++;
 	}
 
-	// Do we actually have points for which to collect data?  outIdx is also equal to total number of valid nodes along
-	// the interface.
-	if( outIdx > 0 )
+	// At this point, outIdx is also equal to total number of valid nodes along the interface.  However, I still need to
+	// set up and trigger interpolation even if the number of points expected in this process is zero.
+	// Not doing so will enter the program into a deadlock because others need current process to have interpolation
+	// set up.
+	Vec fields[N_FIELDS] = {phi, DIM(vel[0], vel[1], vel[2])};	// Input fields.
+	for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )		// Dummy fields are initialized with zeros.
 	{
-		Vec fields[N_FIELDS] = {phi, DIM(vel[0], vel[1], vel[2])};	// Input fields.
-		for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )		// Dummy fields are initialized with zeros.
+		ierr = VecCreateGhostNodes( p4est_n, nodes_n, &fields[i] );
+		CHKERRXX( ierr );
+	}
+
+	// Allocate output vectors with as many elements as valid indices we collected in previous loop.  Set up fetch
+	// inputs and launch data collection.
+	double *output[N_FIELDS] = {nullptr, nullptr};
+	for( auto& fOutput : output )
+		fOutput = new double[outIdx];
+	dataFetcher.setInput( fields, N_FIELDS );
+	dataFetcher.interpolate( output );
+	dataFetcher.clear();
+
+	// Allocate output array for computed, numerically approximated phi value at departure point.
+	auto *outputDepartureNumericalPhi = new double[outIdx];
+	numericalInterp.set_input( phi, PHI_INTERP_MTHD );
+	numericalInterp.interpolate( outputDepartureNumericalPhi );
+	numericalInterp.clear();
+
+	// Go through the output fields to build the data packet objects that will be returned to caller.
+	// This will be a semi deserialization by splitting the output contents into the different attributes of the
+	// data packet objects.
+	for( int i = 0; i < outIdx; i++ )
+	{
+		if( output[0][i] == 0 )								// Success for ith node?
 		{
-			ierr = VecCreateGhostNodes( p4est_n, nodes_n, &fields[i] );
-			CHKERRXX( ierr );
-		}
+			p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
 
-		// Allocate output vectors with as many elements as valid indices we collected in previous loop.  Set up fetch
-		// inputs and launch data collection.
-		double *output[N_FIELDS];
-		for( auto& fOutput : output )
-			fOutput = new double[outIdx];
-		dataFetcher.setInput( fields, N_FIELDS );
-		dataFetcher.interpolate( output );
-		dataFetcher.clear();
+			// Allocate new packet for current ith node.
+			auto *dataPacket = new DataPacket;
+			dataPacket->nodeIdx = nodeIdx;
+			dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and velocity at arrival point.
+			for( int dim = 0; dim < P4EST_DIM; dim++ )
+				dataPacket->vel_a[dim] = velReadPtr[dim][nodeIdx];
+			dataPacket->distance = distances[i];			// Normalized distance from departure to arrival point.
 
-		// Allocate output array for computed, numerically approximated phi value at departure point.
-		double outputDepartureNumericalPhi[outIdx];
-		numericalInterp.set_input( phi, PHI_INTERP_MTHD );
-		numericalInterp.interpolate( outputDepartureNumericalPhi );
-		numericalInterp.clear();
+			dataPacket->numBacktrackedPhi_d = outputDepartureNumericalPhi[i];	// Numerically backtracked phi.
 
-		// Go through the output fields to build the data packet objects that will be returned to caller.
-		// This will be a semi deserialization by splitting the output contents into the different attributes of the
-		// data packet objects.
-		for( int i = 0; i < outIdx; i++ )
-		{
-			if( output[0][i] == 0 )								// Success for ith node?
+			// Splitting serialized info in the output fields.
+			int fIndex = 1;									// Field index.
+			for( double& dim : dataPacket->xyz_d )			// Normalized departure coordinates.
 			{
-				p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
-
-				// Allocate new packet for current ith node.
-				auto *dataPacket = new DataPacket;
-				dataPacket->nodeIdx = nodeIdx;
-				dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and velocity at arrival point.
-				for( int dim = 0; dim < P4EST_DIM; dim++ )
-					dataPacket->vel_a[dim] = velReadPtr[dim][nodeIdx];
-				dataPacket->distance = distances[i];			// Normalized distance from departure to arrival point.
-
-				dataPacket->numBacktrackedPhi_d = outputDepartureNumericalPhi[i];	// Numerically backtracked phi.
-
-				// Splitting serialized info in the output fields.
-				int fIndex = 1;									// Field index.
-				for( double& dim : dataPacket->xyz_d )			// Normalized departure coordinates.
-				{
-					dim = output[fIndex][i];
-					fIndex++;
-				}
-				for( double& child : dataPacket->phi_d )		// Level-set values of corners of departure point owner.
-				{
-					child = output[fIndex][i];
-					fIndex++;
-				}
-				for( double& velCompChild : dataPacket->vel_d )	// Serialized velocity at corners of departure
-				{												// point owner.  Order is vel_u, vel_v, vel_z.  For each
-					velCompChild = output[fIndex][i];			// component we have P4EST_CHILDREN values.
-					fIndex++;
-				}
-
-				// Add the newly populated data packet to the output array.
-				dataPackets.push_back( dataPacket );
+				dim = output[fIndex][i];
+				fIndex++;
 			}
-		}
+			for( double& child : dataPacket->phi_d )		// Level-set values of corners of departure point owner.
+			{
+				child = output[fIndex][i];
+				fIndex++;
+			}
+			for( double& velCompChild : dataPacket->vel_d )	// Serialized velocity at corners of departure
+			{												// point owner.  Order is vel_u, vel_v, vel_z.  For each
+				velCompChild = output[fIndex][i];			// component we have P4EST_CHILDREN values.
+				fIndex++;
+			}
 
-		// Free memory for output fields.
-		for( auto& fOutput : output )
-			delete[] fOutput;
-
-		// Cleaning up, part 1.
-		for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )
-		{
-			ierr = VecDestroy( fields[i] );
-			CHKERRXX( ierr );
+			// Add the newly populated data packet to the output array.
+			dataPackets.push_back( dataPacket );
 		}
 	}
 
-	// Cleaning up, part 2.
+	// Free memory for output fields.
+	for( auto& fOutput : output )
+		delete [] fOutput;
+	delete [] outputDepartureNumericalPhi;
+
+	// Cleaning up.
+	for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )
+	{
+		ierr = VecDestroy( fields[i] );
+		CHKERRXX( ierr );
+	}
+
 	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 	CHKERRXX( ierr );
 
@@ -603,7 +605,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	ierr = VecRestoreArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
 
-	// Let's synchronize the flag vector among all processes.
+	// Let's synchronize the machine learning flag vector among all processes.
 	ierr = VecGhostUpdateBegin( _mlFlag, INSERT_VALUES, SCATTER_FORWARD );
 	CHKERRXX( ierr );
 	VecGhostUpdateEnd( _mlFlag, INSERT_VALUES, SCATTER_FORWARD );
@@ -622,6 +624,15 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 
 void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated )
 {
+	if( _used )				// One-time usage check.
+	{
+		std::string msg = "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Instance for iteration "
+			+ std::to_string( ITERATION ) + " has been used already to advect the level-set function!";
+		throw std::runtime_error( msg );
+	}
+
+	_used = true;			// From now on, we can't reuse this object to advect other level-set functions.
+
 	PetscErrorCode ierr;
 	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
@@ -871,40 +882,34 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		}
 	}
 
-	if( outIdx )
-	{
-		// Allocate output vectors with as many elements as valid indices we collected in previous loop.  Set up cache
-		// fetcher inputs and launch data collection.
-		Vec fields[Cache::N_FIELDS] = {_mlPhi, _mlFlag};	// Input fields we built with the neural network.
-		double *output[Cache::N_FIELDS];
-		for( auto& fOutput : output )
-			fOutput = new double[outIdx];
-		cache.setInput( fields, Cache::N_FIELDS );
-		cache.interpolate( output );						// Read cache for points along band of new Gamma location.
-		cache.clear();
+	// Note: Must perform interpolation even if outIdx is zero (i.e., no independent nodes next to Gamma for this
+	// process).  Not doing so, will enter processes into deadlock, waiting for each other to finish their interp. task.
+	// Allocate output vectors with as many elements as valid indices we collected in previous loop.  Set up cache
+	// fetcher inputs and launch data collection.
+	Vec fields[Cache::N_FIELDS] = {_mlPhi, _mlFlag};	// Input fields we built with the neural network.
+	double *output[Cache::N_FIELDS];
+	for( auto& fOutput : output )
+		fOutput = new double[outIdx];
+	cache.setInput( fields, Cache::N_FIELDS );
+	cache.interpolate( output );						// Read cache for points along band of new Gamma location.
+	cache.clear();
 
-		// Process requests and match them with cache.
-		for( int i = 0; i < outIdx; i++ )
+	// Process requests and match them with cache.
+	for( int i = 0; i < outIdx; i++ )
+	{
+		p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
+		if( output[Cache::Fields::FLAG][i] > 0 )		// Computed with neural network?  Flagged rank + 1.
 		{
-			p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
-			if( output[Cache::Fields::FLAG][i] > 0 )		// Computed with neural network?  Flagged rank + 1.
-			{
-				phi_np1Ptr[nodeIdx] = output[Cache::Fields::PHI][i];
-				howUpdated_np1Ptr[nodeIdx] = HowUpdated::NNET;
-			}
-			else											// Point within band but not computed with nnet.
-				howUpdated_np1Ptr[nodeIdx] = HowUpdated::NUM_BAND;
+			phi_np1Ptr[nodeIdx] = output[Cache::Fields::PHI][i];
+			howUpdated_np1Ptr[nodeIdx] = HowUpdated::NNET;
 		}
+		else											// Point within band but not computed with nnet.
+			howUpdated_np1Ptr[nodeIdx] = HowUpdated::NUM_BAND;
+	}
 
-		// Free memory for output fields.
-		for( auto& fOutput : output )
-			delete[] fOutput;
-	}
-	else
-	{
-		std::cerr << "[Rank " << ngbd_n->get_p4est()->mpirank << "] Warning! There are no points next to Gamma!"
-				  << std::endl;
-	}
+	// Free memory for output fields.
+	for( auto& fOutput : output )
+		delete[] fOutput;
 
 	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
