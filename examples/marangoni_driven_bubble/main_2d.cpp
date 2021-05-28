@@ -35,15 +35,15 @@ const double mu_plus                  = 0.0011;
 const double mu_minus                 = 0.0000178;
 const double gamma_0                  = 0.0223;
 const double default_Marangoni        = 400.0;
-const double xyz_min_[P4EST_DIM]      = {DIM(-0.06, -0.02, -0.06)};
-const double xyz_max_[P4EST_DIM]      = {DIM(+0.06, +0.10,  +0.06)};
+const double xyz_min_[P4EST_DIM]      = {DIM(-0.03, -0.01, -0.03)};
+const double xyz_max_[P4EST_DIM]      = {DIM(+0.03, +0.05,  +0.03)};
 const int periodic[P4EST_DIM]         = {DIM(0, 0, 0)};
 const int ntree_xyz[P4EST_DIM]        = {DIM(1, 1, 1)};
 // grid-related
 const int default_lmin = 6;
 const int default_lmax = 9;
 const double default_vorticity_threshold      = 0.04;
-const double default_uniform_band_to_radius   = 0.1;
+const double default_uniform_band_to_radius   = 0.5;
 // simulation-related:
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
 const bool default_subrefinement = false;
