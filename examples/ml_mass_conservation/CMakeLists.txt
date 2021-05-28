@@ -12,10 +12,11 @@ if( DIMENSION MATCHES 2d )
 endif()
 
 #if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC sphere_datasets_3d.cpp )
+#	list( APPEND SRC main_3d.cpp )
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
+add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 
 ######################## Settings ########################
 

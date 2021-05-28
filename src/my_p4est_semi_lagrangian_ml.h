@@ -1,5 +1,3 @@
-#include <__bit_reference>
-
 #ifndef ML_MASS_CONSERVATION_MY_P4EST_SEMI_LAGRANGIAN_ML_H
 #define ML_MASS_CONSERVATION_MY_P4EST_SEMI_LAGRANGIAN_ML_H
 
@@ -11,15 +9,17 @@
 #include <src/my_p4est_nodes_along_interface.h>
 #endif
 
+#include <fdeep/fdeep.hpp>
 #include <vector>
 #include <unordered_set>
 
 /**
  * Machine-learning-based Semi-Lagrangian namespace.
- * @note This functionality has not yet been tested in 3D.
+ * @note This functionality has not yet been tested in 3D.  It works for MPI application.
  *
  * Author: Luis Ángel.
- * Date: February 18, 2021.
+ * Created: February 18, 2021.
+ * Updated: May 27, 2021.
  */
 namespace slml
 {

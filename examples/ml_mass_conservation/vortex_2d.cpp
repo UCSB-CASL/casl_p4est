@@ -10,8 +10,11 @@
  * 		 Comput. Phys., 225:300-321, 2007.
  *
  * Author: Luis Ángel (임 영민)
- * Date Created: 05-22-2021
+ * Created: May 22, 2021.
+ * Updated: May 28, 2021.
  */
+
+#include <fdeep/fdeep.hpp>	// Neural network porting library: frugally deep.
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -138,7 +141,7 @@ void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Ve
 	// Prepare output parallel vector with dimensionless curvature values.  Will store interface attribute only for
 	// nodes that lies next to Gamma, regardless of their stencils uniformity.  Indices of vertices with uniform
 	// stencils next to the interface will be returned in the indices out vector.
-	ierr = VecDestroy( hk );
+	ierr = hk? VecDestroy( hk ) : 0;
 	CHKERRXX( ierr );
 	ierr = VecCreateGhostNodes( p4est, nodes, &hk );			// By default, all values are zero.
 	CHKERRXX( ierr );
@@ -151,7 +154,7 @@ void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Ve
 	// learning improvement.  Downstream processing in machine learning semi-Lagrangian advection will use this flag as
 	// an indicator that curvature computation is relieable.  SLML then considers only the intersection of locally
 	// owned nodes with those flagged here.
-	ierr = VecDestroy( uniformFlag );
+	ierr = uniformFlag? VecDestroy( uniformFlag ) : 0;
 	CHKERRXX( ierr );
 	ierr = VecCreateGhostNodes( p4est, nodes, &uniformFlag );	// By default, all values are zero.
 	CHKERRXX( ierr );
@@ -307,6 +310,23 @@ int main( int argc, char** argv )
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
+		// Loading mass conservation neural network.
+		const auto model = fdeep::load_model( "/Users/youngmin/fdeep_mass_nnet.json" );
+
+		const int SAMPLE_WIDTH_PT1 = 18;	// Expects two inputs.
+		const int SAMPLE_WDITH_PT2 = 1;
+		std::vector<FDEEP_FLOAT_TYPE> sample_pt1 = {.1,.2,.3,.4,.5,.6,.7,.8,.9,.1,.2,.3,.4,.5,.6,.7,.8,.9};
+		std::vector<FDEEP_FLOAT_TYPE> sample_pt2 = {.1};
+
+		std::vector<fdeep::tensor> inputs = {
+			fdeep::tensor( fdeep::tensor_shape( SAMPLE_WIDTH_PT1 ), sample_pt1 ),
+			fdeep::tensor( fdeep::tensor_shape( SAMPLE_WDITH_PT2 ), sample_pt2 )
+		};
+		std::cout << std::setprecision( 8 );
+		std::cout << model.predict_single_output( inputs ) << std::endl;
+
+		// Let's continue with numerical computations.
+
 		parStopWatch watch;
 		watch.start();
 
@@ -399,7 +419,7 @@ int main( int argc, char** argv )
 		levelSet.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
 
 		// Computing curvature and flagging nodes next to Gamma that have uniform stencils.
-		Vec hk, uniformFlag;
+		Vec hk = nullptr, uniformFlag = nullptr;
 		std::unordered_set<p4est_locidx_t> localUniformIndices;
 		computeHK( dxyz_min, nodeNeighbors, phi, hk, uniformFlag, localUniformIndices );
 
