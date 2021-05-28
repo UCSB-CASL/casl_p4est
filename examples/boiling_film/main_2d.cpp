@@ -35,9 +35,9 @@ const double default_domain_to_lambda[P4EST_DIM] = {DIM(1, 1, 1)};
 const bool default_periodic[P4EST_DIM] = {DIM(true, false, true)};
 // grid-related
 const int default_lmin = 5;
-const int default_lmax = 5;
-const double default_vorticity_threshold      = 0.02;
-const double default_uniform_band   = 5;
+const int default_lmax = 7;
+const double default_vorticity_threshold = 0.02;
+const double default_uniform_band = 5;
 const int default_ntree[P4EST_DIM]  = {DIM(1, 1, 1)};
 // simulation-related:
 const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
@@ -54,15 +54,15 @@ const double default_cfl_capillary        = 0.95;
 const jump_solver_tag default_cell_solver = FV;
 const jump_solver_tag default_face_solver = xGFM;
 const int default_n_reinit = 1;
-const double default_t_end = 0.5;
+const double default_t_end = 1.5;
 const double default_vmax_abort = 1000.0;
 const double default_projection_threshold = 0.01;
 // exportation-related
-const bool default_save_vtk = true;
-const double default_vtk_dt     = 0.01;
+const bool default_save_vtk     = true;
+const double default_vtk_dt     = 0.02;
 const int default_vtk_idx_start = 0;
 const int default_save_nstates  = 0;
-const double default_save_state_dt  = 0.02;
+const double default_save_state_dt = 0.02;
 
 #if defined(STAMPEDE)
 const string default_work_folder = "/scratch/04965/tg842642/two_phase_flow/boiling_film/" + to_string(P4EST_DIM) + "D";
@@ -79,7 +79,7 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
 #ifdef P4_TO_P8
-    return (y - (3 + 0.25*(1.0 + cos(2.0*M_PI*x/taylor_wavelength))*(1.0 + cos(2.0*M_PI*z/taylor_wavelength)))*taylor_wavelength/128);
+    return (y - (5 + 0.25*(1.0 + cos(2.0*M_PI*x/taylor_wavelength))*(1.0 + cos(2.0*M_PI*z/taylor_wavelength)))*taylor_wavelength/128);
 #else
     return (y - (4 + cos(2.0*M_PI*x/taylor_wavelength))*taylor_wavelength/128);
 #endif
@@ -159,7 +159,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   const double specific_heat_capacity_minus = cmd.get<double>("specific_heat_capacity_minus", default_specific_heat_capacity_minus);
   const double specific_heat_capacity_plus  = cmd.get<double>("specific_heat_capacity_plus", default_specific_heat_capacity_plus);
   const double gravity                  = cmd.get<double>("gravity", default_gravity);
-  const double taylor_wavelength        = 2.0*M_PI*sqrt(3.0*surface_tension/(gravity*(rho_plus - rho_minus)));
+  const double taylor_wavelength        = 2.0*M_PI*sqrt(3.0*ONLY3D(2.0*)surface_tension/(gravity*(rho_plus - rho_minus)));
   const double domain_size[P4EST_DIM]   = {DIM(cmd.get<double>("length", default_domain_to_lambda[0])*taylor_wavelength,
                                            cmd.get<double>("height", default_domain_to_lambda[1])*taylor_wavelength,
                                            cmd.get<double>("width", default_domain_to_lambda[2])*taylor_wavelength)};
