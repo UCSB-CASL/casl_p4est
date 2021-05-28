@@ -840,14 +840,14 @@ my_p4est_poisson_jump_cells_xgfm_t::get_extension_increment_operator_for(const p
 
     if(derivative_is_one_side)
     {
-      double discretization_distance = 0.0;
+      double discretization_distance = DBL_MAX;
       for (size_t k = 0; k < stable_projection_derivative_operator.size(); ++k) {
         const dof_weighted_term& derivative_term = stable_projection_derivative_operator[k];
         if(derivative_term.dof_idx == quad_idx)
           diagonal_coefficient += -derivative_term.weight*signed_normal[oriented_dir/2];
         else
           pseudo_time_step_operator.regular_terms.add_term(derivative_term.dof_idx, -signed_normal[oriented_dir/2]*derivative_term.weight);
-        discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+        discretization_distance = MIN(discretization_distance, fabs(1.0/derivative_term.weight));
       }
       dtau = MIN(dtau, discretization_distance/(double) P4EST_DIM);
     }

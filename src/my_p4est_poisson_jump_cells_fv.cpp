@@ -1245,7 +1245,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
         if(extrapolation_operator_across != NULL && extrapolation_operator_this_side != NULL)
         {
           // add the (regular, i.e. without interface-fetching) derivative term(s) to the relevant extrapolation operator (for extrapolating normal derivatives, for instance)
-          double discretization_distance = 0.0;
+          double discretization_distance = DBL_MAX;
           const bool derivative_is_relevant_for_extrapolation_of_this_side = (oriented_normal[dim] <= 0.0 && orientation == 1) || (oriented_normal[dim] > 0.0 && orientation == 0);
           const double relevant_normal_component = (derivative_is_relevant_for_extrapolation_of_this_side ? +1.0 : -1.0)*oriented_normal[dim];
           extrapolation_operator_t* relevant_operator = (derivative_is_relevant_for_extrapolation_of_this_side ? extrapolation_operator_this_side : extrapolation_operator_across);
@@ -1257,7 +1257,7 @@ void my_p4est_poisson_jump_cells_fv_t::initialize_extrapolation_local(const p4es
               relevant_diagonal_term += derivative_term.weight*relevant_normal_component;
             else
               relevant_operator->n_dot_grad.add_term(derivative_term.dof_idx, relevant_normal_component*derivative_term.weight);
-            discretization_distance = MAX(discretization_distance, fabs(1.0/derivative_term.weight));
+            discretization_distance = MIN(discretization_distance, fabs(1.0/derivative_term.weight));
           }
 
           relevant_operator->dtau = MIN(relevant_operator->dtau, discretization_distance/(double) P4EST_DIM);
