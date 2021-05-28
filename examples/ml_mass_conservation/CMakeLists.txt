@@ -26,6 +26,19 @@ set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
 set( CMAKE_C_COMPILER mpicc )
 set( CMAKE_CXX_COMPILER mpicxx )
 
+# Optimization flags.  Comment these out when using debugger.
+set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+
+# OpenMP flags.
+# See http://blog.llvm.org/2015/05/openmp-support_22.html
+find_package( OpenMP )
+if( OPENMP_FOUND )
+	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}" )
+	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
+endif()
+
 ######################## Libraries ########################
 # These commands must be given prior to defining any target.
 
@@ -36,7 +49,8 @@ find_package( Boost COMPONENTS filesystem REQUIRED )
 link_directories(
 		/usr/local/lib
 		/usr/local/petsc/lib
-		/usr/local/p4est-2.2/lib )
+		/usr/local/p4est-2.2/lib
+		/usr/local/opt/libomp/lib )
 
 link_libraries(
 		mpi
@@ -44,6 +58,7 @@ link_libraries(
 		p4est
 		sc
 		voro++
+		omp
 		${Boost_FILESYSTEM_LIBRARY} )
 
 include_directories(
@@ -53,6 +68,7 @@ include_directories(
 		/usr/local/petsc/include
 		/usr/local/p4est-2.2/include
 		/usr/local/include/voro++
+		/usr/local/opt/libomp/include
 		${Boost_INCLUDE_DIR} )
 
 ######################## Creating the executable ########################

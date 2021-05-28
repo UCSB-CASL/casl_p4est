@@ -13,6 +13,12 @@
  * Date Created: 05-22-2021
  */
 
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#endif
+
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
@@ -271,9 +277,9 @@ void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Ve
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const double DURATION = 0.5;		// Duration of the simulation.
-	const int MAX_RL = 5;				// Grid's maximum refinement level.
-	const int REINIT_NUM_ITER = 20;		// Number of iterations for level-set renitialization.
+	const double DURATION = 1.0;		// Duration of the simulation.
+	const int MAX_RL = 6;				// Grid's maximum refinement level.
+	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization.
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
 
 	const int MIN_D = 0;				// Domain minimum and maximum values for each dimension.
@@ -281,7 +287,7 @@ int main( int argc, char** argv )
 	const int NUM_TREES_PER_DIM = 1;	// Number of macro cells per dimension.
 	const int PERIODICITY = 0;			// Domain periodicity.
 
-	const int NUM_ITER_VTK = 1;			// Save VTK files every NUM_ITER_VTK iterations.
+	const int NUM_ITER_VTK = 4;			// Save VTK files every NUM_ITER_VTK iterations.
 
 	const double BAND = 2; 				// Minimum number of cells around interface.  Must match what was used in training.
 
@@ -293,6 +299,13 @@ int main( int argc, char** argv )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 		PetscErrorCode ierr;			// PETSc error flag code.
+
+		// OpenMP verification.
+		int nThreads = 0;
+#pragma omp parallel reduction( + : nThreads ) default( none )
+		nThreads += 1;
+
+		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
 		parStopWatch watch;
 		watch.start();
@@ -505,7 +518,7 @@ int main( int argc, char** argv )
 		double error = 0;
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
-			if( ABS( phiReadPtr[n] ) < 4.0 * diag_min )
+			if( ABS( phiReadPtr[n] ) < diag_min )
 				error = MAX( error, ABS( phiReadPtr[n] - phiExactReadPtr[n] ) );
 		}
 		int mpiret = MPI_Allreduce( MPI_IN_PLACE, &error, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() );
