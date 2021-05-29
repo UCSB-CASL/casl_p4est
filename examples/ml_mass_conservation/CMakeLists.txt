@@ -28,9 +28,12 @@ set( CMAKE_C_COMPILER mpicc )
 set( CMAKE_CXX_COMPILER mpicxx )
 
 # Optimization flags.  Comment these out when using debugger.
-set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+#set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+
+######################## Libraries ########################
+# These commands must be given prior to defining any target.
 
 # OpenMP flags.
 # See http://blog.llvm.org/2015/05/openmp-support_22.html
@@ -40,8 +43,8 @@ if( OPENMP_FOUND )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
 endif()
 
-######################## Libraries ########################
-# These commands must be given prior to defining any target.
+# JSON library.
+find_package( nlohmann_json CONFIG REQUIRED )
 
 # find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
 find_package( Boost COMPONENTS filesystem REQUIRED )
@@ -60,6 +63,7 @@ link_libraries(
 		sc
 		voro++
 		omp
+		nlohmann_json::nlohmann_json
 		${Boost_FILESYSTEM_LIBRARY} )
 
 include_directories(

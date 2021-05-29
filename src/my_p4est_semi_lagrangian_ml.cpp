@@ -1,5 +1,89 @@
 #include "my_p4est_semi_lagrangian_ml.h"
 
+//////////////////////////////////////////////////// StandardScaler ////////////////////////////////////////////////////
+
+slml::StandardScaler::StandardScaler( const std::string &paramsFileName, const bool& printLoadedParams )
+{
+	// Load parameters.
+	std::ifstream input( paramsFileName );
+	json params;
+	input >> params;
+
+	const std::string errorPrefix = "[CASL_ERROR] slml::StandardScaler Constructor: ";
+
+	// Assign parameters to internal variables.
+	if( params.size() < 4 )
+		throw std::runtime_error( errorPrefix + "expecting at least 4 groups of parameters!" );
+
+	_loadParams( "coord", params, _meanCoord, _stdCoord );
+	_loadParams( "dist", params, _meanDist, _stdDist );
+	_loadParams( "phi", params, _meanPhi, _stdPhi );
+	_loadParams( "vel", params, _meanVel, _stdVel );
+
+	if( printLoadedParams )
+	{
+		std::cout << "===----------------------------- Loaded parameters -----------------------------===" << std::endl;
+		std::cout << "Source JSON file: '" << paramsFileName << "'" << std::endl;
+		std::stringstream o;
+		o << std::setw( 4 ) << params;
+		std::cout << o.str() << std::endl;
+		std::cout << "===-----------------------------------------------------------------------------===" << std::endl;
+	}
+}
+
+
+void slml::StandardScaler::_loadParams( const std::string& inName, const json& params, double& outMean, double& outStd )
+{
+	const std::string errorPrefix = "[CASL_ERROR] slml::StandardScaler::_loadParams: ";
+	if( params.contains( "phi" ) )
+	{
+		const auto& param = params[inName];
+
+		if( param.contains( "mean" ) )			// Loading mean value of input parameter.
+			outMean = param["mean"].get<double>();
+		else
+			throw std::runtime_error( errorPrefix + inName + " mean is missing!" );
+
+		if( param.contains( "std" ) )			// Loading standard deviation.
+			outStd = param["std"].get<double>();
+		else
+			throw std::runtime_error( errorPrefix + inName + " standard deviation is missing!" );
+	}
+	else
+		throw std::runtime_error( errorPrefix + inName + " parameter is missing!" );
+}
+
+
+void slml::StandardScaler::transform( double samples[][MASS_NNET_INPUT_SIZE], const int& nSamples ) const
+{
+	for( int i = 0; i < nSamples; i++ )
+	{
+		// Scaling phi values.
+		for( const auto& j : PHI_COLS )
+			samples[i][j] = (samples[i][j] - _meanPhi) / _stdPhi;
+
+		// Scaling velocity components.
+		for( const auto& j : VEL_COLS )
+			samples[i][j] = (samples[i][j] - _meanVel) / _stdVel;
+
+		// Scaling distance variable.
+		for( const auto& j : DIST_COLS )
+			samples[i][j] = (samples[i][j] - _meanDist) / _stdDist;
+
+		// Scaling departure point coords.
+		for( const auto& j : COORDS_COLS )
+			samples[i][j] = (samples[i][j] - _meanCoord) / _stdCoord;
+	}
+}
+
+
+void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) const
+{
+	for( int i = 0; i < nValues; i++ )
+		phi[i] = phi[i] * _stdPhi + _meanPhi;
+}
+
+
 ///////////////////////////////////////////////////// DataFetcher //////////////////////////////////////////////////////
 
 slml::DataFetcher::DataFetcher( const my_p4est_node_neighbors_t *ngbd )

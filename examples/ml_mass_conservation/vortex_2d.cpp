@@ -14,8 +14,6 @@
  * Updated: May 28, 2021.
  */
 
-#include <fdeep/fdeep.hpp>	// Neural network porting library: frugally deep.
-
 #ifdef _OPENMP
 #include <omp.h>
 #else
@@ -309,6 +307,25 @@ int main( int argc, char** argv )
 		nThreads += 1;
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
+
+		// Testing preprocessing with standard scaler object tailored for fields in this nnet.
+		slml::StandardScaler standardScaler( "/Users/youngmin/mass_standard_scaler.json" );
+
+		std::cout << "Transformed input test data:" << std::endl;
+		double data[][MASS_NNET_INPUT_SIZE] = {
+			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1}
+		};
+		standardScaler.transform( data, 1 );
+		for( auto val : data[0] )
+			printf( "%.8e, ", val );
+		printf( "\n" );
+
+		std::cout << "Untransformed phi test data:" << std::endl;
+		double phiData[] = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9};
+		standardScaler.untransformPhi( phiData, 9 );
+		for( auto val: phiData )
+			printf( "%.8f, ", val );
+		printf( "\n" );
 
 		// Loading mass conservation neural network.
 		const auto model = fdeep::load_model( "/Users/youngmin/fdeep_mass_nnet.json" );

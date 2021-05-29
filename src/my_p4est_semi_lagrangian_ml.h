@@ -1,28 +1,115 @@
-#ifndef ML_MASS_CONSERVATION_MY_P4EST_SEMI_LAGRANGIAN_ML_H
-#define ML_MASS_CONSERVATION_MY_P4EST_SEMI_LAGRANGIAN_ML_H
+#ifndef MY_P4EST_SEMI_LAGRANGIAN_ML_H
+#define MY_P4EST_SEMI_LAGRANGIAN_ML_H
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #else
+#define MASS_NNET_INPUT_SIZE		19
+#define MASS_NNET_INPUT_PHI_SIZE 	 6
+#define MASS_NNET_INPUT_VEL_SIZE	10
+#define MASS_NNET_INPUT_DIST_SIZE	 1
+#define MASS_NNET_INPUT_COORDS_SIZE	 2
+
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #endif
 
 #include <fdeep/fdeep.hpp>
+#include <nlohmann/json.hpp>
 #include <vector>
 #include <unordered_set>
 
 /**
  * Machine-learning-based Semi-Lagrangian namespace.
- * @note This functionality has not yet been tested in 3D.  It works for MPI application.
+ * @note This functionality has not yet been tested in 3D.  It works for MPI application and OpenMP.
+ *
+ * Libraries:
+ * @cite JSON https://github.com/nlohmann/json.
+ * @cite Frugally deep https://github.com/Dobiasd/frugally-deep.
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: May 27, 2021.
+ * Updated: May 28, 2021.
  */
 namespace slml
 {
+	////////////////////////////////////////////////// StandardScaler //////////////////////////////////////////////////
+
+	/**
+	 * Transform data into a input form that the neural network understands.
+	 * See Python project ML_Mass_Conservation's Preprocessing module for the equivalent class that generates the params
+	 * file for this implementation.
+	 *
+	 * Input 2D data comes in the following order (with MASS_NNET_INPUT_SIZE entries):
+	 * 		phi_a,										Level-set value at arrival point.
+	 *		u_a, v_a, 									Velocity components at arrival point.
+	 *		d,											H-normalized distance.
+	 *		x_d, y_d,									Scaled departure coords with respect to quad's lower corner.
+	 *		phi_d_mm, phi_d_mp, phi_d_pm, phi_d_pp,		Level-set values at departure quad's children.
+	 *		u_d_mm, u_d_mp, u_d_pm, u_d_pp,				Velocity component u at departure quad's children.
+	 *		v_d_mm, v_d_mp, v_d_pm, v_d_pp,				Velocity component v at departure quad's children.
+	 *		numerical_phi_d								Numerically computed phi value at departure point.
+	 */
+	class StandardScaler
+	{
+		using json = nlohmann::json;
+
+	private:
+		double _meanPhi = 0.;	// Mean of level-set values.
+		double _stdPhi = 1.;	// Standard deviation of level-set values.
+
+		double _meanVel = 0.;	// Mean of velocity components.
+		double _stdVel = 1.;	// Standard deviation of level-set values.
+
+		double _meanDist = 0.;	// Mean of distance between arrival and departure point.
+		double _stdDist = 1.;	// Standard deviation of distance.
+
+		double _meanCoord = 0.;	// Mean of scaled coordinates of departure point w.r.t. quad's lower corner.
+		double _stdCoord = 1.;	// Standard deviation of scaled coordinates.
+
+		const int    PHI_COLS[MASS_NNET_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,18};				// Phi column indices.
+		const int    VEL_COLS[MASS_NNET_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
+		const int   DIST_COLS[MASS_NNET_INPUT_DIST_SIZE  ] = {3};							// Dist column indices.
+		const int COORDS_COLS[MASS_NNET_INPUT_COORDS_SIZE] = {4,5};							// Coords column indices.
+
+		/**
+		 * Utility function to load group of parameters.
+		 * @param [in] inName Parameter key name as given in JSON file.
+		 * @param [in] params JSON object.
+		 * @param [out] outMean Where to store the mean.
+		 * @param [out] outStd Where to store the standard deviation.
+		 * @throws runtime error if param key is not found in JSON object.
+		 */
+		static void _loadParams( const std::string& inName, const json& params, double& outMean, double& outStd );
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] paramsFileName JSON file name with standard scaler parameters.
+		 * @param [in] printLoadedParams Whether to print loaded parameters in or not.
+		 */
+		explicit StandardScaler( const std::string& paramsFileName, const bool& printLoadedParams=true );
+
+		/**
+		 * Transform input data in place.
+		 * @param [in,out] samples Data to transform.
+		 * @param [in] nSamples Number of samples.
+		 */
+		void transform( double samples[][MASS_NNET_INPUT_SIZE], const int& nSamples ) const;
+
+		/**
+		 * Unstranform/denormalize phi values.
+		 * @note Useful to unstransform neural network output.
+		 * @param [in,out] phi Array of phi values to denormalize.
+		 * @param [in] nValues Number of values to untransform.
+		 */
+		void untransformPhi( double phi[], const int& nValues ) const;
+	};
+
+
+	//////////////////////////////////////////////////// DataPacket ////////////////////////////////////////////////////
+
 	/**
 	 * The data packet containing information for machine learning processing.
 	 * In regards to spatial information in P4EST_DIM dimensions, we follow the standard of x been the slowest coord,
@@ -519,4 +606,4 @@ namespace slml
 }
 
 
-#endif //ML_MASS_CONSERVATION_MY_P4EST_SEMI_LAGRANGIAN_ML_H
+#endif //MY_P4EST_SEMI_LAGRANGIAN_ML_H
