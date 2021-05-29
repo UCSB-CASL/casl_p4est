@@ -126,8 +126,9 @@ namespace slml
 		 * Constructor.
 		 * @param [in] modelPath Full path of neural network's JSON file.
 		 * @param [in] transformerPath Full path of transformer's JSON file.
+		 * @param [in] verbose Whether to print debugging information or not.
 		 */
-		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath );
+		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const bool& verbose=true );
 
 		/**
 		 * Predict corrected level-set function values at departure points.
@@ -176,7 +177,7 @@ namespace slml
 		 * @param [in] includeNodeIdx Whether to serialize node index or not.
 		 * @param [in] includeHK Whether to serialize numerical curvature or not.
 		 */
-		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeHK=false ) const
+		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeHK=false, bool includeTargetPhi_d=true ) const
 		{
 			if( includeNodeIdx )					// Node index.
 				data.push_back( nodeIdx );
@@ -197,7 +198,8 @@ namespace slml
 			for( const auto& componentAtChild : vel_d )		// Velocity components at quad/oct children.
 				data.push_back( componentAtChild );
 
-			data.push_back( targetPhi_d );			// Target level-set value at departure point.
+			if( includeTargetPhi_d )
+				data.push_back( targetPhi_d );		// Target level-set value at departure point.
 
 			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
 
@@ -254,7 +256,7 @@ namespace slml
 
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
-			// numK remains unchanged.
+			// hk_a remains unchanged.
 		}
 
 		/**
@@ -314,7 +316,7 @@ namespace slml
 
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
-			// numK remains unchanged.
+			// hk_a remains unchanged.
 		}
 	};
 #endif
@@ -506,7 +508,7 @@ namespace slml
 
 
 
-	////////////////////////////////////////////////// SemiLangrangian /////////////////////////////////////////////////
+	////////////////////////////////////////////////// SemiLagrangian //////////////////////////////////////////////////
 
 	/**
  	 * A semi-Lagrangian implementation using Machine Learning and Neural Networks.
@@ -533,6 +535,8 @@ namespace slml
 
 		const unsigned long ITERATION;						// Iteration ID for current advection step.
 		bool _used = false;									// Prevents reusing a semi-Lagrangian instance of this obj.
+
+		const NeuralNetwork * const _nnet;					// Semi-Lagrangian error-correction neural network.
 
 		/**
 		 * Create the set of indices of nodes next to the interface that possess uniform stencils.
@@ -576,12 +580,13 @@ namespace slml
 		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
 		 * @param [in] localUniformIndices Pointer to set of indices of locally owned nodes next to Gamma with uniform stencils.
+		 * @param [in] nnet Pointer to neural network, which should be created externally to avoid recurrent spawning.
 		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
 		 * @param [in] iteration Current ID for advection step.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
 				  		my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
-				  		const double& band=2, const unsigned long& iteration=0 );
+						const NeuralNetwork *nnet, const double& band=2, const unsigned long& iteration=0 );
 
 		/**
 		 * Constructor.

@@ -308,8 +308,10 @@ int main( int argc, char** argv )
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
-		// Testing neural network class.
-		const slml::NeuralNetwork nnet( "/Users/youngmin/fdeep_mass_nnet.json", "/Users/youngmin/mass_standard_scaler.json" );
+		// Loading semi-Lagrangian error-correction neural network.
+		const slml::NeuralNetwork nnet( "/Users/youngmin/fdeep_mass_nnet.json",
+								  		"/Users/youngmin/mass_standard_scaler.json",
+								  		false );
 		const int N_SAMPLES = 2;
 		double inputs[N_SAMPLES][MASS_NNET_INPUT_SIZE] = {
 			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1},
@@ -324,13 +326,6 @@ int main( int argc, char** argv )
 		{
 			nnet.predict( &inputs[j], &outputs[j], 1 );
 			printf( "Thread %i took care of sample %i\n", omp_get_thread_num(), j );
-		}
-
-		for( const auto &sample : inputs )
-		{
-			for( const auto &val : sample )
-				printf( "%.8e, ", val );
-			printf( "\n" );
 		}
 
 		std::cout << std::setprecision( 8 );
@@ -476,7 +471,8 @@ int main( int argc, char** argv )
 			p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
 			// Create semi-Lagrangian object in machine learning module: linear interp. for phi, quadratic for velocity.
-			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, &localUniformIndices, BAND, iter );
+			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors,
+												 &localUniformIndices, &nnet, BAND, iter );
 //			my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
 //			semiLagrangian.set_phi_interpolation( interpolation_method::linear );
 //			semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );

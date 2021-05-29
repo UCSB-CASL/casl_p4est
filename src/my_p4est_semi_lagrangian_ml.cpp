@@ -86,9 +86,11 @@ void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) co
 
 //////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
 
-slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath )
-									: _model( fdeep::load_model( modelPath ) ),
-									_standardScaler( transformerPath ){}
+slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath,
+									const bool& verbose )
+									: _model( fdeep::load_model( modelPath, true,
+								    verbose? fdeep::cout_logger: fdeep::dev_null_logger ) ),
+									_standardScaler( transformerPath, verbose ){}
 
 
 void slml::NeuralNetwork::predict( double inputs[][MASS_NNET_INPUT_SIZE], double outputs[], const int& nSamples ) const
@@ -343,12 +345,14 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
 									  my_p4est_node_neighbors_t *ngbdN,
 									  const std::unordered_set<p4est_locidx_t> *localUniformIndices,
+									  const NeuralNetwork * const nnet,
 									  const double& band, const unsigned long& iteration )
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
 									  ITERATION( iteration ),
 									  _localUniformIndicesPtr( localUniformIndices ),
 									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
 									  PHI_INTERP_MTHD( interpolation_method::linear ),
+									  _nnet( nnet ),
 									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
 {
 	if( band < 2 )
@@ -363,7 +367,8 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band,
 									  const unsigned long& iteration )
 									  : SemiLagrangian( p4estNp1, nodesNp1, ghostNp1, ngbdN,
-														_computeLocalUniformIndices( ngbdN, phi ), band, iteration ) {}
+														_computeLocalUniformIndices( ngbdN, phi ), nullptr,
+														band, iteration ) {}
 
 
 const std::unordered_set<p4est_locidx_t>* slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
@@ -703,15 +708,40 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 		}
 	}
 
-	// TODO: Here, we need to evaluate neural network to fix numBacktrackedPhi.
+	// Evaluate neural network to fix numBacktrackedPhi.
+	const int N_SAMPLES_PER_PACKET = 2;
 	int i;
+	double maxRelAbsDiff = 0;
+	double dxyz[P4EST_DIM];
+	double dxyz_min;
+	get_dxyz_min( p4est_n, dxyz, dxyz_min );
 	for( i = 0; i < dataPackets.size(); i++ )
 	{
-		if( _mlFlagPtr[dataPackets[i]->nodeIdx] > 0 )
+		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x.
+		sample1.reserve( MASS_NNET_INPUT_SIZE );
+		sample2.reserve( MASS_NNET_INPUT_SIZE );
+		dataPackets[i]->serialize( sample1, false, false, false );
+		dataPackets[i]->reflect_yEqx();
+		dataPackets[i]->serialize( sample2, false, false, false );
+
+		double inputs[N_SAMPLES_PER_PACKET][MASS_NNET_INPUT_SIZE];	// Populate inputs for nnet.
+		double outputs[N_SAMPLES_PER_PACKET];
+		for( int j = 0; j < MASS_NNET_INPUT_SIZE; j++ )
 		{
-			_mlPhiPtr[dataPackets[i]->nodeIdx] = dataPackets[i]->numBacktrackedPhi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
+			inputs[0][j] = sample1[j];
+			inputs[1][j] = sample2[j];
 		}
+
+		_nnet->predict( inputs, outputs, N_SAMPLES_PER_PACKET );	// Gather predictions: they've been already denormalized.
+		double phi_d = (outputs[0] + outputs[1]) / 2.0;				// Average predictions for a better one.
+
+		maxRelAbsDiff = MAX( ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ), maxRelAbsDiff );
+
+		if( _mlFlagPtr[dataPackets[i]->nodeIdx] > 0 )				// Fix sign according to curvature.
+			_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
 	}
+
+	printf( "MaxRelAbsDiff = %f\n", maxRelAbsDiff / dxyz_min );
 
 	// Restore access.
 	ierr = VecRestoreArray( _mlPhi, &_mlPhiPtr );
