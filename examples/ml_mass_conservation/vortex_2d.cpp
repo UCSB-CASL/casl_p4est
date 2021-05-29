@@ -7,11 +7,11 @@
  * Code is based on examples/level_set_advection/main_2d.cpp
  *
  * @cite C. Min and F. Gibou, A second order accurate level set method on non-graded adaptive cartesian grids, J.
- * 		 Comput. Phys., 225:300-321, 2007.
+ * 		 Comput. Phys., 225:300-321, 2007.  Vortex test appears on p. 310.
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: May 28, 2021.
+ * Updated: May 29, 2021.
  */
 
 #ifdef _OPENMP
@@ -308,39 +308,34 @@ int main( int argc, char** argv )
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
-		// Testing preprocessing with standard scaler object tailored for fields in this nnet.
-		slml::StandardScaler standardScaler( "/Users/youngmin/mass_standard_scaler.json" );
-
-		std::cout << "Transformed input test data:" << std::endl;
-		double data[][MASS_NNET_INPUT_SIZE] = {
-			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1}
+		// Testing neural network class.
+		const slml::NeuralNetwork nnet( "/Users/youngmin/fdeep_mass_nnet.json", "/Users/youngmin/mass_standard_scaler.json" );
+		const int N_SAMPLES = 2;
+		double inputs[N_SAMPLES][MASS_NNET_INPUT_SIZE] = {
+			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1},
+			{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9}
 		};
-		standardScaler.transform( data, 1 );
-		for( auto val : data[0] )
-			printf( "%.8e, ", val );
-		printf( "\n" );
+		double outputs[N_SAMPLES];
+		int j;
+#pragma omp parallel for default( none ) schedule( static ) \
+		shared( N_SAMPLES, nnet, inputs, outputs ) \
+		private( j )
+		for( j = 0; j < N_SAMPLES; j++ )
+		{
+			nnet.predict( &inputs[j], &outputs[j], 1 );
+			printf( "Thread %i took care of sample %i\n", omp_get_thread_num(), j );
+		}
 
-		std::cout << "Untransformed phi test data:" << std::endl;
-		double phiData[] = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9};
-		standardScaler.untransformPhi( phiData, 9 );
-		for( auto val: phiData )
-			printf( "%.8f, ", val );
-		printf( "\n" );
+		for( const auto &sample : inputs )
+		{
+			for( const auto &val : sample )
+				printf( "%.8e, ", val );
+			printf( "\n" );
+		}
 
-		// Loading mass conservation neural network.
-		const auto model = fdeep::load_model( "/Users/youngmin/fdeep_mass_nnet.json" );
-
-		const int SAMPLE_WIDTH_PT1 = 18;	// Expects two inputs.
-		const int SAMPLE_WDITH_PT2 = 1;
-		std::vector<FDEEP_FLOAT_TYPE> sample_pt1 = {.1,.2,.3,.4,.5,.6,.7,.8,.9,.1,.2,.3,.4,.5,.6,.7,.8,.9};
-		std::vector<FDEEP_FLOAT_TYPE> sample_pt2 = {.1};
-
-		std::vector<fdeep::tensor> inputs = {
-			fdeep::tensor( fdeep::tensor_shape( SAMPLE_WIDTH_PT1 ), sample_pt1 ),
-			fdeep::tensor( fdeep::tensor_shape( SAMPLE_WDITH_PT2 ), sample_pt2 )
-		};
 		std::cout << std::setprecision( 8 );
-		std::cout << model.predict_single_output( inputs ) << std::endl;
+		std::cout << outputs[0] << std::endl;
+		std::cout << outputs[1] << std::endl;
 
 		// Let's continue with numerical computations.
 

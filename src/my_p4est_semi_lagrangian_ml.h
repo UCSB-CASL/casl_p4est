@@ -26,11 +26,13 @@
  *
  * Libraries:
  * @cite JSON https://github.com/nlohmann/json.
- * @cite Frugally deep https://github.com/Dobiasd/frugally-deep.
+ * @cite Frugally deep https://github.com/Dobiasd/frugally-deep, v0.15.2-p0 (02/23/2021) for loading tensorflow+keras
+ * models into C++.  Main dependencies to convert models: python 3.7, tensorflow 2.4.1, and C++14.  JSON library should
+ * be installed as described in frugally deep documentation.
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: May 28, 2021.
+ * Updated: May 29, 2021.
  */
 namespace slml
 {
@@ -105,6 +107,37 @@ namespace slml
 		 * @param [in] nValues Number of values to untransform.
 		 */
 		void untransformPhi( double phi[], const int& nValues ) const;
+	};
+
+
+	////////////////////////////////////////////////// NeuralNetwork ///////////////////////////////////////////////////
+
+	class NeuralNetwork
+	{
+	private:
+		const fdeep::model _model;				// Neural model created with frugally deep.
+		const StandardScaler _standardScaler;	// Preprocessing module.
+
+		const int INPUT_WIDTH_PT1 = MASS_NNET_INPUT_SIZE - 1;	// Expecting the input to be partitioned into two.
+		const int INPUT_WDITH_PT2 = 1;
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] modelPath Full path of neural network's JSON file.
+		 * @param [in] transformerPath Full path of transformer's JSON file.
+		 */
+		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath );
+
+		/**
+		 * Predict corrected level-set function values at departure points.
+		 * @note This function assumes that the inputs have been already negated when curvature is positive.  User must
+		 * take care of fixing the predictions signs accordingly.
+		 * @param [in,out] inputs Array of sample inputs with raw data (they'll be transformed).
+		 * @param [out] outputs Array of predicted level-set function values
+		 * @param [in] nSamples Number of samples to process.
+		 */
+		void predict( double inputs[][MASS_NNET_INPUT_SIZE], double outputs[], const int& nSamples ) const;
 	};
 
 

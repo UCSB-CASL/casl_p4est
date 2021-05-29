@@ -84,6 +84,40 @@ void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) co
 }
 
 
+//////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
+
+slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath )
+									: _model( fdeep::load_model( modelPath ) ),
+									_standardScaler( transformerPath ){}
+
+
+void slml::NeuralNetwork::predict( double inputs[][MASS_NNET_INPUT_SIZE], double outputs[], const int& nSamples ) const
+{
+	// First, preprocess all inputs at once.
+	_standardScaler.transform( inputs, nSamples );
+
+	// Proceed with predictions, one input at a time.
+	for( int i = 0; i < nSamples; i++ )
+	{
+		// Partition input into two parts.
+		std::vector<FDEEP_FLOAT_TYPE> input1( &inputs[i][0], &inputs[i][0] + INPUT_WIDTH_PT1 );
+		std::vector<FDEEP_FLOAT_TYPE> input2( &inputs[i][INPUT_WIDTH_PT1], &inputs[i][INPUT_WIDTH_PT1] + INPUT_WDITH_PT2 );
+
+		// Add split inputs as independent entries to a two-element tensor.
+		std::vector<fdeep::tensor> inputTensors = {
+			fdeep::tensor( fdeep::tensor_shape( INPUT_WIDTH_PT1 ), input1 ),
+			fdeep::tensor( fdeep::tensor_shape( INPUT_WDITH_PT2 ), input2 )
+		};
+
+		// Predict.
+		outputs[i] = _model.predict_single_output( inputTensors );
+	}
+
+	// Postprocessing: reverse transformation on phi.
+	_standardScaler.untransformPhi( outputs, nSamples );
+}
+
+
 ///////////////////////////////////////////////////// DataFetcher //////////////////////////////////////////////////////
 
 slml::DataFetcher::DataFetcher( const my_p4est_node_neighbors_t *ngbd )

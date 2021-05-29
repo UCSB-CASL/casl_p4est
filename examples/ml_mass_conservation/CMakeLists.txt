@@ -16,7 +16,7 @@ endif()
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
-add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
+add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=double )		# Frugally deep floating-point precision.
 
 ######################## Settings ########################
 
