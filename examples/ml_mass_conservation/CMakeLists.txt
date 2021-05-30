@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC vortex_2d.cpp )
+	list( APPEND SRC data_sets/generate_data_sets_2d.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
@@ -16,7 +16,7 @@ endif()
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
-add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=double )		# Frugally deep floating-point precision.
+add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
 
 ######################## Settings ########################
 

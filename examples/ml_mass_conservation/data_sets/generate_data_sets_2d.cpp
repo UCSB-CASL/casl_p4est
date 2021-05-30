@@ -6,8 +6,8 @@
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
- * Date Created: 01/20/2021.
- * Modified: 05/22/2021.
+ * Date Created: January 20, 2021.
+ * Modified: May 29, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -477,6 +477,10 @@ int main( int argc, char** argv )
 							// "Advecting" COARSE grid by using the FINE grid as reference: updates internal phi vector
 							// with NO reinitialization afterwards.
 							coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+
+							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
+							my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
+							ls.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
 
 							// Resample the random velocity field on new COARSE grid.
 							randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );

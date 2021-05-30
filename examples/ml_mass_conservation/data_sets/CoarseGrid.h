@@ -1,7 +1,3 @@
-//
-// Created by Im YoungMin on 2/19/21.
-//
-
 #ifndef ML_MASS_CONSERVATION_COARSEGRID_H
 #define ML_MASS_CONSERVATION_COARSEGRID_H
 
@@ -330,7 +326,7 @@ public:
 
 		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
-		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors );
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, BAND );
 		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );
 
 		// Continue process if all samples lie within computational domain.

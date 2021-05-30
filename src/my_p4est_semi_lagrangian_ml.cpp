@@ -349,7 +349,6 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 									  const double& band, const unsigned long& iteration )
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
 									  ITERATION( iteration ),
-									  _localUniformIndicesPtr( localUniformIndices ),
 									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
 									  PHI_INTERP_MTHD( interpolation_method::linear ),
 									  _nnet( nnet ),
@@ -357,6 +356,8 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 {
 	if( band < 2 )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+
+	_localUniformIndicesPtr = localUniformIndices;
 
 	velo_interpolation = VEL_INTERP_MTHD;
 	phi_interpolation = PHI_INTERP_MTHD;
@@ -366,9 +367,21 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
 									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band,
 									  const unsigned long& iteration )
-									  : SemiLagrangian( p4estNp1, nodesNp1, ghostNp1, ngbdN,
-														_computeLocalUniformIndices( ngbdN, phi ), nullptr,
-														band, iteration ) {}
+									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
+										ITERATION( iteration ),
+										VEL_INTERP_MTHD( interpolation_method::quadratic ),
+										PHI_INTERP_MTHD( interpolation_method::linear ),
+										_nnet( nullptr ),
+										my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
+{
+	if( band < 2 )
+		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+
+	_localUniformIndicesPtr = _computeLocalUniformIndices( ngbdN, phi );
+
+	velo_interpolation = VEL_INTERP_MTHD;
+	phi_interpolation = PHI_INTERP_MTHD;
+}
 
 
 const std::unordered_set<p4est_locidx_t>* slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
