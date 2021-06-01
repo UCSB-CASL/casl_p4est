@@ -43,9 +43,9 @@ const int ntree_xyz[P4EST_DIM]        = {DIM(1, 1, 1)};
 const int default_lmin = 6;
 const int default_lmax = 9;
 const double default_vorticity_threshold      = 0.04;
-const double default_uniform_band_to_radius   = 0.5;
+const double default_uniform_band_to_radius   = 1.25;
 // simulation-related:
-const interpolation_method default_interp_method_phi = quadratic_non_oscillatory_continuous_v2;
+const interpolation_method default_interp_method_phi = linear; // behaves better with linear phi, this one...
 const bool default_subrefinement = false;
 const bool default_use_second_order_theta = (default_interp_method_phi == linear ? false : true); // relevant only if using (x)GFM cell solver
 const int default_nviscous_subiter  = 5;
