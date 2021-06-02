@@ -280,6 +280,11 @@ class my_p4est_level_set_t {
    * \param [in] phi_0_limit_high     : upper threshold value on phi_0 to trigger calculation of local reinitialization (see description of reinitialize_one_iteration)
    * \param [in] phi_0_limit_low      : lower threshold value on phi_0 to trigger calculation of local reinitialization (see description of reinitialize_one_iteration)
    * \param [in] number_of_iterations : number of Forward pseudo-time steps to be executed
+   * \param [in] layer_nodes_p		  : optional pointer to a list of layer nodes that are updatable.
+   * \param [in] local_nodes_p		  : optional pointer to a list of local nodes (not in shared layer) that are updatable.
+   * \param [in] masked_layer_nodes_p : optional pointer to a list of layer nodes that are NOT updatable (i.e., masked).
+   * \param [in] masked_local_nodes_p : optional pointer to a list of local nodes (not in shared layer) that are NOT updatable.
+   * \note If at least one of the custom pointer to lists of layer/local nodes is present, then, all 4 lists must be given.
    * -----------------------------
    * Description of the algorithm:
    * -----------------------------
@@ -307,7 +312,11 @@ class my_p4est_level_set_t {
    * 2) destroy locally created data and return;
    */
   void reinitialize_within_range_of_phi_0(Vec phi, const unsigned char order_space, const unsigned char order_pseudotime,
-                                          const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations) const;
+                                          const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations,
+                                          const std::vector<p4est_locidx_t> *layer_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *local_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *masked_layer_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *masked_local_nodes_p=nullptr ) const;
 
 
   void advect_in_normal_direction_one_iteration(const std::vector<p4est_locidx_t> &list_of_node_idx, const double *vn, const double &dt,
@@ -434,6 +443,61 @@ public:
     reinitialize_within_range_of_phi_0(phi, 2, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0, number_of_iterations);
     return;
   }
+
+  /**
+   * @brief Reinitialize the given node-sampled level-set function with quadratic interface localization in space and
+   * minmod corrections to second-derivatives and with 2nd order TVD Runge-Kutta explicit steps in pseudo-time (with
+   * adaptive time-stepping), only for nodes that are not masked out.
+   * @param [in,out] phi On input, node-sampled value of the level-set function whose reinitialization is required;
+   * 		on output, results of the reinitialization algorithm.
+   * @param [in] mask Parallel vector with 0s for nodes we don't want to update, !=0 for rest of updatable grid points.
+   * @param [in] number_of_masked A hint to reserve space in vectors with indices for nonupdatable nodes.
+   * @param [in] number_of_iterations Number of pseudotime steps to be executed (default is 50).
+   * @param [in] limit_absolute_value_phi_0 The reinitization procedure is executed only at nodes where the local value
+   * 		of phi is such that fabs(phi_node_on_input) < limit_absolute_value_phi_0 (default is DBL_MAX).
+   * @note More details to be found in header's comments of reinitialize_within_range_of_phi_0.
+   */
+  inline void reinitialize_2nd_order_with_mask( Vec phi, Vec mask, const int& number_of_masked,
+												const int& number_of_iterations=50,
+												const double& limit_absolute_value_phi_0=DBL_MAX ) const
+  {
+	std::vector<p4est_locidx_t> customLayerNodes, customLocalNodes;		// Will store indices of updatable nodes after
+	customLayerNodes.reserve( ngbd->layer_nodes.size() );				// removing masked nodes.
+	customLocalNodes.reserve( ngbd->local_nodes.size() );
+
+	std::vector<p4est_locidx_t> maskedLayerNodes, maskedLocalNodes;		// Store indices of nonupdatable nodes.
+	maskedLayerNodes.reserve( number_of_masked );
+	maskedLocalNodes.reserve( number_of_masked );
+
+	PetscErrorCode ierr;
+	const double *maskReadPtr;
+	ierr = VecGetArrayRead( mask, &maskReadPtr );
+	CHKERRXX( ierr );
+
+	for( const auto& n : ngbd->layer_nodes )	// Building custom list of updatable and nonupdatable layer nodes.
+	{
+	  if( maskReadPtr[n] != 0 )
+	  	customLayerNodes.push_back( n );
+	  else
+	  	maskedLayerNodes.push_back( n );
+	}
+
+	for( const auto& n : ngbd->local_nodes )	// Building custom list of updatable and nonupdatable local nodes.
+	{
+	  if( maskReadPtr[n] != 0 )
+		customLocalNodes.push_back( n );
+	  else
+	  	maskedLocalNodes.push_back( n );
+	}
+
+	ierr = VecRestoreArrayRead( mask, &maskReadPtr );
+	CHKERRXX( ierr );
+
+	reinitialize_within_range_of_phi_0( phi, 2, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0,
+									 	number_of_iterations, &customLayerNodes, &customLocalNodes,
+									 	&maskedLayerNodes, &maskedLocalNodes );
+  }
+
   /*!
    * \brief reinitialize_2nd_order_above_threshold reinitializes the given node-sampled levelset function with quadratic interface
    * localization in space and minmod corrections to second-derivatives and with 2nd order TVD Runge-Kutta explicit

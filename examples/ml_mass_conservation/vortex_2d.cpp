@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: May 29, 2021.
+ * Updated: June 1, 2021.
  */
 
 #ifdef _OPENMP
@@ -495,10 +495,42 @@ int main( int argc, char** argv )
 			nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
 			nodeNeighbors->init_neighbors();
 
-			// Reinitialize level-set function.
-			// TODO: Reinitialization affects any value set with the machine learning model!
+			// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
+			Vec mask;
+			ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
+			CHKERRXX( ierr );
+
+			const double *howUpdatedReadPtr;
+			ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
+			CHKERRXX( ierr );
+
+			double *maskPtr;
+			ierr = VecGetArray( mask, &maskPtr );
+			CHKERRXX( ierr );
+
+			int numMaskedNodes = 0;
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+			{
+				if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
+				{
+					numMaskedNodes++;
+					maskPtr[n] = 0;					// 0 => nonupdatable.
+				}
+				else								// Updatable?
+					maskPtr[n] = 1;					// 1 => updatable.
+			}
+
+			ierr = VecRestoreArray( mask, &maskPtr );
+			CHKERRXX( ierr );
+
+			ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
+			CHKERRXX( ierr );
+
 			my_p4est_level_set_t ls( nodeNeighbors );
-			ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
+			ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+
+			ierr = VecDestroy( mask );
+			CHKERRXX( ierr );
 
 			// Advance time.
 			tn += dt;

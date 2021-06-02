@@ -288,12 +288,23 @@ void my_p4est_level_set_t::reinitialize_one_iteration(double *phi_np1_p, const s
 #endif
 }
 
-void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const unsigned char order_space, const unsigned char order_pseudotime,
-                                                              const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations) const
+void my_p4est_level_set_t::reinitialize_within_range_of_phi_0( Vec phi, const unsigned char order_space,
+															   const unsigned char order_pseudotime,
+                                                               const double &phi_0_limit_high,
+                                                               const double &phi_0_limit_low,
+                                                               const int &number_of_iterations,
+															   const std::vector<p4est_locidx_t> *layer_nodes_p,
+															   const std::vector<p4est_locidx_t> *local_nodes_p,
+															   const std::vector<p4est_locidx_t> *masked_layer_nodes_p,
+															   const std::vector<p4est_locidx_t> *masked_local_nodes_p ) const
 {
   PetscErrorCode ierr;
   if(order_space == 0 || order_space > 2 || order_pseudotime == 0 || order_pseudotime > 2)
     throw std::invalid_argument("my_p4est_level_set_t::reinitialize_within_range_of_phi_0: valid orders of orders of accuracy for space and pseudotime are 1 and 2 only!");
+
+  if(( layer_nodes_p ||  local_nodes_p ||  masked_layer_nodes_p ||  masked_local_nodes_p) &&
+  	 (!layer_nodes_p || !local_nodes_p || !masked_layer_nodes_p || !masked_local_nodes_p))
+  	throw std::invalid_argument("my_p4est_level_set_t::reinitialize_within_range_of_phi_0: not providing all custom layer and local node vectors!");
 #ifdef CASL_LOG_EVENTS
   if(order_pseudotime == 1 && order_space == 1){
     ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order, phi, 0, 0, 0); CHKERRXX(ierr); }
@@ -363,15 +374,28 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
 #endif
 
     /* 1) Process layer nodes */
-    reinitialize_one_iteration(phi_np1_p, ngbd->layer_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+    reinitialize_one_iteration(phi_np1_p, (layer_nodes_p? *layer_nodes_p : ngbd->layer_nodes),
+    						   phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
                                phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+    if(layer_nodes_p)
+    {
+      for(const auto& n : *masked_layer_nodes_p)	// Copy values for masked layer nodes.
+        phi_np1_p[n] = phi_n_p[n];
+    }
 
     /* 2) Begin update process for phi_np1 */
     ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* 3) Process local nodes */
-    reinitialize_one_iteration(phi_np1_p, ngbd->local_nodes, phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
+    reinitialize_one_iteration(phi_np1_p, (local_nodes_p? *local_nodes_p : ngbd->local_nodes),
+							   phi_0_p, phi_n_p, phi_0_limit_high, phi_0_limit_low,
                                phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+    if(local_nodes_p)
+    {
+      for(const auto& n : *masked_local_nodes_p)	// Copy values for masked local nodes.
+        phi_np1_p[n] = phi_n_p[n];
+    }
 
     /* 4) End update process for phi_np1 */
     ierr = VecGhostUpdateEnd(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -412,15 +436,29 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0(Vec phi, const uns
         IPMLogRegionBegin("reinit_2nd_2nd");
 #endif
       /* 1) Process layer nodes */
-      reinitialize_one_iteration(phi_np2_p, ngbd->layer_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+      reinitialize_one_iteration(phi_np2_p, (layer_nodes_p? *layer_nodes_p : ngbd->layer_nodes),
+								 phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
                                  phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+      if(layer_nodes_p)
+      {
+        for(const auto& n : *masked_layer_nodes_p)	// Copy values for masked layer nodes.
+          phi_np2_p[n] = phi_np1_p[n];
+      }
 
       /* 2) Begin update process for phi_np2 */
       ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       /* 3) Process local nodes */
-      reinitialize_one_iteration(phi_np2_p, ngbd->local_nodes, phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
+      reinitialize_one_iteration(phi_np2_p, (local_nodes_p? *local_nodes_p : ngbd->local_nodes),
+								 phi_0_p, phi_np1_p, phi_0_limit_high, phi_0_limit_low,
                                  phi_0_xxyyzz_read_p, current_phi_xxyyzz_read_p);
+
+      if(local_nodes_p)
+      {
+        for(const auto& n : *masked_local_nodes_p)	// Copy values for masked local nodes.
+          phi_np2_p[n] = phi_np1_p[n];
+      }
 
       /* 4) End update process for phi_np2 */
       ierr = VecGhostUpdateEnd(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
