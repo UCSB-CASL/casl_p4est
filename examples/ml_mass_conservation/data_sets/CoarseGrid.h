@@ -30,6 +30,7 @@ public:
 
 	double minCellWidth = 0;					// Minimum cell width.
 	double minCellDiag = 0;						// Minimum call diagonal length.
+	double minCoords[P4EST_DIM] = {};			// Minimum coordinates of computational domain.
 
 	const double BAND;							// Minimum band around the interface.
 	const int MAX_RL;							// Maximum refinement level.
@@ -97,6 +98,11 @@ public:
 		// Retrieve grid size data.
 		double dxyz[P4EST_DIM];
 		get_dxyz_min( p4est, dxyz, minCellWidth, minCellDiag );
+
+		// Minimum coordinates of computational domain.
+		minCoords[0] = xyzMin[0];
+		minCoords[1] = xyzMin[1];
+		ONLY3D(minCoords[2] = xyzMin[2]);
 
 		// Finish up by sampling the level-set function at all independent nodes.
 		if( sampleVecs )
@@ -258,11 +264,13 @@ public:
 	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
 	 * @param [out] stencils Array of level-set value nine-point stencils to compute curvature with a hybrid approach.
 	 * @param [out] maxRelError Maximum relative error of phi at departure point (w.r.t. minimum cell width).
+	 * @param [out] locallyOwnedFlaggedCoords Set of integer-valued coordinates for locally owned nodes whose samples
+	 * 				were collected.
 	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
 					  	 std::vector<slml::DataPacket *>& dataPackets, std::vector<double *>& stencils,
-					  	 double& maxRelError )
+					  	 double& maxRelError, std::unordered_set<std::string>& locallyOwnedFlaggedCoords )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -279,6 +287,9 @@ public:
 		}
 		ierr = VecCreateGhostNodes( p4est, nodes, &gammaFlag );
 		CHKERRXX( ierr );
+
+		// Clear array of locally owned flagged node coords.
+		locallyOwnedFlaggedCoords.clear();
 
 		// Allocate PETSc vectors for normals and curvature.
 		Vec curvature, normal[P4EST_DIM];
@@ -390,6 +401,12 @@ public:
 							stencils[i][j] = phiReadPtr[stencilIndices[j]];
 
 						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
+
+						// Insert integer-based coordinates into set of flagged coords.
+						std::stringstream intCoords;
+						for( int j = 0; j < P4EST_DIM; j++ )
+							intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
+						locallyOwnedFlaggedCoords.insert( intCoords.str() );
 					}
 				}
 				catch( const std::exception &exception )

@@ -369,7 +369,9 @@ int main( int argc, char** argv )
 						std::vector<slml::DataPacket *> dataPackets;
 						std::vector<double *> stencils;			// Allocated only if all samples lie inside Omega.
 						double relError = 0;
-						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, stencils, relError );
+						std::unordered_set<std::string> flaggedCoords;
+						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, stencils,
+															   relError, flaggedCoords );
 
 						if( allInside )	// Continue processing samples if all backtracked interface points lied inside
 						{				// the domain.
@@ -479,8 +481,41 @@ int main( int argc, char** argv )
 							coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
 
 							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
+							// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
+							Vec mask;
+							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );	// Mask vector to flag updatable nodes.
+							CHKERRXX( ierr );
+
+							double *maskPtr;
+							ierr = VecGetArray( mask, &maskPtr );
+							CHKERRXX( ierr );
+
+							int numMaskedNodes = 0;
+							for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+							{
+								double xyz[P4EST_DIM];				// Populate dimensionless curvature at Gamma.
+								node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
+
+								std::stringstream intCoords;
+								for( int j = 0; j < P4EST_DIM; j++ )
+									intCoords << long( (xyz[j] - xyz_min[j]) / H_C ) << ",";
+								if( flaggedCoords.find( intCoords.str() ) != flaggedCoords.end() )		// Masked node? Nonupdatable?
+								{
+									numMaskedNodes++;
+									maskPtr[n] = 0;					// 0 => nonupdatable.
+								}
+								else								// Updatable?
+									maskPtr[n] = 1;					// 1 => updatable.
+							}
+
+							ierr = VecRestoreArray( mask, &maskPtr );
+							CHKERRXX( ierr );
+
 							my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
-							ls.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
+							ls.reinitialize_2nd_order_with_mask( coarseGrid.phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+
+							ierr = VecDestroy( mask );
+							CHKERRXX( ierr );
 
 							// Resample the random velocity field on new COARSE grid.
 							randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
