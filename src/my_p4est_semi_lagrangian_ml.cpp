@@ -724,10 +724,9 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	// Evaluate neural network to fix numBacktrackedPhi.
 	const int N_SAMPLES_PER_PACKET = 2;
 	int i;
-	double maxRelAbsDiff = 0;
-	double dxyz[P4EST_DIM];
-	double dxyz_min;
-	get_dxyz_min( p4est_n, dxyz, dxyz_min );
+//#pragma omp parallel for default( none ) schedule( static ) \
+//		shared( N_SAMPLES_PER_PACKET, dataPackets, _nnet, _mlFlagPtr, _mlPhiPtr ) \
+//		private( i )
 	for( i = 0; i < dataPackets.size(); i++ )
 	{
 		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x.
@@ -748,13 +747,9 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 		_nnet->predict( inputs, outputs, N_SAMPLES_PER_PACKET );	// Gather predictions: they've been already denormalized.
 		double phi_d = (outputs[0] + outputs[1]) / 2.0;				// Average predictions for a better one.
 
-		maxRelAbsDiff = MAX( ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ), maxRelAbsDiff );
-
 		if( _mlFlagPtr[dataPackets[i]->nodeIdx] > 0 )				// Fix sign according to curvature.
 			_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
 	}
-
-	printf( "MaxRelAbsDiff = %f\n", maxRelAbsDiff / dxyz_min );
 
 	// Restore access.
 	ierr = VecRestoreArray( _mlPhi, &_mlPhiPtr );

@@ -478,8 +478,8 @@ int main( int argc, char** argv )
 //			semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
 
 			// Advect level-set function one step, then update the grid.
+//			semiLagrangian.update_p4est( vel, dt, phi );
 			semiLagrangian.updateP4EST( vel, dt, &phi, hk, &howUpdated );
-//			semiLagrangian.update_p4est_one_vel_step( vel, dt, phi, BAND );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est );
@@ -528,6 +528,7 @@ int main( int argc, char** argv )
 
 			my_p4est_level_set_t ls( nodeNeighbors );
 			ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+//			ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
 
 			ierr = VecDestroy( mask );
 			CHKERRXX( ierr );
