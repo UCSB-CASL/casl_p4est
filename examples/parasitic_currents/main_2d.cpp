@@ -52,6 +52,7 @@ const double default_cfl_visco_capillary = 0.95;
 const double default_cfl_capillary = 0.95;
 const jump_solver_tag default_projection = FV;
 const int default_n_reinit = 1;
+const int default_niter = 3;
 const bool default_static_interface = false;
 const bool default_save_vtk = true;
 
@@ -190,42 +191,6 @@ void build_interface_capturing_grid(p4est_t* p4est_n, my_p4est_brick_t* brick, c
   ierr = VecCreateGhostNodes(subrefined_p4est, subrefined_nodes, &subrefined_phi); CHKERRXX(ierr);
   sample_cf_on_nodes(subrefined_p4est, subrefined_nodes, level_set, subrefined_phi);
   return;
-}
-
-void truncate_exportation_file_up_to_tstart(const double& tstart, const string &filename, const u_int& n_extra_values_exported_per_line)
-{
-  FILE* fp = fopen(filename.c_str(), "r+");
-  char* read_line = NULL;
-  size_t len = 0;
-  ssize_t len_read;
-  long size_to_keep = 0;
-  if(((len_read = getline(&read_line, &len, fp)) != -1))
-    size_to_keep += (long) len_read;
-  else
-    throw std::runtime_error("truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename);
-  string read_format = "%lg";
-  for (u_int k = 0; k < n_extra_values_exported_per_line; ++k)
-    read_format += " %*g";
-  double time, time_nm1;
-  double dt = 0.0;
-  bool not_first_line = false;
-  while ((len_read = getline(&read_line, &len, fp)) != -1) {
-    if(not_first_line)
-      time_nm1 = time;
-    sscanf(read_line, read_format.c_str(), &time);
-    if(not_first_line)
-      dt = time - time_nm1;
-    if(time <= tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
-      size_to_keep += (long) len_read;
-    else
-      break;
-    not_first_line = true;
-  }
-  fclose(fp);
-  if(read_line)
-    free(read_line);
-  if(truncate(filename.c_str(), size_to_keep))
-    throw std::runtime_error("simulation_setup::truncate_exportation_file: couldn't truncate " + filename);
 }
 
 void initialize_exportations(const double &tstart, const mpi_environment_t& mpi, const string& results_dir,
@@ -383,10 +348,10 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
     interface_capturing_phi = subrefined_phi;
   }
 
-  CF_DIM *vnm1_minus[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vnm1_plus[P4EST_DIM]  = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vn_minus[P4EST_DIM]   = { DIM(&zero_cf, &zero_cf, &zero_cf) };
-  CF_DIM *vn_plus[P4EST_DIM]    = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  const CF_DIM *vnm1_minus[P4EST_DIM] = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  const CF_DIM *vnm1_plus[P4EST_DIM]  = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  const CF_DIM *vn_minus[P4EST_DIM]   = { DIM(&zero_cf, &zero_cf, &zero_cf) };
+  const CF_DIM *vn_plus[P4EST_DIM]    = { DIM(&zero_cf, &zero_cf, &zero_cf) };
 
   if(solver != NULL)
     delete solver;
@@ -400,7 +365,8 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   solver->set_cfls(cfl_advection, cfl_visco_capillary, cfl_capillary);
   solver->set_semi_lagrangian_order_advection(sl_order);
   solver->set_semi_lagrangian_order_interface(sl_order_itfc);
-  solver->set_node_velocities(vnm1_minus, vn_minus, vnm1_plus, vn_plus);
+  solver->set_node_velocities_n(vn_minus, vn_plus);
+  solver->set_node_velocities_nm1(vnm1_minus, vnm1_plus);
   solver->initialize_time_steps();
 
   solver->set_cell_jump_solver(projection_solver_to_use);
@@ -481,6 +447,8 @@ int main (int argc, char* argv[])
   cmd.add_option("projection", "cell-based solver to use for projection step, possible choices are 'GFM', 'xGFM' or 'FV'. Default is " + convert_to_string(default_projection));
   streamObj.str(""); streamObj << default_n_reinit;
   cmd.add_option("n_reinit", "number of solver iterations between two reinitializations of the levelset. Default is " + streamObj.str());
+  streamObj.str(""); streamObj << default_niter;
+  cmd.add_option("niter", "max number of fix-point iterations for every time step. Default value is " + streamObj.str());
   cmd.add_option("static_interface", "flag deactivating the advection of the interafce if set to true or 1, activating interface advection if set to false or 0. Default is " + string(default_static_interface ? "without" : "with") + " interface advection");
   // output-control parameters
   cmd.add_option("save_vtk", "flag activating  the exportation of vtk visualization files if set to true or 1. Default behavior is " + string(default_save_vtk ? "with" : "without") + " vtk exportation");
@@ -566,6 +534,7 @@ int main (int argc, char* argv[])
   string parasitic_current_datafile, volume_datafile;
   initialize_exportations(two_phase_flow_solver->get_tn(), mpi, results_dir, parasitic_current_datafile, volume_datafile);
   int vtk_idx = (cmd.contains("restart") ? (int) floor(two_phase_flow_solver->get_tn()/vtk_dt)  : -1);
+  const int n_fixpoint_iter_max = cmd.get<int>("niter", default_niter);
   int backup_time_idx = (int) floor(two_phase_flow_solver->get_tn()/save_state_dt);
   double max_nondimensional_velocity_overall = 0.0;
   double magnitude_nondimensional_parasitic_current = 0.0*viscosity/mass_density;
@@ -575,6 +544,7 @@ int main (int argc, char* argv[])
   bool advance_solver = false;
   two_phase_flow_solver->set_static_interface(static_interface);
 
+  two_phase_flow_solver->set_final_time(duration);
   while(two_phase_flow_solver->get_tn() < duration)
   {
     if(advance_solver)
@@ -586,7 +556,7 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->save_state(export_dir.c_str(), save_nstates);
     }
 
-    two_phase_flow_solver->solve_time_step(0.01, 1, duration);
+    two_phase_flow_solver->solve_time_step(0.01, n_fixpoint_iter_max);
 
     if(save_vtk && (int) floor(two_phase_flow_solver->get_tnp1()/vtk_dt) != vtk_idx)
     {
