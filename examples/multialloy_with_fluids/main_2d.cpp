@@ -200,7 +200,7 @@ DEFINE_PARAMETER(pl,int,ny,1,"Number of trees in y (default:1)");
 DEFINE_PARAMETER(pl,int,px,0,"Periodicity in x (default false)");
 DEFINE_PARAMETER(pl,int,py,0,"Periodicity in y (default false)");
 
-DEFINE_PARAMETER(pl,double,uniform_band,4.,"Uniform band (default:4.)");
+DEFINE_PARAMETER(pl,double,uniform_band,8.,"Uniform band (default:4.)");
 
 // For level set:
 double r0;
@@ -4208,7 +4208,7 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
   press_error.destroy();
 }
 
-void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_interface ,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
+void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,vec_and_ptr_t phi, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_interface ,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
 
   // Save analytical fields to compare:
   vec_and_ptr_dim_t vn_analytical;
@@ -4254,6 +4254,11 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   sample_cf_on_nodes(p4est,nodes,*analytical_soln_temp_cf[SOLID_DOMAIN],Ts_analytical.vec);
   sample_cf_on_nodes(p4est,nodes,pressure_field_analytical,pn_analytical.vec);
 
+  // Compute normal: (for evaluating error in vgamma)
+  vec_and_ptr_dim_t normal;
+  normal.create(p4est,nodes);
+  compute_normals(*ngbd, phi.vec, normal.vec);
+  normal.get_array();
 
   // Get errors:
   vec_and_ptr_dim_t vn_error;
@@ -4309,8 +4314,18 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
     // Check error in v_int and phi only in a uniform band around the interface
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
-      v_int_error.ptr[n] = fabs(sqrt(SUMD(SQR(v_interface.ptr[0][n]),SQR(v_interface.ptr[1][n]),SQR(v_interface.ptr[2][n]))) -
-          sqrt(SUMD(SQR(v_interface_analytical.ptr[0][n]),SQR(v_interface_analytical.ptr[1][n]),SQR(v_interface_analytical.ptr[2][n]))));
+
+      // Calculate the normal direction "strength" of the analytical velocity and calculated velocity:
+      double v_int_ana_strength_normal = 0.0;
+      double v_int_strength_normal = 0.0;
+      foreach_dimension(d){
+          v_int_ana_strength_normal += (v_interface_analytical.ptr[d][n]) *normal.ptr[d][n];
+          v_int_strength_normal += (v_interface.ptr[d][n]) * normal.ptr[d][n];
+      }
+
+      // Now, calculate the error as the difference between the normal direction "strengths"
+      v_int_error.ptr[n] = fabs(v_int_strength_normal - v_int_ana_strength_normal);
+
       L_inf_vint = max(L_inf_vint,v_int_error.ptr[n]);
 
       if((tn+dt)>=tfinal){ // Check phi error only at the final time
@@ -4412,6 +4427,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   Ts_analytical.restore_array(); Ts_error.restore_array(); Ts.restore_array();
   v_interface_analytical.restore_array();v_int_error.restore_array(); v_interface.restore_array();
 
+  normal.restore_array();
 
   phi.restore_array();
 
@@ -4422,6 +4438,8 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
   Tl_analytical.destroy(); Tl_error.destroy();
   Ts_analytical.destroy(); Ts_error.destroy();
   v_interface_analytical.destroy();v_int_error.destroy();
+
+  normal.destroy();
 
   // Handle phi error checking last if it was done:
   if((tn+dt)>=tfinal){
@@ -6070,7 +6088,7 @@ int main(int argc, char** argv) {
         sprintf(output,"%s/snapshot_coupled_test_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
         PetscPrintf(mpi.comm(),"Saving coupled problem example \n");
-        save_coupled_test_case(p4est_np1,nodes_np1,ghost_np1,phi,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_coupled_errors,fich_coupled_errors); // Don't check first timestep bc have not computed velocity yet
+        save_coupled_test_case(p4est_np1,nodes_np1,ghost_np1, ngbd_np1, phi,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_coupled_errors,fich_coupled_errors); // Don't check first timestep bc have not computed velocity yet
         PetscPrintf(mpi.comm(),"Coupled test case saved \n");
 
       }
