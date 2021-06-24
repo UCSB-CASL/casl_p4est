@@ -5,11 +5,14 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #else
-#define MASS_NNET_INPUT_SIZE		19
-#define MASS_NNET_INPUT_PHI_SIZE 	 6
-#define MASS_NNET_INPUT_VEL_SIZE	10
-#define MASS_NNET_INPUT_DIST_SIZE	 1
-#define MASS_NNET_INPUT_COORDS_SIZE	 2
+#define MASS_INPUT_SIZE			20
+#define MASS_INPUT_PHI_SIZE 	 6
+#define MASS_INPUT_VEL_SIZE		10
+#define MASS_INPUT_DIST_SIZE	 1
+#define MASS_INPUT_COORDS_SIZE	 2
+#define MASS_INPUT_HK_SIZE		 1
+
+#define MASS_N_COMPONENTS		15	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_nodes_along_interface.h>
@@ -36,13 +39,10 @@
  */
 namespace slml
 {
-	////////////////////////////////////////////////// StandardScaler //////////////////////////////////////////////////
+	///////////////////////////////////////////////////// _Scaler //////////////////////////////////////////////////////
 
 	/**
-	 * Transform data into a input form that the neural network understands.
-	 * See Python project ML_Mass_Conservation's Preprocessing module for the equivalent class that generates the params
-	 * file for this implementation.
-	 *
+	 * Abstract class to transform data into an input form that the neural network understands.
 	 * Input 2D data comes in the following order (with MASS_NNET_INPUT_SIZE entries):
 	 * 		phi_a,										Level-set value at arrival point.
 	 *		u_a, v_a, 									Velocity components at arrival point.
@@ -51,9 +51,74 @@ namespace slml
 	 *		phi_d_mm, phi_d_mp, phi_d_pm, phi_d_pp,		Level-set values at departure quad's children.
 	 *		u_d_mm, u_d_mp, u_d_pm, u_d_pp,				Velocity component u at departure quad's children.
 	 *		v_d_mm, v_d_mp, v_d_pm, v_d_pp,				Velocity component v at departure quad's children.
+	 *		hk,											Dimensionless curvature at the interface for arrival point.
 	 *		numerical_phi_d								Numerically computed phi value at departure point.
 	 */
-	class StandardScaler
+	class Scaler
+	{
+		using json = nlohmann::json;
+
+	protected:
+		const int    PHI_COLS[MASS_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,19};				// Phi column indices.
+		const int    VEL_COLS[MASS_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
+		const int   DIST_COLS[MASS_INPUT_DIST_SIZE  ] = {3};							// Dist column indices.
+		const int COORDS_COLS[MASS_INPUT_COORDS_SIZE] = {4,5};							// Coords column indices.
+		const int     HK_COLS[MASS_INPUT_HK_SIZE    ] = {18};							// hk column indices.
+
+		static void _printParams( const json& params, const std::string& paramsFileName );
+
+	public:
+		/**
+		 * Transform input data in place.
+		 * @param [in,out] samples Data to transform.
+		 * @param [in] nSamples Number of samples.
+		 */
+		virtual void transform( double samples[][MASS_INPUT_SIZE], const int& nSamples ) const = 0;
+	};
+
+	//////////////////////////////////////////////////// PCAScaler /////////////////////////////////////////////////////
+
+	/**
+	 * Transform data into an input form that the neural network understands.
+	 * This is a transformer that applies principal component analysis [and whitening] to the input.  Depending on the
+	 * numer of components, it also performs dimensionality reduction.
+	 * See Python project ML_Mass_Conservation's Training module to understand how we applied the transformation during
+	 * the learning stage.
+	 */
+	class PCAScaler : public Scaler
+	{
+		using json = nlohmann::json;
+
+	private:
+		std::vector<std::vector<double>> _components;	// Actual components.
+		std::vector<double> _means;						// Mean values.
+		std::vector<double> _stds;						// Standard deviation values.
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] paramsFileName JSON file name with standard scaler parameters.
+		 * @param [in] printLoadedParams Whether to print loaded parameters in or not.
+		 */
+		explicit PCAScaler( const std::string& paramsFileName, const bool& printLoadedParams=true );
+
+		/**
+		 * Transform input data in place.
+		 * In python, transform goes as ((Y-pcaw.mean_)@pcaw.components_.T)/np.sqrt(pcaw.explained_variance_)
+		 * @param [in,out] samples Data to transform. Upon transformation, only the first MASS_N_COMPONENTS elements are valid.
+		 * @param [in] nSamples Number of samples.
+		 */
+		void transform( double samples[][MASS_INPUT_SIZE], const int& nSamples ) const override;
+	};
+
+	////////////////////////////////////////////////// StandardScaler //////////////////////////////////////////////////
+
+	/**
+	 * Transform data into an input form that the neural network understands.
+	 * See Python project ML_Mass_Conservation's Preprocessing module for the equivalent class that generates the params
+	 * file for this implementation.
+	 */
+	class StandardScaler : public Scaler
 	{
 		using json = nlohmann::json;
 
@@ -70,10 +135,8 @@ namespace slml
 		double _meanCoord = 0.;	// Mean of scaled coordinates of departure point w.r.t. quad's lower corner.
 		double _stdCoord = 1.;	// Standard deviation of scaled coordinates.
 
-		const int    PHI_COLS[MASS_NNET_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,18};				// Phi column indices.
-		const int    VEL_COLS[MASS_NNET_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
-		const int   DIST_COLS[MASS_NNET_INPUT_DIST_SIZE  ] = {3};							// Dist column indices.
-		const int COORDS_COLS[MASS_NNET_INPUT_COORDS_SIZE] = {4,5};							// Coords column indices.
+		double _meanHK = 0.;	// Mean of dimensionless curvature at the interface: it can be numerical or neural.
+		double _stdHK = 1.;		// Standard deviation of dimensionless curvature.
 
 		/**
 		 * Utility function to load group of parameters.
@@ -98,7 +161,7 @@ namespace slml
 		 * @param [in,out] samples Data to transform.
 		 * @param [in] nSamples Number of samples.
 		 */
-		void transform( double samples[][MASS_NNET_INPUT_SIZE], const int& nSamples ) const;
+		void transform( double samples[][MASS_INPUT_SIZE], const int& nSamples ) const override;
 
 		/**
 		 * Unstranform/denormalize phi values.
@@ -116,10 +179,12 @@ namespace slml
 	{
 	private:
 		const fdeep::model _model;				// Neural model created with frugally deep.
-		const StandardScaler _standardScaler;	// Preprocessing module.
+		const PCAScaler _pcaScaler;				// Preprocessing module.
 
-		const int INPUT_WIDTH_PT1 = MASS_NNET_INPUT_SIZE - 1;	// Expecting the input to be partitioned into two.
+		const int INPUT_WIDTH_PT1 = MASS_N_COMPONENTS;	// Expecting the input in two parts:.
 		const int INPUT_WDITH_PT2 = 1;
+
+		const double H;							// Mesh size.
 
 	public:
 		/**
@@ -127,8 +192,10 @@ namespace slml
 		 * @param [in] modelPath Full path of neural network's JSON file.
 		 * @param [in] transformerPath Full path of transformer's JSON file.
 		 * @param [in] verbose Whether to print debugging information or not.
+		 * @param [in] h Mesh size.
 		 */
-		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const bool& verbose=true );
+		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const double& h,
+								const bool& verbose=true );
 
 		/**
 		 * Predict corrected level-set function values at departure points.
@@ -138,7 +205,7 @@ namespace slml
 		 * @param [out] outputs Array of predicted level-set function values
 		 * @param [in] nSamples Number of samples to process.
 		 */
-		void predict( double inputs[][MASS_NNET_INPUT_SIZE], double outputs[], const int& nSamples ) const;
+		void predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const;
 	};
 
 
@@ -555,8 +622,9 @@ namespace slml
 		 * @param [in] dt Time step.
 		 * @param [in] phi Parallel vector with level-set values for grid at time tn.
 		 * @param [in] hk Dimensionless curvature parallel vector.  For points next to Gamma, it is hk at the closest location on the interface.
+		 * @param [in] h Mesh size.
 		 */
-		void _computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk );
+		void _computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk, const double& h );
 
 		/**
 		 * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler

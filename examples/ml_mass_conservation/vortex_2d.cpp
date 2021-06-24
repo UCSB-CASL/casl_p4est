@@ -310,12 +310,13 @@ int main( int argc, char** argv )
 
 		// Loading semi-Lagrangian error-correction neural network.
 		const slml::NeuralNetwork nnet( "/Users/youngmin/fdeep_mass_nnet.json",
-								  		"/Users/youngmin/mass_standard_scaler.json",
+								  		"/Users/youngmin/mass_pca_scaler.json",
+								  		1. / (1 << MAX_RL),
 								  		false );
 		const int N_SAMPLES = 2;
-		double inputs[N_SAMPLES][MASS_NNET_INPUT_SIZE] = {
-			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1},
-			{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9}
+		double inputs[N_SAMPLES][MASS_INPUT_SIZE] = {
+			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2},
+			{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8}
 		};
 		double outputs[N_SAMPLES];
 		int j;

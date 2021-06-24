@@ -1,8 +1,107 @@
 #include "my_p4est_semi_lagrangian_ml.h"
 
+//////////////////////////////////////////////// Scaler Abstract Class /////////////////////////////////////////////////
+
+void slml::Scaler::_printParams( const slml::Scaler::json& params, const std::string& paramsFileName )
+{
+	std::cout << "===----------------------------- Loaded parameters -----------------------------===" << std::endl;
+	std::cout << "Source JSON file: '" << paramsFileName << "'" << std::endl;
+	std::stringstream o;
+	o << std::setw( 4 ) << params;
+	std::cout << o.str() << std::endl;
+	std::cout << "===-----------------------------------------------------------------------------===" << std::endl;
+}
+
+
+////////////////////////////////////////////////////// PCAScaler ///////////////////////////////////////////////////////
+
+slml::PCAScaler::PCAScaler( const std::string& paramsFileName, const bool& printLoadedParams )
+{
+	// Load parameters.
+	std::ifstream input( paramsFileName );
+	json params;
+	input >> params;
+
+	// Assign parameters to internal variables.
+	const std::string errorPrefix = "[CASL_ERROR] slml::PCAScaler: ";
+	if( params.contains( "components" ) )					// Loading the components.
+	{
+		const auto& param = params["components"];
+		for( const auto& component : param )
+		{
+			_components.emplace_back();
+			for( const auto& val : component )
+				_components.back().push_back( val.get<double>() );
+		}
+	}
+	else
+		throw std::runtime_error( errorPrefix + " components are missing!" );
+
+	if( params.contains( "mean" ) )							// Loading the mean vector, which must have MASS_INPUT_SIZE elements.
+	{
+		const auto& means = params["mean"];
+		if( means.size() == MASS_INPUT_SIZE )
+		{
+			for( const auto& mean : means )
+				_means.push_back( mean.get<double>() );
+		}
+		else
+			throw std::runtime_error( errorPrefix + " invalid number of mean values!" );
+	}
+	else
+		throw std::runtime_error( errorPrefix + " mean values are missing!" );
+
+	if( params.contains( "variance" ) )					// Loading the variance vector, which must have MASS_N_COMPONENTS elements.
+	{
+		const auto& variances = params["variance"];
+		if( variances.size() == MASS_N_COMPONENTS )
+		{
+			for( const auto& variance : variances )
+				_stds.push_back(  sqrt( variance.get<double>() ) );
+		}
+		else
+			throw std::runtime_error( errorPrefix + " invalid number of variances!" );
+	}
+
+	if( printLoadedParams )
+		_printParams( params, paramsFileName );
+}
+
+
+void slml::PCAScaler::transform( double samples[][MASS_INPUT_SIZE], const int &nSamples ) const
+{
+	// To transform in Python: ((Y-pcaw.mean_)@pcaw.components_.T)/np.sqrt(pcaw.explained_variance_)
+	for( int i = 0; i < nSamples; i++ )
+	{
+		// First, copy sample and subtract the mean.
+		double sample[MASS_INPUT_SIZE];
+		for( int j = 0; j < MASS_INPUT_SIZE; j++ )
+			sample[j] = samples[i][j] - _means[j];
+
+		// Second, project onto principal components.
+		double projected[MASS_N_COMPONENTS];
+		for( int c = 0; c < MASS_N_COMPONENTS; c++ )
+		{
+			projected[c] = 0;
+			for( int j = 0; j < MASS_INPUT_SIZE; j++ )
+				projected[c] += sample[j] * _components[c][j];
+		}
+
+		// Third, divide by explained standard deviation while writing to output array.
+		for( int j = 0; j < MASS_INPUT_SIZE; j++ )
+		{
+			if( j < MASS_N_COMPONENTS )
+				samples[i][j] = projected[j] / _stds[j];
+			else
+				samples[i][j] = 0;			// Fill missing slots (i.e., belonging to no component) with zeros.
+		}
+	}
+}
+
+
 //////////////////////////////////////////////////// StandardScaler ////////////////////////////////////////////////////
 
-slml::StandardScaler::StandardScaler( const std::string &paramsFileName, const bool& printLoadedParams )
+slml::StandardScaler::StandardScaler( const std::string& paramsFileName, const bool& printLoadedParams )
 {
 	// Load parameters.
 	std::ifstream input( paramsFileName );
@@ -19,23 +118,17 @@ slml::StandardScaler::StandardScaler( const std::string &paramsFileName, const b
 	_loadParams( "dist", params, _meanDist, _stdDist );
 	_loadParams( "phi", params, _meanPhi, _stdPhi );
 	_loadParams( "vel", params, _meanVel, _stdVel );
+	_loadParams( "hk", params, _meanHK, _stdHK );
 
 	if( printLoadedParams )
-	{
-		std::cout << "===----------------------------- Loaded parameters -----------------------------===" << std::endl;
-		std::cout << "Source JSON file: '" << paramsFileName << "'" << std::endl;
-		std::stringstream o;
-		o << std::setw( 4 ) << params;
-		std::cout << o.str() << std::endl;
-		std::cout << "===-----------------------------------------------------------------------------===" << std::endl;
-	}
+		_printParams( params, paramsFileName );
 }
 
 
 void slml::StandardScaler::_loadParams( const std::string& inName, const json& params, double& outMean, double& outStd )
 {
 	const std::string errorPrefix = "[CASL_ERROR] slml::StandardScaler::_loadParams: ";
-	if( params.contains( "phi" ) )
+	if( params.contains( inName ) )
 	{
 		const auto& param = params[inName];
 
@@ -54,7 +147,7 @@ void slml::StandardScaler::_loadParams( const std::string& inName, const json& p
 }
 
 
-void slml::StandardScaler::transform( double samples[][MASS_NNET_INPUT_SIZE], const int& nSamples ) const
+void slml::StandardScaler::transform( double samples[][MASS_INPUT_SIZE], const int& nSamples ) const
 {
 	for( int i = 0; i < nSamples; i++ )
 	{
@@ -73,6 +166,10 @@ void slml::StandardScaler::transform( double samples[][MASS_NNET_INPUT_SIZE], co
 		// Scaling departure point coords.
 		for( const auto& j : COORDS_COLS )
 			samples[i][j] = (samples[i][j] - _meanCoord) / _stdCoord;
+
+		// Scaling dimensionless curvature for arrival point.
+		for( const auto& j : HK_COLS )
+			samples[i][j] = (samples[i][j] - _meanHK) / _stdHK;
 	}
 }
 
@@ -86,24 +183,36 @@ void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) co
 
 //////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
 
-slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath,
+slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const double& h,
 									const bool& verbose )
-									: _model( fdeep::load_model( modelPath, true,
+									: H( h ), _model( fdeep::load_model( modelPath, true,
 								    verbose? fdeep::cout_logger: fdeep::dev_null_logger ) ),
-									_standardScaler( transformerPath, verbose ){}
+									_pcaScaler( transformerPath, verbose ){}
 
 
-void slml::NeuralNetwork::predict( double inputs[][MASS_NNET_INPUT_SIZE], double outputs[], const int& nSamples ) const
+void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const
 {
-	// First, preprocess all inputs at once.
-	_standardScaler.transform( inputs, nSamples );
+	// Normalize backtracked phi_d by h and leave hk as a negative value.
+	for( int i = 0; i < nSamples; i++ )
+	{
+		inputs[i][MASS_INPUT_SIZE-1] /= H;
+		inputs[i][MASS_INPUT_SIZE-2] = -ABS( inputs[i][MASS_INPUT_SIZE-2] );
+	}
+
+	// Second part of inputs is the normalized backtracked phi_d.
+	double inputsPt2[nSamples];
+	for( int i = 0; i < nSamples; i++ )
+		inputsPt2[i] = inputs[i][MASS_INPUT_SIZE-1];
+
+	// First, preprocess inputs in part 1.
+	_pcaScaler.transform( inputs, nSamples );
 
 	// Proceed with predictions, one input at a time.
 	for( int i = 0; i < nSamples; i++ )
 	{
-		// Partition input into two parts.
+		// Build two-part input.
 		std::vector<FDEEP_FLOAT_TYPE> input1( &inputs[i][0], &inputs[i][0] + INPUT_WIDTH_PT1 );
-		std::vector<FDEEP_FLOAT_TYPE> input2( &inputs[i][INPUT_WIDTH_PT1], &inputs[i][INPUT_WIDTH_PT1] + INPUT_WDITH_PT2 );
+		std::vector<FDEEP_FLOAT_TYPE> input2( &inputsPt2[i], &inputsPt2[i] + INPUT_WDITH_PT2 );
 
 		// Add split inputs as independent entries to a two-element tensor.
 		std::vector<fdeep::tensor> inputTensors = {
@@ -111,12 +220,9 @@ void slml::NeuralNetwork::predict( double inputs[][MASS_NNET_INPUT_SIZE], double
 			fdeep::tensor( fdeep::tensor_shape( INPUT_WDITH_PT2 ), input2 )
 		};
 
-		// Predict.
-		outputs[i] = _model.predict_single_output( inputTensors );
+		// Predict and undo normalization, too.
+		outputs[i] = _model.predict_single_output( inputTensors ) * H;
 	}
-
-	// Postprocessing: reverse transformation on phi.
-	_standardScaler.untransformPhi( outputs, nSamples );
 }
 
 
@@ -645,7 +751,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 }
 
 
-void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk )
+void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk, const double& h )
 {
 	PetscErrorCode ierr;
 
@@ -725,30 +831,38 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	const int N_SAMPLES_PER_PACKET = 2;
 	int i;
 //#pragma omp parallel for default( none ) schedule( static ) \
-//		shared( N_SAMPLES_PER_PACKET, dataPackets, _nnet, _mlFlagPtr, _mlPhiPtr ) \
+//		shared( N_SAMPLES_PER_PACKET, dataPackets, _nnet, _mlFlagPtr, _mlPhiPtr, h ) \
 //		private( i )
 	for( i = 0; i < dataPackets.size(); i++ )
 	{
 		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x.
-		sample1.reserve( MASS_NNET_INPUT_SIZE );
-		sample2.reserve( MASS_NNET_INPUT_SIZE );
-		dataPackets[i]->serialize( sample1, false, false, false );
+		sample1.reserve( MASS_INPUT_SIZE );
+		sample2.reserve( MASS_INPUT_SIZE );
+		dataPackets[i]->serialize( sample1, false, true, false );	// Include curvature too.
 		dataPackets[i]->reflect_yEqx();
-		dataPackets[i]->serialize( sample2, false, false, false );
+		dataPackets[i]->serialize( sample2, false, true, false );
 
-		double inputs[N_SAMPLES_PER_PACKET][MASS_NNET_INPUT_SIZE];	// Populate inputs for nnet.
+		double inputs[N_SAMPLES_PER_PACKET][MASS_INPUT_SIZE];		// Populate inputs for nnet.
 		double outputs[N_SAMPLES_PER_PACKET];
-		for( int j = 0; j < MASS_NNET_INPUT_SIZE; j++ )
+		for( int j = 0; j < MASS_INPUT_SIZE; j++ )
 		{
 			inputs[0][j] = sample1[j];
 			inputs[1][j] = sample2[j];
 		}
 
+		for( auto& input : inputs )				// Reorder input: swap backtracked phi_d with hk
+			std::swap( input[MASS_INPUT_SIZE-1], input[MASS_INPUT_SIZE-2] );
+
 		_nnet->predict( inputs, outputs, N_SAMPLES_PER_PACKET );	// Gather predictions: they've been already denormalized.
 		double phi_d = (outputs[0] + outputs[1]) / 2.0;				// Average predictions for a better one.
 
-		if( _mlFlagPtr[dataPackets[i]->nodeIdx] > 0 )				// Fix sign according to curvature.
-			_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
+		double absRelDiff = ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ) / h;	// Sometimes the nnet fails awfully.
+		if( absRelDiff > 0.1 || ABS( phi_d ) >= 2.0 * h  )							// To catch those cases, we test
+		{																			// against numerical phi_d and check
+			phi_d = dataPackets[i]->numBacktrackedPhi_d;							// if predicted value is >= 2H.
+		}
+
+		_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);	// Fix sign according to curvature.
 	}
 
 	// Restore access.
@@ -794,12 +908,6 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	CHKERRXX( ierr );
 
 	////////// First step: compute level-set values for points next to Gamma using the machine learning model //////////
-	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
-	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
-	// exiting the current function (see the very last part of this procedure).
-	_computeMLSolution( vel, dt, *phi, hk );
-
 	// Some pointers to structs for the Gn at time tn.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
@@ -810,6 +918,12 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	get_dxyz_min( p4est_n, dxyz, dxyz_min );
 	if( ABS( dxyz[0] - dxyz[1] ) > PETSC_MACHINE_EPSILON ONLY3D( || ABS( dxyz[1] - dxyz[2] ) > PETSC_MACHINE_EPSILON ) )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Cells must be square!" );
+
+	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
+	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
+	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
+	// exiting the current function (see the very last part of this procedure).
+	_computeMLSolution( vel, dt, *phi, hk, dxyz_min );
 
 	/////////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy ///////////////////////////
 	// We need these to interpolate the velocity at updated grid Gnp1.
