@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: June 1, 2021.
+ * Updated: June 26, 2021.
  */
 
 #ifdef _OPENMP
@@ -44,6 +44,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/casl_geometry.h>
+#include <src/parameter_list.h>
 
 ///////////////////////////////////// Vortex velocity field (also divergence free) /////////////////////////////////////
 
@@ -294,12 +295,23 @@ int main( int argc, char** argv )
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
+	// Setting up parameters from command line.
+	param_list_t pl;
+	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
+
 	try
 	{
 		// Initializing parallel environment.
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 		PetscErrorCode ierr;			// PETSc error flag code.
+
+		// Loading parameters from command line.
+		cmdParser cmd;
+		pl.initialize_parser( cmd );
+		if( cmd.parse( argc, argv, "Vortex test" ) )
+			return 0;
+		pl.set_from_cmd_all( cmd );
 
 		// OpenMP verification.
 		int nThreads = 0;
@@ -338,7 +350,7 @@ int main( int argc, char** argv )
 		parStopWatch watch;
 		watch.start();
 
-		sprintf( msg, ">> Began 2D vortex test with MAX_RL = %d\n", MAX_RL );
+		sprintf( msg, ">> Began 2D vortex test with MAX_RL = %d in %s mode\n", MAX_RL, mode()? "NNET" : "NUMERICAL" );
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 
@@ -377,7 +389,7 @@ int main( int argc, char** argv )
 		// Refine and partition forest.
 		for( int i = 0; i < MAX_RL; i++ )
 		{
-			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
+			my_p4est_refine( p4est, P4EST_FALSE, mode()? refine_levelset_cf_and_uniform_band : refine_levelset_cf, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
 
@@ -472,15 +484,25 @@ int main( int argc, char** argv )
 			p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
 			// Create semi-Lagrangian object in machine learning module: linear interp. for phi, quadratic for velocity.
-			slml::SemiLagrangian semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors,
-												 &localUniformIndices, &nnet, BAND, iter );
-//			my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
-//			semiLagrangian.set_phi_interpolation( interpolation_method::linear );
-//			semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
+			slml::SemiLagrangian *mlSemiLagrangian;
+			my_p4est_semi_lagrangian_t *numSemiLagrangian;
+			if( mode() )
+			{
+				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors,
+															 &localUniformIndices, &nnet, BAND, iter );
+			}
+			else
+			{
+				numSemiLagrangian = new my_p4est_semi_lagrangian_t( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
+				numSemiLagrangian->set_phi_interpolation( interpolation_method::linear );
+				numSemiLagrangian->set_velo_interpolation( interpolation_method::quadratic );
+			}
 
 			// Advect level-set function one step, then update the grid.
-//			semiLagrangian.update_p4est( vel, dt, phi );
-			semiLagrangian.updateP4EST( vel, dt, &phi, hk, &howUpdated );
+			if( mode() )
+				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, &howUpdated );
+			else
+				numSemiLagrangian->update_p4est_one_vel_step( vel, dt, phi, BAND );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est );
@@ -496,43 +518,50 @@ int main( int argc, char** argv )
 			nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
 			nodeNeighbors->init_neighbors();
 
-			// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
-			Vec mask;
-			ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
-			CHKERRXX( ierr );
-
-			const double *howUpdatedReadPtr;
-			ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
-			CHKERRXX( ierr );
-
-			double *maskPtr;
-			ierr = VecGetArray( mask, &maskPtr );
-			CHKERRXX( ierr );
-
-			int numMaskedNodes = 0;
-			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
-			{
-				if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
-				{
-					numMaskedNodes++;
-					maskPtr[n] = 0;					// 0 => nonupdatable.
-				}
-				else								// Updatable?
-					maskPtr[n] = 1;					// 1 => updatable.
-			}
-
-			ierr = VecRestoreArray( mask, &maskPtr );
-			CHKERRXX( ierr );
-
-			ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
-			CHKERRXX( ierr );
-
+			// Reinitialize level-set function.
 			my_p4est_level_set_t ls( nodeNeighbors );
-			ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
-//			ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
+			if( mode() )
+			{
+				// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
+				Vec mask;
+				ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
+				CHKERRXX( ierr );
 
-			ierr = VecDestroy( mask );
-			CHKERRXX( ierr );
+				const double *howUpdatedReadPtr;
+				ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
+				CHKERRXX( ierr );
+
+				double *maskPtr;
+				ierr = VecGetArray( mask, &maskPtr );
+				CHKERRXX( ierr );
+
+				int numMaskedNodes = 0;
+				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+				{
+					if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
+					{
+						numMaskedNodes++;
+						maskPtr[n] = 0;					// 0 => nonupdatable.
+					}
+					else								// Updatable?
+						maskPtr[n] = 1;					// 1 => updatable.
+				}
+
+				ierr = VecRestoreArray( mask, &maskPtr );
+				CHKERRXX( ierr );
+
+				ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
+				CHKERRXX( ierr );
+
+				ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+
+				ierr = VecDestroy( mask );
+				CHKERRXX( ierr );
+			}
+			else
+			{
+				ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
+			}
 
 			// Advance time.
 			tn += dt;
@@ -570,21 +599,46 @@ int main( int argc, char** argv )
 				writeVTK( vtkIdx, p4est, nodes, ghost, phi, phiExact, hk, uniformFlag, howUpdated );
 				vtkIdx++;
 			}
+
+			// Destroy semi-Lagrangian objects.
+			if( mode() )
+				delete mlSemiLagrangian;
+			else
+				delete numSemiLagrangian;
 		}
 
-		// Compute error L-inf norm.
+		// Compute error L-1 and L-inf norms.
+		int numPoints = 0;
+		double cumulativeError = 0;
 		ierr = VecGetArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 		ierr = VecGetArrayRead( phiExact, &phiExactReadPtr );
 		CHKERRXX( ierr );
-		double error = 0;
+		double maxError = 0;
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
 			if( ABS( phiReadPtr[n] ) < diag_min )
-				error = MAX( error, ABS( phiReadPtr[n] - phiExactReadPtr[n] ) );
+			{
+				double error = ABS( phiReadPtr[n] - phiExactReadPtr[n] );
+				maxError = MAX( maxError, error );
+				numPoints++;
+				cumulativeError += error;
+			}
 		}
-		int mpiret = MPI_Allreduce( MPI_IN_PLACE, &error, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() );
+		int mpiret = MPI_Allreduce( MPI_IN_PLACE, &maxError, 1, MPI_DOUBLE, MPI_MAX, mpi.comm() );	// Max abs error.
 		SC_CHECK_MPI( mpiret );
+
+		mpiret = MPI_Allreduce( MPI_IN_PLACE, &numPoints, 1, MPI_INT, MPI_SUM, mpi.comm() );		// Total error.
+		SC_CHECK_MPI( mpiret );
+		mpiret = MPI_Allreduce( MPI_IN_PLACE, &cumulativeError, 1, MPI_DOUBLE, MPI_SUM, mpi.comm() );
+		SC_CHECK_MPI( mpiret );
+
+		double l1Error = cumulativeError / numPoints;
+
+		double area = area_in_negative_domain( p4est, nodes, phi );
+		double expectedArea = M_PI * SQR( RADIUS );
+		double massLossPercentage = (1.0 - area / expectedArea) * 100.0;
+
 		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 		ierr = VecRestoreArrayRead( phiExact, &phiExactReadPtr );
@@ -623,7 +677,8 @@ int main( int argc, char** argv )
 		// semi-Lagrangian advection.
 		my_p4est_brick_destroy( connectivity, &brick );
 
-		sprintf( msg, "<< Finished test after %f secs with error %.3e.\n", watch.get_duration_current(), error );
+		sprintf( msg, "<< Finished after %.3f secs with:\n   mean abs error %.3e\n   max abs error %.3e\n   area %.3e (expected %.3e, loss %.2f%%%%)",
+				 watch.get_duration_current(), l1Error, maxError, area, expectedArea, massLossPercentage );
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 		watch.stop();
