@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: June 26, 2021.
+ * Updated: June 28, 2021.
  */
 
 #ifdef _OPENMP
@@ -298,6 +298,7 @@ int main( int argc, char** argv )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
+	param_t<int> exportAllVTK (pl, 1, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 1)" );
 
 	try
 	{
@@ -320,30 +321,35 @@ int main( int argc, char** argv )
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
-		// Loading semi-Lagrangian error-correction neural network.
-		const slml::NeuralNetwork nnet( "/Users/youngmin/fdeep_mass_nnet.json",
-								  		"/Users/youngmin/mass_pca_scaler.json",
-								  		1. / (1 << MAX_RL),
-								  		false );
-		const int N_SAMPLES = 2;
-		double inputs[N_SAMPLES][MASS_INPUT_SIZE] = {
-			{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2},
-			{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8}
-		};
-		double outputs[N_SAMPLES];
-		int j;
+		// Loading semi-Lagrangian error-correction neural network if user has selected its option.
+		const slml::NeuralNetwork *nnet = nullptr;
+		if( mode() )
+		{
+			nnet = new slml::NeuralNetwork( "/Users/youngmin/fdeep_mass_nnet.json",
+											"/Users/youngmin/mass_pca_scaler.json",
+											1. / (1 << MAX_RL),
+											false );
+
+			const int N_SAMPLES = 2;
+			double inputs[N_SAMPLES][MASS_INPUT_SIZE] = {
+				{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2},
+				{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8}
+			};
+			double outputs[N_SAMPLES];
+			int j;
 #pragma omp parallel for default( none ) schedule( static ) \
 		shared( N_SAMPLES, nnet, inputs, outputs ) \
 		private( j )
-		for( j = 0; j < N_SAMPLES; j++ )
-		{
-			nnet.predict( &inputs[j], &outputs[j], 1 );
-			printf( "Thread %i took care of sample %i\n", omp_get_thread_num(), j );
-		}
+			for( j = 0; j < N_SAMPLES; j++ )
+			{
+				nnet->predict( &inputs[j], &outputs[j], 1 );
+				printf( "Thread %i took care of sample %i\n", omp_get_thread_num(), j );
+			}
 
-		std::cout << std::setprecision( 8 );
-		std::cout << outputs[0] << std::endl;
-		std::cout << outputs[1] << std::endl;
+			std::cout << std::setprecision( 8 );
+			std::cout << outputs[0] << std::endl;
+			std::cout << outputs[1] << std::endl;
+		}
 
 		// Let's continue with numerical computations.
 
@@ -449,7 +455,7 @@ int main( int argc, char** argv )
 		ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated );
 		CHKERRXX( ierr );
 
-		// Save the initial grid and fields into vtk.
+		// Save the initial grid and fields into vtk (regardless of input command choice).
 		writeVTK( 0, p4est, nodes, ghost, phi, phiExact, hk, uniformFlag, howUpdated );
 
 		// Define time stepping variables.
@@ -489,7 +495,7 @@ int main( int argc, char** argv )
 			if( mode() )
 			{
 				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors,
-															 &localUniformIndices, &nnet, BAND, iter );
+															 &localUniformIndices, nnet, BAND, iter );
 			}
 			else
 			{
@@ -593,8 +599,9 @@ int main( int argc, char** argv )
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
 
-			// Save to vtk format.
-			if( iter % NUM_ITER_VTK == 0 || tn == DURATION || tn == DURATION / 2.0 )
+			// Save to vtk format (last file is always written, the others are written if exportAllVTK is true).
+			if( ABS( tn - DURATION ) <= PETSC_MACHINE_EPSILON ||
+				(exportAllVTK() && (ABS( tn - DURATION / 2.0 ) <=PETSC_MACHINE_EPSILON || iter % NUM_ITER_VTK == 0)) )
 			{
 				writeVTK( vtkIdx, p4est, nodes, ghost, phi, phiExact, hk, uniformFlag, howUpdated );
 				vtkIdx++;
@@ -676,6 +683,9 @@ int main( int argc, char** argv )
 		// Connectivity and Brick objects are the only ones that are not re-created in every iteration of
 		// semi-Lagrangian advection.
 		my_p4est_brick_destroy( connectivity, &brick );
+
+		// Destroy neural network.
+		delete nnet;
 
 		sprintf( msg, "<< Finished after %.3f secs with:\n   mean abs error %.3e\n   max abs error %.3e\n   area %.3e (expected %.3e, loss %.2f%%%%)",
 				 watch.get_duration_current(), l1Error, maxError, area, expectedArea, massLossPercentage );
