@@ -46,6 +46,18 @@ namespace geom
 		{
 			return sqrt( SUMD( SQR( x - _x0 ), SQR( y - _y0 ), SQR( z - _z0 ) ) ) - _r;
 		}
+
+		void setCenter( DIM( double x0, double y0, double z0 ) )
+		{
+			this->_x0 = x0;
+			this->_y0 = y0;
+			ONLY3D( _z0 = z0 );
+		}
+
+		void setRadius( double r )
+		{
+			this->_r = r;
+		}
 	};
 
 	/**
