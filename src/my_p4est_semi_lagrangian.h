@@ -100,13 +100,15 @@ public:
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.
-   * \param v       the velocity field. This is a pointer to an array of dimension P4EST_DIM.
-   * \param dt      the time step
-   * \param phi     the level set function
-   * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   *   Function is suitable for a velocity field that remains the same from tnm1 to tn.
+   * \param [in] v		 the velocity field. This is a pointer to an array of dimension P4EST_DIM.
+   * \param [in] dt		 the time step
+   * \param [in,out] phi the level set function
+   * \param [in] phi_xx	 the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \param [in] band	 desired band in min diags around interface.  No banding if <= 1.
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=nullptr, Vec phi_add_refine=nullptr, const double& band=0 );
 
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.

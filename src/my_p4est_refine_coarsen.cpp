@@ -1379,13 +1379,11 @@ void splitting_criteria_band_t::tag_quadrant( p4est_t const *p4est, p4est_locidx
 
 bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4est_nodes_t const *nodes, const double *phiReadPtr )
 {
-	PetscErrorCode ierr;
-
 	// Tag the quadrants that need to be refined or coarsened.
 	for( p4est_topidx_t treeIdx = p4est->first_local_tree; treeIdx <= p4est->last_local_tree; treeIdx++ )
 	{
 		auto *tree = (p4est_tree_t *)sc_array_index( p4est->trees, treeIdx );
-		for( size_t q = 0; q < tree->quadrants.elem_count; q++ )
+		for( p4est_locidx_t q = 0; q < tree->quadrants.elem_count; q++ )
 		{
 			p4est_locidx_t quadIdx = q + tree->quadrants_offset;
 			tag_quadrant( p4est, quadIdx, treeIdx, nodes, phiReadPtr );
@@ -1399,7 +1397,7 @@ bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4
 	for( p4est_topidx_t treeIdx = p4est->first_local_tree; !hasGridchanged && treeIdx <= p4est->last_local_tree; treeIdx++ )
 	{
 		auto *tree = (p4est_tree_t *)sc_array_index( p4est->trees, treeIdx );
-		for( size_t q = 0; !hasGridchanged && q < tree->quadrants.elem_count; q++ )
+		for( p4est_locidx_t q = 0; !hasGridchanged && q < tree->quadrants.elem_count; q++ )
 		{
 			auto *quad = (p4est_quadrant_t *)sc_array_index( &tree->quadrants, q );
 			if( quad->p.user_int == NEW_QUADRANT )
@@ -1407,6 +1405,8 @@ bool splitting_criteria_band_t::refine_and_coarsen_with_band( p4est_t *p4est, p4
 		}
 	}
 
-	MPI_Allreduce( MPI_IN_PLACE, &hasGridchanged, 1, MPI_INT, MPI_LOR, p4est->mpicomm );
+	int mpiret = MPI_Allreduce( MPI_IN_PLACE, &hasGridchanged, 1, MPI_INT, MPI_LOR, p4est->mpicomm );
+	SC_CHECK_MPI( mpiret );
+
 	return hasGridchanged;
 }

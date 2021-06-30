@@ -390,7 +390,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_DIM **v, double dt, Vec &
 
 
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const double& band )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -464,8 +464,19 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     }
 
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_eff_p);
+    // Refining and coarsening.
+	// Note: I must declare two different splitting criteria even when the second one is a derived class.  This is
+	// because I cannot declare the method refine_and_coarsen virtual because it uses default-valued parameters.
+	if( band <= 1 )		// Not using explicit band?
+	{
+	  splitting_criteria_tag_t sp_tag_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip );
+	  is_grid_changing = sp_tag_p.refine_and_coarsen( p4est, nodes, phi_np1_eff_p );
+	}
+	else				// Using explicit band around interface?
+	{
+	  splitting_criteria_band_t sp_band_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, band );
+	  is_grid_changing = sp_band_p.refine_and_coarsen_with_band( p4est, nodes, phi_np1_eff_p );
+	}
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     if (phi_add_refine != NULL)
