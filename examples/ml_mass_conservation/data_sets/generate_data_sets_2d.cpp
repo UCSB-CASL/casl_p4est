@@ -6,8 +6,8 @@
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
- * Date Created: January 20, 2021.
- * Modified: May 29, 2021.
+ * Created: January 20, 2021.
+ * Modified: July 02, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -41,6 +41,7 @@
 #include <random>
 #include <algorithm>
 #include "examples/ml_curvature/local_utils.h"
+#include <src/parameter_list.h>
 
 /**
  * Main function.
@@ -54,8 +55,8 @@ int main( int argc, char** argv )
 	const double DURATION = 0.5;		// Max duration of the simulation (unless a backtracked interface point fall outside the domain).
 	const int COARSE_MAX_RL = 6;		// Maximum refinement levels for coarse and fine grids.
 	const int FINE_MAX_RL = 8;
-	const int ADD_FINE_STEPS_X2 = 2;	// Some constant to add desired x2 steps to fine grid advection.
-	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization.
+	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization for coarse grid.
+										// Fine grid will be tuned with twice as many reinitialization iterations.
 
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
 	const auto PHI_INTERP_MTHD = interpolation_method::quadratic;		// Phi interpolation method.
@@ -75,30 +76,10 @@ int main( int argc, char** argv )
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
-	// Destination folder and file for semi-Lagrangian data.
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/massLoss/";
-	const std::string DATA_SUFFIX = "_" + std::to_string( COARSE_MAX_RL ) + "_" + std::to_string( FINE_MAX_RL )
-										+ "_k_minus"
-										+ (ADD_FINE_STEPS_X2? "_x" + std::to_string( 1u << ADD_FINE_STEPS_X2 ) : "" )
-										+ ".csv";
-	const std::string FILE_PATH = DATA_PATH + "sl_data" + DATA_SUFFIX;
-	const int NUM_COLUMNS = 20;			// Number of columns in base data set.
-	std::string COLUMN_NAMES[NUM_COLUMNS] = {"phi_a",				// Level-set value at arrival point.
-											 "u_a", "v_a", 			// Velocity components at arrival point.
-											 "d",					// Scaled distance (by 1/dx_coarse).
-											 "x_d", "y_d",			// Scaled departure coords with respect to quad's lower corner.
-											 "phi_d_mm", "phi_d_mp", "phi_d_pm", "phi_d_pp",	// Level-set values at departure quad's children.
-											 "u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
-											 "v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
-											 "target_phi_d",		// Expected/target phi value at departure point.
-											 "numerical_phi_d"		// Numerically computed phi value at departure point.
-	};
-
-	// Destination file for h*kappa data (i.e., the 9-point stencil of level-set values + ihk in last column).
-	const std::string  K_FILE_PATH = DATA_PATH + "k_data" + DATA_SUFFIX;
-	const int K_NUM_COLUMNS = num_neighbors_cube + 1;	// Number of columns in corresponding curvature data set.
-	std::string K_COLUMN_NAMES[K_NUM_COLUMNS];			// Notice it includes "ihk", but not "hk" (target curvature).
-	kutils::generateColumnHeaders( K_COLUMN_NAMES, false );
+	// Setting up parameters from command line.
+	param_list_t pl;
+	param_t<unsigned short> addFineSubsteps ( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
+																		" 0 => 2^0 = 1 (sub)step per fine step)." );
 
 	try
 	{
@@ -110,6 +91,40 @@ int main( int argc, char** argv )
 		// To generate data sets we don't admit more than a single process to avoid race conditions.
 		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
+
+		// Loading parameters from command line.
+		cmdParser cmd;
+		pl.initialize_parser( cmd );
+		if( cmd.parse( argc, argv, "Data set generation" ) )
+			return 0;
+		pl.set_from_cmd_all( cmd );
+
+		// Destination folder and file for semi-Lagrangian data.
+		const std::string DATA_PATH = "/Volumes/YoungMinEXT/mass_conservation/";
+		const std::string DATA_SUFFIX = "_" + std::to_string( COARSE_MAX_RL ) + "_" + std::to_string( FINE_MAX_RL )
+										+ "_k_minus"
+										+ (addFineSubsteps()? "_x" + std::to_string( 1u << addFineSubsteps() ) : "" )
+										+ ".csv";
+		const std::string FILE_PATH = DATA_PATH + "sl_data" + DATA_SUFFIX;
+		const int NUM_COLUMNS = MASS_INPUT_SIZE;			// Number of columns in data set (not including hk but
+		std::string COLUMN_NAMES[NUM_COLUMNS] = {			// adding target phi_d value instead).
+			"phi_a",				// Level-set value at arrival point.
+			"u_a", "v_a", 			// Velocity components at arrival point.
+			"d",					// Normalized distance (by 1/dx_coarse).
+			"x_d", "y_d",			// Normalized departure coords with respect to quad's lower corner.
+			"phi_d_mm", "phi_d_mp", "phi_d_pm", "phi_d_pp",	// Level-set values at departure quad's children.
+			"u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
+			"v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
+			"h2_phi_xx_d", "h2_phi_yy_d", 	// Scaled abs. value of 2nd spatial phi derivatives bilineraly interpolated at x_d.
+			"target_phi_d",			// Expected/target phi value at departure point.
+			"numerical_phi_d"		// Numerically computed phi value at departure point.
+		};
+
+		// Destination file for estimated hk data (i.e., the 9-point stencil of level-set values + hk in last column).
+		const std::string  K_FILE_PATH = DATA_PATH + "k_data" + DATA_SUFFIX;
+		const int K_NUM_COLUMNS = num_neighbors_cube + 1;	// Number of columns in corresponding curvature data set.
+		std::string K_COLUMN_NAMES[K_NUM_COLUMNS];			// Notice it includes "ihk", but not target "hk".
+		kutils::generateColumnHeaders( K_COLUMN_NAMES, false );
 
 		parStopWatch watch;
 		watch.start();
@@ -268,7 +283,7 @@ int main( int argc, char** argv )
 					// Reinitialize both FINE and COARSE grids before we start advections as we are using a
 					// non-signed distance level-set function.
 					my_p4est_level_set_t levelSet_f( nodeNeighbors_f );				// FINE grid.
-					levelSet_f.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER );
+					levelSet_f.reinitialize_2nd_order( phi_f, 2 * REINIT_NUM_ITER );
 					my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// Coarse grid.
 					levelSet_c.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
 
@@ -278,14 +293,14 @@ int main( int argc, char** argv )
 					int iter = 0;
 					const double MAX_VEL_NORM = 1.0; 	// Maximum velocity length known after normalizing random field.
 					double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;	// deltaT for COARSE grid.
-					double dt_f = CFL * (dxyz_min_f / MAX_VEL_NORM) / (1u << ADD_FINE_STEPS_X2);	// FINE deltaT knowing that the CFL
+					double dt_f = CFL * (dxyz_min_f / MAX_VEL_NORM) / (1u << addFineSubsteps());	// FINE deltaT knowing that the CFL
 																									// cond. is (c * deltaT)/deltaX <= CFLN.
 					bool allInside = true;				// Turns false if at least one interface backtracked point in
 														// the coarse grid falls outside the computational domain.
 
 					// Advection loop.
 					// For each COARSE step, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
-					const int N_FINE_STEPS_PER_COARSE_STEP = 1u << (FINE_MAX_RL - COARSE_MAX_RL + ADD_FINE_STEPS_X2);
+					const int N_FINE_STEPS_PER_COARSE_STEP = 1 << (FINE_MAX_RL - COARSE_MAX_RL + addFineSubsteps());
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
 
@@ -327,7 +342,7 @@ int main( int argc, char** argv )
 							semiLagrangian_f.set_velo_interpolation( VEL_INTERP_MTHD );
 
 							// Advect the FINE level-set function one step, then update the grid.
-							semiLagrangian_f.update_p4est_one_vel_step( vel_f, dt_f, phi_f, BAND_F );
+							semiLagrangian_f.update_p4est( vel_f, dt_f, phi_f, nullptr, nullptr, BAND_F );
 
 							// Destroy old FINE forest and create new structures.
 							p4est_destroy( p4est_f );
@@ -345,7 +360,7 @@ int main( int argc, char** argv )
 
 							// Reinitialize FINE level-set function.
 							my_p4est_level_set_t levelSet_f1( nodeNeighbors_f );
-							levelSet_f1.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER );
+							levelSet_f1.reinitialize_2nd_order( phi_f, 2 * REINIT_NUM_ITER );
 
 							// Advance FINE time.
 							tn_f += dt_f;
@@ -430,7 +445,7 @@ int main( int argc, char** argv )
 								{
 									samples.emplace_back( std::vector<double>() );			// Semi-Lagrangian data.
 									samples.back().reserve( NUM_COLUMNS );
-									dataPacket->serialize( samples.back(), false, false );	// Don't serialize num_k.
+									dataPacket->serialize( samples.back(), false, true, false, true );	// Don't serialize num_k.
 
 									ksamples.emplace_back( std::vector<double>( stencils[idx], stencils[idx] + num_neighbors_cube ) );
 									ksamples.back().emplace_back( dataPacket->hk_a );		// Curvature data.
@@ -481,7 +496,8 @@ int main( int argc, char** argv )
 							coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
 
 							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
-							// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
+							// Selective reinitialization of level-set function: affect only those nodes that were not
+							// updated with nnet.
 							Vec mask;
 							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );	// Mask vector to flag updatable nodes.
 							CHKERRXX( ierr );
@@ -490,23 +506,35 @@ int main( int argc, char** argv )
 							ierr = VecGetArray( mask, &maskPtr );
 							CHKERRXX( ierr );
 
+							double *phi_cPtr;
+							ierr = VecGetArray( coarseGrid.phi, &phi_cPtr );
+							CHKERRXX( ierr );
+
 							int numMaskedNodes = 0;
 							for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
 							{
-								double xyz[P4EST_DIM];				// Populate dimensionless curvature at Gamma.
-								node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
+								if( ABS( phi_cPtr[n] ) <= 2.0 * M_SQRT2 * H_C )	// Filter out nodes away from new interface location.
+								{												// This works since nodes next to previous Gamma are now
+									double xyz[P4EST_DIM];						// at most 2*dx from new interface (if phi was an exact signed dist. function).
+									node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
 
-								std::stringstream intCoords;
-								for( int j = 0; j < P4EST_DIM; j++ )
-									intCoords << long( (xyz[j] - xyz_min[j]) / H_C ) << ",";
-								if( flaggedCoords.find( intCoords.str() ) != flaggedCoords.end() )		// Masked node? Nonupdatable?
-								{
-									numMaskedNodes++;
-									maskPtr[n] = 0;					// 0 => nonupdatable.
+									std::stringstream intCoords;
+									for( int j = 0; j < P4EST_DIM; j++ )
+										intCoords << long( (xyz[j] - xyz_min[j]) / H_C ) << ",";
+									if( flaggedCoords.find( intCoords.str() ) != flaggedCoords.end() )	// Masked node? Nonupdatable?
+									{
+										numMaskedNodes++;
+										maskPtr[n] = 0;				// 0 => nonupdatable.
+									}
+									else							// Updatable?
+										maskPtr[n] = 1;				// 1 => updatable.
 								}
-								else								// Updatable?
+								else
 									maskPtr[n] = 1;					// 1 => updatable.
 							}
+
+							ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
+							CHKERRXX( ierr );
 
 							ierr = VecRestoreArray( mask, &maskPtr );
 							CHKERRXX( ierr );

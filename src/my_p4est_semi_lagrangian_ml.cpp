@@ -119,6 +119,7 @@ slml::StandardScaler::StandardScaler( const std::string& paramsFileName, const b
 	_loadParams( "phi", params, _meanPhi, _stdPhi );
 	_loadParams( "vel", params, _meanVel, _stdVel );
 	_loadParams( "hk", params, _meanHK, _stdHK );
+	_loadParams( "h2_phi_xx", params, _meanH2Phi_xx, _stdH2Phi_xx );
 
 	if( printLoadedParams )
 		_printParams( params, paramsFileName );
@@ -170,6 +171,10 @@ void slml::StandardScaler::transform( double samples[][MASS_INPUT_SIZE], const i
 		// Scaling dimensionless curvature for arrival point.
 		for( const auto& j : HK_COLS )
 			samples[i][j] = (samples[i][j] - _meanHK) / _stdHK;
+
+		// Scaling second spatial derivatives of phi at departure point.
+		for( const auto& j : H2_PHI_XX_COLS )
+			samples[i][j] = (samples[i][j] - _meanH2Phi_xx) / _stdH2Phi_xx;
 	}
 }
 
@@ -311,10 +316,11 @@ void slml::DataFetcher::_fetch( const p4est_t *p4est, p4est_topidx_t treeId, con
 		results[outOffset + i] = normalizedXYZ[i];
 	outOffset += P4EST_DIM;
 
-	// Next, retrieve the field values at the 4 (8) corners of the quad (oct).  We have 1 + P4EST_DIM input fields.
+	// Next, retrieve the field values at the 4 (8) corners of the quad (oct).  We have 1 + 2 * P4EST_DIM input fields.
 	// Also, recall that children (e.g., nodes in a quad) appear as zyx (z being the slowest changing coordinate).
 	// We need them the other way around in the output: xyz (x being the slowest changing).
-	for( int fieldIdx = InputFields::PHI; fieldIdx != InputFields::LAST; fieldIdx++ )
+	int fieldIdx;		// Note: The spatial 2nd derivatives of phi are processed differently -- see below.
+	for( fieldIdx = InputFields::PHI; fieldIdx != InputFields::PHI_XX; fieldIdx++ )
 	{
 		for( int x = 0; x < 2; x++ )				// Truth table for output format, with x changing slowly, y changing
 			for( int y = 0; y < 2; y++ )			// faster than x, and z changing faster than y.
@@ -330,6 +336,10 @@ void slml::DataFetcher::_fetch( const p4est_t *p4est, p4est_topidx_t treeId, con
 			}
 		outOffset += P4EST_CHILDREN;
 	}
+
+	// Use bilinear interpolation to compute phi_xx, phi_yy[, phi_zz] at departure point (using its normalized coords).
+	linear_interpolation( p4est, treeId, quad, &fields[P4EST_CHILDREN * fieldIdx], xyz, &results[outOffset], P4EST_DIM );
+	outOffset += P4EST_DIM;
 
 	// Verify everything went right.
 	if( nResults != outOffset )
@@ -456,7 +466,7 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
 									  ITERATION( iteration ),
 									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
-									  PHI_INTERP_MTHD( interpolation_method::linear ),
+									  PHI_INTERP_MTHD( interpolation_method::quadratic ),
 									  _nnet( nnet ),
 									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
 {
@@ -476,7 +486,7 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
 										ITERATION( iteration ),
 										VEL_INTERP_MTHD( interpolation_method::quadratic ),
-										PHI_INTERP_MTHD( interpolation_method::linear ),
+										PHI_INTERP_MTHD( interpolation_method::quadratic ),
 										_nnet( nullptr ),
 										my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
 {
@@ -542,8 +552,8 @@ size_t slml::SemiLagrangian::freeDataPacketArray( vector<DataPacket *>& dataPack
 }
 
 
-bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt, Vec phi,
-										   std::vector<DataPacket *>& dataPackets ) const
+bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt,
+										   Vec phi, Vec phi_xx[P4EST_DIM], std::vector<DataPacket *>& dataPackets ) const
 {
 	PetscErrorCode ierr;
 	ierr = PetscLogEventBegin( log_SemiLagrangianML_collectSamples, 0, 0, 0, 0 );
@@ -579,6 +589,43 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 		CHKERRXX( ierr );
 	}
 
+	// To backtrack points, we need to compute velStar, which is computed as a midpoint approximation.  This comes from:
+	// x^* = x^np1 - dt/2 * u^n(x^np1),
+	// x_d = x^np1 - dt * u^n(x^*).
+	// This approximation holds because u^n is the same as u^np1 (that's the assumption).  Further, we assume G^n to be
+	// G^np1 in the first step.
+	my_p4est_interpolation_nodes_t velInterp( ngbd_n );
+
+	Vec xx_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][0], vel_xx[1][0], vel_xx[2][0] )};	// Reorganize spatial 2nd derivatives
+	Vec yy_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][1], vel_xx[1][1], vel_xx[2][1] )};	// of velocity field for interpolation.
+#ifdef P4_TO_P8
+	Vec zz_v_derivatives[P4EST_DIM] = {vel_xx[0][2], vel_xx[1][2], vel_xx[2][2]};
+#endif
+
+	double *velStar[P4EST_DIM] = {nullptr, nullptr};
+	for( auto& dir : velStar )		// To allocate mid velocity it is safe to use only nodes we are interested in.
+		dir = new double[_localUniformIndicesPtr->size()];
+
+	// Now, find velStar.
+	std::unordered_map<p4est_locidx_t, int> velStarNodeIdxToOutIdxMap;	// We need to map node indices to out indices.
+	velStarNodeIdxToOutIdxMap.reserve( _localUniformIndicesPtr->size() );
+	int velStarOutIdx = 0;
+	for( const auto& n : *_localUniformIndicesPtr )
+	{
+		double xyzStar[P4EST_DIM];
+		node_xyz_fr_n( n, p4est_n, nodes_n, xyzStar );
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			xyzStar[dir] -= 0.5 * dt * velReadPtr[dir][n];
+		clip_in_domain( xyzStar, xyz_min, xyz_max, periodicity );
+
+		velInterp.add_point( velStarOutIdx, xyzStar );
+		velStarNodeIdxToOutIdxMap[n] = velStarOutIdx;
+		velStarOutIdx++;
+	}
+	velInterp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), VEL_INTERP_MTHD, P4EST_DIM );
+	velInterp.interpolate( velStar );
+	velInterp.clear();				// At this point, we can use velStar to find backtracked departure points.
+
 	// Prepare an interpolation object on the current grid.  We need this to retrieve the numerical solution to the
 	// advection problem.  This numerical approximation would then be compared to the target value (collected with a
 	// finer grid.
@@ -587,23 +634,25 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 	// Initialize infrastructure.  We'll use the interpolation across processes infraestructure and hack the interpolate
 	// method.  To do this, we need to instantiate dummy vectors that will pretend to work as empty "fields".  That way,
 	// upon return, the multi-process interpolation will send back the data for the four (eight) quad (oct) corners:
-	// In 2D: exit_code + normalized(x_d) + 4 phi values + 4*2 velocity components = 15 values per "interpolation".
-	// In 3D: exit_code + normalized(x_d) + 8 phi values + 8*3 velocity components = 36 values per "interpolation".
+	// In 2D: exit_code + normalized(x_d) + 4 phi values + 4*2 velocity components + 2 phi 2nd derivatives = 17 values per "interpolation".
+	// In 3D: exit_code + normalized(x_d) + 8 phi values + 8*3 velocity components + 3 phi 2nd derivatives = 39 values per "interpolation".
+	// Note that for phi_xx, we don't return them for each child in the quad; instead, we use bilinear interpolation at
+	// x_d, as it is done in my_p4est_utils.cpp#quadratic_interpolation.
 	// When setting up the input fields (in that order):
-	// In 2D: phi + vel_u + vel_v [+ 12 dummy fields].
-	// In 3D: phi + vel_u + vel_v + vel_w [+ 32 dummy fields].
+	// In 2D: phi + vel_u + vel_v + phi_xx + phi_yy [+ 12 dummy fields].
+	// In 3D: phi + vel_u + vel_v + vel_w + phi_xx + phi_yy + phi_zz [+ 32 dummy fields].
 	//
 	// The exit_code above is used to determined if data collection finished successfully.  A possible error situation
 	// arises, for example, if the quadrant owning the query point is not at the maximum level of refinement.  We need
 	// to collect data from uniform quadrants at the maximum level of refinement only for training consistency.
 	DataFetcher dataFetcher( ngbd_n );
 
-	const int N_FIELDS = 1 + P4EST_DIM + (1 + P4EST_DIM) * P4EST_CHILDREN;	// Number of fields to receive.
-	const int N_GIVEN_INPUT_FIELDS = 1 + P4EST_DIM;				// Actual number of true fields to send (phi and vel).
+	const int N_FIELDS = 1 + 2 * P4EST_DIM + (1 + P4EST_DIM) * P4EST_CHILDREN;	// Number of fields to receive.
+	const int N_GIVEN_INPUT_FIELDS = 1 + 2 * P4EST_DIM;	// Actual number of true fields to send (phi, vel, and phi_dd).
 
 	// Collect nodes along the interface and add their backtracked departure points to "interpolation" buffer.
-	// Filter out any node whose backtracked departure point fall outside of domain (if no periodicity is allowed in that
-	// direction).
+	// Filter out any node whose backtracked departure point falls outside of domain (if no periodicity is allowed in
+	// that direction).
 	double xyz_d[P4EST_DIM];						// Departure point.
 	double xyz_a[P4EST_DIM];						// Arrival point.
 	std::vector<p4est_locidx_t> outIdxToNodeIdx;	// This is a map from out index to actual node index in PETSc Vecs.
@@ -616,20 +665,23 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 													// Helps prevent inconsistent training samples.
 	for( const auto& nodeIdx : *_localUniformIndicesPtr )
 	{
-		// Let's skip nodes for which the velocity field is practically zero.
-		double velMagnitude = 0;
-		for( auto& dir : velReadPtr )
-			velMagnitude += SQR( dir[nodeIdx] );
-		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON )
+		// Let's skip nodes for which the velocity at it or the midpoint velocity is practically zero.
+		double velMagnitude = 0, velStarMagnitude = 0;
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			velMagnitude += SQR( velReadPtr[dir][nodeIdx] );
+			velStarMagnitude += SQR( velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] );
+		}
+		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON || sqrt( velStarMagnitude ) <= PETSC_MACHINE_EPSILON )
 			continue;
 
-		// Backtracking the point using one step in the negative velocity direction.
+		// Backtracking the point using a midpoint velocity step in the negative direction (2nd-order accurate).
 		node_xyz_fr_n( nodeIdx, p4est_n, nodes_n, xyz_a );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
-			xyz_d[dir] = xyz_a[dir] - dt * velReadPtr[dir][nodeIdx];
+			xyz_d[dir] = xyz_a[dir] - dt * velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )];
 
 		// Check if departure point falls within the domain.
-		// We don't admit truncated backtracked points to avoid inconsistency in the training patterns.
+		// We won't admit truncated backtracked points to avoid inconsistency in the training patterns.
 		if( !clip_in_domain_with_check( xyz_d, xyz_min, xyz_max, periodicity ) )
 		{
 			allInside = false;
@@ -659,7 +711,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 	// set up and trigger interpolation even if the number of points expected in this process is zero.
 	// Not doing so will enter the program into a deadlock because others need current process to have interpolation
 	// set up.
-	Vec fields[N_FIELDS] = {phi, DIM(vel[0], vel[1], vel[2])};	// Input fields.
+	Vec fields[N_FIELDS] = {phi, DIM( vel[0], vel[1], vel[2] ), DIM( phi_xx[0], phi_xx[1], phi_xx[2] )};	// Input fields.
 	for( int i = N_GIVEN_INPUT_FIELDS; i < N_FIELDS; i++ )		// Dummy fields are initialized with zeros.
 	{
 		ierr = VecCreateGhostNodes( p4est_n, nodes_n, &fields[i] );
@@ -677,7 +729,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 
 	// Allocate output array for computed, numerically approximated phi value at departure point.
 	auto *outputDepartureNumericalPhi = new double[outIdx];
-	numericalInterp.set_input( phi, PHI_INTERP_MTHD );
+	numericalInterp.set_input( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ), PHI_INTERP_MTHD );
 	numericalInterp.interpolate( outputDepartureNumericalPhi );
 	numericalInterp.clear();
 
@@ -693,9 +745,9 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 			// Allocate new packet for current ith node.
 			auto *dataPacket = new DataPacket;
 			dataPacket->nodeIdx = nodeIdx;
-			dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and velocity at arrival point.
+			dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and (mid point) velocity at arrival point.
 			for( int dim = 0; dim < P4EST_DIM; dim++ )
-				dataPacket->vel_a[dim] = velReadPtr[dim][nodeIdx];
+				dataPacket->vel_a[dim] = velStar[dim][velStarNodeIdxToOutIdxMap.at( nodeIdx )];
 			dataPacket->distance = distances[i];			// Normalized distance from departure to arrival point.
 
 			dataPacket->numBacktrackedPhi_d = outputDepartureNumericalPhi[i];	// Numerically backtracked phi.
@@ -717,6 +769,11 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 				velCompChild = output[fIndex][i];			// component we have P4EST_CHILDREN values.
 				fIndex++;
 			}
+			for( double& phi_xxComp : dataPacket->h2_phi_xx_d ) 		// Serialized, abs. value of h^2 * 2nd spatial
+			{															// phi derivative bilinearly interpolated at the
+				phi_xxComp = SQR( dxyz_min ) * ABS( output[fIndex][i] );// dep. point.  Order is phi_xx, phi_yy, phi_zz.
+				fIndex++;
+			}
 
 			// Add the newly populated data packet to the output array.
 			dataPackets.push_back( dataPacket );
@@ -735,6 +792,9 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 		CHKERRXX( ierr );
 	}
 
+	for( auto& dir : velStar )
+		delete [] dir;
+
 	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 	CHKERRXX( ierr );
 
@@ -751,11 +811,13 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], const double& dt,
 }
 
 
-void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk, const double& h )
+void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi,
+											   Vec phi_xx[P4EST_DIM], Vec hk, const double& h )
 {
 	PetscErrorCode ierr;
 
-	// Some pointers to structs for the Gn at time tn.
+	// Some pointers to structs for the grid at time tn.  You should NOT use this function after the grid has entered
+	// the loop for refining and coarsening during an advection step.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
@@ -779,9 +841,10 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 	ierr = VecCreateGhostNodes( p4est_n, nodes_n, &_mlPhi );
 	CHKERRXX( ierr );
 
-	// Collect data packets for locally owned nodes (no ghost nodes).
+	// Collect data packets for locally owned nodes (no ghost nodes).  Also, skip nodes whose backtracked point falls
+	// outside the domain (even if periodicity is enabled).  This makes the runtime process compatible with training.
 	std::vector<DataPacket *> dataPackets;
-	collectSamples( vel, dt, phi, dataPackets );
+	collectSamples( vel, vel_xx, dt, phi, phi_xx, dataPackets );
 
 	// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
 	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
@@ -838,9 +901,9 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], const double& dt, Vec 
 		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x.
 		sample1.reserve( MASS_INPUT_SIZE );
 		sample2.reserve( MASS_INPUT_SIZE );
-		dataPackets[i]->serialize( sample1, false, true, false );	// Include curvature too.
+		dataPackets[i]->serialize( sample1, false, true, true, false );	// Include curvature too.
 		dataPackets[i]->reflect_yEqx();
-		dataPackets[i]->serialize( sample2, false, true, false );
+		dataPackets[i]->serialize( sample2, false, true, true, false );
 
 		double inputs[N_SAMPLES_PER_PACKET][MASS_INPUT_SIZE];		// Populate inputs for nnet.
 		double outputs[N_SAMPLES_PER_PACKET];
@@ -907,8 +970,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
 
-	////////// First step: compute level-set values for points next to Gamma using the machine learning model //////////
-	// Some pointers to structs for the Gn at time tn.
+	// Some pointers to structs for the grid at time tn.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
@@ -919,14 +981,9 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	if( ABS( dxyz[0] - dxyz[1] ) > PETSC_MACHINE_EPSILON ONLY3D( || ABS( dxyz[1] - dxyz[2] ) > PETSC_MACHINE_EPSILON ) )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Cells must be square!" );
 
-	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
-	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
-	// exiting the current function (see the very last part of this procedure).
-	_computeMLSolution( vel, dt, *phi, hk, dxyz_min );
-
-	/////////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy ///////////////////////////
-	// We need these to interpolate the velocity at updated grid Gnp1.
+	////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy[, vel_zz] //////////////////////
+	// We need these to interpolate the velocity at updated grid Gnp1 and to retrieve the backtracked departure point
+	// with second-order accuracy.
 	Vec *vel_xx[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; dir++ )	// Choose velocity component: u, v, or w.
 	{
@@ -950,12 +1007,29 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		ngbd_n->second_derivatives_central( vel[dir], DIM( vel_xx[dir][0], vel_xx[dir][1], vel_xx[dir][2] ) );
 	}
 
+	//////////////// Compute second spatial derivatives of level-set function: phi_xx, phi_yy[, phi_zz] ////////////////
+	// We need these when collecting samples along the interface for computing the machine learning solution.
+	Vec phi_xx[P4EST_DIM];
+	for( auto & dir : phi_xx )
+	{
+		ierr = VecCreateGhostNodes( p4est_n, nodes_n, &dir );
+		CHKERRXX( ierr );
+	}
+	ngbd_n->second_derivatives_central( *phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ) );
+
+	//////////////// Compute level-set values for points next to Gamma using the machine learning model ////////////////
+	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
+	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
+	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
+	// exiting the current function (see the very last part of this procedure).
+	_computeMLSolution( vel, vel_xx, dt, *phi, phi_xx, hk, dxyz_min );
+
 	///////////////////////////////////////// Preparing coarse-refine process //////////////////////////////////////////
 
 	// Save the old splitting criteria information.
 	auto *oldSplittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
 
-	// Define splitting criteria with an explicit band around Gamma.
+	// Define splitting criteria with an explicit band of min diags around Gamma.
 	auto splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
 																   oldSplittingCriteria->max_lvl,
 																   oldSplittingCriteria->lip, BAND );
@@ -965,7 +1039,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	ierr = VecCreateGhostNodes( p4est, nodes, &phi_np1 );	// Notice p4est and nodes are the grid at time n so far.
 	CHKERRXX( ierr );
 
-	// Debugging: see how nodes were updated.
+	// See how nodes were updated; later, this is used for selective reinitialization.
 	Vec howUpdated_np1;
 	ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated_np1 );
 	CHKERRXX( ierr );
@@ -988,8 +1062,8 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		ierr = VecGetArray( howUpdated_np1, &howUpdated_np1Ptr );
 		CHKERRXX( ierr );
 
-		// Perform first order advection.
-		_advectFromNToNp1( dt, dxyz_min, vel, vel_xx, *phi, phi_np1Ptr, howUpdated_np1Ptr );
+		// Perform advection with second-order semi-Lagrangian step.
+		_advectFromNToNp1( dt, dxyz_min, vel, vel_xx, *phi, phi_xx, phi_np1Ptr, howUpdated_np1Ptr );
 
 		// Refine an coarsen grid; detect if it changes from previous coarsening/refinement operation.
 		isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est, nodes, phi_np1Ptr );
@@ -1051,6 +1125,12 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		CHKERRXX( ierr );
 	}
 
+	for( auto& dir : phi_xx )
+	{
+		ierr = VecDestroy( dir );
+		CHKERRXX( ierr );
+	}
+
 	for( auto& dir : vel_xx )
 	{
 		for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
@@ -1077,7 +1157,8 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 }
 
 
-void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h, Vec *vel, Vec *vel_xx[], Vec phi,
+void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h, Vec vel[P4EST_DIM],
+											  Vec *vel_xx[P4EST_DIM], Vec phi, Vec phi_xx[P4EST_DIM],
 											  double *phi_np1Ptr, double *howUpdated_np1Ptr )
 {
 	PetscErrorCode ierr;
@@ -1116,23 +1197,42 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		interpOutput[dir] = vel_np1[dir].data();
 	}
 	interp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), VEL_INTERP_MTHD, P4EST_DIM );
-	interp.interpolate( interpOutput );			// Interpolate velocities.  Save these in vel_np1 vector.
+	interp.interpolate( interpOutput );				// Interpolate velocities.  Save these in vel_np1 vector.
+	interp.clear();
+
+	//////////////////////////////////////// Finding midpoint velocity at Gnp1 /////////////////////////////////////////
+	// Used for secon-order accurate location of departure points for Gnp1.
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	{
+		double xyz_star[P4EST_DIM];				// Midway point.
+		node_xyz_fr_n( n, p4est, nodes, xyz_star );
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			xyz_star[dir] -= 0.5 * dt * vel_np1[dir][n];
+		clip_in_domain( xyz_star, xyz_min, xyz_max, periodicity );
+
+		interp.add_point(n, xyz_star);
+	}
+
+	for( int dir = 0; dir < P4EST_DIM; dir++ )		// Replace the vel_np1 by the midpoint velocity which we use below
+		interpOutput[dir] = vel_np1[dir].data();	// for backtracking points.
+	interp.set_input( vel, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), VEL_INTERP_MTHD, P4EST_DIM );
+	interp.interpolate( interpOutput );
 	interp.clear();
 
 	/////////////////////////////////////////////// Find departure points //////////////////////////////////////////////
-	// Using the bilinear interpolation for phi so that the process is compatible with nnet training.
+	// Using the user-defined interpolation for phi.  Make sure the process is compatible with nnet training.
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )	// Notice nodes struct changes with advection.
 	{
 		double xyz[P4EST_DIM];
 		node_xyz_fr_n( n, p4est, nodes, xyz );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			xyz[dir] -= dt * vel_np1[dir][n];
-		clip_in_domain_with_check( xyz, xyz_min, xyz_max, periodicity );
+		clip_in_domain_with_check( xyz, xyz_min, xyz_max, periodicity );	// TODO: Consider what happens if point is invalid.
 
 		interp_phi.add_point( n, xyz );
 		howUpdated_np1Ptr[n] = HowUpdated::NUM;
 	}
-	interp_phi.set_input( phi, PHI_INTERP_MTHD );
+	interp_phi.set_input( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2]), PHI_INTERP_MTHD );
 	interp_phi.interpolate( phi_np1Ptr );			// New phi values at time tnp1 based off Gn.
 
 	////////// Load cached values computed with neural network for points in a band around new Gamma location //////////
@@ -1142,7 +1242,7 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 	int outIdx = 0;
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
-		if( ABS( phi_np1Ptr[n] ) <= BAND * h )
+		if( ABS( phi_np1Ptr[n] ) <= 2.0 * M_SQRT2 * h )	// This band ensures we see which points were updated with nnet.
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );

@@ -5,14 +5,15 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #else
-#define MASS_INPUT_SIZE			20
+#define MASS_INPUT_SIZE			22
 #define MASS_INPUT_PHI_SIZE 	 6
 #define MASS_INPUT_VEL_SIZE		10
 #define MASS_INPUT_DIST_SIZE	 1
 #define MASS_INPUT_COORDS_SIZE	 2
 #define MASS_INPUT_HK_SIZE		 1
+#define MASS_INPUT_PHI_XX_SIZE	 2
 
-#define MASS_N_COMPONENTS		15	// Number of components for PCA dimensionality reduction; same as nnet input size.
+#define MASS_N_COMPONENTS		17	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_nodes_along_interface.h>
@@ -35,7 +36,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: May 29, 2021.
+ * Updated: July 02, 2021.
  */
 namespace slml
 {
@@ -51,6 +52,7 @@ namespace slml
 	 *		phi_d_mm, phi_d_mp, phi_d_pm, phi_d_pp,		Level-set values at departure quad's children.
 	 *		u_d_mm, u_d_mp, u_d_pm, u_d_pp,				Velocity component u at departure quad's children.
 	 *		v_d_mm, v_d_mp, v_d_pm, v_d_pp,				Velocity component v at departure quad's children.
+	 *		h2_phi_xx, h2_phi_yy,						h^2 * abs. value of 2nd spatial derivatives of level-set function at x_d.
 	 *		hk,											Dimensionless curvature at the interface for arrival point.
 	 *		numerical_phi_d								Numerically computed phi value at departure point.
 	 */
@@ -59,11 +61,12 @@ namespace slml
 		using json = nlohmann::json;
 
 	protected:
-		const int    PHI_COLS[MASS_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,19};				// Phi column indices.
-		const int    VEL_COLS[MASS_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
-		const int   DIST_COLS[MASS_INPUT_DIST_SIZE  ] = {3};							// Dist column indices.
-		const int COORDS_COLS[MASS_INPUT_COORDS_SIZE] = {4,5};							// Coords column indices.
-		const int     HK_COLS[MASS_INPUT_HK_SIZE    ] = {18};							// hk column indices.
+		const int       PHI_COLS[MASS_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,21};				// Phi column indices.
+		const int       VEL_COLS[MASS_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
+		const int      DIST_COLS[MASS_INPUT_DIST_SIZE  ] = {3};								// Dist column indices.
+		const int    COORDS_COLS[MASS_INPUT_COORDS_SIZE] = {4,5};							// Coords column indices.
+		const int        HK_COLS[MASS_INPUT_HK_SIZE    ] = {20};							// hk column indices.
+		const int H2_PHI_XX_COLS[MASS_INPUT_PHI_XX_SIZE] = {18,19};							// h^2 * phi_xx column indices.
 
 		static void _printParams( const json& params, const std::string& paramsFileName );
 
@@ -123,20 +126,23 @@ namespace slml
 		using json = nlohmann::json;
 
 	private:
-		double _meanPhi = 0.;	// Mean of level-set values.
-		double _stdPhi = 1.;	// Standard deviation of level-set values.
+		double _meanPhi = 0.;		// Mean of level-set values.
+		double _stdPhi = 1.;		// Standard deviation of level-set values.
 
-		double _meanVel = 0.;	// Mean of velocity components.
-		double _stdVel = 1.;	// Standard deviation of level-set values.
+		double _meanVel = 0.;		// Mean of velocity components.
+		double _stdVel = 1.;		// Standard deviation of level-set values.
 
-		double _meanDist = 0.;	// Mean of distance between arrival and departure point.
-		double _stdDist = 1.;	// Standard deviation of distance.
+		double _meanDist = 0.;		// Mean of distance between arrival and departure point.
+		double _stdDist = 1.;		// Standard deviation of distance.
 
-		double _meanCoord = 0.;	// Mean of scaled coordinates of departure point w.r.t. quad's lower corner.
-		double _stdCoord = 1.;	// Standard deviation of scaled coordinates.
+		double _meanCoord = 0.;		// Mean of scaled coordinates of departure point w.r.t. quad's lower corner.
+		double _stdCoord = 1.;		// Standard deviation of scaled coordinates.
 
-		double _meanHK = 0.;	// Mean of dimensionless curvature at the interface: it can be numerical or neural.
-		double _stdHK = 1.;		// Standard deviation of dimensionless curvature.
+		double _meanHK = 0.;		// Mean of dimensionless curvature at the interface: it can be numerical or neural.
+		double _stdHK = 1.;			// Standard deviation of dimensionless curvature.
+
+		double _meanH2Phi_xx = 0.;	// Mean of second spatial derivatives of phi at departure point.
+		double _stdH2Phi_xx = 1.;	// Standard deviation of second spatial derivatives of phi at departure point.
 
 		/**
 		 * Utility function to load group of parameters.
@@ -225,13 +231,15 @@ namespace slml
 	{
 		p4est_locidx_t nodeIdx;			// Node index in the PETSc parallel vector.
 		double phi_a;					// Level-set function value at arrival point.
-		double vel_a[P4EST_DIM];		// Velocity at arrival point (u, v, and w components).
+		double vel_a[P4EST_DIM];		// Midpoint velocity at arrival point (u, v, and w components).
 		double distance;				// Distance between arrival and departure point normalized to (min) cell width.
 		double xyz_d[P4EST_DIM];		// Position of departure point in normalized coords (i.e., in [0,1]^{P4EST_DIM}).
 		double phi_d[P4EST_CHILDREN];	// Level-set function values at corners of cell containing the (backtracked) departure point.
 		double vel_d[P4EST_DIM * P4EST_CHILDREN];	// Serialized velocity at corners of cell containing the backtracked
-													// departure point.  Order is vel_u, vel_v [, vel_w].
+													// departure point.  Order is vel_u, vel_v[, vel_w].
 													// For each vel component, there are P4EST_CHILDREN values.
+		double h2_phi_xx_d[P4EST_DIM];	// Serialized, h^2 scaled absolute value of 2nd spatial phi derivative at x_d.
+										// To compute it, we use bilinear interpolation (invariant to 90 deg rotations).
 		double targetPhi_d;				// Reserved for expected/target phi value at departure point.
 		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
 		double hk_a;					// Dimensionless curvature at the point on Gamma closest to node nodeIdx.
@@ -239,12 +247,15 @@ namespace slml
 		/**
 		 * Serialize data packet into a vector.
 		 * The order is: phi_a, vel_a (by component), distance, xyz_d (by coordinate), phi_d (by child), vel_d
-		 * (by component and child), targetPhi_d, numBacktrackedPhi_d.
+		 * (by component and child), phi_xx_d (by component), targetPhi_d, numBacktrackedPhi_d, hk_a.
 		 * @param [out] data Output vector container.
 		 * @param [in] includeNodeIdx Whether to serialize node index or not.
+		 * @param [in] includeH2Phi_xx Whether to serialize h^2 * 2nd spatial derivatives of level-set function or not.
 		 * @param [in] includeHK Whether to serialize numerical curvature or not.
+		 * @param [in] includeTargetPhi_d Whether to serialize target phi value or not.
 		 */
-		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeHK=false, bool includeTargetPhi_d=true ) const
+		void serialize( std::vector<double>& data, bool includeNodeIdx=false, bool includeH2Phi_xx=true,
+						bool includeHK=false, bool includeTargetPhi_d=true ) const
 		{
 			if( includeNodeIdx )					// Node index.
 				data.push_back( nodeIdx );
@@ -265,6 +276,12 @@ namespace slml
 			for( const auto& componentAtChild : vel_d )		// Velocity components at quad/oct children.
 				data.push_back( componentAtChild );
 
+			if( includeH2Phi_xx )					// h^2 scaled second spatial derivatives of level-set function.
+			{
+				for( const auto& dim : h2_phi_xx_d )
+					data.push_back( dim );
+			}
+
 			if( includeTargetPhi_d )
 				data.push_back( targetPhi_d );		// Target level-set value at departure point.
 
@@ -277,7 +294,7 @@ namespace slml
 #ifndef P4_TO_P8
 
 		/**
-		 * Rotate a sample data packet by 90 degrees counter- or clockwise.
+		 * Rotate a sample data packet by 90 degrees counter- or clock-wise.
 		 * @param [in] dir Rotation direction: +1 for counterclockwise, -1 for clockwise.
 		 * @note This function is just tested for 2D.
 		 */
@@ -302,7 +319,7 @@ namespace slml
 			};
 
 			// phi_a remains unchanged.
-			// Rotate velocity at departure point.
+			// Rotate midpoint velocity at departure point.
 			_rotate90( vel_a[0], vel_a[1] );
 
 			// distance remains unchanged.
@@ -321,14 +338,15 @@ namespace slml
 			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Rotate actual vectors.
 				_rotate90( vel_d[i], vel_d[i + P4EST_CHILDREN] );
 
+			// h2_phi_xx_d remains unchanged.
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
 			// hk_a remains unchanged.
 		}
 
 		/**
-		 * Rotate packet in such a way that the backtracking (i.e., negated) velocity at the arrival point has an angle
-		 * has an with respect to the horizontal in the range of [0, pi/2].
+		 * Rotate packet in such a way that the backtracking (i.e., negated midpoint) velocity at the arrival point has
+		 * an angle respect to the horizontal in the range of [0, pi/2].
 		 * is negative.
 	 	 */
 		void rotateToFirstQuadrant()
@@ -381,6 +399,7 @@ namespace slml
 			for( int i = 0; i < P4EST_CHILDREN; i++ )	// Now, swap actual velocity vector components.
 				std::swap( vel_d[i], vel_d[i + P4EST_CHILDREN] );
 
+			// h2_phi_xx_d remains unchanged.
 			// targetPhi_d remains unchanged.
 			// numBacktrackedPhi_d remains unchanged.
 			// hk_a remains unchanged.
@@ -396,17 +415,19 @@ namespace slml
 	 * parallel communication mechanisms existing in the library interpolation class.  Instead of interpolation, we
 	 * retrieve the contents of the quad/oct containing a (backtracked) point.
 	 * To allow the "interpolate" method to fetch all the quad information and place it in a results array, we set up a
-	 * large number of "dummy" input fields.  These input fields include:
-	 *  - the level-set function values and
-	 *  - the velocity components u, v[, w]
-	 * in that order.  This amounts to 3 input fields in 2D and 4 in 3D.  To make full children information retrieval
+	 * large number of "dummy" input fields.  The input fields include:
+	 *  - the level-set function values,
+	 *  - the velocity components u, v[, w], and
+	 *  - the level-set function second spatial derivatives phi_xx, phi_yy[, phi_zz]
+	 * in that order.  This amounts to 5 input fields in 2D and 7 in 3D.  To make full children information retrieval
 	 * possible, we create dummy fields to satisfy the expected outputs.
 	 * Upon response, the results array contains information with:
 	 *  - an error code: 0 if success, non-zero if failure (see _fetch function),
 	 *  - the normalized coordinates in [0,1]^{P4EST_DIM} for the query points w.r.t. the landing quad/oct,
-	 *  - the level-set function values of the quad/oct child nodes, and
-	 *  - the velocity components u, v[, w], of the quad/oct child nodes.
-	 * This amounts to 15 returned "fields" in 2D and 36 in 3D per query point.  For this reason, we must set up 12 dum-
+	 *  - the level-set function values of the quad/oct child nodes,
+	 *  - the velocity components u, v[, w], of the quad/oct child nodes, and
+	 *  - the level-set function second spatial derivatives phi_xx, phi_yy[, phi_zz] bilinearly interpolated at x_d.
+	 * This amounts to 17 returned "fields" in 2D and 39 in 3D per query point.  For this reason, we must set up 12 dum-
 	 * my fields in 2D and 32 in 3D.
 	 *
 	 * The information returned is serialized in a long results array.  As for data related to quad child nodes, the
@@ -468,7 +489,8 @@ namespace slml
 		 * Input fields order or indices, as they should be given when setting up the inputs of the Data Fetcher object.
 		 * The LAST type is only used for iteration purposes.
 		 */
-		enum InputFields : int {PHI = 0, VEL_U __unused, VEL_V __unused, ONLY3D( VEL_W __unused COMMA ) LAST};
+		enum InputFields : int {PHI = 0, VEL_U __unused, VEL_V __unused, ONLY3D( VEL_W __unused COMMA )
+								PHI_XX __unused, PHI_YY __unused, ONLY3D( PHI_ZZ __unused )};
 
 		/**
 		 * Constructor.
@@ -618,27 +640,30 @@ namespace slml
 		 * Compute semi-Lagrangian advection for all points and correct level-set values at time tnp1 for grid points
 		 * lying next to interface at time tn by using the neural network.
 		 * @note Function resets and populates _mlFlag and _mlPhi for points next to the interface.
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
+		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time tn.
 		 * @param [in] dt Time step.
 		 * @param [in] phi Parallel vector with level-set values for grid at time tn.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
 		 * @param [in] hk Dimensionless curvature parallel vector.  For points next to Gamma, it is hk at the closest location on the interface.
 		 * @param [in] h Mesh size.
 		 */
-		void _computeMLSolution( Vec vel[], const double& dt, Vec phi, Vec hk, const double& h );
+		void _computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi, Vec phi_xx[P4EST_DIM],
+								 Vec hk, const double& h );
 
 		/**
-		 * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler
-		 * along the characteristics.
+		 * Advect level-set function using a semi-Lagrangian scheme with a with Euler along the characteristics.
 		 * @param [in] dt Time step.
 		 * @param [in] h Minimum cell width (assuming 1:1:1 ratios).
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
-		 * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction.
-		 * @param [in] phi Level-set function values at time n.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
+		 * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction at time tn.
+		 * @param [in] phi Level-set function values at time tn.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
 		 * @param [in,out] phi_np1Ptr Advected level-set function values.
 		 * @param [in,out] howUpdated_np1Ptr Debugging values to indicate how the level-set was updated.
 		 */
-		void _advectFromNToNp1( const double& dt, const double& h, Vec vel[], Vec *vel_xx[], Vec phi,
-						  		double *phi_np1Ptr, double *howUpdated_np1Ptr );
+		void _advectFromNToNp1( const double& dt, const double& h, Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], Vec phi,
+						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *howUpdated_np1Ptr );
 
 	public:
 		/**
@@ -671,20 +696,22 @@ namespace slml
 						const unsigned long& iteration=0 );
 
 		/**
-		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with a single velocity step along
+		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with 2nd-order stepping along
 		 * the characteristics to define the departure points.  Collect samples only for grid points next to the inter-
-		 * face whose velocity is essentially nonzero.
+		 * face whose mid-point velocity is essentially nonzero.
 		 * @note Here, we create data packets dynamically, and you must not forget free those objects by calling the
 		 * utility function freeDataPacketArray.
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time n.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
+		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time tn.
 		 * @param [in] dt Time step.
-		 * @param [in] phi Level-set function values at time n.
+		 * @param [in] phi Level-set function values at time tn.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
 		 * @param [out] dataPackets Vector of pointers to data packet objects.
 		 * @return true if all backtracked queried points from nodes along interface lie inside within domain, false
 		 * otherwise.  This serves as a warning flag.
 		 */
-		bool collectSamples( Vec vel[P4EST_DIM], const double& dt, Vec phi,
-					   		 std::vector<DataPacket *>& dataPackets ) const;
+		bool collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi,
+							 Vec phi_xx[P4EST_DIM], std::vector<DataPacket *>& dataPackets ) const;
 
 		/**
 		 * Utility function to deallocate the dynamically created data packets in collectSamples.

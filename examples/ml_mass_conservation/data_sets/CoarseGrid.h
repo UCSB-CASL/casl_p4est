@@ -333,17 +333,55 @@ public:
 
 		my_p4est_interpolation_nodes_t interp( ngbd_f );	// Interpolation object on FINE grid phi values.
 
+		//////////////// Compute second derivatives of coarse velocity field: vel_xx, vel_yy[, vel_zz] /////////////////
+		// We need these to interpolate the velocity and retrieve the backtracked departure point with second-order
+		// accuracy.
+		Vec *vel_c_xx[P4EST_DIM];
+		for( int dir = 0; dir < P4EST_DIM; dir++ )	// Choose velocity component: u, v, or w.
+		{
+			vel_c_xx[dir] = new Vec[P4EST_DIM];		// For each velocity component, we need the derivatives w.r.t. x, y, z.
+			if( dir == 0 )
+			{
+				for( int dd = 0; dd < P4EST_DIM; dd++ )
+				{
+					ierr = VecCreateGhostNodes( p4est, nodes, &vel_c_xx[dir][dd] );
+					CHKERRXX( ierr );
+				}
+			}
+			else
+			{
+				for( int dd = 0; dd < P4EST_DIM; dd++ )
+				{
+					ierr = VecDuplicate( vel_c_xx[0][dd], &vel_c_xx[dir][dd] );
+					CHKERRXX( ierr );
+				}
+			}
+			nodeNeighbors->second_derivatives_central( vel[dir], DIM( vel_c_xx[dir][0], vel_c_xx[dir][1], vel_c_xx[dir][2] ) );
+		}
+
+		////////// Compute second spatial derivatives of coarse level-set function: phi_xx, phi_yy[, phi_zz] ///////////
+		// We need these to compute numerical level-set value at the departure point with quadratic interpolation.
+		// These are also used as part of the samples retrieved for building the training data sets.
+		Vec phi_c_xx[P4EST_DIM];
+		for( auto & dir : phi_c_xx )
+		{
+			ierr = VecCreateGhostNodes( p4est, nodes, &dir );
+			CHKERRXX( ierr );
+		}
+		nodeNeighbors->second_derivatives_central( phi, DIM( phi_c_xx[0], phi_c_xx[1], phi_c_xx[2] ) );
+
 		//////////////////////////////////////////////// Data collection ///////////////////////////////////////////////
 
 		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
 		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, BAND );
-		bool allInside = semiLagrangianML.collectSamples( vel, dt, phi, dataPackets );
+		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, phi_c_xx, dataPackets );
 
 		// Continue process if all samples lie within computational domain.
 		if( allInside )
 		{
-			// Finding the target phi values via interpolation from FINE grid.
+			// Finding the target phi values via quadratic interpolation from FINE grid.  Actually, it doesn't matter
+			// the interpolation order because COARSE grid nodes match grid point in FINE grid.
 			double targetPhi[dataPackets.size()];
 			for( p4est_locidx_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
 			{
@@ -417,10 +455,10 @@ public:
 			ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
 			CHKERRXX( ierr );
 
-			// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated using
-			// machine learning even at processes that do not own those nodes.  If I don't do this, the flag set in one pro-
-			// cess can be reset to 0 by another (e.g., if the node is in the ghost layer of a process and, according to it,
-			// the node isn't next to the interface, while the owner process has determined that the node is next to Gamma).
+			// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated
+			// using machine learning even at processes that do not own those nodes.  If I don't do this, the flag set
+			// in one process can be reset to 0 by another (e.g., if node is in ghost layer of a process and, according
+			// to it, the node isn't next to Gamma, while the owner process has determined that the node is next to it).
 			ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
 			CHKERRXX( ierr );
 			VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
@@ -446,6 +484,23 @@ public:
 		{
 			ierr = VecRestoreArrayRead( normal[i], &normalReadPtr[i] );
 			CHKERRXX( ierr );
+		}
+
+		// Destroy parallel vectors for second derivatives in the COARSE grid.
+		for( auto& dir : phi_c_xx )
+		{
+			ierr = VecDestroy( dir );
+			CHKERRXX( ierr );
+		}
+
+		for( auto& dir : vel_c_xx )
+		{
+			for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
+			{
+				ierr = VecDestroy( dir[dd] );
+				CHKERRXX( ierr );
+			}
+			delete[] dir;
 		}
 
 		// Free vectors with second derivatives for FINE phi.
