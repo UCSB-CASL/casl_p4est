@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: June 28, 2021.
+ * Updated: July 09, 2021.
  */
 
 #ifdef _OPENMP
@@ -332,8 +332,8 @@ int main( int argc, char** argv )
 
 			const int N_SAMPLES = 2;
 			double inputs[N_SAMPLES][MASS_INPUT_SIZE] = {
-				{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2},
-				{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8}
+				{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3, 0.4},
+				{0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.8, 0.7, 0.6}
 			};
 			double outputs[N_SAMPLES];
 			int j;
@@ -500,7 +500,7 @@ int main( int argc, char** argv )
 			else
 			{
 				numSemiLagrangian = new my_p4est_semi_lagrangian_t( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
-				numSemiLagrangian->set_phi_interpolation( interpolation_method::linear );
+				numSemiLagrangian->set_phi_interpolation( interpolation_method::quadratic );
 				numSemiLagrangian->set_velo_interpolation( interpolation_method::quadratic );
 			}
 
@@ -508,7 +508,7 @@ int main( int argc, char** argv )
 			if( mode() )
 				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, &howUpdated );
 			else
-				numSemiLagrangian->update_p4est_one_vel_step( vel, dt, phi, BAND );
+				numSemiLagrangian->update_p4est( vel, dt, phi, nullptr, nullptr, BAND );
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est );

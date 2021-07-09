@@ -61,6 +61,9 @@ namespace slml
 		using json = nlohmann::json;
 
 	protected:
+		static void _printParams( const json& params, const std::string& paramsFileName );
+
+	public:
 		const int       PHI_COLS[MASS_INPUT_PHI_SIZE   ] = {0,6, 7, 8, 9,21};				// Phi column indices.
 		const int       VEL_COLS[MASS_INPUT_VEL_SIZE   ] = {1,2,10,11,12,13,14,15,16,17};	// Vel column indices.
 		const int      DIST_COLS[MASS_INPUT_DIST_SIZE  ] = {3};								// Dist column indices.
@@ -68,9 +71,6 @@ namespace slml
 		const int        HK_COLS[MASS_INPUT_HK_SIZE    ] = {20};							// hk column indices.
 		const int H2_PHI_XX_COLS[MASS_INPUT_PHI_XX_SIZE] = {18,19};							// h^2 * phi_xx column indices.
 
-		static void _printParams( const json& params, const std::string& paramsFileName );
-
-	public:
 		/**
 		 * Transform input data in place.
 		 * @param [in,out] samples Data to transform.
@@ -197,8 +197,8 @@ namespace slml
 		 * Constructor.
 		 * @param [in] modelPath Full path of neural network's JSON file.
 		 * @param [in] transformerPath Full path of transformer's JSON file.
-		 * @param [in] verbose Whether to print debugging information or not.
 		 * @param [in] h Mesh size.
+		 * @param [in] verbose Whether to print debugging information or not.
 		 */
 		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const double& h,
 								const bool& verbose=true );

@@ -197,10 +197,11 @@ slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::str
 
 void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const
 {
-	// Normalize backtracked phi_d by h and leave hk as a negative value.
+	// Normalize phi values by h and leave hk as a negative value.
 	for( int i = 0; i < nSamples; i++ )
 	{
-		inputs[i][MASS_INPUT_SIZE-1] /= H;
+		for( const int& j : _pcaScaler.PHI_COLS )
+			inputs[i][j] /= H;
 		inputs[i][MASS_INPUT_SIZE-2] = -ABS( inputs[i][MASS_INPUT_SIZE-2] );
 	}
 
@@ -893,6 +894,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	// Evaluate neural network to fix numBacktrackedPhi.
 	const int N_SAMPLES_PER_PACKET = 2;
 	int i;
+//	double maxAbsRelError = 0;
 //#pragma omp parallel for default( none ) schedule( static ) \
 //		shared( N_SAMPLES_PER_PACKET, dataPackets, _nnet, _mlFlagPtr, _mlPhiPtr, h ) \
 //		private( i )
@@ -920,13 +922,16 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		double phi_d = (outputs[0] + outputs[1]) / 2.0;				// Average predictions for a better one.
 
 		double absRelDiff = ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ) / h;	// Sometimes the nnet fails awfully.
-		if( absRelDiff > 0.1 || ABS( phi_d ) >= 2.0 * h  )							// To catch those cases, we test
+//		maxAbsRelError = MAX( maxAbsRelError, absRelDiff );
+		if( absRelDiff > 0.15 || ABS( phi_d ) >= 2.0 * h  )							// To catch those cases, we test
 		{																			// against numerical phi_d and check
 			phi_d = dataPackets[i]->numBacktrackedPhi_d;							// if predicted value is >= 2H.
 		}
 
 		_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);	// Fix sign according to curvature.
 	}
+
+//	std::cout << "max abs rel error: " << maxAbsRelError << std::endl;
 
 	// Restore access.
 	ierr = VecRestoreArray( _mlPhi, &_mlPhiPtr );
@@ -1020,8 +1025,8 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	//////////////// Compute level-set values for points next to Gamma using the machine learning model ////////////////
 	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
 	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at tn.  _mlFlag and _mlPhi should be invalided upon
-	// exiting the current function (see the very last part of this procedure).
+	// Note: the cache is computed off the grid (Gn or ngbd_n) at time tn.  _mlFlag and _mlPhi should be invalidated
+	// upon exiting the current function (see the very last part of this procedure).
 	_computeMLSolution( vel, vel_xx, dt, *phi, phi_xx, hk, dxyz_min );
 
 	///////////////////////////////////////// Preparing coarse-refine process //////////////////////////////////////////
@@ -1242,7 +1247,7 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 	int outIdx = 0;
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
-		if( ABS( phi_np1Ptr[n] ) <= 2.0 * M_SQRT2 * h )	// This band ensures we see which points were updated with nnet.
+		if( ABS( phi_np1Ptr[n] ) <= 2.0 * h )		// This band ensures we see which points were updated with nnet.
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
