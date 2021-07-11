@@ -36,7 +36,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: July 02, 2021.
+ * Updated: July 11, 2021.
  */
 namespace slml
 {
@@ -185,7 +185,8 @@ namespace slml
 	{
 	private:
 		const fdeep::model _model;				// Neural model created with frugally deep.
-		const PCAScaler _pcaScaler;				// Preprocessing module.
+		const PCAScaler _pcaScaler;				// Preprocessing module including type-based standard scaler followed by
+		const StandardScaler _stdScaler;		// PCA dimensionality reduction and whitening.
 
 		const int INPUT_WIDTH_PT1 = MASS_N_COMPONENTS;	// Expecting the input in two parts:.
 		const int INPUT_WDITH_PT2 = 1;
@@ -195,13 +196,12 @@ namespace slml
 	public:
 		/**
 		 * Constructor.
-		 * @param [in] modelPath Full path of neural network's JSON file.
-		 * @param [in] transformerPath Full path of transformer's JSON file.
+		 * @param [in] folder Full path to folder that holds the neural network (fdeep_mass_nnet.json),
+		 * 			   pca (mass_pca_scaler.json), and standard scaler (mass_std_scaler.json) JSON files.
 		 * @param [in] h Mesh size.
 		 * @param [in] verbose Whether to print debugging information or not.
 		 */
-		explicit NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const double& h,
-								const bool& verbose=true );
+		explicit NeuralNetwork( const std::string& folder, const double& h, const bool& verbose=true );
 
 		/**
 		 * Predict corrected level-set function values at departure points.

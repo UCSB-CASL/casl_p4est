@@ -188,11 +188,11 @@ void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) co
 
 //////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
 
-slml::NeuralNetwork::NeuralNetwork( const std::string& modelPath, const std::string& transformerPath, const double& h,
-									const bool& verbose )
-									: H( h ), _model( fdeep::load_model( modelPath, true,
-								    verbose? fdeep::cout_logger: fdeep::dev_null_logger ) ),
-									_pcaScaler( transformerPath, verbose ){}
+slml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, const bool& verbose )
+									: H( h ), _model( fdeep::load_model( folder + "/fdeep_mass_nnet.json", true,
+																		 verbose? fdeep::cout_logger: fdeep::dev_null_logger ) ),
+								      _pcaScaler( folder + "/mass_pca_scaler.json", verbose ),
+									  _stdScaler( folder + "/mass_std_scaler.json", verbose ){}
 
 
 void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const
@@ -211,6 +211,7 @@ void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outp
 		inputsPt2[i] = inputs[i][MASS_INPUT_SIZE-1];
 
 	// First, preprocess inputs in part 1.
+	_stdScaler.transform( inputs, nSamples );
 	_pcaScaler.transform( inputs, nSamples );
 
 	// Proceed with predictions, one input at a time.
@@ -847,7 +848,6 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	std::vector<DataPacket *> dataPackets;
 	collectSamples( vel, vel_xx, dt, phi, phi_xx, dataPackets );
 
-	// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
 	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
 	// step because curvature should have been computed using the hybrid inference system only for those vertices with
 	// full stencils.  For them, we set their _mlFlag value and then scatter forward both the flag and the level-set at

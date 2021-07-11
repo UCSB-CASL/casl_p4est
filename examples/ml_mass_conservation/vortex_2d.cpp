@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: July 09, 2021.
+ * Updated: July 11, 2021.
  */
 
 #ifdef _OPENMP
@@ -325,10 +325,7 @@ int main( int argc, char** argv )
 		const slml::NeuralNetwork *nnet = nullptr;
 		if( mode() )
 		{
-			nnet = new slml::NeuralNetwork( "/Users/youngmin/fdeep_mass_nnet.json",
-											"/Users/youngmin/mass_pca_scaler.json",
-											1. / (1 << MAX_RL),
-											false );
+			nnet = new slml::NeuralNetwork( "/Users/youngmin/nnets", 1. / (1 << MAX_RL), false );
 
 			const int N_SAMPLES = 2;
 			double inputs[N_SAMPLES][MASS_INPUT_SIZE] = {
@@ -395,7 +392,7 @@ int main( int argc, char** argv )
 		// Refine and partition forest.
 		for( int i = 0; i < MAX_RL; i++ )
 		{
-			my_p4est_refine( p4est, P4EST_FALSE, mode()? refine_levelset_cf_and_uniform_band : refine_levelset_cf, nullptr );
+			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
 
