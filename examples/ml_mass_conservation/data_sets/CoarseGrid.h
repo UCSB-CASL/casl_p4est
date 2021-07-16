@@ -221,18 +221,6 @@ public:
 		CHKERRXX( ierr );
 		phi = phiNew;
 
-		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
-		for( int dir = 0; dir < P4EST_DIM; dir++ )
-		{
-			ierr = VecDestroy( vel[dir] );
-			CHKERRXX( ierr );
-			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
-			CHKERRXX( ierr );
-
-			if( velocityField )
-				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
-		}
-
 		// Free vectors with second derivatives.
 		for( auto& derivative : phi_f_xx )
 		{
@@ -248,6 +236,79 @@ public:
 		hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
 		nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
 		nodeNeighbors->init_neighbors();
+
+		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			ierr = VecDestroy( vel[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
+			CHKERRXX( ierr );
+
+			if( velocityField )
+				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+		}
+	}
+
+	/**
+	 * Advect coarse grid numerically, following the semi-Lagrangian method with a band and second-order accurate loca-
+	 * tion of departure points.
+	 * @note You must collect samples before "advecting" COARSE grid.
+	 * @param [in] dt Timestep.
+	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
+	 */
+	void updateP4EST( const double& dt, const CF_2 *velocityField[P4EST_DIM]=nullptr )
+	{
+		assert( phi );			// Check we have a well defined coarse grid.
+		PetscErrorCode ierr;
+
+		// Invalidate the flag vector.  You must set re-allocate the vector when sampling.
+		if( gammaFlag )
+		{
+			ierr = VecDestroy( gammaFlag );
+			CHKERRXX( ierr );
+			gammaFlag = nullptr;
+		}
+
+		// Declare auxiliary COARSE p4est objects; they will be updated during the semi-Lagrangian advection step.
+		p4est_t *p4est_np1 = p4est_copy( p4est, P4EST_FALSE );
+		p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+		p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
+
+		// Create COARSE semi-lagrangian object and set up to using quadratic interpolation for velocity and phi.
+		my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
+		semiLagrangian.set_phi_interpolation( interpolation_method::quadratic );
+		semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
+
+		// Advect the COARSE level-set function one step, then update the grid.
+		semiLagrangian.update_p4est( vel, dt, phi, nullptr, nullptr, BAND );
+
+		// Destroy old COARSE forest and create new structures.
+		p4est_destroy( p4est );
+		p4est = p4est_np1;
+		p4est_ghost_destroy( ghost );
+		ghost = ghost_np1;
+		p4est_nodes_destroy( nodes );
+		nodes = nodes_np1;
+
+		// Rebuilding COARSE hierarchy and neighborhoods from updated p4est, nodes, and ghost structs.
+		delete hierarchy;
+		delete nodeNeighbors;
+		hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
+		nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
+		nodeNeighbors->init_neighbors();
+
+		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			ierr = VecDestroy( vel[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
+			CHKERRXX( ierr );
+
+			if( velocityField )
+				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+		}
 	}
 
 	/**
@@ -264,13 +325,13 @@ public:
 	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
 	 * @param [out] stencils Array of level-set value nine-point stencils to compute curvature with a hybrid approach.
 	 * @param [out] maxRelError Maximum relative error of phi at departure point (w.r.t. minimum cell width).
-	 * @param [out] locallyOwnedFlaggedCoords Set of integer-valued coordinates for locally owned nodes whose samples
-	 * 				were collected.
+	 * @param [out] locallyOwnedFlaggedCoords Map of integer-valued coordinates for locally owned nodes whose samples
+	 * 				were collected to their expected value.
 	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
 					  	 std::vector<slml::DataPacket *>& dataPackets, std::vector<double *>& stencils,
-					  	 double& maxRelError, std::unordered_set<std::string>& locallyOwnedFlaggedCoords )
+					  	 double& maxRelError, std::unordered_map<std::string, double>& locallyOwnedFlaggedCoords )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -440,11 +501,11 @@ public:
 
 						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
 
-						// Insert integer-based coordinates into set of flagged coords.
+						// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
 						std::stringstream intCoords;
 						for( int j = 0; j < P4EST_DIM; j++ )
 							intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
-						locallyOwnedFlaggedCoords.insert( intCoords.str() );
+						locallyOwnedFlaggedCoords[intCoords.str()] = dataPacket->targetPhi_d;
 					}
 				}
 				catch( const std::exception &exception )

@@ -7,7 +7,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Modified: July 02, 2021.
+ * Modified: July 15, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -72,7 +72,7 @@ int main( int argc, char** argv )
 	const int NUM_CENTERS = 4;			// Number of different center locations to try out per circle radius.
 
 	const double BAND_C = 2; 			// Minimum number of cells around interface in COARSE (C) and FINE (F) grids.
-	const double BAND_F = 1.25 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
+	const double BAND_F = 1.75 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
@@ -129,8 +129,8 @@ int main( int argc, char** argv )
 		parStopWatch watch;
 		watch.start();
 
-		sprintf( msg, ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d\n",
-		   		 COARSE_MAX_RL, FINE_MAX_RL );
+		sprintf( msg, ">> Began to generate data sets for MAX_RL_COARSE = %d and MAX_RL_FINE = %d, with x%d substeps per FINE step\n",
+		   		 COARSE_MAX_RL, FINE_MAX_RL, 1u << addFineSubsteps() );
 		ierr = PetscPrintf( mpi.comm(), msg );
 		CHKERRXX( ierr );
 
@@ -284,7 +284,7 @@ int main( int argc, char** argv )
 					// non-signed distance level-set function.
 					my_p4est_level_set_t levelSet_f( nodeNeighbors_f );				// FINE grid.
 					levelSet_f.reinitialize_2nd_order( phi_f, 2 * REINIT_NUM_ITER );
-					my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// Coarse grid.
+					my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// COARSE grid.
 					levelSet_c.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
 
 					// Define time stepping variables.
@@ -303,6 +303,8 @@ int main( int argc, char** argv )
 					const int N_FINE_STEPS_PER_COARSE_STEP = 1 << (FINE_MAX_RL - COARSE_MAX_RL + addFineSubsteps());
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
+					int iteration = 0;					// Tracks current COARSE iteration and allows interleaved advection.
+					const int INTERLEAVED_ADVECT_STEPS = 8;	// How often to interleave finer-grid fitting with numerical advection.
 
 					ierr = PetscPrintf( mpi.comm(), " * Receiving: " );			// Labeling reception of packets.
 					CHKERRXX( ierr );
@@ -360,7 +362,7 @@ int main( int argc, char** argv )
 
 							// Reinitialize FINE level-set function.
 							my_p4est_level_set_t levelSet_f1( nodeNeighbors_f );
-							levelSet_f1.reinitialize_2nd_order( phi_f, 2 * REINIT_NUM_ITER );
+							levelSet_f1.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER * (step == N_FINE_STEPS_PER_COARSE_STEP - 1? int( ceil( BAND_F ) ) : 2) );
 
 							// Advance FINE time.
 							tn_f += dt_f;
@@ -384,7 +386,7 @@ int main( int argc, char** argv )
 						std::vector<slml::DataPacket *> dataPackets;
 						std::vector<double *> stencils;			// Allocated only if all samples lie inside Omega.
 						double relError = 0;
-						std::unordered_set<std::string> flaggedCoords;
+						std::unordered_map<std::string, double> flaggedCoords;
 						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, stencils,
 															   relError, flaggedCoords );
 
@@ -491,9 +493,18 @@ int main( int argc, char** argv )
 								CHKERRXX( ierr );
 							}
 
-							// "Advecting" COARSE grid by using the FINE grid as reference: updates internal phi vector
-							// with NO reinitialization afterwards.
-							coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+							// Interleaved COARSE grid advection: by using the FINE grid as reference and by using semi-
+							// Lagrangian numerical advection with quadratic velocity and phi interpolation.  This proc-
+							// ess updates COARSE internal phi vector with NO reinitialization.  Must do the latter man-
+							// ually below.
+							if( iteration % INTERLEAVED_ADVECT_STEPS == 0 )
+							{
+								coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+								PetscPrintf( mpi.comm(), "\b\b\b*  " );
+							}
+							else
+								coarseGrid.updateP4EST( dt_c );
+							iteration++;
 
 							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
 							// Selective reinitialization of level-set function: affect only those nodes that were not
@@ -521,10 +532,12 @@ int main( int argc, char** argv )
 									std::stringstream intCoords;
 									for( int j = 0; j < P4EST_DIM; j++ )
 										intCoords << long( (xyz[j] - xyz_min[j]) / H_C ) << ",";
-									if( flaggedCoords.find( intCoords.str() ) != flaggedCoords.end() )	// Masked node? Nonupdatable?
+									auto got = flaggedCoords.find( intCoords.str() );
+									if( got != flaggedCoords.end() )			// Masked node? Nonupdatable?
 									{
 										numMaskedNodes++;
 										maskPtr[n] = 0;				// 0 => nonupdatable.
+										phi_cPtr[n] = got->second;	// Fix the level-set value to target phi value.
 									}
 									else							// Updatable?
 										maskPtr[n] = 1;				// 1 => updatable.
@@ -538,6 +551,9 @@ int main( int argc, char** argv )
 
 							ierr = VecRestoreArray( mask, &maskPtr );
 							CHKERRXX( ierr );
+
+							if( numMaskedNodes != flaggedCoords.size() )
+								throw std::runtime_error( "Number of masked nodes do not match flagged coords!" );
 
 							my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
 							ls.reinitialize_2nd_order_with_mask( coarseGrid.phi, mask, numMaskedNodes, REINIT_NUM_ITER );
