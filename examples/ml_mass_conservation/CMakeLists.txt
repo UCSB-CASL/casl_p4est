@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC data_sets/generate_data_sets_2d.cpp )
+	list( APPEND SRC open_blas_benchmark.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
@@ -17,6 +17,7 @@ endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
+add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
 
 ######################## Settings ########################
 
@@ -54,7 +55,8 @@ link_directories(
 		/usr/local/lib
 		/usr/local/petsc/lib
 		/usr/local/p4est-2.2/lib
-		/usr/local/opt/libomp/lib )
+		/usr/local/opt/libomp/lib
+		/usr/local/OpenBlas/lib )
 
 link_libraries(
 		mpi
@@ -63,6 +65,7 @@ link_libraries(
 		sc
 		voro++
 		omp
+		openblas
 		nlohmann_json::nlohmann_json
 		${Boost_FILESYSTEM_LIBRARY} )
 
@@ -74,6 +77,7 @@ include_directories(
 		/usr/local/p4est-2.2/include
 		/usr/local/include/voro++
 		/usr/local/opt/libomp/include
+		/usr/local/OpenBlas/include
 		${Boost_INCLUDE_DIR} )
 
 ######################## Creating the executable ########################
