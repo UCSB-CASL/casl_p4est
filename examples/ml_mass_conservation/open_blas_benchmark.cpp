@@ -6,6 +6,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: July 20, 2021.
+ * Updated: July 21, 2021.
  */
 
 #ifdef _OPENMP
@@ -53,7 +54,7 @@ int main( int argc, char** argv )
 		const int N_FEATURES = 17;
 		double inputs1[N_SAMPLES][N_FEATURES];
 		double inputs2[N_SAMPLES];		// Second part of inputs is a copy of last column in inputs1.
-		double outputs[N_SAMPLES];
+		float outputs[N_SAMPLES];
 
 		for( int i = 0; i < N_SAMPLES; i++ )	// Random values in inputs1 with N_SAMPLES x N_FEATURES elements.
 		{
@@ -62,13 +63,13 @@ int main( int argc, char** argv )
 			inputs2[i] = inputs1[i][N_FEATURES-1];
 		}
 
+		parStopWatch watch;
+		watch.start();				// Start up timer.
+
 		/////////////////////////////////////// Performance using neural network ///////////////////////////////////////
 
 		// Load neural network that uses frugally-deep library.
 		const fdeep::model model = fdeep::load_model( "/Users/youngmin/nnets/fdeep_mass_nnet.json", true, fdeep::dev_null_logger );
-
-		parStopWatch watch;				// Start evaluation after instantiating the nnet.
-		watch.start();
 
 		std::cout << ">> Began testing neural network..." << std::endl;
 
@@ -104,46 +105,84 @@ int main( int argc, char** argv )
 
 		////////////////////////////////////////// Performance using OpenBlas //////////////////////////////////////////
 
-		// Adding bias to inputs1.
-		double inputs1b[N_SAMPLES][N_FEATURES + 1];
-		for( int i = 0; i < N_SAMPLES; i++ )
+		// Adding bias entry to inputs1 and rearrange so that each column is a sample (rather than a row).
+		float inputs1b[(N_FEATURES + 1) * N_SAMPLES];
+		for( int j = 0; j < N_FEATURES; j++ )
 		{
-			int j;
-			for( j = 0; j < N_FEATURES; j++ )
-				inputs1b[i][j] = inputs1[i][j];
-			inputs1b[i][j] = 1.;
+			for( int i = 0; i < N_SAMPLES; i++ )
+				inputs1b[j * N_SAMPLES + i] = float( inputs1[i][j] );
 		}
+		for( int i = 0; i < N_SAMPLES; i++ )
+			inputs1b[N_FEATURES * N_SAMPLES + i] = 1;
 
 		// Loading weights: just random values.
+		const int LAYER_SIZE = 130;							// Hidden plus output layers.
 		std::vector<std::vector<float>> W;
+		const int N_LAYERS = 5;
 		int sizes[][3] = {
-			{130,  18, 100},		// W0 x I0.
-			{130, 131, 100},		// W1 x f(W0 x I0).
-			{130, 131, 100},		// W2 x f(W1 x f(W0 x I0)).
-			{130, 131, 100},		// W3 x f(W2 x f(W1 x f(W0 x I0))).
-			{  1, 131, 100},		// W4 x f(W3 x f(W2 x f(W1 x f(W0 x I0)))).
+			{LAYER_SIZE, N_FEATURES + 1, N_SAMPLES},		// W0 x I0.
+			{LAYER_SIZE, LAYER_SIZE + 1, N_SAMPLES},		// W1 x f(W0 x I0).
+			{LAYER_SIZE, LAYER_SIZE + 1, N_SAMPLES},		// W2 x f(W1 x f(W0 x I0)).
+			{LAYER_SIZE, LAYER_SIZE + 1, N_SAMPLES},		// W3 x f(W2 x f(W1 x f(W0 x I0))).
+			{         1, LAYER_SIZE + 1, N_SAMPLES},		// W4 x f(W3 x f(W2 x f(W1 x f(W0 x I0)))).
 		};
+
+		for( int i = 0; i < N_LAYERS; i++ )
+		{
+			const int N_WEIGHTS = sizes[i][0] * sizes[i][1];
+			W.emplace_back( N_WEIGHTS );
+			for( auto& w : W[i] )
+				w = rand() / float( RAND_MAX ) * (rand() / float( RAND_MAX ) > 0.5? -1 : 1);	// NOLINT.
+		}							// When this loop ends, we have weights and bias all in row-majored weight matrices.
+
+		// Allocating outputs.
+		std::vector<std::vector<float>> O;
+		for( int i = 0; i < N_LAYERS; i++ )
+		{
+			const int N_OUTPUTS = (sizes[i][0] + (i == N_LAYERS - 1? 0 : 1)) * sizes[i][2];
+			O.emplace_back( N_OUTPUTS, 1 );		// Adding the one for the bias too.
+		}
 
 		goto_set_num_threads( 1 );		// Single-thread execution.
 		openblas_set_num_threads( 1 );
 
-		int m = 4, k = 3, n = 2;
-		float A[] = {
-			 1,  2,  3,
-			 4,  5,  6,
-			 7,  8,  9,
-			10, 11, 12
-		};
-		float B[] = {
-			3, 4, 2,
-			1, 5, 7
-		};
-		float C[m * n];
-		cblas_sgemm( CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1, A, k, B, k, 0, C, n );
-		for( int i = 0; i < m * n; i++ )
-			std::cout << C[i] << ((i + 1) % n == 0? "\n" : "\t");
+		std::cout << ">> Began testing OpenBlas-based inference..." << std::endl;
 
+		cumulativeTime = 0;
+		for( int iter = 0; iter < 11; iter++ )
+		{
+			double start = watch.get_duration_current();
 
+			// Inference.
+			for( int i = 0; i < N_LAYERS; i++ )
+			{
+				const float *input = inputs1b;
+				if( i > 0 )
+					input = O[i - 1].data();
+				cblas_sgemm( CblasRowMajor, CblasNoTrans, CblasNoTrans, sizes[i][0], sizes[i][2], sizes[i][1], 1,
+							 W[i].data(), sizes[i][1], input, sizes[i][2], 0, O[i].data(), sizes[i][2] );
+
+				// Apply ReLU activation function to all hidden layers.
+				if( i < N_LAYERS - 1 )
+				{
+					for( int j = 0; j < sizes[i][0] * sizes[i][2]; j++ )    // Activation function doesn't affect the bias.
+						O[i][j] = MAX( 0.0f, O[i][j] );
+				}
+			}
+
+			// Add inputs2 to error-correcting output.
+			for( int i = 0; i < N_SAMPLES; i++ )
+				outputs[i] = O[N_LAYERS - 1][i] + float( inputs2[i] );
+
+			if( iter != 0 )
+			{
+				double end = watch.get_duration_current();
+				cumulativeTime += end - start;
+				std::cout << end - start << std::endl;
+			}
+		}
+
+		std::cout << "<< Average timing " << cumulativeTime / 10. << " secs." << std::endl;
 
 		watch.stop();
 	}
