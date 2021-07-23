@@ -48,13 +48,29 @@ int main( int argc, char** argv )
 
 		std::cout << "Rank " << mpi.rank() << " can spawn " << nThreads << " thread(s)\n\n";
 
+		////////////////////////////////// Testing Base64 params load from json file ///////////////////////////////////
+
+		using json = nlohmann::json;
+		std::ifstream in( "/Users/youngmin/nnets/mass_nnet.json" );
+		json test;
+		in >> test;
+
+		int inputShape = test["input_shape"][0].get<int>();
+		auto nHiddenLayers = test["hidden_layers"].size();
+		auto hiddenShape = test["hidden_layers"][0]["shape"].get<std::vector<int>>();
+		auto hiddenWeights = fdeep::internal::decode_floats( test["hidden_layers"][0]["weights"] );
+
+		std::cout << "\n------------------------------------------------------------------------------\n" << std::endl;
+
+		////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 		// Preparing input.
 		srand( 37 );					// NOLINT.
 		const int N_SAMPLES = 100;
 		const int N_FEATURES = 17;
 		double inputs1[N_SAMPLES][N_FEATURES];
 		double inputs2[N_SAMPLES];		// Second part of inputs is a copy of last column in inputs1.
-		float outputs[N_SAMPLES];
+		FDEEP_FLOAT_TYPE outputs[N_SAMPLES];
 
 		for( int i = 0; i < N_SAMPLES; i++ )	// Random values in inputs1 with N_SAMPLES x N_FEATURES elements.
 		{
@@ -106,18 +122,18 @@ int main( int argc, char** argv )
 		////////////////////////////////////////// Performance using OpenBlas //////////////////////////////////////////
 
 		// Adding bias entry to inputs1 and rearrange so that each column is a sample (rather than a row).
-		float inputs1b[(N_FEATURES + 1) * N_SAMPLES];
+		FDEEP_FLOAT_TYPE inputs1b[(N_FEATURES + 1) * N_SAMPLES];
 		for( int j = 0; j < N_FEATURES; j++ )
 		{
 			for( int i = 0; i < N_SAMPLES; i++ )
-				inputs1b[j * N_SAMPLES + i] = float( inputs1[i][j] );
+				inputs1b[j * N_SAMPLES + i] = FDEEP_FLOAT_TYPE( inputs1[i][j] );
 		}
 		for( int i = 0; i < N_SAMPLES; i++ )
 			inputs1b[N_FEATURES * N_SAMPLES + i] = 1;
 
 		// Loading weights: just random values.
 		const int LAYER_SIZE = 130;							// Hidden plus output layers.
-		std::vector<std::vector<float>> W;
+		std::vector<std::vector<FDEEP_FLOAT_TYPE>> W;
 		const int N_LAYERS = 5;
 		int sizes[][3] = {
 			{LAYER_SIZE, N_FEATURES + 1, N_SAMPLES},		// W0 x I0.
@@ -132,11 +148,11 @@ int main( int argc, char** argv )
 			const int N_WEIGHTS = sizes[i][0] * sizes[i][1];
 			W.emplace_back( N_WEIGHTS );
 			for( auto& w : W[i] )
-				w = rand() / float( RAND_MAX ) * (rand() / float( RAND_MAX ) > 0.5? -1 : 1);	// NOLINT.
+				w = rand() / FDEEP_FLOAT_TYPE( RAND_MAX ) * (rand() / FDEEP_FLOAT_TYPE( RAND_MAX ) > 0.5? -1 : 1);	// NOLINT.
 		}							// When this loop ends, we have weights and bias all in row-majored weight matrices.
 
 		// Allocating outputs.
-		std::vector<std::vector<float>> O;
+		std::vector<std::vector<FDEEP_FLOAT_TYPE>> O;
 		for( int i = 0; i < N_LAYERS; i++ )
 		{
 			const int N_OUTPUTS = (sizes[i][0] + (i == N_LAYERS - 1? 0 : 1)) * sizes[i][2];
@@ -156,7 +172,7 @@ int main( int argc, char** argv )
 			// Inference.
 			for( int i = 0; i < N_LAYERS; i++ )
 			{
-				const float *input = inputs1b;
+				const FDEEP_FLOAT_TYPE *input = inputs1b;
 				if( i > 0 )
 					input = O[i - 1].data();
 				cblas_sgemm( CblasRowMajor, CblasNoTrans, CblasNoTrans, sizes[i][0], sizes[i][2], sizes[i][1], 1,
@@ -172,7 +188,7 @@ int main( int argc, char** argv )
 
 			// Add inputs2 to error-correcting output.
 			for( int i = 0; i < N_SAMPLES; i++ )
-				outputs[i] = O[N_LAYERS - 1][i] + float( inputs2[i] );
+				outputs[i] = O[N_LAYERS - 1][i] + FDEEP_FLOAT_TYPE( inputs2[i] );
 
 			if( iter != 0 )
 			{
