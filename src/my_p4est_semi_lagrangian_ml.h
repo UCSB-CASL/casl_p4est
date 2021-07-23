@@ -23,6 +23,7 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <unordered_set>
+#include <cblas.h>
 
 /**
  * Machine-learning-based Semi-Lagrangian namespace.
@@ -33,10 +34,13 @@
  * @cite Frugally deep https://github.com/Dobiasd/frugally-deep, v0.15.2-p0 (02/23/2021) for loading tensorflow+keras
  * models into C++.  Main dependencies to convert models: python 3.7, tensorflow 2.4.1, and C++14.  JSON library should
  * be installed as described in frugally deep documentation.
+ * @cite OpenBlas https://github.com/xianyi/OpenBLAS to speed up inference performance.  Used as a replacement for the
+ * frugally deep library inference.  OpenBlas allows for batch processing rather than one sample at a time.  But I still
+ * use some functionality from frugally deep to process the nnet JSON config file.
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: July 11, 2021.
+ * Updated: July 23, 2021.
  */
 namespace slml
 {
@@ -168,35 +172,55 @@ namespace slml
 		 * @param [in] nSamples Number of samples.
 		 */
 		void transform( double samples[][MASS_INPUT_SIZE], const int& nSamples ) const override;
-
-		/**
-		 * Unstranform/denormalize phi values.
-		 * @note Useful to unstransform neural network output.
-		 * @param [in,out] phi Array of phi values to denormalize.
-		 * @param [in] nValues Number of values to untransform.
-		 */
-		void untransformPhi( double phi[], const int& nValues ) const;
 	};
 
 
 	////////////////////////////////////////////////// NeuralNetwork ///////////////////////////////////////////////////
 
+	/**
+	 * Semi-Lagrangian error-correcting neural network.
+	 * Internally, processes batches of samples in the following format:
+	 * 										Samples (n)
+	 * 						s_0  s_1  ...  s_i  ... s_{n-2}  s_{n-1}
+	 * 				f_0	  |  #	  #	  ...	#   ...	   #		#	 |
+	 * 				f_1	  |  #	  #	  ...	#   ...	   #		#	 |
+	 * 				 :	  |	 :	  :	   ·	:	 ·	   :		:	 |
+	 * Features (k)	f_j	  |	 #	  #	  ...	#   ...	   #		#	 |
+	 * 				 :	  |	 :	  :	   ·	:	 ·	   :		:	 |
+	 * 			  f_{k-2} |  #	  #	  ...	#   ...	   #		#	 |
+	 * 			  f_{k-1} |  1    1	  ...	1   ...	   1		1	 |
+	 *
+	 * Features includes one row of ones to account for the bias.  This means that the very input batch to the nnet has
+	 * one additional row to produce the outputs of the first hidden layer.
+	 */
 	class NeuralNetwork
 	{
+		using json = nlohmann::json;
+
 	private:
-		const fdeep::model _model;				// Neural model created with frugally deep.
 		const PCAScaler _pcaScaler;				// Preprocessing module including type-based standard scaler followed by
 		const StandardScaler _stdScaler;		// PCA dimensionality reduction and whitening.
 
 		const int INPUT_WIDTH_PT1 = MASS_N_COMPONENTS;	// Expecting the input in two parts:.
 		const int INPUT_WDITH_PT2 = 1;
 
+		unsigned long N_LAYERS;					// Number of layers (hidden + output).
+		std::vector<std::vector<int>> _sizes;	// Matrix size tuples (m, k).  m = layer size, k = input size, (n = number of samples).
+		std::vector<std::vector<FDEEP_FLOAT_TYPE>> W;	// Weight matrices flattened.  Matrices are given in row-major order.
+
 		const double H;							// Mesh size.
+
+		/**
+		 * ReLU activation function.
+		 * @param [in] x Input.
+		 * @return ReLu(x) = max(0, x).
+		 */
+		static FDEEP_FLOAT_TYPE _reLU( const FDEEP_FLOAT_TYPE& x );
 
 	public:
 		/**
 		 * Constructor.
-		 * @param [in] folder Full path to folder that holds the neural network (fdeep_mass_nnet.json),
+		 * @param [in] folder Full path to folder that holds the neural network (mass_nnet.json),
 		 * 			   pca (mass_pca_scaler.json), and standard scaler (mass_std_scaler.json) JSON files.
 		 * @param [in] h Mesh size.
 		 * @param [in] verbose Whether to print debugging information or not.
@@ -204,12 +228,12 @@ namespace slml
 		explicit NeuralNetwork( const std::string& folder, const double& h, const bool& verbose=true );
 
 		/**
-		 * Predict corrected level-set function values at departure points.
+		 * Predict corrected level-set function values at departure points for a batch of samples.
 		 * @note This function assumes that the inputs have been already negated when curvature is positive.  User must
 		 * take care of fixing the predictions signs accordingly.
 		 * @param [in,out] inputs Array of sample inputs with raw data (they'll be transformed).
 		 * @param [out] outputs Array of predicted level-set function values
-		 * @param [in] nSamples Number of samples to process.
+		 * @param [in] nSamples Batch size.
 		 */
 		void predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const;
 	};

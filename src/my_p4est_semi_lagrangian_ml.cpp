@@ -179,20 +179,51 @@ void slml::StandardScaler::transform( double samples[][MASS_INPUT_SIZE], const i
 }
 
 
-void slml::StandardScaler::untransformPhi( double phi[], const int& nValues ) const
-{
-	for( int i = 0; i < nValues; i++ )
-		phi[i] = phi[i] * _stdPhi + _meanPhi;
-}
-
-
 //////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
 
 slml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, const bool& verbose )
-									: H( h ), _model( fdeep::load_model( folder + "/fdeep_mass_nnet.json", true,
-																		 verbose? fdeep::cout_logger: fdeep::dev_null_logger ) ),
+									: H( h ),
 								      _pcaScaler( folder + "/mass_pca_scaler.json", verbose ),
-									  _stdScaler( folder + "/mass_std_scaler.json", verbose ){}
+									  _stdScaler( folder + "/mass_std_scaler.json", verbose )
+{
+	const std::string errorPrefix = "[CASL_ERROR] slml::NeuralNetwork::Constructor: ";
+
+	// Let's load the nnet params JSON file.
+	std::ifstream in( folder + "/mass_nnet.json" );
+	json nnet;
+	in >> nnet;
+
+	if( MASS_N_COMPONENTS != nnet["input_shape"][0].get<int>() )	// Verify number of true features corresponds to input size.
+		throw std::runtime_error( errorPrefix + "Input shape mismatch!" );
+
+	N_LAYERS = nnet["hidden_layers"].size() + 1;					// Count the output layer too.
+
+	// Fill up the weight matrix sizes (accounting for bias).
+	for( int i = 0; i < N_LAYERS - 1; i++ )
+	{
+		auto shape = nnet["hidden_layers"][i]["shape"].get<std::vector<int>>();
+		_sizes.emplace_back( std::vector<int>{shape[0], shape[1]} );	// m-by-k matrix.
+	}
+	auto shape = nnet["output"]["shape"].get<std::vector<int>>();
+	if( shape[0] != 1 )			// Expecting a single output neuron.
+		throw std::runtime_error( errorPrefix + "Expected a single ouput neuron but more were detected!" );
+	_sizes.emplace_back( std::vector<int>{shape[0], shape[1]} );		// 1-by-k matrix.
+
+	// Allocating weights: hidden and ouput layers.
+	for( int i = 0; i < N_LAYERS; i++ )
+	{
+		const int N_WEIGHTS = _sizes[i][0] * _sizes[i][1];
+		W.emplace_back( N_WEIGHTS );
+		auto layer = (i < N_LAYERS - 1? nnet["hidden_layers"][i] : nnet["output"] );
+		auto weights = fdeep::internal::decode_floats( layer["weights"] );	// Taking advantage of function within frugally deep library.
+		for( int j = 0; j < N_WEIGHTS; j++ )
+			W[i][j] = weights[j];
+	}	// When this loop ends, we have weights and bias all in row-major (hidden and output) weight matrices.
+
+	// Single-thread execution of OpenBlas.
+	goto_set_num_threads( 1 );
+	openblas_set_num_threads( 1 );
+}
 
 
 void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outputs[], const int& nSamples ) const
@@ -205,31 +236,70 @@ void slml::NeuralNetwork::predict( double inputs[][MASS_INPUT_SIZE], double outp
 		inputs[i][MASS_INPUT_SIZE-2] = -ABS( inputs[i][MASS_INPUT_SIZE-2] );
 	}
 
-	// Second part of inputs is the normalized backtracked phi_d.
-	double inputsPt2[nSamples];
+	// Second part of inputs is the normalized backtracked phi_d.  Note that we cast to float type (not double).
+	auto *inputsPt2 = new FDEEP_FLOAT_TYPE[nSamples];
 	for( int i = 0; i < nSamples; i++ )
-		inputsPt2[i] = inputs[i][MASS_INPUT_SIZE-1];
+		inputsPt2[i] = static_cast<FDEEP_FLOAT_TYPE>( inputs[i][MASS_INPUT_SIZE-1] );
 
-	// First, preprocess inputs in part 1.
+	// First, preprocess inputs in part 1 (still doubles).
 	_stdScaler.transform( inputs, nSamples );
 	_pcaScaler.transform( inputs, nSamples );
 
-	// Proceed with predictions, one input at a time.
-	for( int i = 0; i < nSamples; i++ )
+	// Next, adding bias entry to transformed inputs1 and rearrange them so that each column is a sample (rather than a
+	// row), and we agree to the expected float type (not double).
+	auto *inputs1b = new FDEEP_FLOAT_TYPE[(MASS_N_COMPONENTS + 1) * nSamples];
+	for( int j = 0; j < MASS_N_COMPONENTS; j++ )
 	{
-		// Build two-part input.
-		std::vector<FDEEP_FLOAT_TYPE> input1( &inputs[i][0], &inputs[i][0] + INPUT_WIDTH_PT1 );
-		std::vector<FDEEP_FLOAT_TYPE> input2( &inputsPt2[i], &inputsPt2[i] + INPUT_WDITH_PT2 );
-
-		// Add split inputs as independent entries to a two-element tensor.
-		std::vector<fdeep::tensor> inputTensors = {
-			fdeep::tensor( fdeep::tensor_shape( INPUT_WIDTH_PT1 ), input1 ),
-			fdeep::tensor( fdeep::tensor_shape( INPUT_WDITH_PT2 ), input2 )
-		};
-
-		// Predict and undo normalization, too.
-		outputs[i] = _model.predict_single_output( inputTensors ) * H;
+		for( int i = 0; i < nSamples; i++ )
+			inputs1b[j * nSamples + i] = FDEEP_FLOAT_TYPE( inputs[i][j] );
 	}
+	for( int i = 0; i < nSamples; i++ )
+		inputs1b[MASS_N_COMPONENTS * nSamples + i] = 1;		// The last row of nSamples 1's.
+
+	// Allocate layer outputs.  Intermediate layers have an additional row of nSamples 1's for the bias.  The last
+	// (output) doesn't have any row of 1's.
+	std::vector<std::vector<FDEEP_FLOAT_TYPE>> O;
+	for( int i = 0; i < N_LAYERS; i++ )
+	{
+		const int N_OUTPUTS = (_sizes[i][0] + (i == N_LAYERS - 1? 0 : 1)) * nSamples;
+		O.emplace_back( N_OUTPUTS, 1 );		// Adding the one for the bias too.
+	}
+
+	// Inference: composite evaluation using OpenBlas single general matrix multiplication.
+	for( int i = 0; i < N_LAYERS; i++ )
+	{
+		const FDEEP_FLOAT_TYPE *input = inputs1b;
+		if( i > 0 )
+			input = O[i - 1].data();
+
+		// OpenBlas multiplication C = a*A*B + b*C
+		//                               No transposing         m: out size   n: batch size  k: features   a
+		cblas_sgemm( CblasRowMajor, CblasNoTrans, CblasNoTrans, _sizes[i][0], nSamples,      _sizes[i][1], 1,
+					 W[i].data(), _sizes[i][1], input, nSamples, 0, O[i].data(), nSamples );
+		//           A mat        lda: k        B mat  ldb: n    b  C mat        ldc: n
+		// The multiplication should leave the row of 1's in intermediate ouput matrices untouched.
+
+		// Apply activation function to all hidden layers' outputs.
+		if( i < N_LAYERS - 1 )
+		{
+			for( int j = 0; j < _sizes[i][0] * nSamples; j++ )    // Activation function doesn't touch the bias inputs.
+				O[i][j] = _reLU( O[i][j] );
+		}
+	}
+
+	// Add phi_d to error-correcting output and scale back by H.
+	for( int i = 0; i < nSamples; i++ )
+		outputs[i] = (O[N_LAYERS - 1][i] + inputsPt2[i]) * H;
+
+	// Cleaning up.
+	delete [] inputsPt2;
+	delete [] inputs1b;
+}
+
+
+FDEEP_FLOAT_TYPE slml::NeuralNetwork::_reLU( const FDEEP_FLOAT_TYPE& x )
+{
+	return MAX( static_cast<FDEEP_FLOAT_TYPE>( 0.0 ), x );
 }
 
 
