@@ -961,10 +961,12 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		}
 	}
 
-	// Evaluate neural network to fix numBacktrackedPhi.
+	// Build samples array to evaluate neural network to fix numBacktrackedPhi.
 	const int N_SAMPLES_PER_PACKET = 2;
+	const int N_SAMPLES = (int)dataPackets.size() * N_SAMPLES_PER_PACKET;
+	auto inputs = new double[N_SAMPLES][MASS_INPUT_SIZE];
+	auto *outputs = new double[N_SAMPLES];
 	int i;
-//	double maxAbsRelError = 0;
 //#pragma omp parallel for default( none ) schedule( static ) \
 //		shared( N_SAMPLES_PER_PACKET, dataPackets, _nnet, _mlFlagPtr, _mlPhiPtr, h ) \
 //		private( i )
@@ -977,29 +979,43 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		dataPackets[i]->reflect_yEqx();
 		dataPackets[i]->serialize( sample2, false, true, true, false );
 
-		double inputs[N_SAMPLES_PER_PACKET][MASS_INPUT_SIZE];		// Populate inputs for nnet.
-		double outputs[N_SAMPLES_PER_PACKET];
+		// Populate inputs for nnet: two per packet.
+		int idx = i * N_SAMPLES_PER_PACKET;
 		for( int j = 0; j < MASS_INPUT_SIZE; j++ )
 		{
-			inputs[0][j] = sample1[j];
-			inputs[1][j] = sample2[j];
+			inputs[idx + 0][j] = sample1[j];
+			inputs[idx + 1][j] = sample2[j];
 		}
 
-		for( auto& input : inputs )				// Reorder input: swap backtracked phi_d with hk
-			std::swap( input[MASS_INPUT_SIZE-1], input[MASS_INPUT_SIZE-2] );
+		// Reorder input: swap backtracked phi_d with hk.
+		for( int j = 0; j < N_SAMPLES_PER_PACKET; j++ )
+			std::swap( inputs[idx + j][MASS_INPUT_SIZE - 1], inputs[idx + j][MASS_INPUT_SIZE - 2] );
+	}
 
-		_nnet->predict( inputs, outputs, N_SAMPLES_PER_PACKET );	// Gather predictions: they've been already denormalized.
-		double phi_d = (outputs[0] + outputs[1]) / 2.0;				// Average predictions for a better one.
+	// Execute inference on batch: predictions have been already denormalized.
+	_nnet->predict( inputs, outputs, N_SAMPLES );
+
+	// Collect outputs.
+//	double maxAbsRelError = 0;
+	for( i = 0; i < dataPackets.size(); i++ )
+	{
+		int idx = i * N_SAMPLES_PER_PACKET;
+		double phi_d = (outputs[idx + 0] + outputs[idx + 1]) / 2.0;		// Average predictions produces a better one.
 
 		double absRelDiff = ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ) / h;	// Sometimes the nnet fails awfully.
-//		maxAbsRelError = MAX( maxAbsRelError, absRelDiff );
-		if( absRelDiff > 0.15 || ABS( phi_d ) >= 2.0 * h  )							// To catch those cases, we test
-		{																			// against numerical phi_d and check
-			phi_d = dataPackets[i]->numBacktrackedPhi_d;							// if predicted value is >= 2H.
+// 		maxAbsRelError = MAX( maxAbsRelError, absRelDiff );
+		if( absRelDiff > 0.15 || ABS( phi_d ) >= 2.0 * h  )			// To catch those cases, we test
+		{															// against numerical phi_d and check
+			phi_d = dataPackets[i]->numBacktrackedPhi_d;			// if predicted value is >= 2H.
 		}
 
-		_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);	// Fix sign according to curvature.
+		// Fix sign according to curvature.
+		_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
 	}
+
+	// Cleaned up.
+	delete [] inputs;
+	delete [] outputs;
 
 //	std::cout << "max abs rel error: " << maxAbsRelError << std::endl;
 

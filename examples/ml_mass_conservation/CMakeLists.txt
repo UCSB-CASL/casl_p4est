@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC open_blas_benchmark.cpp )
+	list( APPEND SRC vortex_2d.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
