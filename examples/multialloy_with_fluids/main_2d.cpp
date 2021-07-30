@@ -5,6 +5,17 @@
  * Date Created: 08-06-2019
  */
 
+// System
+#include <stdexcept>
+#include <iostream>
+#include <sys/stat.h>
+#include <vector>
+#include <algorithm>
+#include <iterator>
+#include <set>
+#include <time.h>
+#include <stdio.h>
+
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
@@ -12,13 +23,12 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_semi_lagrangian.h>
+
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_trajectory_of_point.h>
-
-
-#include <src/my_p4est_semi_lagrangian.h>
 
 
 #include <src/my_p4est_poisson_nodes_mls.h>
@@ -26,32 +36,33 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_multialloy.h>
-
-
-
-
 #include <src/my_p4est_macros.h>
+
 #else
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
-#include <src/my_p8esT_l_nodes.h>
+#include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_level_set.h>
 
-#include <src/my_p8esT_l_node_neighbors.h>
+#include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_macros.h>
 #endif
 
+#include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
-#include <src/petsc_compatibility.h>
 #include <src/parameter_list.h>
 
 
+#undef MIN
+#undef MAX
+
 using namespace std;
+
 parameter_list_t pl;
 
 // ---------------------------------------
@@ -70,10 +81,14 @@ enum:int {
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
-DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
+
+// ---------------------------------------
+// Example/application options:
+// ---------------------------------------
+DEFINE_PARAMETER(pl, int, example_, 3,"example number: \n"
                                    "0 - Frank Sphere (Stefan only) \n"
                                    "1 - NS Gibou example (Navier Stokes only) \n"
-                                   "2 - work in progress \n"
+                                   "2 - Additional coupled verification test (not fully verified) \n"
                                    "3 - Coupled problem example for verification \n"
                                    "4 - Ice solidifying around a cooled cylinder \n"
                                    "5 - Flow past a cylinder (Navier Stokes only)\n"
@@ -85,66 +100,74 @@ DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
 // Save options:
 // ---------------------------------------
 // Options for saving to vtk:
-DEFINE_PARAMETER(pl,bool,save_to_vtk,true,"We save vtk files using a given dt increment if this is set to true \n");
-DEFINE_PARAMETER(pl,bool,save_using_dt,false,"We save vtk files using a given dt increment if this is set to true \n");
-DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number of iterations if this is set to true \n");
+DEFINE_PARAMETER(pl, bool, save_to_vtk, true, "We save vtk files using a given dt increment if this is set to true \n");
+DEFINE_PARAMETER(pl, bool, save_using_dt, false, "We save vtk files using a given dt increment if this is set to true \n");
+DEFINE_PARAMETER(pl, bool, save_using_iter, false, "We save every prescribed number of iterations if this is set to true \n");
 
-DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl,double,save_every_dt,1,"Saves vtk every dt amount of time in seconds of dimensional time (default is 1)");
+DEFINE_PARAMETER(pl, int, save_every_iter, 1, "Saves vtk every n number of iterations (default is 1)");
+DEFINE_PARAMETER(pl, double, save_every_dt, 1, "Saves vtk every dt amount of time in seconds of dimensional time (default is 1)");
 
-// Checking memory usage:
-DEFINE_PARAMETER(pl,int,check_mem_every_iter,-1,"Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value)");
-
-// Checking timing:
-DEFINE_PARAMETER(pl,int,timing_every_n,-1,"Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
-
-DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
-DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
-
-// Option to compute and save fluid forces to a file:
-DEFINE_PARAMETER(pl,bool,save_fluid_forces,false,"Saves fluid forces if true (default: false) \n");
-DEFINE_PARAMETER(pl,double,save_fluid_forces_every_dt,0.01,"Saves fluid forces every dt amount of time in seconds of dimensional time (default is 1.0) \n");
-
+// Options to compute and save fluid forces to a file:
+DEFINE_PARAMETER(pl, bool, save_fluid_forces, false, "Saves fluid forces if true (default: false) \n");
+DEFINE_PARAMETER(pl, double, save_fluid_forces_every_dt, 0.01, "Saves fluid forces every dt amount of time in seconds of dimensional time (default is 1.0) \n");
 
 // Save state options
-DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
-DEFINE_PARAMETER(pl,int,num_save_states,20,"Number of save states we keep on file (default is 20)");
+DEFINE_PARAMETER(pl, int, save_state_every_iter, 10000, "Saves simulation state every n number of iterations (default is 500)");
+DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on file (default is 20)");
+
 // Load state options
-DEFINE_PARAMETER(pl,bool,loading_from_previous_state,false,"");
+DEFINE_PARAMETER(pl ,bool, loading_from_previous_state, false,"Loads simulation from previous state if marked true");
+
+// ---------------------------------------
+// Debugging options:
+// ---------------------------------------
+// Options for checking memory usage: -- this was more heavily used when I was investigating a memory leak . TO-DO: clean this stuff up ?
+DEFINE_PARAMETER(pl, int, check_mem_every_iter, -1, "Checks memory usage every n number of iterations (default is -1 aka, don't check. To check, set to a positive integer value)");
+DEFINE_PARAMETER(pl, double, mem_safety_limit, 60.e9, "Memory upper limit before closing the program -- in bytes");
+
+// Options for checking timing:
+DEFINE_PARAMETER(pl, int, timing_every_n, -1, "Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
+
+// Options for debugging: -- TO-DO: can remove all these now?
+DEFINE_PARAMETER(pl, bool, print_checkpoints, false, "Print checkpoints throughout script for debugging? ");
 
 // ---------------------------------------
 // Solution options:
 // ---------------------------------------
-DEFINE_PARAMETER(pl,bool,solve_stefan,false,"Solve stefan ?");
-DEFINE_PARAMETER(pl,bool,solve_navier_stokes,false,"Solve navier stokes?");
-DEFINE_PARAMETER(pl,bool,solve_coupled,true,"Solve the coupled problem?");
-DEFINE_PARAMETER(pl,bool,do_advection,1,"Boolean flag whether or not to do advection (default : 1)");
-DEFINE_PARAMETER(pl,double,Re_overwrite,-100.0,"overwrite the examples set Reynolds number");
-DEFINE_PARAMETER(pl,double,duration_overwrite,-100.0,"overwrite the duration");
+// Related to which physics we solve:
+DEFINE_PARAMETER(pl, bool, solve_stefan, false, "Solve stefan ?");
+DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
+DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
+DEFINE_PARAMETER(pl, bool, do_advection, true, "Boolean flag whether or not to do advection (default : 1)");
 
-DEFINE_PARAMETER(pl,double,duration_overwrite_nondim,-10.,"Duration overwrite (in nondimensional time) -- not fully implemented");
+// Related to the Stefan and temperature/concentration problem:
+DEFINE_PARAMETER(pl, double, cfl, 0.5, "CFL number for Stefan problem (default:0.5)");
+DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
+DEFINE_PARAMETER(pl, bool, force_interfacial_velocity_to_zero, false, "Force the interfacial velocity to zero? ");
 
-DEFINE_PARAMETER(pl,bool,use_uniform_band,true,"Boolean whether or not to refine using a uniform band");
-DEFINE_PARAMETER(pl,bool,no_flow,false,"An override switch for the ice cylinder example to run a case with no flow (default: false)");
+// Related to the Navier-Stokes problem:
+DEFINE_PARAMETER(pl, double, Re_overwrite, -100.0, "Overwrite the examples set Reynolds number (works if set to a positive number, default:-100.00");
+DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
+DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0)");
+DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3)");
 
-DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
-DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
-DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error convergence (default:1.e-3)");
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number for Stefan problem (default:0.5)");
-DEFINE_PARAMETER(pl,double,cfl_NS,1.0,"CFL number for Navier-Stokes problem (default:1.0)");
-DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
+// Specifying flow or no flow: TO-DO: clean this up, make it usable for dendrite example too
+DEFINE_PARAMETER(pl, bool, no_flow, false, "An override switch for the ice cylinder example to run a case with no flow (default: false)");
+
+// Related to simulation duration settings:
+DEFINE_PARAMETER(pl, double, duration_overwrite, -100.0, "Overwrite the duration in minutes (works if set to a positive number, default:-100.0");
+DEFINE_PARAMETER(pl, double, duration_overwrite_nondim, -10.,"Overwrite the duration in nondimensional time (in nondimensional time) -- not fully implemented");
+// ---------------------------------------
 
 
 void select_solvers(){
   switch(example_){
     case FRANK_SPHERE:
-
       solve_stefan = true;
-
       solve_navier_stokes = false;
-
       do_advection = false;
       break;
+
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       if(!no_flow){
@@ -172,7 +195,7 @@ void select_solvers(){
       solve_stefan = true;
       solve_navier_stokes = true;
       break;
-    case DENDRITE_TEST: // will need to select solvers manually
+    case DENDRITE_TEST: // will need to select solvers manually // TO-DO: just use the "no-flow" option for this!
       break;
 
     }
@@ -180,27 +203,31 @@ void select_solvers(){
       throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
     }
 }
-
+// ---------------------------------------
 // Refinement options:
-DEFINE_PARAMETER(pl,double,vorticity_threshold,0.1,"Threshold to refine vorticity by, default is 0.1 \n");
-DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+// ---------------------------------------
+
+DEFINE_PARAMETER(pl, double, vorticity_threshold, 0.1,"Threshold to refine vorticity by, default is 0.1 \n");
+DEFINE_PARAMETER(pl, double, gradT_threshold, 1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to refine using a uniform band");
+DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.)");
 
 // ---------------------------------------
 // Geometry options:
 // ---------------------------------------
-DEFINE_PARAMETER(pl,double,xmin,0.,"Minimum dimension in x (default: 0)");
-DEFINE_PARAMETER(pl,double,xmax,1.,"Maximum dimension in x (default: 0)");
+// General options: // TO-DO: maybe all these geometry options should be OVERWRITE options --aka, defaults are specified per example unless user states otherwise
+DEFINE_PARAMETER(pl, double, xmin, 0., "Minimum dimension in x (default: 0)");
+DEFINE_PARAMETER(pl, double, xmax, 1., "Maximum dimension in x (default: 0)");
 
-DEFINE_PARAMETER(pl,double,ymin,0.,"Minimum dimension in y (default: 0)");
-DEFINE_PARAMETER(pl,double,ymax,1.,"Maximum dimension in y (default: 1)");
+DEFINE_PARAMETER(pl, double, ymin, 0., "Minimum dimension in y (default: 0)");
+DEFINE_PARAMETER(pl, double, ymax, 1., "Maximum dimension in y (default: 1)");
 
-DEFINE_PARAMETER(pl,int,nx,1,"Number of trees in x (default:1)");
-DEFINE_PARAMETER(pl,int,ny,1,"Number of trees in y (default:1)");
+DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in x (default:1)");
+DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in y (default:1)");
 
-DEFINE_PARAMETER(pl,int,px,0,"Periodicity in x (default false)");
-DEFINE_PARAMETER(pl,int,py,0,"Periodicity in y (default false)");
+DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in x (default false)");
+DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in y (default false)");
 
-DEFINE_PARAMETER(pl,double,uniform_band,8.,"Uniform band (default:4.)");
 
 // For level set:
 double r0;
@@ -209,14 +236,15 @@ double r0;
 double s0;
 double T_inf;
 
-// For stefan fluids coupled problems:
-DEFINE_PARAMETER(pl,double,d_cyl,35.e-3,"cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
-DEFINE_PARAMETER(pl,double,T_cyl,263.,"Temperature of cooled cylinder in K (default : 263)");
+// For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
+DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
+DEFINE_PARAMETER(pl, double, T_cyl, 263., "Temperature of cooled cylinder in K (default : 263)");
 
-double r_cyl; // non dim variable used to set up LSF, computed in set_geometry()
-double d_seed; // for dendrite test
+double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
+double d_seed; // for dendrite test : set in TO-DO:update this
 
-// For solution of temperature fields:set in set_physical_properties()
+// For solution of temperature fields: set in set_physical_properties() TO-DO: maybe make these actual things the user can specify
+// TO-DO: ideal scenario -- the user *could* change all these things via inputs. Might need to make an overwrite boolean. aka bool_overwrite_default_temp_settings
 double Twall;
 double Tinterface;
 double back_wall_temp_flux;
@@ -227,7 +255,7 @@ double theta_wall;
 double theta_interface;
 double theta_cyl;
 
-// For surface tension: (used to apply some interfacial BC's in temperature)
+// For surface tension: (used to apply some interfacial BC's in temperature) // TO-DO revisit this?
 double sigma; // set in set_physical_properties()
 //DEFINE_PARAMETER(pl,double,sigma,4.20e-10,"Interfacial tension [m] between ice and water, default: 2*2.10e-10");
 
@@ -245,14 +273,14 @@ double d0; // for dendrite w convection case
 void set_geometry(){
   switch(example_){
     case FRANK_SPHERE: {
-      // Frank sphere
+      // Corresponds to the Frank Sphere 2d analytical solution to the Stefan problem
+      // Was added to verify that the Stefan problem was being solved correctly independent of flow
       // Grid size
       xmin = -5.0; xmax = 5.0; //5.0;
       ymin = -5.0; ymax = 5.0;
 
       // Number of trees
-      nx = 2;
-      ny = 2;
+      nx = 2; ny = 2;
 
       // Periodicity
       px = 0; py = 0;
@@ -275,6 +303,7 @@ void set_geometry(){
     case FLOW_PAST_CYLINDER: // intentionally waterfalls into same settings as ice around cylinder
 
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
+      // Corresponds with Section 5 of Bayat et. al -- A Sharp numerical method for the solution of Stefan problems with convective effects
 
       // Domain size:
       xmin = 0.0; xmax = 30.0;//20.0;/*32.0;*/
@@ -290,16 +319,10 @@ void set_geometry(){
 
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder (mini level set)
-      //r_cyl=1.0;
-      /*r0 = r_cyl*1.17;*/ // Computational radius of initial ice height // should set r0 = r_cyl*1.0572 to get height_init = 1mm, matching the experiments (or at least matching the Okada model)
-      //r0 = r_cyl*1.0572;
-
-      r0 = r_cyl*1.10; // Comp radius of ice (level set)
-//      r0 = r_cyl*1.7;
-      //d_cyl = 35.e-3;  // Physical diameter of cylinder [m] -- value used for some nondimensionalization
-      // d_cyl gets set by the user (default is 35 e-3)
+      r0 = r_cyl*1.10; // Computational radius of ice (level set) -- TO-DO: maybe initial ice thickness should be a user parameter you can change
       break;}
     case MELTING_ICE_SPHERE:{
+      // (WIP)-- was originally set up to try and validate Hao et al melting ice sphere experiments. TO-DO: can revisit this! now that BC's are corrected and etc.
       // Domain size:
       xmin = 0.0; xmax = 30.0;
       ymin = 0.0; ymax = 15.0;
@@ -313,12 +336,15 @@ void set_geometry(){
       py = 1;
 
       uniform_band = 6.0;
+
       // Problem geometry:
       r0 = 0.5;     // Computational radius of the sphere
       break;
     }
 
-    case NS_GIBOU_EXAMPLE: {// Navier Stokes Validation case from Gibou 2015
+    case NS_GIBOU_EXAMPLE: {
+      // Corresponds with Section 4.1.1 from Guittet et al. - A stable projection method for the incompressible Navier-Stokes equations on arbitrary geometries and adaptive Quad/Octrees
+      // Was added here to verify that the NS was working correctly independently
       // Domain size:
       xmin = 0.0; xmax = PI;
       ymin = 0.0; ymax = PI;
@@ -333,25 +359,26 @@ void set_geometry(){
     }
 
     case COUPLED_PROBLEM_EXAMPLE:{
+      // Corresponds with Section 6 of Bayat et. al -- A Sharp numerical method for the solution of Stefan problems with convective effects
       // Domain size:
-      xmin = -PI/*-PI/2.*/; xmax = PI/*3.*PI/2.*/;
-      ymin = -PI; ymax = PI/*PI*/;
+      xmin = -PI; xmax = PI;
+      ymin = -PI; ymax = PI;
 
-      x0_lsf = 0./*PI/2*/; y0_lsf = 0.;/*PI/4.;*/
+      x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
 
       // Number of trees:
       nx = 2; ny = 2;
       px = 0; py = 0;
 
       // Radius of the level set function:
-      //r0 = PI/3.;
-
       r0 = PI/2.;
       uniform_band=4.;
 
       break;
     }
     case COUPLED_TEST_2:{
+      // An additional coupled test that was not used in the paper.
+      // To-do: revisit this, or remove it
       // Domain size:
       xmin = -1.0; xmax = 1.0;
       ymin = -1.0; ymax = 1.0;
@@ -363,6 +390,8 @@ void set_geometry(){
       break;
     }
     case DENDRITE_TEST:{
+      // TO-DO: clean this out
+      // (WIP) : was added to further verify coupled solver by demonstrating dendritic solidification of a pure substance, but never fully fledged this out.
       // Domain size:
       xmin = 0.; xmax = 10.;
       ymin = 0.; ymax = 10.;
@@ -382,7 +411,10 @@ void set_geometry(){
       break;
     }
   }
-  // set number of interpolation fields:
+
+  // Set number of interpolation fields:
+  // Number of fields interpolated from one grid to the next depends on which equations
+  // we are solving, therefore we select appropriately
   num_fields_interp = 0;
   if(solve_stefan){
     num_fields_interp+=4; // Tl, Ts, vint_x, vint_y
@@ -397,39 +429,39 @@ double v_interface_max_norm; // For keeping track of the interfacial velocity ma
 // ---------------------------------------
 // Grid refinement:
 // ---------------------------------------
-DEFINE_PARAMETER(pl,int,lmin,3,"Minimum level of refinement");
-DEFINE_PARAMETER(pl,int,lint,0,"Intermediate level of refinement (default: 0, won't be used unless set)");
-DEFINE_PARAMETER(pl,int,lmax,8,"Maximum level of refinement");
-DEFINE_PARAMETER(pl,double,lip,1.75,"Lipschitz coefficient");
-DEFINE_PARAMETER(pl,int,method_,1,"Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
-DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence tests");
-DEFINE_PARAMETER(pl,bool,refine_by_ucomponent,false,"Flag for whether or not to refine by a backflow condition for the fluid velocity");
-DEFINE_PARAMETER(pl,bool,refine_by_d2T,true,"Flag for whether or not to refine by the nondimensionalized temperature gradient");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Minimum level of refinement");
+DEFINE_PARAMETER(pl, int, lint, 0, "Intermediate level of refinement (default: 0, won't be used unless set)");
+DEFINE_PARAMETER(pl, int, lmax, 8, "Maximum level of refinement");
+DEFINE_PARAMETER(pl, double, lip, 1.75, "Lipschitz coefficient");
+DEFINE_PARAMETER(pl, int, method_, 1, "Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
+DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergence tests");
+DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity");
+DEFINE_PARAMETER(pl, bool, refine_by_d2T, true, "Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
 // ---------------------------------------
 // Non dimensional groups:
 // ---------------------------------------
-DEFINE_PARAMETER(pl,double,Re,300.,"Reynolds number - default is 300 \n");
-DEFINE_PARAMETER(pl,double,Pr,0.,"Prandtl number - computed from mu_l, alpha_l, rho_l \n");
-DEFINE_PARAMETER(pl,double,Pe,0.,"Peclet number - computed from Re and Pr \n");
-DEFINE_PARAMETER(pl,double,St,0.,"Stefan number - computed from cp_s, deltaT, L \n");
+DEFINE_PARAMETER(pl, double, Re, 300., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 300 \n");
+DEFINE_PARAMETER(pl, double, Pr, 0., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
+DEFINE_PARAMETER(pl, double, Pe, 0., "Peclet number - computed from Re and Pr \n");
+DEFINE_PARAMETER(pl, double, St, 0., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
 
 DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
 // ---------------------------------------
 // Physical properties:
 // ---------------------------------------
-double alpha_s;
-double alpha_l;
-double k_s;
-double k_l;
-double L; // Latent heat of fusion
-double rho_l;
-double rho_s;
-double cp_s;
-double mu_l;
+double alpha_s; // Thermal diffusivity of solid [m^2/s]
+double alpha_l; // Thermal diffusivity of liquid [m^2/s]
+double k_s;     // Thermal conductivity of solid [W/(mK)]
+double k_l;     // Thermal conductivity of liquid [W/(mK)]
+double L;       // Latent heat of fusion [J/kg]
+double rho_l;   // Density of fluid [kg/m^3]
+double rho_s;   // Density of solid [kg/m^3]
+double cp_s;    // Specific heat of solid [J/(kg K)]
+double mu_l;    // Dynamic viscosity of fluid [Pa s]
 
 
-double n_times_d0; // multiplier on d0 we use to get dseed
+double n_times_d0; // multiplier on d0 we use to get dseed //(WIP) // TO-DO:clean up dendrite stuff!
 void set_physical_properties(){
   double nu;
   switch(example_){
@@ -445,18 +477,18 @@ void set_physical_properties(){
     }
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:{
-      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
-      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
+      alpha_s = (1.18e-6);    //ice
+      alpha_l = (0.13275e-6); //water
 
-      k_s = 2.22; // W/[m*K]
-      k_l = 558.61e-3;/*0.608*/; // W/[m*K]
+      k_s = 2.22;       // W/[m*K]
+      k_l = 558.61e-3;  // W/[m*K]
 
-      rho_l = 1000.0;// kg/m^3
-      rho_s = 920.; //[kg/m^3]
+      rho_l = 1000.0;   // kg/m^3
+      rho_s = 920.;     //[kg/m^3]
 
 
       mu_l = 0.001730725; // [Pa * s]
-      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+      cp_s = k_s/(alpha_s*rho_s); // [J/(kg K)]
 
       L = 334.e3;  // J/kg
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
@@ -477,6 +509,7 @@ void set_physical_properties(){
       }
 
     case MELTING_ICE_SPHERE:{
+
       // For cases with higher water temperature:
       /*
       // For first pass, I will just use properties from Okada. But may need to change since water is at a higher temp  11-4-20
@@ -531,6 +564,8 @@ void set_physical_properties(){
 
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
       */
+
+      // TO-DO : what the heck, clean this up lol
       alpha_s = 1.;
       alpha_l = 1.;
 
