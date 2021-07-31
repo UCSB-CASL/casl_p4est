@@ -12,7 +12,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: June 29, 2021.
- * Updated: July 11, 2021.
+ * Updated: July 31, 2021.
  */
 
 #ifdef _OPENMP
@@ -281,7 +281,7 @@ int main( int argc, char** argv )
 	const int NUM_TREES_PER_DIM = 2;	// Number of macro cells per dimension.
 	const int PERIODICITY = 0;			// Domain periodicity.
 	const double VEL_NORM_FACTOR = M_SQRT2;
-	const double DURATION = M_PI * VEL_NORM_FACTOR;	// Duration of the simulation: one full cycle complets at 2*pi*r.
+	const double DURATION = 1 * (2 * M_PI * VEL_NORM_FACTOR);	// Duration of the simulation: one full cycle completes at 2*pi*r.
 
 	const int NUM_ITER_VTK = 8;			// Save VTK files every NUM_ITER_VTK iterations.
 

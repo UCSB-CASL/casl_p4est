@@ -7,7 +7,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Modified: July 15, 2021.
+ * Modified: July 31, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -293,8 +293,6 @@ int main( int argc, char** argv )
 					int iter = 0;
 					const double MAX_VEL_NORM = 1.0; 	// Maximum velocity length known after normalizing random field.
 					double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;	// deltaT for COARSE grid.
-					double dt_f = CFL * (dxyz_min_f / MAX_VEL_NORM) / (1u << addFineSubsteps());	// FINE deltaT knowing that the CFL
-																									// cond. is (c * deltaT)/deltaX <= CFLN.
 					bool allInside = true;				// Turns false if at least one interface backtracked point in
 														// the coarse grid falls outside the computational domain.
 
@@ -304,7 +302,7 @@ int main( int argc, char** argv )
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
 					int iteration = 0;					// Tracks current COARSE iteration and allows interleaved advection.
-					const int INTERLEAVED_ADVECT_STEPS = 8;	// How often to interleave finer-grid fitting with numerical advection.
+					const int INTERLEAVED_ADVECT_STEPS = 16;	// How often to interleave finer-grid fitting with numerical advection.
 
 					ierr = PetscPrintf( mpi.comm(), " * Receiving: " );			// Labeling reception of packets.
 					CHKERRXX( ierr );
@@ -318,6 +316,9 @@ int main( int argc, char** argv )
 						sprintf( msg, "[%03d]: ", iter );
 						ierr = PetscPrintf( mpi.comm(), msg );
 						CHKERRXX( ierr );
+
+						double dt_f = CFL * (dxyz_min_f / MAX_VEL_NORM) / (1u << addFineSubsteps());	// FINE deltaT knowing that the CFL
+																										// cond. is (c * deltaT)/deltaX <= CFLN.
 
 						// Update up to N_FINE_STEPS_PER_COARSE_STEP times the FINE grid.
 						for( int step = 0; step < N_FINE_STEPS_PER_COARSE_STEP; step++ )
@@ -377,9 +378,6 @@ int main( int argc, char** argv )
 							}
 							randomVelocityField.evaluate( mesh_len, p4est_f, nodes_f, vel_f );
 						}
-
-						// Restore FINE time step size.
-						dt_f = CFL * dxyz_min_f / MAX_VEL_NORM;
 
 						// Collect samples from COARSE grid: must be done before "advecting" COARSE grid.
 						// Also, flag nodes along Gamma.
@@ -574,7 +572,7 @@ int main( int argc, char** argv )
 							slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 
 							for( auto& stencil : stencils )		// Deallocate stencils of level-set values.
-									delete [] stencil;
+								delete [] stencil;
 							stencils.clear();
 						}
 					}
