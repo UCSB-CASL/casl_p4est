@@ -814,6 +814,9 @@ void set_nondimensional_groups(){
      else if (example_ == DENDRITE_TEST){
        d_length_scale = d_seed;
      }
+     else if(example_ == FRANK_SPHERE){
+       d_length_scale = 1.0;
+     }
 
      Pr = mu_l/(alpha_l*rho_l);
      St = cp_s*fabs(deltaT)/L;
@@ -856,8 +859,8 @@ void simulation_time_info(){
   save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
   switch(example_){
     case FRANK_SPHERE:{
-      tfinal = 1.30;
-      dt_max_allowed = 0.1;
+      tfinal = 1.10;
+      dt_max_allowed = 0.05;
       tstart = 1.0;
       break;
     }
@@ -1032,7 +1035,7 @@ double frank_sphere_solution_t(double s){
 
 }
 // --------------------------------------------------------------------------------------------------------------
-// Functions for validating the Navier-Stokes solver:
+// Functions/Structures for validating the Navier-Stokes problem:
 // --------------------------------------------------------------------------------------------------------------
 // Re-doing the NS validation case:
 struct velocity_component: CF_DIM
@@ -1255,7 +1258,7 @@ struct external_force_per_unit_volume_component : CF_DIM{
   }
 };
 //------------------------------------------------------------------------
-// For coupled problem validation:
+// Functions/Structures for validating the Stefan problem:
 // -----------------------------------------------------------------------
 struct temperature_field: CF_DIM
 {
@@ -1513,7 +1516,7 @@ double ramp_BC(double initial,double goal_value){
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// INTERFACIAL TEMPERATURE BOUNDARY CONDITION
+// Interfacial temperature boundary condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
 BoundaryConditionType interface_bc_type_temp;
 void interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
@@ -1551,7 +1554,7 @@ void inner_interface_bc(){ //-- Call this function before setting interface bc i
     }
 }
 
-bool print_stuff;
+bool print_stuff; // TO-DO: remove this?
 class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp is initialized
 private:
   // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
@@ -1578,11 +1581,6 @@ public:
     }
   }
   double Gibbs_Thomson(double sigma_, double T0, double dval, DIM(double x, double y, double z)) const {
-    //printf("theta_interface = %0.4f, kappa = %0.4f, sigma = %0.4e, dval = %0.4e,sigma/dval = %0.4e \n",theta_interface*(1.0 - (sigma_/dval)*((*kappa_interp)(x,y))),(*kappa_interp)(x,y),sigma_,dval,sigma_/dval);
-    if(print_stuff){printf("Tint : %0.4f \n",theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y))));}
-
-    //return theta_interface*(1 - (sigma_/dval)*((*kappa_interp)(x,y)));
-
         return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
   }
   double operator()(DIM(double x, double y, double z)) const
@@ -1717,7 +1715,7 @@ public:
 }bc_interface_coeff_inner;
 
 // --------------------------------------------------------------------------------------------------------------
-// Wall functions -- these evaluate to true or false depending on if the location is on the wall --  they just add coding simplicity
+// Wall functions -- these evaluate to true or false depending on if the location is on the wall --  they just add coding simplicity for wall boundary conditions
 // --------------------------------------------------------------------------------------------------------------
 bool xlower_wall(DIM(double x, double y, doublze z)){
   // Front x wall, excluding the top and bottom corner points in y
@@ -1802,7 +1800,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   }
 };
 // --------------------------------------------------------------------------------------------------------------
-// WALL TEMPERATURE BOUNDARY CONDITION
+// Wall temperature boundary condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
 class BC_WALL_TYPE_TEMP: public WallBCDIM
 {
@@ -1870,7 +1868,7 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// TEMPERATURE INITIAL CONDITION
+// Initial temperature condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
 class INITIAL_TEMP: public CF_DIM
 {
@@ -1934,7 +1932,7 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// VELOCITY BOUNDARY CONDITION -- for velocity vector = (u,v,w)
+// Wall fluid velocity boundary condition objects/functions: for fluid velocity vector = (u,v,w)
 // --------------------------------------------------------------------------------------------------------------
 class BC_WALL_TYPE_VELOCITY: public WallBCDIM
 {
@@ -2033,9 +2031,9 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// VELOCITY INTERFACIAL CONDITION -- for velocity vector = (u,v,w)
+// Interfacial fluid velocity condition objects/functions: for fluid velocity vector = (u,v,w)
 // --------------------------------------------------------------------------------------------------------------
-// Interfacial condition for the u component:
+
 BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
 void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
@@ -2110,7 +2108,7 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// VELOCITY INITIAL CONDITION -- for velocity vector = (u,v,w), in Navier-Stokes problem
+// Initial fluid velocity condition objects/functions: for fluid velocity vector = (u,v,w)
 // --------------------------------------------------------------------------------------------------------------
 struct INITIAL_VELOCITY : CF_DIM
 {
@@ -2167,7 +2165,7 @@ struct INITIAL_VELOCITY : CF_DIM
 } ;
 
 // --------------------------------------------------------------------------------------------------------------
-// PRESSURE BOUNDARY CONDITIONS
+// Wall fluid pressure boundary condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
 class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 {
@@ -2221,6 +2219,10 @@ public:
   }
 };
 
+
+// --------------------------------------------------------------------------------------------------------------
+// Interfacial fluid pressure boundary condition objects/functions:
+// --------------------------------------------------------------------------------------------------------------
 static BoundaryConditionType interface_bc_type_pressure;
 void interface_bc_pressure(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
@@ -2260,7 +2262,7 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// FUNCTIONS FOR SOLVING THE PROBLEM:
+// Auxiliary functions for solving the problem!:
 // --------------------------------------------------------------------------------------------------------------
 void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t rhs_Tl, vec_and_ptr_t rhs_Ts,vec_and_ptr_t T_l_backtrace, vec_and_ptr_t T_l_backtrace_nm1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd, external_heat_source** external_heat_source_term=NULL){
 
@@ -2582,6 +2584,7 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   P4EST_ASSERT(i==num_fields_interp);
 } // end of interpolate_values_onto_new_grid
 
+// TO-DO : is this used? if not, remove
 void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
 
   compute_mean_curvature(*ngbd,normal.vec,curvature.vec);
@@ -2629,26 +2632,18 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 }
 
 
-double interfacial_velocity_expression(double Tl_d, double Ts_d/*, double kappa,double dval*/){
+double interfacial_velocity_expression(double Tl_d, double Ts_d){
 
   switch(stefan_condition_type){
-  // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
+    // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
     case NONDIM_YES_FLUID:{
-    /*
-      printf("Kappa is %0.4f \n"
-             "dval is %0.4e \n"
-             "Sigma is %0.4e \n"
-             "Sigma/dval is %0.4e \n",kappa,dval,sigma,sigma/dval);
-      printf("Curvature factor --> divide by %0.10f \n \n",(1+sigma*kappa/dval));
-      */
-
-      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d))/*/(1 + sigma*kappa/dval)*/;
+      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d));
     }
     case NONDIM_NO_FLUID:{
-      return ((St)*(Ts_d - (k_l/k_s)*Tl_d))/*/(1 + sigma*kappa/dval)*/;
+      return ((St)*(Ts_d - (k_l/k_s)*Tl_d));
     }
     case DIMENSIONAL:{
-      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s/**(1 + sigma*kappa)*/);
+      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
     }
     default:{
       throw std::invalid_argument("interfacial_velocity_expression: Unrecognized stefan condition type case \n");
@@ -3145,8 +3140,6 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   compare_opn.clear(); diag_opn.clear(); criteria.clear();
   compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
   custom_lmax.clear();custom_lmax.shrink_to_fit();
-
-
 };
 
 void poisson_step(Vec phi, Vec phi_solid,
@@ -3161,8 +3154,6 @@ void poisson_step(Vec phi, Vec phi_solid,
 
                   int cube_refinement,
                   Vec phi_cylinder=NULL, Vec phi_cylinder_dd[P4EST_DIM]=NULL ){
-//  my_p4est_poisson_nodes_mls_t* &solver_Tl=NULL;
-//  my_p4est_poisson_nodes_mls_t* &solver_Ts = NULL;
 
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
@@ -3439,12 +3430,14 @@ bool are_we_saving_fluid_forces(double tn_,bool is_load_step, int& out_idx, bool
   }
   return out;
 }
-// --------------------------------------------------------------------------------------------------------------
-// FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
-// adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
 
+
+// (WIP -- currently unused:)
 void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd,vec_and_ptr_t phi)
 {
+  // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
+  // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
+
   // TO-DO: can make these settings variable
   int front_smoothing_ = 0;
   double proximity_smoothing_ = 1.1;
@@ -3845,8 +3838,11 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
   ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+
+
+
 // --------------------------------------------------------------------------------------------------------------
-// FUNCTIONS FOR SAVING TO VTK:
+// Functions for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
 void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, char* filename){
 // Things we want to save:
@@ -4011,9 +4007,9 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// Function for checking the error in test cases (and then saving to vtk):
+// Functions for checking the error in test cases (and then saving to vtk):
 // --------------------------------------------------------------------------------------------------------------
-void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface,  double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk,char *name, FILE *fich){
+void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface,  double dxyz_close_to_interface, bool are_we_saving_vtk, char* filename_vtk,char *name, FILE *fich){
   PetscErrorCode ierr;
 
   vec_and_ptr_t T_ana,phi_ana, v_interface_ana;
@@ -4047,13 +4043,16 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
     r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    sval = r/sqrt(tn+dt);
+    //sval = r/sqrt(tn+dt);
+    sval = r/sqrt(tn);
 
-    phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
+    //phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
+    phi_ana.ptr[n] = s0*sqrt(tn) - r;
 
     T_ana.ptr[n] = frank_sphere_solution_t(sval);
 
-    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
+    //v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
+    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn));
 
     // Error on phi and v_int:
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
@@ -4100,7 +4099,10 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   // Print errors to file:
   ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
-  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n",tn + dt,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);
+  PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n", tn, dt, tstep,
+                                                                    global_Linf_errors[0], global_Linf_errors[1],
+                                                                    global_Linf_errors[2], global_Linf_errors[3],
+                                                                    num_nodes, dxyz_close_to_interface);
   ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
 
   // If we are saving this timestep, output the results to vtk:
@@ -4409,7 +4411,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
                                           "%g %g %g "
                                           "%g %g %g "
                                           "%g "
-                                          "%d %g \n",tn,dt,tstep,
+                                          "%d %g \n", tn, dt, tstep,
                                                      global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
                                                      global_Linf_errors[3],global_Linf_errors[4],global_Linf_errors[5],
                                                      global_Linf_errors[6],
@@ -4497,7 +4499,7 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
+// Functions for saving or loading the simulation state:
 // --------------------------------------------------------------------------------------------------------------
 
 void fill_or_load_double_parameters(save_or_load flag,PetscInt num,splitting_criteria_t* sp, PetscReal *data){
@@ -4826,7 +4828,7 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
 
 
 // --------------------------------------------------------------------------------------------------------------
-// BEGIN MAIN OPERATION:
+// Begin main operation:
 // --------------------------------------------------------------------------------------------------------------
 int main(int argc, char** argv) {
   // prepare parallel enviroment
@@ -4863,12 +4865,6 @@ int main(int argc, char** argv) {
   my_p4est_brick_t      brick;
   my_p4est_hierarchy_t* hierarchy;
   my_p4est_node_neighbors_t* ngbd;
-
-//  p4est_t               *p4est_nm1;
-//  p4est_nodes_t         *nodes_nm1;
-//  p4est_ghost_t         *ghost_nm1;
-//  my_p4est_hierarchy_t* hierarchy_nm1;
-//  my_p4est_node_neighbors_t* ngbd_nm1;
 
   p4est_t               *p4est_np1;
   p4est_nodes_t         *nodes_np1;
@@ -4920,7 +4916,7 @@ int main(int argc, char** argv) {
 
   // Navier-Stokes problem:-----------------------------
   my_p4est_navier_stokes_t* ns = NULL;
-  my_p4est_poisson_cells_t* cell_solver; // TO-DO: These may be unnecessary now
+  my_p4est_poisson_cells_t* cell_solver; // TO-DO: These may be unnecessary now -- TO-DO: check these unused things, remove if we can
   my_p4est_poisson_faces_t* face_solver;
 
   PCType pc_face = PCSOR;
@@ -4978,9 +4974,10 @@ int main(int argc, char** argv) {
 
   // stopwatch
   parStopWatch w;
-  w.start("Running example: multialloy_with_fluids");
+  w.start("Running example: stefan_with_fluids");
   // -----------------------------------------------
-
+  // Begin loop through number of grid splits:
+  // -----------------------------------------------
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
     // Make sure your flags are set to solve at least one of the problems:
     if(!solve_stefan && !solve_navier_stokes){
@@ -5632,7 +5629,9 @@ int main(int argc, char** argv) {
         my_p4est_level_set_t ls_new_new(ngbd_np1);
 
         // Feed the curvature computed to the interfacial boundary condition:
-        if((example_ ==ICE_AROUND_CYLINDER) ||(example_ == MELTING_ICE_SPHERE) || (example_ == DENDRITE_TEST)){
+        if((example_ ==ICE_AROUND_CYLINDER) ||
+            (example_ == MELTING_ICE_SPHERE) ||
+            (example_ == DENDRITE_TEST)){
           ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
@@ -5741,7 +5740,9 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed
         // -------------------------------
-        if((example_ == ICE_AROUND_CYLINDER)||(example_ == MELTING_ICE_SPHERE) || (example_ == DENDRITE_TEST)){
+        if((example_ == ICE_AROUND_CYLINDER)||
+            (example_ == MELTING_ICE_SPHERE) ||
+            (example_ == DENDRITE_TEST)){
           for(unsigned char d=0;d<2;++d){
             bc_interface_val_temp[d]->clear();
             if(example_ == DENDRITE_TEST){
@@ -6086,7 +6087,7 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       bool are_we_saving = false;
 
-      are_we_saving = are_we_saving_vtk(tstep,tn,tstep==load_tstep,out_idx,true) /*&& (tstep>0)*/;
+      are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
 
       // Save to VTK if we are saving this timestep:
       if(are_we_saving){
@@ -6123,12 +6124,16 @@ int main(int argc, char** argv) {
         sprintf(output,"%s/snapshot_coupled_test_lmin_%d_lmax_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
         PetscPrintf(mpi.comm(),"Saving coupled problem example \n");
-        save_coupled_test_case(p4est_np1,nodes_np1,ghost_np1, ngbd_np1, phi,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_coupled_errors,fich_coupled_errors); // Don't check first timestep bc have not computed velocity yet
+        save_coupled_test_case(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
+                               phi, T_l_n, T_s_n, v_interface, v_n, press_nodes, vorticity,
+                               dxyz_close_to_interface, are_we_saving, output,
+                               name_coupled_errors, fich_coupled_errors);
+        // Don't check first timestep bc have not computed velocity yet
         PetscPrintf(mpi.comm(),"Coupled test case saved \n");
 
       }
       if(example_ == FRANK_SPHERE){
-          const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
+          const char* out_dir_stefan = getenv("OUT_DIR_VTK");
 
           char output[1000];
 
@@ -6406,20 +6411,26 @@ int main(int argc, char** argv) {
     T_s_n.destroy();
     v_interface.destroy();
 
+
     if(advection_sl_order==2) T_l_nm1.destroy();
 
     // Destroy relevant BC and RHS info:
     for(unsigned char d=0;d<2;++d){
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)||
+            (example_ == COUPLED_TEST_2)){
         delete analytical_T[d];
         delete external_heat_source_T[d];
       }
-      else{ // case where we used curvature, want to clear interpolator before destroying
+      else if((example_ ==ICE_AROUND_CYLINDER) ||
+               (example_ == MELTING_ICE_SPHERE) ||
+               (example_ == DENDRITE_TEST)){
+        // cases where we used curvature, want to clear interpolator before destroying
         bc_interface_val_temp[d]->clear();
       }
       delete bc_interface_val_temp[d];
       delete bc_wall_value_temp[d];
     }
+
     if(!solve_navier_stokes){
       phi.destroy();
 
@@ -6452,7 +6463,9 @@ int main(int argc, char** argv) {
     press_nodes.destroy();
 
     for(unsigned char d=0;d<P4EST_DIM;d++){
-      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE) ||
+            (example_ == NS_GIBOU_EXAMPLE)||
+            (example_ == COUPLED_TEST_2)){
         delete analytical_soln_v[d];
         delete external_force_components[d];
       }
