@@ -40,7 +40,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: July 23, 2021.
+ * Updated: August 4, 2021.
  */
 namespace slml
 {
@@ -87,8 +87,8 @@ namespace slml
 
 	/**
 	 * Transform data into an input form that the neural network understands.
-	 * This is a transformer that applies principal component analysis [and whitening] to the input.  Depending on the
-	 * numer of components, it also performs dimensionality reduction.
+	 * This is a transformer that applies principal component analysis [and optionally whitening] to the input.
+	 * Depending on the numer of components, it also performs dimensionality reduction.
 	 * See Python project ML_Mass_Conservation's Training module to understand how we applied the transformation during
 	 * the learning stage.
 	 */
@@ -100,6 +100,7 @@ namespace slml
 		std::vector<std::vector<double>> _components;	// Actual components.
 		std::vector<double> _means;						// Mean values.
 		std::vector<double> _stds;						// Standard deviation values.
+		bool _whiten;									// Using whitening?
 
 	public:
 		/**

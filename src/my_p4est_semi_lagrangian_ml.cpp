@@ -63,6 +63,11 @@ slml::PCAScaler::PCAScaler( const std::string& paramsFileName, const bool& print
 			throw std::runtime_error( errorPrefix + " invalid number of variances!" );
 	}
 
+	if( params.contains( "whiten" ) )		// Using whitening?
+		_whiten = params["whiten"].get<bool>();
+	else
+		_whiten = true;						// By default, use whitening.
+
 	if( printLoadedParams )
 		_printParams( params, paramsFileName );
 }
@@ -87,11 +92,11 @@ void slml::PCAScaler::transform( double samples[][MASS_INPUT_SIZE], const int &n
 				projected[c] += sample[j] * _components[c][j];
 		}
 
-		// Third, divide by explained standard deviation while writing to output array.
+		// Third, divide by explained standard deviation while writing to output array if using whitening.
 		for( int j = 0; j < MASS_INPUT_SIZE; j++ )
 		{
 			if( j < MASS_N_COMPONENTS )
-				samples[i][j] = projected[j] / _stds[j];
+				samples[i][j] = (_whiten? projected[j] / _stds[j] : projected[j]);
 			else
 				samples[i][j] = 0;			// Fill missing slots (i.e., belonging to no component) with zeros.
 		}
