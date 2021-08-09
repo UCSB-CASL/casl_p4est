@@ -238,14 +238,16 @@ double T_inf;
 
 // For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
 DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
-DEFINE_PARAMETER(pl, double, T_cyl, 263., "Temperature of cooled cylinder in K (default : 263)");
+DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
+
+DEFINE_PARAMETER(pl, double, Twall, 265.5, "The freestream fluid temperature T_infty. (default: 265.5 K, or 2.5 C)");
 
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
 double d_seed; // for dendrite test : set in TO-DO:update this
 
 // For solution of temperature fields: set in set_physical_properties() TO-DO: maybe make these actual things the user can specify
 // TO-DO: ideal scenario -- the user *could* change all these things via inputs. Might need to make an overwrite boolean. aka bool_overwrite_default_temp_settings
-double Twall;
+//double Twall;
 double Tinterface;
 double back_wall_temp_flux;
 double deltaT;
@@ -310,8 +312,8 @@ void set_geometry(){
       ymin = 0.0; ymax = 15.0;//10.0;/*16.0;*/
 
       // Number of trees:
-      nx =10.0;//8;/*8;*/
-      ny =5.0;//4;/*4;*/
+      nx =10.0;
+      ny =5.0;
 
       // Periodicity:
       px = 0;
@@ -320,7 +322,8 @@ void set_geometry(){
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder (mini level set)
       r0 = r_cyl*1.10; // Computational radius of ice (level set) -- TO-DO: maybe initial ice thickness should be a user parameter you can change
-      break;}
+      break;
+    }
     case MELTING_ICE_SPHERE:{
       // (WIP)-- was originally set up to try and validate Hao et al melting ice sphere experiments. TO-DO: can revisit this! now that BC's are corrected and etc.
       // Domain size:
@@ -334,8 +337,6 @@ void set_geometry(){
       // Periodicity:
       px = 0;
       py = 1;
-
-      uniform_band = 6.0;
 
       // Problem geometry:
       r0 = 0.5;     // Computational radius of the sphere
@@ -372,7 +373,6 @@ void set_geometry(){
 
       // Radius of the level set function:
       r0 = PI/2.;
-      uniform_band=4.;
 
       break;
     }
@@ -399,9 +399,6 @@ void set_geometry(){
       // Number of trees and periodicity:
       nx = 2; ny = 2;
       px = 1; py = 0;
-
-//      // band:
-//      uniform_band = 4.;
 
       // level set size (initial seed size)
       r0 = 0.5; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
@@ -494,7 +491,7 @@ void set_physical_properties(){
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
 
       // Boundary condition info:
-      Twall = 273. + 2.5;    // Physical wall temp [K] (aka T_infty)
+      //Twall = 273. + 2.5;    // Physical wall temp [K] (aka T_infty)
       Tinterface = 273.15; // Physical interface temp [K]
 
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
@@ -510,82 +507,26 @@ void set_physical_properties(){
 
     case MELTING_ICE_SPHERE:{
 
-      // For cases with higher water temperature:
-      /*
-      // For first pass, I will just use properties from Okada. But may need to change since water is at a higher temp  11-4-20
-      alpha_s = (1.221e-6); // calculated from values on engineering toolbox at - 10 C//(1.18e-6); //ice - [m^2]/s // 1.1
-      alpha_l = (0.138e-6);//value of water at 10 C //(0.13275e-6); //water- [m^2]/s
+      // Using properties of water at 20 C: (engineering toolbox)
+      alpha_l = 0.143e-6; // m2/s
+      k_l = 598.03e-3; // W/mK
+      rho_l = 1000; // kg/m^3
+      mu_l = 1.00160e-3; // Pa s
 
-      k_s = 2.30; // value at -10 C (engineering toolbox) //2.22; // W/[m*K]
-      k_l = 578.64e-3; // value of water at 10 C (chose based on paper data at 8 C) //558.61e-3; // W/[m*K]
+      // Using properties of ice at -10 C:
+      k_s = 2.30; // W/mK
+      cp_s = 2.00e3; // J/kgK
+      rho_s = 918.9; // kg/m^3
 
-      rho_l = 999.8; // calculated for water at 16 C from engineering toolbox //1000.0;// kg/m^3
-      rho_s = 920.; //[kg/m^3]
-
-      mu_l = 1.3873e-3; // Value at 8 C based on paper data //0.001730725; // Dynamic viscosity [Pa * s]
-      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+      alpha_s = k_s/cp_s/rho_s; // m^2/s
 
       L = 334.e3;  // J/kg
+      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
 
-      sigma = 2.1e-10;//(4.20e-10); // [m] // changed from original 2.10e-10 by alban
-      */
-      // Boundary condition info:
+      // Temperature settings:
+      Tinterface = 273.15;
 
-      /*
-      // For water ~ 4 degrees C
-
-      alpha_s = (1.18e-6); //ice - [m^2]/s // 1.1
-      alpha_l = (0.13275e-6); // 1.315 //water- [m^2]/s
-
-      k_s = 2.22; // W/[m*K]
-      k_l = 558.61e-3;//0.608; // W/[m*K]
-
-      rho_l = 1000.0;// kg/m^3
-      rho_s = 920.; //[kg/m^3]
-
-
-      mu_l = 0.0017; // [Pa * s]
-      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
-
-      L = 334.e3;  // J/kg
-      sigma = (2.10e-10); // [m] // changed from original 2.10e-10 by alban
-
-
-      // T_cyl = 258.150 for this case --> set in executable arguments
-
-      Twall = 273.15 + 4.0; // + 16    // Physical wall temp [K] (aka T_infty)
-      Tinterface = 273.15; // Physical interface temp [K]
-
-      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
-
-      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
-      theta_wall = 1.0; // Non dim temp at wall
-      theta_cyl = 0.0; // Non dim temp at cylinder
-
-      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
-      */
-
-      // TO-DO : what the heck, clean this up lol
-      alpha_s = 1.;
-      alpha_l = 1.;
-
-      k_s = 1.;
-      k_l = 1.;
-
-      rho_l = 1.;
-      rho_s = 1.;
-
-
-      mu_l = 1.;
-      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
-
-      L = 1.;
-      sigma = 1.e-3;
-
-      Twall = 1.;
-      Tinterface = T_cyl; // Solid will be same as interface temp
-
-      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
+      back_wall_temp_flux = 0.0; // Flux in temp on back wall
 
       deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
       theta_wall = 1.0; // Non dim temp at wall
@@ -593,7 +534,9 @@ void set_physical_properties(){
 
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
 
-
+      // In this example, T_cyl corresponds to the initial temperature of the ice
+      // T_cyl is used to define the nondimensionalization, and applied as an initial condition.
+      // However, this is the only time it is used for this example.
       break;
     }
 
@@ -784,7 +727,9 @@ double vel_nondim_to_dim;
 void set_nondimensional_groups(){
    if(stefan_condition_type==NONDIM_YES_FLUID){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
-     if(example_ == ICE_AROUND_CYLINDER || example_ == FLOW_PAST_CYLINDER || example_ == MELTING_ICE_SPHERE){
+     if(example_ == ICE_AROUND_CYLINDER ||
+         example_ == FLOW_PAST_CYLINDER ||
+         example_ == MELTING_ICE_SPHERE){
        d_length_scale=d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
@@ -1898,7 +1843,7 @@ public:
             return theta_wall;
           }
           case SOLID_DOMAIN:{
-            return 0.0; // coolest temp
+            return theta_cyl; // coolest temp
           }
           default:{
             throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
@@ -3057,11 +3002,11 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       bool last_grid_balance = false;
       while(is_grid_changing){
           if(!last_grid_balance){
-              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,
-                                                          num_fields,use_block,true,
-                                                          uniform_band,uniform_band*1.5,
-                                                          fields_new_,NULL,criteria,
-                                                          compare_opn,diag_opn,custom_lmax);
+              is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1, nodes_np1, phi_new.vec,
+                                                          num_fields, use_block, true,
+                                                          uniform_band, uniform_band*1.5,
+                                                          fields_new_, NULL, criteria,
+                                                          compare_opn, diag_opn, custom_lmax);
 
               if(no_grid_changes>0 && !is_grid_changing){
                   last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid
@@ -3139,7 +3084,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   // -------------------------------
   compare_opn.clear(); diag_opn.clear(); criteria.clear();
   compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
-  custom_lmax.clear();custom_lmax.shrink_to_fit();
+  custom_lmax.clear(); custom_lmax.shrink_to_fit();
 };
 
 void poisson_step(Vec phi, Vec phi_solid,
@@ -4033,25 +3978,19 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
   double sval;
   double vel;
 
-  // NOTE: We have just solved for time (n+1), so we compare computed solution to the analytical solution at time = (tn + dt)
-//  double v_exact = s0/(2.0*sqrt(tn/*+dt*/));
 
-  //PetscPrintf(mpi.comm(),"Exact solution of velocity is: %0.2f",v_exact);
   // Now loop through nodes to compare errors between LSF and Temperature profiles:
   double xyz[P4EST_DIM];
   foreach_node(n,nodes){
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
     r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    //sval = r/sqrt(tn+dt);
     sval = r/sqrt(tn);
 
-    //phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
     phi_ana.ptr[n] = s0*sqrt(tn) - r;
 
     T_ana.ptr[n] = frank_sphere_solution_t(sval);
 
-    //v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn+dt));
     v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn));
 
     // Error on phi and v_int:
@@ -4060,7 +3999,7 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
       // Errors on phi:
       phi_err.ptr[n] = fabs(phi.ptr[n] - phi_ana.ptr[n]);
 
-      Linf_phi = max(Linf_phi,phi_err.ptr[n]); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
+      Linf_phi = max(Linf_phi, phi_err.ptr[n]);
 
       // Errors on v_int:
       vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
@@ -4089,7 +4028,7 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   // Print Errors to application output:
   PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n",dxyz_close_to_interface);
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n", dxyz_close_to_interface);
 
   int num_nodes = nodes->indep_nodes.elem_count;
   PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
@@ -4198,7 +4137,7 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
                              "Number grid points used: %d \n"
                              "dxyz close to interface : %0.3e \n",
                               global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
-                              num_nodes,dxyz_close_to_interface);
+                              num_nodes, dxyz_close_to_interface);
 
 
 
@@ -5765,13 +5704,14 @@ int main(int argc, char** argv) {
       // Extend Fields Across Interface (if solving Stefan):
       // -- Note: we do not extend NS velocity fields bc NS solver handles that internally
       // ------------------------------------------------------------
+      // Get smallest grid size: (this gets used in all examples at some point)
+      dxyz_min(p4est,dxyz_smallest);
+      dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
       if(solve_stefan){
         // ------------------------------------------------------------
         // Define some variables needed to specify how to extend across the interface:
         // ------------------------------------------------------------
-        // Get smallest grid size:
-        dxyz_min(p4est,dxyz_smallest);
-        dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
+
         min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
         extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
         extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
@@ -6099,21 +6039,22 @@ int main(int argc, char** argv) {
 
       // Check errors on validation cases if relevant, save errors to vtk if we are saving this timestep
       if(example_ == NS_GIBOU_EXAMPLE){
-          const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
+          const char* out_dir_ns = getenv("OUT_DIR_VTK");
           char output[1000];
           PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
           sprintf(output,"%s/snapshot_NS_Gibou_test_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-          PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin+grid_res_iter,lmax+grid_res_iter);
 
           if(tstep>0){
             // In typical saving, only compute pressure nodes when we save to vtk. For this example, save pressure nodes every time so we can check the error
-            press_nodes.destroy();press_nodes.create(p4est,nodes);
-            PetscPrintf(mpi.comm(),"Computed pressure at nodes \n");
+            press_nodes.destroy();press_nodes.create(p4est_np1,nodes_np1);
             ns->compute_pressure_at_nodes(&press_nodes.vec);
           }
 
-          save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
+          save_navier_stokes_test_case(p4est_np1, nodes_np1, ghost_np1,
+                                       phi, v_n, press_nodes, vorticity,
+                                       dxyz_close_to_interface, are_we_saving, output,
+                                       name_NS_errors, fich_NS_errors);
         }
       if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
         const char* out_dir_coupled = getenv("OUT_DIR_VTK");
