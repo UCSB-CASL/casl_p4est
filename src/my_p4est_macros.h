@@ -36,6 +36,7 @@
 #define P8EST(a) a
 #define ONLY3D(a) a
 #define DIM(a,b,c) a COMMA b COMMA c
+#define CODIM1(a,b) a COMMA b
 
 #define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
 #define MULTD(a,b,c) ( (a) *  (b) *  (c) )
@@ -65,6 +66,7 @@ class Point3;
 #define P8EST(a)
 #define ONLY3D(a)
 #define DIM(a,b,c) a COMMA b
+#define CODIM1(a,b) a
 
 #define  SUMD(a,b,c) ( (a) +  (b) )
 #define MULTD(a,b,c) ( (a) *  (b) )

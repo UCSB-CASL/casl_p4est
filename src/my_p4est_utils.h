@@ -1568,6 +1568,19 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
 double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
+ * \brief max_over_negative_domain_in_one_quadrant calculate the maximum value of a scalar f within one quadrant
+ *        over the negative domain defined by the level-set function phi.
+ * \note: the maximum is taken not only over all nodes with strictly phi<0, but also over interface intersection points,
+ *        in order to have a discrete equivalence between l1 and linf norms over the negative domain
+ * \param nodes a nodes structure
+ * \param quad_idx the global index of the quadrant to be considered
+ * \param phi the level-set function
+ * \param f the scalar field from which the maximum is computed
+ * \return the maximum of f within the quadrant quad_idx over the negative domain defined by phi
+ */
+double max_over_negative_domain_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
+
+/*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
  *        note: first order convergence only
  * \param p4est the p4est
@@ -1587,6 +1600,18 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
  * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
  */
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_negative_domain calculate the maximum value of a scalar f over the negative domain defined by the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar field from which the maximum is computed
+ * \note: the maximum is taken not only over all nodes with phi<0, but also over interface intersection points,
+ *        in order to have a discrete equivalence between l1 and linf norms over the negative domain
+ * \return the maximum of f over the negative domain defined by phi, i.e. \max_{phi<=0} f
+ */
+double max_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)

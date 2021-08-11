@@ -1156,10 +1156,15 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
 
 void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup)
 {
-  double my_errors[2*P4EST_DIM];
-  for (unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
-    my_errors[dir] = 0.0;
   PetscErrorCode ierr;
+
+  double my_linf_errors[2*P4EST_DIM];
+  for (unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
+    my_linf_errors[dir] = 0.0;
+
+  double my_l1_errors[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    my_l1_errors[dir] = 0.0;
 
   // calculate the analytical solution if not done, yet
   channel.solve_for_truncated_series(setup.nterms_in_series);
@@ -1177,7 +1182,7 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
     {
       double xyz[P4EST_DIM]; ns->get_faces()->xyz_fr_f(f, dir, xyz);
       const double v_exact_tmp = channel.v_exact(dir, setup.flow_condition, setup.Reynolds, ns, xyz);
-      my_errors[dir] = MAX(my_errors[dir], fabs(v_faces_ptr[f] - v_exact_tmp));
+      my_linf_errors[dir] = MAX(my_linf_errors[dir], fabs(v_faces_ptr[f] - v_exact_tmp));
     }
 
     ierr = VecRestoreArrayRead(v_faces[dir], &v_faces_ptr); CHKERRXX(ierr);
@@ -1208,7 +1213,7 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
     double v_exact_tmp[P4EST_DIM];
     channel.v_exact(setup.flow_condition, setup.Reynolds, ns, xyz, v_exact_tmp);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      my_errors[P4EST_DIM + dir] = MAX(my_errors[P4EST_DIM + dir], fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]));
+      my_linf_errors[P4EST_DIM + dir] = MAX(my_linf_errors[P4EST_DIM + dir], fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]));
       if (setup.save_vtk)
       {
         error_nodes_p[dir][n]    = fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]);
@@ -1226,7 +1231,11 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
     }
   }
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, my_errors, 2*P4EST_DIM, MPI_DOUBLE, MPI_MAX, ns->get_p4est()->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, my_linf_errors, 2*P4EST_DIM, MPI_DOUBLE, MPI_MAX, ns->get_p4est()->mpicomm); SC_CHECK_MPI(mpiret);
+
+  double vol = area_in_negative_domain(ns->get_p4est(), ns->get_nodes(), ns->get_phi());
+  for (unsigned char dir=0; dir < P4EST_DIM; ++dir)
+    my_l1_errors[dir] = integrate_over_negative_domain(ns->get_p4est(), ns->get_nodes(), ns->get_phi(), error_nodes[dir]) / vol;
 
   // Plot the errors and exact solution if the path is provided as an input
   if (setup.save_vtk)
@@ -1265,15 +1274,20 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
       ierr = VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr); }
   }
 
-  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on u is %.6E\n", my_errors[0]); CHKERRXX(ierr);
-  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on v is %.6E\n", my_errors[1]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf face-error on u is %.6E\n", my_linf_errors[0]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf face-error on v is %.6E\n", my_linf_errors[1]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on w is %.6E\n", my_errors[2]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf face-error on w is %.6E\n", my_linf_errors[2]); CHKERRXX(ierr);
 #endif
-  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on u is %.6E\n", my_errors[P4EST_DIM + 0]); CHKERRXX(ierr);
-  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on v is %.6E\n", my_errors[P4EST_DIM + 1]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf node-error on u is %.6E\n", my_linf_errors[P4EST_DIM + 0]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf node-error on v is %.6E\n", my_linf_errors[P4EST_DIM + 1]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on w is %.6E\n", my_errors[P4EST_DIM + 2]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^inf node-error on w is %.6E\n", my_linf_errors[P4EST_DIM + 2]); CHKERRXX(ierr);
+#endif
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^1   node-error on u is %.6E\n", my_l1_errors[0]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^1   node-error on v is %.6E\n", my_l1_errors[1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = PetscPrintf(ns->get_mpicomm(), "The L^1   node-error on w is %.6E\n", my_l1_errors[2]); CHKERRXX(ierr);
 #endif
   setup.accuracy_check_done = true;
 }

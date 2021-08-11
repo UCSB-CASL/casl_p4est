@@ -1188,6 +1188,49 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
   return cube.max_Over_Interface(phi_and_function_quad_oct_values[1], phi_and_function_quad_oct_values[0]);
 }
 
+double max_over_negative_domain_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f)
+{
+#ifdef P4_TO_P8
+  OctValue  phi_and_function_quad_oct_values[2];
+#else
+  QuadValue phi_and_function_quad_oct_values[2];
+#endif
+
+  const double *node_sampled_phi_and_function_p[2];
+  PetscErrorCode ierr;
+  ierr = VecGetArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
+
+  fill_quad_oct_values_from_node_sampled_vector(phi_and_function_quad_oct_values, quad_idx, nodes, node_sampled_phi_and_function_p, 2);
+
+  ierr = VecRestoreArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
+
+  double val = -DBL_MAX;
+  int number_of_negatives = 0;
+  for(int n=0; n<(1<<P4EST_DIM); n++)
+  {
+    if(phi_and_function_quad_oct_values[0].val[n] <= 0.0)
+    {
+      val = MAX(val, phi_and_function_quad_oct_values[1].val[n]);
+      number_of_negatives++;
+    }
+  }
+
+  if( number_of_negatives>0 && number_of_negatives<(1<<P4EST_DIM) )
+  {
+#ifdef P4_TO_P8
+    Cube3 cube(0, 1, 0, 1, 0, 1);
+#else
+    Cube2 cube(0, 1, 0, 1);
+#endif
+
+    val = MAX(val, cube.max_Over_Interface(phi_and_function_quad_oct_values[1], phi_and_function_quad_oct_values[0]));
+  }
+
+  return val;
+}
+
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
@@ -1226,6 +1269,23 @@ double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec 
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(&max_over_interface, &max_over_interface_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
   return max_over_interface_global;
+}
+
+double max_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
+{
+  double max_over_negative_domain = -DBL_MAX;
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+      max_over_negative_domain = MAX(max_over_negative_domain, max_over_negative_domain_in_one_quadrant(nodes, quad_idx + tree->quadrants_offset, phi, f));
+  }
+
+  /* compute global sum */
+  double max_over_negative_domain_global;
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&max_over_negative_domain, &max_over_negative_domain_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+  return max_over_negative_domain_global;
 }
 
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
