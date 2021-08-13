@@ -892,6 +892,8 @@ double v_int_max_allowed = 50.0;
 double advection_alpha_coeff= 0.0;
 double advection_beta_coeff =0.0;
 
+bool is_ice_melted = false; // Boolean for checking if the ice is melted for melting ice sphere example
+
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
 // Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
@@ -3192,7 +3194,8 @@ void poisson_step(Vec phi, Vec phi_solid,
 
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
-                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM], Vec vorticity,Vec press_nodes, Vec phi,
+                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM],
+                        Vec vorticity,Vec press_nodes, Vec phi, double dxyz_close_to_interface,
                         KSPType face_solver_type, PCType pc_face,
                         KSPType cell_solver_type, PCType pc_cell,
                         my_p4est_faces_t* faces_np1, bool compute_pressure_,
@@ -3263,8 +3266,11 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   // Get the computed values of vorticity
   ns->copy_vorticity(vorticity);
 
+
   // Compute forces (if we are doing that)
   if(save_fluid_forces && compute_pressure_){
+
+
     double forces[P4EST_DIM];
     ns->compute_forces(forces);
 
@@ -3284,10 +3290,17 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
       //--> Scale phi back to normal:
       VecScaleGhost(phi,-1.0);
 
+
+    }
+    // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
+    if(example_ == MELTING_ICE_SPHERE){
+      if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
+        tfinal = tn;
+      }
+
     }
 
-
-
+    // To-do : this may be the source of erroneous first times being reported in fluid force files -- at the first step, dt might be initialized to something much larger than what the eventual dt will use. Might need to do this differently
     PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn+dt,forces[0],forces[1],ice_area);
     ierr = PetscFOpen(mpi_comm,name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
 
@@ -5936,7 +5949,7 @@ int main(int argc, char** argv) {
 
         navier_stokes_step(ns,p4est_np1,nodes_np1,
                            v_n.vec,v_nm1.vec,vorticity.vec,press_nodes.vec,
-                           phi.vec,
+                           phi.vec, dxyz_close_to_interface,
                            face_solver_type,pc_face,cell_solver_type,pc_cell,
                            faces_np1, compute_pressure_to_save, did_crash,
                            save_fluid_forces? name_fluid_forces:NULL,
@@ -6153,6 +6166,7 @@ int main(int argc, char** argv) {
           else{
             last_tstep = tstep;
           }
+
           PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
         }
 
