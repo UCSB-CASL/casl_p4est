@@ -77,7 +77,8 @@ enum:int {
   ICE_AROUND_CYLINDER = 4,
   FLOW_PAST_CYLINDER = 5,
   DENDRITE_TEST = 6,
-  MELTING_ICE_SPHERE = 7
+  MELTING_ICE_SPHERE = 7,
+  MELTING_POROUS_MEDIA = 8
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -94,6 +95,7 @@ DEFINE_PARAMETER(pl, int, example_, 3,"example number: \n"
                                    "5 - Flow past a cylinder (Navier Stokes only)\n"
                                    "6 - dendrite solidification test (WIP) \n"
                                    "7 - melting of an ice sphere \n"
+                                   "8 - melting of a porous media (with fluid flow) \n"
                                    "default: 4");
 
 // ---------------------------------------
@@ -159,6 +161,16 @@ DEFINE_PARAMETER(pl, double, duration_overwrite, -100.0, "Overwrite the duration
 DEFINE_PARAMETER(pl, double, duration_overwrite_nondim, -10.,"Overwrite the duration in nondimensional time (in nondimensional time) -- not fully implemented");
 // ---------------------------------------
 
+bool analytical_IC_BC_forcing_term;
+bool example_is_a_test_case;
+
+bool interfacial_temp_bc_requires_curvature;
+bool interfacial_temp_bc_requires_normal;
+
+bool interfacial_vel_bc_requires_vint;
+
+bool example_uses_inner_LSF;
+bool example_requires_area_computation;
 
 void select_solvers(){
   switch(example_){
@@ -197,11 +209,43 @@ void select_solvers(){
       break;
     case DENDRITE_TEST: // will need to select solvers manually // TO-DO: just use the "no-flow" option for this!
       break;
+    case MELTING_POROUS_MEDIA:
+      solve_stefan=true;
+      solve_navier_stokes=false;
 
     }
   if(save_using_dt && save_using_iter){
       throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
     }
+
+
+    // Define other settings to be used depending on the example:
+    analytical_IC_BC_forcing_term = (example_ == COUPLED_PROBLEM_EXAMPLE) ||
+                                    (example_ == COUPLED_TEST_2) ||
+                                    (example_ == NS_GIBOU_EXAMPLE); // whether or not we need to create analytical bc terms
+
+    example_is_a_test_case = (example_ == COUPLED_PROBLEM_EXAMPLE) ||
+                             (example_ == COUPLED_TEST_2) ||
+                             (example_ == FRANK_SPHERE) ||
+                             (example_ == NS_GIBOU_EXAMPLE);
+
+    interfacial_temp_bc_requires_curvature = (example_ == ICE_AROUND_CYLINDER) ||
+                                             (example_ == MELTING_ICE_SPHERE) ||
+                                             (example_ == DENDRITE_TEST) ||
+                                             (example_ == MELTING_POROUS_MEDIA);
+    interfacial_temp_bc_requires_normal = (example_ == DENDRITE_TEST);
+
+    interfacial_vel_bc_requires_vint = (example_ == ICE_AROUND_CYLINDER) ||
+                                       (example_ == MELTING_ICE_SPHERE) ||
+                                       (example_ == DENDRITE_TEST)||
+                                       (example_ == MELTING_POROUS_MEDIA);
+
+    example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
+
+    example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
+                                        (example_ == MELTING_ICE_SPHERE);
+    printf("example uses inner LSF = %s \n", example_uses_inner_LSF? "Yes": "No");
+
 }
 // ---------------------------------------
 // Refinement options:
@@ -238,9 +282,9 @@ double T_inf;
 
 // For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
 DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
-DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
+DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263, aka -10 C). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
 
-DEFINE_PARAMETER(pl, double, Twall, 265.5, "The freestream fluid temperature T_infty. (default: 265.5 K, or 2.5 C)");
+DEFINE_PARAMETER(pl, double, Twall, 275.5, "The freestream fluid temperature T_infty. (default: 275.5 K, or 2.5 C)");
 
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
 double d_seed; // for dendrite test : set in TO-DO:update this
@@ -326,6 +370,24 @@ void set_geometry(){
     }
     case MELTING_ICE_SPHERE:{
       // (WIP)-- was originally set up to try and validate Hao et al melting ice sphere experiments. TO-DO: can revisit this! now that BC's are corrected and etc.
+      // Domain size:
+      xmin = 0.0; xmax = 30.0;
+      ymin = 0.0; ymax = 15.0;
+
+      // Number of trees:
+      nx =10.0;
+      ny =5.0;
+
+      // Periodicity:
+      px = 0;
+      py = 1;
+
+      // Problem geometry:
+      r0 = 0.5;     // Computational radius of the sphere
+      break;
+    }
+    case MELTING_POROUS_MEDIA:{
+      // (WIP)
       // Domain size:
       xmin = 0.0; xmax = 30.0;
       ymin = 0.0; ymax = 15.0;
@@ -685,6 +747,7 @@ void set_NS_info(){
 
 // For selecting the appropriate nondimensionalized formulation of the problem:
 enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL};
+// TO-DO: change this to nondim_no_fluid_freezemelt, nondim_yes_fluid_freezemelt, nondim_no_fluid_dissodepo, nondim_yes_fluid_dissodepo, etc. erosion tbd
 int stefan_condition_type;
 int select_stefan_formulation(){
   if(solve_navier_stokes){
@@ -724,6 +787,8 @@ int select_stefan_formulation(){
 double time_nondim_to_dim;
 double vel_nondim_to_dim;
 
+// TO-DO: clean up how nondim groups are set
+// TO-DO: make checklist of things to change in main when adding a new example
 void set_nondimensional_groups(){
    if(stefan_condition_type==NONDIM_YES_FLUID){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
@@ -2230,7 +2295,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   vec_and_ptr_t forcing_term_liquid;
   vec_and_ptr_t forcing_term_solid;
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+  if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.create(p4est,nodes);
     forcing_term_solid.create(p4est,nodes);
 
@@ -2273,7 +2338,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_l.get_array();
     }
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+  if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.get_array();
     forcing_term_solid.get_array();
   }
@@ -2305,7 +2370,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
         rhs_Tl.ptr[n] = T_l.ptr[n]/dt;
         }
       }
-    if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+    if(analytical_IC_BC_forcing_term){
       // Add forcing terms:
       rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
       rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
@@ -2336,7 +2401,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
         }
     }
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+  if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.restore_array();
     forcing_term_solid.restore_array();
 
@@ -2958,14 +3023,14 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
 
     // Get inner cylinder LSF if needed
-    if(example_ == ICE_AROUND_CYLINDER){
+    if(example_uses_inner_LSF){
       phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
       sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
       }
 
     // Call advection and refinement
     sl.update_p4est(v_interface.vec, dt,
-                  phi.vec, phi_dd.vec, (example_==ICE_AROUND_CYLINDER) ? phi_cylinder.vec: NULL,
+                  phi.vec, phi_dd.vec, example_uses_inner_LSF ? phi_cylinder.vec: NULL,
                   num_fields ,use_block ,true,
                   uniform_band,uniform_band*(1.5),
                   fields_ ,NULL,
@@ -2978,7 +3043,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   phi_dd.destroy();
 
   // Destroy cylinder LSF if it was created, now that it is not needed:
-  if(example_==ICE_AROUND_CYLINDER){ phi_cylinder.destroy();}
+  if(example_uses_inner_LSF){ phi_cylinder.destroy();}
   } // case for stefan or coupled
   else {
       // NS only case --> no advection --> do grid update iteration manually:
@@ -3113,7 +3178,7 @@ void poisson_step(Vec phi, Vec phi_solid,
   solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid,phi_solid_dd[0],phi_solid_dd[1],
       interface_bc_type_temp,*bc_interface_val_temp[SOLID_DOMAIN],bc_interface_coeff);
 
-  if(example_ == ICE_AROUND_CYLINDER){
+  if(example_uses_inner_LSF){
     solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder,phi_cylinder_dd[0],phi_cylinder_dd[1],
         inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
     }
@@ -3276,7 +3341,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
     // If ice on cylinder case, let's compute the area of the ice, and store that as well:
     double ice_area = 0.0;
-    if(example_ == ICE_AROUND_CYLINDER || example_ == MELTING_ICE_SPHERE){
+    if(example_requires_area_computation){
       // ELYCE DEBUGGING HERE
       // Get total solid domain
       // (including the cylinder bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
@@ -3833,7 +3898,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   // Get arrays:
   phi.get_array();
-  if(example_ == ICE_AROUND_CYLINDER) phi_2.get_array();
+  if(example_uses_inner_LSF) phi_2.get_array();
   if(solve_stefan){
     Tl.get_array();
     Ts.get_array();
@@ -3858,7 +3923,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   point_data.push_back(kappa.ptr);
 
   //phi cylinder
-  if(example_ == ICE_AROUND_CYLINDER){
+  if(example_uses_inner_LSF){
     point_names.push_back("phi_cyl");
     point_data.push_back(phi_2.ptr);
   }
@@ -3903,7 +3968,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   // Restore arrays:
   phi.restore_array();
-  if(example_ == ICE_AROUND_CYLINDER) phi_2.restore_array();
+  if(example_uses_inner_LSF) phi_2.restore_array();
 
   if(solve_stefan){
     Tl.restore_array();
@@ -3933,7 +3998,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
   int mpi_comm = p4est->mpicomm;
 
   // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
-  bool test_cases = (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE) || (example_ == NS_GIBOU_EXAMPLE);
+  bool test_cases = example_is_a_test_case;
 
   char output[1000];
   if(!test_cases){
@@ -3944,7 +4009,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
 
     PetscPrintf(mpi_comm,"Saving to vtk, outidx = %d ...\n",out_idx);
 
-    if(example_==ICE_AROUND_CYLINDER){
+    if(example_uses_inner_LSF){
       // Create the cylinder just for visualization purposes, then destroy after saving
       phi_cylinder.create(p4est,nodes);
       sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
@@ -3959,7 +4024,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
       save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
     }
 
-    if(example_ == ICE_AROUND_CYLINDER)phi_cylinder.destroy();
+    if(example_uses_inner_LSF)phi_cylinder.destroy();
     if(print_checkpoints) PetscPrintf(mpi_comm,"Finishes saving to VTK \n");
   }
 };
@@ -5134,7 +5199,7 @@ int main(int argc, char** argv) {
       if(solve_stefan){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the temperature fields (s) ... \n");
 
-        if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           coupled_test_sign = 1.;
           vel_has_switched=false;
 
@@ -5170,7 +5235,7 @@ int main(int argc, char** argv) {
           sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[d]);
         }
 
-        if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           for(unsigned char d=0;d<2;++d){
             delete analytical_temp[d];
             delete T_init_cf[d];
@@ -5186,7 +5251,7 @@ int main(int argc, char** argv) {
       if(solve_navier_stokes){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the Navier-Stokes fields (s) ... \n");
 
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2))
+        if(analytical_IC_BC_forcing_term)
         {
           for(unsigned char d=0;d<P4EST_DIM;++d){
             analytical_soln[d] = new velocity_component(d);
@@ -5194,7 +5259,7 @@ int main(int argc, char** argv) {
           }
         }
         for(unsigned char d=0;d<P4EST_DIM;++d){
-          if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+          if(analytical_IC_BC_forcing_term){
             v_init_cf[d] = new INITIAL_VELOCITY(d,analytical_soln);
             v_init_cf[d]->t = tstart;
           }
@@ -5217,7 +5282,7 @@ int main(int argc, char** argv) {
       }
 
       for(unsigned char d=0;d<P4EST_DIM;d++){
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           delete analytical_soln[d];
         }
         if(solve_navier_stokes) delete v_init_cf[d];
@@ -5232,7 +5297,7 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // For NS or coupled case:
     // Create analytical velocity field for each Cartesian direction if needed:
-    if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+    if(analytical_IC_BC_forcing_term){
       for(unsigned char d=0;d<P4EST_DIM;d++){
         analytical_soln_v[d] = new velocity_component(d);
         analytical_soln_v[d]->t = tn;
@@ -5243,14 +5308,14 @@ int main(int argc, char** argv) {
     if(solve_stefan){
       // Create analytical temperature field for each domain if needed:
       for(unsigned char d=0;d<2;++d){
-        if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){ // TO-DO: make all incrementing consistent
+        if(analytical_IC_BC_forcing_term){ // TO-DO: make all incrementing consistent
           analytical_T[d] = new temperature_field(d);
           analytical_T[d]->t = tn;
         }
       }
       // Create necessary RHS forcing terms and BC's
       for(unsigned char d=0;d<2;++d){
-        if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           external_heat_source_T[d] = new external_heat_source(d,analytical_T,analytical_soln_v);
           external_heat_source_T[d]->t = tn;
           bc_interface_val_temp[d] = new BC_INTERFACE_VALUE_TEMP(NULL,NULL,analytical_T,d);
@@ -5275,7 +5340,7 @@ int main(int argc, char** argv) {
         bc_wall_type_velocity[d] = new BC_WALL_TYPE_VELOCITY(d);
 
         // Set the BC values (and potential forcing terms) depending on what we are running:
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           // Interface conditions values:
           bc_interface_value_velocity[d] = new BC_interface_value_velocity(d,NULL,NULL,analytical_soln_v);
           bc_interface_value_velocity[d]->t = tn;
@@ -5508,7 +5573,7 @@ int main(int argc, char** argv) {
       // -------------------------------
       if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up appropriate boundary conditions... \n");
 
-      if((tstep>0) && ((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2))){
+      if((tstep>0) && analytical_IC_BC_forcing_term){
         for(unsigned char d=0;d<P4EST_DIM;d++){
           analytical_soln_v[d]->t = tn;
         }
@@ -5522,7 +5587,7 @@ int main(int argc, char** argv) {
         // Update BC objects for stefan problem:
         // -------------------------------
         if((tstep>0) &&solve_stefan){
-          if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+          if(analytical_IC_BC_forcing_term){
             for(unsigned char d=0;d<2;d++){
               analytical_T[d]->t = tn;
               bc_interface_val_temp[d]->t = tn;
@@ -5549,7 +5614,7 @@ int main(int argc, char** argv) {
         phi_solid_dd.create(p4est_np1,nodes_np1);
         phi_dd.create(p4est_np1,nodes_np1);
 
-        if(example_ == ICE_AROUND_CYLINDER){
+        if(example_uses_inner_LSF){
           phi_cylinder.create(p4est_np1,nodes_np1);
           phi_cylinder_dd.create(p4est_np1,nodes_np1);
         }
@@ -5581,19 +5646,20 @@ int main(int argc, char** argv) {
         my_p4est_level_set_t ls_new_new(ngbd_np1);
 
         // Feed the curvature computed to the interfacial boundary condition:
-        if((example_ ==ICE_AROUND_CYLINDER) ||
-            (example_ == MELTING_ICE_SPHERE) ||
-            (example_ == DENDRITE_TEST)){
+        if(interfacial_temp_bc_requires_curvature){
           ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
 
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
-            if(example_ == DENDRITE_TEST){
-              bc_interface_val_temp[d]->set_normals(ngbd_np1,normal.vec[0],normal.vec[1]);
 
-            }
+          }
+        }
+        // Feed the normals to the interfacial boundary condition if needed:
+        if(interfacial_temp_bc_requires_normal){
+          for(unsigned char d=0; d<2; d++){
+            bc_interface_val_temp[d]->set_normals(ngbd_np1,normal.vec[0],normal.vec[1]);
           }
         }
         // -------------------------------
@@ -5607,7 +5673,7 @@ int main(int argc, char** argv) {
         ngbd_np1->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
 
         // Get inner LSF and derivatives if required:
-        if(example_ ==ICE_AROUND_CYLINDER){
+        if(example_uses_inner_LSF){
             sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
             ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
           }
@@ -5654,8 +5720,8 @@ int main(int argc, char** argv) {
                      bc_interface_val_temp,bc_wall_value_temp,
                      ngbd_np1, solver_Tl, solver_Ts,
                      cube_refinement,
-                     (example_==ICE_AROUND_CYLINDER)? phi_cylinder.vec:NULL,
-                     (example_==ICE_AROUND_CYLINDER)? phi_cylinder_dd.vec:NULL);
+                     example_uses_inner_LSF? phi_cylinder.vec:NULL,
+                     example_uses_inner_LSF? phi_cylinder_dd.vec:NULL);
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
 
 
@@ -5675,7 +5741,7 @@ int main(int argc, char** argv) {
         phi_solid_dd.destroy();
         phi_dd.destroy();
 
-        if(example_ == ICE_AROUND_CYLINDER){
+        if(example_uses_inner_LSF){
           phi_cylinder.destroy();
           phi_cylinder_dd.destroy();
         }
@@ -5690,16 +5756,16 @@ int main(int argc, char** argv) {
         rhs_Ts.destroy();
 
         // -------------------------------
-        // Clear interfacial BC if needed
+        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
         // -------------------------------
-        if((example_ == ICE_AROUND_CYLINDER)||
-            (example_ == MELTING_ICE_SPHERE) ||
-            (example_ == DENDRITE_TEST)){
+        if(interfacial_temp_bc_requires_curvature){
           for(unsigned char d=0;d<2;++d){
             bc_interface_val_temp[d]->clear();
-            if(example_ == DENDRITE_TEST){
-              bc_interface_val_temp[d]->clear_normals();
-            }
+          }
+        }
+        if(interfacial_temp_bc_requires_normal){
+          for(unsigned char d=0;d<2;++d){
+            bc_interface_val_temp[d]->clear_normals();
           }
         }
       } // end of "if solve stefan"
@@ -5782,7 +5848,7 @@ int main(int argc, char** argv) {
                                           solid_normals.vec, NULL,
                                           NULL, false, NULL, NULL);
 
-        if(example_ == ICE_AROUND_CYLINDER){
+        if(example_uses_inner_LSF){
           phi_cylinder.create(p4est_np1,nodes_np1);
           cyl_normals.create(p4est_np1,nodes_np1);
 
@@ -5846,7 +5912,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Setup velocity conditions
         for(unsigned char d=0;d<P4EST_DIM;d++){
-          if((example_ == ICE_AROUND_CYLINDER) ||(example_ == MELTING_ICE_SPHERE) || (example_ ==DENDRITE_TEST)){
+          if(interfacial_vel_bc_requires_vint){
             bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
           }
           bc_interface_value_velocity[d]->t = tn;
@@ -5864,7 +5930,7 @@ int main(int argc, char** argv) {
         bc_pressure.setWallValues(bc_wall_value_pressure);
 
         // Set external_forces if applicable
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           foreach_dimension(d){
             external_force_components[d]->t = tn;
           }
@@ -5917,7 +5983,7 @@ int main(int argc, char** argv) {
         ns->set_bc(bc_velocity,&bc_pressure);
 
         // Set the RHS:
-        if((example_ == NS_GIBOU_EXAMPLE) || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+        if(analytical_IC_BC_forcing_term){
           CF_DIM *external_forces[P4EST_DIM]=
           {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
           ns->set_external_forces(external_forces);
@@ -5942,7 +6008,7 @@ int main(int argc, char** argv) {
             are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
             are_we_saving_fluid_forces(tn,false,pressure_save_out_idx,true);
 
-        compute_pressure_to_save = compute_pressure_to_save || (example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)|| (example_ == NS_GIBOU_EXAMPLE);
+        compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
 
         bool did_crash = false;
@@ -5971,7 +6037,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear out the interfacial BC for the next timestep, if needed
         // -------------------------------
-        if((example_ == ICE_AROUND_CYLINDER)||(example_ == MELTING_ICE_SPHERE) || (example_ ==DENDRITE_TEST)){
+        if(interfacial_vel_bc_requires_vint){
           for(unsigned char d=0;d<P4EST_DIM;d++){
             bc_interface_value_velocity[d]->clear();
             }
@@ -5982,7 +6048,7 @@ int main(int argc, char** argv) {
 
       // If not solving NS but you still want area data:
 
-      if((example_ == ICE_AROUND_CYLINDER || example_ == MELTING_ICE_SPHERE) && (save_fluid_forces) && (no_flow)){
+      if((example_requires_area_computation) && (save_fluid_forces) && (no_flow)){
         // ELYCE DEBUGGING HERE
         // Get total solid domain
         // (including the cylinder bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
@@ -6371,14 +6437,11 @@ int main(int argc, char** argv) {
 
     // Destroy relevant BC and RHS info:
     for(unsigned char d=0;d<2;++d){
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)||
-            (example_ == COUPLED_TEST_2)){
+      if(analytical_IC_BC_forcing_term){
         delete analytical_T[d];
         delete external_heat_source_T[d];
       }
-      else if((example_ ==ICE_AROUND_CYLINDER) ||
-               (example_ == MELTING_ICE_SPHERE) ||
-               (example_ == DENDRITE_TEST)){
+      if(interfacial_temp_bc_requires_curvature){
         // cases where we used curvature, want to clear interpolator before destroying
         bc_interface_val_temp[d]->clear();
       }
@@ -6418,9 +6481,7 @@ int main(int argc, char** argv) {
     press_nodes.destroy();
 
     for(unsigned char d=0;d<P4EST_DIM;d++){
-      if((example_ == COUPLED_PROBLEM_EXAMPLE) ||
-            (example_ == NS_GIBOU_EXAMPLE)||
-            (example_ == COUPLED_TEST_2)){
+      if(analytical_IC_BC_forcing_term){
         delete analytical_soln_v[d];
         delete external_force_components[d];
       }
