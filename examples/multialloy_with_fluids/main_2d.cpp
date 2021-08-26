@@ -211,7 +211,7 @@ void select_solvers(){
       break;
     case MELTING_POROUS_MEDIA:
       solve_stefan=true;
-      solve_navier_stokes=false;
+      solve_navier_stokes=true;
 
     }
   if(save_using_dt && save_using_iter){
@@ -244,8 +244,6 @@ void select_solvers(){
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
                                         (example_ == MELTING_ICE_SPHERE);
-    printf("example uses inner LSF = %s \n", example_uses_inner_LSF? "Yes": "No");
-
 }
 // ---------------------------------------
 // Refinement options:
@@ -316,6 +314,18 @@ double y0_lsf;
 
 unsigned int num_fields_interp = 0;
 double d0; // for dendrite w convection case
+
+
+// Define a few parameters for the porous media case to create random grains:
+DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10)");
+DEFINE_PARAMETER(pl, double, min_pore_size, 2., "multiplier in front of r0(radius of avg grain) on min pore size between grains (default: 2)\n");
+DEFINE_PARAMETER(pl, double, min_pore_wall_dist, 10., "multiplier in front of r0(radius of avg grain) on min pore size between grains and wall (default: 10)\n");
+
+
+std::vector<double> xshifts;
+std::vector<double> yshifts;
+std::vector<double> rvals;
+
 void set_geometry(){
   switch(example_){
     case FRANK_SPHERE: {
@@ -398,7 +408,7 @@ void set_geometry(){
 
       // Periodicity:
       px = 0;
-      py = 1;
+      py = 0;
 
       // Problem geometry:
       r0 = 0.5;     // Computational radius of the sphere
@@ -483,6 +493,90 @@ void set_geometry(){
   }
   }
 
+
+  void make_LSF_for_porous_media(mpi_environment_t &mpi){
+    // initialize random number generator:
+    srand(1);
+    // Resize the vectors on all processes appropriately so we all have consistent sizing (for broadcast later)
+    xshifts.resize(num_grains);
+    yshifts.resize(num_grains);
+    rvals.resize(num_grains);
+
+    if(mpi.rank() == 0){
+
+
+      // Initialize the arrays:
+      xshifts[0] = 0.; yshifts[0] = 0.; rvals[0] = 0.;
+
+      // First, generate the desired number of grains, with size and location:
+      for(int n=0; n<num_grains; n++){
+        // Initialize the values:
+        xshifts[n] = 0.; yshifts[n] = 0.; rvals[n] = 0.;
+
+
+        // We will generate random grains and check if they are eligible, aka:
+        // (a) is it far enough away from other existing grains?
+        // (b) is it far enough away from the wall?
+        bool is_this_eligible = false;
+        double x_; double y_; double r_;
+        while(!is_this_eligible){
+          x_ = ((double)rand()/RAND_MAX)*xmax + xmin;
+          y_ = ((double)rand()/RAND_MAX)*ymax + ymin;
+          r_ = (((double)rand()/RAND_MAX)*2 + 0.5)*r0; // r0*(1-3)
+
+          is_this_eligible=true;
+          for(int i=0; i<=n; i++){
+            // Check current distance from walls and existing grains:
+            double dist_c2c = sqrt(SQR(xshifts[i] - x_) + SQR(yshifts[i] - y_));
+
+            // Check distance to the wall:
+            double dist_c2wall[4] = {fabs(x_ - xmax),
+                                     fabs(x_ - xmin),
+                                     fabs(y_ - ymax),
+                                     fabs(y_ - ymin)};
+            // grab whatever the closest distance to a wall is:
+            double min_dwall=100.;
+            for(int k=0; k<4; k++){
+              min_dwall = min(min_dwall, dist_c2wall[k]);
+            }
+
+            // we are far enough from the wall if dist from grain edge to wall is larger than minimum pore size
+            bool is_far_enough_from_wall = min_dwall - r_ > min_pore_size;
+
+            // Update the is_this_eligible bool:
+            is_this_eligible = (dist_c2c >= min_pore_size*r0 + r_ + rvals[i]) &&
+                               is_far_enough_from_wall &&
+                               is_this_eligible;
+
+            // If current config not eligible, break the checking for loop and try again:
+            if(!is_this_eligible) break;
+
+//            printf("n = %d, i = %d, dist_c2c = %0.2f, dist_e2e = %0.2f, min_dwall = %0.2f, is_far_from_wall = %s, is_this_eligible = %s \n", n, i, dist_c2c, dist_c2c - r_ - rvals[i],min_dwall, is_far_enough_from_wall? "True": "False", is_this_eligible? "True": "False");
+
+          }
+        }
+        xshifts[n] = x_;
+        yshifts[n] = y_;
+        rvals[n] = r_;
+      }
+      printf("end of operation on rank 0 \n");
+    } // end of defining the grains on rank 0, now we need to broadcast the result to everyone
+
+    // Tell everyone else what we came up with!
+    int mpi_err;
+    mpi_err = MPI_Bcast(xshifts.data(), num_grains, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpi_err);
+    mpi_err = MPI_Bcast(yshifts.data(), num_grains, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpi_err);
+    mpi_err = MPI_Bcast(rvals.data(), num_grains, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpi_err);
+
+
+
+//    mpi_err = MPI_Bcast(&yshifts, num_grains, MPI_DOUBLE, 0, mpi.comm());SC_CHECK_MPI(mpi_err);
+//    printf("passes second broadcast on rank %d\n", mpi.rank());
+//    mpi_err = MPI_Bcast(&rvals, num_grains, MPI_DOUBLE, 0, mpi.comm());SC_CHECK_MPI(mpi_err);
+//      printf("passes third broadcast on rank %d\n", mpi.rank());
+
+
+}
 double v_interface_max_norm; // For keeping track of the interfacial velocity maximum norm
 
 // ---------------------------------------
@@ -566,7 +660,7 @@ void set_physical_properties(){
 
       break;
       }
-
+    case MELTING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
     case MELTING_ICE_SPHERE:{
 
       // Using properties of water at 20 C: (engineering toolbox)
@@ -705,6 +799,7 @@ void set_NS_info(){
   // Note: fluid velocity is set via Re and u0,v0 --> v0 = 0 is equivalent to single direction flow, u0=1, v0=1 means both directions will flow at Re (TO-DO:make this more clear)
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
+    case MELTING_POROUS_MEDIA:
     case FLOW_PAST_CYLINDER:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
@@ -794,7 +889,8 @@ void set_nondimensional_groups(){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
      if(example_ == ICE_AROUND_CYLINDER ||
          example_ == FLOW_PAST_CYLINDER ||
-         example_ == MELTING_ICE_SPHERE){
+         example_ == MELTING_ICE_SPHERE ||
+         example_ == MELTING_POROUS_MEDIA){
        d_length_scale=d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
@@ -803,12 +899,11 @@ void set_nondimensional_groups(){
 
        printf("sigma/d_seed = %0.4e \n",sigma/d_seed);
      }
-
-
      if(Re_overwrite>0.) Re = Re_overwrite;
 
      Pr = mu_l/(alpha_l*rho_l);
      Pe = Re*Pr;
+
      St = cp_s*fabs(deltaT)/L;
 
      u_inf= Re*mu_l/rho_l/d_length_scale;
@@ -874,6 +969,7 @@ void simulation_time_info(){
       tstart = 1.0;
       break;
     }
+    case MELTING_POROUS_MEDIA:
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER: {
       // ice solidifying around isothermally cooled cylinder
@@ -886,7 +982,7 @@ void simulation_time_info(){
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
       tfinal = 35.0; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
-      dt_max_allowed = 1e-2;
+      dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
 
       save_using_dt = 1;
@@ -1466,6 +1562,7 @@ struct external_heat_source: CF_DIM{
 // --------------------------------------------------------------------------------------------------------------
 // Level set functions:
 // --------------------------------------------------------------------------------------------------------------
+
 struct LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
@@ -1474,10 +1571,30 @@ public:
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y));
       case FLOW_PAST_CYLINDER:
+      case MELTING_POROUS_MEDIA:{
+        double lsf_vals[num_grains];
+        // First, grab all the relevant LSF values for each grain:
+        for(int n=0; n<num_grains; n++){
+          double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
+          lsf_vals[n] = rvals[n] - r;
+        }
+
+        // Now, loop back over and return the value which has the min magnitude:
+        double current_min = 1.e9;
+        for(int n=0; n<num_grains; n++){
+          if(fabs(lsf_vals[n]) < fabs(current_min)){
+            current_min = lsf_vals[n];
+          }
+        }
+        return current_min;
+
+      }
+
+
+
       case MELTING_ICE_SPHERE:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       }
-
       case ICE_AROUND_CYLINDER:
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE:
@@ -1510,8 +1627,13 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     switch(example_){
-      case FRANK_SPHERE: throw std::invalid_argument("This option may not be used for the particular example being called");
       case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+      case FRANK_SPHERE:
+      case MELTING_ICE_SPHERE:
+      case MELTING_POROUS_MEDIA:
+      case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_EXAMPLE:
+      case DENDRITE_TEST:
       case NS_GIBOU_EXAMPLE: throw std::invalid_argument("This option may not be used for the particular example being called");
       }
   }
@@ -1538,6 +1660,7 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
       break;
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
+    case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_temp = DIRICHLET; 
@@ -1552,6 +1675,7 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
 BoundaryConditionType inner_interface_bc_type_temp;
 void inner_interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
+    case MELTING_POROUS_MEDIA:
     case FLOW_PAST_CYLINDER:
     case COUPLED_PROBLEM_EXAMPLE:
     case COUPLED_TEST_2:
@@ -1642,6 +1766,7 @@ public:
         return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
 //        return theta_interface;
       }
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: {
         double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
@@ -1692,6 +1817,7 @@ public:
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
       case DENDRITE_TEST:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: return 1.0;
       case COUPLED_TEST_2:
@@ -1772,6 +1898,7 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
       // Dirichlet on both x walls, and y upper wall (where bulk flow is incoming)
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
+    case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
@@ -1791,6 +1918,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
+    case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
@@ -1849,6 +1977,7 @@ public:
         break;
       }
       case DENDRITE_TEST:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
@@ -1904,6 +2033,7 @@ public:
           return theta_interface;
         }
       }
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:{
         switch(dom){
           case LIQUID_DOMAIN:{
@@ -1983,6 +2113,7 @@ public:
       }
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
@@ -2052,6 +2183,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
     case FLOW_PAST_CYLINDER:
     case DENDRITE_TEST:
+    case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_velocity[dir] = DIRICHLET;
@@ -2089,6 +2221,7 @@ public:
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case FLOW_PAST_CYLINDER:
       case DENDRITE_TEST:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
@@ -2136,6 +2269,7 @@ struct INITIAL_VELOCITY : CF_DIM
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
         else{
@@ -2204,6 +2338,7 @@ public:
                                     "compatible with this example, please choose another \n");
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
@@ -2244,6 +2379,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case COUPLED_PROBLEM_EXAMPLE:
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
+    case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
@@ -2259,6 +2395,7 @@ public:
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
@@ -5008,6 +5145,15 @@ int main(int argc, char** argv) {
     // domain size information
     set_geometry();
 
+    // if porous media example, create the porous media geometry:
+    // do this operation on one process so they don't have different grain defn's.
+    /*if(mpi.rank() == 0) */
+    make_LSF_for_porous_media(mpi);
+
+    MPI_Barrier(mpi.comm());
+    PetscPrintf(mpi.comm(), "Exits porous media creation \n");
+
+
     const int n_xyz[]      = { nx,  ny,  0};
     const double xyz_min[] = {xmin, ymin, 0};
     const double xyz_max[] = {xmax,  ymax,  0};
@@ -5437,6 +5583,7 @@ int main(int argc, char** argv) {
           break;
         }
       case FLOW_PAST_CYLINDER:
+      case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(save_fluid_forces){
