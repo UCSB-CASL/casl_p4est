@@ -78,7 +78,8 @@ enum:int {
   FLOW_PAST_CYLINDER = 5,
   DENDRITE_TEST = 6,
   MELTING_ICE_SPHERE = 7,
-  MELTING_POROUS_MEDIA = 8
+  MELTING_POROUS_MEDIA = 8,
+  PLANE_POIS_FLOW=9
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -96,6 +97,7 @@ DEFINE_PARAMETER(pl, int, example_, 3,"example number: \n"
                                    "6 - dendrite solidification test (WIP) \n"
                                    "7 - melting of an ice sphere \n"
                                    "8 - melting of a porous media (with fluid flow) \n"
+                                   "9 - plane poiseuille flow \n "
                                    "default: 4");
 
 // ---------------------------------------
@@ -197,6 +199,7 @@ void select_solvers(){
       solve_stefan = false;
       solve_navier_stokes = true;
       break;
+
     case FLOW_PAST_CYLINDER:
       solve_stefan = false;
       solve_navier_stokes = true;
@@ -212,7 +215,11 @@ void select_solvers(){
     case MELTING_POROUS_MEDIA:
       solve_stefan=true;
       solve_navier_stokes=true;
-
+      break;
+    case PLANE_POIS_FLOW:
+      solve_stefan=false;
+      solve_navier_stokes=true;
+      break;
     }
   if(save_using_dt && save_using_iter){
       throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
@@ -244,6 +251,8 @@ void select_solvers(){
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
                                         (example_ == MELTING_ICE_SPHERE);
+
+
 }
 // ---------------------------------------
 // Refinement options:
@@ -255,7 +264,7 @@ DEFINE_PARAMETER(pl, bool, use_uniform_band, true, "Boolean whether or not to re
 DEFINE_PARAMETER(pl, double, uniform_band, 8., "Uniform band (default:8.)");
 
 // ---------------------------------------
-// Geometry options:
+// Geometry and grid refinement options:
 // ---------------------------------------
 // General options: // TO-DO: maybe all these geometry options should be OVERWRITE options --aka, defaults are specified per example unless user states otherwise
 DEFINE_PARAMETER(pl, double, xmin, 0., "Minimum dimension in x (default: 0)");
@@ -270,6 +279,14 @@ DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in y (default:1)");
 DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in x (default false)");
 DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in y (default false)");
 
+DEFINE_PARAMETER(pl, int, lmin, 3, "Minimum level of refinement");
+DEFINE_PARAMETER(pl, int, lint, 0, "Intermediate level of refinement (default: 0, won't be used unless set)");
+DEFINE_PARAMETER(pl, int, lmax, 8, "Maximum level of refinement");
+DEFINE_PARAMETER(pl, double, lip, 1.75, "Lipschitz coefficient");
+DEFINE_PARAMETER(pl, int, method_, 1, "Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
+DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergence tests");
+DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity");
+DEFINE_PARAMETER(pl, bool, refine_by_d2T, true, "Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
 // For level set:
 double r0;
@@ -399,8 +416,8 @@ void set_geometry(){
     case MELTING_POROUS_MEDIA:{
       // (WIP)
       // Domain size:
-      xmin = 0.0; xmax = 30.0;
-      ymin = 0.0; ymax = 15.0;
+      xmin = 0.0; xmax = 20.0;
+      ymin = 0.0; ymax = 10.0;
 
       // Number of trees:
       nx =10.0;
@@ -415,6 +432,21 @@ void set_geometry(){
       break;
     }
 
+    case PLANE_POIS_FLOW:{
+      xmin = 0.0; xmax = 20.0;
+      ymin = 0.0; ymax = 10.0;
+
+      // Number of trees:
+      nx = 4.0;
+      ny = 2.0;
+
+      // periodicity:
+      px = 0; py = 0;
+
+      // problem geometry:
+      r0 = 1.0; // this is used as height above ymin of interface (interface is flat plate in this case)
+      break;
+    }
     case NS_GIBOU_EXAMPLE: {
       // Corresponds with Section 4.1.1 from Guittet et al. - A stable projection method for the incompressible Navier-Stokes equations on arbitrary geometries and adaptive Quad/Octrees
       // Was added here to verify that the NS was working correctly independently
@@ -491,7 +523,13 @@ void set_geometry(){
   if(solve_navier_stokes){
     num_fields_interp+=2; // vNS_x, vNS_y
   }
+
+  // If you're only solving NS, switch off refinement around temp fields:
+  if(!solve_stefan && solve_navier_stokes){
+    refine_by_d2T = false;
   }
+
+}
 
 
   void make_LSF_for_porous_media(mpi_environment_t &mpi){
@@ -504,6 +542,43 @@ void set_geometry(){
 
     if(mpi.rank() == 0){
 
+      std::ifstream infile_x("geometry_files/xshifts.txt");
+      // Read x data:
+      if(infile_x){
+        double curr_val;
+
+        int count = 0;
+        while(infile_x >> curr_val){
+          xshifts[count] = curr_val;
+          count+=1;
+        }
+      }
+      std::ifstream infile_y("geometry_files/yshifts.txt");
+
+      // Read y data:
+      if(infile_y){
+        double curr_val;
+        int count = 0;
+        while(infile_y >> curr_val){
+          yshifts[count] = curr_val;
+          count+=1;
+        }
+      }
+      std::ifstream infile_r("geometry_files/rvals.txt");
+
+      // Read r data:
+      if(infile_r){
+        double curr_val;
+
+        int count=0;
+        while(infile_r >> curr_val){
+         rvals[count]=curr_val;
+         count+=1;
+
+        }
+      }
+
+      /*
 
       // Initialize the arrays:
       xshifts[0] = 0.; yshifts[0] = 0.; rvals[0] = 0.;
@@ -559,6 +634,7 @@ void set_geometry(){
         yshifts[n] = y_;
         rvals[n] = r_;
       }
+*/
       printf("end of operation on rank 0 \n");
     } // end of defining the grains on rank 0, now we need to broadcast the result to everyone
 
@@ -570,26 +646,9 @@ void set_geometry(){
 
 
 
-//    mpi_err = MPI_Bcast(&yshifts, num_grains, MPI_DOUBLE, 0, mpi.comm());SC_CHECK_MPI(mpi_err);
-//    printf("passes second broadcast on rank %d\n", mpi.rank());
-//    mpi_err = MPI_Bcast(&rvals, num_grains, MPI_DOUBLE, 0, mpi.comm());SC_CHECK_MPI(mpi_err);
-//      printf("passes third broadcast on rank %d\n", mpi.rank());
-
-
 }
 double v_interface_max_norm; // For keeping track of the interfacial velocity maximum norm
 
-// ---------------------------------------
-// Grid refinement:
-// ---------------------------------------
-DEFINE_PARAMETER(pl, int, lmin, 3, "Minimum level of refinement");
-DEFINE_PARAMETER(pl, int, lint, 0, "Intermediate level of refinement (default: 0, won't be used unless set)");
-DEFINE_PARAMETER(pl, int, lmax, 8, "Maximum level of refinement");
-DEFINE_PARAMETER(pl, double, lip, 1.75, "Lipschitz coefficient");
-DEFINE_PARAMETER(pl, int, method_, 1, "Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
-DEFINE_PARAMETER(pl, int, num_splits, 0, "Number of splits -- used for convergence tests");
-DEFINE_PARAMETER(pl, bool, refine_by_ucomponent, false, "Flag for whether or not to refine by a backflow condition for the fluid velocity");
-DEFINE_PARAMETER(pl, bool, refine_by_d2T, true, "Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
 // ---------------------------------------
 // Non dimensional groups:
@@ -696,6 +755,14 @@ void set_physical_properties(){
       break;
     }
 
+    case PLANE_POIS_FLOW:{
+
+      rho_l = 1.0;
+      mu_l = 1.0;
+      Re = 1.0;
+
+
+    }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
       alpha_s = 1.0;
@@ -807,6 +874,13 @@ void set_NS_info(){
       u0 = 1.0; // computational freestream velocity
       v0 = 0.0;
       hodge_percentage_of_max_u = 1.e-3;
+      break;
+    }
+    case PLANE_POIS_FLOW:{
+      Re = 1.0;
+      u0 = 5.0625;
+      v0 = 0.;
+      hodge_percentage_of_max_u=1.0e-3;
       break;
     }
     case NS_GIBOU_EXAMPLE:{
@@ -994,6 +1068,12 @@ void simulation_time_info(){
       tfinal = PI/3.;
       dt_max_allowed = 1.e-2;
       tstart = 0.0;
+      break;
+    }
+    case PLANE_POIS_FLOW:{
+      tfinal = 100.;
+      dt_max_allowed = 1.e-2;
+      tstart=0.0;
       break;
     }
 
@@ -1615,6 +1695,14 @@ public:
         double theta = atan2(y-yc,x-xc);
         return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
       }
+      case PLANE_POIS_FLOW:{
+        if(y > r0){
+          return -1.;
+        }
+        else{
+          return 1.0;
+        }
+      }
     default: throw std::invalid_argument("You must choose an example type\n");
     }
   }
@@ -1934,6 +2022,9 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
 
 //      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
+    case PLANE_POIS_FLOW:{
+      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,y)));
+    }
     case FRANK_SPHERE:{
       throw std::runtime_error("dirichlet velocity walls: invalid example: frank sphere");
     }
@@ -2167,6 +2258,9 @@ public:
         }
         break;
       }
+      case PLANE_POIS_FLOW:{
+        return 0.; // homogeneous dirichlet on y walls (no slip), homogeneous neumann on x walls (prescribed pressure)
+      }
       default:
         throw std::runtime_error("WALL BC VALUE VELOCITY: unrecognized example \n");
     }
@@ -2181,6 +2275,7 @@ BoundaryConditionType interface_bc_type_velocity[P4EST_DIM];
 void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
     case DENDRITE_TEST:
     case MELTING_POROUS_MEDIA:
@@ -2219,6 +2314,8 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case PLANE_POIS_FLOW:
+        return 0.; // homogeneous dirichlet no slip
       case FLOW_PAST_CYLINDER:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
@@ -2267,6 +2364,16 @@ struct INITIAL_VELOCITY : CF_DIM
   double operator() (DIM(double x, double y,double z)) const{
     switch(example_){
       case DENDRITE_TEST:
+      case PLANE_POIS_FLOW:{
+        switch(dir){
+        case dir::x:
+          return u0;
+        case dir::y:
+          return v0;
+        default:
+          throw std::runtime_error("initial velocity direction unrecognized \n");
+        }
+      }
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:
       case MELTING_POROUS_MEDIA:
@@ -2360,6 +2467,19 @@ public:
           }
         }
       }
+      case PLANE_POIS_FLOW:{
+        if(!dirichlet_velocity_walls(DIM(x,y,z))){
+          if(xlower_wall(DIM(x,y,z))){
+            return (xmax - xmin); // start with delta P/L = 1 -- where L is length of domain
+          }
+          else{
+            return 0.0;
+          }
+        }
+        else{
+          return 0.; // homogeneous neumann
+        }
+      }
       default:
         throw std::runtime_error("WALL BC VALUE PRESSURE: unrecognized example \n");
     }
@@ -2378,6 +2498,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
     case DENDRITE_TEST:
+    case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
@@ -2400,6 +2521,7 @@ public:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
 
+      case PLANE_POIS_FLOW:
       case NS_GIBOU_EXAMPLE: // Benchmark NS
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -5148,10 +5270,9 @@ int main(int argc, char** argv) {
     // if porous media example, create the porous media geometry:
     // do this operation on one process so they don't have different grain defn's.
     /*if(mpi.rank() == 0) */
-    make_LSF_for_porous_media(mpi);
-
-    MPI_Barrier(mpi.comm());
-    PetscPrintf(mpi.comm(), "Exits porous media creation \n");
+    if(example_ == MELTING_POROUS_MEDIA){
+      make_LSF_for_porous_media(mpi);
+    }
 
 
     const int n_xyz[]      = { nx,  ny,  0};
