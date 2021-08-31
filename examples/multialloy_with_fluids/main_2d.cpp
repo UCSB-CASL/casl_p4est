@@ -335,9 +335,6 @@ double d0; // for dendrite w convection case
 
 // Define a few parameters for the porous media case to create random grains:
 DEFINE_PARAMETER(pl, int, num_grains, 10., "Number of grains in porous media (default: 10)");
-DEFINE_PARAMETER(pl, double, min_pore_size, 2., "multiplier in front of r0(radius of avg grain) on min pore size between grains (default: 2)\n");
-DEFINE_PARAMETER(pl, double, min_pore_wall_dist, 10., "multiplier in front of r0(radius of avg grain) on min pore size between grains and wall (default: 10)\n");
-
 
 std::vector<double> xshifts;
 std::vector<double> yshifts;
@@ -658,6 +655,10 @@ DEFINE_PARAMETER(pl, double, Pr, 0., "Prandtl number - computed from mu_l, alpha
 DEFINE_PARAMETER(pl, double, Pe, 0., "Peclet number - computed from Re and Pr \n");
 DEFINE_PARAMETER(pl, double, St, 0., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
 
+DEFINE_PARAMETER(pl, double, Da_init, 0.001, "Initial Darcy number -- just used to impose initial flow condition as nicely as possible for the solver at startup. Used for the porous media example \n");
+DEFINE_PARAMETER(pl, double, porosity_init, 1.0, "Initial porosity -- used to impose the initial flow condition as nicely as possible for the solver at startup. Used for the porous media example \n");
+
+
 DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
 // ---------------------------------------
 // Physical properties:
@@ -857,6 +858,8 @@ double NS_norm = 0.0; // To keep track of the NS norm
 double perturb_flow_noise =0.25;
 
 double u_inf; // physical value of freestream velocity
+
+double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
 void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
@@ -866,7 +869,17 @@ void set_NS_info(){
   // Note: fluid velocity is set via Re and u0,v0 --> v0 = 0 is equivalent to single direction flow, u0=1, v0=1 means both directions will flow at Re (TO-DO:make this more clear)
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
-    case MELTING_POROUS_MEDIA:
+    case MELTING_POROUS_MEDIA:{
+      u0 = 1.0;
+      v0 = 0.;
+
+      G_press = Re*8./SQR(ymax - ymin);
+
+      hodge_percentage_of_max_u = 1.e-3;
+
+      break;
+    }
+
     case FLOW_PAST_CYLINDER:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
@@ -1048,7 +1061,13 @@ void simulation_time_info(){
     case ICE_AROUND_CYLINDER: {
       // ice solidifying around isothermally cooled cylinder
       tfinal = (40.*60.)/(time_nondim_to_dim); // 40 minutes
-      dt_max_allowed = save_every_dt - EPS;
+      if(save_every_dt>0.){
+        dt_max_allowed = save_every_dt - EPS;
+      }
+      else{
+        dt_max_allowed = 0.1;
+      }
+
       tstart = 0.0;
       break;
     }
@@ -2006,7 +2025,9 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
-    case MELTING_POROUS_MEDIA:
+    case MELTING_POROUS_MEDIA:{
+      return (ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))));
+    }
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
@@ -2204,7 +2225,14 @@ public:
       }
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
-      case MELTING_POROUS_MEDIA:
+      case MELTING_POROUS_MEDIA:{
+        if(dirichlet_velocity_walls(DIM(x,y,z))){
+          return 0.0; // no slip at walls
+        }
+        else{
+          return 0.0; // homogeneous neumann
+        }
+      }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
@@ -2376,7 +2404,29 @@ struct INITIAL_VELOCITY : CF_DIM
       }
       case FLOW_PAST_CYLINDER:
       case ICE_AROUND_CYLINDER:
-      case MELTING_POROUS_MEDIA:
+      case MELTING_POROUS_MEDIA: {
+//        return 0.0;
+        double h_ = ymax - ymin;
+        double U = G_press/(2.* Re);
+        double Uy = (Da_init/porosity_init) *U*(y)*(h_ - y);
+
+        double lsf_dist = 0.1;
+
+        if(fabs(level_set.operator()(DIM(x,y,z)))<lsf_dist){
+          return (Uy/lsf_dist)*(-1.*level_set.operator()(DIM(x,y,z)));
+        }
+        else{
+          switch(dir){
+          case dir::x:{
+            return Uy;}
+          case dir::y:
+            return 0.;
+          default:
+              throw std::runtime_error("Unrecognized direction for velocity initial condition \n");
+          }
+        }
+
+      }
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
         else{
@@ -2445,7 +2495,28 @@ public:
                                     "compatible with this example, please choose another \n");
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
-      case MELTING_POROUS_MEDIA:
+      case MELTING_POROUS_MEDIA:{
+        if(!dirichlet_velocity_walls(DIM(x,y,z))){
+          // Specifying a pressure drop!
+          if(xupper_wall(DIM(x,y,z))){
+            return 0.0;
+          }
+          else if (xlower_wall(DIM(x,y,z))) {
+            double L_ = xmax - xmin; // domain length
+
+            double P1 = G_press * L_;
+            return P1;
+
+          }
+          else{
+            throw std::runtime_error("You are trying to specify a dirichlet pressure BC on a wall not set up properly, example: porous media melting \n");
+          }
+
+        } // end of Dirichlet pressure case
+        else{
+          return 0.0; // homogeneous Neumann for other walls
+        }
+      }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
