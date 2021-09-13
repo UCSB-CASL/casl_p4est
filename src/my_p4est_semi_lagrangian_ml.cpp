@@ -748,6 +748,11 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 		{
 			velMagnitude += SQR( velReadPtr[dir][nodeIdx] );
 			velStarMagnitude += SQR( velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] );
+
+			// Perturb midpoint velocity if one of the components evaluates to 0 exactly because the latter affects
+			// reorientation.
+			if( velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] == 0 )
+				velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] += PETSC_MACHINE_EPSILON;		// TODO: Probably a random perturbation is better?
 		}
 		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON || sqrt( velStarMagnitude ) <= PETSC_MACHINE_EPSILON )
 			continue;
@@ -1012,6 +1017,8 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		if( absRelDiff > 0.15 || ABS( phi_d ) >= 2.0 * h  )			// To catch those cases, we test
 		{															// against numerical phi_d and check
 			phi_d = dataPackets[i]->numBacktrackedPhi_d;			// if predicted value is >= 2H.
+			_mlFlagPtr[dataPackets[i]->nodeIdx] = 0;				// Remove it from list of ml-solved vertices.
+//			std::cerr << "Out!" << std::endl;
 		}
 
 		// Fix sign according to curvature.
