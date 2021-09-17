@@ -1,4 +1,19 @@
-// System
+/**
+ * Testing rror-correcting neural networks for semi-Lagrangian advection in Stefan problem instances.  There are two
+ * tests: Frank-sphere and anisotropic unstable growth due to curvature.
+ *
+ * Code is based on examples/stefan/main_2d.cpp
+ *
+ * @cite H. Chen, C. Min, and F. Gibou.  A numerical scheme for the Stefan problem on adaptive Cartesian grids with
+ *       supralinear convergence rate.  J. Comput. Phys., 228:5803-5818, 2009.
+ *
+ * TODO: Migrate the tests to stefan_mls after merging the "develop" and "long_overdue_merge" branches.
+ *
+ * Author: Luis Ángel (임 영민)
+ * Created: September 16, 2021.
+ * Updated: September 17, 2021.
+ */
+
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>
@@ -57,7 +72,7 @@ double tn;
 double dt;
 
 /* error function */
-double E1(double x)
+double E1( double x )
 {
 	const double EULER = 0.5772156649;
 	const int MAXIT = 100;
@@ -114,17 +129,17 @@ double E1(double x)
 	return ans;
 }
 
-double F (double s)
+double F( double s )
 {
 	return E1( .25 * s * s );
 }
 
-double dF (double s)
+double dF( double s )
 {
 	return -0.5 * s * exp( -s * s / 4 ) / (s * s / 4);
 }
 
-double t_frank_sphere(double x, double y, double t)
+double t_frank_sphere( double x, double y, double t )
 {
 	double s = sqrt( SQR( x - X0 ) + SQR( y - Y0 ) ) / sqrt( t );
 	double Tinf = .5 * S0 * F( S0 ) / dF( S0 );
@@ -140,16 +155,19 @@ struct level_set_t : CF_2
 	{
 		lip = 1.2;
 		if( test_number == 1 )
-			starPtr = new geom::Star( 0.02, 0.09, 3 );	// This star has curvature varying between -25 to +25.
+			starPtr = new geom::Star( 0.02, 0.09, 3 );    // This star has curvature varying between -25 to +25.
 	}
 
 	double operator()( double x, double y ) const override
 	{
-		switch(test_number)
+		switch( test_number )
 		{
-			case 0: return sqrt( SQR( x - X0 ) + SQR( y - Y0 ) ) - S0 * sqrt( tn );
-			case 1: return starPtr->operator()( x, y );
-			default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+			case 0:
+				return sqrt( SQR( x - X0 ) + SQR( y - Y0 )) - S0 * sqrt( tn );
+			case 1:
+				return starPtr->operator()( x, y );
+			default:
+				throw std::invalid_argument( "[ERROR]: choose a valid test." );
 		}
 	}
 
@@ -165,9 +183,12 @@ struct init_temperature_l_t:CF_2
 	{
 		switch( test_number )
 		{
-			case 0: return t_frank_sphere( x, y, tn );
-			case 1: return -0.08;
-			default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+			case 0:
+				return t_frank_sphere( x, y, tn );
+			case 1:
+				return -0.08;
+			default:
+				throw std::invalid_argument( "[ERROR]: choose a valid test." );
 		}
 	}
 } init_temperature_l;
@@ -178,9 +199,12 @@ struct init_temperature_s_t:CF_2
 	{
 		switch( test_number )
 		{
-			case 0: return t_frank_sphere( x, y, tn );
-			case 1: return 0;
-			default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+			case 0:
+				return t_frank_sphere( x, y, tn );
+			case 1:
+				return 0;
+			default:
+				throw std::invalid_argument( "[ERROR]: choose a valid test." );
 		}
 	}
 } init_temperature_s;
@@ -191,9 +215,12 @@ struct bc_wall_type_t : WallBC2D
 	{
 		switch( test_number )
 		{
-			case 0: return DIRICHLET;
-			case 1: return NEUMANN;
-			default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+			case 0:
+				return DIRICHLET;
+			case 1:
+				return NEUMANN;
+			default:
+				throw std::invalid_argument( "[ERROR]: choose a valid test." );
 		}
 	}
 } bc_wall_type;
@@ -202,11 +229,14 @@ struct bc_wall_value_t : CF_2
 {
 	double operator()( double x, double y ) const override
 	{
-		switch(test_number)
+		switch( test_number )
 		{
-			case 0: return t_frank_sphere( x, y, tn + dt );
-			case 1: return 0;
-			default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+			case 0:
+				return t_frank_sphere( x, y, tn + dt );
+			case 1:
+				return 0;
+			default:
+				throw std::invalid_argument( "[ERROR]: choose a valid test." );
 		}
 	}
 } bc_wall_value;
@@ -232,16 +262,17 @@ public:
 	double operator()( double x, double y ) const override
 	{
 		/* frank sphere: no surface tension */
-		if(test_number==0) return 0;
+		if( test_number == 0 ) return 0;
 
-		double theta = atan2( interp_phi_y(x,y) , interp_phi_x(x,y) );
-		return t_interface - epsilon_c * (1. + epsilon_anisotropy * cos(N_anisotropy*(theta + theta_0))) * interp(x,y);
+		double theta = atan2( interp_phi_y( x, y ), interp_phi_x( x, y ));
+		return t_interface -
+			   epsilon_c * (1. + epsilon_anisotropy * cos( N_anisotropy * (theta + theta_0))) * interp( x, y );
 		/* T = -eps_c kappa - eps_v V */
 	}
 };
 
 void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Vec phi, Vec phiExact, Vec T_l, Vec T_s,
-			  Vec *v, Vec kappa, Vec howUpdated, int compt, const bool& mode, const int& maxRL )
+			   Vec *v, Vec kappa, Vec howUpdated, int compt, const bool& mode, const int& maxRL )
 {
 	PetscErrorCode ierr;
 	const char *out_dir = getenv( "OUT_DIR" );
@@ -249,7 +280,7 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 		out_dir = (test_number == 0? "stefan/frank_sphere" : "stefan/anisotropic");
 
 	std::ostringstream oss, command;
-	oss << out_dir << (mode? "/nnet" : "/num" ) << maxRL;
+	oss << out_dir << (mode? "/nnet" : "/num") << maxRL;
 
 	command << "mkdir -p " << oss.str();
 	system( command.str().c_str());
@@ -257,7 +288,7 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 	struct stat st{};
 	if( stat( oss.str().data(), &st ) != 0 || !S_ISDIR( st.st_mode ))
 	{
-		ierr = PetscPrintf( p4est->mpicomm, "Trying to save files in %s\n", oss.str().data() );
+		ierr = PetscPrintf( p4est->mpicomm, "Trying to save files in %s\n", oss.str().data());
 		CHKERRXX( ierr );
 		throw std::invalid_argument( "[ERROR]: the directory specified to export vtu images does not exist." );
 	}
@@ -281,8 +312,11 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 	CHKERRXX( ierr );
 	ierr = VecGetArrayRead( phiExact, &phiExactPtr );
 	CHKERRXX( ierr );
-	ierr = VecGetArrayRead( howUpdated, &howUpdatedPtr );
-	CHKERRXX( ierr );
+	if( howUpdated )
+	{
+		ierr = VecGetArrayRead( howUpdated, &howUpdatedPtr );
+		CHKERRXX( ierr );
+	}
 
 	for( int dir = 0; dir < P4EST_DIM; ++dir )
 	{
@@ -309,7 +343,7 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 								VTK_POINT_DATA, "vx", v_p[0],
 								VTK_POINT_DATA, "vy", v_p[1],
 								VTK_POINT_DATA, "kappa", kappa_p,
-								VTK_POINT_DATA, "howUpdated", howUpdatedPtr );
+								VTK_POINT_DATA, "howUpdated", howUpdated? howUpdatedPtr : phi_p );
 	}
 	else if( test_number == 1 )
 	{
@@ -319,18 +353,21 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 								VTK_POINT_DATA, "vx", v_p[0],
 								VTK_POINT_DATA, "vy", v_p[1],
 								VTK_POINT_DATA, "kappa", kappa_p,
-								VTK_POINT_DATA, "howUpdated", howUpdatedPtr );
+								VTK_POINT_DATA, "howUpdated", howUpdated? howUpdatedPtr : phi_p );
 	}
 	else
-		throw std::invalid_argument("[ERROR]: choose a valid test.");
+		throw std::invalid_argument( "[ERROR]: choose a valid test." );
 
 	ierr = VecRestoreArray( t, &t_p );
 	CHKERRXX( ierr );
 	ierr = VecDestroy( t );
 	CHKERRXX( ierr );
 
-	ierr = VecRestoreArrayRead( howUpdated, &howUpdatedPtr );
-	CHKERRXX( ierr );
+	if( howUpdated )
+	{
+		ierr = VecRestoreArrayRead( howUpdated, &howUpdatedPtr );
+		CHKERRXX( ierr );
+	}
 	ierr = VecRestoreArrayRead( phi, &phi_p );
 	CHKERRXX( ierr );
 	ierr = VecRestoreArrayRead( T_l, &t_l_p );
@@ -369,9 +406,10 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	// Create semi-Lagrangian object.
 	slml::SemiLagrangian *mlSemiLagrangian;
 	my_p4est_semi_lagrangian_t *numSemiLagrangian;
-	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )	// Use nnet if velocity is essentially nonzero.
+	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )    // Use nnet if velocity is essentially nonzero.
 	{
-		mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd, &localUniformIndices, nnet, BAND, iter );
+		mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd, &localUniformIndices,
+													 nnet, BAND, iter );
 	}
 	else
 	{
@@ -446,7 +484,7 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	{
 		// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
 		Vec mask;
-		ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
+		ierr = VecCreateGhostNodes( p4est, nodes, &mask );				// Mask vector to flag updatable nodes.
 		CHKERRXX( ierr );
 
 		const double *howUpdatedReadPtr;
@@ -463,10 +501,10 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 			if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
 			{
 				numMaskedNodes++;
-				maskPtr[n] = 0;					// 0 => nonupdatable.
+				maskPtr[n] = 0;			// 0 => nonupdatable.
 			}
-			else								// Updatable?
-				maskPtr[n] = 1;					// 1 => updatable.
+			else						// Updatable?
+				maskPtr[n] = 1;			// 1 => updatable.
 		}
 
 		ierr = VecRestoreArray( mask, &maskPtr );
@@ -548,12 +586,12 @@ void compute_normal_and_curvature( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec
 	std::vector<p4est_locidx_t> indices;
 
 	// Collect *locally owned* grid points next to the interface, although these might have a nonuniform stencil.
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (signed char)splittingCriteria->max_lvl );
+	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, ( signed char ) splittingCriteria->max_lvl );
 	nodesAlongInterface.getIndices( &phi, indices );
 	localUniformIndices.clear();
 	localUniformIndices.reserve( indices.size() );	// Return this to caller with effective local indices of nodes next
 													// to Gamma with uniform stencils.
-	for( auto nodeIdx : indices )
+	for( auto nodeIdx: indices )
 	{
 		// Compute numerical hk for ALL points next to Gamma, regardless their stencil uniformity.  Those are further
 		// processed below.
@@ -568,7 +606,7 @@ void compute_normal_and_curvature( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec
 		try
 		{
 			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ) )	// Uniform stencil?
+			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ))	// Uniform stencil?
 			{
 				localUniformIndices.insert( nodeIdx );
 			}
@@ -605,7 +643,7 @@ void compute_normal_and_curvature( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec
 }
 
 
-void solve_temperature(my_p4est_node_neighbors_t *ngbd, Vec phi_s, Vec phi_l, Vec *d_phi, Vec kappa, Vec t_l, Vec t_s)
+void solve_temperature( my_p4est_node_neighbors_t *ngbd, Vec phi_s, Vec phi_l, Vec *d_phi, Vec kappa, Vec t_l, Vec t_s )
 {
 	BoundaryConditions2D bc;
 	BCInterfaceValue bc_interface_value( ngbd, d_phi, kappa );
@@ -637,7 +675,7 @@ void solve_temperature(my_p4est_node_neighbors_t *ngbd, Vec phi_s, Vec phi_l, Ve
 }
 
 
-void extend_temperatures_over_interface(my_p4est_node_neighbors_t *ngbd, Vec phi_s, Vec phi_l, Vec t_l, Vec t_s)
+void extend_temperatures_over_interface( my_p4est_node_neighbors_t *ngbd, Vec phi_s, Vec phi_l, Vec t_l, Vec t_s )
 {
 	my_p4est_level_set_t ls( ngbd );
 	ls.extend_Over_Interface_TVD( phi_l, t_l );
@@ -645,7 +683,7 @@ void extend_temperatures_over_interface(my_p4est_node_neighbors_t *ngbd, Vec phi
 }
 
 
-void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s, Vec *v)
+void compute_velocity( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s, Vec *v )
 {
 	PetscErrorCode ierr;
 
@@ -673,9 +711,9 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
 		jump_p[0][n] = (k_s * qnnn.dx_central( t_s_p ) - k_l * qnnn.dx_central( t_l_p )) / L;
 		jump_p[1][n] = (k_s * qnnn.dy_central( t_s_p ) - k_l * qnnn.dy_central( t_l_p )) / L;
 	}
-	for( int dir = 0; dir < P4EST_DIM; ++dir )
+	for( auto &dir: jump )
 	{
-		ierr = VecGhostUpdateBegin( jump[dir], INSERT_VALUES, SCATTER_FORWARD );
+		ierr = VecGhostUpdateBegin( dir, INSERT_VALUES, SCATTER_FORWARD );
 		CHKERRXX( ierr );
 	}
 	for( size_t i = 0; i < ngbd->get_local_size(); ++i )
@@ -685,9 +723,9 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
 		jump_p[0][n] = (k_s * qnnn.dx_central( t_s_p ) - k_l * qnnn.dx_central( t_l_p )) / L;
 		jump_p[1][n] = (k_s * qnnn.dy_central( t_s_p ) - k_l * qnnn.dy_central( t_l_p )) / L;
 	}
-	for( int dir = 0; dir < P4EST_DIM; ++dir )
+	for( auto &dir: jump )
 	{
-		ierr = VecGhostUpdateEnd( jump[dir], INSERT_VALUES, SCATTER_FORWARD );
+		ierr = VecGhostUpdateEnd( dir, INSERT_VALUES, SCATTER_FORWARD );
 		CHKERRXX( ierr );
 	}
 
@@ -708,7 +746,7 @@ void compute_velocity(my_p4est_node_neighbors_t *ngbd, Vec phi, Vec t_l, Vec t_s
 }
 
 
-void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec t_l)
+void check_error_frank_sphere( p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec t_l )
 {
 	PetscErrorCode ierr;
 
@@ -726,6 +764,8 @@ void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec
 
 	double err[] = {0, 0};
 	double r = S0 * sqrt( tn );
+	int numPoints = 0;
+	double cumulativeError = 0;
 
 	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n )
 	{
@@ -735,7 +775,10 @@ void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec
 		if( ABS( phi_p[n] ) < diag_min )
 		{
 			double phi_exact = sqrt( SQR( x - X0 ) + SQR( y - Y0 ) ) - r;
-			err[0] = MAX( err[0], fabs( phi_p[n] - phi_exact ) );
+			double error = ABS( phi_p[n] - phi_exact );
+			err[0] = MAX( err[0], error );
+			numPoints++;
+			cumulativeError += error;
 		}
 
 		if( phi_p[n] > 0 )
@@ -749,8 +792,19 @@ void check_error_frank_sphere(p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Vec
 	int mpiret;
 	mpiret = MPI_Allreduce( MPI_IN_PLACE, err, 2, MPI_DOUBLE, MPI_MAX, p4est->mpicomm );
 	SC_CHECK_MPI( mpiret );
+	mpiret = MPI_Allreduce( MPI_IN_PLACE, &numPoints, 1, MPI_INT, MPI_SUM, p4est->mpicomm );		// Total error.
+	SC_CHECK_MPI( mpiret );
+	mpiret = MPI_Allreduce( MPI_IN_PLACE, &cumulativeError, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm );
+	SC_CHECK_MPI( mpiret );
 
-	ierr = PetscPrintf( p4est->mpicomm, "Error on phi: %g\nError on t_l: %g\n", err[0], err[1] );
+	double l1Error = cumulativeError / numPoints;
+
+	double area = area_in_negative_domain( p4est, nodes, phi );
+	double expectedArea = M_PI * SQR( r );
+	double massLossPercentage = (1.0 - area / expectedArea) * 100.0;
+
+	ierr = PetscPrintf( p4est->mpicomm, "\n   mean abs error %.3e\n   max abs error %.3e\n   temperature error %.3e\n   area %.3e (expected %.3e, loss %.2f)",
+			 			l1Error, err[0], err[1], area, expectedArea, massLossPercentage );
 	CHKERRXX( ierr );
 }
 
@@ -791,18 +845,28 @@ int main (int argc, char* argv[])
                  	 \t 1 - a 3-petal seed\n");
 	cmd.parse( argc, argv );
 
+	// TODO: modify simulation options.
 	bool save_vtk = cmd.get( "save_vtk", (int)0 );
 	int save_every_n = cmd.get( "save_every_n", 2 );
 	int max_iter = cmd.get( "max_iter", INT_MAX );
 	bool mode = cmd.get( "mode", (int)1 );
-	test_number = cmd.get( "test", (int)0 );
+	test_number = cmd.get( "test", (int)1 );
 
+	// TODO: modify simulation times per test.
 	switch( test_number )
 	{
-		case 0: k_s=1; k_l=1; tn=0.5; T_FINAL=1.5; break;
+		case 0: k_s=1; k_l=1; tn=0.25; T_FINAL=0.875; break;
 		case 1: tn=0; T_FINAL=1.5; break;
 		default: throw std::invalid_argument("[ERROR]: choose a valid test.");
 	}
+
+	// Begin simulation.
+	parStopWatch watch;
+	watch.start();
+
+	ierr = PetscPrintf( mpi.comm(), ">> Began 2D %s test with MAX_RL = %d in %s mode\n",
+						!test_number? "FRANK-SPHERE" : "ANISOTROPY", MAX_RL, mode? "NNET" : "NUMERICAL" );
+	CHKERRXX( ierr );
 
 	// Create the connectivity object
 	p4est_connectivity_t *connectivity;
@@ -853,7 +917,7 @@ int main (int argc, char* argv[])
 	Vec kappa, hk;
 	Vec d_phi[P4EST_DIM];
 	Vec t_l, t_s;
-	Vec howUpdated;
+	Vec howUpdated = nullptr;
 	ierr = VecCreateGhostNodes( p4est, nodes, &phi_s );
 	CHKERRXX( ierr );
 	ierr = VecDuplicate( phi_s, &phi_l );
@@ -868,8 +932,12 @@ int main (int argc, char* argv[])
 	CHKERRXX( ierr );
 	ierr = VecDuplicate( phi_s, &hk );
 	CHKERRXX( ierr );
-	ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated );
-	CHKERRXX( ierr );
+
+	if( mode )
+	{
+		ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated );
+		CHKERRXX( ierr );
+	}
 
 	std::unordered_set<p4est_locidx_t> localUniformIndices;
 
@@ -1029,6 +1097,9 @@ int main (int argc, char* argv[])
 	}
 
 	ierr = PetscPrintf( mpi.comm(), "Final time of the simulation: tf = %g\n", T_FINAL );
+	CHKERRXX( ierr );
+
+	ierr = PetscPrintf( mpi.comm(), "<< Finished after %.3f secs.", watch.get_duration_current() );
 	CHKERRXX( ierr );
 
 	if( test_number == 0 )
