@@ -146,6 +146,8 @@ DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 DEFINE_PARAMETER(pl, bool, do_advection, true, "Boolean flag whether or not to do advection (default : 1)");
 
+// Related to LSF reinitialization:
+DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait before reinitializing the LSF in the case of a coupled problem (only implemented for coupled problem!). Default : 1. This can be helpful when the timescales governing interface evolution are much larger than those governing the flow. For example, if vint is 1000x smaller than vNS, we may want to reinitialize only every 1000 timesteps, or etc. This can prevent the interface from degrading via frequent reinitializations relative to the amount of movement it experiences. ");
 // Related to the Stefan and temperature/concentration problem:
 DEFINE_PARAMETER(pl, double, cfl, 0.5, "CFL number for Stefan problem (default:0.5)");
 DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
@@ -1103,6 +1105,8 @@ double dt = 1.e-5;
 double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
+
+double dt_Stefan;
 
 DEFINE_PARAMETER(pl,double,t_ramp,0.1,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
@@ -3323,13 +3327,12 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   }
 
   // Compute new timestep:
-  double dt_computed;
-  dt_computed = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
-  dt = min(dt_computed,dt_max_allowed);
+  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
+  //dt = min(dt_computed,dt_max_allowed);
 
   if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
     double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
-    dt = tfinal/N;
+    dt_Stefan = tfinal/N;
   }
 
   v_interface_max_norm = global_max_vnorm;
@@ -6770,21 +6773,28 @@ int main(int argc, char** argv) {
         // Determine the timestep depending on timestep restrictions from both NS solver and from the Stefan problem
         if(solve_stefan){
             if(tstep==load_tstep){dt_NS=dt_nm1;} // TO-DO: not sure this logic is 100% correct, what about NS only case?
-            dt = min(dt,dt_NS);
+            dt = min(dt_Stefan,dt_NS);
+            dt = min(dt, dt_max_allowed);
           }
         else{
             // If we are only solving Navier Stokes
-            dt = dt_NS;
+            dt = min(dt_NS, dt_max_allowed);
           }
       }
+      // If only solving Stefan problem:
+      if(solve_stefan && !solve_navier_stokes){
+        dt = dt_Stefan;
+      }
+
       PetscPrintf(mpi.comm(),"\n"
                              "%s \n"
                              "Computed timestep: \n"
                              " - dt used: %0.3e "
-                             "- dt_NS : %0.3e  "
-                             "- dxyz close to interface : %0.3e "
+                             " - dt_Stefan: %0.3e "
+                             " - dt_NS : %0.3e  "
+                             " - dxyz close to interface : %0.3e "
                              "\n \n",solve_stefan?stefan_timestep:"",
-                            dt,dt_NS,
+                            dt, dt_Stefan, dt_NS,
                             dxyz_close_to_interface);
 
       // Clip the timestep if we are near the end of our simulation, to get the proper end time:
@@ -6899,7 +6909,29 @@ int main(int argc, char** argv) {
 
         //      my_p4est_level_set_t ls_new(ngbd_np1);
         ls.update(ngbd_np1);
-        if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30);
+
+        // Okay, time to reinitialize in a clever way depending on the scenario:
+
+        if(solve_stefan){
+          // If interface velocity *is* forced to zero, we do not reinitialize -- that way we don't degrade the LSF through unnecessary reinitializations
+          if(!force_interfacial_velocity_to_zero){
+            // If we do need to reinitialize, let's think about the time scales
+            if(solve_navier_stokes && tstep>0){
+              // If we are solving the coupled problem -- let's check the time scales of the interfacial velocity versus the fluid one.
+              // If fluid velocity is much larger than interfacial velocity, may not need to reinitialize as much
+              // (bc the timestepping is much smaller than necessary for the interface growth, and we don't want the reinitialization to govern more of the interface change than the actual physical interface change)
+
+              if((tstep % reinit_every_iter) == 0){
+                ls.reinitialize_2nd_order(phi.vec,30);
+                PetscPrintf(mpi.comm(), "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
+              }
+            }
+            else{
+              // if just stefan, go ahead and reinitialize
+              ls.reinitialize_2nd_order(phi.vec,30);
+            }
+          }
+        }
 
         if(solve_navier_stokes && !solve_stefan){
           // If only solving Navier-Stokes, only need to do this once, not every single timestep
