@@ -255,7 +255,8 @@ void select_solvers(){
     interfacial_vel_bc_requires_vint = (example_ == ICE_AROUND_CYLINDER) ||
                                        (example_ == MELTING_ICE_SPHERE) ||
                                        (example_ == DENDRITE_TEST)||
-                                       (example_ == MELTING_POROUS_MEDIA);
+                                       (example_ == MELTING_POROUS_MEDIA) ||
+                                       (example_ == DISSOLVING_DISK_BENCHMARK);
 
     example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
 
@@ -817,6 +818,7 @@ void set_physical_properties(){
     case DISSOLVING_DISK_BENCHMARK:{
       mu_l = 1.0e-3; // Pa s // back calculated using experimental Re and u0 reported
       rho_l = 1000.0;
+      rho_s = 2710.0;
 
       theta_wall = 1.0; // wall undersaturation
       theta_cyl = 0.0; // aka fully saturated at the disk
@@ -2478,6 +2480,7 @@ public:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
+      case DISSOLVING_DISK_BENCHMARK:
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
         else{
@@ -2487,9 +2490,9 @@ public:
 
         }
       }
-      case DISSOLVING_DISK_BENCHMARK:{
-        return 0.0;
-      }
+//      case DISSOLVING_DISK_BENCHMARK:{
+//        return 0.0;
+//      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
