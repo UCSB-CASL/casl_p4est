@@ -44,9 +44,8 @@ const std::string extra_info =
 
 // Default inputs
 const std::string default_export_dir     = "/home/temprano/Output/p4est_surfactant/tests";
-const int default_time_integ             = 1;
 const int default_lmin                   = 3;
-const int default_lmax                   = 7;
+const int default_lmax                   = 6;
 const int default_nx                     = 1;
 const int default_ny                     = 1;
 #ifdef P4_TO_P8
@@ -145,21 +144,20 @@ struct z_from_sph_coord_t : public CF_DIM
 /*------------------------------------------------------- GEOMETRY CLASSES -----------------------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
-#ifdef P4_TO_P8 // TO-DO: Fix star class to avoid compiler macros, avoid default parameters and create it in main function
+#ifdef P4_TO_P8
 struct star : public CF_2
 {
   double r0, alpha, beta;
   unsigned short m, n;
 
 public:
-  star(double r0_input=0.75, double alpha_input=0.6, double beta_input=4.0/15.0,
-       unsigned short n_input=6, unsigned short m_input=6)
+  star(double r0_input=0.75)
   {
     r0    = r0_input;
-    alpha = alpha_input;
-    beta  = beta_input;
-    n     = n_input;
-    m     = m_input;
+    alpha = 0.6;
+    beta  = 4.0/15.0;
+    n     = 6;
+    m     = 6;
   }
   double operator()(double phi, double theta) const
   {
@@ -173,6 +171,15 @@ public:
   {
     return r0*beta*alpha*m*sin((double)m*phi)*(1-cos((double)n*theta));
   }
+  double area() const
+  {
+    // [WARNING:] The exact (machine precision) area was computed numerically only for fixed values of the parameters
+    P4EST_ASSERT(alpha==0.6);
+    P4EST_ASSERT(beta==4.0/15.0);
+    P4EST_ASSERT(n==6);
+    P4EST_ASSERT(m==6);
+    return SQR(r0)*35.471464246641368;
+  }
 } r_star;
 #else
 struct star : public CF_1
@@ -181,11 +188,11 @@ struct star : public CF_1
   unsigned short m;
 
 public:
-  star(double r0_input=0.75, double alpha_input=0.25, unsigned short m_input=7) // Adjust to input R instead of number
+  star(double r0_input)
   {
     r0    = r0_input;
-    alpha = alpha_input;
-    m     = m_input;
+    alpha = 0.075;
+    m     = 7;
   }
   double operator()(double phi) const
   {
@@ -195,7 +202,14 @@ public:
   {
     return -r0*alpha*m*cos((double)m*phi);
   }
-} r_star(R,0.075);
+  double area() const
+  {
+    // [WARNING:] The exact (machine precision) length was computed numerically only for fixed values of the parameters
+    P4EST_ASSERT(alpha==0.075);
+    P4EST_ASSERT(m==7);
+    return r0*6.696506539234549;
+  }
+} r_star(R);
 #endif
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
@@ -207,9 +221,7 @@ struct exact_geom_rad_t
     switch(test_number)
     {
       case 0: return R; break;
-      case 1: throw std::invalid_argument("Not ready."); break;
-      case 2: return t_ + r_star(CODIM1(phi_, theta_)); break;
-      case 3: throw std::invalid_argument("There is no available analytical solution for this test."); break;
+      case 1: return t_ + r_star(CODIM1(phi_, theta_)); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
   }
@@ -261,13 +273,11 @@ public:
         CODE3D( return Gamma_0*( 1.0 + 15.0*epsilon*exp(-12.0*D_s*t/SQR(R))*pow(sin(theta(DIM(x,y,z))),3.0)*sin(3.0*phi(DIM(x,y,z)))); )
         break;
       case 1:
-        throw std::invalid_argument("Not ready."); break;
-      case 2:
-        return          sqrt(SQR(  r_star(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))+SQR(r_star.d_phi(  CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z))))))
+        return Gamma_0 *sqrt(SQR(  r_star(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))+SQR(r_star.d_phi(  CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z))))))
                        /sqrt(SQR(t+r_star(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))+SQR(r_star.d_phi(  CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z))))))
                ONLY3D( *sqrt(SQR(  r_star(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))+SQR(r_star.d_theta(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z))))))
                        /sqrt(SQR(t+r_star(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))+SQR(r_star.d_theta(CODIM1(phi(DIM(x,y,z)),theta(DIM(x,y,z)))))) ); break;
-      case 3:
+      case 2:
         throw std::invalid_argument("There is no available analytical solution for this test."); break;
       default:
         throw std::invalid_argument("Please choose a valid test.");
@@ -283,6 +293,9 @@ public:
         CODE3D( return 4*PI*SQR(R)*Gamma_0; )
         break;
       case 1:
+        (void) t;
+        return Gamma_0*r_star.area();
+        break;
       case 2:
       case 3:
         throw std::invalid_argument("Not ready."); break;
@@ -322,9 +335,8 @@ struct initial_velocity_u_nm1_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
+      case 1:
         return x/MAX(rad(DIM(x,y,z)),EPS*dmin); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -340,9 +352,8 @@ struct initial_velocity_v_nm1_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
+      case 1:
         return y/MAX(rad(DIM(x,y,z)),EPS*dmin); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -358,9 +369,8 @@ struct initial_velocity_w_nm1_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
+      case 1:
         return CODEDIM( 0.0, z/MAX(rad(DIM(x,y,z)),EPS*dmin) ); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -376,9 +386,8 @@ struct initial_velocity_u_n_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
+      case 1:
         return x/MAX(rad(DIM(x,y,z)),EPS*dmin); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -394,9 +403,8 @@ struct initial_velocity_v_n_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
+      case 1:
         return y/MAX(rad(DIM(x,y,z)),EPS*dmin); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -412,10 +420,10 @@ struct initial_velocity_w_n_t : public CF_DIM
     switch(test_number)
     {
       case 0:
-      case 1:
         (void) x; (void) y; ONLY3D((void) z;) return 0.0; break;
-      case 2:
-        return CODEDIM( 0.0, z/MAX(rad(DIM(x,y,z)),EPS*dmin) ); break;
+      case 1:
+        return CODE2D( 0.0 )
+               CODE3D( z/MAX(rad(DIM(x,y,z)),EPS*dmin) ); break;
       default: throw std::invalid_argument("Please choose a valid test.");
     }
   }
@@ -441,18 +449,6 @@ void print_banner(const mpi_environment_t& mpi)
 const std::string my_bool_to_string(bool input)
 {
   return input ? "true" : "false";
-}
-
-const std::string my_time_integrator_to_string(int input)
-{
-  switch(input)
-  {
-    case 0: return "IEEU1";
-    case 1: return "SBDF2";
-    case 2: return "CNLF2";
-    case 3: return "MCNAB2";
-    default: throw std::invalid_argument("my_time_integrator_to_string: Please choose a valid test.");
-  }
 }
 
 const std::string my_adv_suffix_to_string(bool input)
@@ -549,7 +545,8 @@ const std::string my_adv_suffix_to_string(bool input)
 void compute_and_save_errors(int iter,
                              my_p4est_surfactant_t* solver,
                              char error_path[],
-                             bool save_vtk)
+                             bool save_vtk,
+                             double band_factor=2.0 )
 {
   PetscErrorCode ierr;
 
@@ -572,7 +569,7 @@ void compute_and_save_errors(int iter,
   ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_n_p); CHKERRXX(ierr);
   for(size_t n = 0; n < solver->get_nodes_n()->indep_nodes.elem_count; ++n)
   {
-    if( phi_band_p[n] < 2.0*solver->get_band_width_distance() )
+    if( phi_band_p[n] < band_factor*solver->get_band_width_distance() )
     {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, solver->get_p4est_n(), solver->get_nodes_n(), xyz);
@@ -663,8 +660,8 @@ void compute_and_save_errors(int iter,
 void export_files_and_print_iteration_message(int iter, my_p4est_surfactant_t* solver,
                                               char out_path[], bool save_vtk, bool save_errors)
 {
-  static char vtk_path[1024], error_path[1024];/*, dat_error_time_name[1024];*/
-  char vtk_name[1024];/*,  dat_error_space_name[1024];*/
+  static char vtk_path[1024], error_path[1024];
+  char vtk_name[1024];
 
   if(iter==0)
   {
@@ -726,16 +723,7 @@ int main(int argc, char** argv) {
   cmdParser cmd;
   cmd.add_option("test_number",       "Specific test to be run. The options are:\n"
                                       "\t\t0) Surface diffusion on a circle (2D) or sphere (3D).\n"
-                                      "\t\t1) Surface diffusion on an ellipse (2D) or oblate spheroid (3D).\n"
-                                      "\t\t2) Surface advection on an expanding star.\n");
-  cmd.add_option("time_integrator",   "Type of time integrator to be used in the simulation. The options are:\n"
-                                      "\t\t    0) Implicit-explicit Euler, 1st order (IEEU1).\n"
-                                      "\t\t    1) Semi-implicit Backward Differencing Formula, 2nd order (SBDF2).\n"
-                                      "\t\t    2) Crank-Nicolson-Leapfrog, 2nd order (CNLF2).\n"
-                                      "\t\t    3) Modified Crank-Nicolson-Adams-Bashforth, 2nd order (MCNAB2).\n"
-                                      "\t\t    The default is " + my_time_integrator_to_string(default_time_integ) + ".\n");
-
-  cmd.add_option("use_sl",            "Activates the use of a Semi-Lagrangian discretization for surface advection terms.\n");
+                                      "\t\t1) Surface advection on an expanding star.\n");
   cmd.add_option("lmin",              "Minimum level of the forest trees, the default is " + std::to_string(default_lmin) + ".\n");
   cmd.add_option("lmax",              "Maximum level of the forest trees, the default is " + std::to_string(default_lmax) + ".\n");
   cmd.add_option("nx",                "Number of trees in the x-direction, the default is " + std::to_string(default_nx) + ".\n");
@@ -764,8 +752,6 @@ int main(int argc, char** argv) {
   // Setup simulation parameters from inputs
   if(!cmd.contains("test_number")) throw std::invalid_argument("main(): the argument test_number MUST be provided by the user.");
   else                             test_number = cmd.get<int>("test_number", -1);
-  int time_integ = cmd.get<int>("time_integrator", default_time_integ);
-  const bool use_sl = cmd.contains("use_sl");
   const int lmin = cmd.get<int>("lmin", default_lmin);
   const int lmax = cmd.get<int>("lmax", default_lmax);
   const int nx = cmd.get<int>("nx", default_nx);
@@ -808,19 +794,6 @@ int main(int argc, char** argv) {
       test_name = "surface_diffusion_sphere";
       break;
     case 1:
-      xmin = -PI/2.0;
-      xmax =  PI/2.0;
-      ymin = -PI/2.0;
-      ymax =  PI/2.0;
-#ifdef P4_TO_P8
-      zmin = -PI/2.0;
-      zmax =  PI/2.0;
-#endif
-      tf = 1.0;
-      u_max = 0.0;
-      test_name = "surface_diffusion_star";
-      break;
-    case 2:
       xmin = -PI;
       xmax =  PI;
       ymin = -PI;
@@ -832,6 +805,8 @@ int main(int argc, char** argv) {
       tf = 1.5;
       test_name = "advection_expansion";
       break;
+    case 2:
+      throw std::invalid_argument("Not ready. Choose another test");
     case 3:
       throw std::invalid_argument("Not ready. Choose another test");
     default:
@@ -839,19 +814,11 @@ int main(int argc, char** argv) {
   }
 
   // Set up other derived simulation parameters
-#ifdef P4_TO_P8
-  dmin = MIN((xmax-xmin),(ymax-ymin),(zmax-zmin))/pow(2.0,lmax);
-  const int n_xyz      [P4EST_DIM] = {nx, ny, nz};
-  const double xyz_min [P4EST_DIM] = {xmin, ymin, zmin};
-  const double xyz_max [P4EST_DIM] = {xmax, ymax, zmax};
-  const int periodicity[P4EST_DIM] = {0, 0, 0};
-#else
-  dmin = MIN((xmax-xmin),(ymax-ymin))/pow(2.0,lmax);
-  const int n_xyz      [P4EST_DIM] = {nx, ny};
-  const double xyz_min [P4EST_DIM] = {xmin, ymin};
-  const double xyz_max [P4EST_DIM] = {xmax, ymax};
-  const int periodicity[P4EST_DIM] = {0, 0};
-#endif
+  dmin = MIN(DIM((xmax-xmin),(ymax-ymin),(zmax-zmin)))/pow(2.0,lmax);
+  const int n_xyz      [P4EST_DIM] = {DIM(nx, ny, nz)};
+  const double xyz_min [P4EST_DIM] = {DIM(xmin, ymin, zmin)};
+  const double xyz_max [P4EST_DIM] = {DIM(xmax, ymax, zmax)};
+  const int periodicity[P4EST_DIM] = {DIM(0, 0, 0)};
   dt = (bool)u_max ? CFL*dmin/u_max : CFL*dmin;
 
   // Declare level-set functions
@@ -878,15 +845,10 @@ int main(int argc, char** argv) {
   }
 
   // Set up solver data
-#ifdef P4_TO_P8
-  CF_3 *vnm1[P4EST_DIM] = { &initial_u_nm1, &initial_v_nm1, &initial_w_nm1 };
-  CF_3 *vn  [P4EST_DIM] = { &initial_u_n,   &initial_v_n,   &initial_w_n   };
-#else
-  CF_2 *vnm1[P4EST_DIM] = { &initial_u_nm1, &initial_v_nm1 };
-  CF_2 *vn  [P4EST_DIM] = { &initial_u_n,   &initial_v_n   };
-#endif
-//  surf->set_velocities(vn, vnm1);
-//  surf->compute_extended_velocities(ls_nm1, NULL, true, false);
+  CF_DIM *vnm1[P4EST_DIM] = { DIM(&initial_u_nm1, &initial_v_nm1, &initial_w_nm1) };
+  CF_DIM *vn  [P4EST_DIM] = { DIM(&initial_u_n,   &initial_v_n,   &initial_w_n  ) };
+  surf->set_velocities(vn, vnm1);
+  surf->compute_initial_extended_velocities(ls_nm1);
   surf->set_Gamma(&initial_Gamma_nm1, &initial_Gamma_n);
 
   // Setup and create output directories
@@ -905,15 +867,13 @@ int main(int argc, char** argv) {
       surf->set_dt_n(dt);
     }
 
-    //surf->advect_interface_one_step();
-
-    P4EST_ASSERT(tn >= 0.0);
-      surf->compute_one_step_Gamma((time_integrator)time_integ);
+    surf->advect_interface_one_step();
+    surf->compute_one_step_Gamma();
 
     tn+=dt;
     iter++;
 
-    surf->update_from_tn_to_tnp1();
+    surf->update_from_tn_to_tnp1(vn);
     dt = surf->get_dt_n();
     export_files_and_print_iteration_message(iter, surf, out_dir, save_vtk, save_errors);
   }

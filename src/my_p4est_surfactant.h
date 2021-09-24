@@ -27,13 +27,6 @@
 //  LOAD
 //} save_or_load;
 
-typedef enum{
-  IEEU1,
-  SBDF2,
-  CNLF2,
-  MCNAB2
-} time_integrator;
-
 class my_p4est_surfactant_t
 {
 protected:
@@ -97,9 +90,15 @@ protected:
   my_p4est_node_neighbors_t *ngbd_n;
 
   // Flags to "turn off" different terms in the transport equations. They're set to false by default.
+  bool STATIC_GRID;
   bool NO_SURFACE_DIFFUSION;
   bool NO_SURFACE_ADVECTION;
 
+  // Numerical variables
+  int ITER_EXTENSION;
+  double TOL_BAND_NODES;
+
+  // Problem lengthscales, stored during the whole life span of the solver
   double dxyz[P4EST_DIM];
   double dxyz_min, dxyz_diag;
   splitting_criteria_surfactant_t *sp_crit;
@@ -113,43 +112,43 @@ protected:
   Vec phi;
   Vec phi_band;
   band phi_band_gen;
+  int num_band_nodes;
 
   Vec normal[P4EST_DIM];
   Vec kappa;
   double max_abs_kappa;
 
-//  Vec vn_nodes  [P4EST_DIM];
-//  Vec vnm1_nodes[P4EST_DIM];
-//  Vec vn_s_nodes  [P4EST_DIM];
-//  Vec vnm1_s_nodes[P4EST_DIM];
-//  double max_L2_norm_u;
+  Vec vn_nodes  [P4EST_DIM];
+  Vec vnm1_nodes[P4EST_DIM];
+  Vec vn_s_nodes  [P4EST_DIM];
+  Vec vnm1_s_nodes[P4EST_DIM];
+  double max_L2_norm_u;
 
-//  Vec str_n;
-//  Vec str_nm1;
+  Vec str_n;
+  Vec str_nm1;
 
-//  Vec dd_vn_nodes[P4EST_DIM][P4EST_DIM];
-//  Vec dd_vnm1_nodes[P4EST_DIM][P4EST_DIM];
-//  Vec dd_vn_s_nodes[P4EST_DIM][P4EST_DIM];
-//  Vec dd_vnm1_s_nodes[P4EST_DIM][P4EST_DIM];
+  Vec dd_vn_nodes[P4EST_DIM][P4EST_DIM];
+  Vec dd_vnm1_nodes[P4EST_DIM][P4EST_DIM];
+  Vec dd_vn_s_nodes[P4EST_DIM][P4EST_DIM];
+  Vec dd_vnm1_s_nodes[P4EST_DIM][P4EST_DIM];
 
   Vec Gamma_np1;
   Vec Gamma_n;
   Vec Gamma_nm1;
 
-//  // semi-lagrangian backtraced points for nodes (needed in the discretization of the advection terms, needs to be done only once)
-//  // no need to destroy these, not dynamically allocated...
-//  std::vector<double> xyz_dep_n[P4EST_DIM];
-//  std::vector<double> xyz_dep_nm1[P4EST_DIM]; // used only if sl_order == 2
+  // Semi-lagrangian backtraced points for nodes (needed in the discretization of the advection terms, needs to be done only once)
+  // No need to destroy these, not dynamically allocated...
+  bool sl_dep_pts_computed;
+  std::vector<double> xyz_dep_n[P4EST_DIM];
+  std::vector<double> xyz_dep_nm1[P4EST_DIM]; // used only if sl_order == 2
 
-//  std::vector<double> xyz_dep_s_n[P4EST_DIM];
-//  std::vector<double> xyz_dep_s_nm1[P4EST_DIM]; // used only if sl_order == 2
+  bool sl_dep_pts_s_computed;
+  std::vector<double> xyz_dep_s_n[P4EST_DIM];
+  std::vector<double> xyz_dep_s_nm1[P4EST_DIM]; // used only if sl_order == 2
 
   void update_phi_band_vector();
-#ifdef P4_TO_P8
-  void enforce_refinement_p4est_n(CF_3 *ls);
-#else
-  void enforce_refinement_p4est_n(CF_2 *ls);
-#endif
+
+  void enforce_refinement_p4est_n(CF_DIM *ls);
 
 public:
   my_p4est_surfactant_t(const mpi_environment_t& mpi,
@@ -166,45 +165,36 @@ public:
 
   void set_phi(Vec level_set, const bool& do_reinit=true);
   void set_phi(CF_DIM *level_set, const bool& do_reinit=true);
+  void compute_num_band_nodes();
 
   void compute_normal();
   void compute_curvature();
 
   void set_Gamma(CF_DIM *Gamma_nm1_input, CF_DIM *Gamma_n_input);
 
-//#ifdef P4_TO_P8
-//  void set_velocities(CF_3 **vnm1, CF_3 **vn);
-//#else
-//  void set_velocities(CF_2 **vnm1, CF_2 **vn);
-//#endif
+  void set_velocities(CF_DIM **vnm1, CF_DIM **vn);
 
+  void compute_dd_vn();
+  void compute_dd_vnm1();
 
-//#ifdef P4_TO_P8
-//  void compute_extended_velocities(CF_3 *ls_nm1, CF_3 *ls_n=NULL, const bool& do_reinit_nm1=true, const bool& do_reinit_n=true);
-//#else
-//  void compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n=NULL, const bool& do_reinit_nm1=true, const bool& do_reinit_n=true);
-//#endif
+  void compute_dd_vn_s();
+  void compute_dd_vnm1_s();
 
+  void compute_vnm1_s_from_phi_nm1(CF_DIM *ls_nm1, const bool& do_reinit=true);
+  void compute_vn_s();
+  void compute_initial_extended_velocities(CF_DIM *ls_nm1, const bool& do_reinit_nm1=true);
+  //void compute_extended_velocities(CF_DIM *ls_nm1, CF_DIM *ls_n=NULL, const bool& do_reinit_nm1=true, const bool& do_reinit_n=true);
 
-//#ifdef P4_TO_P8
-//  void compute_stretching_term_nm1(CF_3 *ls_nm1);
-//  void compute_stretching_term_n(CF_3 *ls_nm1=NULL);
-//#else
-//  void compute_stretching_term_nm1(CF_2 *ls_nm1);
-//  void compute_stretching_term_n(CF_2 *ls_n=NULL);
-//#endif
+  void compute_stretching_term_nm1();
+  void compute_stretching_term_n();
 
-//  double compute_adapted_dt_n();
+  double compute_adapted_dt_n();
 
-//  void advect_interface_one_step();
+  void advect_interface_one_step();
 
-  void compute_one_step_Gamma(time_integrator integ=SBDF2);
+  void compute_one_step_Gamma();
 
-#ifdef P4_TO_P8
-  void update_from_tn_to_tnp1();
-#else
-  void update_from_tn_to_tnp1();
-#endif
+  void update_from_tn_to_tnp1(CF_DIM **vnp1);
 
   inline double get_dt_n() { return dt_n; }
   inline double get_dt_nm1() { return dt_nm1; }
