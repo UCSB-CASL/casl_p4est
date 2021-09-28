@@ -2481,12 +2481,17 @@ public:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case DISSOLVING_DISK_BENCHMARK:
+        if(!solve_stefan) return 0.;
+        else{
+          // 9/23/21 -- currently evalulating effect of diff BC's on result
+          return (*v_interface_interp)(x,y); // no slip condition
+          //return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
+
+        }
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
         else{
-          //return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface -- INCORRECT, FOUND SIGN ERROR IN DERIVATION, 5/4/21
-          //printf("\n dir = %d, BC_val = %0.2f \n", dir, (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)));
-          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
+          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from mass balance across interface
 
         }
       }
@@ -3170,9 +3175,12 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
   if(!force_interfacial_velocity_to_zero){
 
       // Get the first derivatives to compute the jump
-      T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
+      T_l_d.create(p4est,nodes);
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
-      if(do_we_solve_for_Ts) ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+      if(do_we_solve_for_Ts){
+        T_s_d.create(T_l_d.vec);
+        ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+       }
 
 
       // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
