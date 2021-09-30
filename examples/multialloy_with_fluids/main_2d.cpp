@@ -79,7 +79,8 @@ enum:int {
   DENDRITE_TEST = 6,
   MELTING_ICE_SPHERE = 7,
   MELTING_POROUS_MEDIA = 8,
-  PLANE_POIS_FLOW=9
+  PLANE_POIS_FLOW=9,
+  DISSOLVING_DISK_BENCHMARK=10
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -87,7 +88,7 @@ enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
 // ---------------------------------------
 // Example/application options:
 // ---------------------------------------
-DEFINE_PARAMETER(pl, int, example_, 3,"example number: \n"
+DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
                                    "0 - Frank Sphere (Stefan only) \n"
                                    "1 - NS Gibou example (Navier Stokes only) \n"
                                    "2 - Additional coupled verification test (not fully verified) \n"
@@ -98,6 +99,7 @@ DEFINE_PARAMETER(pl, int, example_, 3,"example number: \n"
                                    "7 - melting of an ice sphere \n"
                                    "8 - melting of a porous media (with fluid flow) \n"
                                    "9 - plane poiseuille flow \n "
+                                   "10 - dissolving disk benchmark for dissolution problem \n"
                                    "default: 4");
 
 // ---------------------------------------
@@ -144,6 +146,8 @@ DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 DEFINE_PARAMETER(pl, bool, do_advection, true, "Boolean flag whether or not to do advection (default : 1)");
 
+// Related to LSF reinitialization:
+DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait before reinitializing the LSF in the case of a coupled problem (only implemented for coupled problem!). Default : 1. This can be helpful when the timescales governing interface evolution are much larger than those governing the flow. For example, if vint is 1000x smaller than vNS, we may want to reinitialize only every 1000 timesteps, or etc. This can prevent the interface from degrading via frequent reinitializations relative to the amount of movement it experiences. ");
 // Related to the Stefan and temperature/concentration problem:
 DEFINE_PARAMETER(pl, double, cfl, 0.5, "CFL number for Stefan problem (default:0.5)");
 DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
@@ -173,6 +177,8 @@ bool interfacial_vel_bc_requires_vint;
 
 bool example_uses_inner_LSF;
 bool example_requires_area_computation;
+
+bool do_we_solve_for_Ts;
 
 void select_solvers(){
   switch(example_){
@@ -220,6 +226,10 @@ void select_solvers(){
       solve_stefan=false;
       solve_navier_stokes=true;
       break;
+    case DISSOLVING_DISK_BENCHMARK:
+      solve_stefan=true;
+      solve_navier_stokes=true;
+      break;
     }
   if(save_using_dt && save_using_iter){
       throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
@@ -245,13 +255,15 @@ void select_solvers(){
     interfacial_vel_bc_requires_vint = (example_ == ICE_AROUND_CYLINDER) ||
                                        (example_ == MELTING_ICE_SPHERE) ||
                                        (example_ == DENDRITE_TEST)||
-                                       (example_ == MELTING_POROUS_MEDIA);
+                                       (example_ == MELTING_POROUS_MEDIA) ||
+                                       (example_ == DISSOLVING_DISK_BENCHMARK);
 
     example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
-                                        (example_ == MELTING_ICE_SPHERE);
+                                        (example_ == MELTING_ICE_SPHERE) || (example_ == DISSOLVING_DISK_BENCHMARK);
 
+    do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
 }
 // ---------------------------------------
@@ -412,13 +424,22 @@ void set_geometry(){
     }
     case MELTING_POROUS_MEDIA:{
       // (WIP)
-      // Domain size:
-      xmin = 0.0; xmax = 20.0;
+      // MORE COMPLEX:
+//      // Domain size:
+//      xmin = 0.0; xmax = 20.0;
+//      ymin = 0.0; ymax = 10.0;
+
+//      // Number of trees:
+//      nx =10.0;
+//      ny =5.0;
+
+      // EASIER TO DO LOCALLY:
+      xmin = 0.0; xmax = 10.0;
       ymin = 0.0; ymax = 10.0;
 
       // Number of trees:
-      nx =10.0;
-      ny =5.0;
+      nx = 5.0;
+      ny = 5.0;
 
       // Periodicity:
       px = 0;
@@ -428,6 +449,28 @@ void set_geometry(){
       r0 = 0.5;     // Computational radius of the sphere
       break;
     }
+    case DISSOLVING_DISK_BENCHMARK:{
+      // Domain size:
+      xmin = 0.0; xmax = 5.0; // should technically be 33.0, but that would yield weird cell aspect ratios
+      ymin = 0.0; ymax = 2.5;
+
+      // It is 1.9 because the char length scale is 20 mm, and the physical length is 38 mm, so
+      // it takes 1.9 nondim length units to get the domain size
+
+      // Number of trees:
+      nx = 4.0;
+      ny = 2.0;
+
+      // Periodicity:
+      px = 0;
+      py = 0;
+
+      // Problem geometry:
+      r0 = 0.5; // radius of the disk ( in comp domain)
+      break;
+
+    }
+
 
     case PLANE_POIS_FLOW:{
       xmin = 0.0; xmax = 20.0;
@@ -515,7 +558,8 @@ void set_geometry(){
   // we are solving, therefore we select appropriately
   num_fields_interp = 0;
   if(solve_stefan){
-    num_fields_interp+=4; // Tl, Ts, vint_x, vint_y
+    num_fields_interp+=3; // Tl, vint_x, vint_y
+    if(do_we_solve_for_Ts) num_fields_interp+=1; // Ts
   }
   if(solve_navier_stokes){
     num_fields_interp+=2; // vNS_x, vNS_y
@@ -525,7 +569,6 @@ void set_geometry(){
   if(!solve_stefan && solve_navier_stokes){
     refine_by_d2T = false;
   }
-
 }
 
 
@@ -663,6 +706,7 @@ DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficien
 // ---------------------------------------
 // Physical properties:
 // ---------------------------------------
+// For solidification problem:
 double alpha_s; // Thermal diffusivity of solid [m^2/s]
 double alpha_l; // Thermal diffusivity of liquid [m^2/s]
 double k_s;     // Thermal conductivity of solid [W/(mK)]
@@ -674,19 +718,27 @@ double cp_s;    // Specific heat of solid [J/(kg K)]
 double mu_l;    // Dynamic viscosity of fluid [Pa s]
 
 
+// For dissolution problem:
+DEFINE_PARAMETER(pl, double, gamma_diss, 3.69e-4, "The parameter dictates some dissolution behavior, default value is 0.00288 (corresponds to pure gypsum)");
+
+DEFINE_PARAMETER(pl, double , D_diss, 1.0e-9, "Dissolution diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
+DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
+DEFINE_PARAMETER(pl, double, k_diss, 8.9125e-4/*4.5e-6*/, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
+
+
 double n_times_d0; // multiplier on d0 we use to get dseed //(WIP) // TO-DO:clean up dendrite stuff!
 void set_physical_properties(){
   double nu;
   switch(example_){
     case FRANK_SPHERE:{
-    alpha_s = 1.0;
-    alpha_l = 1.0;
-    k_s = 1.0;
-    k_l = 1.0;
-    L = 1.0;
-    rho_l = 1.0;
-    rho_s = 1.0;
-    break;
+      alpha_s = 1.0;
+      alpha_l = 1.0;
+      k_s = 1.0;
+      k_l = 1.0;
+      L = 1.0;
+      rho_l = 1.0;
+      rho_s = 1.0;
+      break;
     }
     case FLOW_PAST_CYLINDER:
     case ICE_AROUND_CYLINDER:{
@@ -713,6 +765,7 @@ void set_physical_properties(){
       back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
 
       deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
+
       theta_wall = 1.0; // Non dim temp at wall
       theta_cyl = 0.0; // Non dim temp at cylinder
 
@@ -745,7 +798,14 @@ void set_physical_properties(){
       back_wall_temp_flux = 0.0; // Flux in temp on back wall
 
       deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
-      theta_wall = 1.0; // Non dim temp at wall
+
+      if(deltaT>0.){
+        theta_wall = 1.0;
+      }
+      else{
+        theta_wall = -1.0;
+      }
+      //ttheta_wall = 1.0; // Non dim temp at wall
       theta_cyl = 0.0; // Non dim temp at cylinder
 
       theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
@@ -755,14 +815,22 @@ void set_physical_properties(){
       // However, this is the only time it is used for this example.
       break;
     }
+    case DISSOLVING_DISK_BENCHMARK:{
+      mu_l = 1.0e-3; // Pa s // back calculated using experimental Re and u0 reported
+      rho_l = 1000.0;
+      rho_s = 2710.0;
 
+      theta_wall = 1.0; // wall undersaturation
+      theta_cyl = 0.0; // aka fully saturated at the disk
+
+      back_wall_temp_flux = 0.0;
+      // No need to set theta_interface --> we have a robin BC there, not Dirichlet
+      break;
+    }
     case PLANE_POIS_FLOW:{
-
       rho_l = 1.0;
       mu_l = 1.0;
       Re = 1.0;
-
-
     }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
@@ -879,6 +947,13 @@ void set_NS_info(){
 
       break;
     }
+    case DISSOLVING_DISK_BENCHMARK:{
+      u0 = 1.0;
+      v0 = 0.;
+
+      hodge_percentage_of_max_u=1.e-3;
+      break;
+    }
 
     case FLOW_PAST_CYLINDER:
     case MELTING_ICE_SPHERE:
@@ -902,7 +977,7 @@ void set_NS_info(){
       u0 = 1.0;
       v0 = 1.0;
 
-      u_inf=1.0;
+      u_inf=1.0; // u_inf usually corresponds to a physical value for velocity, but this example doesnt have that //to-do: is this actually used in this example?
       hodge_percentage_of_max_u = 1.e-3;
       break;
     }
@@ -928,41 +1003,22 @@ void set_NS_info(){
 
 
 // For selecting the appropriate nondimensionalized formulation of the problem:
-enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL};
+enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL, NONDIM_DISSOLUTION};
 // TO-DO: change this to nondim_no_fluid_freezemelt, nondim_yes_fluid_freezemelt, nondim_no_fluid_dissodepo, nondim_yes_fluid_dissodepo, etc. erosion tbd
 int stefan_condition_type;
 int select_stefan_formulation(){
   if(solve_navier_stokes){
-    return NONDIM_YES_FLUID;
+    if(example_ == DISSOLVING_DISK_BENCHMARK){
+      return NONDIM_DISSOLUTION;
+    }
+    else{
+      return NONDIM_YES_FLUID;
+    }
+
   }
   else{
     return NONDIM_NO_FLUID;
   }
-  /*
-  switch(example_){
-  case FRANK_SPHERE:
-    return NONDIM_NO_FLUID;
-  case DENDRITE_TEST:
-    if(solve_navier_stokes){
-      return NONDIM_YES_FLUID;
-    }
-    else{
-      return NONDIM_NO_FLUID;
-    }
-  case NS_GIBOU_EXAMPLE:
-  case FLOW_PAST_CYLINDER:
-    return NONDIM_YES_FLUID; // no stefan here, but nondim used for NS stuff alone as well
-
-  case COUPLED_PROBLEM_EXAMPLE:
-  case COUPLED_TEST_2:
-  case ICE_AROUND_CYLINDER:
-    if(solve_navier_stokes){
-      return NONDIM_YES_FLUID;
-    }
-    else{
-      return NONDIM_NO_FLUID;
-    }
-  } */
 };
 
 // For defining appropriate nondimensional groups:
@@ -981,9 +1037,7 @@ void set_nondimensional_groups(){
        d_length_scale=d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
-
        d_length_scale = d_seed;
-
        printf("sigma/d_seed = %0.4e \n",sigma/d_seed);
      }
      if(Re_overwrite>0.) Re = Re_overwrite;
@@ -1017,6 +1071,21 @@ void set_nondimensional_groups(){
      time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
      vel_nondim_to_dim = (alpha_s)/(d_length_scale);
    }
+   else if(stefan_condition_type==NONDIM_DISSOLUTION){
+     // Assuming Re is the input parameter
+     // Calculate u_inf:
+     // For this case, have to do it a bit differently, since diameter is not the length scale we use
+
+     u_inf = (Re*mu_l)/(rho_l * (l_diss)); // freestream velocity is based on reynolds defined around sample diameter, even tho sample diameter is not the char length scale here
+     Pe = u_inf*l_diss/D_diss;
+     double Da = k_diss*l_diss/D_diss;
+     printf("Pe = %0.4f, Da = %0.4f, 1/Pe = %0.4f, Da/Pe = %0.4f, D = %0.4e , k = %0.4e\n", Pe, Da, 1./Pe, Da/Pe, D_diss, k_diss);
+
+     vel_nondim_to_dim = u_inf;
+     time_nondim_to_dim= l_diss/(u_inf/**gamma_diss*/);
+
+
+   }
    else{
      time_nondim_to_dim = 1.;
    };
@@ -1038,6 +1107,8 @@ double dt = 1.e-5;
 double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
+
+double dt_Stefan;
 
 DEFINE_PARAMETER(pl,double,t_ramp,0.1,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
@@ -1078,8 +1149,17 @@ void simulation_time_info(){
       dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
 
-      save_using_dt = 1;
-      save_every_dt=0.1; // Save every 0.1 units of nondimensional time (in this case)
+      break;
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      tstart = 0.0;
+      if(save_every_dt>0.){
+        dt_max_allowed = save_every_dt - EPS;
+      }
+      else{
+        dt_max_allowed = 10.0;
+      }
+      dt = 1.0e-3; // initial timestep
       break;
     }
 
@@ -1139,8 +1219,6 @@ void simulation_time_info(){
     else{
       tfinal = duration_overwrite_nondim;
     }
-
-
   }
 }
 
@@ -1688,9 +1766,9 @@ public:
         return current_min;
 
       }
-
-
-
+      case DISSOLVING_DISK_BENCHMARK: {
+        return r0 - sqrt(SQR(x-(xmax/2.)) + SQR(y - (ymax/2.)));
+      }
       case MELTING_ICE_SPHERE:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       }
@@ -1738,6 +1816,7 @@ public:
       case FRANK_SPHERE:
       case MELTING_ICE_SPHERE:
       case MELTING_POROUS_MEDIA:
+      case DISSOLVING_DISK_BENCHMARK:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
       case DENDRITE_TEST:
@@ -1760,7 +1839,7 @@ double ramp_BC(double initial,double goal_value){
 // Interfacial temperature boundary condition objects/functions:
 // --------------------------------------------------------------------------------------------------------------
 BoundaryConditionType interface_bc_type_temp;
-void interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+void interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case FRANK_SPHERE:
       interface_bc_type_temp = DIRICHLET;
@@ -1776,11 +1855,14 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
     case COUPLED_PROBLEM_EXAMPLE:
       interface_bc_type_temp = DIRICHLET;
       break;
+    case DISSOLVING_DISK_BENCHMARK:
+      interface_bc_type_temp = ROBIN;
+      break;
     }
 }
 
 BoundaryConditionType inner_interface_bc_type_temp;
-void inner_interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+void inner_interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case MELTING_POROUS_MEDIA:
     case FLOW_PAST_CYLINDER:
@@ -1829,10 +1911,10 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     switch(example_){
-      case FRANK_SPHERE:{ // Frank sphere case, no surface tension
-          return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
-        }
-      case DENDRITE_TEST:{
+    case FRANK_SPHERE:{ // Frank sphere case, no surface tension
+        return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
+      }
+    case DENDRITE_TEST:{
 
         // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
         //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
@@ -1873,9 +1955,9 @@ public:
         return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
 //        return theta_interface;
       }
-      case MELTING_POROUS_MEDIA:
-      case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER: {
+    case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE:
+    case ICE_AROUND_CYLINDER: {
         double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
 
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
@@ -1887,6 +1969,11 @@ public:
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:{
       return temperature_[dom]->T(DIM(x,y,z));
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+//      printf("INTERFACE VAL CALLED \n");
+      //return 0.0; // RHS is zero for the robin condition
+      return 0.0;
     }
     default:
       throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
@@ -1921,15 +2008,20 @@ public:
 class BC_interface_coeff: public CF_DIM{
 public:
   double operator()(double x, double y) const
-  { switch(example_){
-      case FRANK_SPHERE: return 1.0;
+  {
+
+    switch(example_){
+      case FRANK_SPHERE:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
-      case ICE_AROUND_CYLINDER: return 1.0;
+      case ICE_AROUND_CYLINDER:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
         return 1.0;
+      case DISSOLVING_DISK_BENCHMARK:
+        double Da = k_diss*l_diss/D_diss;
+        return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
       }
   }
 }bc_interface_coeff;
@@ -2010,6 +2102,9 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
+    case DISSOLVING_DISK_BENCHMARK:{
+      return xlower_wall(DIM(x,y,z));
+    }
     case COUPLED_PROBLEM_EXAMPLE:{
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
     }
@@ -2030,6 +2125,9 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     }
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
+      return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
     case NS_GIBOU_EXAMPLE:{
@@ -2098,6 +2196,15 @@ public:
         else{
           return back_wall_temp_flux;
         }
+      }
+      case DISSOLVING_DISK_BENCHMARK:{
+        if(dirichlet_temperature_walls(DIM(x,y,z))){
+          return theta_wall;
+        }
+        else{
+          return back_wall_temp_flux;
+        }
+        break;
       }
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
@@ -2176,6 +2283,9 @@ public:
             throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
           }
         }
+      }
+      case DISSOLVING_DISK_BENCHMARK:{
+        return theta_wall;
       }
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:{
@@ -2270,6 +2380,27 @@ public:
           }
         }
       }
+      case DISSOLVING_DISK_BENCHMARK:{
+        if(dirichlet_velocity_walls(DIM(x,y,z))){
+          if(xlower_wall(DIM(x,y,z))){
+            switch(dir){
+            case dir::x:
+              return u0;
+            case dir::y:
+              return v0;
+            default:
+              throw std::runtime_error("Velocity boundary condition at wall - unrecognized direction \n");
+            }
+          }
+          else{
+            return 0.0; // no slip on y walls
+          }
+        }
+        else{
+          return 0.0;// homogeneous neumann
+        }
+        break;
+      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
@@ -2306,6 +2437,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
     case DENDRITE_TEST:
+    case DISSOLVING_DISK_BENCHMARK:
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
@@ -2348,15 +2480,24 @@ public:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
+      case DISSOLVING_DISK_BENCHMARK:
+        if(!solve_stefan) return 0.;
+        else{
+          // 9/23/21 -- currently evalulating effect of diff BC's on result
+          return (*v_interface_interp)(x,y); // no slip condition
+          //return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
+
+        }
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
         else{
-          //return (*v_interface_interp)(x,y)*((rho_l/rho_s) + 1.); // Condition derived from energy balance across interface -- INCORRECT, FOUND SIGN ERROR IN DERIVATION, 5/4/21
-          //printf("\n dir = %d, BC_val = %0.2f \n", dir, (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)));
-          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from energy balance across interface
+          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // Condition derived from mass balance across interface
 
         }
       }
+//      case DISSOLVING_DISK_BENCHMARK:{
+//        return 0.0;
+//      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -2450,6 +2591,16 @@ struct INITIAL_VELOCITY : CF_DIM
           }
         }
       }
+      case DISSOLVING_DISK_BENCHMARK:{
+        switch(dir){
+        case dir::x:
+          return u0;
+        case dir::y:
+          return v0;
+        default:
+          throw std::runtime_error("initial velocity direction unrecognized \n");
+        }
+      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -2517,6 +2668,8 @@ public:
           return 0.0; // homogeneous Neumann for other walls
         }
       }
+      case DISSOLVING_DISK_BENCHMARK:
+        return 0.0; // returns homogeneous condition either way
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
@@ -2572,6 +2725,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
+    case DISSOLVING_DISK_BENCHMARK:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
@@ -2588,6 +2742,7 @@ public:
       case DENDRITE_TEST:
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:
+      case DISSOLVING_DISK_BENCHMARK:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
@@ -2627,24 +2782,28 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
 
   if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.create(p4est,nodes);
-    forcing_term_solid.create(p4est,nodes);
-
     sample_cf_on_nodes(p4est,nodes,*external_heat_source_term[LIQUID_DOMAIN],forcing_term_liquid.vec);
-    sample_cf_on_nodes(p4est,nodes,*external_heat_source_term[SOLID_DOMAIN],forcing_term_solid.vec);
+
+    if(do_we_solve_for_Ts) {
+      forcing_term_solid.create(p4est,nodes);
+      sample_cf_on_nodes(p4est,nodes,*external_heat_source_term[SOLID_DOMAIN],forcing_term_solid.vec);
+    }
   }
 
   // Get derivatives of temperature fields if we are using Crank Nicholson:
   vec_and_ptr_dim_t T_l_dd;
   vec_and_ptr_dim_t T_s_dd;
   if(method_ ==2){
+    if(do_we_solve_for_Ts){
       T_s_dd.create(p4est,nodes);
       ngbd->second_derivatives_central(T_s.vec,T_s_dd.vec[0],T_s_dd.vec[1]);
       T_s_dd.get_array();
-      if(!do_advection) {
-          T_l_dd.create(p4est,nodes);
-          ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1]);
-          T_l_dd.get_array();
-        }
+    }
+    if(!do_advection) {
+        T_l_dd.create(p4est,nodes);
+        ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1]);
+        T_l_dd.get_array();
+      }
     }
 
   // Prep coefficients if we are doing 2nd order advection:
@@ -2652,11 +2811,11 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
       advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
     }
-
-  // Get arrays:
   // Get Ts arrays:
-  T_s.get_array();
-  rhs_Ts.get_array();
+  if(do_we_solve_for_Ts){
+    T_s.get_array();
+    rhs_Ts.get_array();
+  }
 
   // Get Tl arrays:
   rhs_Tl.get_array();
@@ -2670,18 +2829,20 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
 
   if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.get_array();
-    forcing_term_solid.get_array();
+    if(do_we_solve_for_Ts) forcing_term_solid.get_array();
   }
 
   phi.get_array();
   foreach_local_node(n,nodes){
-    // First, assemble system for Ts depending on case:
-    if(method_ == 2){ // Crank Nicholson
+    if(do_we_solve_for_Ts){
+      // First, assemble system for Ts depending on case:
+      if(method_ == 2){ // Crank Nicholson
         rhs_Ts.ptr[n] = 2.*T_s.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
       }
-    else{ // Backward Euler
+      else{ // Backward Euler
         rhs_Ts.ptr[n] = T_s.ptr[n]/dt;
       }
+    }
 
     // Now for Tl depending on case:
     if(do_advection){
@@ -2703,7 +2864,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
     if(analytical_IC_BC_forcing_term){
       // Add forcing terms:
       rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
-      rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
+      if(do_we_solve_for_Ts) rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
     }
 
   }// end of loop over nodes
@@ -2711,8 +2872,10 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   // Restore arrays:
   phi.restore_array();
 
-  T_s.restore_array();
-  rhs_Ts.restore_array();
+  if(do_we_solve_for_Ts){
+    T_s.restore_array();
+    rhs_Ts.restore_array();
+  }
 
   rhs_Tl.restore_array();
   if(do_advection){
@@ -2723,21 +2886,26 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_l.restore_array();
     }
   if(method_ ==2){
+    if(do_we_solve_for_Ts){
       T_s_dd.restore_array();
       T_s_dd.destroy();
-      if(!do_advection){
-          T_l_dd.restore_array();
-          T_l_dd.destroy();
-        }
     }
+    if(!do_advection){
+        T_l_dd.restore_array();
+        T_l_dd.destroy();
+      }
+  }
 
   if(analytical_IC_BC_forcing_term){
     forcing_term_liquid.restore_array();
-    forcing_term_solid.restore_array();
+
+    if(do_we_solve_for_Ts) {
+      forcing_term_solid.restore_array(); forcing_term_solid.destroy();
+    }
 
     // Destroy these if they were created
     forcing_term_liquid.destroy();
-    forcing_term_solid.destroy();
+
   }
 }
 
@@ -2872,7 +3040,7 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   if(solve_stefan){
 
       all_fields_old[i++] = *T_l; // Now, all_fields_old[0] and T_l both point to same object (where old T_l vec sits)
-      all_fields_old[i++] = *T_s;
+      if(do_we_solve_for_Ts) all_fields_old[i++] = *T_s;
 
       foreach_dimension(d){
         all_fields_old[i++] = v_interface[d];
@@ -2912,7 +3080,7 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   i = 0;
   if(solve_stefan){
       *T_l = all_fields_new[i++]; // Now, T_l points to (new T_l vec)
-      *T_s = all_fields_new[i++];
+      if(do_we_solve_for_Ts) *T_s = all_fields_new[i++];
 
       foreach_dimension(d){
         v_interface[d] = all_fields_new[i++];
@@ -2987,6 +3155,10 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
     case DIMENSIONAL:{
       return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
     }
+    case NONDIM_DISSOLUTION:{
+      return -1.*(gamma_diss/Pe)*Tl_d;
+    }
+
     default:{
       throw std::invalid_argument("interfacial_velocity_expression: Unrecognized stefan condition type case \n");
     }
@@ -3003,9 +3175,12 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
   if(!force_interfacial_velocity_to_zero){
 
       // Get the first derivatives to compute the jump
-      T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
+      T_l_d.create(p4est,nodes);
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
-      ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+      if(do_we_solve_for_Ts){
+        T_s_d.create(T_l_d.vec);
+        ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+       }
 
 
       // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
@@ -3027,7 +3202,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Get arrays:
       jump.get_array();
       T_l_d.get_array();
-      T_s_d.get_array();
+      if(do_we_solve_for_Ts) T_s_d.get_array();
       phi.get_array();
 
       // First, compute jump in the layer nodes:
@@ -3038,7 +3213,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
 
             vgamma_n.ptr[n] = 0.; // Initialize
             foreach_dimension(d){
-                jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
+                jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
 
                 // Calculate V_gamma,n using dot product:
                 vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
@@ -3063,7 +3238,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
           if(fabs(phi.ptr[n])<extension_band){
               vgamma_n.ptr[n] = 0.; // initialize
               foreach_dimension(d){
-                  jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n],T_s_d.ptr[d][n]);
+                  jump.ptr[d][n] = interfacial_velocity_expression(T_l_d.ptr[d][n], do_we_solve_for_Ts?T_s_d.ptr[d][n]:0.);
 
                   // calculate the dot product to find V_gamma,n
                   vgamma_n.ptr[n] += jump.ptr[d][n] * normal.ptr[d][n];
@@ -3085,7 +3260,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Restore arrays:
       jump.restore_array();
       T_l_d.restore_array();
-      T_s_d.restore_array();
+      if(do_we_solve_for_Ts) T_s_d.restore_array();
 
 
       // Elyce trying something:
@@ -3109,7 +3284,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
 
       // Destroy values once no longer needed:
       T_l_d.destroy();
-      T_s_d.destroy();
+      if(do_we_solve_for_Ts) T_s_d.destroy();
       jump.destroy();
 
   }
@@ -3163,13 +3338,12 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   }
 
   // Compute new timestep:
-  double dt_computed;
-  dt_computed = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
-  dt = min(dt_computed,dt_max_allowed);
+  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
+  //dt = min(dt_computed,dt_max_allowed);
 
   if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
     double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
-    dt = tfinal/N;
+    dt_Stefan = tfinal/N;
   }
 
   v_interface_max_norm = global_max_vnorm;
@@ -3499,16 +3673,18 @@ void poisson_step(Vec phi, Vec phi_solid,
 
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
-  solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
+  if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
 
   // Add the appropriate interfaces and interfacial boundary conditions:
   solver_Tl->add_boundary(MLS_INTERSECTION,phi,phi_dd[0],phi_dd[1],
-      interface_bc_type_temp,*bc_interface_val_temp[LIQUID_DOMAIN],bc_interface_coeff);
+      interface_bc_type_temp,*bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
 
-  solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid,phi_solid_dd[0],phi_solid_dd[1],
-      interface_bc_type_temp,*bc_interface_val_temp[SOLID_DOMAIN],bc_interface_coeff);
+  if(do_we_solve_for_Ts){
+    solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid,phi_solid_dd[0],phi_solid_dd[1],
+                            interface_bc_type_temp,*bc_interface_val_temp[SOLID_DOMAIN],bc_interface_coeff);
+  }
 
-  if(example_uses_inner_LSF){
+  if(example_uses_inner_LSF && do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder,phi_cylinder_dd[0],phi_cylinder_dd[1],
         inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
     }
@@ -3530,30 +3706,39 @@ void poisson_step(Vec phi, Vec phi_solid,
          solver_Tl->set_diag(1./dt);
         }
     }
-  // Set diagonal for Ts:
-  if(method_ == 2){ // Crank Nicholson
-      solver_Ts->set_diag(2./dt);
-    }
-  else{ // Backward Euler
-      solver_Ts->set_diag(1./dt);
+
+    if(do_we_solve_for_Ts){
+      // Set diagonal for Ts:
+      if(method_ == 2){ // Crank Nicholson
+        solver_Ts->set_diag(2./dt);
+      }
+      else{ // Backward Euler
+        solver_Ts->set_diag(1./dt);
+      }
     }
 
   if(stefan_condition_type == NONDIM_YES_FLUID){
     solver_Tl->set_mu(1./Pe);
-    solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
+    if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
   }
   else if(stefan_condition_type== NONDIM_NO_FLUID){
     solver_Tl->set_mu(alpha_l/alpha_s);
-    solver_Ts->set_mu(1.);
+    if(do_we_solve_for_Ts) solver_Ts->set_mu(1.);
+  }
+  else if(stefan_condition_type == NONDIM_DISSOLUTION){
+    solver_Tl->set_mu(1./Pe);
+    if(do_we_solve_for_Ts){
+      solver_Ts->set_mu(1./Pe); // TO FIX
+    }
   }
   else{
     solver_Tl->set_mu(alpha_l);
-    solver_Ts->set_mu(alpha_s);
+    if(do_we_solve_for_Ts) solver_Ts->set_mu(alpha_s);
   }
 
 
   solver_Tl->set_rhs(rhs_Tl);
-  solver_Ts->set_rhs(rhs_Ts);
+  if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
 
   // Set some other solver properties:
   solver_Tl->set_integration_order(1);
@@ -3561,28 +3746,30 @@ void poisson_step(Vec phi, Vec phi_solid,
   solver_Tl->set_cube_refinement(cube_refinement);
   solver_Tl->set_store_finite_volumes(0);
 
-  solver_Ts->set_integration_order(1);
-  solver_Ts->set_use_sc_scheme(0);
-  solver_Ts->set_cube_refinement(cube_refinement);
-  solver_Ts->set_store_finite_volumes(0);
+  if(do_we_solve_for_Ts){
+    solver_Ts->set_integration_order(1);
+    solver_Ts->set_use_sc_scheme(0);
+    solver_Ts->set_cube_refinement(cube_refinement);
+    solver_Ts->set_store_finite_volumes(0);
+  }
 
   // Set the wall BC and RHS:
   solver_Tl->set_wc(bc_wall_type_temp,*bc_wall_value_temp[LIQUID_DOMAIN]);
-  solver_Ts->set_wc(bc_wall_type_temp,*bc_wall_value_temp[SOLID_DOMAIN]);
+  if(do_we_solve_for_Ts) solver_Ts->set_wc(bc_wall_type_temp,*bc_wall_value_temp[SOLID_DOMAIN]);
 
 
   // Preassemble the linear system
   solver_Tl->preassemble_linear_system();
-  solver_Ts->preassemble_linear_system();
+  if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
 
   // Solve the system:
   solver_Tl->solve(*T_l,false,true,KSPBCGS,PCHYPRE);
-  solver_Ts->solve(*T_s,false,true,KSPBCGS,PCHYPRE);
+  if(do_we_solve_for_Ts) solver_Ts->solve(*T_s,false,true,KSPBCGS,PCHYPRE);
 
 
   // Delete solvers:
   delete solver_Tl;
-  delete solver_Ts;
+  if(do_we_solve_for_Ts) delete solver_Ts;
 
 }
 
@@ -3619,6 +3806,9 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   face_solver = NULL;
   cell_solver = NULL;
+
+  // Update the parameters: (this is only done to update the cfl potentially)
+  ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
 
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
@@ -3663,11 +3853,14 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
 
   // Compute forces (if we are doing that)
-  if(save_fluid_forces && compute_pressure_){
+  if((save_fluid_forces && compute_pressure_) || example_requires_area_computation){
 
 
     double forces[P4EST_DIM];
-    ns->compute_forces(forces);
+
+    if(save_fluid_forces && compute_pressure_){
+      ns->compute_forces(forces);
+    }
 
     // If ice on cylinder case, let's compute the area of the ice, and store that as well:
     double ice_area = 0.0;
@@ -3684,23 +3877,31 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
       //--> Scale phi back to normal:
       VecScaleGhost(phi,-1.0);
-
-
-    }
-    // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
-    if(example_ == MELTING_ICE_SPHERE){
-      if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
-        tfinal = tn;
+      // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
+      if(example_ == MELTING_ICE_SPHERE){
+        if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
+          tfinal = tn;
+        }
       }
-
     }
 
     // To-do : this may be the source of erroneous first times being reported in fluid force files -- at the first step, dt might be initialized to something much larger than what the eventual dt will use. Might need to do this differently
-    PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn+dt,forces[0],forces[1],ice_area);
-    ierr = PetscFOpen(mpi_comm,name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
 
-    ierr = PetscFPrintf(mpi_comm,fich_fluid_forces,"%g %g %g %g\n",tn+dt,forces[0],forces[1],ice_area);CHKERRXX(ierr);
-    ierr = PetscFClose(mpi_comm,fich_fluid_forces); CHKERRXX(ierr);
+
+    ierr = PetscFOpen(mpi_comm, name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
+    if(save_fluid_forces && example_requires_area_computation){
+      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn,forces[0],forces[1],ice_area);
+      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g %g\n",tn,forces[0],forces[1],ice_area);CHKERRXX(ierr);
+    }
+    else if(save_fluid_forces && !example_requires_area_computation){
+      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g \n",tn,forces[0],forces[1]);
+      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g \n",tn,forces[0],forces[1]);CHKERRXX(ierr);
+    }
+    else if(!save_fluid_forces && example_requires_area_computation){
+      PetscPrintf(mpi_comm,"tn = %g, A = %0.6f \n",tn, ice_area);
+      ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g\n",tn,ice_area);CHKERRXX(ierr);
+    }
+    ierr = PetscFClose(mpi_comm, fich_fluid_forces); CHKERRXX(ierr);
     PetscPrintf(mpi_comm,"forces saved \n");
 
   }
@@ -4231,7 +4432,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   if(example_uses_inner_LSF) phi_2.get_array();
   if(solve_stefan){
     Tl.get_array();
-    Ts.get_array();
+    if(do_we_solve_for_Ts) Ts.get_array();
     v_int.get_array();
   }
   if (solve_navier_stokes && !no_flow){
@@ -4263,8 +4464,10 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
     point_names.push_back("T_l");
     point_data.push_back(Tl.ptr);
 
-    point_names.push_back("T_s");
-    point_data.push_back(Ts.ptr);
+    if(do_we_solve_for_Ts){
+      point_names.push_back("T_s");
+      point_data.push_back(Ts.ptr);
+    }
 
     point_names.push_back("v_interface_x");
     point_data.push_back(v_int.ptr[0]);
@@ -4302,7 +4505,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   if(solve_stefan){
     Tl.restore_array();
-    Ts.restore_array();
+    if(do_we_solve_for_Ts) Ts.restore_array();
     v_int.restore_array();
   }
   if(solve_navier_stokes && !no_flow){
@@ -5560,8 +5763,10 @@ int main(int argc, char** argv) {
         T_l_n.create(p4est,nodes);
         sample_cf_on_nodes(p4est,nodes,*T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
 
-        T_s_n.create(p4est,nodes);
-        sample_cf_on_nodes(p4est,nodes,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
+        if(do_we_solve_for_Ts){
+          T_s_n.create(p4est,nodes);
+          sample_cf_on_nodes(p4est,nodes,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
+        }
 
         if(do_advection && advection_sl_order ==2){
           T_l_nm1.create(p4est,nodes);
@@ -5651,6 +5856,10 @@ int main(int argc, char** argv) {
           analytical_T[d]->t = tn;
         }
       }
+      // Set the bc interface type for temperature:
+      interface_bc_temp();
+      if(example_uses_inner_LSF){inner_interface_bc_temp();} // inner boundary bc
+
       // Create necessary RHS forcing terms and BC's
       for(unsigned char d=0;d<2;++d){
         if(analytical_IC_BC_forcing_term){
@@ -5775,19 +5984,20 @@ int main(int argc, char** argv) {
           break;
         }
       case FLOW_PAST_CYLINDER:
+      case DISSOLVING_DISK_BENCHMARK:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
-        if(save_fluid_forces){
+        if(save_fluid_forces || example_requires_area_computation){
           // Output file for NS test case errors:
           const char* out_dir_fluid_forces = getenv("OUT_DIR_FILES");
           if(!out_dir_fluid_forces){
               throw std::invalid_argument("You need to set the environment variable OUT_DIR_FILES to save fluid forces");
             }
-          sprintf(name_fluid_forces,"%s/fluid_forces_Re_%0.2f_lmin_%d_lmax_%d_advection_order_%d.dat",
+          sprintf(name_fluid_forces,"%s/area_and_or_force_data_Re_%0.2f_lmin_%d_lmax_%d_advection_order_%d.dat",
                   out_dir_fluid_forces,Re,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order);
 
-          if(no_flow){
+          if(no_flow || !save_fluid_forces){
             ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"w",&fich_fluid_forces); CHKERRXX(ierr);
             ierr = PetscFPrintf(mpi.comm(),fich_fluid_forces,"time A \n");CHKERRXX(ierr);
             ierr = PetscFClose(mpi.comm(),fich_fluid_forces); CHKERRXX(ierr);
@@ -5813,6 +6023,11 @@ int main(int argc, char** argv) {
     if(!loading_from_previous_state){tstep=0;}
     tn = tstart;
     int last_tstep=-1;
+
+    double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
+    double dt_max_allowed_steady = dt_max_allowed;
+    double hodge_percentage_steady = hodge_percentage_of_max_u;
+
     while(tn<=tfinal){ // trying something
       // Enforce startup iterations for verification tests if needed:
       if((startup_iterations>0)){
@@ -5825,6 +6040,31 @@ int main(int argc, char** argv) {
           tn = tstart;
         }
       }
+      if(solve_navier_stokes){
+        // Adjust the cfl_NS depending on the timestep:
+        if(tstep<=10){
+          cfl_NS=0.5;
+          double dxyz_s[P4EST_DIM];
+          dxyz_min(p4est, dxyz_s);
+          dt_max_allowed = cfl_NS*min(dxyz_s[0], dxyz_s[1])/max(u0, v0);
+
+          // loosen hodge criteria for initialization for porous media case:
+          if(example_ == MELTING_POROUS_MEDIA){
+            hodge_percentage_of_max_u = 0.1;
+          }
+
+        }
+        else{
+          cfl_NS = cfl_NS_steady;
+          dt_max_allowed = dt_max_allowed_steady;
+
+          if(example_ == MELTING_POROUS_MEDIA){
+            hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
+          }
+
+        }
+      }
+
       if(tstep==0){
         dxyz_min(p4est,dxyz_smallest);
 
@@ -5966,7 +6206,7 @@ int main(int argc, char** argv) {
         }
         // Create arrays to hold the RHS:
         rhs_Tl.create(p4est_np1,nodes_np1);
-        rhs_Ts.create(p4est_np1,nodes_np1);
+        if(do_we_solve_for_Ts) rhs_Ts.create(p4est_np1,nodes_np1);
 
         // -------------------------------
         // Compute the normal and curvature of the interface
@@ -6092,7 +6332,7 @@ int main(int argc, char** argv) {
         }
         // Destroy arrays to hold the RHS:
         rhs_Tl.destroy();
-        rhs_Ts.destroy();
+        if(do_we_solve_for_Ts) rhs_Ts.destroy();
 
         // -------------------------------
         // Clear interfacial BC if needed (curvature, normals, or both depending on example)
@@ -6180,12 +6420,14 @@ int main(int argc, char** argv) {
                                           liquid_normals.vec, NULL,
                                           NULL, false, NULL,NULL);
 
-        ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec,
-                                          50, 2, 1.e-15,
-                                          extension_band_use_, extension_band_extend_,
-                                          extension_band_check_,
-                                          solid_normals.vec, NULL,
-                                          NULL, false, NULL, NULL);
+        if(do_we_solve_for_Ts){
+          ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec,
+                                            50, 2, 1.e-15,
+                                            extension_band_use_, extension_band_extend_,
+                                            extension_band_check_,
+                                            solid_normals.vec, NULL,
+                                            NULL, false, NULL, NULL);
+        }
 
         if(example_uses_inner_LSF){
           phi_cylinder.create(p4est_np1,nodes_np1);
@@ -6357,8 +6599,8 @@ int main(int argc, char** argv) {
                            phi.vec, dxyz_close_to_interface,
                            face_solver_type,pc_face,cell_solver_type,pc_cell,
                            faces_np1, compute_pressure_to_save, did_crash,
-                           save_fluid_forces? name_fluid_forces:NULL,
-                           save_fluid_forces? fich_fluid_forces:NULL);
+                           (save_fluid_forces || example_requires_area_computation)? name_fluid_forces:NULL,
+                           (save_fluid_forces || example_requires_area_computation)? fich_fluid_forces:NULL);
         if(did_crash){
           PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
           save_fields_to_vtk(p4est_np1,nodes_np1,ghost_np1,ngbd_np1,
@@ -6542,21 +6784,28 @@ int main(int argc, char** argv) {
         // Determine the timestep depending on timestep restrictions from both NS solver and from the Stefan problem
         if(solve_stefan){
             if(tstep==load_tstep){dt_NS=dt_nm1;} // TO-DO: not sure this logic is 100% correct, what about NS only case?
-            dt = min(dt,dt_NS);
+            dt = min(dt_Stefan,dt_NS);
+            dt = min(dt, dt_max_allowed);
           }
         else{
             // If we are only solving Navier Stokes
-            dt = dt_NS;
+            dt = min(dt_NS, dt_max_allowed);
           }
       }
+      // If only solving Stefan problem:
+      if(solve_stefan && !solve_navier_stokes){
+        dt = dt_Stefan;
+      }
+
       PetscPrintf(mpi.comm(),"\n"
                              "%s \n"
                              "Computed timestep: \n"
                              " - dt used: %0.3e "
-                             "- dt_NS : %0.3e  "
-                             "- dxyz close to interface : %0.3e "
+                             " - dt_Stefan: %0.3e "
+                             " - dt_NS : %0.3e  "
+                             " - dxyz close to interface : %0.3e "
                              "\n \n",solve_stefan?stefan_timestep:"",
-                            dt,dt_NS,
+                            dt, dt_Stefan, dt_NS,
                             dxyz_close_to_interface);
 
       // Clip the timestep if we are near the end of our simulation, to get the proper end time:
@@ -6671,7 +6920,29 @@ int main(int argc, char** argv) {
 
         //      my_p4est_level_set_t ls_new(ngbd_np1);
         ls.update(ngbd_np1);
-        if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30);
+
+        // Okay, time to reinitialize in a clever way depending on the scenario:
+
+        if(solve_stefan){
+          // If interface velocity *is* forced to zero, we do not reinitialize -- that way we don't degrade the LSF through unnecessary reinitializations
+          if(!force_interfacial_velocity_to_zero){
+            // If we do need to reinitialize, let's think about the time scales
+            if(solve_navier_stokes && tstep>0){
+              // If we are solving the coupled problem -- let's check the time scales of the interfacial velocity versus the fluid one.
+              // If fluid velocity is much larger than interfacial velocity, may not need to reinitialize as much
+              // (bc the timestepping is much smaller than necessary for the interface growth, and we don't want the reinitialization to govern more of the interface change than the actual physical interface change)
+
+              if((tstep % reinit_every_iter) == 0){
+                ls.reinitialize_2nd_order(phi.vec,30);
+                PetscPrintf(mpi.comm(), "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
+              }
+            }
+            else{
+              // if just stefan, go ahead and reinitialize
+              ls.reinitialize_2nd_order(phi.vec,30);
+            }
+          }
+        }
 
         if(solve_navier_stokes && !solve_stefan){
           // If only solving Navier-Stokes, only need to do this once, not every single timestep
