@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: September 30, 2021.
+ * Updated: October 1, 2021.
  */
 namespace slml
 {
@@ -204,9 +204,6 @@ namespace slml
 		const PCAScaler _pcaScaler;				// Preprocessing module including type-based standard scaler followed by
 		const StandardScaler _stdScaler;		// PCA dimensionality reduction and whitening.
 
-		const int INPUT_WIDTH_PT1 = MASS_N_COMPONENTS;	// Expecting the input in two parts:.
-		const int INPUT_WDITH_PT2 = 1;
-
 		unsigned long N_LAYERS;					// Number of layers (hidden + output).
 		std::vector<std::vector<int>> _sizes;	// Matrix size tuples (m, k).  m = layer size, k = input size, (n = number of samples).
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> W;	// Weight matrices flattened.  Matrices are given in row-major order.
@@ -269,7 +266,11 @@ namespace slml
 										// To compute it, we use bilinear interpolation (invariant to 90 deg rotations).
 		double targetPhi_d;				// Reserved for expected/target phi value at departure point.
 		double numBacktrackedPhi_d;		// Phi value at numerically backtracked departure point (using linear interp).
-		double hk_a;					// Dimensionless curvature at the point on Gamma closest to node nodeIdx.
+		double hk_a;					// Dimensionless curvature at node nodeIdx.
+
+		// Debugging fields.
+		double theta_a;					// Angle between vel_a and normal vector at arrival point.
+		double absHRelError_d;			// Absolute h-normalized phi_d error at departure point.
 
 		/**
 		 * Serialize data packet into a vector.
@@ -315,7 +316,7 @@ namespace slml
 			data.push_back( numBacktrackedPhi_d );	// Semi-Lagrangian approximation to level-set value at departure.
 
 			if( includeHK )
-				data.push_back( hk_a );				// Curvature at the interface.
+				data.push_back( hk_a );				// Dimensionless curvature at arrival point.
 		}
 
 #ifndef P4_TO_P8
@@ -558,19 +559,18 @@ namespace slml
 	/////////////////////////////////////////////////// Cache Fetcher //////////////////////////////////////////////////
 
 	/**
-	 * A implementation of a cache fetcher to retrieve improved level-set function values for nodes located next to the
-	 * interface at time tn.  It leverages the parallel communication mechanisms existing in the library interpolation
-	 * class.  Instead of interpolation, we retrieve the level-set value of the grid point and whether it was computed
-	 * with the neural network.
+	 * A implementation of a cache fetcher to retrieve improved level-set function values for nodes next to Gamma^n. It
+	 * leverages the parallel communication mechanisms existing in the library interpolation class.  However, instead of
+	 * interpolation, we retrieve the grid point level-set value and whether it was computed with the neural network.
 	 * To allow the "interpolate" method to fetch the cache state and place it in a results array, we set up the input
 	 * fields:
-	 *  - the level-set function values at time Gn from the cache, and
+	 *  - the level-set function values at G^n from the cache, and
 	 *  - the neural flag (1 if computation was improved with neural network, 0 otherwhise)
 	 * in that order.  This amounts to 2 input fields regardless of spatial dimensions.
 	 * Upon response, the results array contains also 2 fields:
 	 *  - the level-set value computed with the neural network or a meaningless value if query point doesn't match a
-	 *    grid point at Gn for which we used the neural network, and
-	 *  - a flag value: 1 if level-set value is valid, 0 if not.
+	 *    grid point at G^n for which we used the neural network, and
+	 *  - a flag value: >= 1 if level-set value is valid (rank + 1), 0 if not.
 	 */
 	class Cache : public my_p4est_interpolation_t
 	{
@@ -582,14 +582,13 @@ namespace slml
 
 		/**
 		 * Input fields order or indices, as they should be given when setting up the inputs of the CacheFetcher object.
-		 * The LAST type is only used for iteration purposes.
 		 */
 		enum Fields : int {PHI = 0, FLAG};
 		static const int N_FIELDS;
 
 		/**
 		 * Constructor.
-		 * @param [in] ngbd Pointer to node neighborhood struct at time tn (i.e., Gn).
+		 * @param [in] ngbd Pointer to node neighborhood struct at time t^n (i.e., G^n).
 		 */
 		explicit Cache( const my_p4est_node_neighbors_t *ngbd );
 
@@ -601,7 +600,7 @@ namespace slml
 		void setInput( Vec fields[], const int& nFields );
 
 		/**
-		 * Fetch cached data for a query grid point (at Gnp1 -- the grid a time tnp1).
+		 * Fetch cached data for a query grid point (at G^np1 -- the grid a time t^np1).
 		 * @note The name is misleading: we use `interpolate` to meet the implementation requirement of the virtual
 		 * function of the same name in the base class.  This function leverages the multiprocess communication infra-
 		 * structure existing in the base interpolation class.
@@ -632,17 +631,16 @@ namespace slml
 	class SemiLagrangian : public my_p4est_semi_lagrangian_t
 	{
 	private:
-		const double BAND;			// Band width around the interface: must match what was used for training (>=2).
-		Vec _mlFlag = nullptr;		// A flag vector that stores rank+1 in nodes adjacent to Gamma for which we have
-									// computed phi with the nnet, 0 otherwise.  It also distinguishes grid points with
-									// valid phi stencils (i.e., uniform in each direction) to compute curvature with
-									// the corresponding nnet.
-		Vec _mlPhi = nullptr;		// Parallel vector to store advected phi for time tnp1 computed with nnet.
+		double H = 0;				// Smallest cell width.
+		const double FLOW_ANGLE_THRESHOLD = 10 * M_PI / 18;	// Maximum angle between midpoint vel and the phi-signed normal at a
+															// grid point next to Gamma^n.
+		Vec _mlFlag = nullptr;		// A flag vector that stores rank+1 for nodes next to Gamma^n for which
+									// we have computed phi with the nnet, 0 otherwise.  It also distinguishes vertices
+									// with valid phi stencils (i.e., uniform in each direction).
+		Vec _mlPhi = nullptr;		// Parallel vector to store advected phi for time t^np1 computed with nnet.
 
-		std::unordered_set<p4est_locidx_t> _localUniformIndices;			// Pointer to set of indices of local nodes
-		const std::unordered_set<p4est_locidx_t>* _localUniformIndicesPtr;	// next to Gamma with uniform stencils.
-																			// Former variable is created if user
-																			// doesn't supply it.  Use the pointer only!
+		std::unordered_set<p4est_locidx_t> _localUniformIndices;	// Set of indices of local nodes immediately next to
+																	// Gamma^n with uniform stencils.
 
 		const interpolation_method VEL_INTERP_MTHD;			// Default interpolation methods
 		const interpolation_method PHI_INTERP_MTHD;			// for vel and level-set values.
@@ -652,16 +650,15 @@ namespace slml
 		const unsigned long ITERATION;						// Iteration ID for current advection step.
 		bool _used = false;									// Prevents reusing a semi-Lagrangian instance of this obj.
 
-		const NeuralNetwork * const _nnet;					// Semi-Lagrangian error-correction neural network.
+		const NeuralNetwork * const _nnet;					// Error-correcting neural network.
 
 		/**
-		 * Create the set of indices of nodes next to the interface that possess uniform stencils.
-		 * @param [in] ngbdN Pointer to neighborhood struct at time tn.
-		 * @param [in] phi Parallel vector of level-set values at time tn.
+		 * Create the set of indices of nodes next to Gamma^n with uniform stencils.
+		 * @param [in] ngbdN Pointer to neighborhood struct at time t^n.
+		 * @param [in] phi Parallel vector of level-set values at time t^n.
 		 * @return Address of newly created set of node indices.
 		 */
-		const std::unordered_set<p4est_locidx_t>* _computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN,
-																		 	   Vec phi );
+		void _computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi );
 
 		/**
 		 * Compute semi-Lagrangian advection for all points and correct level-set values at time tnp1 for grid points
@@ -699,27 +696,12 @@ namespace slml
 		 * @param [in,out] nodesNp1 Pointer to a nodes' object pointer.
 		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
-		 * @param [in] localUniformIndices Pointer to set of indices of locally owned nodes next to Gamma with uniform stencils.
+		 * @param [in] phi Level-set values to construct the shell of h-uniform-stencil grid points around Gamma_c^n.
 		 * @param [in] nnet Pointer to neural network, which should be created externally to avoid recurrent spawning.
-		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
 		 * @param [in] iteration Current ID for advection step.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-				  		my_p4est_node_neighbors_t *ngbdN, const std::unordered_set<p4est_locidx_t> *localUniformIndices,
-						const NeuralNetwork *nnet, const double& band=2, const unsigned long& iteration=0 );
-
-		/**
-		 * Constructor.
-		 * @param [in,out] p4estNp1 Pointer to a p4est object pointer.
-		 * @param [in,out] nodesNp1 Pointer to a nodes' object pointer.
-		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
-		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
-		 * @param [in] phi Level-set values to construct the set of indices of locally owned nodes next to Gamma with uniform stencils.
-		 * @param [in] band Bandwidth to be used around the interface to enforce valid samples.
-		 * @param [in] iteration Current ID for advection step.
-		 */
-		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-						my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band=2,
+						my_p4est_node_neighbors_t *ngbdN, Vec phi, const NeuralNetwork *nnet=nullptr,
 						const unsigned long& iteration=0 );
 
 		/**

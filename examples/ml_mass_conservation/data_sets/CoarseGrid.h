@@ -406,7 +406,7 @@ public:
 
 		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
-		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, MASS_BAND_HALF_WIDTH );
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi );
 		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, phi_c_xx, dataPackets );
 
 		// Continue process if all samples lie within computational domain.

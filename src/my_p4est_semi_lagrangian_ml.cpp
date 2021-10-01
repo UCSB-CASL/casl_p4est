@@ -536,81 +536,59 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 //////////////////////////////////////////////////// SemiLagrangian ////////////////////////////////////////////////////
 
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN,
-									  const std::unordered_set<p4est_locidx_t> *localUniformIndices,
-									  const NeuralNetwork * const nnet,
-									  const double& band, const unsigned long& iteration )
-									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
-									  ITERATION( iteration ),
-									  VEL_INTERP_MTHD( interpolation_method::quadratic ),
-									  PHI_INTERP_MTHD( interpolation_method::quadratic ),
-									  _nnet( nnet ),
-									  my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
-{
-	if( band < 2 )
-		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
-
-	_localUniformIndicesPtr = localUniformIndices;
-
-	velo_interpolation = VEL_INTERP_MTHD;
-	phi_interpolation = PHI_INTERP_MTHD;
-}
-
-
-slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const double& band,
-									  const unsigned long& iteration )
-									  : BAND( MAX( 2.0, band ) ), 		// Minimum bandwidth of 2 to give enough space.
-										ITERATION( iteration ),
+									  my_p4est_node_neighbors_t *ngbdN, Vec phi,
+									  const NeuralNetwork *nnet, const unsigned long& iteration )
+									  : ITERATION( iteration ),
 										VEL_INTERP_MTHD( interpolation_method::quadratic ),
 										PHI_INTERP_MTHD( interpolation_method::quadratic ),
-										_nnet( nullptr ),
+										_nnet( nnet ),
 										my_p4est_semi_lagrangian_t( p4estNp1, nodesNp1, ghostNp1, ngbdN )
 {
-	if( band < 2 )
-		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: band must be at least 2!" );
+	// Retrieve grid size data and validate we are working on a domain with square cells.
+	p4est_t const *p4est_n = ngbdN->get_p4est();
+	double dxyz[P4EST_DIM], dxyz_min;
+	get_dxyz_min( p4est_n, dxyz, dxyz_min );
+	if( ABS( dxyz[0] - dxyz[1] ) > PETSC_MACHINE_EPSILON ONLY3D( || ABS( dxyz[1] - dxyz[2] ) > PETSC_MACHINE_EPSILON ) )
+		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Cells must be square!" );
 
-	_localUniformIndicesPtr = _computeLocalUniformIndices( ngbdN, phi );
+	H = dxyz_min;
+	_computeLocalUniformIndices( ngbdN, phi );
 
 	velo_interpolation = VEL_INTERP_MTHD;
 	phi_interpolation = PHI_INTERP_MTHD;
 }
 
 
-const std::unordered_set<p4est_locidx_t>* slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
+void slml::SemiLagrangian::_computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi )
 {
 	if( !phi )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian Constructor: phi values must be supplied!" );
 
-	// Some pointers to structs for the the grid/forest at time tn.
+	// Some pointers to structs for the the grid/forest at time t^n.
 	p4est_t const *p4estN = ngbdN->get_p4est();
 	p4est_nodes_t const *nodesN = ngbdN->get_nodes();
 
 	_localUniformIndices.clear();
 	_localUniformIndices.reserve( nodesN->num_owned_indeps );
 
-	// We need the indices for nodes next to the interface (i.e., one of their irradiating edges is crossed by Gamma).
-	// Since curvature is used to flip samples, we need only locally owned nodes because we can use the curvature
-	// nnet with them as long as they have a uniform stencil.  We collect this indices once per semi-Lagrangian step
-	// only at the beginning of the process to save time.
+	// We need the indices for nodes that have a neighbor across Gamma^n and have uniform h-stencils.
+	// We collect these indices once per semi-Lagrangian step and only at the beginning of the process to save runtime.
 	auto* p4estUserData = (splitting_criteria_t*)p4estN->user_pointer;
 	NodesAlongInterface nodesAlongInterface( p4estN, nodesN, ngbdN, (signed char)p4estUserData->max_lvl );
-	vector<p4est_locidx_t> indices;
+	std::vector<p4est_locidx_t> indices;
 	nodesAlongInterface.getIndices( &phi, indices );
+	std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
 
 	// Check each node if it has a full uniform stencil.
-	for( auto nodeIdx : indices )
+	for( const p4est_locidx_t& n : indices )
 	{
-		try
+		try										// Check if node has a full h-uniform stencil.
 		{
-			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ) )
-				_localUniformIndices.insert( nodeIdx );
+			if( nodesAlongInterface.getFullStencilOfNode( n, stencilIndices ) )
+				_localUniformIndices.insert( n );
 		}
 		catch( const std::exception &exception ) {}
 	}
-
-	return &_localUniformIndices;
 }
 
 
@@ -642,7 +620,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 
 	// Initialize output array.
 	freeDataPacketArray( dataPackets );		// Just in case, free and clear whatever is left in output array.
-	dataPackets.reserve( _localUniformIndicesPtr->size() );
+	dataPackets.reserve( _localUniformIndices.size() );
 
 	// Domain features.
 	const double *xyz_min = get_xyz_min();
@@ -681,13 +659,13 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 
 	double *velStar[P4EST_DIM] = {nullptr, nullptr};
 	for( auto& dir : velStar )		// To allocate mid velocity it is safe to use only nodes we are interested in.
-		dir = new double[_localUniformIndicesPtr->size()];
+		dir = new double[_localUniformIndices.size()];
 
 	// Now, find velStar.
 	std::unordered_map<p4est_locidx_t, int> velStarNodeIdxToOutIdxMap;	// We need to map node indices to out indices.
-	velStarNodeIdxToOutIdxMap.reserve( _localUniformIndicesPtr->size() );
+	velStarNodeIdxToOutIdxMap.reserve( _localUniformIndices.size() );
 	int velStarOutIdx = 0;
-	for( const auto& n : *_localUniformIndicesPtr )
+	for( const auto& n : _localUniformIndices )
 	{
 		double xyzStar[P4EST_DIM];
 		node_xyz_fr_n( n, p4est_n, nodes_n, xyzStar );
@@ -733,14 +711,14 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	double xyz_d[P4EST_DIM];						// Departure point.
 	double xyz_a[P4EST_DIM];						// Arrival point.
 	std::vector<p4est_locidx_t> outIdxToNodeIdx;	// This is a map from out index to actual node index in PETSc Vecs.
-	outIdxToNodeIdx.reserve( _localUniformIndicesPtr->size() );
+	outIdxToNodeIdx.reserve( _localUniformIndices.size() );
 	std::vector<double> distances;					// Vector to store the distance between arrival and departure points.
-	distances.reserve( _localUniformIndicesPtr->size() );
+	distances.reserve( _localUniformIndices.size() );
 	int outIdx = 0;									// Index in "interpolation" output.
 	bool allInside = true;							// Warning flag: false if at least one point along the interface is
 													// backtracked outside the domain.
 													// Helps prevent inconsistent training samples.
-	for( const auto& nodeIdx : *_localUniformIndicesPtr )
+	for( const auto& nodeIdx : _localUniformIndices )
 	{
 		// Let's skip nodes for which the velocity at it or the midpoint velocity is practically zero.
 		double velMagnitude = 0, velStarMagnitude = 0;
@@ -953,7 +931,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 
 		// Grab only locally owned nodes at maximum level of refinement and having a valid (uniform) neighborhood.
 		// We can access these through the pointer _localUniformIndicesPtr.
-		if( _localUniformIndicesPtr->find( dataPacket->nodeIdx ) != _localUniformIndicesPtr->end() )
+		if( _localUniformIndices.find( dataPacket->nodeIdx ) != _localUniformIndices.end() )
 		{
 			_mlFlagPtr[dataPacket->nodeIdx] = p4est_n->mpirank + 1;	// Set value for valid node next to Gamma: rank+1.
 
@@ -1135,7 +1113,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	// Define splitting criteria with an explicit band of min diags around Gamma.
 	auto splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
 																   oldSplittingCriteria->max_lvl,
-																   oldSplittingCriteria->lip, BAND );
+																   oldSplittingCriteria->lip, MASS_BAND_HALF_WIDTH );
 
 	// New grid level-set values: start from current grid values.
 	Vec phi_np1;
