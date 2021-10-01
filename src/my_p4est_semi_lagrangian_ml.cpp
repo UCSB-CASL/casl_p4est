@@ -893,17 +893,17 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 }
 
 
-void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi,
-											   Vec phi_xx[P4EST_DIM], Vec hk, const double& h )
+void slml::SemiLagrangian::_computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4EST_DIM], Vec *vel_xx[P4EST_DIM],
+											   const double& dt, Vec phi, Vec phi_xx[P4EST_DIM], Vec hk )
 {
 	PetscErrorCode ierr;
 
-	// Some pointers to structs for the grid at time tn.  You should NOT use this function after the grid has entered
+	// Some pointers to structs for the grid at time t^n.  You should NOT use this function after the grid has entered
 	// the loop for refining and coarsening during an advection step.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
-	// Invalidate the flag vector and reallocate it with Gn.
+	// Invalidate the machine learning flag vector and reallocate it with G^n.
 	if( _mlFlag )
 	{
 		ierr = VecDestroy( _mlFlag );
@@ -913,7 +913,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	ierr = VecCreateGhostNodes( p4est_n, nodes_n, &_mlFlag );
 	CHKERRXX( ierr );
 
-	// Invalidate the machine learning solution phi vector.  Reallocate it using the struct of Gn.
+	// Invalidate the machine learning solution phi vector.  Reallocate it using the struct of G^n.
 	if( _mlPhi )
 	{
 		ierr = VecDestroy( _mlPhi );
@@ -924,20 +924,55 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	CHKERRXX( ierr );
 
 	// Collect data packets for locally owned nodes (no ghost nodes).  Also, skip nodes whose backtracked point falls
-	// outside the domain (even if periodicity is enabled).  This makes the runtime process compatible with training.
+	// outside the domain (even if periodicity is enabled), or if they don't follow the flow (angle between unit u_a and
+	// phi-signed normal is greater than a threshold).  This makes the inference process compatible with training.
 	std::vector<DataPacket *> dataPackets;
-//	collectSamples( vel, vel_xx, dt, phi, phi_xx, dataPackets );
+	collectSamples( vel, vel_xx, dt, phi, normal, phi_xx, dataPackets );
 
-	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
-	// step because curvature should have been computed using the hybrid inference system only for those vertices with
-	// full stencils.  For them, we set their _mlFlag value and then scatter forward both the flag and the level-set at
-	// departure point (computed with nnet).  Afterward, numerical advection is used in the rest of the nodes that are
-	// not flagged (including ghost nodes), and we proceed with the refinement/coarsening process.  Notice we still need
-	// to flip inferred level-set values depending on hk sign (i.e., we deal only with the negative curvature spectrum).
-	const double *hkReadPtr;
-	ierr = VecGetArrayRead( hk, &hkReadPtr );
+	// Let's interpolate curvature at the interface bilineraly for valid samples.
+	std::vector<double> outHKappa( dataPackets.size(), 0 );
+
+	const double *phiReadPtr, *normalReadPtr[P4EST_DIM];
+	ierr = VecGetArrayRead( phi, &phiReadPtr );
+	CHKERRXX( ierr );
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		ierr = VecGetArrayRead( normal[dim], &normalReadPtr[dim] );
+		CHKERRXX( ierr );
+	}
+
+	my_p4est_interpolation_nodes_t hkInterp( ngbd_n );
+	int outIdx = 0;
+	for( auto dataPacket : dataPackets )
+	{
+		double xyz[P4EST_DIM];
+		p4est_locidx_t nodeIdx = dataPacket->nodeIdx;
+		node_xyz_fr_n( nodeIdx, p4est_n, nodes_n, xyz );
+
+		for( int dim = 0; dim < P4EST_DIM; dim++ )	// Project point onto Gamma^n.
+			xyz[dim] -= phiReadPtr[nodeIdx] * normalReadPtr[dim][nodeIdx];
+
+		hkInterp.add_point( outIdx, xyz );
+		outIdx++;
+	}
+	hkInterp.set_input( hk, interpolation_method::linear );
+	hkInterp.interpolate( outHKappa.data() );		// Interpolate dimensionless curvature.
+	hkInterp.clear();
+
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
+		CHKERRXX( ierr );
+	}
+	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 	CHKERRXX( ierr );
 
+	// Note: During advection and when using the neural network, we concern only about locally owned nodes with full h-
+	// uniform stencils.  For them, we set their _mlFlag value and then scatter forward both the flag and the level-set
+	// at departure point (computed with nnet).  Afterward, numerical advection is used in the rest of the nodes that
+	// are not flagged (including ghost nodes), and we proceed with the refinement/coarsening process.  Notice we still
+	// need to flip inferred level-set values depending on hk sign (i.e., we deal only with the negative curvature
+	// spectrum).
 	double *_mlFlagPtr;
 	ierr = VecGetArray( _mlFlag, &_mlFlagPtr );
 	CHKERRXX( ierr );
@@ -946,29 +981,25 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	ierr = VecGetArray( _mlPhi, &_mlPhiPtr );
 	CHKERRXX( ierr );
 
+	int hkIdx = 0;
 	for( auto dataPacket : dataPackets )
 	{
-		dataPacket->hk_a = hkReadPtr[dataPacket->nodeIdx];	// hk at the interface: could've been computed numerically
-															// or with nnet.  It can be positive or negative.
+		dataPacket->hk_a = outHKappa[hkIdx];		// Grid point's hk projected onto Gamma^n.  It can be +/-.
+		_mlFlagPtr[dataPacket->nodeIdx] = p4est_n->mpirank + 1;	// Set value for valid node around Gamma: rank+1.
 
-		// Grab only locally owned nodes at maximum level of refinement and having a valid (uniform) neighborhood.
-		// We can access these through the pointer _localUniformIndicesPtr.
-		if( _localUniformIndices.find( dataPacket->nodeIdx ) != _localUniformIndices.end() )
-		{
-			_mlFlagPtr[dataPacket->nodeIdx] = p4est_n->mpirank + 1;	// Set value for valid node next to Gamma: rank+1.
-
-			// Let's normalize data the way the nnet understands it.
-			if( dataPacket->hk_a > 0 )					// Working on the negative curvature spectrum.
-			{											// Flipping signs accordingly except for hk_a: that one
-				dataPacket->phi_a *= -1;				// statys the way it is to fip back predictions.
-				for( auto& phi_d : dataPacket->phi_d )
-					phi_d *= -1;
-				dataPacket->numBacktrackedPhi_d *= -1;
-			}
-
-			// Normalize semi-Lagrangian data so that -v_a has an angle in the range of [0, pi/2].
-			dataPacket->rotateToFirstQuadrant();
+		// Let's normalize data the way the nnet understands it.
+		if( dataPacket->hk_a > 0 )					// Working on the negative curvature spectrum.
+		{											// Flipping signs accordingly except for hk_a: that one
+			dataPacket->phi_a *= -1;				// statys the way it is to flip back predictions.
+			for( auto& phi_d : dataPacket->phi_d )
+				phi_d *= -1;
+			dataPacket->numBacktrackedPhi_d *= -1;
 		}
+
+		// Reorienting semi-Lagrangian data so that the midpoint vel -u_a has an angle in the range of [0, pi/2].
+		dataPacket->rotateToFirstQuadrant();
+
+		hkIdx++;
 	}
 
 	// Build samples array to evaluate neural network to fix numBacktrackedPhi.
@@ -982,7 +1013,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 //		private( i )
 	for( i = 0; i < dataPackets.size(); i++ )
 	{
-		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x.
+		std::vector<double> sample1, sample2;		// We'll give it two takes: original and reflected about y=x + beta.
 		sample1.reserve( MASS_INPUT_SIZE );
 		sample2.reserve( MASS_INPUT_SIZE );
 		dataPackets[i]->serialize( sample1, false, true, true, false );	// Include curvature too.
@@ -997,12 +1028,12 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 			inputs[idx + 1][j] = sample2[j];
 		}
 
-		// Reorder input: swap backtracked phi_d with hk.
+		// Reorder input: swap backtracked phi_d with hk_a: in Python code, hk_a comes before numBactrackedPhi_d.
 		for( int j = 0; j < N_SAMPLES_PER_PACKET; j++ )
 			std::swap( inputs[idx + j][MASS_INPUT_SIZE - 1], inputs[idx + j][MASS_INPUT_SIZE - 2] );
 	}
 
-	// Execute inference on batch: predictions have been already denormalized.
+	// Execute inference on batch: predictions have been already h-denormalized.
 	_nnet->predict( inputs, outputs, N_SAMPLES );
 
 	// Collect outputs.
@@ -1012,12 +1043,12 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		int idx = i * N_SAMPLES_PER_PACKET;
 		double phi_d = (outputs[idx + 0] + outputs[idx + 1]) / 2.0;		// Average predictions produces a better one.
 
-		double absRelDiff = ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ) / h;	// Sometimes the nnet fails awfully.
+		double absRelDiff = ABS( phi_d - dataPackets[i]->numBacktrackedPhi_d ) / H;	// Sometimes the nnet fails awfully.
 // 		maxAbsRelError = MAX( maxAbsRelError, absRelDiff );
-		if( absRelDiff > 0.15 || ABS( phi_d ) >= 2.0 * h  )			// To catch those cases, we test
-		{															// against numerical phi_d and check
-			phi_d = dataPackets[i]->numBacktrackedPhi_d;			// if predicted value is >= 2H.
-			_mlFlagPtr[dataPackets[i]->nodeIdx] = 0;				// Remove it from list of ml-solved vertices.
+		if( absRelDiff > 0.15 || ABS( phi_d - dataPackets[i]->phi_a ) >= H  )		// To catch those cases, for CFL=1 and max||u|| <= 1, phi_d
+		{																			// shouldn't be farther than H from phi_a.
+			phi_d = dataPackets[i]->numBacktrackedPhi_d;
+			_mlFlagPtr[dataPackets[i]->nodeIdx] = 0;		// Remove it from list of ml-solved vertices.
 //			std::cerr << "Out!" << std::endl;
 		}
 
@@ -1025,7 +1056,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 		_mlPhiPtr[dataPackets[i]->nodeIdx] = phi_d * (dataPackets[i]->hk_a > 0? -1 : 1);
 	}
 
-	// Cleaned up.
+	// Clean up.
 	delete [] inputs;
 	delete [] outputs;
 
@@ -1036,9 +1067,6 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	CHKERRXX( ierr );
 
 	ierr = VecRestoreArray( _mlFlag, &_mlFlagPtr );
-	CHKERRXX( ierr );
-
-	ierr = VecRestoreArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
 
 	// Let's synchronize the machine learning flag vector among all processes.
@@ -1058,7 +1086,8 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 }
 
 
-void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated )
+void slml::SemiLagrangian::updateP4EST( Vec vel[P4EST_DIM], const double& dt, Vec *phi, Vec hk, Vec normal[P4EST_DIM],
+										Vec *howUpdated, Vec *phiNum )
 {
 	if( _used )				// One-time usage check.
 	{
@@ -1070,22 +1099,13 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	_used = true;			// From now on, we can't reuse this object to advect other level-set functions.
 
 	PetscErrorCode ierr;
-	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
-	CHKERRXX( ierr );
 
-	// Some pointers to structs for the grid at time tn.
+	// Some pointers to structs for the grid at time t^n.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
-	// Retrieve grid size data and validate we are working on a domain with square cells.
-	double dxyz[P4EST_DIM];
-	double dxyz_min;
-	get_dxyz_min( p4est_n, dxyz, dxyz_min );
-	if( ABS( dxyz[0] - dxyz[1] ) > PETSC_MACHINE_EPSILON ONLY3D( || ABS( dxyz[1] - dxyz[2] ) > PETSC_MACHINE_EPSILON ) )
-		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Cells must be square!" );
-
 	////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy[, vel_zz] //////////////////////
-	// We need these to interpolate the velocity at updated grid Gnp1 and to retrieve the backtracked departure point
+	// We need these to interpolate the velocity at updated grid G^np1 and to retrieve the backtracked departure point
 	// with second-order accuracy.
 	Vec *vel_xx[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; dir++ )	// Choose velocity component: u, v, or w.
@@ -1111,7 +1131,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	}
 
 	//////////////// Compute second spatial derivatives of level-set function: phi_xx, phi_yy[, phi_zz] ////////////////
-	// We need these when collecting samples along the interface for computing the machine learning solution.
+	// We need these when collecting samples for valid points next to Gamma^n to compute the machine learning solution.
 	Vec phi_xx[P4EST_DIM];
 	for( auto & dir : phi_xx )
 	{
@@ -1120,19 +1140,19 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	}
 	ngbd_n->second_derivatives_central( *phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ) );
 
-	//////////////// Compute level-set values for points next to Gamma using the machine learning model ////////////////
+	//////////// Compute level-set values for valid points next to Gamma^n using the machine learning model ////////////
 	// As the grid converges below, we'll query if the values for grid points have been computed with the neural model.
 	// This also serves as a cache to avoid costly nnet evaluation every time that the new grid iterates.
-	// Note: the cache is computed off the grid (Gn or ngbd_n) at time tn.  _mlFlag and _mlPhi should be invalidated
+	// Note: the cache is computed off the grid (G^n or ngbd_n) at time t^n.  _mlFlag and _mlPhi should be invalidated
 	// upon exiting the current function (see the very last part of this procedure).
-	_computeMLSolution( vel, vel_xx, dt, *phi, phi_xx, hk, dxyz_min );
+	_computeMLSolution( vel, normal, vel_xx, dt, *phi, phi_xx, hk );
 
 	///////////////////////////////////////// Preparing coarse-refine process //////////////////////////////////////////
 
 	// Save the old splitting criteria information.
 	auto *oldSplittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
 
-	// Define splitting criteria with an explicit band of min diags around Gamma.
+	// Define splitting criteria with an explicit band with half width of MASS_BAND_HALF_WIDTH min diags around Gamma.
 	auto splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
 																   oldSplittingCriteria->max_lvl,
 																   oldSplittingCriteria->lip, MASS_BAND_HALF_WIDTH );
@@ -1140,6 +1160,11 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	// New grid level-set values: start from current grid values.
 	Vec phi_np1;
 	ierr = VecCreateGhostNodes( p4est, nodes, &phi_np1 );	// Notice p4est and nodes are the grid at time n so far.
+	CHKERRXX( ierr );
+
+	// New grid level-set values computed numerically (before loading nnet-computed cached values).
+	Vec phiNum_np1;
+	ierr = VecCreateGhostNodes( p4est, nodes, &phiNum_np1 );
 	CHKERRXX( ierr );
 
 	// See how nodes were updated; later, this is used for selective reinitialization.
@@ -1153,12 +1178,13 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 	int counter = 0;
 	while( isGridChanging )
 	{
-		ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
-		CHKERRXX( ierr );
-
-		// Advect from Gn to Gnp1 to enable refinement.
+		// Advect from G^n to G^np1 to enable refinement.
 		double *phi_np1Ptr;
 		ierr = VecGetArray( phi_np1, &phi_np1Ptr );
+		CHKERRXX( ierr );
+
+		double *phiNum_np1Ptr;
+		ierr = VecGetArray( phiNum_np1, &phiNum_np1Ptr );
 		CHKERRXX( ierr );
 
 		double *howUpdated_np1Ptr;
@@ -1166,12 +1192,15 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		CHKERRXX( ierr );
 
 		// Perform advection with second-order semi-Lagrangian step.
-		_advectFromNToNp1( dt, dxyz_min, vel, vel_xx, *phi, phi_xx, phi_np1Ptr, howUpdated_np1Ptr );
+		_advectFromNToNp1( dt, vel, vel_xx, *phi, phi_xx, phi_np1Ptr, phiNum_np1Ptr, howUpdated_np1Ptr );
 
 		// Refine an coarsen grid; detect if it changes from previous coarsening/refinement operation.
 		isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est, nodes, phi_np1Ptr );
 
 		ierr = VecRestoreArray( howUpdated_np1, &howUpdated_np1Ptr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( phiNum_np1, &phiNum_np1Ptr );
 		CHKERRXX( ierr );
 
 		ierr = VecRestoreArray( phi_np1, &phi_np1Ptr );
@@ -1194,15 +1223,18 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 			ierr = VecCreateGhostNodes( p4est, nodes, &phi_np1 );
 			CHKERRXX( ierr );
 
-			// Reallocate the how-updated debugging vector.
+			ierr = VecDestroy( phiNum_np1 );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &phiNum_np1 );
+			CHKERRXX( ierr );
+
+			// Reallocate the how-updated vector (setting everything to 0 => numerical).
 			ierr = VecDestroy( howUpdated_np1 );
 			CHKERRXX( ierr );
 			ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated_np1 );
 			CHKERRXX( ierr );
 		}
 
-		ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
-		CHKERRXX( ierr );
 		counter++;
 	}
 
@@ -1222,9 +1254,21 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		CHKERRXX( ierr );
 		*howUpdated = howUpdated_np1;
 	}
-	else		// If caller doesn't want the howUpdated flag, just destroy it the one we computed here.
+	else		// If caller doesn't want the howUpdated flag, just destroy the one we computed here.
 	{
 		ierr = VecDestroy( howUpdated_np1 );
+		CHKERRXX( ierr );
+	}
+
+	if( phiNum )
+	{
+		ierr = VecDestroy( *phiNum );
+		CHKERRXX( ierr );
+		*phiNum = phiNum_np1;
+	}
+	else		// If caller doesn't want the debugging numerical level-set values at G^np1, just destroy them.
+	{
+		ierr = VecDestroy( phiNum_np1 );
 		CHKERRXX( ierr );
 	}
 
@@ -1244,12 +1288,9 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 		delete[] dir;
 	}
 
-	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
-	CHKERRXX( ierr );
-
 	delete splittingCriteriaBandPtr;
 
-	// Invalidating and clearing internal cache parallel vectors.
+	// Invalidating and clearing internal machine-learning cache parallel vectors.
 	ierr = VecDestroy( _mlFlag );
 	CHKERRXX( ierr );
 	_mlFlag = nullptr;
@@ -1260,18 +1301,14 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[], const double& dt, Vec *phi, V
 }
 
 
-void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h, Vec vel[P4EST_DIM],
+void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, Vec vel[P4EST_DIM],
 											  Vec *vel_xx[P4EST_DIM], Vec phi, Vec phi_xx[P4EST_DIM],
-											  double *phi_np1Ptr, double *howUpdated_np1Ptr )
+											  double *phi_np1Ptr, double *phiNum_np1Ptr, double *howUpdated_np1Ptr )
 {
-	PetscErrorCode ierr;
-	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
-	CHKERRXX( ierr );
-
 	my_p4est_interpolation_nodes_t interp( ngbd_n );			// These node neighborhoods are the ones that preserve
-	my_p4est_interpolation_nodes_t interp_phi( ngbd_phi );		// the grid structure at time n.
+	my_p4est_interpolation_nodes_t interp_phi( ngbd_phi );		// the grid structure at time t^n.
 
-	double *interpOutput[P4EST_DIM];							// Where interpolated velocity at time tnp1 is stored.
+	double *interpOutput[P4EST_DIM];							// Where interpolated velocity at time t^np1 is stored.
 
 	Vec xx_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][0], vel_xx[1][0], vel_xx[2][0] )};	// Reorganize velocity derivatives
 	Vec yy_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][1], vel_xx[1][1], vel_xx[2][1] )};	// by derivative direction.
@@ -1284,14 +1321,14 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 	const double *xyz_max = get_xyz_max();
 	const bool *periodicity = get_periodicity();
 
-	///////////////////////////////////////////// Finding velocity at Gnp1 /////////////////////////////////////////////
-	// Using quadratic interpolation to find unp1 from Gn.
+	///////////////////////////////////////////// Finding velocity at G^np1 ////////////////////////////////////////////
+	// Using quadratic interpolation to find u^np1 from G^n.
 	std::vector<double> vel_np1[P4EST_DIM];
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )	// Notice nodes struct changes with advection.
 	{
 		double xyz[P4EST_DIM];
 		node_xyz_fr_n( n, p4est, nodes, xyz );
-		interp.add_point( n, xyz );										// Defining points Xnp1 where we need vnp1.
+		interp.add_point( n, xyz );										// Defining points X^np1 where we need u^np1.
 	}
 
 	for( int dir = 0; dir < P4EST_DIM; dir++ )
@@ -1303,11 +1340,11 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 	interp.interpolate( interpOutput );				// Interpolate velocities.  Save these in vel_np1 vector.
 	interp.clear();
 
-	//////////////////////////////////////// Finding midpoint velocity at Gnp1 /////////////////////////////////////////
-	// Used for secon-order accurate location of departure points for Gnp1.
+	//////////////////////////////////////// Finding midpoint velocity at G^np1 ////////////////////////////////////////
+	// Used for second-order accurate location of departure points for G^np1.
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
-		double xyz_star[P4EST_DIM];				// Midway point.
+		double xyz_star[P4EST_DIM];				// Halfway point.
 		node_xyz_fr_n( n, p4est, nodes, xyz_star );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			xyz_star[dir] -= 0.5 * dt * vel_np1[dir][n];
@@ -1333,19 +1370,19 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 		clip_in_domain_with_check( xyz, xyz_min, xyz_max, periodicity );	// TODO: Consider what happens if point is invalid.
 
 		interp_phi.add_point( n, xyz );
-		howUpdated_np1Ptr[n] = HowUpdated::NUM;
+		howUpdated_np1Ptr[n] = HowUpdated::NUM;		// By default, all points' phi values are computed numerically.
 	}
 	interp_phi.set_input( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2]), PHI_INTERP_MTHD );
-	interp_phi.interpolate( phi_np1Ptr );			// New phi values at time tnp1 based off Gn.
+	interp_phi.interpolate( phi_np1Ptr );			// New phi values at time t^np1 based off G^n.
 
-	////////// Load cached values computed with neural network for points in a band around new Gamma location //////////
+	///////////////// Load cached values computed with neural network for valid points next to Gamma^n /////////////////
 	Cache cache( ngbd_n );							// Fake cache using interpolation infraestructure.
 	std::vector<p4est_locidx_t> outIdxToNodeIdx;	// This is a map from out index to actual node index in PETSc Vecs.
 	outIdxToNodeIdx.reserve( nodes->indep_nodes.elem_count );
 	int outIdx = 0;
 	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
-		if( ABS( phi_np1Ptr[n] ) <= 2.0 * h )		// This band ensures we see which points were updated with nnet.
+		if( ABS( phi_np1Ptr[n] ) <= MASS_BAND_HALF_WIDTH * H )	// This band half width ensures we see which points were updated with nnet.
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
@@ -1353,37 +1390,35 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, const double& h,
 			outIdxToNodeIdx.push_back( n );			// Keep track of correspondence between node index and output index.
 			outIdx++;
 		}
+
+		// Copy numerically adevected level-set values at the same time.
+		phiNum_np1Ptr[n] = phi_np1Ptr[n];
 	}
 
-	// Note: Must perform interpolation even if outIdx is zero (i.e., no independent nodes next to Gamma for this
-	// process).  Not doing so, will enter processes into deadlock, waiting for each other to finish their interp. task.
-	// Allocate output vectors with as many elements as valid indices we collected in previous loop.  Set up cache
-	// fetcher inputs and launch data collection.
+	// Note: Must perform interpolation even if outIdx is zero (i.e., no independent nodes next to Gamma for this proce-
+	// ss).  Not doing so will enter processes into deadlock, waiting for each other to finish their interpolation task.
+	// Allocate output vectors with as many elements as valid indices we collected in previous loop.
+	// Set up cache fetcher inputs and launch data collection.
 	Vec fields[Cache::N_FIELDS] = {_mlPhi, _mlFlag};	// Input fields we built with the neural network.
 	double *output[Cache::N_FIELDS];
 	for( auto& fOutput : output )
 		fOutput = new double[outIdx];
 	cache.setInput( fields, Cache::N_FIELDS );
-	cache.interpolate( output );						// Read cache for points along band of new Gamma location.
+	cache.interpolate( output );						// Read cache for points where we used the nnet.
 	cache.clear();
 
 	// Process requests and match them with cache.
 	for( int i = 0; i < outIdx; i++ )
 	{
 		p4est_locidx_t nodeIdx = outIdxToNodeIdx[i];	// Actual node index in PETSc vector.
-		if( output[Cache::Fields::FLAG][i] > 0 )		// Computed with neural network?  Flagged rank + 1.
+		if( output[Cache::Fields::FLAG][i] >= 0.9 )		// Computed with neural network?  Flagged rank + 1.
 		{
 			phi_np1Ptr[nodeIdx] = output[Cache::Fields::PHI][i];
 			howUpdated_np1Ptr[nodeIdx] = HowUpdated::NNET;
 		}
-		else											// Point within band but not computed with nnet.
-			howUpdated_np1Ptr[nodeIdx] = HowUpdated::NUM_BAND;
 	}
 
 	// Free memory for output fields.
 	for( auto& fOutput : output )
 		delete[] fOutput;
-
-	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
-	CHKERRXX( ierr );
 }

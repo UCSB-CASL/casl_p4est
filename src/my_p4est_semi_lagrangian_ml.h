@@ -645,7 +645,7 @@ namespace slml
 		const interpolation_method VEL_INTERP_MTHD;			// Default interpolation methods
 		const interpolation_method PHI_INTERP_MTHD;			// for vel and level-set values.
 
-		enum HowUpdated : int {NUM = 0, NUM_BAND, NNET};	// States for determining how a grid point was updated.
+		enum HowUpdated : int {NUM = 0, NNET};				// States for determining how a grid point was updated.
 
 		const unsigned long ITERATION;						// Iteration ID for current advection step.
 		bool _used = false;									// Prevents reusing a semi-Lagrangian instance of this obj.
@@ -661,33 +661,33 @@ namespace slml
 		void _computeLocalUniformIndices( const my_p4est_node_neighbors_t *ngbdN, Vec phi );
 
 		/**
-		 * Compute semi-Lagrangian advection for all points and correct level-set values at time tnp1 for grid points
-		 * lying next to interface at time tn by using the neural network.
-		 * @note Function resets and populates _mlFlag and _mlPhi for points next to the interface.
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
-		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time tn.
+		 * Compute semi-Lagrangian advection for all points and correct level-set values at time t^np1 for grid points
+		 * next to the interface at time t^n by using the neural network.
+		 * @note Function resets and populates _mlFlag and _mlPhi for points where we used the nnet.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time t^n.
+		 * @param [in] normal Array of normal vectors in each Cartesian direction at time t^n.
+		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time t^n.
 		 * @param [in] dt Time step.
-		 * @param [in] phi Parallel vector with level-set values for grid at time tn.
-		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
-		 * @param [in] hk Dimensionless curvature parallel vector.  For points next to Gamma, it is hk at the closest location on the interface.
-		 * @param [in] h Mesh size.
+		 * @param [in] phi Parallel vector with level-set values for grid at time t^n.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time t^n.
+		 * @param [in] hk Dimensionless curvature parallel vector as computed for ALL points at time t^n.
 		 */
-		void _computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi, Vec phi_xx[P4EST_DIM],
-								 Vec hk, const double& h );
+		void _computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt,
+								 Vec phi, Vec phi_xx[P4EST_DIM], Vec hk );
 
 		/**
-		 * Advect level-set function using a semi-Lagrangian scheme with a with Euler along the characteristics.
+		 * Advect level-set function using a semi-Lagrangian scheme with Euler steps along the characteristics.
 		 * @param [in] dt Time step.
-		 * @param [in] h Minimum cell width (assuming 1:1:1 ratios).
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
-		 * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction at time tn.
-		 * @param [in] phi Level-set function values at time tn.
-		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time t^n.
+		 * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction at time t^n.
+		 * @param [in] phi Level-set function values at time t^n.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time t^n.
 		 * @param [in,out] phi_np1Ptr Advected level-set function values.
+		 * @param [in,out] phiNum_np1Ptr Numerically advected level-set values (i.e., before loading nnet-corrected values).
 		 * @param [in,out] howUpdated_np1Ptr Debugging values to indicate how the level-set was updated.
 		 */
-		void _advectFromNToNp1( const double& dt, const double& h, Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], Vec phi,
-						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *howUpdated_np1Ptr );
+		void _advectFromNToNp1( const double& dt, Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], Vec phi,
+						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *phiNum_np1Ptr, double *howUpdated_np1Ptr );
 
 	public:
 		/**
@@ -748,7 +748,8 @@ namespace slml
 		 * @param [in,out] phiNum Optional parallel debugging vector containing ONLY numerically advected level-set
 		 * 		  values, i.e., before loading the ml-corrected trajectory.
 		 */
-		void updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated=nullptr );
+		void updateP4EST( Vec vel[P4EST_DIM], const double& dt, Vec *phi, Vec hk, Vec normal[P4EST_DIM],
+						  Vec *howUpdated=nullptr, Vec *phiNum=nullptr );
 	};
 }
 
