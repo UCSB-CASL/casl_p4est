@@ -751,8 +751,8 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			dot += unitVelStar[dir] * normalReadPtr[dir][nodeIdx] * (phiReadPtr[nodeIdx] > 0? 1 : -1);
 
-//		if( acos( dot ) > FLOW_ANGLE_THRESHOLD )
-//			continue;
+		if( acos( dot ) > FLOW_ANGLE_THRESHOLD )
+			continue;
 
 		// Backtracking the point using a midpoint velocity step in the negative direction (2nd-order accurate).
 		node_xyz_fr_n( nodeIdx, p4est_n, nodes_n, xyz_a );
