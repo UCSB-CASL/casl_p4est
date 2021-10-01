@@ -705,21 +705,23 @@ namespace slml
 						const unsigned long& iteration=0 );
 
 		/**
-		 * Collect samples for neural network training.  Use a semi-Lagrangian scheme with 2nd-order stepping along
-		 * the characteristics to define the departure points.  Collect samples only for grid points next to the inter-
-		 * face whose mid-point velocity is essentially nonzero.
+		 * Collect samples for neural network training/inference.  Use a semi-Lagrangian scheme with 2nd-order accuracy
+		 * along the characteristics to define the departure points.  Collect samples for grid points next to Gamma^n
+		 * with nonzero mid-point velocity, uniform h-stencils, and an angle between phi-signed normal and midpoint vel
+		 * in the range of [0, FLOW_ANGLE_THRESHOLD].
 		 * @note Here, we create data packets dynamically, and you must not forget free those objects by calling the
 		 * utility function freeDataPacketArray.
-		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time tn.
-		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time tn.
+		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time t^n.
+		 * @param [in] vel_xx Array of spatial second derivatives for velocity components at time t^n.
 		 * @param [in] dt Time step.
-		 * @param [in] phi Level-set function values at time tn.
-		 * @param [in] phi_xx Level-set function spatial second derivatives at time tn.
+		 * @param [in] phi Level-set function values at time t^n.
+		 * @param [in] normal Normal vectors at time t^n.
+		 * @param [in] phi_xx Level-set function spatial second derivatives at time t^n.
 		 * @param [out] dataPackets Vector of pointers to data packet objects.
 		 * @return true if all backtracked queried points from nodes along interface lie inside within domain, false
 		 * otherwise.  This serves as a warning flag.
 		 */
-		bool collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi,
+		bool collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi, Vec normal[P4EST_DIM],
 							 Vec phi_xx[P4EST_DIM], std::vector<DataPacket *>& dataPackets ) const;
 
 		/**
@@ -730,18 +732,21 @@ namespace slml
 		static size_t freeDataPacketArray( std::vector<DataPacket *>& dataPackets );
 
 		/**
-		 * Update a p4est from tn to tnp1, using a combined semi-Lagrangian scheme: numberical and machine-learning
-		 * based, with a single velocity step (no midpoint) with Euler along the characteristics.
-		 * The forest at time tn is copied and then refined/coarsened and balance iteratively until convergence.
+		 * Update a p4est from t^n to t^np1, using a combined semi-Lagrangian scheme: numerical and machine-learning
+		 * based with Euler steps along the characteristics.
+		 * The forest at time t^n is copied and then refined/coarsened and balanced iteratively until convergence.
 		 * The method is adapted from:
 		 * [*] M. Mirzadeh, A. Guittet, C. Burstedde, and F. Gibou, Parallel Level-Set Method on Adaptive Tree-Based Grids.
 		 * @note You need to update the node neighborhood and hierarchy objects yourself upon exit!
 		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
 		 * @param [in] dt Time step.
-		 * @param [in,out] phi Level-set function values at time n, and then updated at time n + 1.
-		 * @param [in] hk Dimensionless curvature.  For points next to Gamma, it is hk at the closest point on Gamma.
-		 * @param [in,out] howUpdated Optional parallel vector for debugging how the level-set values were updated: 0 if
-		 * 		  numerically, 1 if numerically but within a band around new interface location, 2 if using neural net.
+		 * @param [in,out] phi Level-set function values at time t^n, and then updated at time t^np1.
+		 * @param [in] hk Dimensionless curvature for ALL points at time t^n.
+		 * @param [in] normal Normal vectors at time t^n.
+		 * @param [in,out] howUpdated Optional parallel vector to know how the level-set values were updated: 0 if
+		 * 		  numerically, 1 if using neural net.  Useful for selective reinitialization.
+		 * @param [in,out] phiNum Optional parallel debugging vector containing ONLY numerically advected level-set
+		 * 		  values, i.e., before loading the ml-corrected trajectory.
 		 */
 		void updateP4EST( Vec vel[], const double& dt, Vec *phi, Vec hk, Vec *howUpdated=nullptr );
 	};

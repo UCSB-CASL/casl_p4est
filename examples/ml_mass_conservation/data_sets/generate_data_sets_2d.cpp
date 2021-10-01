@@ -10,7 +10,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: September 30, 2021.
+ * Updated: October 1, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -68,7 +68,8 @@ int main( int argc, char** argv )
 	const double MAX_D = -MIN_D;		// centered at the origin of global coordinate system.
 	const int NUM_TREES_PER_DIM = 2;	// Number of macro cells per dimension.
 
-	const int NUM_ITER_VTK = 8;			// Save VTK files every NUM_ITER_VTK iterations (break line too).
+	const int NUM_ITER_VTK = 1;			// Save debugging (if enabled) VTK files every NUM_ITER_VTK iterations.
+	const int NUM_ITER_BRK = 8;			// Break terminal lines every NUM_ITER_BRK iterations.
 
 	const int NUM_VEL_FIELDS = 7;		// Number of different random velocity fields to try out.
 	const int NUM_CENTERS = 4;			// Number of different center locations to try out per circle radius.
@@ -125,6 +126,8 @@ int main( int argc, char** argv )
 			"hk_a"					// Numerical dimensionless curvature at projection onto Gamma_c^n of arrival point.
 		};
 
+		const std::string ANGLES_AND_ERRORS_PATH = DATA_PATH + "angles_errors_debug.csv";	// In case we are debugging.
+
 		parStopWatch watch;
 		watch.start();
 
@@ -141,6 +144,11 @@ int main( int argc, char** argv )
 			file << "\"" << COLUMN_NAMES[i] << "\",";
 		file << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"" << std::endl;
 
+		// Prepare angles and rel error file.
+		std::ofstream anglesAndErrorsFile;
+		if( debug() )
+			utils::openFile( ANGLES_AND_ERRORS_PATH, 15, anglesAndErrorsFile );	// First column is angle, second error.
+
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
 		const double xyz_min[] = {MIN_D, MIN_D, MIN_D};
@@ -149,7 +157,7 @@ int main( int argc, char** argv )
 		const int periodic[] = {1, 1, 1};
 		const double H_C = (mesh_len[0] / NUM_TREES_PER_DIM) / double(1 << COARSE_MAX_RL);	// Min coarse cell width.
 
-		// Let's choose radii between 5 COARSE min cell width and an eighth of domain side length.
+		// Let's choose radii between 5 COARSE min cell width and one eighth of domain side length.
 		const double MIN_RADIUS = 5 * H_C;
 		const double MAX_RADIUS = MAX_D / 4;
 		const int NUM_RADII = (int)ceil( 3 * (MAX_RADIUS - MIN_RADIUS) / H_C ) + 1;
@@ -281,19 +289,25 @@ int main( int argc, char** argv )
 					// Define time stepping variables.
 					double tn_c = 0;					// Current time for COARSE grid.
 					double tn_f = 0;					// Current time for FINE grid.
-					int iter = 0;
 					const double MAX_VEL_NORM = 1.0; 	// Maximum velocity length known after normalizing random field.
 					double dt_c = CFL * coarseGrid.minCellWidth / MAX_VEL_NORM;	// deltaT for COARSE grid.
-					bool allInside = true;				// Turns false if at least one interface backtracked point in
+					bool allInside = true;				// Becomes false if at least one interface backtracked point in
 														// the coarse grid falls outside the computational domain.
 
 					// Advection loop.
-					// For each COARSE step, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
+					// For each COARSE step, typically, there are 2^(FINE_MAX_RL - COARSE_MAX_RL) FINE steps.
 					const int N_FINE_STEPS_PER_COARSE_STEP = 1 << (FINE_MAX_RL - COARSE_MAX_RL + addFineSubsteps());
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
 					int iteration = 0;					// Tracks current COARSE iteration and allows interleaved advection.
-					const int INTERLEAVED_ADVECT_STEPS = 16;	// How often to interleave finer-grid fitting with numerical advection.
+					const int INTERLEAVED_ADVECT_STEPS = 16;	// How often to interleave fine-grid fitting with numerical advection.
+					int vtkIdx = 0;
+
+					if( debug() )
+					{
+						coarseGrid.writeVTK( vtkIdx );
+						vtkIdx++;
+					}
 
 					ierr = PetscPrintf( mpi.comm(), " * Receiving: " );			// Labeling reception of packets.
 					CHKERRXX( ierr );
@@ -304,7 +318,7 @@ int main( int argc, char** argv )
 							dt_c = DURATION - tn_c;
 
 						// Display current iteration.  After this, we show packets collected along Gamma.
-						sprintf( msg, "[%03d]: ", iter );
+						sprintf( msg, "[%03d]: ", iteration );
 						ierr = PetscPrintf( mpi.comm(), msg );
 						CHKERRXX( ierr );
 
@@ -371,27 +385,31 @@ int main( int argc, char** argv )
 						}
 
 						// Collect samples from COARSE grid: must be done before "advecting" COARSE grid.
-						// Also, flag nodes along Gamma.
+						// Also, flag valid nodes susceptible for machine learning next to Gamma_c^n.
 						std::vector<slml::DataPacket *> dataPackets;
 						double relError = 0;
 						std::unordered_map<std::string, double> flaggedCoords;
-						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError, flaggedCoords );
+						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError, flaggedCoords, debug() );
 
-						if( allInside )	// Continue processing samples if all backtracked interface points lied inside
-						{				// the domain.
+						if( allInside )	// Continue processing no candidate sample was backtracked outside of the domain.
+						{
 							// Data augmentation and writing to output files.
 							// Accumulate all samples first, and then write files.
 							std::vector<std::vector<double>> samples;		// Semi-Lagrangian samples.
 							samples.reserve( dataPackets.size() * 2 );
 
-							// Also need read access to coarse phi vector.
-							const double *cPhiReadPtr;
-							ierr = VecGetArrayRead( coarseGrid.phi, &cPhiReadPtr );
-							CHKERRXX( ierr );
+							std::vector<std::vector<double>> anglesAndErrorsSamples;	// Debugging info samples.
+							if( debug() )
+								anglesAndErrorsSamples.reserve( dataPackets.size() );
 
-							for( int idx = 0; idx < dataPackets.size(); idx++ )
+							for( auto dataPacket : dataPackets )
 							{
-								slml::DataPacket *dataPacket = dataPackets[idx];
+								if( debug() )
+								{
+									anglesAndErrorsSamples.emplace_back( std::vector<double>() );
+									anglesAndErrorsSamples.back().emplace_back( dataPacket->theta_a );
+									anglesAndErrorsSamples.back().emplace_back( dataPacket->absHRelError_d );
+								}
 
 								// As a way to simplify the resulting nnet architecture, I'll make everything match
 								// negative-curvature samples by flipping the sign of level-set values in data packet.
@@ -423,10 +441,6 @@ int main( int argc, char** argv )
 								}
 							}
 
-							// Restore read access for coarse phi vector.
-							ierr = VecRestoreArrayRead( coarseGrid.phi, &cPhiReadPtr );
-							CHKERRXX( ierr );
-
 							// Write semi-Lagrangian samples vector to file.
 							for( const auto& row : samples )
 							{
@@ -435,85 +449,91 @@ int main( int argc, char** argv )
 								file << row.back() << std::endl;
 							}
 
+							// Write debugging info.
+							if( debug() )
+							{
+								for( const auto& row : anglesAndErrorsSamples )
+								{
+									std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( anglesAndErrorsFile, "," ) );
+									anglesAndErrorsFile << row.back() << std::endl;
+								}
+							}
+
 							// As a way to verify things are working well, we track the maximum relative error for
 							// level-set value at departure point.
 							maxRelError = MAX( maxRelError, relError );
 							nSamplesPerLoop += samples.size();
 
-							// Break data packet reception output every now and then.
-							if( (iter + 1) % NUM_ITER_VTK == 0 )
-							{
-								ierr = PetscPrintf( mpi.comm(), "\n              " );
-								CHKERRXX( ierr );
-							}
-
-							// Interleaved COARSE grid advection: by using the FINE grid as reference and by using semi-
-							// Lagrangian numerical advection with quadratic velocity and phi interpolation.  This proc-
-							// ess updates COARSE internal phi vector with NO reinitialization.  Must do the latter man-
-							// ually below.
-							if( iteration % INTERLEAVED_ADVECT_STEPS == 0 )
+							// Interleaved COARSE grid advection by using the FINE grid as reference and semi-Lagrangian
+							// numerical advection with quadratic velocity and phi interpolation.  This process updates
+							// COARSE internal phi vector with NO reinitialization.  Must do the latter manually below.
+							if( (iteration + 1) % INTERLEAVED_ADVECT_STEPS == 0 )
 							{
 								coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
 								PetscPrintf( mpi.comm(), "\b\b\b*  " );
 							}
 							else
 								coarseGrid.updateP4EST( dt_c );
-							iteration++;
 
 							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
-							// Selective reinitialization of level-set function: affect only those nodes that were not
-							// updated with nnet.
-							Vec mask;
-							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );	// Mask vector to flag updatable nodes.
+							// Selective reinitialization: protect valid nodes fitted to the FINE grid.
+							Vec mask, howUpdated;
+							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );		// Mask vector to flag updatable nodes.
 							CHKERRXX( ierr );
-
+							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &howUpdated );	// howUpdated distinguishes how we updated
+							CHKERRXX( ierr );																// valid nodes next to Gamma_c^n:
+																											// 0=>numerical, 1=>valid node with target level-set values.
 							double *maskPtr;
 							ierr = VecGetArray( mask, &maskPtr );
+							CHKERRXX( ierr );
+
+							double *howUpdatedPtr;
+							ierr = VecGetArray( howUpdated, &howUpdatedPtr );
 							CHKERRXX( ierr );
 
 							double *phi_cPtr;
 							ierr = VecGetArray( coarseGrid.phi, &phi_cPtr );
 							CHKERRXX( ierr );
 
-							int numMaskedNodes = 0;
-							for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+							int numMaskedNodes = 0;					// Used to validate that all valid points are recovered.
+							for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )
 							{
-								if( ABS( phi_cPtr[n] ) <= 2.0 * M_SQRT2 * H_C )	// Filter out nodes away from new interface location.
-								{												// This works since nodes next to previous Gamma are now
-									double xyz[P4EST_DIM];						// at most 2*dx from new interface (if phi was an exact signed dist. function).
+								maskPtr[n] = 1;						// Initially, all nodes are updatable.
+								howUpdatedPtr[n] = 0;				// By default, node was updated purely numerically.
+
+								if( ABS( phi_cPtr[n] ) <= (MASS_BAND_HALF_WIDTH + 1) * H_C )	// This approximation band works since nodes next to Gamma_c^n are now at most
+								{																// 2*dx from new interface (if phi was an exact signed distance function).
+									double xyz[P4EST_DIM];
 									node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
 
 									std::stringstream intCoords;
 									for( int j = 0; j < P4EST_DIM; j++ )
-										intCoords << long( (xyz[j] - xyz_min[j]) / H_C ) << ",";
-									auto got = flaggedCoords.find( intCoords.str() );
-									if( got != flaggedCoords.end() )			// Masked node? Nonupdatable?
+										intCoords << long((xyz[j] - xyz_min[j]) / H_C ) << ",";
+									auto got = flaggedCoords.find( intCoords.str());
+									if( got != flaggedCoords.end())	// Valid point next to Gamma_c^n?
 									{
+										maskPtr[n] = 0;				// Non updatable.
+										howUpdatedPtr[n] = 1;
+										phi_cPtr[n] = got->second;	// Recover level-set value.
 										numMaskedNodes++;
-										maskPtr[n] = 0;				// 0 => nonupdatable.
-										phi_cPtr[n] = got->second;	// Fix the level-set value to target phi value.
 									}
-									else							// Updatable?
-										maskPtr[n] = 1;				// 1 => updatable.
 								}
-								else
-									maskPtr[n] = 1;					// 1 => updatable.
 							}
 
+							if( numMaskedNodes != flaggedCoords.size() )
+								throw std::runtime_error( "Unmatched size of flaggedCoords and counted nodes within approximation band!" );
+
 							ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
+							CHKERRXX( ierr );
+
+							ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
 							CHKERRXX( ierr );
 
 							ierr = VecRestoreArray( mask, &maskPtr );
 							CHKERRXX( ierr );
 
-							if( numMaskedNodes != flaggedCoords.size() )
-								throw std::runtime_error( "Number of masked nodes do not match flagged coords!" );
-
 							my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
 							ls.reinitialize_2nd_order_with_mask( coarseGrid.phi, mask, numMaskedNodes, REINIT_NUM_ITER );
-
-							ierr = VecDestroy( mask );
-							CHKERRXX( ierr );
 
 							// Resample the random velocity field on new COARSE grid.
 							randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
@@ -521,11 +541,31 @@ int main( int argc, char** argv )
 							// Advance COARSE time step.
 							tn_c += dt_c;
 							tn_f = tn_c;						// Synchronize COARSE and FINE times.
-							iter++;
+							iteration++;
 
-							// Don't forget to destroy dynamic objects.  If not all points were backtracked inside the
-							// domain, CoarseGrid::collectSamples has called freed packets already.
+							// Don't forget to destroy dynamic objects.  If some candidate point was backtracked outside
+							// the domain, CoarseGrid::collectSamples has called freed packets already.
 							slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+
+							// Break data packet reception output every now and then.
+							if( iteration % NUM_ITER_BRK == 0 )
+							{
+								ierr = PetscPrintf( mpi.comm(), "\n              " );
+								CHKERRXX( ierr );
+							}
+
+							// Save VTK files if debugging.
+							if( debug() && (iteration % NUM_ITER_VTK == 0 || ABS( tn_c - DURATION ) <= PETSC_MACHINE_EPSILON) )
+							{
+								coarseGrid.writeVTK( vtkIdx, howUpdated );
+								vtkIdx++;
+							}
+
+							ierr = VecDestroy( howUpdated );
+							CHKERRXX( ierr );
+
+							ierr = VecDestroy( mask );
+							CHKERRXX( ierr );
 						}
 					}
 
@@ -597,6 +637,9 @@ int main( int argc, char** argv )
 
 		// Closing files.
 		file.close();			// Semi-Lagrangian data.
+
+		if( debug() )
+			anglesAndErrorsFile.close();
 
 		watch.stop();
 

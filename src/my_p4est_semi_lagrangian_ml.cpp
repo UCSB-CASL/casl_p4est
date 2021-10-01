@@ -607,14 +607,15 @@ size_t slml::SemiLagrangian::freeDataPacketArray( vector<DataPacket *>& dataPack
 }
 
 
-bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt,
-										   Vec phi, Vec phi_xx[P4EST_DIM], std::vector<DataPacket *>& dataPackets ) const
+bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST_DIM], const double& dt, Vec phi,
+										   Vec normal[P4EST_DIM], Vec phi_xx[P4EST_DIM],
+										   std::vector<DataPacket *>& dataPackets ) const
 {
 	PetscErrorCode ierr;
 	ierr = PetscLogEventBegin( log_SemiLagrangianML_collectSamples, 0, 0, 0, 0 );
 	CHKERRXX( ierr );
 
-	// Some pointers to structs for the the grid/forest at time tn.
+	// Some pointers to structs for the the grid/forest at time t^n.
 	p4est_t const *p4est_n = ngbd_n->get_p4est();
 	p4est_nodes_t const *nodes_n = ngbd_n->get_nodes();
 
@@ -637,10 +638,13 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	ierr = VecGetArrayRead( phi, &phiReadPtr );
 	CHKERRXX( ierr );
 
-	const double *velReadPtr[P4EST_DIM];
+	const double *velReadPtr[P4EST_DIM], *normalReadPtr[P4EST_DIM];
 	for( int dim = 0; dim < P4EST_DIM; dim++ )
 	{
 		ierr = VecGetArrayRead( vel[dim], &velReadPtr[dim] );
+		CHKERRXX( ierr );
+
+		ierr = VecGetArrayRead( normal[dim], &normalReadPtr[dim] );
 		CHKERRXX( ierr );
 	}
 
@@ -682,8 +686,8 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	velInterp.clear();				// At this point, we can use velStar to find backtracked departure points.
 
 	// Prepare an interpolation object on the current grid.  We need this to retrieve the numerical solution to the
-	// advection problem.  This numerical approximation would then be compared to the target value (collected with a
-	// finer grid.
+	// advection problem.  When constructing the learning data set, this numerical approximation would then be compared
+	// to the target value (collected with a finer grid).
 	my_p4est_interpolation_nodes_t numericalInterp( ngbd_n );
 
 	// Initialize infrastructure.  We'll use the interpolation across processes infraestructure and hack the interpolate
@@ -706,8 +710,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	const int N_GIVEN_INPUT_FIELDS = 1 + 2 * P4EST_DIM;	// Actual number of true fields to send (phi, vel, and phi_dd).
 
 	// Collect nodes along the interface and add their backtracked departure points to "interpolation" buffer.
-	// Filter out any node whose backtracked departure point falls outside of domain (if no periodicity is allowed in
-	// that direction).
+	// Filter out any node whose backtracked departure point falls outside of domain.
 	double xyz_d[P4EST_DIM];						// Departure point.
 	double xyz_a[P4EST_DIM];						// Arrival point.
 	std::vector<p4est_locidx_t> outIdxToNodeIdx;	// This is a map from out index to actual node index in PETSc Vecs.
@@ -720,7 +723,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 													// Helps prevent inconsistent training samples.
 	for( const auto& nodeIdx : _localUniformIndices )
 	{
-		// Let's skip nodes for which the velocity at it or the midpoint velocity is practically zero.
+		// Let's skip nodes for which the velocity at it or the midpoint velocity is essentially zero.
 		double velMagnitude = 0, velStarMagnitude = 0;
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 		{
@@ -732,15 +735,31 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 			if( velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] == 0 )
 				velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] += PETSC_MACHINE_EPSILON;		// TODO: Probably a random perturbation is better?
 		}
-		if( sqrt( velMagnitude ) <= PETSC_MACHINE_EPSILON || sqrt( velStarMagnitude ) <= PETSC_MACHINE_EPSILON )
+
+		// First validity test: nonzero velocity magnitudes.
+		velMagnitude = sqrt( velMagnitude );
+		velStarMagnitude = sqrt( velStarMagnitude );
+		if( velMagnitude <= PETSC_MACHINE_EPSILON || velStarMagnitude <= PETSC_MACHINE_EPSILON )
 			continue;
+
+		// Second validity test: angle between unit midpoint vel_a and phi-signed normal vector must lie in [0, FLOW_ANGLE_THRESHOLD].
+		double unitVelStar[P4EST_DIM];
+		for( int dir = 0; dir < P4EST_DIM; dir++ )	// Normalize midpoint vel.
+			unitVelStar[dir] = velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] / velStarMagnitude;
+
+		double dot = 0;
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			dot += unitVelStar[dir] * normalReadPtr[dir][nodeIdx] * (phiReadPtr[nodeIdx] > 0? 1 : -1);
+
+//		if( acos( dot ) > FLOW_ANGLE_THRESHOLD )
+//			continue;
 
 		// Backtracking the point using a midpoint velocity step in the negative direction (2nd-order accurate).
 		node_xyz_fr_n( nodeIdx, p4est_n, nodes_n, xyz_a );
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
 			xyz_d[dir] = xyz_a[dir] - dt * velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )];
 
-		// Check if departure point falls within the domain.
+		// Third validity test: check if departure point falls within the domain.
 		// We won't admit truncated backtracked points to avoid inconsistency in the training patterns.
 		if( !clip_in_domain_with_check( xyz_d, xyz_min, xyz_max, periodicity ) )
 		{
@@ -794,7 +813,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	numericalInterp.clear();
 
 	// Go through the output fields to build the data packet objects that will be returned to caller.
-	// This will be a semi deserialization by splitting the output contents into the different attributes of the
+	// This will be a semi-deserialization by splitting the output contents into the different attributes of the
 	// data packet objects.
 	for( int i = 0; i < outIdx; i++ )
 	{
@@ -805,7 +824,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 			// Allocate new packet for current ith node.
 			auto *dataPacket = new DataPacket;
 			dataPacket->nodeIdx = nodeIdx;
-			dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and (mid point) velocity at arrival point.
+			dataPacket->phi_a = phiReadPtr[nodeIdx];		// Phi and (midpoint) velocity at arrival point.
 			for( int dim = 0; dim < P4EST_DIM; dim++ )
 				dataPacket->vel_a[dim] = velStar[dim][velStarNodeIdxToOutIdxMap.at( nodeIdx )];
 			dataPacket->distance = distances[i];			// Normalized distance from departure to arrival point.
@@ -862,6 +881,9 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	{
 		ierr = VecRestoreArrayRead( vel[dim], &velReadPtr[dim] );
 		CHKERRXX( ierr );
+
+		ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
+		CHKERRXX( ierr );
 	}
 
 	ierr = PetscLogEventEnd( log_SemiLagrangianML_collectSamples, 0, 0, 0, 0 );
@@ -904,7 +926,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[], Vec *vel_xx[P4EST_DIM]
 	// Collect data packets for locally owned nodes (no ghost nodes).  Also, skip nodes whose backtracked point falls
 	// outside the domain (even if periodicity is enabled).  This makes the runtime process compatible with training.
 	std::vector<DataPacket *> dataPackets;
-	collectSamples( vel, vel_xx, dt, phi, phi_xx, dataPackets );
+//	collectSamples( vel, vel_xx, dt, phi, phi_xx, dataPackets );
 
 	// Note: During advection and when using the neural network, we concern only about locally owned nodes at this first
 	// step because curvature should have been computed using the hybrid inference system only for those vertices with

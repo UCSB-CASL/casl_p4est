@@ -16,7 +16,7 @@
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
  * a reference finer grid from where its values are drawn by interpolation.
  *
- * Updated: September 30, 2021.
+ * Updated: October 1, 2021.
  */
 class CoarseGrid
 {
@@ -311,8 +311,8 @@ public:
 	 * @return false if some nodes were backtracked within the domain (although they're not included in dataPackets); true otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
-					  	 std::vector<slml::DataPacket *>& dataPackets,
-					  	 double& maxRelError, std::unordered_map<std::string, double>& locallyOwnedFlaggedCoords )
+					  	 std::vector<slml::DataPacket *>& dataPackets, double& maxRelError,
+					     std::unordered_map<std::string, double>& flaggedCoords, const bool& debug=false )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -321,7 +321,7 @@ public:
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
 
 		// Clear array of locally owned flagged node coords.
-		locallyOwnedFlaggedCoords.clear();
+		flaggedCoords.clear();
 
 		// Allocate PETSc vectors for normals and curvature.
 		Vec curvature, normal[P4EST_DIM];
@@ -333,28 +333,21 @@ public:
 			CHKERRXX( ierr );
 		}
 
-		// Compute curvature, which will be (linearly) interpolated at the interface.
+		// Compute curvature for all points.
 		compute_normals( *nodeNeighbors, phi, normal );
 		compute_mean_curvature( *nodeNeighbors, normal, curvature );
 
-		// Prepare curvature interpolation.
-		my_p4est_interpolation_nodes_t kappaInterp( nodeNeighbors );
-		kappaInterp.set_input( curvature, interpolation_method::linear );
-
-		// Also need read access to phi and normal vectors.
-		const double *phiReadPtr;
+		const double *phiReadPtr, *normalReadPtr[P4EST_DIM];
 		ierr = VecGetArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
-
-		const double *normalReadPtr[P4EST_DIM];
-		for( int i = 0; i < P4EST_DIM; i++ )
+		for( int dim = 0; dim < P4EST_DIM; dim++ )
 		{
-			ierr = VecGetArrayRead( normal[i], &normalReadPtr[i] );
+			ierr = VecGetArrayRead( normal[dim], &normalReadPtr[dim] );
 			CHKERRXX( ierr );
 		}
 
 		// Compute second derivatives of FINE level-set function. We need these for quadratic interpolation of its phi
-		// values to draw the corresponding target phi values in the COARSE grid.
+		// values to draw the corresponding target phi values into the COARSE grid.
 		Vec phi_f_xx[P4EST_DIM];
 		for( auto& derivative : phi_f_xx )
 		{
@@ -364,6 +357,7 @@ public:
 		ngbd_f->second_derivatives_central( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ) );
 
 		my_p4est_interpolation_nodes_t interp( ngbd_f );	// Interpolation object on FINE grid phi values.
+		my_p4est_interpolation_nodes_t curvatureInterp( nodeNeighbors );	// Curvature interpolation object.
 
 		//////////////// Compute second derivatives of coarse velocity field: vel_xx, vel_yy[, vel_zz] /////////////////
 		// We need these to interpolate the velocity and retrieve the backtracked departure point with second-order
@@ -407,59 +401,68 @@ public:
 		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
 		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi );
-		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, phi_c_xx, dataPackets );
+		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, normal, phi_c_xx, dataPackets );
 
-		// Continue process if all samples lie within computational domain.
+		// Continue process if no candidate node fell outside of the computational domain.
 		if( allInside )
 		{
 			// Finding the target phi values via quadratic interpolation from FINE grid.  Actually, it doesn't matter
 			// the interpolation order because COARSE grid nodes match grid point in FINE grid.
-			double targetPhi[dataPackets.size()];
+			// Find the curvature at the interface too.
+			std::vector<double> targetPhi( dataPackets.size(), 0);
+			std::vector<double> outCurvature( dataPackets.size(), 0 );
 			for( p4est_locidx_t outIndex = 0; outIndex < dataPackets.size(); outIndex++ )
 			{
+				p4est_locidx_t nodeIdx = dataPackets[outIndex]->nodeIdx;
 				double xyz[P4EST_DIM];
-				node_xyz_fr_n( dataPackets[outIndex]->nodeIdx, p4est, nodes, xyz );
+				node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
 				interp.add_point( outIndex, xyz );
+
+				double xyz_k[P4EST_DIM] = {DIM( xyz[0], xyz[1], xyz[2] )};
+				for( int dim = 0; dim < P4EST_DIM; dim++ )	// Project point onto Gamma^n.
+					xyz_k[dim] -= phiReadPtr[nodeIdx] * normalReadPtr[dim][nodeIdx];
+
+				curvatureInterp.add_point( outIndex, xyz_k );
 			}
 			interp.set_input( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ), interpolation_method::quadratic );
-			interp.interpolate( targetPhi );
+			interp.interpolate( targetPhi.data() );
 			interp.clear();
 
-			// Go through collected nodes and add the target value.  Populate the flag vector at the same time.
-			// Note: Let's collect the nine-point stencils of locally owned nodes as well, and keep only those nodes
-			// that have such full stencils.  These stencils will be used to compute kappa with the curvature nnets.
-			// Even though retrieving stencils will discard ghost nodes, in a real advection scenario, we must obtain
-			// the level-set value at departure points for locally owned nodes with full stencils, set their gammaFlag,
-			// and then scatter forward both the flag and the level-set at departure point (computed neurally).
-			// Afterward, numerical advection is used in the rest of the nodes that are not flagged (including ghost
-			// nodes), and we proceed with the refinement/coarsening process.
-			auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
-			NodesAlongInterface nodesAlongInterface( p4est, nodes, nodeNeighbors, (signed char)splittingCriteria->max_lvl );
+			curvatureInterp.set_input( curvature, interpolation_method::linear );
+			curvatureInterp.interpolate( outCurvature.data() );
+			curvatureInterp.clear();
 
+			// Go through collected nodes and add hk_a and target phi_d^*.
 			for( size_t i = 0; i < dataPackets.size(); i++ )
 			{
 				slml::DataPacket *dataPacket = dataPackets[i];
 				dataPacket->targetPhi_d = targetPhi[i];				// Populate expected phi value.
+				dataPacket->hk_a = minCellWidth * outCurvature[i];	// Populate dimensionless curvature at closest point on Gamma_c^n.
 
-				double xyz[P4EST_DIM];								// Populate dimensionless curvature at Gamma.
+				dataPacket->absHRelError_d = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
+				maxRelError = MAX( maxRelError, dataPacket->absHRelError_d );
+
+				// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
+				double xyz[P4EST_DIM];
 				node_xyz_fr_n( dataPacket->nodeIdx, p4est, nodes, xyz );
-				double p = phiReadPtr[dataPacket->nodeIdx];
-				dataPacket->hk_a = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][dataPacket->nodeIdx],
-										 			 xyz[1] - p * normalReadPtr[1][dataPacket->nodeIdx],
-										 			 xyz[2] - p * normalReadPtr[2][dataPacket->nodeIdx] ) );
-				dataPacket->hk_a *= minCellWidth;
+				std::stringstream intCoords;
+				for( int j = 0; j < P4EST_DIM; j++ )
+					intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
+				flaggedCoords[intCoords.str()] = dataPacket->targetPhi_d;
 
-				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
-				maxRelError = MAX( maxRelError, relError );
-
-				std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-				if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
+				// Debugging?
+				if( debug )
 				{
-					// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
-					std::stringstream intCoords;
-					for( int j = 0; j < P4EST_DIM; j++ )
-						intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
-					locallyOwnedFlaggedCoords[intCoords.str()] = dataPacket->targetPhi_d;
+					// Record angle between midpoint velocity vel_a and normal vector.  Note that it doesn't need to be
+					// between 0 and threshold.  It can be anything because we aren't using the phi-signed normal vector.
+					// Contrast this to the validity tests in MLSemiLagrangian::collectSamples().
+					double vel_a_norm = compute_L2_norm( dataPacket->vel_a, P4EST_DIM );
+					double vel_a[P4EST_DIM] = {DIM( dataPacket->vel_a[0] / vel_a_norm, 	// Normalized vel_a.
+											   		dataPacket->vel_a[1] / vel_a_norm,
+													dataPacket->vel_a[2] / vel_a_norm )};
+					dataPacket->theta_a = acos( SUMD( vel_a[0] * normalReadPtr[0][dataPacket->nodeIdx],
+													  vel_a[1] * normalReadPtr[1][dataPacket->nodeIdx],
+													  vel_a[2] * normalReadPtr[2][dataPacket->nodeIdx] ) );
 				}
 			}
 
