@@ -43,7 +43,6 @@
 #include "Utils.h"
 #include <random>
 #include <algorithm>
-#include "examples/ml_curvature/local_utils.h"
 #include <src/parameter_list.h>
 
 /**
@@ -111,8 +110,8 @@ int main( int argc, char** argv )
 										+ (addFineSubsteps()? "_x" + std::to_string( 1u << addFineSubsteps() ) : "" )
 										+ (debug()? "_debug": "") + ".csv";
 		const std::string FILE_PATH = DATA_PATH + "sl_data" + DATA_SUFFIX;
-		const int NUM_COLUMNS = MASS_INPUT_SIZE;			// Number of columns in data set (not including hk but
-		std::string COLUMN_NAMES[NUM_COLUMNS] = {			// adding target phi_d value instead).
+		const int NUM_COLUMNS = MASS_INPUT_SIZE + 1;	// Number of columns in data set (including target phi_d value).
+		std::string COLUMN_NAMES[NUM_COLUMNS] = {
 			"phi_a",				// Level-set value at arrival point.
 			"u_a", "v_a", 			// Velocity components at arrival point.
 			"d",					// H-normalized distance (by coarse dx).
@@ -122,14 +121,9 @@ int main( int argc, char** argv )
 			"v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
 			"h2_phi_xx_d", "h2_phi_yy_d", 	// Scaled abs. value of 2nd spatial phi derivatives bilineraly interpolated at x_d.
 			"target_phi_d",			// Expected/target phi value at departure point.
-			"numerical_phi_d"		// Numerically computed phi value at departure point.
+			"numerical_phi_d",		// Numerically computed phi value at departure point.
+			"hk_a"					// Numerical dimensionless curvature at projection onto Gamma_c^n of arrival point.
 		};
-
-		// Destination file for estimated hk data (i.e., the 9-point stencil of level-set values + hk in last column).
-		const std::string  K_FILE_PATH = DATA_PATH + "k_data" + DATA_SUFFIX;
-		const int K_NUM_COLUMNS = num_neighbors_cube + 1;	// Number of columns in corresponding curvature data set.
-		std::string K_COLUMN_NAMES[K_NUM_COLUMNS];			// Notice it includes "ihk", but not target "hk".
-		kutils::generateColumnHeaders( K_COLUMN_NAMES, false );
 
 		parStopWatch watch;
 		watch.start();
@@ -146,14 +140,6 @@ int main( int argc, char** argv )
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )		// Write header columns.
 			file << "\"" << COLUMN_NAMES[i] << "\",";
 		file << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"" << std::endl;
-
-		// Prepare output file for curvature data.
-		std::ofstream kfile;
-		utils::openFile( K_FILE_PATH, 15, kfile );
-
-		for( int i = 0; i < K_NUM_COLUMNS - 1; i++ )	// Write header columns.
-			kfile << "\"" << K_COLUMN_NAMES[i] << "\",";
-		kfile << "\"" << K_COLUMN_NAMES[K_NUM_COLUMNS - 1] << "\"" << std::endl;
 
 		// Domain information: a square with the same number of trees per dimension.
 		const int n_xyz[] = {NUM_TREES_PER_DIM, NUM_TREES_PER_DIM, NUM_TREES_PER_DIM};
@@ -387,11 +373,9 @@ int main( int argc, char** argv )
 						// Collect samples from COARSE grid: must be done before "advecting" COARSE grid.
 						// Also, flag nodes along Gamma.
 						std::vector<slml::DataPacket *> dataPackets;
-						std::vector<double *> stencils;			// Allocated only if all samples lie inside Omega.
 						double relError = 0;
 						std::unordered_map<std::string, double> flaggedCoords;
-						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, stencils,
-															   relError, flaggedCoords );
+						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError, flaggedCoords );
 
 						if( allInside )	// Continue processing samples if all backtracked interface points lied inside
 						{				// the domain.
@@ -400,9 +384,6 @@ int main( int argc, char** argv )
 							std::vector<std::vector<double>> samples;		// Semi-Lagrangian samples.
 							samples.reserve( dataPackets.size() * 2 );
 
-							std::vector<std::vector<double>> ksamples;		// Curvature samples.
-							ksamples.reserve( dataPackets.size() * 2 );
-
 							// Also need read access to coarse phi vector.
 							const double *cPhiReadPtr;
 							ierr = VecGetArrayRead( coarseGrid.phi, &cPhiReadPtr );
@@ -410,17 +391,7 @@ int main( int argc, char** argv )
 
 							for( int idx = 0; idx < dataPackets.size(); idx++ )
 							{
-								if( !stencils[idx] )	// Skip nodes for which we couldn't get their 9-point stencils;
-									continue;			// these are needed for curvature data file.
-
 								slml::DataPacket *dataPacket = dataPackets[idx];
-
-								// To compute curvature using first-quadrant normalization, we need the gradient at this
-								// grid point.
-								double grad[P4EST_DIM];
-								const quad_neighbor_nodes_of_node_t *qnnnPtr;
-								coarseGrid.nodeNeighbors->get_neighbors( dataPacket->nodeIdx, qnnnPtr );
-								qnnnPtr->gradient( cPhiReadPtr, grad );
 
 								// As a way to simplify the resulting nnet architecture, I'll make everything match
 								// negative-curvature samples by flipping the sign of level-set values in data packet.
@@ -432,35 +403,23 @@ int main( int argc, char** argv )
 									dataPacket->targetPhi_d *= -1;
 									dataPacket->numBacktrackedPhi_d *= -1;
 									dataPacket->hk_a *= -1;
-
-									for( auto& component : grad )	// Flip gradient and nine-point stencil too.
-										component *= -1;
-									for( int j = 0; j < num_neighbors_cube; j++ )
-										stencils[idx][j] *= -1;
 								}
 
-								// Normalize semi-Lagrangian data so that -v_a has an angle in the range of [0, pi/2].
+								// Normalize semi-Lagrangian data so that -u_a has an angle in the range of [0, pi/2].
 								dataPacket->rotateToFirstQuadrant();
-
-								// Normalize 9-point stencil so that gradient has a angle between 0 and pi/2, inclusive.
-								kutils::rotateStencilToFirstQuadrant( stencils[idx], grad );
 
 								// Save samples.
 								for( int s = 0; s < 2; s++ )
 								{
 									samples.emplace_back( std::vector<double>() );			// Semi-Lagrangian data.
 									samples.back().reserve( NUM_COLUMNS );
-									dataPacket->serialize( samples.back(), false, true, false, true );	// Don't serialize num_k.
-
-									ksamples.emplace_back( std::vector<double>( stencils[idx], stencils[idx] + num_neighbors_cube ) );
-									ksamples.back().emplace_back( dataPacket->hk_a );		// Curvature data.
+									dataPacket->serialize( samples.back(), false, true, true, true );
 
 									// Augment probabilistically at most once.
 									if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
 										break;
 
-									dataPacket->reflect_yEqx();		// Reflect both semi-Lagrangian and curvature data.
-									kutils::reflectStencil_yEqx( stencils[idx] );
+									dataPacket->reflect_yEqx();		// Reflect semi-Lagrangian data.
 								}
 							}
 
@@ -474,14 +433,6 @@ int main( int argc, char** argv )
 								// Write inner elements separted by commas and leave the last with no trailing comma.
 								std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( file, "," ) );
 								file << row.back() << std::endl;
-							}
-
-							// Write curvature samples vector to file.
-							for( const auto& row : ksamples )
-							{
-								// Write inner elements separated by commas and leave the last with no trailing comma.
-								std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( kfile, "," ) );
-								kfile << row.back() << std::endl;
 							}
 
 							// As a way to verify things are working well, we track the maximum relative error for
@@ -575,10 +526,6 @@ int main( int argc, char** argv )
 							// Don't forget to destroy dynamic objects.  If not all points were backtracked inside the
 							// domain, CoarseGrid::collectSamples has called freed packets already.
 							slml::SemiLagrangian::freeDataPacketArray( dataPackets );
-
-							for( auto& stencil : stencils )		// Deallocate stencils of level-set values.
-								delete [] stencil;
-							stencils.clear();
 						}
 					}
 
@@ -650,7 +597,6 @@ int main( int argc, char** argv )
 
 		// Closing files.
 		file.close();			// Semi-Lagrangian data.
-		kfile.close();			// Curvature data.
 
 		watch.stop();
 

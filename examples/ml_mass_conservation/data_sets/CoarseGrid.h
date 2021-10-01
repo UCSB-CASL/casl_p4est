@@ -311,7 +311,7 @@ public:
 	 * @return false if some nodes were backtracked within the domain (although they're not included in dataPackets); true otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
-					  	 std::vector<slml::DataPacket *>& dataPackets, std::vector<double *>& stencils,
+					  	 std::vector<slml::DataPacket *>& dataPackets,
 					  	 double& maxRelError, std::unordered_map<std::string, double>& locallyOwnedFlaggedCoords )
 	{
 		assert( phi );	// Check we have a well defined coarse grid.
@@ -436,9 +436,6 @@ public:
 			auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
 			NodesAlongInterface nodesAlongInterface( p4est, nodes, nodeNeighbors, (signed char)splittingCriteria->max_lvl );
 
-			stencils.clear();
-			stencils.resize( dataPackets.size() );					// The indices in dataPackets and stencils match.
-
 			for( size_t i = 0; i < dataPackets.size(); i++ )
 			{
 				slml::DataPacket *dataPacket = dataPackets[i];
@@ -455,28 +452,14 @@ public:
 				double relError = ABS( targetPhi[i] - dataPacket->numBacktrackedPhi_d ) / minCellWidth;
 				maxRelError = MAX( maxRelError, relError );
 
-				// Retrieve level-set values at the four neighbors to neural computation of curvature.
-				stencils[i] = nullptr;					// If a node has a well-defined stencil, this won't be null.
-				try
+				std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
+				if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
 				{
-					std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-					if( nodesAlongInterface.getFullStencilOfNode( dataPacket->nodeIdx, stencilIndices ) )
-					{
-						// Populate stencils by dynamic memory allocation.
-						stencils[i] = new double [num_neighbors_cube];
-						for( int j = 0; j < num_neighbors_cube; j++ )
-							stencils[i][j] = phiReadPtr[stencilIndices[j]];
-
-						// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
-						std::stringstream intCoords;
-						for( int j = 0; j < P4EST_DIM; j++ )
-							intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
-						locallyOwnedFlaggedCoords[intCoords.str()] = dataPacket->targetPhi_d;
-					}
-				}
-				catch( const std::exception &exception )
-				{
-					std::cerr << exception.what() << std::endl;
+					// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
+					std::stringstream intCoords;
+					for( int j = 0; j < P4EST_DIM; j++ )
+						intCoords << long( (xyz[j] - minCoords[j]) / minCellWidth ) << ",";
+					locallyOwnedFlaggedCoords[intCoords.str()] = dataPacket->targetPhi_d;
 				}
 			}
 
