@@ -14,7 +14,9 @@
 
 /**
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
- * a finer grid from where its values are drawn by interpolation.
+ * a reference finer grid from where its values are drawn by interpolation.
+ *
+ * Updated: September 30, 2021.
  */
 class CoarseGrid
 {
@@ -31,13 +33,10 @@ public:
 	double minCellWidth = 0;					// Minimum cell width.
 	double minCellDiag = 0;						// Minimum call diagonal length.
 	double minCoords[P4EST_DIM] = {};			// Minimum coordinates of computational domain.
-
-	const double BAND;							// Minimum band around the interface.
 	const int MAX_RL;							// Maximum refinement level.
 
 	Vec phi = nullptr;							// Level-set function values parallel vector.
 	Vec vel[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};			// Velocity field parallel vectors.
-	Vec gammaFlag = nullptr;					// A flag vector that stores 1s in nodes adjacent to Gamma, 0 otherwise.
 
 	splitting_criteria_cf_and_uniform_band_t *lsSplittingCriteria;		// Criteria created dynamically in constructor.
 
@@ -48,16 +47,15 @@ public:
 	 * @param [in] xyzMin Domain minimum coordinates.
 	 * @param [in] xyzMax Domain maximum coordinates.
 	 * @param [in] periodic Domain periodicity.
-	 * @param [in] band Minimum number of (min) cells around the interface.
 	 * @param [in] maxRL Maximum refinement level.
 	 * @param [in] initialInterface Object to define the initial interface and the initial splitting criteria.
 	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 * @param [in] sampleVecs Whether or not to sample the level-set function and velocity field on the initial grid.
 	 */
 	CoarseGrid( const mpi_environment_t& mpi, const int nTreesPerDim[], const double xyzMin[], const double xyzMax[],
-			 	const int periodic[], double band, int maxRL, CF_DIM *initialInterface,
+			 	const int periodic[], int maxRL, CF_DIM *initialInterface,
 			 	const CF_2 *velocityField[P4EST_DIM]=nullptr, bool sampleVecs=true )
-			 	: BAND( band ), MAX_RL( maxRL ), mpi( mpi )
+			 	: MAX_RL( maxRL ), mpi( mpi )
 	{
 
 		// Init macromesh via the brick and connectivity objects.
@@ -65,7 +63,7 @@ public:
 
 		// Create the forest using a level-set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-		lsSplittingCriteria = new splitting_criteria_cf_and_uniform_band_t( 1, MAX_RL, initialInterface, BAND );
+		lsSplittingCriteria = new splitting_criteria_cf_and_uniform_band_t( 1, MAX_RL, initialInterface, MASS_BAND_HALF_WIDTH );
 		p4est->user_pointer = lsSplittingCriteria;		// Don't forget to delete object manually.
 
 		// Refine and partition forest (according to the 'grid_update' example, I shouldn't use recursive refinement).
@@ -122,10 +120,10 @@ public:
 	/**
 	 * Use the FINE grid to "advect" or update the COARSE grid.  To achieve this, we use interpolation.  The COARSE grid
 	 * is upated until convergence.
-	 * @note You must collect samples before "advecting" COARSE grid.
+	 * @note You must collect samples before "advecting" the COARSE grid.
 	 * @param [in] ngbd_f Pointer to FINE grid node neighborhood struct.
 	 * @param [in] phi_f Reference to parallel level-set function value vector for FINE grid.
-	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
+	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
 	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f,
 					 	const CF_2 *velocityField[P4EST_DIM]=nullptr )
@@ -133,17 +131,9 @@ public:
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
 
-		// Invalidate the flag vector.  You must set re-allocate the vector when sampling.
-		if( gammaFlag )
-		{
-			ierr = VecDestroy( gammaFlag );
-			CHKERRXX( ierr );
-			gammaFlag = nullptr;
-		}
-
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
 
-		// Compute second derivatives of FINE level-set function. We need these for quadratic interpolation its phi
+		// Compute second derivatives of FINE level-set function. We need these for quadratically interpolating its phi
 		// values to draw the corresponding phi values in the COARSE grid.
 		Vec phi_f_xx[P4EST_DIM];
 		for( auto& derivative : phi_f_xx )
@@ -159,7 +149,7 @@ public:
 		// Define splitting criteria.
 		auto *splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
 																  		oldSplittingCriteria->max_lvl,
-																  		oldSplittingCriteria->lip, BAND );
+																  		oldSplittingCriteria->lip, MASS_BAND_HALF_WIDTH );
 
 		// New grid level-set values: start from current COARSE grid structure.
 		Vec phiNew;
@@ -253,22 +243,14 @@ public:
 	/**
 	 * Advect coarse grid numerically, following the semi-Lagrangian method with a band and second-order accurate loca-
 	 * tion of departure points.
-	 * @note You must collect samples before "advecting" COARSE grid.
+	 * @note You must collect samples before "advecting" the COARSE grid.
 	 * @param [in] dt Timestep.
-	 * @param [in] velocityField Velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
+	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
 	void updateP4EST( const double& dt, const CF_2 *velocityField[P4EST_DIM]=nullptr )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
-
-		// Invalidate the flag vector.  You must set re-allocate the vector when sampling.
-		if( gammaFlag )
-		{
-			ierr = VecDestroy( gammaFlag );
-			CHKERRXX( ierr );
-			gammaFlag = nullptr;
-		}
 
 		// Declare auxiliary COARSE p4est objects; they will be updated during the semi-Lagrangian advection step.
 		p4est_t *p4est_np1 = p4est_copy( p4est, P4EST_FALSE );
@@ -281,7 +263,7 @@ public:
 		semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
 
 		// Advect the COARSE level-set function one step, then update the grid.
-		semiLagrangian.update_p4est( vel, dt, phi, nullptr, nullptr, BAND );
+		semiLagrangian.update_p4est( vel, dt, phi, nullptr, nullptr, MASS_BAND_HALF_WIDTH );
 
 		// Destroy old COARSE forest and create new structures.
 		p4est_destroy( p4est );
@@ -312,22 +294,21 @@ public:
 	}
 
 	/**
-	 * Collect samples from COARSE grid points next to the interface (all independent nodes).  This function must be
+	 * Collect samples from locally owned and valid COARSE grid points next to the interface.  This function must be
 	 * called *after* advecting the FINE grid an adequate number of times and *before* using the FINE grid to "advect"
-	 * the COARSE grid.
-	 * If all samples returned by the semi-Lagrangian sampler are backtracked within the domain, the function populates
-	 * an array of pointers of data packets that have been allocated dynamically.
+	 * the COARSE grid.  The function populates an array of pointers to data packets allocated dynamically.
 	 * @note The caller function is responsible for deallocating the data packets by using the static utility function
-	 * slml::SemiLagrangian::freeDataPacketArray(.) this collectSamples returns true.
+	 * slml::SemiLagrangian::freeDataPacketArray.
 	 * @param [in] ngbd_f Advected fine grid neighborhood struct.
 	 * @param [in] phi_f Advected fine grid level-set values vector.
 	 * @param [in] dt Coarse grid step size.
 	 * @param [out] dataPackets Array of data packets received from the semi-Lagrangian sampler.
-	 * @param [out] stencils Array of level-set value nine-point stencils to compute curvature with a hybrid approach.
 	 * @param [out] maxRelError Maximum relative error of phi at departure point (w.r.t. minimum cell width).
-	 * @param [out] locallyOwnedFlaggedCoords Map of integer-valued coordinates for locally owned nodes whose samples
-	 * 				were collected to their expected value.
-	 * @return true if all nodes along the interface were backtracked within the domain; false otherwise.
+	 * @param [out] flaggedCoords Map of integer-valued coordinates for locally owned nodes whose samples were collected
+	 * 							  (a.k.a valid nodes next to Gamma^n with h-uniform stencils and meeting the angular
+	 * 							  criterion between their phi-signed normal and midpoint velocity).
+	 * @param [in] debug True if you're debugging and want to store errors and angles in data packets, false otherwise.
+	 * @return false if some nodes were backtracked within the domain (although they're not included in dataPackets); true otherwise.
 	 */
 	bool collectSamples( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, const double& dt,
 					  	 std::vector<slml::DataPacket *>& dataPackets, std::vector<double *>& stencils,
@@ -338,16 +319,6 @@ public:
 		maxRelError = 0;
 
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
-
-		// Invalidate the flag vector and reallocate it with the current grid status.
-		if( gammaFlag )
-		{
-			ierr = VecDestroy( gammaFlag );
-			CHKERRXX( ierr );
-			gammaFlag = nullptr;
-		}
-		ierr = VecCreateGhostNodes( p4est, nodes, &gammaFlag );
-		CHKERRXX( ierr );
 
 		// Clear array of locally owned flagged node coords.
 		locallyOwnedFlaggedCoords.clear();
@@ -435,7 +406,7 @@ public:
 
 		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
 		char msg[1024];
-		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, BAND );
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, MASS_BAND_HALF_WIDTH );
 		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, phi_c_xx, dataPackets );
 
 		// Continue process if all samples lie within computational domain.
@@ -468,9 +439,6 @@ public:
 			stencils.clear();
 			stencils.resize( dataPackets.size() );					// The indices in dataPackets and stencils match.
 
-			double *gammaFlagPtr;
-			ierr = VecGetArray( gammaFlag, &gammaFlagPtr );
-			CHKERRXX( ierr );
 			for( size_t i = 0; i < dataPackets.size(); i++ )
 			{
 				slml::DataPacket *dataPacket = dataPackets[i];
@@ -499,8 +467,6 @@ public:
 						for( int j = 0; j < num_neighbors_cube; j++ )
 							stencils[i][j] = phiReadPtr[stencilIndices[j]];
 
-						gammaFlagPtr[dataPacket->nodeIdx] = 1.0;	// Turn on "bit" for node next to Gamma.
-
 						// Insert integer-based coordinates into map of flagged coords with its corresponding phi_d^*.
 						std::stringstream intCoords;
 						for( int j = 0; j < P4EST_DIM; j++ )
@@ -513,17 +479,6 @@ public:
 					std::cerr << exception.what() << std::endl;
 				}
 			}
-			ierr = VecRestoreArray( gammaFlag, &gammaFlagPtr );
-			CHKERRXX( ierr );
-
-			// Let's synchronize the flag vector among all processes.  This way, we know which nodes will be updated
-			// using machine learning even at processes that do not own those nodes.  If I don't do this, the flag set
-			// in one process can be reset to 0 by another (e.g., if node is in ghost layer of a process and, according
-			// to it, the node isn't next to Gamma, while the owner process has determined that the node is next to it).
-			ierr = VecGhostUpdateBegin( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
-			CHKERRXX( ierr );
-			VecGhostUpdateEnd( gammaFlag, INSERT_VALUES, SCATTER_FORWARD );
-			CHKERRXX( ierr );
 
 			sprintf( msg, "%3lu   ", dataPackets.size() );
 			ierr = PetscPrintf( mpi.comm(), msg );
@@ -541,9 +496,9 @@ public:
 		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 
-		for( int i = 0; i < P4EST_DIM; i++ )
+		for( int dim = 0; dim < P4EST_DIM; dim++ )
 		{
-			ierr = VecRestoreArrayRead( normal[i], &normalReadPtr[i] );
+			ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
 			CHKERRXX( ierr );
 		}
 
@@ -585,26 +540,31 @@ public:
 	}
 
 	/**
-	 * Write VTK files for prior or post advection.  Prior saves the flagged nodes along Gamma, post saves the exact
-	 * solution phi.
+	 * Write VTK files for debugging.
+	 * @note Call this function at the end of each iteration to see how the interface is evolving.
 	 * @param [in] vtkIdx File index.
-	 * @param [in] phiExact Exact phi parallel vector.  If given, post advection is saved, otherwise, prior advection is saved.
+	 * @param [in] howUpdated How was every node updated: 0 numerically, 1 numerically but used to have target level-set
+	 * 			   value, 2 preserved its target level-set value.
  	 */
-	void writeVTK( int vtkIdx, Vec phiExact=nullptr ) const
+	void writeVTK( int vtkIdx, Vec howUpdated=nullptr ) const
 	{
 		char name[1024];
 		PetscErrorCode ierr;
 
-		const double *phiReadPtr, *phiExactOrFlagReadPtr, *velReadPtr[2];		// Pointers to Vec contents.
+		const double *phiReadPtr, *howUpdatedReadPtr, *velReadPtr[2];
 
-		// Depending on whether the flag vector is set (after sampling) or not (after fitting COARSE to FINE grid), we
-		// save different information.
-		// Prior: Means that we have not advected the COARSE grid.  So, we can show the flagged nodes.
-		// Post: Means that we have advected the coarse grid.  We can show the exact solution (as it counts on t=tn+1).
-		sprintf( name, (!phiExact)? "visualization_prior_%d" : "visualization_post_%d", vtkIdx );
+		bool createdLocalHowUpdated = false;
+		if( !howUpdated )	// In the first iteration, we don't have any values for howUpdated Vec.  Create a dummy one.
+		{
+			ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated );
+			CHKERRXX( ierr );
+			createdLocalHowUpdated = true;
+		}
+
+		sprintf( name, "ds_debugging_%d", vtkIdx );
 		ierr = VecGetArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
-		ierr = VecGetArrayRead( (!phiExact)? gammaFlag : phiExact, &phiExactOrFlagReadPtr );
+		ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
 		CHKERRXX( ierr );
 		for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
 		{
@@ -615,17 +575,23 @@ public:
 								P4EST_TRUE, P4EST_TRUE,
 								2 + P4EST_DIM, 0, name,
 								VTK_POINT_DATA, "phi", phiReadPtr,
-								VTK_POINT_DATA, (!phiExact)? "flag" : "phiExact", phiExactOrFlagReadPtr,
+								VTK_POINT_DATA, "howUpdated", howUpdatedReadPtr,
 								VTK_POINT_DATA, "vel_x", velReadPtr[0],
 								VTK_POINT_DATA, "vel_y", velReadPtr[1]
 		);
 		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
-		ierr = VecRestoreArrayRead( (!phiExact)? gammaFlag : phiExact, &phiExactOrFlagReadPtr );
+		ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
 		CHKERRXX( ierr );
 		for( unsigned int dir = 0; dir < P4EST_DIM; ++dir )
 		{
 			ierr = VecRestoreArrayRead( vel[dir], &velReadPtr[dir] );
+			CHKERRXX( ierr );
+		}
+
+		if( createdLocalHowUpdated )
+		{
+			ierr = VecDestroy( howUpdated );
 			CHKERRXX( ierr );
 		}
 	}
@@ -652,13 +618,6 @@ public:
 				CHKERRXX( ierr );
 				dir = nullptr;
 			}
-		}
-
-		if( gammaFlag )
-		{
-			ierr = VecDestroy( gammaFlag );
-			CHKERRXX( ierr );
-			gammaFlag = nullptr;
 		}
 
 		if( lsSplittingCriteria )

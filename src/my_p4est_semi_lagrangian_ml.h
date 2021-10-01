@@ -15,6 +15,8 @@
 
 #define MASS_N_COMPONENTS		17	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
+#define MASS_BAND_HALF_WIDTH	2	// Distance in min diags to enforce a uniform band around Gamma^n.
+
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #endif
@@ -40,11 +42,11 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: August 4, 2021.
+ * Updated: September 30, 2021.
  */
 namespace slml
 {
-	///////////////////////////////////////////////////// _Scaler //////////////////////////////////////////////////////
+	////////////////////////////////////////////////////// Scaler //////////////////////////////////////////////////////
 
 	/**
 	 * Abstract class to transform data into an input form that the neural network understands.

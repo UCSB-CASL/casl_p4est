@@ -2,12 +2,15 @@
  * Title: ml_mass_conservation
  *
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
- * advection.  We assume that all considered velocity fields are divergence-free.
+ * advection.  We assume that all considered velocity fields are divergence-free.  The grid points we correct are those
+ * next to Gamma^n such that they have full h-uniform stencils and their angle between the midpoint vel and phi-signed
+ * normal vector lies in the range [0, treshold].  Threshold defined in the MLSemiLagrangian class.
+ *
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Modified: July 31, 2021.
+ * Updated: September 30, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -71,14 +74,16 @@ int main( int argc, char** argv )
 	const int NUM_VEL_FIELDS = 7;		// Number of different random velocity fields to try out.
 	const int NUM_CENTERS = 4;			// Number of different center locations to try out per circle radius.
 
-	const double BAND_C = 2; 			// Minimum number of cells around interface in COARSE (C) and FINE (F) grids.
+	const double BAND_C = MASS_BAND_HALF_WIDTH; 	// Half band width in min diags around interface in COARSE (C) and FINE (F) grids.
 	const double BAND_F = 1.75 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> addFineSubsteps ( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
+	param_t<bool> debug( pl, true, "debug", "Debug or test by outputting to VTK file the evolution of one disk "
+											 "(default 0).");
+	param_t<unsigned short> addFineSubsteps( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
 																		" 0 => 2^0 = 1 (sub)step per fine step)." );
 
 	try
@@ -100,18 +105,18 @@ int main( int argc, char** argv )
 		pl.set_from_cmd_all( cmd );
 
 		// Destination folder and file for semi-Lagrangian data.
-		const std::string DATA_PATH = "/Volumes/YoungMinEXT/mass_conservation/";
+		const std::string DATA_PATH = "/Volumes/YoungMinEXT/ecnet_data/";
 		const std::string DATA_SUFFIX = "_" + std::to_string( COARSE_MAX_RL ) + "_" + std::to_string( FINE_MAX_RL )
 										+ "_k_minus"
 										+ (addFineSubsteps()? "_x" + std::to_string( 1u << addFineSubsteps() ) : "" )
-										+ ".csv";
+										+ (debug()? "_debug": "") + ".csv";
 		const std::string FILE_PATH = DATA_PATH + "sl_data" + DATA_SUFFIX;
 		const int NUM_COLUMNS = MASS_INPUT_SIZE;			// Number of columns in data set (not including hk but
 		std::string COLUMN_NAMES[NUM_COLUMNS] = {			// adding target phi_d value instead).
 			"phi_a",				// Level-set value at arrival point.
 			"u_a", "v_a", 			// Velocity components at arrival point.
-			"d",					// Normalized distance (by 1/dx_coarse).
-			"x_d", "y_d",			// Normalized departure coords with respect to quad's lower corner.
+			"d",					// H-normalized distance (by coarse dx).
+			"x_d", "y_d",			// H-normalized departure coords with respect to quad's lower-left corner.
 			"phi_d_mm", "phi_d_mp", "phi_d_pm", "phi_d_pp",	// Level-set values at departure quad's children.
 			"u_d_mm", "u_d_mp", "u_d_pm", "u_d_pp",			// Velocity component u at departure quad's children.
 			"v_d_mm", "v_d_mp", "v_d_pm", "v_d_pp",			// Velocity component v at departure quad's children.
@@ -197,7 +202,7 @@ int main( int argc, char** argv )
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
 
-			// Defining a random velocity field, normalized to unit length (and dump velocity field files for analysis).
+			// Defining a random velocity field, normalized to unit length.
 			RandomVelocityField randomVelocityField( gen );
 			randomVelocityField.normalize( xyz_min, mesh_len, 1 << FINE_MAX_RL );
 
@@ -251,8 +256,8 @@ int main( int argc, char** argv )
 					auto *nodeNeighbors_f = new my_p4est_node_neighbors_t( hierarchy_f, nodes_f );
 					nodeNeighbors_f->init_neighbors();
 
-					// Create a coarse grid.
-					CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, BAND_C, COARSE_MAX_RL, &sphere );
+					// Create a COARSE grid.
+					CoarseGrid coarseGrid( mpi, n_xyz, xyz_min, xyz_max, periodic, COARSE_MAX_RL, &sphere );
 
 					// Retrieve FINE grid size data.
 					double dxyz_f[P4EST_DIM];
@@ -283,7 +288,7 @@ int main( int argc, char** argv )
 					// Reinitialize both FINE and COARSE grids before we start advections as we are using a
 					// non-signed distance level-set function.
 					my_p4est_level_set_t levelSet_f( nodeNeighbors_f );				// FINE grid.
-					levelSet_f.reinitialize_2nd_order( phi_f, 2 * REINIT_NUM_ITER );
+					levelSet_f.reinitialize_2nd_order( phi_f, (int)(BAND_C * REINIT_NUM_ITER) );
 					my_p4est_level_set_t levelSet_c( coarseGrid.nodeNeighbors );	// COARSE grid.
 					levelSet_c.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );
 
@@ -363,7 +368,7 @@ int main( int argc, char** argv )
 
 							// Reinitialize FINE level-set function.
 							my_p4est_level_set_t levelSet_f1( nodeNeighbors_f );
-							levelSet_f1.reinitialize_2nd_order( phi_f, REINIT_NUM_ITER * (step == N_FINE_STEPS_PER_COARSE_STEP - 1? int( ceil( BAND_F ) ) : 2) );
+							levelSet_f1.reinitialize_2nd_order( phi_f, (int)(REINIT_NUM_ITER * (step == N_FINE_STEPS_PER_COARSE_STEP - 1? ceil( BAND_F ) : BAND_C)) );
 
 							// Advance FINE time.
 							tn_f += dt_f;
@@ -579,10 +584,10 @@ int main( int argc, char** argv )
 
 					// Signal how we stopped the simulation loop.
 					if( !allInside )
-						ierr = PetscPrintf( mpi.comm(), "///\n" );	// At least one point along Gamma was backtracked
-					else											// outside Omega.
-						ierr = PetscPrintf( mpi.comm(), "###\n" );	// All points along Gamma were backtracked inside
-					CHKERRXX( ierr );								// Omega.
+						ierr = PetscPrintf( mpi.comm(), "///\n" );	// At least one candidate point next to Gamma_c^n
+					else											// was backtracked outside Omega.
+						ierr = PetscPrintf( mpi.comm(), "###\n" );	// All candidate points were backtracked inside Omega.
+					CHKERRXX( ierr );
 
 					// Status message.
 					sprintf( msg, "= %lu samples collected, maxRelError = %g, after %g seconds.\n",
@@ -614,6 +619,9 @@ int main( int argc, char** argv )
 					coarseGrid.destroy();
 
 					nSamplesPerRadius += nSamplesPerLoop;
+
+					if( debug() )		// Debugging implies a single pass.
+						break;
 				}
 
 				nSamplesPerVelocityField += nSamplesPerRadius;
@@ -623,6 +631,9 @@ int main( int argc, char** argv )
 			 			 nSamplesPerRadius, radius, watch.get_duration_current() );
 				ierr = PetscPrintf( mpi.comm(), msg );
 				CHKERRXX( ierr );
+
+				if( debug() )			// Debugging implies a single pass.
+					break;
 			}
 
 			nSamplesInTotal += nSamplesPerVelocityField;
@@ -632,6 +643,9 @@ int main( int argc, char** argv )
 					 nSamplesPerVelocityField, nvel, watch.get_duration_current() );
 			ierr = PetscPrintf( mpi.comm(), msg );
 			CHKERRXX( ierr );
+
+			if( debug() )
+				break;
 		}
 
 		// Closing files.
