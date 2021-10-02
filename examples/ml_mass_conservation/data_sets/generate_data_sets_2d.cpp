@@ -81,7 +81,7 @@ int main( int argc, char** argv )
 
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<bool> debug( pl, true, "debug", "Debug or test by outputting to VTK file the evolution of one disk "
+	param_t<bool> debug( pl, false, "debug", "Debug or test by outputting to VTK file the evolution of one disk "
 											 "(default 0).");
 	param_t<unsigned short> addFineSubsteps( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
 																		" 0 => 2^0 = 1 (sub)step per fine step)." );
