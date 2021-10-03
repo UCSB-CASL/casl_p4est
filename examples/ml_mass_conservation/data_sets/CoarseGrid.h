@@ -16,7 +16,7 @@
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
  * a reference finer grid from where its values are drawn by interpolation.
  *
- * Updated: October 1, 2021.
+ * Updated: October 2, 2021.
  */
 class CoarseGrid
 {
@@ -398,9 +398,10 @@ public:
 
 		//////////////////////////////////////////////// Data collection ///////////////////////////////////////////////
 
-		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples.
+		// Use a semi-Lagrangian scheme with a single vel step for backtracking to retrieve samples: not using angle
+		// constraint between vel_a and phi_a-signed normal vector.
 		char msg[1024];
-		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi );
+		slml::SemiLagrangian semiLagrangianML( &p4est, &nodes, &ghost, nodeNeighbors, phi, false );
 		bool allInside = semiLagrangianML.collectSamples( vel, vel_c_xx, dt, phi, normal, phi_c_xx, dataPackets );
 
 		// Continue process if no candidate node fell outside of the computational domain.

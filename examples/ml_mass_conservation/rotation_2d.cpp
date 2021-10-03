@@ -12,7 +12,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: June 29, 2021.
- * Updated: October 1, 2021.
+ * Updated: October 2, 2021.
  */
 
 #ifdef _OPENMP
@@ -182,8 +182,8 @@ int main( int argc, char** argv )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
-	param_t<int> exportAllVTK (pl, 1, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 1)" );
-	param_t<double> rotations (pl, 0.25, "nRotations", "Number of rotations (default: 1.0)" );
+	param_t<int> exportAllVTK (pl, 0, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 1)" );
+	param_t<double> rotations (pl, 15, "nRotations", "Number of rotations (default: 1.0)" );
 
 	try
 	{
@@ -364,7 +364,7 @@ int main( int argc, char** argv )
 			my_p4est_semi_lagrangian_t *numSemiLagrangian;
 			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON )		// Use neural network only if dt = dx.
 			{
-				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, nnet, iter );
+				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, false, nnet, iter );
 				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated );
 			}
 			else
@@ -416,13 +416,10 @@ int main( int argc, char** argv )
 				ierr = VecGetArray( mask, &maskPtr );
 				CHKERRXX( ierr );
 
-				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// Initially, all local nodes are updatable.
-					maskPtr[n] = 1;												// 1 means updatable.
-
 				int numMaskedNodes = 0;
 				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
 				{
-					if( howUpdatedReadPtr[n] == 1 )
+					if( howUpdatedReadPtr[n] == 1 && phiPtr[n] <= 0 )
 					{
 						numMaskedNodes++;
 						maskPtr[n] = 0;					// 0 => nonupdatable.

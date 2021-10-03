@@ -536,9 +536,9 @@ void slml::Cache::operator()( const double *xyz, double *results ) const
 //////////////////////////////////////////////////// SemiLagrangian ////////////////////////////////////////////////////
 
 slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-									  my_p4est_node_neighbors_t *ngbdN, Vec phi,
+									  my_p4est_node_neighbors_t *ngbdN, Vec phi, const bool& useAngleConstraint,
 									  const NeuralNetwork *nnet, const unsigned long& iteration )
-									  : ITERATION( iteration ),
+									  : ITERATION( iteration ), USE_ANGLE_CONSTRAINT( useAngleConstraint ),
 										VEL_INTERP_MTHD( interpolation_method::quadratic ),
 										PHI_INTERP_MTHD( interpolation_method::quadratic ),
 										_nnet( nnet ),
@@ -743,16 +743,19 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 			continue;
 
 		// Second validity test: angle between unit midpoint vel_a and phi-signed normal vector must lie in [0, FLOW_ANGLE_THRESHOLD].
-		double unitVelStar[P4EST_DIM];
-		for( int dir = 0; dir < P4EST_DIM; dir++ )	// Normalize midpoint vel.
-			unitVelStar[dir] = velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] / velStarMagnitude;
+		if( USE_ANGLE_CONSTRAINT )
+		{
+			double unitVelStar[P4EST_DIM];
+			for( int dir = 0; dir < P4EST_DIM; dir++ )	// Normalize midpoint vel.
+				unitVelStar[dir] = velStar[dir][velStarNodeIdxToOutIdxMap.at( nodeIdx )] / velStarMagnitude;
 
-		double dot = 0;
-		for( int dir = 0; dir < P4EST_DIM; dir++ )
-			dot += unitVelStar[dir] * normalReadPtr[dir][nodeIdx] * (phiReadPtr[nodeIdx] > 0? 1 : -1);
+			double dot = 0;
+			for( int dir = 0; dir < P4EST_DIM; dir++ )
+				dot += unitVelStar[dir] * normalReadPtr[dir][nodeIdx] * (phiReadPtr[nodeIdx] > 0? 1 : -1);
 
-		if( acos( dot ) > FLOW_ANGLE_THRESHOLD )
-			continue;
+			if( acos( dot ) > FLOW_ANGLE_THRESHOLD )
+				continue;
+		}
 
 		// Backtracking the point using a midpoint velocity step in the negative direction (2nd-order accurate).
 		node_xyz_fr_n( nodeIdx, p4est_n, nodes_n, xyz_a );
@@ -924,8 +927,9 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4
 	CHKERRXX( ierr );
 
 	// Collect data packets for locally owned nodes (no ghost nodes).  Also, skip nodes whose backtracked point falls
-	// outside the domain (even if periodicity is enabled), or if they don't follow the flow (angle between unit u_a and
-	// phi-signed normal is greater than a threshold).  This makes the inference process compatible with training.
+	// outside the domain (even if periodicity is enabled), or (optionally) if they don't follow the flow (angle between
+	// unit vel_a and phi_a-signed normal is greater than a threshold).  This makes the inference process compatible
+	// with training.
 	std::vector<DataPacket *> dataPackets;
 	collectSamples( vel, vel_xx, dt, phi, normal, phi_xx, dataPackets );
 
@@ -996,7 +1000,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4
 			dataPacket->numBacktrackedPhi_d *= -1;
 		}
 
-		// Reorienting semi-Lagrangian data so that the midpoint vel -u_a has an angle in the range of [0, pi/2].
+		// Reorienting semi-Lagrangian data so that the midpoint -vel_a has an angle in the range of [0, pi/2].
 		dataPacket->rotateToFirstQuadrant();
 
 		hkIdx++;

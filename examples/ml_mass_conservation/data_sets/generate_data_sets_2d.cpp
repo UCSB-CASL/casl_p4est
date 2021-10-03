@@ -3,14 +3,14 @@
  *
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
  * advection.  We assume that all considered velocity fields are divergence-free.  The grid points we correct are those
- * next to Gamma^n such that they have full h-uniform stencils and their angle between the midpoint vel and phi-signed
- * normal vector lies in the range [0, treshold].  Threshold defined in the MLSemiLagrangian class.
+ * next to Gamma^n with full h-uniform stencils.  In selective reinitialization, we protect only those points enclosed
+ * by Gamma^np1.
  *
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 1, 2021.
+ * Updated: October 2, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -95,7 +95,10 @@ int main( int argc, char** argv )
 
 		// To generate data sets we don't admit more than a single process to avoid race conditions.
 		if( mpi.size() > 1 )
-			throw std::runtime_error( "Only a single process is allowed!" );
+		{
+			PetscErrorPrintf( "Only a single process is allowed!" );
+			MPI_Abort( mpi.comm(), 1 );
+		}
 
 		// Loading parameters from command line.
 		cmdParser cmd;
@@ -476,7 +479,7 @@ int main( int argc, char** argv )
 								coarseGrid.updateP4EST( dt_c );
 
 							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
-							// Selective reinitialization: protect valid nodes fitted to the FINE grid.
+							// Selective reinitialization: protect nodes fitted to the FINE grid AND lying inside Gamma_c^np1.
 							Vec mask, howUpdated;
 							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );		// Mask vector to flag updatable nodes.
 							CHKERRXX( ierr );
@@ -510,7 +513,7 @@ int main( int argc, char** argv )
 									for( int j = 0; j < P4EST_DIM; j++ )
 										intCoords << long((xyz[j] - xyz_min[j]) / H_C ) << ",";
 									auto got = flaggedCoords.find( intCoords.str());
-									if( got != flaggedCoords.end())	// Valid point next to Gamma_c^n?
+									if( got != flaggedCoords.end() && phi_cPtr[n] <= 0 )		// Valid point next to Gamma_c^n and inside Gamma_c^np1?
 									{
 										maskPtr[n] = 0;				// Non updatable.
 										howUpdatedPtr[n] = 1;
@@ -520,8 +523,11 @@ int main( int argc, char** argv )
 								}
 							}
 
-							if( numMaskedNodes != flaggedCoords.size() )
-								throw std::runtime_error( "Unmatched size of flaggedCoords and counted nodes within approximation band!" );
+							if( numMaskedNodes > flaggedCoords.size() )
+							{
+								PetscErrorPrintf( "You can't protect more nodes than the ones you fitted to the fine grid!\n" );
+								MPI_Abort( mpi.comm(), 1 );
+							}
 
 							ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
 							CHKERRXX( ierr );

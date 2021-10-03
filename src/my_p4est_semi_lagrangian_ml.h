@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 1, 2021.
+ * Updated: October 2, 2021.
  */
 namespace slml
 {
@@ -632,6 +632,7 @@ namespace slml
 	{
 	private:
 		double H = 0;				// Smallest cell width.
+		const bool USE_ANGLE_CONSTRAINT;	// Whether or not to collect samples based on their angle between midpoint vel_a and phi-signed normal.
 		const double FLOW_ANGLE_THRESHOLD = 10 * M_PI / 18;	// Maximum angle between midpoint vel and the phi-signed normal at a
 															// grid point next to Gamma^n.
 		Vec _mlFlag = nullptr;		// A flag vector that stores rank+1 for nodes next to Gamma^n for which
@@ -697,18 +698,20 @@ namespace slml
 		 * @param [in,out] ghostNp1 Pointer to a ghost struct pointer.
 		 * @param [in,out] ngbdN  Pointer to a neighborhood struct.
 		 * @param [in] phi Level-set values to construct the shell of h-uniform-stencil grid points around Gamma_c^n.
+		 * @param [in] useAngleConstraint Whether or not use angle constraint between midpoint vel_a and phi-signed normal.
 		 * @param [in] nnet Pointer to neural network, which should be created externally to avoid recurrent spawning.
 		 * @param [in] iteration Current ID for advection step.
 		 */
 		SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesNp1, p4est_ghost_t **ghostNp1,
-						my_p4est_node_neighbors_t *ngbdN, Vec phi, const NeuralNetwork *nnet=nullptr,
+						my_p4est_node_neighbors_t *ngbdN, Vec phi, const bool& useAngleConstraint=false,
+						const NeuralNetwork *nnet=nullptr,
 						const unsigned long& iteration=0 );
 
 		/**
 		 * Collect samples for neural network training/inference.  Use a semi-Lagrangian scheme with 2nd-order accuracy
 		 * along the characteristics to define the departure points.  Collect samples for grid points next to Gamma^n
-		 * with nonzero mid-point velocity, uniform h-stencils, and an angle between phi-signed normal and midpoint vel
-		 * in the range of [0, FLOW_ANGLE_THRESHOLD].
+		 * with nonzero mid-point velocity, uniform h-stencils, and (optionally) an angle between phi-signed normal and
+		 * midpoint vel_a in the range of [0, FLOW_ANGLE_THRESHOLD].
 		 * @note Here, we create data packets dynamically, and you must not forget free those objects by calling the
 		 * utility function freeDataPacketArray.
 		 * @param [in] vel Array of velocity parallel vectors in each Cartesian direction at time t^n.
