@@ -12,7 +12,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: June 29, 2021.
- * Updated: October 2, 2021.
+ * Updated: October 3, 2021.
  */
 
 #ifdef _OPENMP
@@ -362,7 +362,7 @@ int main( int argc, char** argv )
 			// Create semi-Lagrangian object and advect.
 			slml::SemiLagrangian *mlSemiLagrangian;
 			my_p4est_semi_lagrangian_t *numSemiLagrangian;
-			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON )		// Use neural network only if dt = dx.
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )		// Use neural network in an alternate schedule and only if dt = dx.
 			{
 				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, false, nnet, iter );
 				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated );
@@ -396,7 +396,7 @@ int main( int argc, char** argv )
 
 			// Reinitialize level-set function.
 			my_p4est_level_set_t ls( nodeNeighbors );
-			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON )
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
 			{
 				double *phiPtr;
 				ierr = VecGetArray( phi, &phiPtr );
@@ -448,7 +448,7 @@ int main( int argc, char** argv )
 			}
 
 			// Destroy semi-Lagrangian objects.
-			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON )
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
 				delete mlSemiLagrangian;
 			else
 				delete numSemiLagrangian;

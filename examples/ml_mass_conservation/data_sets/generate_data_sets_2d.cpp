@@ -4,13 +4,13 @@
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
  * advection.  We assume that all considered velocity fields are divergence-free.  The grid points we correct are those
  * next to Gamma^n with full h-uniform stencils.  In selective reinitialization, we protect only those points enclosed
- * by Gamma^np1.
+ * by Gamma^np1.  Sampling occurs every other iteration to allow the numerical viscosity to smoothen out the trajectory.
  *
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 2, 2021.
+ * Updated: October 3, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -77,12 +77,17 @@ int main( int argc, char** argv )
 	const double BAND_C = MASS_BAND_HALF_WIDTH; 	// Half band width in min diags around interface in COARSE (C) and FINE (F) grids.
 	const double BAND_F = 1.75 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
 
+	const int INTERLEAVED_ADVECT_STEPS = 4;			// How often to interleave fine-grid fitting with usual advection.
+
 	char msg[1024];						// Some string to write messages to standard ouput.
 
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<bool> debug( pl, false, "debug", "Debug or test by outputting to VTK file the evolution of one disk "
 											 "(default 0).");
+	param_t<bool> alternateSampling( pl, true, "alternateSampling", "Whether or not skip sampling every other iteration "
+																	"to allow numerical viscosity to smoothe the "
+																	"trajectory (default 1).");
 	param_t<unsigned short> addFineSubsteps( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
 																		" 0 => 2^0 = 1 (sub)step per fine step)." );
 
@@ -303,7 +308,6 @@ int main( int argc, char** argv )
 					unsigned long nSamplesPerLoop = 0;	// Count how many samples we collect for a simulation loop.
 					double maxRelError = 0;				// Maximum relative error (w.r.t. COARSE cell width) for loop.
 					int iteration = 0;					// Tracks current COARSE iteration and allows interleaved advection.
-					const int INTERLEAVED_ADVECT_STEPS = 16;	// How often to interleave fine-grid fitting with numerical advection.
 					int vtkIdx = 0;
 
 					if( debug() )
@@ -389,87 +393,175 @@ int main( int argc, char** argv )
 
 						// Collect samples from COARSE grid: must be done before "advecting" COARSE grid.
 						// Also, flag valid nodes susceptible for machine learning next to Gamma_c^n.
-						std::vector<slml::DataPacket *> dataPackets;
-						double relError = 0;
-						std::unordered_map<std::string, double> flaggedCoords;
-						allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError, flaggedCoords, debug() );
-
-						if( allInside )	// Continue processing no candidate sample was backtracked outside of the domain.
+						Vec howUpdated;
+						if( !alternateSampling() || !(iteration % 2) )		// Sample collection every other COARSE step to allow numerical smoothness.
 						{
-							// Data augmentation and writing to output files.
-							// Accumulate all samples first, and then write files.
-							std::vector<std::vector<double>> samples;		// Semi-Lagrangian samples.
-							samples.reserve( dataPackets.size() * 2 );
+							std::vector<slml::DataPacket *> dataPackets;
+							double relError = 0;
+							std::unordered_map<std::string, double> flaggedCoords;
+							allInside = coarseGrid.collectSamples( nodeNeighbors_f, phi_f, dt_c, dataPackets, relError, flaggedCoords, debug() );
 
-							std::vector<std::vector<double>> anglesAndErrorsSamples;	// Debugging info samples.
-							if( debug() )
-								anglesAndErrorsSamples.reserve( dataPackets.size() );
-
-							for( auto dataPacket : dataPackets )
+							if( allInside )	// Continue processing no candidate sample was backtracked outside of the domain.
 							{
+								// Data augmentation and writing to output files.
+								// Accumulate all samples first, and then write files.
+								std::vector<std::vector<double>> samples;		// Semi-Lagrangian samples.
+								samples.reserve( dataPackets.size() * 2 );
+
+								std::vector<std::vector<double>> anglesAndErrorsSamples;	// Debugging info samples.
+								if( debug() )
+									anglesAndErrorsSamples.reserve( dataPackets.size() );
+
+								for( auto dataPacket : dataPackets )
+								{
+									if( debug() )
+									{
+										anglesAndErrorsSamples.emplace_back( std::vector<double>() );
+										anglesAndErrorsSamples.back().emplace_back( dataPacket->theta_a );
+										anglesAndErrorsSamples.back().emplace_back( dataPacket->absHRelError_d );
+									}
+
+									// As a way to simplify the resulting nnet architecture, I'll make everything match
+									// negative-curvature samples by flipping the sign of level-set values in data packet.
+									if( dataPacket->hk_a > 0 )
+									{
+										dataPacket->phi_a *= -1;
+										for( auto& phi_d : dataPacket->phi_d )
+											phi_d *= -1;
+										dataPacket->targetPhi_d *= -1;
+										dataPacket->numBacktrackedPhi_d *= -1;
+										dataPacket->hk_a *= -1;
+									}
+
+									// Normalize semi-Lagrangian data so that -u_a has an angle in the range of [0, pi/2].
+									dataPacket->rotateToFirstQuadrant();
+
+									// Save samples.
+									for( int s = 0; s < 2; s++ )
+									{
+										samples.emplace_back( std::vector<double>() );			// Semi-Lagrangian data.
+										samples.back().reserve( NUM_COLUMNS );
+										dataPacket->serialize( samples.back(), false, true, true, true );
+
+										// Augment probabilistically at most once.
+										if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
+											break;
+
+										dataPacket->reflect_yEqx();		// Reflect semi-Lagrangian data.
+									}
+								}
+
+								// Write semi-Lagrangian samples vector to file.
+								for( const auto& row : samples )
+								{
+									// Write inner elements separted by commas and leave the last with no trailing comma.
+									std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( file, "," ) );
+									file << row.back() << std::endl;
+								}
+
+								// Write debugging info.
 								if( debug() )
 								{
-									anglesAndErrorsSamples.emplace_back( std::vector<double>() );
-									anglesAndErrorsSamples.back().emplace_back( dataPacket->theta_a );
-									anglesAndErrorsSamples.back().emplace_back( dataPacket->absHRelError_d );
+									for( const auto& row : anglesAndErrorsSamples )
+									{
+										std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( anglesAndErrorsFile, "," ) );
+										anglesAndErrorsFile << row.back() << std::endl;
+									}
 								}
 
-								// As a way to simplify the resulting nnet architecture, I'll make everything match
-								// negative-curvature samples by flipping the sign of level-set values in data packet.
-								if( dataPacket->hk_a > 0 )
+								// As a way to verify things are working well, we track the maximum relative error for
+								// level-set value at departure point.
+								maxRelError = MAX( maxRelError, relError );
+								nSamplesPerLoop += samples.size();
+
+								// Interleaved COARSE grid advection by using the FINE grid as reference and semi-Lagrangian
+								// numerical advection with quadratic velocity and phi interpolation.  This process updates
+								// COARSE internal phi vector with NO reinitialization.  Must do the latter manually below.
+								if( (iteration + 1) % INTERLEAVED_ADVECT_STEPS == 0 )
 								{
-									dataPacket->phi_a *= -1;
-									for( auto& phi_d : dataPacket->phi_d )
-										phi_d *= -1;
-									dataPacket->targetPhi_d *= -1;
-									dataPacket->numBacktrackedPhi_d *= -1;
-									dataPacket->hk_a *= -1;
+									coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+									PetscPrintf( mpi.comm(), "\b\b\b*  " );
 								}
+								else
+									coarseGrid.updateP4EST( dt_c );
 
-								// Normalize semi-Lagrangian data so that -u_a has an angle in the range of [0, pi/2].
-								dataPacket->rotateToFirstQuadrant();
+								// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
+								// Selective reinitialization: protect nodes fitted to the FINE grid AND lying inside Gamma_c^np1.
+								Vec mask;
+								ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );		// Mask vector to flag updatable nodes.
+								CHKERRXX( ierr );
+								ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &howUpdated );	// howUpdated distinguishes how we updated
+								CHKERRXX( ierr );																// valid nodes next to Gamma_c^n:
+								// 0=>numerical, 1=>valid node with target level-set values.
+								double *maskPtr;
+								ierr = VecGetArray( mask, &maskPtr );
+								CHKERRXX( ierr );
 
-								// Save samples.
-								for( int s = 0; s < 2; s++ )
+								double *howUpdatedPtr;
+								ierr = VecGetArray( howUpdated, &howUpdatedPtr );
+								CHKERRXX( ierr );
+
+								double *phi_cPtr;
+								ierr = VecGetArray( coarseGrid.phi, &phi_cPtr );
+								CHKERRXX( ierr );
+
+								int numMaskedNodes = 0;					// Used to validate that all valid points are recovered.
+								for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )
 								{
-									samples.emplace_back( std::vector<double>() );			// Semi-Lagrangian data.
-									samples.back().reserve( NUM_COLUMNS );
-									dataPacket->serialize( samples.back(), false, true, true, true );
+									maskPtr[n] = 1;						// Initially, all nodes are updatable.
+									howUpdatedPtr[n] = 0;				// By default, node was updated purely numerically.
 
-									// Augment probabilistically at most once.
-									if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
-										break;
+									if( ABS( phi_cPtr[n] ) <= (MASS_BAND_HALF_WIDTH + 1) * H_C )	// This approximation band works since nodes next to Gamma_c^n are now at most
+									{																// 2*dx from new interface (if phi was an exact signed distance function).
+										double xyz[P4EST_DIM];
+										node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
 
-									dataPacket->reflect_yEqx();		// Reflect semi-Lagrangian data.
+										std::stringstream intCoords;
+										for( int j = 0; j < P4EST_DIM; j++ )
+											intCoords << long((xyz[j] - xyz_min[j]) / H_C ) << ",";
+										auto got = flaggedCoords.find( intCoords.str());
+										if( got != flaggedCoords.end() && phi_cPtr[n] <= 0 )		// Valid point next to Gamma_c^n and inside Gamma_c^np1?
+										{
+											maskPtr[n] = 0;				// Non updatable.
+											howUpdatedPtr[n] = 1;
+											phi_cPtr[n] = got->second;	// Recover level-set value.
+											numMaskedNodes++;
+										}
+									}
 								}
-							}
 
-							// Write semi-Lagrangian samples vector to file.
-							for( const auto& row : samples )
-							{
-								// Write inner elements separted by commas and leave the last with no trailing comma.
-								std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( file, "," ) );
-								file << row.back() << std::endl;
-							}
-
-							// Write debugging info.
-							if( debug() )
-							{
-								for( const auto& row : anglesAndErrorsSamples )
+								if( numMaskedNodes > flaggedCoords.size() )
 								{
-									std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( anglesAndErrorsFile, "," ) );
-									anglesAndErrorsFile << row.back() << std::endl;
+									PetscErrorPrintf( "You can't protect more nodes than the ones you fitted to the fine grid!\n" );
+									MPI_Abort( mpi.comm(), 1 );
 								}
+
+								ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
+								CHKERRXX( ierr );
+
+								ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
+								CHKERRXX( ierr );
+
+								ierr = VecRestoreArray( mask, &maskPtr );
+								CHKERRXX( ierr );
+
+								my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
+								ls.reinitialize_2nd_order_with_mask( coarseGrid.phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+
+								// Don't forget to destroy dynamic objects.  If some candidate point was backtracked outside
+								// the domain, CoarseGrid::collectSamples has called freed packets already.
+								slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+
+								ierr = VecDestroy( mask );
+								CHKERRXX( ierr );
 							}
+						}
+						else	// Numerical advection with no samples collected.
+						{
+							ierr = PetscPrintf( mpi.comm(), "N/A   " );						// No samples collected.
+							CHKERRXX( ierr );
 
-							// As a way to verify things are working well, we track the maximum relative error for
-							// level-set value at departure point.
-							maxRelError = MAX( maxRelError, relError );
-							nSamplesPerLoop += samples.size();
-
-							// Interleaved COARSE grid advection by using the FINE grid as reference and semi-Lagrangian
-							// numerical advection with quadratic velocity and phi interpolation.  This process updates
-							// COARSE internal phi vector with NO reinitialization.  Must do the latter manually below.
+							// Interleve fitting with usual advection.
 							if( (iteration + 1) % INTERLEAVED_ADVECT_STEPS == 0 )
 							{
 								coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
@@ -478,101 +570,37 @@ int main( int argc, char** argv )
 							else
 								coarseGrid.updateP4EST( dt_c );
 
-							// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
-							// Selective reinitialization: protect nodes fitted to the FINE grid AND lying inside Gamma_c^np1.
-							Vec mask, howUpdated;
-							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );		// Mask vector to flag updatable nodes.
-							CHKERRXX( ierr );
-							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &howUpdated );	// howUpdated distinguishes how we updated
-							CHKERRXX( ierr );																// valid nodes next to Gamma_c^n:
-																											// 0=>numerical, 1=>valid node with target level-set values.
-							double *maskPtr;
-							ierr = VecGetArray( mask, &maskPtr );
-							CHKERRXX( ierr );
-
-							double *howUpdatedPtr;
-							ierr = VecGetArray( howUpdated, &howUpdatedPtr );
-							CHKERRXX( ierr );
-
-							double *phi_cPtr;
-							ierr = VecGetArray( coarseGrid.phi, &phi_cPtr );
-							CHKERRXX( ierr );
-
-							int numMaskedNodes = 0;					// Used to validate that all valid points are recovered.
-							for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )
-							{
-								maskPtr[n] = 1;						// Initially, all nodes are updatable.
-								howUpdatedPtr[n] = 0;				// By default, node was updated purely numerically.
-
-								if( ABS( phi_cPtr[n] ) <= (MASS_BAND_HALF_WIDTH + 1) * H_C )	// This approximation band works since nodes next to Gamma_c^n are now at most
-								{																// 2*dx from new interface (if phi was an exact signed distance function).
-									double xyz[P4EST_DIM];
-									node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
-
-									std::stringstream intCoords;
-									for( int j = 0; j < P4EST_DIM; j++ )
-										intCoords << long((xyz[j] - xyz_min[j]) / H_C ) << ",";
-									auto got = flaggedCoords.find( intCoords.str());
-									if( got != flaggedCoords.end() && phi_cPtr[n] <= 0 )		// Valid point next to Gamma_c^n and inside Gamma_c^np1?
-									{
-										maskPtr[n] = 0;				// Non updatable.
-										howUpdatedPtr[n] = 1;
-										phi_cPtr[n] = got->second;	// Recover level-set value.
-										numMaskedNodes++;
-									}
-								}
-							}
-
-							if( numMaskedNodes > flaggedCoords.size() )
-							{
-								PetscErrorPrintf( "You can't protect more nodes than the ones you fitted to the fine grid!\n" );
-								MPI_Abort( mpi.comm(), 1 );
-							}
-
-							ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
-							CHKERRXX( ierr );
-
-							ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
-							CHKERRXX( ierr );
-
-							ierr = VecRestoreArray( mask, &maskPtr );
-							CHKERRXX( ierr );
-
 							my_p4est_level_set_t ls( coarseGrid.nodeNeighbors );
-							ls.reinitialize_2nd_order_with_mask( coarseGrid.phi, mask, numMaskedNodes, REINIT_NUM_ITER );
+							ls.reinitialize_2nd_order( coarseGrid.phi, REINIT_NUM_ITER );	// Reinit.
 
-							// Resample the random velocity field on new COARSE grid.
-							randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
+							ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &howUpdated );
+							CHKERRXX( ierr );												// An all-zeros status vector.
+						}
 
-							// Advance COARSE time step.
-							tn_c += dt_c;
-							tn_f = tn_c;						// Synchronize COARSE and FINE times.
-							iteration++;
+						// Resample the random velocity field on new COARSE grid.
+						randomVelocityField.evaluate( mesh_len, coarseGrid.p4est, coarseGrid.nodes, coarseGrid.vel );
 
-							// Don't forget to destroy dynamic objects.  If some candidate point was backtracked outside
-							// the domain, CoarseGrid::collectSamples has called freed packets already.
-							slml::SemiLagrangian::freeDataPacketArray( dataPackets );
+						// Advance COARSE time step.
+						tn_c += dt_c;
+						tn_f = tn_c;						// Synchronize COARSE and FINE times.
+						iteration++;
 
-							// Break data packet reception output every now and then.
-							if( iteration % NUM_ITER_BRK == 0 )
-							{
-								ierr = PetscPrintf( mpi.comm(), "\n              " );
-								CHKERRXX( ierr );
-							}
-
-							// Save VTK files if debugging.
-							if( debug() && (iteration % NUM_ITER_VTK == 0 || ABS( tn_c - DURATION ) <= PETSC_MACHINE_EPSILON) )
-							{
-								coarseGrid.writeVTK( vtkIdx, howUpdated );
-								vtkIdx++;
-							}
-
-							ierr = VecDestroy( howUpdated );
-							CHKERRXX( ierr );
-
-							ierr = VecDestroy( mask );
+						// Break data packet reception output every now and then.
+						if( iteration % NUM_ITER_BRK == 0 )
+						{
+							ierr = PetscPrintf( mpi.comm(), "\n              " );
 							CHKERRXX( ierr );
 						}
+
+						// Save VTK files if debugging.
+						if( debug() && (iteration % NUM_ITER_VTK == 0 || ABS( tn_c - DURATION ) <= PETSC_MACHINE_EPSILON) )
+						{
+							coarseGrid.writeVTK( vtkIdx, howUpdated );
+							vtkIdx++;
+						}
+
+						ierr = VecDestroy( howUpdated );
+						CHKERRXX( ierr );
 					}
 
 					// Signal how we stopped the simulation loop.
