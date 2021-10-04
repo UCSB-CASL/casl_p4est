@@ -12,7 +12,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: June 29, 2021.
- * Updated: October 3, 2021.
+ * Updated: October 4, 2021.
  */
 
 #ifdef _OPENMP
@@ -139,6 +139,7 @@ void computeHKAndNormals( const double& h, const my_p4est_node_neighbors_t *nbgd
 	}
 
 	// Compute curvature and normals for all points.  It'll be interpolated on the interface for valid points later.
+	// The normals are computed for locally owned points only (no scattered) while curvature is scattered forward.
 	compute_normals( *nbgd, phi, normal );
 	compute_mean_curvature( *nbgd, normal, hk );
 
@@ -182,8 +183,8 @@ int main( int argc, char** argv )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
-	param_t<int> exportAllVTK (pl, 0, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 1)" );
-	param_t<double> rotations (pl, 15, "nRotations", "Number of rotations (default: 1.0)" );
+	param_t<int> exportAllVTK (pl, 0, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 0)" );
+	param_t<double> rotations (pl, 1, "nRotations", "Number of rotations (default: 1.0)" );
 
 	try
 	{
@@ -256,7 +257,7 @@ int main( int argc, char** argv )
 		const int periodic[] = {PERIODICITY, PERIODICITY, PERIODICITY};
 
 		// Define the initial interfaces: exact and non-signed distance function.
-		const double CENTER[P4EST_DIM] = {0, 0.75};
+		const double CENTER[P4EST_DIM] = {DIM( 0, 0.75, 0 )};
 		const double RADIUS = 0.15;
 		geom::SphereNSD sphereNsd( DIM( CENTER[0], CENTER[1], 0 ), RADIUS );
 		geom::Sphere sphere( DIM( CENTER[0], CENTER[1], 0 ), RADIUS );

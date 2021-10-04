@@ -1,6 +1,6 @@
 /**
- * Testing semi-Lagrangian error-correction neural networks with a vortex velocity field.
- * The test consists of a deforming transformation of a circular-interface level-set function located at the top
+ * Testing error-correcting neural network for semi-Lagrangian advection with a vortex velocity field.
+ * The test consists of a deforming flow transforming a circular-interface level-set function located at the top
  * center of a unit-square domain.  The level-set is advected using a velocity field that switches direction at half the
  * total time of the simulation.  In the end, the initial circular interface should be recovered.
  *
@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: July 11, 2021.
+ * Updated: October 4, 2021.
  */
 
 #ifdef _OPENMP
@@ -86,13 +86,12 @@ public:
 
 ////////////////////////////////////////////////// Auxiliary functions /////////////////////////////////////////////////
 
-void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact, Vec hk,
-			   Vec uniformFlag, Vec howUpdated )
+void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, Vec phi, Vec phiExact, Vec hk, Vec howUpdated )
 {
 	char name[1024];
 	PetscErrorCode ierr;
 
-	const double *phiReadPtr, *phiExactReadPtr, *hkReadPtr, *uniformFlagReadPtr, *howUpdatedReadPtr;	// Pointers to Vec contents.
+	const double *phiReadPtr, *phiExactReadPtr, *hkReadPtr, *howUpdatedReadPtr;	// Pointers to Vec contents.
 
 	sprintf( name, "vortex_%d", vtkIdx );
 	ierr = VecGetArrayRead( phi, &phiReadPtr );
@@ -101,17 +100,14 @@ void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 	CHKERRXX( ierr );
 	ierr = VecGetArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
-	ierr = VecGetArrayRead( uniformFlag, &uniformFlagReadPtr );
-	CHKERRXX( ierr );
 	ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
 	CHKERRXX( ierr );
 	my_p4est_vtk_write_all( p4est, nodes, ghost,
 							P4EST_TRUE, P4EST_TRUE,
-							5, 0, name,
+							4, 0, name,
 							VTK_POINT_DATA, "phi", phiReadPtr,
 							VTK_POINT_DATA, "phiExact", phiExactReadPtr,
 							VTK_POINT_DATA, "hk", hkReadPtr,
-							VTK_POINT_DATA, "uniformFlag", uniformFlagReadPtr,
 							VTK_POINT_DATA, "howUpdated", howUpdatedReadPtr
 	);
 	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
@@ -120,16 +116,13 @@ void writeVTK( int vtkIdx, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 	CHKERRXX( ierr );
 	ierr = VecRestoreArrayRead( hk, &hkReadPtr );
 	CHKERRXX( ierr );
-	ierr = VecRestoreArrayRead( uniformFlag, &uniformFlagReadPtr );
-	CHKERRXX( ierr );
 	ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
 	CHKERRXX( ierr );
 
 	PetscPrintf( p4est->mpicomm, ":: Saved vtk files with index %02d ::\n", vtkIdx );
 }
 
-void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Vec& phi, Vec& hk, Vec& uniformFlag,
-				std::unordered_set<p4est_locidx_t>& localUniformIndices )
+void computeHKAndNormals( const double& h, const my_p4est_node_neighbors_t *nbgd, const Vec& phi, Vec& hk, Vec normal[P4EST_DIM] )
 {
 	PetscErrorCode ierr;
 
@@ -137,135 +130,36 @@ void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Ve
 	const p4est_t *p4est = nbgd->get_p4est();
 	const p4est_nodes_t *nodes = nbgd->get_nodes();
 
-	// Prepare output parallel vector with dimensionless curvature values.  Will store interface attribute only for
-	// nodes that lies next to Gamma, regardless of their stencils uniformity.  Indices of vertices with uniform
-	// stencils next to the interface will be returned in the indices out vector.
+	// Prepare output parallel vector with dimensionless curvature values.
 	ierr = hk? VecDestroy( hk ) : 0;
 	CHKERRXX( ierr );
 	ierr = VecCreateGhostNodes( p4est, nodes, &hk );			// By default, all values are zero.
 	CHKERRXX( ierr );
 
+	for(int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		ierr = normal[dim]? VecDestroy( normal[dim] ) : 0;
+		CHKERRXX( ierr );
+
+		ierr = VecCreateGhostNodes( p4est, nodes, &normal[dim] );
+		CHKERRXX( ierr );
+	}
+
+	// Compute curvature and normals for all points.  It'll be interpolated on the interface for valid points later.
+	// The normals are computed for locally owned points only (no scattered) while curvature is scattered forward.
+	compute_normals( *nbgd, phi, normal );
+	compute_mean_curvature( *nbgd, normal, hk );
+
 	double *hkPtr;
 	ierr = VecGetArray( hk, &hkPtr );
 	CHKERRXX( ierr );
 
-	// Allocate flag parallel vector to indicate nodes with uniform stencils.  These were susceptible to machine
-	// learning improvement.  Downstream processing in machine learning semi-Lagrangian advection will use this flag as
-	// an indicator that curvature computation is relieable.  SLML then considers only the intersection of locally
-	// owned nodes with those flagged here.
-	ierr = uniformFlag? VecDestroy( uniformFlag ) : 0;
-	CHKERRXX( ierr );
-	ierr = VecCreateGhostNodes( p4est, nodes, &uniformFlag );	// By default, all values are zero.
-	CHKERRXX( ierr );
-
-	double *uniformFlagPtr;
-	ierr = VecGetArray( uniformFlag, &uniformFlagPtr );
-	CHKERRXX( ierr );
-
-	// Allocate temporary PETSc vectors for normals and curvature.
-	Vec curvature, normal[P4EST_DIM];
-	ierr = VecCreateGhostNodes( p4est, nodes, &curvature );
-	CHKERRXX( ierr );
-	for( auto& dim : normal )
-	{
-		ierr = VecCreateGhostNodes( p4est, nodes, &dim );
-		CHKERRXX( ierr );
-	}
-
-	// First, compute curvature, which will be interpolated at the interface and scaled by h for points next to Gamma.
-	compute_normals( *nbgd, phi, normal );
-	compute_mean_curvature( *nbgd, normal, curvature );
-
-	// Prepare curvature interpolation.
-	my_p4est_interpolation_nodes_t kappaInterp( nbgd );
-	kappaInterp.set_input( curvature, interpolation_method::linear );
-
-	// Also need read access to phi and normals to compute closest point on Gamma.
-	const double *phiReadPtr;
-	ierr = VecGetArrayRead( phi, &phiReadPtr );
-	CHKERRXX( ierr );
-
-	const double *normalReadPtr[P4EST_DIM];
-	for( int i = 0; i < P4EST_DIM; i++ )
-	{
-		ierr = VecGetArrayRead( normal[i], &normalReadPtr[i] );
-		CHKERRXX( ierr );
-	}
-
-	// Compute dimensionless curvature for points next to the interface.
-	auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
-	std::vector<p4est_locidx_t> indices;
-
-	// Collect *locally owned* grid points next to the interface, although these might have a nonuniform stencil.
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, nbgd, (signed char)splittingCriteria->max_lvl );
-	nodesAlongInterface.getIndices( &phi, indices );
-	localUniformIndices.clear();
-	localUniformIndices.reserve( indices.size() );	// Return this to caller with effective local indices of nodes next
-													// to Gamma with uniform stencils.
-	for( auto nodeIdx : indices )
-	{
-		// Compute numerical hk for ALL points next to Gamma, regardless their stencil uniformity.  Those are further
-		// processed below.
-		double xyz[P4EST_DIM];
-		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-		double p = phiReadPtr[nodeIdx];
-		hkPtr[nodeIdx] = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][nodeIdx],
-									 	   xyz[1] - p * normalReadPtr[1][nodeIdx],
-									 	   xyz[2] - p * normalReadPtr[2][nodeIdx] ) );
-		hkPtr[nodeIdx] *= h;
-
-		try
-		{
-			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ) )	// Uniform stencil?
-			{
-				uniformFlagPtr[nodeIdx] = p4est->mpirank + 1;		// Flag node.
-				localUniformIndices.insert( nodeIdx );
-
-				// TODO: Use hybrid inference system to improve (if needed) curvature computation.
-			}
-		}
-		catch( const std::exception &exception )
-		{
-			std::cerr << "[" << nodeIdx << "]" << std::endl;
-		}
-	}
-
-	// Scatter forward dimensionless curvature and uniform-flag values to synchronize info.
-	ierr = VecGhostUpdateBegin( hk, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-	VecGhostUpdateEnd( hk, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-
-	ierr = VecGhostUpdateBegin( uniformFlag, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-	VecGhostUpdateEnd( uniformFlag, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-
-	// Restore array accessors.
-	for( int dim = 0; dim < P4EST_DIM; dim++ )
-	{
-		ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
-		CHKERRXX( ierr );
-	}
-
-	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
-	CHKERRXX( ierr );
-
-	ierr = VecRestoreArray( uniformFlag, &uniformFlagPtr );
-	CHKERRXX( ierr );
+	// Scaling curvature by h.
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+		hkPtr[n] *= h;
 
 	ierr = VecRestoreArray( hk, &hkPtr );
 	CHKERRXX( ierr );
-
-	// Destroy temporary parallel normals and curvature vectors.
-	ierr = VecDestroy( curvature );
-	CHKERRXX( ierr );
-	for( auto& dim : normal )
-	{
-		ierr = VecDestroy( dim );
-		CHKERRXX( ierr );
-	}
 }
 
 //////////////////////////////////////////////////// Main function /////////////////////////////////////////////////////
@@ -279,7 +173,7 @@ void computeHK( const double& h, const my_p4est_node_neighbors_t *nbgd, const Ve
 int main( int argc, char** argv )
 {
 	// Main global variables.
-	const double DURATION = 1.0;		// Duration of the simulation.
+	const double DURATION = 1.25;		// Duration of the simulation.
 	const int MAX_RL = 6;				// Grid's maximum refinement level.
 	const int REINIT_NUM_ITER = 10;		// Number of iterations for level-set renitialization.
 	const double CFL = 1.0;				// Courant-Friedrichs-Lewy condition.
@@ -291,14 +185,12 @@ int main( int argc, char** argv )
 
 	const int NUM_ITER_VTK = 4;			// Save VTK files every NUM_ITER_VTK iterations.
 
-	const double BAND = 2; 				// Minimum number of cells around interface.  Must match what was used in training.
-
 	char msg[1024];						// Some string to write messages to standard ouput.
 
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
-	param_t<int> exportAllVTK (pl, 1, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 1)" );
+	param_t<int> exportAllVTK (pl, 0, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 0)" );
 
 	try
 	{
@@ -386,7 +278,7 @@ int main( int argc, char** argv )
 
 		// Create forest using a level-set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-		splitting_criteria_cf_and_uniform_band_t lsSplittingCriterion( 1, MAX_RL, &sphereNsd, BAND );
+		splitting_criteria_cf_and_uniform_band_t lsSplittingCriterion( 1, MAX_RL, &sphereNsd, MASS_BAND_HALF_WIDTH );
 		p4est->user_pointer = &lsSplittingCriterion;
 
 		// Refine and partition forest.
@@ -414,8 +306,6 @@ int main( int argc, char** argv )
 		// Declare data vectors and pointers for read/write.
 		Vec phi;							// Level-set function values (subject to reinitialization).
 		Vec phiExact;						// Exact level-set function values.
-		const double *phiReadPtr, *phiExactReadPtr;
-
 		Vec vel[P4EST_DIM];					// Veloctiy field.
 
 		// Allocate memory for parallel vectors.
@@ -441,19 +331,20 @@ int main( int argc, char** argv )
 		my_p4est_level_set_t levelSet( nodeNeighbors );
 		levelSet.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
 
-		// Computing curvature and flagging nodes next to Gamma that have uniform stencils.
-		Vec hk = nullptr, uniformFlag = nullptr;
+		// Computing dimensionless curvature and normal vectors.
+		Vec hk = nullptr;
+		Vec normal[P4EST_DIM] = {nullptr, nullptr};
 		std::unordered_set<p4est_locidx_t> localUniformIndices;
-		computeHK( dxyz_min, nodeNeighbors, phi, hk, uniformFlag, localUniformIndices );
+		computeHKAndNormals( dxyz_min, nodeNeighbors, phi, hk, normal );
 
-		// Let's use a debugging vector to detect how were grid points updated at time tnp1: 0 if numerically, 1 if
-		// numerically but around a band of location of new interface, and 2 if using neural inference system.
+		// Let's use a debugging vector to detect how were grid points updated at time tnp1: 0 if numerically and 1 if
+		// using neural inference system.
 		Vec howUpdated;
 		ierr = VecCreateGhostNodes( p4est, nodes, &howUpdated );
 		CHKERRXX( ierr );
 
 		// Save the initial grid and fields into vtk (regardless of input command choice).
-		writeVTK( 0, p4est, nodes, ghost, phi, phiExact, hk, uniformFlag, howUpdated );
+		writeVTK( 0, p4est, nodes, ghost, phi, phiExact, hk, howUpdated );
 
 		// Define time stepping variables.
 		double tn = 0;								// Current time.
@@ -486,26 +377,26 @@ int main( int argc, char** argv )
 			p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
 			p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
-			// Create semi-Lagrangian object in machine learning module: linear interp. for phi, quadratic for velocity.
+			// Create semi-Lagrangian object and advect.
 			slml::SemiLagrangian *mlSemiLagrangian;
 			my_p4est_semi_lagrangian_t *numSemiLagrangian;
-			if( mode() )
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )		// Use neural network in an alternate schedule and only if dt = dx.
 			{
-				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors,
-															 &localUniformIndices, nnet, BAND, iter );
+				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, false, nnet, iter );
+				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated );
 			}
 			else
 			{
 				numSemiLagrangian = new my_p4est_semi_lagrangian_t( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
 				numSemiLagrangian->set_phi_interpolation( interpolation_method::quadratic );
 				numSemiLagrangian->set_velo_interpolation( interpolation_method::quadratic );
-			}
+				numSemiLagrangian->update_p4est( vel, dt, phi, nullptr, nullptr, MASS_BAND_HALF_WIDTH );
 
-			// Advect level-set function one step, then update the grid.
-			if( mode() )
-				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, &howUpdated );
-			else
-				numSemiLagrangian->update_p4est( vel, dt, phi, nullptr, nullptr, BAND );
+				ierr = VecDestroy( howUpdated );		// For numerical method, howUpdated flag is zero everywhere.
+				CHKERRXX( ierr );
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &howUpdated );
+				CHKERRXX( ierr );
+			}
 
 			// Destroy old forest and create new structures.
 			p4est_destroy( p4est );
@@ -523,9 +414,14 @@ int main( int argc, char** argv )
 
 			// Reinitialize level-set function.
 			my_p4est_level_set_t ls( nodeNeighbors );
-			if( mode() )
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
 			{
-				// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
+				double *phiPtr;
+				ierr = VecGetArray( phi, &phiPtr );
+				CHKERRXX( ierr );
+
+				// Selective reinitialization of level-set function: protect nodes updated with the nnet whose level-set
+				// value is negative.
 				Vec mask;
 				ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 				CHKERRXX( ierr );
@@ -541,7 +437,7 @@ int main( int argc, char** argv )
 				int numMaskedNodes = 0;
 				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
 				{
-					if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
+					if( howUpdatedReadPtr[n] == 1 && phiPtr[n] <= 0 )
 					{
 						numMaskedNodes++;
 						maskPtr[n] = 0;					// 0 => nonupdatable.
@@ -556,6 +452,9 @@ int main( int argc, char** argv )
 				ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
 				CHKERRXX( ierr );
 
+				ierr = VecRestoreArray( phi, &phiPtr );
+				CHKERRXX( ierr );
+
 				ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
 
 				ierr = VecDestroy( mask );
@@ -565,6 +464,12 @@ int main( int argc, char** argv )
 			{
 				ls.reinitialize_2nd_order( phi, REINIT_NUM_ITER );
 			}
+
+			// Destroy semi-Lagrangian objects.
+			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
+				delete mlSemiLagrangian;
+			else
+				delete numSemiLagrangian;
 
 			// Advance time.
 			tn += dt;
@@ -588,8 +493,8 @@ int main( int argc, char** argv )
 			CHKERRXX( ierr );
 			sample_cf_on_nodes( p4est, nodes, sphere, phiExact );
 
-			// Recompute dimensionless curvature and uniform flag.
-			computeHK( dxyz_min, nodeNeighbors, phi, hk, uniformFlag, localUniformIndices );
+			// Recompute dimensionless curvature and normal vectors.
+			computeHKAndNormals( dxyz_min, nodeNeighbors, phi, hk, normal );
 
 			// Display iteration message.
 			sprintf( msg, "\tIteration %04d: t = %1.4f \n", iter, tn );
@@ -600,18 +505,13 @@ int main( int argc, char** argv )
 			if( ABS( tn - DURATION ) <= PETSC_MACHINE_EPSILON ||
 				(exportAllVTK() && (ABS( tn - DURATION / 2.0 ) <=PETSC_MACHINE_EPSILON || iter % NUM_ITER_VTK == 0)) )
 			{
-				writeVTK( vtkIdx, p4est, nodes, ghost, phi, phiExact, hk, uniformFlag, howUpdated );
+				writeVTK( vtkIdx, p4est, nodes, ghost, phi, phiExact, hk, howUpdated );
 				vtkIdx++;
 			}
-
-			// Destroy semi-Lagrangian objects.
-			if( mode() )
-				delete mlSemiLagrangian;
-			else
-				delete numSemiLagrangian;
 		}
 
 		// Compute error L-1 and L-inf norms.
+		const double *phiReadPtr, *phiExactReadPtr;
 		int numPoints = 0;
 		double cumulativeError = 0;
 		ierr = VecGetArrayRead( phi, &phiReadPtr );
@@ -655,8 +555,11 @@ int main( int argc, char** argv )
 		ierr = VecDestroy( hk );
 		CHKERRXX( ierr );
 
-		ierr = VecDestroy( uniformFlag );
-		CHKERRXX( ierr );
+		for( auto& dim : normal )
+		{
+			ierr = VecDestroy( dim );
+			CHKERRXX( ierr );
+		}
 
 		ierr = VecDestroy( phi );
 		CHKERRXX( ierr );
