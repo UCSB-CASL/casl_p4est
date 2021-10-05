@@ -10,7 +10,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 3, 2021.
+ * Updated: October 5, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -183,18 +183,18 @@ int main( int argc, char** argv )
 		//      |    /   :
 		//      +---.----:---->  kappa
 		//    0     5    10
-		std::mt19937 gen2( 37 );	// NOLINT Standard Mersenne Twister engine for subsampling.
-		std::uniform_real_distribution<double> uniformDistribution;
-		auto augmentData = [&gen2, &uniformDistribution]( double kappa ){
-			kappa = ABS( kappa );
-			if( kappa <= 5 )
-				return false;
-			if( kappa >= 10 )
-				return true;
-			double bound = (kappa - 5.) / (10. - 5.);
-			double prob = uniformDistribution( gen2 );
-			return prob < bound;
-		};
+//		std::mt19937 gen2( 37 );	// NOLINT Standard Mersenne Twister engine for subsampling.
+//		std::uniform_real_distribution<double> uniformDistribution;
+//		auto augmentData = [&gen2, &uniformDistribution]( double kappa ){
+//			kappa = ABS( kappa );
+//			if( kappa <= 5 )
+//				return false;
+//			if( kappa >= 10 )
+//				return true;
+//			double bound = (kappa - 5.) / (10. - 5.);
+//			double prob = uniformDistribution( gen2 );
+//			return prob < bound;
+//		};
 
 		// Looping through random velocity fields.
 		unsigned long nSamplesInTotal = 0;
@@ -444,8 +444,8 @@ int main( int argc, char** argv )
 										dataPacket->serialize( samples.back(), false, true, true, true );
 
 										// Augment probabilistically at most once.
-										if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
-											break;
+//										if( s!= 0 || !augmentData( dataPacket->hk_a / H_C ) )
+//											break;
 
 										dataPacket->reflect_yEqx();		// Reflect semi-Lagrangian data.
 									}
