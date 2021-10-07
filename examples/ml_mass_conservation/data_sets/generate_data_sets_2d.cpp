@@ -10,7 +10,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 5, 2021.
+ * Updated: October 7, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -77,7 +77,7 @@ int main( int argc, char** argv )
 	const double BAND_C = MASS_BAND_HALF_WIDTH; 	// Half band width in min diags around interface in COARSE (C) and FINE (F) grids.
 	const double BAND_F = 1.75 * BAND_C * (1u << (FINE_MAX_RL - COARSE_MAX_RL - 1));
 
-	const int INTERLEAVED_ADVECT_STEPS = 4;			// How often to interleave fine-grid fitting with usual advection.
+	const int INTERLEAVED_ADVECT_STEPS = 3;			// How often to interleave fine-grid fitting with usual advection.
 
 	char msg[1024];						// Some string to write messages to standard ouput.
 
