@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 7, 2021.
+ * Updated: October 8, 2021.
  */
 namespace slml
 {
@@ -216,6 +216,13 @@ namespace slml
 		 * @return ReLu(x) = max(0, x).
 		 */
 		static FDEEP_FLOAT_TYPE _reLU( const FDEEP_FLOAT_TYPE& x );
+
+		/**
+		 * Softplus activation function.
+		 * @param [in] x Input.
+		 * @return softplus(x) = log(exp(x) + 1).
+		 */
+		static FDEEP_FLOAT_TYPE _softPlus( const FDEEP_FLOAT_TYPE& x );
 
 	public:
 		/**

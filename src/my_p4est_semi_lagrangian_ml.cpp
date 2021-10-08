@@ -308,6 +308,12 @@ FDEEP_FLOAT_TYPE slml::NeuralNetwork::_reLU( const FDEEP_FLOAT_TYPE& x )
 }
 
 
+FDEEP_FLOAT_TYPE slml::NeuralNetwork::_softPlus( const FDEEP_FLOAT_TYPE& x )
+{
+	return log( exp( x ) + 1 );
+}
+
+
 ///////////////////////////////////////////////////// DataFetcher //////////////////////////////////////////////////////
 
 slml::DataFetcher::DataFetcher( const my_p4est_node_neighbors_t *ngbd )
