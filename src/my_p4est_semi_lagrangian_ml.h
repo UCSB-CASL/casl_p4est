@@ -13,7 +13,7 @@
 #define MASS_INPUT_HK_SIZE		 1
 #define MASS_INPUT_PHI_XX_SIZE	 2
 
-#define MASS_N_COMPONENTS		18	// Number of components for PCA dimensionality reduction; same as nnet input size.
+#define MASS_N_COMPONENTS		17	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
 #define MASS_BAND_HALF_WIDTH	 2	// Distance in min diags to enforce a uniform band around Gamma^n.
 
@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 4, 2021.
+ * Updated: October 7, 2021.
  */
 namespace slml
 {
@@ -633,8 +633,6 @@ namespace slml
 	private:
 		double H = 0;				// Smallest cell width.
 		const bool USE_ANGLE_CONSTRAINT;	// Whether or not to collect samples based on their angle between midpoint vel_a and phi-signed normal.
-		const double FLOW_ANGLE_THRESHOLD = 10 * M_PI / 18;	// Maximum angle between midpoint vel and the phi-signed normal at a
-															// grid point next to Gamma^n.
 		Vec _mlFlag = nullptr;		// A flag vector that stores rank+1 for nodes next to Gamma^n for which
 									// we have computed phi with the nnet, 0 otherwise.  It also distinguishes vertices
 									// with valid phi stencils (i.e., uniform in each direction).
@@ -691,6 +689,9 @@ namespace slml
 						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *phiNum_np1Ptr, double *howUpdated_np1Ptr );
 
 	public:
+		constexpr static double FLOW_ANGLE_THRESHOLD = 10 * M_PI / 18;	// Maximum angle between midpoint vel and the phi-signed normal at a
+																		// grid point next to Gamma^n.
+
 		/**
 		 * Constructor.
 		 * @param [in,out] p4estNp1 Pointer to a p4est object pointer.
