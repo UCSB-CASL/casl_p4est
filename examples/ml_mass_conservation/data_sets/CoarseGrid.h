@@ -16,7 +16,7 @@
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
  * a reference finer grid from where its values are drawn by interpolation.
  *
- * Updated: October 2, 2021.
+ * Updated: October 8, 2021.
  */
 class CoarseGrid
 {
@@ -37,6 +37,7 @@ public:
 
 	Vec phi = nullptr;							// Level-set function values parallel vector.
 	Vec vel[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};			// Velocity field parallel vectors.
+	Vec normal[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};			// Normal vector components
 
 	splitting_criteria_cf_and_uniform_band_t *lsSplittingCriteria;		// Criteria created dynamically in constructor.
 
@@ -123,13 +124,19 @@ public:
 	 * @note You must collect samples before "advecting" the COARSE grid.
 	 * @param [in] ngbd_f Pointer to FINE grid node neighborhood struct.
 	 * @param [in] phi_f Reference to parallel level-set function value vector for FINE grid.
+	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes in the flow direction, 0s otherwise.
 	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
-	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f,
+	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, Vec *withTheFlow=nullptr,
 					 	const CF_2 *velocityField[P4EST_DIM]=nullptr )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
+
+		// Declare auxiliary COARSE p4est objects; they will be updated below.
+		p4est_t *p4est_np1 = p4est_copy( p4est, P4EST_FALSE );
+		p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+		p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
 		///////////////////////////////////////////////// Preparation //////////////////////////////////////////////////
 
@@ -153,7 +160,7 @@ public:
 
 		// New grid level-set values: start from current COARSE grid structure.
 		Vec phiNew;
-		ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );	// Notice p4est and nodes are the grid at time n so far.
+		ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &phiNew );	// Notice p4est and nodes are the grid at time n so far.
 		CHKERRXX( ierr );
 
 		///////////////////////////////////////// Update grid until convergence ////////////////////////////////////////
@@ -168,10 +175,10 @@ public:
 			// Use FINE grid to "advect" COARSE grid by using interpolation.
 			// Interpolation object based on FINE grid.  It's used to find the values at the nodes of COARSE grid.
 			my_p4est_interpolation_nodes_t interp( ngbd_f );
-			for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+			for( p4est_locidx_t n = 0; n < nodes_np1->indep_nodes.elem_count; n++ )
 			{
 				double xyz[P4EST_DIM];
-				node_xyz_fr_n( n, p4est, nodes, xyz );
+				node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );
 				interp.add_point( n, xyz );
 			}
 			interp.set_input( phi_f, DIM( phi_f_xx[0], phi_f_xx[1], phi_f_xx[2] ), interpolation_method::quadratic );
@@ -179,7 +186,7 @@ public:
 			interp.clear();
 
 			// Refine an coarsen COARSE grid; detect if it changes from previous coarsening/refinement operation.
-			isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est, nodes, phiNewPtr );
+			isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est_np1, nodes_np1, phiNewPtr );
 
 			ierr = VecRestoreArray( phiNew, &phiNewPtr );
 			CHKERRXX( ierr );
@@ -187,25 +194,25 @@ public:
 			if( isGridChanging )
 			{
 				// Repartition grid as it changed.
-				my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+				my_p4est_partition( p4est_np1, P4EST_TRUE, nullptr );
 
 				// Reset nodes, ghost, and phi.
-				p4est_ghost_destroy( ghost );
-				ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
-				p4est_nodes_destroy( nodes );
-				nodes = my_p4est_nodes_new( p4est, ghost );
+				p4est_ghost_destroy( ghost_np1 );
+				ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+				p4est_nodes_destroy( nodes_np1 );
+				nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
 				// Allocate vector for new level-set values for most up-to-date grid.
 				ierr = VecDestroy( phiNew );
 				CHKERRXX( ierr );
-				ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );
+				ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &phiNew );
 				CHKERRXX( ierr );
 			}
 		}
 
 		///////////////////////////////////////////////// Finishing up /////////////////////////////////////////////////
 
-		p4est->user_pointer = (void *) oldSplittingCriteria;
+		p4est_np1->user_pointer = (void *) oldSplittingCriteria;
 
 		ierr = VecDestroy( phi );	// Update old COARSE phi to new level-set values.
 		CHKERRXX( ierr );
@@ -220,50 +227,9 @@ public:
 
 		delete splittingCriteriaBandPtr;
 
-		// Rebuilding COARSE hierarchy and neighborhoods from updated p4est, nodes, and ghost structs.
-		delete hierarchy;
-		delete nodeNeighbors;
-		hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
-		nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
-		nodeNeighbors->init_neighbors();
-
-		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
-		for( int dir = 0; dir < P4EST_DIM; dir++ )
-		{
-			ierr = VecDestroy( vel[dir] );
-			CHKERRXX( ierr );
-			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
-			CHKERRXX( ierr );
-
-			if( velocityField )
-				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
-		}
-	}
-
-	/**
-	 * Advect coarse grid numerically, following the semi-Lagrangian method with a band and second-order accurate loca-
-	 * tion of departure points.
-	 * @note You must collect samples before "advecting" the COARSE grid.
-	 * @param [in] dt Timestep.
-	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
-	 */
-	void updateP4EST( const double& dt, const CF_2 *velocityField[P4EST_DIM]=nullptr )
-	{
-		assert( phi );			// Check we have a well defined coarse grid.
-		PetscErrorCode ierr;
-
-		// Declare auxiliary COARSE p4est objects; they will be updated during the semi-Lagrangian advection step.
-		p4est_t *p4est_np1 = p4est_copy( p4est, P4EST_FALSE );
-		p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
-		p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
-
-		// Create COARSE semi-lagrangian object and set up to using quadratic interpolation for velocity and phi.
-		my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
-		semiLagrangian.set_phi_interpolation( interpolation_method::quadratic );
-		semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
-
-		// Advect the COARSE level-set function one step, then update the grid.
-		semiLagrangian.update_p4est( vel, dt, phi, nullptr, nullptr, MASS_BAND_HALF_WIDTH );
+		// Get the nodes in the flow direction before destroying data at time t^n (since we interpolate from it).
+		if( withTheFlow )
+			getNodesWithTheFlow( vel, normal, phi, p4est_np1, nodes_np1, withTheFlow );
 
 		// Destroy old COARSE forest and create new structures.
 		p4est_destroy( p4est );
@@ -291,6 +257,174 @@ public:
 			if( velocityField )
 				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
 		}
+	}
+
+	/**
+	 * Advect coarse grid numerically, following the semi-Lagrangian method with a band and second-order accurate loca-
+	 * tion of departure points.
+	 * @note You must collect samples before "advecting" the COARSE grid.
+	 * @param [in] dt Timestep.
+	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes in the flow direction, 0s otherwise.
+	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
+	 */
+	void updateP4EST( const double& dt, Vec *withTheFlow=nullptr, const CF_2 *velocityField[P4EST_DIM]=nullptr )
+	{
+		assert( phi );			// Check we have a well defined coarse grid.
+		PetscErrorCode ierr;
+
+		// Declare auxiliary COARSE p4est objects; they will be updated during the semi-Lagrangian advection step.
+		p4est_t *p4est_np1 = p4est_copy( p4est, P4EST_FALSE );
+		p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
+		p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
+
+		// Create COARSE semi-lagrangian object and set up to using quadratic interpolation for velocity and phi.
+		my_p4est_semi_lagrangian_t semiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors );
+		semiLagrangian.set_phi_interpolation( interpolation_method::quadratic );
+		semiLagrangian.set_velo_interpolation( interpolation_method::quadratic );
+
+		// Advect the COARSE level-set function one step, then update the grid.
+		semiLagrangian.update_p4est( vel, dt, phi, nullptr, nullptr, MASS_BAND_HALF_WIDTH );
+
+		// Get the nodes in the flow direction before destroying data at time t^n (since we interpolate from it).
+		if( withTheFlow )
+			getNodesWithTheFlow( vel, normal, phi, p4est_np1, nodes_np1, withTheFlow );
+
+		// Destroy old COARSE forest and create new structures.
+		p4est_destroy( p4est );
+		p4est = p4est_np1;
+		p4est_ghost_destroy( ghost );
+		ghost = ghost_np1;
+		p4est_nodes_destroy( nodes );
+		nodes = nodes_np1;
+
+		// Rebuilding COARSE hierarchy and neighborhoods from updated p4est, nodes, and ghost structs.
+		delete hierarchy;
+		delete nodeNeighbors;
+		hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
+		nodeNeighbors = new my_p4est_node_neighbors_t( hierarchy, nodes );
+		nodeNeighbors->init_neighbors();
+
+		// Reconstruct the COARSE velocity vectors on new grid.  Resample if CF_DIM objects were given.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			ierr = VecDestroy( vel[dir] );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &vel[dir] );
+			CHKERRXX( ierr );
+
+			if( velocityField )
+				sample_cf_on_nodes( p4est, nodes, *velocityField[dir], vel[dir] );
+		}
+	}
+
+	/**
+	 * Set the bit for nodes that go in the direction of the flow.  These nodes are selected if their angle between the
+	 * phi^np1-signed normal vector and the velocity is in the range of [0, threshold].  To compute this angle, we
+	 * interpolate data from t^n into nodes within a narrow band around Gamma^np1.
+	 * @param [in] vel_n Velocity at time t^n.
+	 * @param [in] normal_n Normal vectors at time t^n.
+	 * @param [in] phi_np1 Updated nodal level-set values after advection.
+	 * @param [in] p4est_np1 Updated p4est structure.
+	 * @param [in] nodes_np1 Updated nodal structure.
+	 * @param [out] protect Parallel vector with 1s for nodes to protect at time t^np1, and 0s otherwise.
+	 */
+	void getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal_n[P4EST_DIM], Vec phi_np1, const p4est_t *p4est_np1,
+							const p4est_nodes_t *nodes_np1, Vec *withTheFlow ) const
+	{
+		Vec withTheFlow_np1;
+		PetscErrorCode ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &withTheFlow_np1 );	// All zeros: not with the flow.
+		CHKERRXX( ierr );
+
+		double *withTheFlow_np1Ptr;
+		ierr = VecGetArray( withTheFlow_np1, &withTheFlow_np1Ptr );
+		CHKERRXX( ierr );
+
+		const double *phi_np1ReadPtr;
+		ierr = VecGetArrayRead( phi_np1, &phi_np1ReadPtr );
+		CHKERRXX( ierr );
+
+		// Find candidates for which we need their velocity and normal vectors at time t^n.
+		int outIdx = 0;
+		std::vector<p4est_locidx_t> outToNodeIdx;
+		outToNodeIdx.reserve( nodes_np1->num_owned_indeps );
+		my_p4est_interpolation_nodes_t interpVel( nodeNeighbors );			// Notice we use neighbors at t^n.
+		my_p4est_interpolation_nodes_t interpNormal( nodeNeighbors );		// So, we need these to be well defined.
+		for( p4est_locidx_t n = 0; n < nodes_np1->num_owned_indeps; n++ )
+		{
+			if( ABS( phi_np1ReadPtr[n] ) < minCellWidth * M_SQRT2 )
+			{
+				double xyz[P4EST_DIM];
+				node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );
+				interpVel.add_point( outIdx, xyz );
+				interpNormal.add_point( outIdx, xyz );
+
+				outToNodeIdx.emplace_back( n );
+				outIdx++;
+			}
+		}
+
+		double *cvel_n[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};		// Velocity at time t^n for candidate nodes.
+		double *cnormal_n[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};	// Normals at time t^n for candidate nodes.
+		for( int dim = 0; dim < P4EST_DIM; dim++ )
+		{
+			cvel_n[dim] = new double[outIdx];
+			cnormal_n[dim] = new double[outIdx];
+		}
+
+		// Proceed with interpolation to retrieve normals and velocity at time t^n.
+		interpVel.set_input( vel_n, interpolation_method::linear, P4EST_DIM );
+		interpVel.interpolate( cvel_n );
+		interpVel.clear();
+		interpNormal.set_input( normal_n, interpolation_method::linear, P4EST_DIM );
+		interpNormal.interpolate( cnormal_n );
+		interpNormal.clear();
+
+		// Use the phi-signed normal and velocity to select nodes to protect in the direction of the flow.
+		for( int i = 0; i < outIdx; i++ )
+		{
+			double velMagnitude = 0, normalMagnitude = 0;
+			for( int dir = 0; dir < P4EST_DIM; dir++ )
+			{
+				velMagnitude += SQR( cvel_n[dir][i] );
+				normalMagnitude += SQR( cnormal_n[dir][i] );
+			}
+
+			velMagnitude = sqrt( velMagnitude );
+			normalMagnitude = sqrt( normalMagnitude );
+
+			double v[P4EST_DIM], n[P4EST_DIM];				// Normalized vectors.
+			for( int dir = 0; dir < P4EST_DIM; dir++ )
+			{
+				v[dir] = (velMagnitude > PETSC_MACHINE_EPSILON? cvel_n[dir][i] / velMagnitude : 0);
+				n[dir] = (normalMagnitude > PETSC_MACHINE_EPSILON? cnormal_n[dir][i] / normalMagnitude : 0);
+			}
+
+			double dot = 0;									// Dot product: cos of theta.
+			for( int dir = 0; dir < P4EST_DIM; dir++ )
+				dot += v[dir] * n[dir] * (phi_np1ReadPtr[outToNodeIdx[i]] > 0? 1 : -1);
+
+			if( acos( dot ) <= slml::SemiLagrangian::FLOW_ANGLE_THRESHOLD )
+				withTheFlow_np1Ptr[outToNodeIdx[i]] = 1;	// Flag node if the angle is smaller than the threshold.
+		}
+
+		for( int dim = 0; dim < P4EST_DIM; dim++ )
+		{
+			delete [] cvel_n[dim];
+			delete [] cnormal_n[dim];
+		}
+
+		ierr = VecRestoreArrayRead( phi_np1, &phi_np1ReadPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArray( withTheFlow_np1, &withTheFlow_np1Ptr );
+		CHKERRXX( ierr );
+
+		if( withTheFlow )
+		{
+			ierr = VecDestroy( *withTheFlow );
+			CHKERRXX( ierr );
+		}
+		*withTheFlow = withTheFlow_np1;
 	}
 
 	/**
@@ -324,11 +458,16 @@ public:
 		flaggedCoords.clear();
 
 		// Allocate PETSc vectors for normals and curvature.
-		Vec curvature, normal[P4EST_DIM];
+		Vec curvature;
 		ierr = VecDuplicate( phi, &curvature );
 		CHKERRXX( ierr );
-		for( auto& dim : normal )
-		{
+		for( auto& dim : normal )		// Normal vector is computed with data at time t^n and is used before destroying
+		{								// the current objects in order to select which points to protect in selective
+			if( dim )					// reinitialization.
+			{
+				ierr = VecDestroy( dim );
+				CHKERRXX( ierr );
+			}
 			ierr = VecCreateGhostNodes( p4est, nodes, &dim );
 			CHKERRXX( ierr );
 		}
@@ -517,12 +656,6 @@ public:
 		ierr = VecDestroy( curvature );
 		CHKERRXX( ierr );
 
-		for( auto& dim : normal )
-		{
-			ierr = VecDestroy( dim );
-			CHKERRXX( ierr );
-		}
-
 		return allInside;	// True if all backtracked points along the interface fell within domain.
 	}
 
@@ -598,6 +731,16 @@ public:
 		}
 
 		for( auto& dir : vel )
+		{
+			if( dir )
+			{
+				ierr = VecDestroy( dir );
+				CHKERRXX( ierr );
+				dir = nullptr;
+			}
+		}
+
+		for( auto& dir : normal )
 		{
 			if( dir )
 			{
