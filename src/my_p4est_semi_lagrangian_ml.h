@@ -696,7 +696,7 @@ namespace slml
 						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *phiNum_np1Ptr, double *howUpdated_np1Ptr );
 
 	public:
-		constexpr static double FLOW_ANGLE_THRESHOLD = 10 * M_PI / 18;	// Maximum angle between midpoint vel and the phi-signed normal at a
+		constexpr static double FLOW_ANGLE_THRESHOLD = 19 * M_PI / 36;	// Maximum angle between midpoint vel and the phi-signed normal at a
 																		// grid point next to Gamma^n.
 
 		/**
@@ -776,7 +776,8 @@ namespace slml
 		 * @param [in] phi_np1 Updated nodal level-set values after advection.
 		 * @param [in] p4est_np1 Updated p4est structure.
 		 * @param [in] nodes_np1 Updated nodal structure.
-		 * @param [out] protect Parallel vector with 1s for nodes to protect at time t^np1, and 0s otherwise.
+		 * @param [out] withTheFlow Parallel vector with 1s for nodes to going with the flow direction at time t^np1,
+		 * 		  and 0s otherwise.
 		 */
 		static void getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal_n[P4EST_DIM],
 										 const my_p4est_node_neighbors_t *neighbors_n, const double& h, Vec phi_np1,
