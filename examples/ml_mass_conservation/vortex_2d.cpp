@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: October 8, 2021.
+ * Updated: October 9, 2021.
  */
 
 #ifdef _OPENMP
@@ -346,12 +346,6 @@ int main( int argc, char** argv )
 		// Save the initial grid and fields into vtk (regardless of input command choice).
 		writeVTK( 0, p4est, nodes, ghost, phi, phiExact, hk, howUpdated );
 
-		// Flagging vector for nodes within one min-diag away from Gamma_c^np1 that go in the direction of the flow.  We
-		// use interpolation on the normal and velocity field at time t^n to determine the angle.
-		Vec withTheFlow;
-		ierr = VecCreateGhostNodes( p4est, nodes, &withTheFlow );
-		CHKERRXX( ierr );
-
 		// Define time stepping variables.
 		double tn = 0;								// Current time.
 		bool hasVelSwitched = false;
@@ -389,7 +383,7 @@ int main( int argc, char** argv )
 			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )		// Use neural network in an alternate schedule and only if dt = dx.
 			{
 				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, false, nnet, iter );
-				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated, &withTheFlow );
+				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated );
 			}
 			else
 			{
@@ -422,12 +416,12 @@ int main( int argc, char** argv )
 			my_p4est_level_set_t ls( nodeNeighbors );
 			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
 			{
-				const double *withTheFlowReadPtr;
-				ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
+				const double *phiReadPtr;
+				ierr = VecGetArrayRead( phi, &phiReadPtr );
 				CHKERRXX( ierr );
 
 				// Selective reinitialization of level-set function: protect nodes updated with the nnet whose level-set
-				// value is negative.
+				// value is negative and are immediately next to Gamma^np1.
 				Vec mask;
 				ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 				CHKERRXX( ierr );
@@ -440,17 +434,22 @@ int main( int argc, char** argv )
 				ierr = VecGetArray( mask, &maskPtr );
 				CHKERRXX( ierr );
 
-				int numMaskedNodes = 0;
 				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+					maskPtr[n] = 1;						// Initially, all are 1 => updatable.
+
+				NodesAlongInterface nodesAlongInterface( p4est, nodes, nodeNeighbors, MAX_RL );
+				std::vector<p4est_locidx_t> indices;
+				nodesAlongInterface.getIndices( &phi, indices );
+
+				int numMaskedNodes = 0;
+				for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
 				{
-					if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )
+					if( howUpdatedPtr[n] == 1 && phiReadPtr[n] <= 0 )
 					{
 						numMaskedNodes++;
 						maskPtr[n] = 0;					// 0 => nonupdatable.
 						howUpdatedPtr[n] = 2;
 					}
-					else								// Updatable?
-						maskPtr[n] = 1;					// 1 => updatable.
 				}
 
 				ierr = VecRestoreArray( mask, &maskPtr );
@@ -459,7 +458,7 @@ int main( int argc, char** argv )
 				ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
 				CHKERRXX( ierr );
 
-				ierr = VecRestoreArrayRead( withTheFlow, &withTheFlowReadPtr );
+				ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 				CHKERRXX( ierr );
 
 				ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
@@ -556,9 +555,6 @@ int main( int argc, char** argv )
 		CHKERRXX( ierr );
 
 		// Destroy parallel vectors.
-		ierr = VecDestroy( withTheFlow );
-		CHKERRXX( ierr );
-
 		ierr = VecDestroy( howUpdated );
 		CHKERRXX( ierr );
 

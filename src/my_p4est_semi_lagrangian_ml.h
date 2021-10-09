@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 8, 2021.
+ * Updated: October 9, 2021.
  */
 namespace slml
 {
@@ -696,8 +696,8 @@ namespace slml
 						  		Vec phi_xx[P4EST_DIM], double *phi_np1Ptr, double *phiNum_np1Ptr, double *howUpdated_np1Ptr );
 
 	public:
-		constexpr static double FLOW_ANGLE_THRESHOLD = 19 * M_PI / 36;	// Maximum angle between midpoint vel and the phi-signed normal at a
-																		// grid point next to Gamma^n.
+		constexpr static double FLOW_ANGLE_THRESHOLD = 19 * M_PI / 36;	// Maximum angle between some velocity and the
+																		// phi-signed normal for a point next to Gamma.
 
 		/**
 		 * Constructor.
