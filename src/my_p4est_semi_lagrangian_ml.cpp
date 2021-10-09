@@ -1097,7 +1097,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4
 
 
 void slml::SemiLagrangian::updateP4EST( Vec vel[P4EST_DIM], const double& dt, Vec *phi, Vec hk, Vec normal[P4EST_DIM],
-										Vec *howUpdated, Vec *phiNum )
+										Vec *howUpdated, Vec *withTheFlow, Vec *phiNum )
 {
 	if( _used )				// One-time usage check.
 	{
@@ -1257,6 +1257,9 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[P4EST_DIM], const double& dt, Ve
 	ierr = VecDestroy( *phi );
 	CHKERRXX( ierr );
 	*phi = phi_np1;
+
+	if( withTheFlow )
+		getNodesWithTheFlow( vel, normal, ngbd_n, H, phi_np1, p4est, nodes, withTheFlow );
 
 	if( howUpdated )
 	{
@@ -1431,4 +1434,104 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, Vec vel[P4EST_DI
 	// Free memory for output fields.
 	for( auto& fOutput : output )
 		delete[] fOutput;
+}
+
+
+void slml::SemiLagrangian::getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal_n[P4EST_DIM],
+												const my_p4est_node_neighbors_t *neighbors_n, const double& h,
+												Vec phi_np1, const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1,
+												Vec *withTheFlow )
+{
+	Vec withTheFlow_np1;
+	PetscErrorCode ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &withTheFlow_np1 );	// All zeros: not with the flow.
+	CHKERRXX( ierr );
+
+	double *withTheFlow_np1Ptr;
+	ierr = VecGetArray( withTheFlow_np1, &withTheFlow_np1Ptr );
+	CHKERRXX( ierr );
+
+	const double *phi_np1ReadPtr;
+	ierr = VecGetArrayRead( phi_np1, &phi_np1ReadPtr );
+	CHKERRXX( ierr );
+
+	// Find candidates for which we need their velocity and normal vectors at time t^n.
+	int outIdx = 0;
+	std::vector<p4est_locidx_t> outToNodeIdx;
+	outToNodeIdx.reserve( nodes_np1->num_owned_indeps );
+	my_p4est_interpolation_nodes_t interpVel( neighbors_n );	// Notice we use neighbors at t^n.
+	my_p4est_interpolation_nodes_t interpNormal( neighbors_n );	// So, we need these to be well defined.
+	for( p4est_locidx_t n = 0; n < nodes_np1->num_owned_indeps; n++ )
+	{
+		if( ABS( phi_np1ReadPtr[n] ) < h * M_SQRT2 )			// A narrow band around Gamma_c^np1.
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );
+			interpVel.add_point( outIdx, xyz );
+			interpNormal.add_point( outIdx, xyz );
+
+			outToNodeIdx.emplace_back( n );
+			outIdx++;
+		}
+	}
+
+	double *cvel_n[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};		// Velocity at time t^n for candidate nodes.
+	double *cnormal_n[P4EST_DIM] = {DIM( nullptr, nullptr, nullptr )};	// Normals at time t^n for candidate nodes.
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		cvel_n[dim] = new double[outIdx];
+		cnormal_n[dim] = new double[outIdx];
+	}
+
+	// Proceed with interpolation to retrieve normals and velocity at time t^n.  Since points coincide within the band,
+	// we don't need more than simple linear interpolation.
+	interpVel.set_input( vel_n, interpolation_method::linear, P4EST_DIM );
+	interpVel.interpolate( cvel_n );
+	interpVel.clear();
+	interpNormal.set_input( normal_n, interpolation_method::linear, P4EST_DIM );
+	interpNormal.interpolate( cnormal_n );
+	interpNormal.clear();
+
+	// Use the phi^np1-signed normal^n and velocity^n to select nodes to protect in the direction of the flow.
+	for( int i = 0; i < outIdx; i++ )
+	{
+		double velMagnitude = 0, normalMagnitude = 0;
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			velMagnitude += SQR( cvel_n[dir][i] );
+			normalMagnitude += SQR( cnormal_n[dir][i] );
+		}
+
+		velMagnitude = sqrt( velMagnitude );
+		normalMagnitude = sqrt( normalMagnitude );
+
+		double v[P4EST_DIM], n[P4EST_DIM];				// Normalized vectors.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+		{
+			v[dir] = (velMagnitude > PETSC_MACHINE_EPSILON? cvel_n[dir][i] / velMagnitude : 0);
+			n[dir] = (normalMagnitude > PETSC_MACHINE_EPSILON? cnormal_n[dir][i] / normalMagnitude : 0);
+		}
+
+		double dot = 0;									// Dot product: cos of theta.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			dot += v[dir] * n[dir] * (phi_np1ReadPtr[outToNodeIdx[i]] > 0? 1 : -1);
+
+		if( acos( dot ) <= FLOW_ANGLE_THRESHOLD )
+			withTheFlow_np1Ptr[outToNodeIdx[i]] = 1;	// Flag node if the angle is smaller than the threshold.
+	}
+
+	for( int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		delete [] cvel_n[dim];
+		delete [] cnormal_n[dim];
+	}
+
+	ierr = VecRestoreArrayRead( phi_np1, &phi_np1ReadPtr );
+	CHKERRXX( ierr );
+
+	ierr = VecRestoreArray( withTheFlow_np1, &withTheFlow_np1Ptr );
+	CHKERRXX( ierr );
+
+	ierr = VecDestroy( *withTheFlow );
+	CHKERRXX( ierr );
+	*withTheFlow = withTheFlow_np1;
 }
