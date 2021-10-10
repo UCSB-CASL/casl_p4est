@@ -585,7 +585,7 @@ int main( int argc, char** argv )
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
 
-		// Destroy the dynamically allocated FINE brick and connectivity structures.
+		// Destroy the dynamically allocated brick and connectivity structures.
 		// Connectivity and Brick objects are the only ones that are not re-created in every iteration of
 		// semi-Lagrangian advection.
 		my_p4est_brick_destroy( connectivity, &brick );

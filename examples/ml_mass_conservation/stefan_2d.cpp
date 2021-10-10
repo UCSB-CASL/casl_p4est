@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: September 16, 2021.
- * Updated: September 17, 2021.
+ * Updated: October 9, 2021.
  */
 
 #include <stdexcept>
@@ -37,18 +37,6 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <random>
-
-// logging variables
-PetscLogEvent log_compute_curvature;
-#ifndef CASL_LOG_EVENTS
-#undef PetscLogEventBegin
-#undef PetscLogEventEnd
-#define PetscLogEventBegin(e, o1, o2, o3, o4) 0
-#define PetscLogEventEnd(e, o1, o2, o3, o4) 0
-#endif
-#ifndef CASL_LOG_FLOPS
-#define PetscLogFlops(n) 0
-#endif
 
 /* Available options in 2d
  * 0 - frank sphere
@@ -391,11 +379,9 @@ void save_VTK( p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_brick_t *brick, Ve
 
 
 void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&ghost, p4est_nodes_t *&nodes,
-				   my_p4est_hierarchy_t *&hierarchy, my_p4est_node_neighbors_t *&ngbd,
-				   Vec& phi, Vec *d_phi, Vec *v, Vec& t_l, Vec& t_s,
-				   const double& BAND, const slml::NeuralNetwork *nnet, Vec hk, Vec& howUpdated,
-				   std::unordered_set<p4est_locidx_t>& localUniformIndices, const int& iter, const int& REINIT_NUM_ITER,
-				   const bool& mode, const double& maxVelNorm )
+				   my_p4est_hierarchy_t *&hierarchy, my_p4est_node_neighbors_t *&ngbd, Vec& phi, Vec normal[P4EST_DIM],
+				   Vec v[P4EST_DIM], Vec& t_l, Vec& t_s, const slml::NeuralNetwork *nnet, Vec hk, Vec& howUpdated,
+				   const int& iter, const int& REINIT_NUM_ITER, const signed char& MAX_RL, bool& nnetTurn )
 {
 	PetscErrorCode ierr;
 
@@ -403,28 +389,28 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
 	p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
-	// Create semi-Lagrangian object.
+	// Create semi-Lagrangian object and update level-set values.
 	slml::SemiLagrangian *mlSemiLagrangian;
 	my_p4est_semi_lagrangian_t *numSemiLagrangian;
-	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )    // Use nnet if velocity is essentially nonzero.
+	if( nnetTurn )    // Use nnet if dt==dx, max|u| <= 1, and it's nnet turn.
 	{
-		mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd, &localUniformIndices,
-													 nnet, BAND, iter );
+		mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd, phi, false, nnet, iter );
+		mlSemiLagrangian->updateP4EST( v, dt, &phi, hk, normal, &howUpdated );
 	}
 	else
 	{
 		numSemiLagrangian = new my_p4est_semi_lagrangian_t( &p4est_np1, &nodes_np1, &ghost_np1, ngbd );
 		numSemiLagrangian->set_phi_interpolation( interpolation_method::quadratic );
 		numSemiLagrangian->set_velo_interpolation( interpolation_method::quadratic );
+		numSemiLagrangian->update_p4est( v, dt, phi, nullptr, nullptr, MASS_BAND_HALF_WIDTH );
+
+		ierr = VecDestroy( howUpdated );		// For numerical method, howUpdated flag is zero everywhere.
+		CHKERRXX( ierr );
+		ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &howUpdated );
+		CHKERRXX( ierr );
 	}
 
-	// Update grid.
-	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )
-		mlSemiLagrangian->updateP4EST( v, dt, &phi, hk, &howUpdated );
-	else
-		numSemiLagrangian->update_p4est( v, dt, phi, nullptr, nullptr, BAND );
-
-	/* interpolate the quantities on the new mesh */
+	// Interpolate the quantities on the new mesh.
 	Vec tnp1_l, tnp1_s;
 	ierr = VecDuplicate( phi, &tnp1_l );
 	CHKERRXX( ierr );
@@ -439,10 +425,10 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		interp.add_point( n, xyz );
 	}
 
-	interp.set_input( t_l, quadratic );
+	interp.set_input( t_l, interpolation_method::quadratic );
 	interp.interpolate( tnp1_l );
 
-	interp.set_input( t_s, quadratic );
+	interp.set_input( t_s, interpolation_method::quadratic );
 	interp.interpolate( tnp1_s );
 
 	ierr = VecDestroy( t_l );
@@ -453,64 +439,77 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	CHKERRXX( ierr );
 	t_s = tnp1_s;
 
+	// Destroy old forest and create new structures.
 	p4est_destroy( p4est );
 	p4est = p4est_np1;
 	p4est_ghost_destroy( ghost );
 	ghost = ghost_np1;
 	p4est_nodes_destroy( nodes );
 	nodes = nodes_np1;
+
 	delete hierarchy;
 	hierarchy = new my_p4est_hierarchy_t( p4est, ghost, brick );
 	delete ngbd;
 	ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
 	ngbd->init_neighbors();
 
-	for( int dir = 0; dir < P4EST_DIM; ++dir )
+	for( int dir = 0; dir < P4EST_DIM; ++dir )		// Allocate new velocity vector components (computed in main body).
 	{
-		ierr = VecDestroy( d_phi[dir] );
-		CHKERRXX( ierr );
-		ierr = VecCreateGhostNodes( p4est, nodes, &d_phi[dir] );
-		CHKERRXX( ierr );
-
 		ierr = VecDestroy( v[dir] );
 		CHKERRXX( ierr );
-		ierr = VecDuplicate( d_phi[dir], &v[dir] );
+		ierr = VecCreateGhostNodes( p4est, nodes, &v[dir] );
 		CHKERRXX( ierr );
 	}
 
-	// Reintialize.
+	// Reinitialize.
 	my_p4est_level_set_t ls( ngbd );
-	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )
+	if( nnetTurn )
 	{
-		// Selective reinitialization of level-set function: affect only those nodes that were not updated with nnet.
-		Vec mask;
-		ierr = VecCreateGhostNodes( p4est, nodes, &mask );				// Mask vector to flag updatable nodes.
+		const double *phiReadPtr;
+		ierr = VecGetArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 
-		const double *howUpdatedReadPtr;
-		ierr = VecGetArrayRead( howUpdated, &howUpdatedReadPtr );
+		// Selective reinitialization of level-set function: protect nodes updated with the nnet whose level-set
+		// value is negative and are immediately next to Gamma^np1.
+		Vec mask;
+		ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
+		CHKERRXX( ierr );
+
+		double *howUpdatedPtr;
+		ierr = VecGetArray( howUpdated, &howUpdatedPtr );
 		CHKERRXX( ierr );
 
 		double *maskPtr;
 		ierr = VecGetArray( mask, &maskPtr );
 		CHKERRXX( ierr );
 
-		int numMaskedNodes = 0;
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
+			maskPtr[n] = 1;												// Initially, all are 1 => updatable.
+
+		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, MAX_RL );
+		std::vector<p4est_locidx_t> indices;
+		nodesAlongInterface.getIndices( &phi, indices );
+
+		int numMaskedNodes = 0;
+		for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
 		{
-			if( howUpdatedReadPtr[n] == 2 )		// Masked node? Nonupdatable?
+			if( howUpdatedPtr[n] == 1 && phiReadPtr[n] <= 0 )
 			{
 				numMaskedNodes++;
-				maskPtr[n] = 0;			// 0 => nonupdatable.
+				maskPtr[n] = 0;					// 0 => nonupdatable.
+				howUpdatedPtr[n] = 2;
 			}
-			else						// Updatable?
-				maskPtr[n] = 1;			// 1 => updatable.
+			else
+				maskPtr[n] = 1;
 		}
 
 		ierr = VecRestoreArray( mask, &maskPtr );
 		CHKERRXX( ierr );
 
-		ierr = VecRestoreArrayRead( howUpdated, &howUpdatedReadPtr );
+		ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
+		CHKERRXX( ierr );
+
+		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
 		CHKERRXX( ierr );
 
 		ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
@@ -525,120 +524,74 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 
 //	ls.perturb_level_set_function( phi, EPS );
 
-	// Destroy semi-Lagrangian objects.
-	if( mode && maxVelNorm > PETSC_MACHINE_EPSILON )
+	// Destroy semi-Lagrangian objects and switch turns.
+	if( nnetTurn )
+	{
 		delete mlSemiLagrangian;
+		nnetTurn = false;			// Done using nnet -- enable it back after an iteration with numerical computation.
+	}
 	else
+	{
 		delete numSemiLagrangian;
+		nnetTurn = true;			// Attempt to set chance for nnet in next round.  It'll be confirmed if conditions are met.
+	}
 }
 
 
-void compute_normal_and_curvature( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec *d_phi, Vec kappa, Vec& hk,
-								   std::unordered_set<p4est_locidx_t>& localUniformIndices, const double& h )
+void compute_normal_and_curvature( my_p4est_node_neighbors_t *ngbd, Vec phi, Vec *normal, Vec kappa, Vec& hk, const double& h )
 {
 	PetscErrorCode ierr;
-	ierr = PetscLogEventBegin( log_compute_curvature, phi, kappa, 0, 0 );
+
+	// Shortcuts.
+	const p4est_t *p4est = ngbd->get_p4est();
+	const p4est_nodes_t *nodes = ngbd->get_nodes();
+
+	// Prepare output parallel vector with dimensionless curvature values.
+	ierr = hk? VecDestroy( hk ) : 0;
 	CHKERRXX( ierr );
+	ierr = VecCreateGhostNodes( p4est, nodes, &hk );			// By default, all values are zero.
+	CHKERRXX( ierr );
+
+	for(int dim = 0; dim < P4EST_DIM; dim++ )
+	{
+		ierr = normal[dim]? VecDestroy( normal[dim] ) : 0;
+		CHKERRXX( ierr );
+
+		ierr = VecCreateGhostNodes( p4est, nodes, &normal[dim] );
+		CHKERRXX( ierr );
+	}
 
 	// Compute normals and temporary curvature.
 	Vec kappa_tmp;
 	ierr = VecDuplicate( kappa, &kappa_tmp );
 	CHKERRXX( ierr );
-	compute_normals( *ngbd, phi, d_phi );
-	compute_mean_curvature( *ngbd, d_phi, kappa_tmp );
 
-	// Extend curvature from interface to all points.
-	my_p4est_level_set_t ls( ngbd );
-	ls.extend_from_interface_to_whole_domain_TVD( phi, kappa_tmp, kappa );
-
-	// Prepare output parallel vector with dimensionless curvature values.  Will store interface attribute only for
-	// nodes that lies next to Gamma, regardless of their stencils uniformity.  Indices of vertices with uniform
-	// stencils next to the interface will be returned in the indices out vector.
-	ierr = hk? VecDestroy( hk ) : 0;
-	CHKERRXX( ierr );
-	ierr = VecDuplicate( kappa, &hk );
-	CHKERRXX( ierr );
+	compute_normals( *ngbd, phi, normal );
+	compute_mean_curvature( *ngbd, normal, kappa_tmp );
 
 	double *hkPtr;
 	ierr = VecGetArray( hk, &hkPtr );
 	CHKERRXX( ierr );
 
-	// Prepare curvature interpolation.
-	my_p4est_interpolation_nodes_t kappaInterp( ngbd );
-	kappaInterp.set_input( kappa_tmp, interpolation_method::linear );
-
-	// Also need read access to phi and normals to compute closest point on Gamma.
-	const double *phiReadPtr;
-	ierr = VecGetArrayRead( phi, &phiReadPtr );
+	const double *kappa_tmpReadPtr;
+	ierr = VecGetArrayRead( kappa_tmp, &kappa_tmpReadPtr );
 	CHKERRXX( ierr );
 
-	const double *normalReadPtr[P4EST_DIM];
-	for( int i = 0; i < P4EST_DIM; i++ )
-	{
-		ierr = VecGetArrayRead( d_phi[i], &normalReadPtr[i] );
-		CHKERRXX( ierr );
-	}
+	// Scaling curvature by h.
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+		hkPtr[n] = h * kappa_tmpReadPtr[n];
 
-	// Compute dimensionless curvature for points next to the interface.
-	const p4est_t *p4est = ngbd->get_p4est();
-	const p4est_nodes_t *nodes = ngbd->get_nodes();
-	auto *splittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
-	std::vector<p4est_locidx_t> indices;
-
-	// Collect *locally owned* grid points next to the interface, although these might have a nonuniform stencil.
-	NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, ( signed char ) splittingCriteria->max_lvl );
-	nodesAlongInterface.getIndices( &phi, indices );
-	localUniformIndices.clear();
-	localUniformIndices.reserve( indices.size() );	// Return this to caller with effective local indices of nodes next
-													// to Gamma with uniform stencils.
-	for( auto nodeIdx: indices )
-	{
-		// Compute numerical hk for ALL points next to Gamma, regardless their stencil uniformity.  Those are further
-		// processed below.
-		double xyz[P4EST_DIM];
-		node_xyz_fr_n( nodeIdx, p4est, nodes, xyz );
-		double p = phiReadPtr[nodeIdx];
-		hkPtr[nodeIdx] = kappaInterp( DIM( xyz[0] - p * normalReadPtr[0][nodeIdx],
-										   xyz[1] - p * normalReadPtr[1][nodeIdx],
-										   xyz[2] - p * normalReadPtr[2][nodeIdx] ) );
-		hkPtr[nodeIdx] *= h;
-
-		try
-		{
-			std::vector<p4est_locidx_t> stencilIndices( num_neighbors_cube );
-			if( nodesAlongInterface.getFullStencilOfNode( nodeIdx, stencilIndices ))	// Uniform stencil?
-			{
-				localUniformIndices.insert( nodeIdx );
-			}
-		}
-		catch( const std::exception &exception )
-		{
-			std::cerr << "[" << nodeIdx << "]" << std::endl;
-		}
-	}
-
-	// Scatter forward dimensionless curvature and uniform-flag values to synchronize info.
-	ierr = VecGhostUpdateBegin( hk, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-	VecGhostUpdateEnd( hk, INSERT_VALUES, SCATTER_FORWARD );
-	CHKERRXX( ierr );
-
-	// Restore array accessors.
-	for( int dim = 0; dim < P4EST_DIM; dim++ )
-	{
-		ierr = VecRestoreArrayRead( d_phi[dim], &normalReadPtr[dim] );
-		CHKERRXX( ierr );
-	}
-
-	ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+	ierr = VecRestoreArrayRead( kappa_tmp, &kappa_tmpReadPtr );
 	CHKERRXX( ierr );
 
 	ierr = VecRestoreArray( hk, &hkPtr );
 	CHKERRXX( ierr );
 
+	// Extend curvature from interface to all points.
+	my_p4est_level_set_t ls( ngbd );
+	ls.extend_from_interface_to_whole_domain_TVD( phi, kappa_tmp, kappa );
+
 	ierr = VecDestroy( kappa_tmp );
-	CHKERRXX( ierr );
-	ierr = PetscLogEventEnd( log_compute_curvature, phi, kappa, 0, 0 );
 	CHKERRXX( ierr );
 }
 
@@ -840,9 +793,9 @@ int main (int argc, char* argv[])
 	cmd.add_option( "save_every_n", "export images every n iterations" );
 	cmd.add_option( "max_iter", "maximum number of iterations" );
 	cmd.add_option( "mode", "solver mode: 1 for nnet, 0 for numerical" );
-	cmd.add_option( "test", "the test to run. Available options are\
-					 \t 0 - frank sphere\n\
-                 	 \t 1 - a 3-petal seed\n");
+	cmd.add_option( "test", "the test to run. Available options are"
+							"\t 0 - frank sphere\n"
+							"\t 1 - a 3-petal seed\n");
 	cmd.parse( argc, argv );
 
 	// TODO: modify simulation options.
@@ -850,14 +803,14 @@ int main (int argc, char* argv[])
 	int save_every_n = cmd.get( "save_every_n", 2 );
 	int max_iter = cmd.get( "max_iter", INT_MAX );
 	bool mode = cmd.get( "mode", (int)1 );
-	test_number = cmd.get( "test", (int)1 );
+	test_number = cmd.get( "test", (int)0 );
 
 	// TODO: modify simulation times per test.
 	switch( test_number )
 	{
 		case 0: k_s=1; k_l=1; tn=0.25; T_FINAL=0.875; break;
 		case 1: tn=0; T_FINAL=1.5; break;
-		default: throw std::invalid_argument("[ERROR]: choose a valid test.");
+		default: throw std::invalid_argument( "[ERROR]: choose a valid test." );
 	}
 
 	// Begin simulation.
@@ -910,7 +863,7 @@ int main (int argc, char* argv[])
 	double diag_min;
 	get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
 
-	/* Initialize the level-set function */
+	// Initialize the level-set function.
 	Vec phi_s;
 	Vec phi_l;
 	Vec phiExact;
@@ -964,7 +917,7 @@ int main (int argc, char* argv[])
 	ierr = VecRestoreArrayRead( phi_s, &phi_s_p );
 	CHKERRXX( ierr );
 
-	/* Initialize the velocity field */
+	// Initialize the velocity field.
 	Vec v[P4EST_DIM];
 	double *v_p[P4EST_DIM];
 	for( int dir = 0; dir < P4EST_DIM; ++dir )
@@ -975,22 +928,22 @@ int main (int argc, char* argv[])
 		CHKERRXX( ierr );
 	}
 
-	compute_normal_and_curvature( ngbd, phi_s, d_phi, kappa, hk, localUniformIndices, dxyz_min );
+	compute_normal_and_curvature( ngbd, phi_s, d_phi, kappa, hk, dxyz_min );
 	extend_temperatures_over_interface( ngbd, phi_s, phi_l, t_l, t_s );
 	compute_velocity( ngbd, phi_s, t_l, t_s, v );
 
-	/* save the initial state */
+	// Save the initial state.
 	save_VTK( p4est, nodes, &brick, phi_s, phiExact, t_l, t_s, v, kappa, howUpdated, 0, mode, MAX_RL );
 
-	// loop over time
+	// Loop over time.
 	int iter = 0;
 	int vtkIdx = 1;
 	dt = 0;
-
+	bool nnetTurn = true;	// Indicates if it's nnet's turn (if all conditions hold and comes after a numerical step).
 	while( tn < T_FINAL && iter <= max_iter )
 	{
-		/* compute the time step dt */
-		for( int dir = 0; dir < P4EST_DIM; ++dir )
+		// Compute the time step dt.
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
 		{
 			ierr = VecGetArray( v[dir], &v_p[dir] );
 			CHKERRXX( ierr );
@@ -1017,18 +970,24 @@ int main (int argc, char* argv[])
 		}
 		MPI_Allreduce( MPI_IN_PLACE, &max_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm );
 
-		// For correctness, this should equal dx.
+		// To enable the nnet, dt should equal dx.
 		dt = MIN( 1., 1 / max_norm_u ) * CFL * dxyz_min;
-
-		if( max_norm_u > 1 )
-			std::cerr << "Max norm u = " << max_norm_u << ", dt = " << dt << std::endl;
 
 		if( tn + dt > T_FINAL )
 			dt = T_FINAL - tn;
 
-		/* contruct the mesh at time tn+dt */
-		update_p4est( &brick, p4est, ghost, nodes, hierarchy, ngbd, phi_s, d_phi, v, t_l, t_s, BAND, &nnet, hk,
-					  howUpdated, localUniformIndices, iter, REINIT_NUM_ITER, mode, max_norm_u );
+		if( mode && nnetTurn )
+		{
+			if( ABS( dt - dxyz_min ) > PETSC_MACHINE_EPSILON || max_norm_u > 1 || max_norm_u < PETSC_MACHINE_EPSILON )	// It's nnet's turn, but can't use it.
+				nnetTurn = false;
+		}
+		else
+			nnetTurn = false;
+
+		std::cout << (nnetTurn? "NNet" : "Numerical") << ", Max norm u = " << max_norm_u << ", dt = " << dt << std::endl;
+
+		// Contruct the mesh at time t^np1
+		update_p4est( &brick, p4est, ghost, nodes, hierarchy, ngbd, phi_s, d_phi, v, t_l, t_s, &nnet, hk, howUpdated, iter, REINIT_NUM_ITER, MAX_RL, nnetTurn );
 
 		ierr = VecDestroy( phi_l );
 		ierr = VecDuplicate( phi_s, &phi_l );
@@ -1044,20 +1003,20 @@ int main (int argc, char* argv[])
 		ierr = VecRestoreArrayRead( phi_s, &phi_s_p );
 		CHKERRXX( ierr );
 
-		/* compute the curvature for boundary conditions */
+		// Compute the curvature for boundary conditions.
 		ierr = VecDestroy( kappa );
 		CHKERRXX( ierr );
 		ierr = VecDuplicate( phi_s, &kappa );
 		CHKERRXX( ierr );
-		compute_normal_and_curvature( ngbd, phi_s, d_phi, kappa, hk, localUniformIndices, dxyz_min );
+		compute_normal_and_curvature( ngbd, phi_s, d_phi, kappa, hk, dxyz_min );
 
-		/* solve for the temperatures */
+		// Solve for the temperatures.
 		solve_temperature( ngbd, phi_s, phi_l, d_phi, kappa, t_l, t_s );
 
-		/* extend the temperature over the interface */
+		// Extend the temperature over the interface.
 		extend_temperatures_over_interface( ngbd, phi_s, phi_l, t_l, t_s );
 
-		/* compute the velocity of the interface */
+		// Compute the velocity of the interface.
 		compute_velocity( ngbd, phi_s, t_l, t_s, v );
 
 		tn += dt;
@@ -1129,7 +1088,7 @@ int main (int argc, char* argv[])
 	ierr = VecDestroy( howUpdated );
 	CHKERRXX( ierr );
 
-	// destroy the p4est and its connectivity structure
+	// Destroy the p4est and its connectivity structure
 	delete ngbd;
 	delete hierarchy;
 	p4est_nodes_destroy( nodes );
