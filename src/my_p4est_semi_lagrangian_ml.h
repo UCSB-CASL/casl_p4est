@@ -13,7 +13,7 @@
 #define MASS_INPUT_HK_SIZE		 1
 #define MASS_INPUT_PHI_XX_SIZE	 2
 
-#define MASS_N_COMPONENTS		17	// Number of components for PCA dimensionality reduction; same as nnet input size.
+#define MASS_N_COMPONENTS		18	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
 #define MASS_BAND_HALF_WIDTH	 2	// Distance in min diags to enforce a uniform band around Gamma^n.
 
