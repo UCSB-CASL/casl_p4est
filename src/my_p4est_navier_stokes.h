@@ -153,6 +153,7 @@ protected:
   bool semi_lagrangian_backtrace_is_done;
   std::vector<double> backtraced_v_n[P4EST_DIM];
   std::vector<double> backtraced_v_nm1[P4EST_DIM]; // used only if sl_order == 2
+  std::vector<double> ext_force_term_interpolation_from_nodes_to_faces;
 
   // face interpolator to nodes: store them in memory to accelerate execution if static grid
   bool interpolators_from_face_to_nodes_are_set;
@@ -184,6 +185,9 @@ protected:
 
   CF_DIM *external_forces_per_unit_volume[P4EST_DIM];
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
+  Vec external_force_per_unit_volume;
+  Vec second_derivatives_external_force_per_unit_volume[P4EST_DIM];
+  public:bool boussinesq_approx=false;
 
   my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
@@ -414,6 +418,8 @@ public:
   void set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
 
   void set_phi(Vec phi);
+
+  void set_external_forces_using_vector(Vec f,double time);
 
   // [Raphael:] original behavior was for forcing term defined as a force per unit volume
   inline void set_external_forces(CF_DIM **external_forces) { set_external_forces_per_unit_volume(external_forces); }

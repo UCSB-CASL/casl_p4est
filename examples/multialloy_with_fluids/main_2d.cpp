@@ -80,7 +80,8 @@ enum:int {
   MELTING_ICE_SPHERE = 7,
   MELTING_POROUS_MEDIA = 8,
   PLANE_POIS_FLOW=9,
-  DISSOLVING_DISK_BENCHMARK=10
+  DISSOLVING_DISK_BENCHMARK=10,
+  MELTING_ICE_SPHERE_NAT_CONV=11,
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -100,6 +101,7 @@ DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
                                    "8 - melting of a porous media (with fluid flow) \n"
                                    "9 - plane poiseuille flow \n "
                                    "10 - dissolving disk benchmark for dissolution problem \n"
+                                   "11 - Melting of an ice sphere in natural convection \n"
                                    "default: 4");
 
 // ---------------------------------------
@@ -189,6 +191,7 @@ void select_solvers(){
       break;
 
     case MELTING_ICE_SPHERE:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:
       if(!no_flow){
         solve_stefan = true;
@@ -248,12 +251,14 @@ void select_solvers(){
 
     interfacial_temp_bc_requires_curvature = (example_ == ICE_AROUND_CYLINDER) ||
                                              (example_ == MELTING_ICE_SPHERE) ||
+                                             (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
                                              (example_ == DENDRITE_TEST) ||
                                              (example_ == MELTING_POROUS_MEDIA);
     interfacial_temp_bc_requires_normal = (example_ == DENDRITE_TEST);
 
     interfacial_vel_bc_requires_vint = (example_ == ICE_AROUND_CYLINDER) ||
                                        (example_ == MELTING_ICE_SPHERE) ||
+                                       (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
                                        (example_ == DENDRITE_TEST)||
                                        (example_ == MELTING_POROUS_MEDIA) ||
                                        (example_ == DISSOLVING_DISK_BENCHMARK);
@@ -261,7 +266,9 @@ void select_solvers(){
     example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
-                                        (example_ == MELTING_ICE_SPHERE) || (example_ == DISSOLVING_DISK_BENCHMARK);
+                                        (example_ == MELTING_ICE_SPHERE) ||
+                                        (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
+                                        (example_  ==DISSOLVING_DISK_BENCHMARK);
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
@@ -402,6 +409,23 @@ void set_geometry(){
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder (mini level set)
       r0 = r_cyl*1.10; // Computational radius of ice (level set) -- TO-DO: maybe initial ice thickness should be a user parameter you can change
+      break;
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      // Domain size:
+      xmin = 0.0; xmax = 15.0;
+      ymin = 0.0; ymax = 15.0;
+
+      // Number of trees:
+      nx =5.0;
+      ny =5.0;
+
+      // Periodicity:
+      px = 1;
+      py = 0;
+
+      // Problem geometry:
+      r0 = 0.5;     // Computational radius of the sphere
       break;
     }
     case MELTING_ICE_SPHERE:{
@@ -774,6 +798,7 @@ void set_physical_properties(){
       break;
       }
     case MELTING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
 
       // Using properties of water at 20 C: (engineering toolbox)
@@ -964,6 +989,13 @@ void set_NS_info(){
       hodge_percentage_of_max_u = 1.e-3;
       break;
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      Re = 316.;
+      u0 = 0.0; // computational freestream velocity
+      v0 = 0.0;
+      hodge_percentage_of_max_u = 1.e-3;
+      break;
+    }
     case PLANE_POIS_FLOW:{
       Re = 1.0;
       u0 = 5.0625;
@@ -1033,6 +1065,7 @@ void set_nondimensional_groups(){
      if(example_ == ICE_AROUND_CYLINDER ||
          example_ == FLOW_PAST_CYLINDER ||
          example_ == MELTING_ICE_SPHERE ||
+         example_ == MELTING_ICE_SPHERE_NAT_CONV ||
          example_ == MELTING_POROUS_MEDIA){
        d_length_scale=d_cyl;
      }
@@ -1142,6 +1175,7 @@ void simulation_time_info(){
       tstart = 0.0;
       break;
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
       tfinal = 35.0; // 1000 in nondim time for refinement test
@@ -1769,6 +1803,9 @@ public:
       case DISSOLVING_DISK_BENCHMARK: {
         return r0 - sqrt(SQR(x-(xmax/2.)) + SQR(y - (ymax/2.)));
       }
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        return r0 - sqrt(SQR(x - (xmax/2.0)) + SQR(y - (ymax/2.0)));
+      }
       case MELTING_ICE_SPHERE:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       }
@@ -1814,6 +1851,7 @@ public:
     switch(example_){
       case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case FRANK_SPHERE:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case MELTING_POROUS_MEDIA:
       case DISSOLVING_DISK_BENCHMARK:
@@ -1847,6 +1885,7 @@ void interface_bc_temp(){ //-- Call this function before setting interface bc in
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_temp = DIRICHLET; 
@@ -1869,6 +1908,7 @@ void inner_interface_bc_temp(){ //-- Call this function before setting interface
     case COUPLED_PROBLEM_EXAMPLE:
     case COUPLED_TEST_2:
     case DENDRITE_TEST:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case FRANK_SPHERE:{
         throw std::invalid_argument("This option may not be used for the particular example being called");
@@ -1956,6 +1996,7 @@ public:
 //        return theta_interface;
       }
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER: {
         double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
@@ -2014,6 +2055,7 @@ public:
       case FRANK_SPHERE:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
       case COUPLED_TEST_2:
@@ -2099,6 +2141,7 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
@@ -2123,6 +2166,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     case MELTING_POROUS_MEDIA:{
       return (ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))));
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
@@ -2189,6 +2233,7 @@ public:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case ICE_AROUND_CYLINDER:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
           return theta_wall;
@@ -2253,6 +2298,7 @@ public:
         }
       }
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:{
         switch(dom){
           case LIQUID_DOMAIN:{
@@ -2343,6 +2389,7 @@ public:
           return 0.0; // homogeneous neumann
         }
       }
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
@@ -2439,6 +2486,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case DENDRITE_TEST:
     case DISSOLVING_DISK_BENCHMARK:
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_velocity[dir] = DIRICHLET;
@@ -2479,6 +2527,7 @@ public:
       case FLOW_PAST_CYLINDER:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case DISSOLVING_DISK_BENCHMARK:
         if(!solve_stefan) return 0.;
@@ -2567,6 +2616,29 @@ struct INITIAL_VELOCITY : CF_DIM
           }
         }
 
+      }
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        if(ramp_bcs) return 0.;
+        else{
+          switch(dir){
+          case dir::x:
+            if(perturb_initial_flow){
+              return u0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
+            }
+            else{
+              return u0;
+            }
+          case dir::y:
+            if(perturb_initial_flow){
+              return v0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
+            }
+            else{
+              return v0;
+            }
+          default:
+            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+          }
+        }
       }
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
@@ -2670,6 +2742,7 @@ public:
       }
       case DISSOLVING_DISK_BENCHMARK:
         return 0.0; // returns homogeneous condition either way
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
@@ -2726,6 +2799,7 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
     case DISSOLVING_DISK_BENCHMARK:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
@@ -2743,6 +2817,7 @@ public:
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:
       case DISSOLVING_DISK_BENCHMARK:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
@@ -3338,7 +3413,7 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   }
 
   // Compute new timestep:
-  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
+  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);//global_max_vnorm;
   //dt = min(dt_computed,dt_max_allowed);
 
   if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
@@ -3878,7 +3953,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
       //--> Scale phi back to normal:
       VecScaleGhost(phi,-1.0);
       // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
-      if(example_ == MELTING_ICE_SPHERE){
+      if((example_ == MELTING_ICE_SPHERE)||(example_== MELTING_ICE_SPHERE_NAT_CONV)){
         if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
           tfinal = tn;
         }
@@ -5986,6 +6061,7 @@ int main(int argc, char** argv) {
       case FLOW_PAST_CYLINDER:
       case DISSOLVING_DISK_BENCHMARK:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(save_fluid_forces || example_requires_area_computation){
@@ -6071,6 +6147,9 @@ int main(int argc, char** argv) {
         // Initialize timesteps to use:
         if(solve_navier_stokes){
           dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
+          if (example_=MELTING_ICE_SPHERE_NAT_CONV){
+              dt_nm1=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
+          }
           dt = dt_nm1;
         }
         else{
@@ -6569,6 +6648,21 @@ int main(int argc, char** argv) {
           {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
           ns->set_external_forces(external_forces);
         }
+        // For natural convection only:
+        if (example_== MELTING_ICE_SPHERE_NAT_CONV){
+            ns->set_external_forces_using_vector(T_l_n.vec,tn);
+//            double *T_l_n_p;
+//            ierr= VecGetArray(T_l_n.vec,&T_l_n_p);
+//            const char* output_dir_T=getenv("OUT_DIR_VTK");
+//            char output_T[1000];
+//            ierr= PetscPrintf(mpi.comm(),"Time %d \n",tn);
+//            sprintf(output_T,"_time_%0.3e",tn);
+//            my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1,
+//                                   P4EST_TRUE, P4EST_TRUE,
+//                                   1, 0, output_T,
+//                                   VTK_POINT_DATA, "T_l", T_l_n_p);
+//            ierr= VecRestoreArray(T_l_n.vec,&T_l_n_p);
+        }
 
         // -------------------------------
         // Prepare vectors to receive solution for np1 timestep:
@@ -6654,9 +6748,6 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"forces saved \n");
 
       }
-
-
-
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
