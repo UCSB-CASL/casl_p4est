@@ -4,14 +4,14 @@
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
  * advection.  We assume that all considered velocity fields are divergence-free.  The grid points we correct are those
  * next to Gamma^n with full h-uniform stencils.  In selective reinitialization, we protect only those points with a
- * neighbor across Gamma^np1 and with phi^np1 < 0.  Sampling occurs every other iteration to allow the numerical
- * viscosity to smooth out the trajectory.
+ * neighbor across Gamma^np1 and going in the opposite direction of the flow (i.e., those "lagging" behind).  Sampling
+ * occurs every other iteration to allow the numerical viscosity to smooth out the trajectory.
  *
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 9, 2021.
+ * Updated: October 10, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -90,7 +90,7 @@ int main( int argc, char** argv )
 																	"to allow numerical viscosity to smoothe the "
 																	"trajectory (default 1).");
 	param_t<unsigned short> addFineSubsteps( pl, 0, "addFineSubsteps", "Substeps per fine step computed as 2^x (default"
-																		" 0 => 2^0 = 1 (sub)step per fine step)." );
+																	   " 0 => 2^0 = 1 (sub)step per fine step)." );
 
 	try
 	{
@@ -475,19 +475,26 @@ int main( int argc, char** argv )
 								maxRelError = MAX( maxRelError, relError );
 								nSamplesPerLoop += samples.size();
 
+								// Parallel vector flagging nodes in the (opposite) flow direction that we want to protect.
+								const short int flipFlow = -1;
+								Vec withTheFlow;
+								ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &withTheFlow );
+								CHKERRXX( ierr );
+
 								// Interleaved COARSE grid advection by using the FINE grid as reference and semi-Lagrangian
 								// numerical advection with quadratic velocity and phi interpolation.  This process updates
 								// COARSE internal phi vector with NO reinitialization.  Must do the latter manually below.
 								if( (iteration + 1) % INTERLEAVED_ADVECT_STEPS == 0 )
 								{
-									coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f );
+									coarseGrid.fitToFineGrid( nodeNeighbors_f, phi_f, &withTheFlow, flipFlow );
 									PetscPrintf( mpi.comm(), "\b\b\b*  " );
 								}
 								else
-									coarseGrid.updateP4EST( dt_c );
+									coarseGrid.updateP4EST( dt_c, &withTheFlow, flipFlow );
 
 								// Let's reinitialize coarse grid to introduce noise as it would happen in a real scenario.
-								// Selective reinitialization: protect nodes fitted to the FINE grid AND lying inside Gamma_c^np1.
+								// Selective reinitialization: protect nodes fitted to the FINE grid AND goind in the opposite
+								// direction of the flow next to Gamma_c^np1.
 								Vec mask;
 								ierr = VecCreateGhostNodes( coarseGrid.p4est, coarseGrid.nodes, &mask );		// Mask vector to flag updatable nodes.
 								CHKERRXX( ierr );
@@ -528,6 +535,10 @@ int main( int argc, char** argv )
 									}
 								}
 
+								const double *withTheFlowReadPtr;
+								ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
+								CHKERRXX( ierr );
+
 								NodesAlongInterface nodesAlongInterface( coarseGrid.p4est, coarseGrid.nodes, coarseGrid.nodeNeighbors, COARSE_MAX_RL );
 								std::vector<p4est_locidx_t> indices;
 								nodesAlongInterface.getIndices( &coarseGrid.phi, indices );
@@ -535,8 +546,8 @@ int main( int argc, char** argv )
 								int numMaskedNodes = 0;				// Used to validate that we don't recover more points than those fitted to FINE grid.
 								for( const p4est_locidx_t& n : indices )
 								{
-									if( howUpdatedPtr[n] == 1 && phi_cPtr[n] <= 0 )	// Valid points are next to Gamma_c^n and lie next to Gamma_c^np1 with phi^np1 < 0.
-									{
+									if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )	// Valid points are next to Gamma_c^n and lie next to
+									{															// Gamma_c^np1 in the (opposite) direction of the flow.
 										maskPtr[n] = 0;				// Non updatable.
 										howUpdatedPtr[n] = 2;		// 2 => fixed with FINE grid and protected from reinit.
 										numMaskedNodes++;
@@ -548,6 +559,9 @@ int main( int argc, char** argv )
 									PetscErrorPrintf( "You can't protect more nodes than the ones you fitted to the fine grid!\n" );
 									MPI_Abort( mpi.comm(), 1 );
 								}
+
+								ierr = VecRestoreArrayRead( withTheFlow, &withTheFlowReadPtr );
+								CHKERRXX( ierr );
 
 								ierr = VecRestoreArray( coarseGrid.phi, &phi_cPtr );
 								CHKERRXX( ierr );
@@ -566,6 +580,9 @@ int main( int argc, char** argv )
 								slml::SemiLagrangian::freeDataPacketArray( dataPackets );
 
 								ierr = VecDestroy( mask );
+								CHKERRXX( ierr );
+
+								ierr = VecDestroy( withTheFlow );
 								CHKERRXX( ierr );
 							}
 						}

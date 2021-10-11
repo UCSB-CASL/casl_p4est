@@ -16,7 +16,7 @@
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
  * a reference finer grid from where its values are drawn by interpolation.
  *
- * Updated: October 8, 2021.
+ * Updated: October 10, 2021.
  */
 class CoarseGrid
 {
@@ -124,11 +124,12 @@ public:
 	 * @note You must collect samples before "advecting" the COARSE grid.
 	 * @param [in] ngbd_f Pointer to FINE grid node neighborhood struct.
 	 * @param [in] phi_f Reference to parallel level-set function value vector for FINE grid.
-	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes in the flow direction, 0s otherwise.
+	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes close to Gamma^np1 in the flow direction, 0s otherwise.
+	 * @param [in] flipFlow Optional constant to change the sign of the flow: 1 in its direction, -1 in the opposite direction.
 	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
 	void fitToFineGrid( const my_p4est_node_neighbors_t *ngbd_f, const Vec& phi_f, Vec *withTheFlow=nullptr,
-					 	const CF_2 *velocityField[P4EST_DIM]=nullptr )
+						const short int& flipFlow=1, const CF_2 *velocityField[P4EST_DIM]=nullptr )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -229,7 +230,7 @@ public:
 
 		// Get the nodes in the flow direction before destroying data at time t^n (since we interpolate from it).
 		if( withTheFlow )
-			slml::SemiLagrangian::getNodesWithTheFlow( vel, normal, nodeNeighbors, minCellWidth, phi, p4est_np1, nodes_np1, withTheFlow );
+			slml::SemiLagrangian::getNodesWithTheFlow( vel, normal, nodeNeighbors, minCellWidth, phi, p4est_np1, nodes_np1, withTheFlow, flipFlow );
 
 		// Destroy old COARSE forest and create new structures.
 		p4est_destroy( p4est );
@@ -264,10 +265,12 @@ public:
 	 * tion of departure points.
 	 * @note You must collect samples before "advecting" the COARSE grid.
 	 * @param [in] dt Timestep.
-	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes in the flow direction, 0s otherwise.
+	 * @param [out] withTheFlow Optional parallel vector with 1s for nodes around Gamma^np1 in the flow direction, 0s otherwise.
+	 * @param [in] flipFlow Optional constant to change the sign of the flow: 1 in its direction, -1 in the opposite direction.
 	 * @param [in] velocityField Optional velocity field given as P4EST_DIM CF_DIM components (different to RandomVelocityField).
 	 */
-	void updateP4EST( const double& dt, Vec *withTheFlow=nullptr, const CF_2 *velocityField[P4EST_DIM]=nullptr )
+	void updateP4EST( const double& dt, Vec *withTheFlow=nullptr, const short int& flipFlow=1,
+					  const CF_2 *velocityField[P4EST_DIM]=nullptr )
 	{
 		assert( phi );			// Check we have a well defined coarse grid.
 		PetscErrorCode ierr;
@@ -287,7 +290,7 @@ public:
 
 		// Get the nodes in the flow direction before destroying data at time t^n (since we interpolate from it).
 		if( withTheFlow )
-			slml::SemiLagrangian::getNodesWithTheFlow( vel, normal, nodeNeighbors, minCellWidth, phi, p4est_np1, nodes_np1, withTheFlow );
+			slml::SemiLagrangian::getNodesWithTheFlow( vel, normal, nodeNeighbors, minCellWidth, phi, p4est_np1, nodes_np1, withTheFlow, flipFlow );
 
 		// Destroy old COARSE forest and create new structures.
 		p4est_destroy( p4est );

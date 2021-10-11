@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: October 9, 2021.
+ * Updated: October 11, 2021.
  */
 
 #ifdef _OPENMP
@@ -377,13 +377,19 @@ int main( int argc, char** argv )
 			p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
 			p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
+			// Parallel vector flagging nodes in the (opposite) flow direction that we want to protect.
+			const short int flipFlow = -1;
+			Vec withTheFlow;
+			ierr = VecCreateGhostNodes( p4est, nodes, &withTheFlow );
+			CHKERRXX( ierr );
+
 			// Create semi-Lagrangian object and advect.
 			slml::SemiLagrangian *mlSemiLagrangian;
 			my_p4est_semi_lagrangian_t *numSemiLagrangian;
 			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )		// Use neural network in an alternate schedule and only if dt = dx.
 			{
 				mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, nodeNeighbors, phi, false, nnet, iter );
-				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated );
+				mlSemiLagrangian->updateP4EST( vel, dt, &phi, hk, normal, &howUpdated, &withTheFlow, flipFlow );
 			}
 			else
 			{
@@ -416,12 +422,12 @@ int main( int argc, char** argv )
 			my_p4est_level_set_t ls( nodeNeighbors );
 			if( mode() && ABS(dt - dxyz_min) <= PETSC_MACHINE_EPSILON && !(iter % 2) )
 			{
-				const double *phiReadPtr;
-				ierr = VecGetArrayRead( phi, &phiReadPtr );
+				const double *withTheFlowReadPtr;
+				ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
 				CHKERRXX( ierr );
 
-				// Selective reinitialization of level-set function: protect nodes updated with the nnet whose level-set
-				// value is negative and are immediately next to Gamma^np1.
+				// Selective reinitialization of level-set function: protect nodes updated with the nnet in the opposite
+				// direction to the flow (i.e.,lagging behind) which are immediately next to Gamma^np1.
 				Vec mask;
 				ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 				CHKERRXX( ierr );
@@ -444,7 +450,7 @@ int main( int argc, char** argv )
 				int numMaskedNodes = 0;
 				for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
 				{
-					if( howUpdatedPtr[n] == 1 && phiReadPtr[n] <= 0 )
+					if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )
 					{
 						numMaskedNodes++;
 						maskPtr[n] = 0;					// 0 => nonupdatable.
@@ -458,7 +464,7 @@ int main( int argc, char** argv )
 				ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
 				CHKERRXX( ierr );
 
-				ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+				ierr = VecRestoreArrayRead( withTheFlow, &withTheFlowReadPtr );
 				CHKERRXX( ierr );
 
 				ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
@@ -476,6 +482,9 @@ int main( int argc, char** argv )
 				delete mlSemiLagrangian;
 			else
 				delete numSemiLagrangian;
+
+			ierr = VecDestroy( withTheFlow );
+			CHKERRXX( ierr );
 
 			// Advance time.
 			tn += dt;

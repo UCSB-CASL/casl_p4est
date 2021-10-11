@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: September 16, 2021.
- * Updated: October 9, 2021.
+ * Updated: October 11, 2021.
  */
 
 #include <stdexcept>
@@ -389,13 +389,19 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	p4est_ghost_t *ghost_np1 = my_p4est_ghost_new( p4est_np1, P4EST_CONNECT_FULL );
 	p4est_nodes_t *nodes_np1 = my_p4est_nodes_new( p4est_np1, ghost_np1 );
 
+	// Parallel vector flagging nodes in the (opposite) flow direction that we want to protect.
+	const short int flipFlow = -1;
+	Vec withTheFlow;
+	ierr = VecCreateGhostNodes( p4est, nodes, &withTheFlow );
+	CHKERRXX( ierr );
+
 	// Create semi-Lagrangian object and update level-set values.
 	slml::SemiLagrangian *mlSemiLagrangian;
 	my_p4est_semi_lagrangian_t *numSemiLagrangian;
 	if( nnetTurn )    // Use nnet if dt==dx, max|u| <= 1, and it's nnet turn.
 	{
 		mlSemiLagrangian = new slml::SemiLagrangian( &p4est_np1, &nodes_np1, &ghost_np1, ngbd, phi, false, nnet, iter );
-		mlSemiLagrangian->updateP4EST( v, dt, &phi, hk, normal, &howUpdated );
+		mlSemiLagrangian->updateP4EST( v, dt, &phi, hk, normal, &howUpdated, &withTheFlow, flipFlow );
 	}
 	else
 	{
@@ -465,12 +471,12 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 	my_p4est_level_set_t ls( ngbd );
 	if( nnetTurn )
 	{
-		const double *phiReadPtr;
-		ierr = VecGetArrayRead( phi, &phiReadPtr );
+		const double *withTheFlowReadPtr;
+		ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
 		CHKERRXX( ierr );
 
-		// Selective reinitialization of level-set function: protect nodes updated with the nnet whose level-set
-		// value is negative and are immediately next to Gamma^np1.
+		// Selective reinitialization of level-set function: protect nodes updated with the nnet in the opposite
+		// direction to the flow (i.e.,lagging behind) which are immediately next to Gamma^np1.
 		Vec mask;
 		ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 		CHKERRXX( ierr );
@@ -493,7 +499,7 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		int numMaskedNodes = 0;
 		for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
 		{
-			if( howUpdatedPtr[n] == 1 && phiReadPtr[n] <= 0 )
+			if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )
 			{
 				numMaskedNodes++;
 				maskPtr[n] = 0;					// 0 => nonupdatable.
@@ -509,7 +515,7 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		ierr = VecRestoreArray( howUpdated, &howUpdatedPtr );
 		CHKERRXX( ierr );
 
-		ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+		ierr = VecRestoreArrayRead( withTheFlow, &withTheFlowReadPtr );
 		CHKERRXX( ierr );
 
 		ls.reinitialize_2nd_order_with_mask( phi, mask, numMaskedNodes, REINIT_NUM_ITER );
@@ -535,6 +541,9 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		delete numSemiLagrangian;
 		nnetTurn = true;			// Attempt to set chance for nnet in next round.  It'll be confirmed if conditions are met.
 	}
+
+	ierr = VecDestroy( withTheFlow );
+	CHKERRXX( ierr );
 }
 
 

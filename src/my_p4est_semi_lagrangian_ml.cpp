@@ -1097,7 +1097,7 @@ void slml::SemiLagrangian::_computeMLSolution( Vec vel[P4EST_DIM], Vec normal[P4
 
 
 void slml::SemiLagrangian::updateP4EST( Vec vel[P4EST_DIM], const double& dt, Vec *phi, Vec hk, Vec normal[P4EST_DIM],
-										Vec *howUpdated, Vec *withTheFlow, Vec *phiNum )
+										Vec *howUpdated, Vec *withTheFlow, const short int& flipFlow, Vec *phiNum )
 {
 	if( _used )				// One-time usage check.
 	{
@@ -1259,7 +1259,7 @@ void slml::SemiLagrangian::updateP4EST( Vec vel[P4EST_DIM], const double& dt, Ve
 	*phi = phi_np1;
 
 	if( withTheFlow )
-		getNodesWithTheFlow( vel, normal, ngbd_n, H, phi_np1, p4est, nodes, withTheFlow );
+		getNodesWithTheFlow( vel, normal, ngbd_n, H, phi_np1, p4est, nodes, withTheFlow, flipFlow );
 
 	if( howUpdated )
 	{
@@ -1440,7 +1440,7 @@ void slml::SemiLagrangian::_advectFromNToNp1( const double& dt, Vec vel[P4EST_DI
 void slml::SemiLagrangian::getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal_n[P4EST_DIM],
 												const my_p4est_node_neighbors_t *neighbors_n, const double& h,
 												Vec phi_np1, const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1,
-												Vec *withTheFlow )
+												Vec *withTheFlow, const short int& flipFlow )
 {
 	Vec withTheFlow_np1;
 	PetscErrorCode ierr = VecCreateGhostNodes( p4est_np1, nodes_np1, &withTheFlow_np1 );	// All zeros: not with the flow.
@@ -1513,7 +1513,7 @@ void slml::SemiLagrangian::getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal
 
 		double dot = 0;									// Dot product: cos of theta.
 		for( int dir = 0; dir < P4EST_DIM; dir++ )
-			dot += v[dir] * n[dir] * (phi_np1ReadPtr[outToNodeIdx[i]] > 0? 1 : -1);
+			dot += v[dir] * n[dir] * (phi_np1ReadPtr[outToNodeIdx[i]] > 0? 1 : -1) * (flipFlow > 0? 1 : -1);
 
 		if( acos( dot ) <= FLOW_ANGLE_THRESHOLD )
 			withTheFlow_np1Ptr[outToNodeIdx[i]] = 1;	// Flag node if the angle is smaller than the threshold.

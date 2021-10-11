@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 9, 2021.
+ * Updated: October 11, 2021.
  */
 namespace slml
 {
@@ -759,11 +759,12 @@ namespace slml
 		 * @param [out] withTheFlow Optional parallel vector signaling (with 1s) those nodes in a narrow band (one min
 		 * 		  diag) around Gamma_c^np1 whose angle between the phi^np1-signed normal^n and velocity^n is in the
 		 * 		  range of [0, threshold].
+		 * @param [in] flipFlow Optional constant to change the sign of the flow: 1 in its direction, -1 in the opposite direction.
 		 * @param [out] phiNum Optional parallel debugging vector containing ONLY numerically advected level-set
 		 * 		  values, i.e., before loading the ml-corrected trajectory.
 		 */
 		void updateP4EST( Vec vel[P4EST_DIM], const double& dt, Vec *phi, Vec hk, Vec normal[P4EST_DIM],
-						  Vec *howUpdated=nullptr, Vec *withTheFlow=nullptr, Vec *phiNum=nullptr );
+						  Vec *howUpdated=nullptr, Vec *withTheFlow=nullptr, const short int& flipFlow=1, Vec *phiNum=nullptr );
 
 		/**
 		 * Set the bit for nodes that go in the direction of the flow.  These nodes are selected if their angle between
@@ -778,11 +779,12 @@ namespace slml
 		 * @param [in] nodes_np1 Updated nodal structure.
 		 * @param [out] withTheFlow Parallel vector with 1s for nodes to going with the flow direction at time t^np1,
 		 * 		  and 0s otherwise.
+		 * @param [in] flipFlow Optional constant to change the sign of the flow: 1 in its direction, -1 in the opposite direction.
 		 */
 		static void getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal_n[P4EST_DIM],
 										 const my_p4est_node_neighbors_t *neighbors_n, const double& h, Vec phi_np1,
 										 const p4est_t *p4est_np1, const p4est_nodes_t *nodes_np1,
-										 Vec *withTheFlow );
+										 Vec *withTheFlow, const short int& flipFlow=1 );
 	};
 }
 
