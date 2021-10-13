@@ -4,14 +4,14 @@
  * Description: Data set generation for training a neural network that corrects the semi-Lagrangian scheme for simple
  * advection.  We assume that all considered velocity fields are divergence-free.  The grid points we correct are those
  * next to Gamma^n with full h-uniform stencils.  In selective reinitialization, we protect only those points with a
- * neighbor across Gamma^np1 and going in the opposite direction of the flow (i.e., those "lagging" behind).  Sampling
- * occurs every other iteration to allow the numerical viscosity to smooth out the trajectory.
+ * going in the opposite direction of the flow (i.e., those "lagging" behind).  Sampling occurs every other iteration to
+ * allow the numerical viscosity to smooth out the trajectory.
  *
  * @note Not yet tested on 3D.
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 10, 2021.
+ * Updated: October 11, 2021.
  */
 
 #ifndef P4_TO_P8
@@ -513,12 +513,17 @@ int main( int argc, char** argv )
 								ierr = VecGetArray( coarseGrid.phi, &phi_cPtr );
 								CHKERRXX( ierr );
 
+								const double *withTheFlowReadPtr;
+								ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
+								CHKERRXX( ierr );
+
+								int numMaskedNodes = 0;				// Used to validate that we don't recover more points than those fitted to FINE grid.
 								for( p4est_locidx_t n = 0; n < coarseGrid.nodes->num_owned_indeps; n++ )
 								{
 									maskPtr[n] = 1;						// Initially, all nodes are updatable.
 									howUpdatedPtr[n] = 0;				// By default, node was updated purely numerically.
 
-									if( ABS( phi_cPtr[n] ) <= (MASS_BAND_HALF_WIDTH + 1) * H_C )	// This approximation band works since nodes next to Gamma_c^n are now at most
+									if( ABS( phi_cPtr[n] ) <= MASS_BAND_HALF_WIDTH * M_SQRT2 * H_C )// This approximation band works since nodes next to Gamma_c^n are now at most
 									{																// 2*dx from new interface (if phi was an exact signed distance function).
 										double xyz[P4EST_DIM];
 										node_xyz_fr_n( n, coarseGrid.p4est, coarseGrid.nodes, xyz );
@@ -531,26 +536,14 @@ int main( int argc, char** argv )
 										{
 											howUpdatedPtr[n] = 1;			// 1 => fixed with FINE grid.
 											phi_cPtr[n] = got->second;		// Recover target level-set value.
+
+											if( withTheFlowReadPtr[n] == 1 )	// Protect corrected points in the (opposite) direction of the flow.
+											{
+												maskPtr[n] = 0;				// Non updatable.
+												howUpdatedPtr[n] = 2;		// 2 => fixed with FINE grid and protected from reinit.
+												numMaskedNodes++;
+											}
 										}
-									}
-								}
-
-								const double *withTheFlowReadPtr;
-								ierr = VecGetArrayRead( withTheFlow, &withTheFlowReadPtr );
-								CHKERRXX( ierr );
-
-								NodesAlongInterface nodesAlongInterface( coarseGrid.p4est, coarseGrid.nodes, coarseGrid.nodeNeighbors, COARSE_MAX_RL );
-								std::vector<p4est_locidx_t> indices;
-								nodesAlongInterface.getIndices( &coarseGrid.phi, indices );
-
-								int numMaskedNodes = 0;				// Used to validate that we don't recover more points than those fitted to FINE grid.
-								for( const p4est_locidx_t& n : indices )
-								{
-									if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )	// Valid points are next to Gamma_c^n and lie next to
-									{															// Gamma_c^np1 in the (opposite) direction of the flow.
-										maskPtr[n] = 0;				// Non updatable.
-										howUpdatedPtr[n] = 2;		// 2 => fixed with FINE grid and protected from reinit.
-										numMaskedNodes++;
 									}
 								}
 

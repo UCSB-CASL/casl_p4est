@@ -13,7 +13,7 @@
 #define MASS_INPUT_HK_SIZE		 1
 #define MASS_INPUT_PHI_XX_SIZE	 2
 
-#define MASS_N_COMPONENTS		18	// Number of components for PCA dimensionality reduction; same as nnet input size.
+#define MASS_N_COMPONENTS		17	// Number of components for PCA dimensionality reduction; same as nnet input size.
 
 #define MASS_BAND_HALF_WIDTH	 2	// Distance in min diags to enforce a uniform band around Gamma^n.
 
@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 11, 2021.
+ * Updated: October 12, 2021.
  */
 namespace slml
 {
@@ -756,8 +756,8 @@ namespace slml
 		 * @param [in] normal Normal vectors at time t^n.
 		 * @param [out] howUpdated Optional parallel vector to know how the level-set values were updated: 0 if
 		 * 		  numerically, 1 if using neural net.  Useful for selective reinitialization.
-		 * @param [out] withTheFlow Optional parallel vector signaling (with 1s) those nodes in a narrow band (one min
-		 * 		  diag) around Gamma_c^np1 whose angle between the phi^np1-signed normal^n and velocity^n is in the
+		 * @param [out] withTheFlow Optional parallel vector signaling (with 1s) those nodes in a narrow band around
+		 * 		  Gamma_c^np1 whose angle between the phi^np1-signed normal^n and velocity^n is in the
 		 * 		  range of [0, threshold].
 		 * @param [in] flipFlow Optional constant to change the sign of the flow: 1 in its direction, -1 in the opposite direction.
 		 * @param [out] phiNum Optional parallel debugging vector containing ONLY numerically advected level-set
@@ -769,7 +769,8 @@ namespace slml
 		/**
 		 * Set the bit for nodes that go in the direction of the flow.  These nodes are selected if their angle between
 		 * the phi^np1-signed normal^n vector and the velocity^n is in the range of [0, threshold].  To compute this
-		 * angle, we interpolate data from t^n into nodes within a narrow band (one min-diag) around Gamma^np1.
+		 * angle, we interpolate data from t^n into nodes within a narrow band (2*sqrt(2)*h) around Gamma^np1.  This is
+		 * based on the fact that the interface can't move by more than h given that CLF=1 and max|u|<=1.
 		 * @param [in] vel_n Velocity at time t^n.
 		 * @param [in] normal_n Normal vectors at time t^n.
 		 * @param [in] neighbors_n Neighborhood struct at time t^n (for which p4est_n and nodes_n are well defined).

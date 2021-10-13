@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: May 22, 2021.
- * Updated: October 11, 2021.
+ * Updated: October 12, 2021.
  */
 
 #ifdef _OPENMP
@@ -427,7 +427,7 @@ int main( int argc, char** argv )
 				CHKERRXX( ierr );
 
 				// Selective reinitialization of level-set function: protect nodes updated with the nnet in the opposite
-				// direction to the flow (i.e.,lagging behind) which are immediately next to Gamma^np1.
+				// direction to the flow (i.e.,lagging behind).
 				Vec mask;
 				ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 				CHKERRXX( ierr );
@@ -440,15 +440,8 @@ int main( int argc, char** argv )
 				ierr = VecGetArray( mask, &maskPtr );
 				CHKERRXX( ierr );
 
-				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
-					maskPtr[n] = 1;						// Initially, all are 1 => updatable.
-
-				NodesAlongInterface nodesAlongInterface( p4est, nodes, nodeNeighbors, MAX_RL );
-				std::vector<p4est_locidx_t> indices;
-				nodesAlongInterface.getIndices( &phi, indices );
-
 				int numMaskedNodes = 0;
-				for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
+				for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
 				{
 					if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )
 					{
@@ -456,6 +449,8 @@ int main( int argc, char** argv )
 						maskPtr[n] = 0;					// 0 => nonupdatable.
 						howUpdatedPtr[n] = 2;
 					}
+					else
+						maskPtr[n] = 1;					// 1 => updatable.
 				}
 
 				ierr = VecRestoreArray( mask, &maskPtr );

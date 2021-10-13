@@ -1462,7 +1462,7 @@ void slml::SemiLagrangian::getNodesWithTheFlow( Vec vel_n[P4EST_DIM], Vec normal
 	my_p4est_interpolation_nodes_t interpNormal( neighbors_n );	// So, we need these to be well defined.
 	for( p4est_locidx_t n = 0; n < nodes_np1->num_owned_indeps; n++ )
 	{
-		if( ABS( phi_np1ReadPtr[n] ) < h * M_SQRT2 )			// A narrow band around Gamma_c^np1.
+		if( ABS( phi_np1ReadPtr[n] ) <= h * MASS_BAND_HALF_WIDTH * M_SQRT2 )	// A narrow band around Gamma_c^np1.
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est_np1, nodes_np1, xyz );

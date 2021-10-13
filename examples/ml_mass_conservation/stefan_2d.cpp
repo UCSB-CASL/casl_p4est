@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: September 16, 2021.
- * Updated: October 11, 2021.
+ * Updated: October 12, 2021.
  */
 
 #include <stdexcept>
@@ -476,7 +476,7 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		CHKERRXX( ierr );
 
 		// Selective reinitialization of level-set function: protect nodes updated with the nnet in the opposite
-		// direction to the flow (i.e.,lagging behind) which are immediately next to Gamma^np1.
+		// direction to the flow (i.e.,lagging behind).
 		Vec mask;
 		ierr = VecCreateGhostNodes( p4est, nodes, &mask );		// Mask vector to flag updatable nodes.
 		CHKERRXX( ierr );
@@ -489,15 +489,8 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 		ierr = VecGetArray( mask, &maskPtr );
 		CHKERRXX( ierr );
 
-		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
-			maskPtr[n] = 1;												// Initially, all are 1 => updatable.
-
-		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, MAX_RL );
-		std::vector<p4est_locidx_t> indices;
-		nodesAlongInterface.getIndices( &phi, indices );
-
 		int numMaskedNodes = 0;
-		for( const auto& n : indices )			// Now, check only points next to Gamma^np1.
+		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )	// No need to check all independent nodes.
 		{
 			if( howUpdatedPtr[n] == 1 && withTheFlowReadPtr[n] == 1 )
 			{
@@ -506,7 +499,7 @@ void update_p4est( my_p4est_brick_t *brick, p4est_t *&p4est, p4est_ghost_t *&gho
 				howUpdatedPtr[n] = 2;
 			}
 			else
-				maskPtr[n] = 1;
+				maskPtr[n] = 1;					// 1 => updatable.
 		}
 
 		ierr = VecRestoreArray( mask, &maskPtr );
