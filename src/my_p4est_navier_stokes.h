@@ -419,7 +419,7 @@ public:
 
   void set_phi(Vec phi);
 
-  void set_external_forces_using_vector(Vec f,double time);
+  void set_external_forces_using_vector(Vec f);
 
   // [Raphael:] original behavior was for forcing term defined as a force per unit volume
   inline void set_external_forces(CF_DIM **external_forces) { set_external_forces_per_unit_volume(external_forces); }
