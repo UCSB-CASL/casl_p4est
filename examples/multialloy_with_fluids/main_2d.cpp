@@ -413,19 +413,19 @@ void set_geometry(){
     }
     case MELTING_ICE_SPHERE_NAT_CONV:{
       // Domain size:
-      xmin = 0.0; xmax = 15.0;
-      ymin = 0.0; ymax = 15.0;
+      xmin = 0.0; xmax = 3.0;
+      ymin = 0.0; ymax = 3.0;
 
       // Number of trees:
-      nx =5.0;
-      ny =5.0;
+      nx =1.0;
+      ny =1.0;
 
       // Periodicity:
       px = 1;
       py = 0;
 
       // Problem geometry:
-      r0 = 0.5;     // Computational radius of the sphere
+      r0 = 1.0;     // Computational radius of the sphere
       break;
     }
     case MELTING_ICE_SPHERE:{
@@ -2389,7 +2389,16 @@ public:
           return 0.0; // homogeneous neumann
         }
       }
-      case MELTING_ICE_SPHERE_NAT_CONV:
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        if (dirichlet_velocity_walls(DIM(x,y,z))){
+            if(xlower_wall(DIM(x,y,z))){
+                return 0.0;
+            }
+            if(xupper_wall(DIM(x,y,z))){
+                return 0.0;
+            }
+        }
+      }
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
@@ -3887,7 +3896,6 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
-
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
 
     convergence_check_on_dxyz_hodge=
@@ -6650,7 +6658,8 @@ int main(int argc, char** argv) {
         }
         // For natural convection only:
         if (example_== MELTING_ICE_SPHERE_NAT_CONV){
-            ns->set_external_forces_using_vector(T_l_n.vec,tn);
+            ns->boussinesq_approx=true;
+            ns->set_external_forces_using_vector(T_l_n.vec);
 //            double *T_l_n_p;
 //            ierr= VecGetArray(T_l_n.vec,&T_l_n_p);
 //            const char* output_dir_T=getenv("OUT_DIR_VTK");
