@@ -6111,6 +6111,7 @@ int main(int argc, char** argv) {
     double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
     double dt_max_allowed_steady = dt_max_allowed;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
+
     while(tn<=tfinal){ // trying something
       // Enforce startup iterations for verification tests if needed:
       if((startup_iterations>0)){
@@ -6123,6 +6124,7 @@ int main(int argc, char** argv) {
           tn = tstart;
         }
       }
+
       if(solve_navier_stokes){
         // Adjust the cfl_NS depending on the timestep:
         if(tstep<=10){
@@ -6154,7 +6156,7 @@ int main(int argc, char** argv) {
         // Initialize timesteps to use:
         if(solve_navier_stokes){
           dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
-          if (example_=MELTING_ICE_SPHERE_NAT_CONV){
+          if (example_==MELTING_ICE_SPHERE_NAT_CONV){
               dt_nm1=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
           }
           dt = dt_nm1;
@@ -6610,6 +6612,7 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
         if((tstep==1) || (tstep==load_tstep)){
           PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
+
           v_n_NS.create(p4est_np1,nodes_np1);
           v_nm1_NS.create(p4est,nodes);
 
@@ -6656,20 +6659,9 @@ int main(int argc, char** argv) {
           ns->set_external_forces(external_forces);
         }
         // For natural convection only:
-        if (example_== MELTING_ICE_SPHERE_NAT_CONV){
+        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
             ns->boussinesq_approx=true;
             ns->set_external_forces_using_vector(T_l_n.vec);
-//            double *T_l_n_p;
-//            ierr= VecGetArray(T_l_n.vec,&T_l_n_p);
-//            const char* output_dir_T=getenv("OUT_DIR_VTK");
-//            char output_T[1000];
-//            ierr= PetscPrintf(mpi.comm(),"Time %d \n",tn);
-//            sprintf(output_T,"_time_%0.3e",tn);
-//            my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1,
-//                                   P4EST_TRUE, P4EST_TRUE,
-//                                   1, 0, output_T,
-//                                   VTK_POINT_DATA, "T_l", T_l_n_p);
-//            ierr= VecRestoreArray(T_l_n.vec,&T_l_n_p);
         }
 
         // -------------------------------
