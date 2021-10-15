@@ -1178,7 +1178,7 @@ void simulation_time_info(){
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      tfinal = 35.0; // 1000 in nondim time for refinement test
+      tfinal = (1000.0*60)/(time_nondim_to_dim);; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
       dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
@@ -3973,7 +3973,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
     ierr = PetscFOpen(mpi_comm, name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
     if(save_fluid_forces && example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn,forces[0],forces[1],ice_area);
+      PetscPrintf(mpi_comm,"tn = %g, tfinal = %g, fx = %g, fy = %g , A = %0.6f \n",tn,tfinal,forces[0],forces[1],ice_area);
       ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g %g\n",tn,forces[0],forces[1],ice_area);CHKERRXX(ierr);
     }
     else if(save_fluid_forces && !example_requires_area_computation){
@@ -6124,6 +6124,7 @@ int main(int argc, char** argv) {
           tn = tstart;
         }
       }
+
       if(solve_navier_stokes){
         // Adjust the cfl_NS depending on the timestep:
         if(tstep<=10){
@@ -6155,7 +6156,7 @@ int main(int argc, char** argv) {
         // Initialize timesteps to use:
         if(solve_navier_stokes){
           dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
-          if (example_=MELTING_ICE_SPHERE_NAT_CONV){
+          if (example_==MELTING_ICE_SPHERE_NAT_CONV){
               dt_nm1=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
           }
           dt = dt_nm1;
@@ -6611,6 +6612,7 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
         if((tstep==1) || (tstep==load_tstep)){
           PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
+
           v_n_NS.create(p4est_np1,nodes_np1);
           v_nm1_NS.create(p4est,nodes);
 
@@ -6657,20 +6659,9 @@ int main(int argc, char** argv) {
           ns->set_external_forces(external_forces);
         }
         // For natural convection only:
-        if (example_== MELTING_ICE_SPHERE_NAT_CONV){
+        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
             ns->boussinesq_approx=true;
             ns->set_external_forces_using_vector(T_l_n.vec);
-//            double *T_l_n_p;
-//            ierr= VecGetArray(T_l_n.vec,&T_l_n_p);
-//            const char* output_dir_T=getenv("OUT_DIR_VTK");
-//            char output_T[1000];
-//            ierr= PetscPrintf(mpi.comm(),"Time %d \n",tn);
-//            sprintf(output_T,"_time_%0.3e",tn);
-//            my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1,
-//                                   P4EST_TRUE, P4EST_TRUE,
-//                                   1, 0, output_T,
-//                                   VTK_POINT_DATA, "T_l", T_l_n_p);
-//            ierr= VecRestoreArray(T_l_n.vec,&T_l_n_p);
         }
 
         // -------------------------------
@@ -6747,8 +6738,6 @@ int main(int argc, char** argv) {
 
         //--> Scale phi back to normal:
         VecScaleGhost(phi.vec,-1.0);
-
-
         PetscPrintf(mpi.comm(),"tn = %g, A = %0.6f \n",tn+dt,ice_area);
         ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
 
