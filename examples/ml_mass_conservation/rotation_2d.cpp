@@ -184,7 +184,7 @@ int main( int argc, char** argv )
 	param_list_t pl;
 	param_t<int> mode ( pl, 1, "mode", "Execution mode: 0 - numerical, 1 - nnet (default: 1)");
 	param_t<int> exportAllVTK (pl, 0, "exportAllVTK", "Export all VTK files: 0 - no (only first and last), 1 - yes (default: 0)" );
-	param_t<double> rotations (pl, 15, "nRotations", "Number of rotations (default: 1.0)" );
+	param_t<double> rotations (pl, 1, "nRotations", "Number of rotations (default: 1.0)" );
 
 	try
 	{
