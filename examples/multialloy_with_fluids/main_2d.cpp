@@ -1178,7 +1178,7 @@ void simulation_time_info(){
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      tfinal = 35.0; // 1000 in nondim time for refinement test
+      tfinal = (1000.0*60)/(time_nondim_to_dim);; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
       dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
@@ -3973,7 +3973,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
     ierr = PetscFOpen(mpi_comm, name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
     if(save_fluid_forces && example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn,forces[0],forces[1],ice_area);
+      PetscPrintf(mpi_comm,"tn = %g, tfinal = %g, fx = %g, fy = %g , A = %0.6f \n",tn,tfinal,forces[0],forces[1],ice_area);
       ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g %g\n",tn,forces[0],forces[1],ice_area);CHKERRXX(ierr);
     }
     else if(save_fluid_forces && !example_requires_area_computation){
@@ -6111,7 +6111,6 @@ int main(int argc, char** argv) {
     double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
     double dt_max_allowed_steady = dt_max_allowed;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
-
     while(tn<=tfinal){ // trying something
       // Enforce startup iterations for verification tests if needed:
       if((startup_iterations>0)){
@@ -6747,8 +6746,6 @@ int main(int argc, char** argv) {
 
         //--> Scale phi back to normal:
         VecScaleGhost(phi.vec,-1.0);
-
-
         PetscPrintf(mpi.comm(),"tn = %g, A = %0.6f \n",tn+dt,ice_area);
         ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
 
