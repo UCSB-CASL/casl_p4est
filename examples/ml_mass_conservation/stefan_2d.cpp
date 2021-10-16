@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: September 16, 2021.
- * Updated: October 12, 2021.
+ * Updated: October 15, 2021.
  */
 
 #include <stdexcept>
@@ -51,10 +51,10 @@ const double S0 = 0.5;
 double X0 = 0, Y0 = 0;		// Frank-sphere center.
 
 double t_interface = 0;		// Anisotropic growth.
-double epsilon_c = 5e-6;
-double epsilon_anisotropy = 0.5;
-double N_anisotropy = 5;
-double theta_0 = 2 * M_PI / 3.0;
+double epsilon_c = 2e-4;
+double epsilon_anisotropy = 0.6;
+double N_anisotropy = 4;
+double theta_0 = M_PI / 3.0;
 
 double tn;
 double dt;
@@ -791,18 +791,18 @@ int main (int argc, char* argv[])
 	PetscErrorCode ierr;
 
 	cmdParser cmd;
-	cmd.add_option( "save_vtk", "1 to export vtu images, 0 otherwise" );
-	cmd.add_option( "save_every_n", "export images every n iterations" );
+	cmd.add_option( "save_vtk", "1 to export vtu images, 0 otherwise (default: 0)" );
+	cmd.add_option( "save_every_n", "export images every n iterations (default: 12)" );
 	cmd.add_option( "max_iter", "maximum number of iterations" );
-	cmd.add_option( "mode", "solver mode: 1 for nnet, 0 for numerical" );
-	cmd.add_option( "test", "the test to run. Available options are"
+	cmd.add_option( "mode", "solver mode: 1 for nnet, 0 for numerical (default: 1)" );
+	cmd.add_option( "test", "the test to run (default: 0). Available options are"
 							"\t 0 - frank sphere\n"
 							"\t 1 - a 3-petal seed\n");
 	cmd.parse( argc, argv );
 
 	// TODO: modify simulation options.
 	bool save_vtk = cmd.get( "save_vtk", (int)0 );
-	int save_every_n = cmd.get( "save_every_n", 2 );
+	int save_every_n = cmd.get( "save_every_n", 12 );
 	int max_iter = cmd.get( "max_iter", INT_MAX );
 	bool mode = cmd.get( "mode", (int)1 );
 	test_number = cmd.get( "test", (int)0 );
@@ -810,8 +810,8 @@ int main (int argc, char* argv[])
 	// TODO: modify simulation times per test.
 	switch( test_number )
 	{
-		case 0: k_s=1; k_l=1; tn=0.25; T_FINAL=0.875; break;
-		case 1: tn=0; T_FINAL=1.5; break;
+		case 0: k_s = 1; k_l = 1; tn = 0.25; T_FINAL = 0.875; break;
+		case 1: tn = 0; T_FINAL = 3.0; break;
 		default: throw std::invalid_argument( "[ERROR]: choose a valid test." );
 	}
 
