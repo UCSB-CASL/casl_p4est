@@ -1,4 +1,4 @@
-#include "my_p4est_navier_stokes.h"
+﻿#include "my_p4est_navier_stokes.h"
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_poisson_cells.h>
@@ -489,6 +489,22 @@ void my_p4est_navier_stokes_t::set_phi(Vec phi)
   return;
 }
 
+void my_p4est_navier_stokes_t::set_external_forces_using_vector(Vec f)
+{
+  PetscErrorCode ierr;
+  ierr = VecCreateGhostNodes(p4est_n,nodes_n,&external_force_per_unit_volume); CHKERRXX(ierr);
+  ierr = VecDuplicate(f,&external_force_per_unit_volume);
+  double *external_force_per_unit_volume_p;
+  ierr= VecGetArray(external_force_per_unit_volume,&external_force_per_unit_volume_p); CHKERRXX(ierr);
+  double *f_p;
+  ierr= VecGetArray(f,&f_p); CHKERRXX(ierr);
+  for (size_t n=0; n < nodes_n->indep_nodes.elem_count; ++n){
+      external_force_per_unit_volume_p[n]=f_p[n];
+  }
+  ierr= VecRestoreArray(external_force_per_unit_volume,&external_force_per_unit_volume_p); CHKERRXX(ierr);
+  ierr= VecRestoreArray(f,&f_p); CHKERRXX(ierr);
+}
+
 void my_p4est_navier_stokes_t::set_external_forces_per_unit_volume(CF_DIM **external_forces_per_unit_volume_)
 {
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
@@ -964,6 +980,7 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
 void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool& use_initial_guess, const KSPType& ksp, const PCType& pc)
 {
   PetscErrorCode ierr;
+
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
   if(ns_time_step_analyzer.is_on())
     ns_time_step_analyzer.start(viscous_step);
@@ -1016,7 +1033,60 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
       backtraced_v_n[dir].resize(faces_n->num_local[dir]);
       interp_n.set_input(vn_nodes[dir], DIM(second_derivatives_vn_nodes[0][dir], second_derivatives_vn_nodes[1][dir], second_derivatives_vn_nodes[2][dir]), quadratic);
       interp_n.interpolate(backtraced_v_n[dir].data());
-    }
+
+      if (boussinesq_approx) {
+          if (dir == 1){
+
+
+              for(unsigned char direction = 0; direction < P4EST_DIM; ++direction){
+                  //if (second_derivatives_external_force_per_unit_volume[direction]!=NULL){
+                  //    ierr = VecDestroy(second_derivatives_external_force_per_unit_volume[direction]); CHKERRXX(ierr);
+                  ierr = VecCreateGhostNodes(p4est_n,nodes_n,&second_derivatives_external_force_per_unit_volume[direction]); CHKERRXX(ierr);
+                  //}
+              }
+
+              ngbd_n->second_derivatives_central(external_force_per_unit_volume,DIM(second_derivatives_external_force_per_unit_volume[0],second_derivatives_external_force_per_unit_volume[1],second_derivatives_external_force_per_unit_volume[2]));
+
+              ext_force_term_interpolation_from_nodes_to_faces.resize(faces_n->num_local[dir]);
+
+              interp_n.set_input(external_force_per_unit_volume,DIM(second_derivatives_external_force_per_unit_volume[0],second_derivatives_external_force_per_unit_volume[1],second_derivatives_external_force_per_unit_volume[2]),quadratic);
+
+              interp_n.interpolate(ext_force_term_interpolation_from_nodes_to_faces.data());
+              for (unsigned char direction=0; direction < P4EST_DIM; ++direction){
+                  ierr= VecDestroy(second_derivatives_external_force_per_unit_volume[direction]); CHKERRXX(ierr);
+              }
+
+              ierr= VecDestroy(external_force_per_unit_volume); CHKERRXX(ierr);
+            }
+        }
+
+     }
+
+//    if (boussinesq_approx){
+//        PetscPrintf(p4est_n->mpicomm,"Hello world 4\n");
+//        if (dir::y){
+//          PetscPrintf(p4est_n->mpicomm,"Hello world 5\n");
+//          my_p4est_interpolation_nodes_t interp_external_force_per_unit_volume  (ngbd_n  );
+//          for(p4est_locidx_t f_idx=0; f_idx < faces_n->num_local[dir]; ++f_idx){
+//              double xyz_tmp_[P4EST_DIM];
+//              for (unsigned char dd = 0; dd < P4EST_DIM; ++dd){
+//                 xyz_tmp_[dd] = xyz_n[dir][dd][f_idx];
+//              }
+//              interp_external_force_per_unit_volume.add_point(f_idx, xyz_tmp_);
+//          }
+//          ext_force_term_interpolation_from_nodes_to_faces.resize(faces_n->num_local[dir]);
+//          for (unsigned char dd=0; dd < P4EST_DIM; ++dd){
+//              ierr= VecCreateGhostNodes(p4est_n,nodes_n,&second_derivatives_external_force_per_unit_volume[dd]); CHKERRXX(ierr);
+//          }
+//          ngbd_n->second_derivatives_central(external_force_per_unit_volume,DIM(second_derivatives_external_force_per_unit_volume[0],second_derivatives_external_force_per_unit_volume[1],second_derivatives_external_force_per_unit_volume[2]));
+//          interp_external_force_per_unit_volume.set_input(external_force_per_unit_volume,DIM(second_derivatives_external_force_per_unit_volume[0],second_derivatives_external_force_per_unit_volume[1],second_derivatives_external_force_per_unit_volume[2]),quadratic);
+//          interp_external_force_per_unit_volume.interpolate(ext_force_term_interpolation_from_nodes_to_faces.data());
+//          for (unsigned char dd=0; dd < P4EST_DIM; ++dd){
+//              ierr= VecDestroy(second_derivatives_external_force_per_unit_volume[dd]); CHKERRXX(ierr);
+//          }
+//        }
+//    }
+
 
     /* assemble the right-hand-side */
     ierr = VecCreateNoGhostFaces(p4est_n, faces_n, &rhs[dir], dir); CHKERRXX(ierr);
@@ -1042,6 +1112,13 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
           double xyz[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz);
           rhs_p[f_idx] += (external_forces_per_unit_volume[dir] != NULL ? (*external_forces_per_unit_volume[dir])(xyz) : rho*(*external_forces_per_unit_mass[dir])(xyz));
         }
+
+        if (boussinesq_approx)
+        {
+            if (dir==1){
+                rhs_p[f_idx]+=ext_force_term_interpolation_from_nodes_to_faces[f_idx];
+            }
+        }
       }
       else
         rhs_p[f_idx] = 0;
@@ -1049,6 +1126,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
 
     ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
+    //ierr = VecDestroy(external_force_per_unit_volume[dir]); CHKERRXX(ierr);
   }
   semi_lagrangian_backtrace_is_done = true;
 

@@ -80,7 +80,9 @@ enum:int {
   MELTING_ICE_SPHERE = 7,
   MELTING_POROUS_MEDIA = 8,
   PLANE_POIS_FLOW=9,
-  DISSOLVING_DISK_BENCHMARK=10
+  DISSOLVING_DISK_BENCHMARK=10,
+  MELTING_ICE_SPHERE_NAT_CONV=11,
+  COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP=12,
 };
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
@@ -100,6 +102,8 @@ DEFINE_PARAMETER(pl, int, example_, 4,"example number: \n"
                                    "8 - melting of a porous media (with fluid flow) \n"
                                    "9 - plane poiseuille flow \n "
                                    "10 - dissolving disk benchmark for dissolution problem \n"
+                                   "11 - Melting of an ice sphere in natural convection \n"
+                                   "12 - Coupled problem example for verification with boussinesq approximation"
                                    "default: 4");
 
 // ---------------------------------------
@@ -189,6 +193,7 @@ void select_solvers(){
       break;
 
     case MELTING_ICE_SPHERE:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:
       if(!no_flow){
         solve_stefan = true;
@@ -213,6 +218,7 @@ void select_solvers(){
 
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_EXAMPLE:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       solve_stefan = true;
       solve_navier_stokes = true;
       break;
@@ -239,21 +245,25 @@ void select_solvers(){
     // Define other settings to be used depending on the example:
     analytical_IC_BC_forcing_term = (example_ == COUPLED_PROBLEM_EXAMPLE) ||
                                     (example_ == COUPLED_TEST_2) ||
-                                    (example_ == NS_GIBOU_EXAMPLE); // whether or not we need to create analytical bc terms
+                                    (example_ == NS_GIBOU_EXAMPLE) ||
+                                    (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP); // whether or not we need to create analytical bc terms
 
     example_is_a_test_case = (example_ == COUPLED_PROBLEM_EXAMPLE) ||
                              (example_ == COUPLED_TEST_2) ||
                              (example_ == FRANK_SPHERE) ||
-                             (example_ == NS_GIBOU_EXAMPLE);
+                             (example_ == NS_GIBOU_EXAMPLE)||
+                             (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP);
 
     interfacial_temp_bc_requires_curvature = (example_ == ICE_AROUND_CYLINDER) ||
                                              (example_ == MELTING_ICE_SPHERE) ||
+                                             (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
                                              (example_ == DENDRITE_TEST) ||
                                              (example_ == MELTING_POROUS_MEDIA);
     interfacial_temp_bc_requires_normal = (example_ == DENDRITE_TEST);
 
     interfacial_vel_bc_requires_vint = (example_ == ICE_AROUND_CYLINDER) ||
                                        (example_ == MELTING_ICE_SPHERE) ||
+                                       (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
                                        (example_ == DENDRITE_TEST)||
                                        (example_ == MELTING_POROUS_MEDIA) ||
                                        (example_ == DISSOLVING_DISK_BENCHMARK);
@@ -261,7 +271,9 @@ void select_solvers(){
     example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
-                                        (example_ == MELTING_ICE_SPHERE) || (example_ == DISSOLVING_DISK_BENCHMARK);
+                                        (example_ == MELTING_ICE_SPHERE) ||
+                                        (example_ == MELTING_ICE_SPHERE_NAT_CONV) ||
+                                        (example_  ==DISSOLVING_DISK_BENCHMARK);
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
@@ -402,6 +414,23 @@ void set_geometry(){
       // Problem geometry:
       r_cyl = 0.5;     // Computational radius of the cylinder (mini level set)
       r0 = r_cyl*1.10; // Computational radius of ice (level set) -- TO-DO: maybe initial ice thickness should be a user parameter you can change
+      break;
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      // Domain size:
+      xmin = 0.0; xmax = 3.0;
+      ymin = 0.0; ymax = 3.0;
+
+      // Number of trees:
+      nx =1.0;
+      ny =1.0;
+
+      // Periodicity:
+      px = 1;
+      py = 0;
+
+      // Problem geometry:
+      r0 = 1.0;     // Computational radius of the sphere
       break;
     }
     case MELTING_ICE_SPHERE:{
@@ -551,6 +580,23 @@ void set_geometry(){
       // capillary length scale and etc is set in set_physical_properties() 5/3/21
       break;
     }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      // Corresponds with Section 6 of Bayat et. al -- A Sharp numerical method for the solution of Stefan problems with convective effects
+      // Domain size:
+      xmin = -PI; xmax = PI;
+      ymin = -PI; ymax = PI;
+
+      x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
+
+      // Number of trees:
+      nx = 2; ny = 2;
+      px = 0; py = 0;
+
+      // Radius of the level set function:
+      r0 = PI/2.;
+
+      break;
+     }
   }
 
   // Set number of interpolation fields:
@@ -774,6 +820,7 @@ void set_physical_properties(){
       break;
       }
     case MELTING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
 
       // Using properties of water at 20 C: (engineering toolbox)
@@ -833,6 +880,7 @@ void set_physical_properties(){
       Re = 1.0;
     }
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       alpha_s = 1.0;
       alpha_l = 1.0;
@@ -964,6 +1012,13 @@ void set_NS_info(){
       hodge_percentage_of_max_u = 1.e-3;
       break;
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      Re = 316.;
+      u0 = 0.0; // computational freestream velocity
+      v0 = 0.0;
+      hodge_percentage_of_max_u = 1.e-3;
+      break;
+    }
     case PLANE_POIS_FLOW:{
       Re = 1.0;
       u0 = 5.0625;
@@ -982,6 +1037,7 @@ void set_NS_info(){
       break;
     }
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       Re = 1.0;
       u0 = 1.0;
@@ -1033,6 +1089,7 @@ void set_nondimensional_groups(){
      if(example_ == ICE_AROUND_CYLINDER ||
          example_ == FLOW_PAST_CYLINDER ||
          example_ == MELTING_ICE_SPHERE ||
+         example_ == MELTING_ICE_SPHERE_NAT_CONV ||
          example_ == MELTING_POROUS_MEDIA){
        d_length_scale=d_cyl;
      }
@@ -1089,7 +1146,7 @@ void set_nondimensional_groups(){
    else{
      time_nondim_to_dim = 1.;
    };
-   if((example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE) || (example_ == FRANK_SPHERE) ){
+   if((example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == NS_GIBOU_EXAMPLE) || (example_ == FRANK_SPHERE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
      St = 1.0;
    }
 }
@@ -1142,9 +1199,10 @@ void simulation_time_info(){
       tstart = 0.0;
       break;
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
       //tfinal = (2.*60)/(time_nondim_to_dim); // 2 minutes
-      tfinal = 35.0; // 1000 in nondim time for refinement test
+      tfinal = (1000.0*60)/(time_nondim_to_dim);; // 1000 in nondim time for refinement test
       //dt_max_allowed = 0.9*save_every_dt;
       dt_max_allowed = save_every_dt - EPS;
       tstart = 0.0;
@@ -1206,7 +1264,12 @@ void simulation_time_info(){
       //save_every_dt = tfinal/100.;
       break;
     }
-
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      tfinal = PI/3.;//PI/2.;
+      dt_max_allowed = 1.0e-1;
+      tstart = 0.0;
+      break;
+    }
     }
   if((duration_overwrite>0.) || (duration_overwrite_nondim>0.)){
     if((duration_overwrite>0.) && (duration_overwrite_nondim>0.)){
@@ -1334,6 +1397,7 @@ struct velocity_component: CF_DIM
   double v(DIM(double x, double y, double z)) const{ // gives vel components without the time component
     switch(example_){
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         switch(dir){
         case dir::x:
@@ -1362,6 +1426,7 @@ struct velocity_component: CF_DIM
   double dv_d(const unsigned char& dirr,DIM(double x, double y, double z)) const{
     switch(example_){
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         switch(dir){
         case dir::x:
@@ -1404,6 +1469,7 @@ struct velocity_component: CF_DIM
   double operator()(DIM(double x, double y, double z)) const{ // Returns the velocity field
     switch (example_) {
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         return cos(t*k_NS)*v(DIM(x,y,z));
       }
@@ -1419,6 +1485,7 @@ struct velocity_component: CF_DIM
   double _d(const unsigned char& dirr, DIM(double x, double y, double z)){ // Returns spatial derivatives of velocity field in given cartesian direction
     switch (example_) {
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         return cos(t*k_NS)*dv_d(dirr,DIM(x,y,z));
       }
@@ -1433,6 +1500,7 @@ struct velocity_component: CF_DIM
   double laplace(DIM(double x, double y, double z)){
     switch (example_) {
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         return -P4EST_DIM*cos(t*k_NS)*v(DIM(x,y,z));
       }
@@ -1457,6 +1525,7 @@ struct velocity_component: CF_DIM
   double dv_dt(DIM(double x, double y, double z)){
     switch (example_) {
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
         return -sin(k_NS*t)*v(DIM(x,y,z));
       }
@@ -1487,6 +1556,9 @@ public:
       case COUPLED_PROBLEM_EXAMPLE:{
         return 0.0;
       }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+        return 0.0;
+      }
       case COUPLED_TEST_2:{
         return 0.0;//return sin(2.*PI*x)*(3.*y + PI*cos(PI*t));
       }
@@ -1502,6 +1574,9 @@ public:
   double gradP(const unsigned char& dir,DIM(double x, double y, double z)){
     switch(example_){
       case COUPLED_PROBLEM_EXAMPLE:{
+        return 0.0;
+      }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
         return 0.0;
       }
       case COUPLED_TEST_2:{
@@ -1566,6 +1641,16 @@ struct temperature_field: CF_DIM
           throw std::runtime_error("analytical solution temperature: unknown domain \n");
         }
       }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return sin(x)*sin(y)*(x + cos(t)*cos(x)*cos(y));
+        case SOLID_DOMAIN:
+          return cos(x)*cos(y)*(cos(t)*sin(x)*sin(y) - 1.);
+        default:
+          throw std::runtime_error("analytical solution temperature: unknown domain \n");
+        }
+      }
       case COUPLED_TEST_2:{
         switch(dom){
         case LIQUID_DOMAIN:
@@ -1587,6 +1672,32 @@ struct temperature_field: CF_DIM
   double dT_d(const unsigned char& dir,DIM(double x, double y, double z)){
     switch(example_){
       case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return cos(x)*sin(y)*(x + cos(t)*cos(x)*cos(y)) - sin(x)*sin(y)*(cos(t)*cos(y)*sin(x) - 1.);
+          case dir::y:
+            return cos(y)*sin(x)*(x + cos(t)*cos(x)*cos(y)) - cos(t)*cos(x)*sin(x)*SQR(sin(y));
+
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        case SOLID_DOMAIN:
+          switch(dir){
+          case dir::x:
+            return cos(t)*SQR(cos(x))*cos(y)*sin(y) - cos(y)*sin(x)*(cos(t)*sin(x)*sin(y) - 1.);
+          case dir::y:
+            return cos(t)*cos(x)*SQR(cos(y))*sin(x) - cos(x)*sin(y)*(cos(t)*sin(x)*sin(y) - 1.);
+
+          default:
+            throw std::runtime_error("dT_dd of analytical temperature field: unrecognized Cartesian direction \n");
+          }
+        default:
+          throw std::runtime_error("dT_dd of analytical temperature field: unrecognized domain \n");
+        } // end of switch domain
+      } //end of coupled problem example
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
         switch(dom){
         case LIQUID_DOMAIN:
           switch(dir){
@@ -1655,6 +1766,16 @@ struct temperature_field: CF_DIM
           throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
         }
       } // end coupled problem example
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
+        case SOLID_DOMAIN:
+          return -cos(x)*cos(y)*sin(t)*sin(x)*sin(y);
+        default:
+          throw std::runtime_error("dT_dt in analytical temperature: unrecognized domain \n");
+        }
+      } // end coupled problem example
       case COUPLED_TEST_2:{
         switch(dom){
         case LIQUID_DOMAIN:
@@ -1674,6 +1795,16 @@ struct temperature_field: CF_DIM
   double laplace(DIM(double x, double y, double z)){
     switch(example_){
       case COUPLED_PROBLEM_EXAMPLE:{
+        switch(dom){
+        case LIQUID_DOMAIN:
+          return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
+        case SOLID_DOMAIN:
+          return -2.*cos(x)*cos(y)*(4.*cos(t)*sin(x)*sin(y) - 1.);
+        default:
+          throw std::runtime_error("laplace for analytical temperature field: unrecognized domain \n");
+        }
+      }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
         switch(dom){
         case LIQUID_DOMAIN:
           return -2.*sin(y)*(x*sin(x) - cos(x) + 4.*cos(t)*cos(x)*cos(y)*sin(x));
@@ -1736,6 +1867,49 @@ struct external_heat_source: CF_DIM{
   }
 };
 
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+// Functions/Structures for validating the Stefan problem coupled with Navier-Stokes Equation with Boussinesq Approximation:(TO-DO:: combine this function with existing external_force_per_unit_volume())
+// ----------------------------------------------------------------------------------------------------------------------------------------------------
+struct external_force_per_unit_volume_component_with_boussinesq_approx : CF_DIM{
+  const unsigned char dom;
+  const unsigned char dir;
+  temperature_field** temperature_;
+  velocity_component** velocity_field;
+
+  external_force_per_unit_volume_component_with_boussinesq_approx(const unsigned char &dom_,const unsigned char &dir_, temperature_field** analytical_T,velocity_component** analytical_v):dom(dom_),dir(dir_),temperature_(analytical_T),velocity_field(analytical_v){
+    P4EST_ASSERT(dir<P4EST_DIM);
+    P4EST_ASSERT(dom>=0 && dom <=1);
+  }
+  double operator()(DIM(double x, double y, double z)) const{ // returns the forcing term in a given direction
+    pressure_field_analytical.t = t;
+    if (dir==1){
+        switch(dom){
+            case LIQUID_DOMAIN:
+                return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
+                    SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
+                    (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
+                    (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
+                    velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z)) - temperature_[LIQUID_DOMAIN]->T(DIM(x,y,z));
+                break;
+            case SOLID_DOMAIN:
+                return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
+                    SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
+                    (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
+                    (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
+                    velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z));
+                break;
+            default:
+                break;
+        }
+    }else{
+        return velocity_field[dir]->dv_dt(DIM(x,y,z)) +
+            SUMD((*velocity_field[0])(DIM(x,y,z))*velocity_field[dir]->_d(dir::x,DIM(x,y,z)),
+            (*velocity_field[1])(DIM(x,y,z))*velocity_field[dir]->_d(dir::y,DIM(x,y,z)),
+            (*velocity_field[2])(DIM(x,y,z))*velocity_field[dir]->_d(dir::z,DIM(x,y,z))) -
+            velocity_field[dir]->laplace(DIM(x,y,z)) + pressure_field_analytical.gradP(dir,DIM(x,y,z));
+    }
+  }
+};
 // --------------------------------------------------------------------------------------------------------------
 // Level set functions:
 // --------------------------------------------------------------------------------------------------------------
@@ -1769,6 +1943,9 @@ public:
       case DISSOLVING_DISK_BENCHMARK: {
         return r0 - sqrt(SQR(x-(xmax/2.)) + SQR(y - (ymax/2.)));
       }
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        return r0 - sqrt(SQR(x - (xmax/2.0)) + SQR(y - (ymax/2.0)));
+      }
       case MELTING_ICE_SPHERE:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       }
@@ -1777,6 +1954,8 @@ public:
       case NS_GIBOU_EXAMPLE:
         return r0 - sin(x)*sin(y);
       case COUPLED_PROBLEM_EXAMPLE:
+        return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
       case COUPLED_TEST_2:{
         double x0 = 0.;//1./6.;
@@ -1814,11 +1993,13 @@ public:
     switch(example_){
       case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       case FRANK_SPHERE:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case MELTING_POROUS_MEDIA:
       case DISSOLVING_DISK_BENCHMARK:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case DENDRITE_TEST:
       case NS_GIBOU_EXAMPLE: throw std::invalid_argument("This option may not be used for the particular example being called");
       }
@@ -1847,11 +2028,13 @@ void interface_bc_temp(){ //-- Call this function before setting interface bc in
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_temp = DIRICHLET; 
       break;
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:
       interface_bc_type_temp = DIRICHLET;
       break;
@@ -1866,9 +2049,11 @@ void inner_interface_bc_temp(){ //-- Call this function before setting interface
   switch(example_){
     case MELTING_POROUS_MEDIA:
     case FLOW_PAST_CYLINDER:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:
     case COUPLED_TEST_2:
     case DENDRITE_TEST:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case FRANK_SPHERE:{
         throw std::invalid_argument("This option may not be used for the particular example being called");
@@ -1956,6 +2141,7 @@ public:
 //        return theta_interface;
       }
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER: {
         double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
@@ -1967,6 +2153,7 @@ public:
         else return interface_val;
     }
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       return temperature_[dom]->T(DIM(x,y,z));
     }
@@ -2014,9 +2201,11 @@ public:
       case FRANK_SPHERE:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         return 1.0;
       case DISSOLVING_DISK_BENCHMARK:
@@ -2099,12 +2288,14 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
     case DISSOLVING_DISK_BENCHMARK:{
       return xlower_wall(DIM(x,y,z));
     }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
     }
@@ -2123,6 +2314,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     case MELTING_POROUS_MEDIA:{
       return (ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))));
     }
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
@@ -2133,6 +2325,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     case NS_GIBOU_EXAMPLE:{
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) ||ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       return (xlower_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
     }
@@ -2189,6 +2382,7 @@ public:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case ICE_AROUND_CYLINDER:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
           return theta_wall;
@@ -2206,6 +2400,7 @@ public:
         }
         break;
       }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
         if (dirichlet_temperature_walls(DIM(x,y,z))){ // dirichlet case
@@ -2253,6 +2448,7 @@ public:
         }
       }
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:{
         switch(dom){
           case LIQUID_DOMAIN:{
@@ -2288,6 +2484,7 @@ public:
         return theta_wall;
       }
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
           return temperature_[dom]->T(DIM(x,y,z));
       }
@@ -2341,6 +2538,16 @@ public:
         }
         else{
           return 0.0; // homogeneous neumann
+        }
+      }
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        if (dirichlet_velocity_walls(DIM(x,y,z))){
+            if(xlower_wall(DIM(x,y,z))){
+                return 0.0;
+            }
+            if(xupper_wall(DIM(x,y,z))){
+                return 0.0;
+            }
         }
       }
       case MELTING_ICE_SPHERE:
@@ -2402,6 +2609,7 @@ public:
         break;
       }
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
         if(dirichlet_velocity_walls(DIM(x,y,z))){ // dirichlet case
@@ -2439,6 +2647,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
     case DENDRITE_TEST:
     case DISSOLVING_DISK_BENCHMARK:
     case MELTING_POROUS_MEDIA:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_velocity[dir] = DIRICHLET;
@@ -2447,6 +2656,7 @@ void BC_INTERFACE_TYPE_VELOCITY(const unsigned char& dir){ //-- Call this functi
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
       interface_bc_type_velocity[dir] = DIRICHLET;
       break;
@@ -2479,6 +2689,7 @@ public:
       case FLOW_PAST_CYLINDER:
       case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case DISSOLVING_DISK_BENCHMARK:
         if(!solve_stefan) return 0.;
@@ -2500,6 +2711,7 @@ public:
 //      }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         return (*velocity_field[dir])(x,y);
     default:
@@ -2568,6 +2780,29 @@ struct INITIAL_VELOCITY : CF_DIM
         }
 
       }
+      case MELTING_ICE_SPHERE_NAT_CONV:{
+        if(ramp_bcs) return 0.;
+        else{
+          switch(dir){
+          case dir::x:
+            if(perturb_initial_flow){
+              return u0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
+            }
+            else{
+              return u0;
+            }
+          case dir::y:
+            if(perturb_initial_flow){
+              return v0*(1 + perturb_flow_noise*sin(2.*PI*x/xmax));
+            }
+            else{
+              return v0;
+            }
+          default:
+            throw std::runtime_error("Vel_initial error: unrecognized cartesian direction \n");
+          }
+        }
+      }
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
         else{
@@ -2603,6 +2838,7 @@ struct INITIAL_VELOCITY : CF_DIM
       }
       case NS_GIBOU_EXAMPLE:
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         switch(dir){
         case dir::x:
@@ -2670,12 +2906,14 @@ public:
       }
       case DISSOLVING_DISK_BENCHMARK:
         return 0.0; // returns homogeneous condition either way
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{ // coupled problem
         return 0.0;
       }
 
       case NS_GIBOU_EXAMPLE:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_TEST_2:{
         pressure_field_analytical.t= this->t;
@@ -2720,12 +2958,14 @@ void interface_bc_pressure(){ //-- Call this function before setting interface b
     case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
     case NS_GIBOU_EXAMPLE:
     case COUPLED_TEST_2:
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:
     case DENDRITE_TEST:
     case PLANE_POIS_FLOW:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
     case DISSOLVING_DISK_BENCHMARK:
+    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
       interface_bc_type_pressure = NEUMANN;
@@ -2743,6 +2983,7 @@ public:
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:
       case DISSOLVING_DISK_BENCHMARK:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder
         return 0.0;
@@ -2750,6 +2991,7 @@ public:
       case PLANE_POIS_FLOW:
       case NS_GIBOU_EXAMPLE: // Benchmark NS
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         return 0.0;
       default:
@@ -3276,7 +3518,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       }
 
       // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
-      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
         foreach_dimension(d){
          VecScaleGhost(v_interface.vec[d],coupled_test_sign);
         }
@@ -3300,7 +3542,7 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   double max_v_norm = 0.0;
   double global_max_vnorm = 0.0;
 
-  if(example_ == COUPLED_PROBLEM_EXAMPLE){
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
     global_max_vnorm = PI; // known analytically
   }
   else if (example_ == COUPLED_TEST_2){
@@ -3338,10 +3580,10 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   }
 
   // Compute new timestep:
-  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);
+  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);//global_max_vnorm;
   //dt = min(dt_computed,dt_max_allowed);
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)){
+  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
     double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
     dt_Stefan = tfinal/N;
   }
@@ -3812,7 +4054,6 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
-
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
 
     convergence_check_on_dxyz_hodge=
@@ -3878,7 +4119,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
       //--> Scale phi back to normal:
       VecScaleGhost(phi,-1.0);
       // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
-      if(example_ == MELTING_ICE_SPHERE){
+      if((example_ == MELTING_ICE_SPHERE)||(example_== MELTING_ICE_SPHERE_NAT_CONV)){
         if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
           tfinal = tn;
         }
@@ -3890,7 +4131,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 
     ierr = PetscFOpen(mpi_comm, name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
     if(save_fluid_forces && example_requires_area_computation){
-      PetscPrintf(mpi_comm,"tn = %g, fx = %g, fy = %g , A = %0.6f \n",tn,forces[0],forces[1],ice_area);
+      PetscPrintf(mpi_comm,"tn = %g, tfinal = %g, fx = %g, fy = %g , A = %0.6f \n",tn,tfinal,forces[0],forces[1],ice_area);
       ierr = PetscFPrintf(mpi_comm, fich_fluid_forces,"%g %g %g %g\n",tn,forces[0],forces[1],ice_area);CHKERRXX(ierr);
     }
     else if(save_fluid_forces && !example_requires_area_computation){
@@ -5505,6 +5746,7 @@ int main(int argc, char** argv) {
   // Note: Pressure BC objects take no arguments, don't need to be initialized
 
   external_force_per_unit_volume_component* external_force_components[P4EST_DIM];
+  external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM];
 
   // Coupled/NS boundary conditions:
   velocity_component* analytical_soln_v[P4EST_DIM];
@@ -5895,10 +6137,18 @@ int main(int argc, char** argv) {
           // Wall conditions values:
           bc_wall_value_velocity[d] = new BC_WALL_VALUE_VELOCITY(d,analytical_soln_v);
           bc_wall_value_velocity[d]->t = tn;
-
-          // External forcing terms:
-          external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
-          external_force_components[d]->t = tn;
+          
+          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+            for(unsigned char domain=0;domain<2;++domain){
+                // External forcing terms:
+                external_force_components_with_BA[d] = new external_force_per_unit_volume_component_with_boussinesq_approx(domain,d,analytical_T,analytical_soln_v);
+                external_force_components_with_BA[d]->t = tn;
+            }
+          }else{
+            // External forcing terms:
+            external_force_components[d] = new external_force_per_unit_volume_component(d,analytical_soln_v);
+            external_force_components[d]->t = tn;
+          }
         }
         else{
           // Interface condition values:
@@ -5969,6 +6219,7 @@ int main(int argc, char** argv) {
           break;
         }
       case COUPLED_TEST_2:
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:{
           // Output file for coupled problem test case:
           const char* out_dir_err_coupled = getenv("OUT_DIR_ERR_coupled");
@@ -5986,6 +6237,7 @@ int main(int argc, char** argv) {
       case FLOW_PAST_CYLINDER:
       case DISSOLVING_DISK_BENCHMARK:
       case MELTING_POROUS_MEDIA:
+      case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(save_fluid_forces || example_requires_area_computation){
@@ -6040,6 +6292,7 @@ int main(int argc, char** argv) {
           tn = tstart;
         }
       }
+
       if(solve_navier_stokes){
         // Adjust the cfl_NS depending on the timestep:
         if(tstep<=10){
@@ -6071,6 +6324,9 @@ int main(int argc, char** argv) {
         // Initialize timesteps to use:
         if(solve_navier_stokes){
           dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
+          if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+              dt_nm1=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
+          }
           dt = dt_nm1;
         }
         else{
@@ -6513,7 +6769,11 @@ int main(int argc, char** argv) {
         // Set external_forces if applicable
         if(analytical_IC_BC_forcing_term){
           foreach_dimension(d){
-            external_force_components[d]->t = tn;
+            if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+              external_force_components_with_BA[d]->t = tn;
+            }else{
+              external_force_components[d]->t = tn;
+            }          
           }
           bc_wall_value_pressure.t=tn;
         }
@@ -6524,6 +6784,7 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling the Navier-Stokes grid update... \n");
         if((tstep==1) || (tstep==load_tstep)){
           PetscPrintf(mpi.comm(),"Initializing Navier-Stokes solver \n");
+
           v_n_NS.create(p4est_np1,nodes_np1);
           v_nm1_NS.create(p4est,nodes);
 
@@ -6565,9 +6826,20 @@ int main(int argc, char** argv) {
 
         // Set the RHS:
         if(analytical_IC_BC_forcing_term){
-          CF_DIM *external_forces[P4EST_DIM]=
-          {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
-          ns->set_external_forces(external_forces);
+          if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+            CF_DIM *external_forces[P4EST_DIM]=
+            {DIM(external_force_components_with_BA[0],external_force_components_with_BA[1],external_force_components_with_BA[2])};
+            ns->set_external_forces(external_forces);
+          }else{
+            CF_DIM *external_forces[P4EST_DIM]=
+            {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
+            ns->set_external_forces(external_forces);
+          }
+        }
+        // For natural convection only:
+        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+            ns->boussinesq_approx=true;
+            ns->set_external_forces_using_vector(T_l_n.vec);
         }
 
         // -------------------------------
@@ -6644,8 +6916,6 @@ int main(int argc, char** argv) {
 
         //--> Scale phi back to normal:
         VecScaleGhost(phi.vec,-1.0);
-
-
         PetscPrintf(mpi.comm(),"tn = %g, A = %0.6f \n",tn+dt,ice_area);
         ierr = PetscFOpen(mpi.comm(),name_fluid_forces,"a",&fich_fluid_forces); CHKERRXX(ierr);
 
@@ -6654,9 +6924,6 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"forces saved \n");
 
       }
-
-
-
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
@@ -6716,7 +6983,7 @@ int main(int argc, char** argv) {
                                        dxyz_close_to_interface, are_we_saving, output,
                                        name_NS_errors, fich_NS_errors);
         }
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
         const char* out_dir_coupled = getenv("OUT_DIR_VTK");
 
         char output[1000];
@@ -6825,7 +7092,7 @@ int main(int argc, char** argv) {
         }
 
       // Clip time and switch vel direction for coupled problem example:
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2)){
+      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
         if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
           if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
             PetscPrintf(mpi.comm(),"uneven situation \n");
@@ -7093,7 +7360,11 @@ int main(int argc, char** argv) {
     for(unsigned char d=0;d<P4EST_DIM;d++){
       if(analytical_IC_BC_forcing_term){
         delete analytical_soln_v[d];
-        delete external_force_components[d];
+        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+          delete external_force_components_with_BA[d];
+        }else{
+          delete external_force_components[d];
+        }
       }
 
       delete bc_interface_value_velocity[d];
