@@ -1210,9 +1210,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 //              SUMD(dist_x, dist_y, dist_z) < 0.75*dxyz_m_[0]) {
 //            extended_sw_ptr[n] = -1;
 //          }
-          if (ANDD(intersected_x && (dist_x < 0.4*dxyz_m_[0]),
-                   intersected_y && (dist_y < 0.4*dxyz_m_[1]),
-                   intersected_z && (dist_z < 0.4*dxyz_m_[2]))) {
+          if (ANDD(intersected_x && (dist_x < 0.1*dxyz_m_[0]),
+                   intersected_y && (dist_y < 0.1*dxyz_m_[1]),
+                   intersected_z && (dist_z < 0.1*dxyz_m_[2]))) {
             extended_sw_ptr[n] = -1;
           }
         }

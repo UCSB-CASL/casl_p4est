@@ -72,11 +72,11 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   cube_refinement     = 1;
   time_discretization = 1;
 
-  field_update = 0;
+  field_update = 1;
 
   /* auxiliary variables */
   num_surfaces = 0;
-  lambda = 1;
+  lambda = 20;
   diag = 1;
   dxyz_min = 1;
   dxyz_max = 1;
@@ -1462,9 +1462,9 @@ void my_p4est_scft_t::sync_and_extend()
     ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
     ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
     ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
-//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask);
 //    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 0);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask_wo_bc);
+//    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 50, 2, DBL_MAX, DBL_MAX, NULL, mask_wo_bc);
   }
 }
 

@@ -77,7 +77,7 @@ public:
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       interpolation_on_interface(quadratic_non_oscillatory),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
-      bc_rel_thresh(1.e-9), use_two_step_extrapolation(false)
+      bc_rel_thresh(1.e-8), use_two_step_extrapolation(false)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {

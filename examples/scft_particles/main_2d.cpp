@@ -153,7 +153,7 @@ param_t<int>    n_seed       (pl, 1, "n_seed", "Seed: 0 - zero, "
                                                "3 - horizontal stripes, "
                                                "4 - dots, "
                                                "5 - spheres");
-param_t<int>    n_example    (pl, 35, "n_example", "Number of predefined example");
+param_t<int>    n_example    (pl, 20, "n_example", "Number of predefined example");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
 param_t<double> pairwise_potential_mag   (pl, 2.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
@@ -468,7 +468,7 @@ void set_parameters()
       ns.val       = 60;
 
       sqrtXN_free_avg.val     = 0.0;
-      sqrtXN_free_dif.val     = 1.0;
+      sqrtXN_free_dif.val     = 1.0*0;
 
       drop_r.val      = 5.;
       drop_x.val      = 0.02;
@@ -2346,8 +2346,8 @@ int main (int argc, char* argv[])
           }
 
           // do an SCFT step
-//          scft.update_potentials(scft_iteration % 2 == 0, scft_iteration % 2 == 1);
-          scft.update_potentials(1, 1);
+          scft.update_potentials(scft_iteration % 2 == 0, scft_iteration % 2 == 1);
+//          scft.update_potentials(1, 1);
           if (scft_iteration % 1 == 0) {
             for (int kk = 0; kk < scft.get_ns(); ++kk)
             {

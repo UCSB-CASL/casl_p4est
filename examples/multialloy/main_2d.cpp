@@ -61,17 +61,17 @@ param_t<bool> track_memory_usage (pl, 1, "track_memory_usage", "");
 //-------------------------------------
 // computational domain parameters
 //-------------------------------------
-param_t<int>    nx   (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int>    ny   (pl, 8, "ny", "Number of trees in the y-direction");
-param_t<int>    nz   (pl, 1, "nz", "Number of trees in the z-direction");
+param_t<int>    nx   (pl, 1,  "nx", "Number of trees in the x-direction");
+param_t<int>    ny   (pl, 16, "ny", "Number of trees in the y-direction");
+param_t<int>    nz   (pl, 1,  "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, 0, "xmin", "Box xmin");
 param_t<double> ymin (pl, 0, "ymin", "Box ymin");
 param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
-param_t<double> xmax (pl, 1, "xmax", "Box xmax");
-param_t<double> ymax (pl, 8, "ymax", "Box ymax");
-param_t<double> zmax (pl, 1, "zmax", "Box zmax");
+param_t<double> xmax (pl, 1,  "xmax", "Box xmax");
+param_t<double> ymax (pl, 16, "ymax", "Box ymax");
+param_t<double> zmax (pl, 1,  "zmax", "Box zmax");
 
 param_t<double> xc   (pl, .51, "xc", "Centering point x");
 param_t<double> yc   (pl, .32, "yc", "Centering point y");
@@ -84,8 +84,8 @@ param_t<double> zc   (pl, .53, "zc", "Centering point z");
 param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 #else
-param_t<int> lmin (pl, 4, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 3, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 #endif
 
 param_t<int> sub_split_lvl (pl, 0, "sub_split_lvl", "");
@@ -98,15 +98,15 @@ param_t<double> band (pl, 1.5, "band", "Uniform band width around interfaces");
 // solver parameters
 //-------------------------------------
 param_t<bool> use_points_on_interface   (pl, 1, "use_points_on_interface", "");
-param_t<bool> use_superconvergent_robin (pl, 1, "use_superconvergent_robin", "");
+param_t<bool> use_superconvergent_robin (pl, 0, "use_superconvergent_robin", "");
 
 param_t<int>    update_c0_robin (pl, 1,     "update_c0_robin", "Solve for c0 using Robin BC: 0 - never (pl, 1 - once (pl, 2 - always");
 param_t<int>    order_in_time   (pl, 2,     "order_in_time",   "");
 param_t<int>    max_iterations  (pl, 7,     "max_iterations",  "");
 param_t<double> bc_tolerance    (pl, 1.e-5, "bc_tolerance",    "");
-param_t<double> cfl_number      (pl, 3*0.2,   "cfl_number",      "");
+param_t<double> cfl_number      (pl, 0.6,   "cfl_number",      "");
 //param_t<double> base_cfl        (pl, pow(1.0,1.5)*0.0811,   "base_cfl",      "");
-param_t<double> base_cfl        (pl, 0.111,   "base_cfl",      "");
+param_t<double> base_cfl        (pl, 0.111/pow(4.,1.5),   "base_cfl",      "");
 
 param_t<double> proximity_smoothing       (pl, 1.01, "proximity_smoothing",       "");
 
@@ -125,7 +125,7 @@ param_t<bool>   save_p4est           (pl, 1, "save_p4est", "");
 param_t<bool>   save_p4est_solid     (pl, 1, "save_p4est_solid", "");
 param_t<bool>   save_step_convergence(pl, 0, "save_step_convergence", "");
 
-param_t<int>    save_every_dn (pl, 100, "save_every_dn", "");
+param_t<int>    save_every_dn (pl, 1000, "save_every_dn", "");
 param_t<double> save_every_dl (pl, 0.025, "save_every_dl", "");
 param_t<double> save_every_dt (pl, 0.1,  "save_every_dt",  "");
 
@@ -210,7 +210,7 @@ param_t<int> alloy (pl, 2, "alloy", "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "", "
                                     "7: a made-up penta-alloy");
 
-double scale = 10;
+double scale = 30;
 
 //-------------------------------------
 // problem parameters
@@ -218,7 +218,7 @@ double scale = 10;
 //param_t<double> volumetric_heat (pl,  0, "", "Volumetric heat generation (pl, J/cm^3");
 param_t<double> cooling_velocity        (pl, 0.001*scale,  "cooling_velocity", "Cooling velocity (pl, cm/s");
 param_t<double> gradient_ratio          (pl, 0.75,  "gradient_ratio",   "Ratio of compositional and thermal gradients at the front");
-param_t<double> temp_gradient           (pl, 100, "temp_gradient",    "Temperature gradient (pl, K/cm");
+param_t<double> temp_gradient           (pl, 500, "temp_gradient",    "Temperature gradient (pl, K/cm");
 param_t<bool>   start_from_moving_front (pl, 0, "start_from_moving_front", "Relevant only for geometry==0");
 
 param_t<int>    smoothstep_order (pl, 5,     "smoothstep_order", "Smoothness of cooling/heating ");
@@ -245,7 +245,8 @@ param_t<double> seed_rot               (pl, PI/12.,   "seed_rot",               
 param_t<double> crystal_orientation    (pl, 0.*PI/6., "crystal_orientation",    "");
 param_t<int>    seed_type              (pl, 0, "seed_type", "0 - aligned,"
                                                             "1 - misaligned");
-param_t<double> box_size (pl, 0.08/sqrt(scale), "box_size", "Physical width (in x) of the box in cm");
+//param_t<double> box_size (pl, 0.08/sqrt(scale)/3./2., "box_size", "Physical width (in x) of the box in cm");
+param_t<double> box_size (pl, 0.0075, "box_size", "Physical width (in x) of the box in cm");
 
 param_t<int>    geometry (pl, 0, "geometry", "-3 - analytical spherical solidification,"
                                               "-2 - analytical cylindrical solidification,"
@@ -339,7 +340,7 @@ void set_alloy_parameters()
       initial_conc_1.val   = 0.094;    // at frac.
 
       eps_c.val = 1.0e-5/1.;
-      eps_v.val = 1.0e-2;
+      eps_v.val = 0.0e-2;
       eps_a.val = 0.05*1.;
       symmetry.val = 4;
 
