@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC frugally_deep_test.cpp )
+	list( APPEND SRC finding_hk_spectrum_2d.cpp)
 endif()
 
 #if( DIMENSION MATCHES 3d )
@@ -16,6 +16,8 @@ endif()
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
+add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
+add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
 
 ######################## Settings ########################
 
@@ -27,9 +29,12 @@ set( CMAKE_C_COMPILER mpicc )
 set( CMAKE_CXX_COMPILER mpicxx )
 
 # Optimization flags.  Comment these out when using debugger.
-set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+#set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+
+######################## Libraries ########################
+# These commands must be given prior to defining any target.
 
 # OpenMP flags.
 # See http://blog.llvm.org/2015/05/openmp-support_22.html
@@ -39,8 +44,8 @@ if( OPENMP_FOUND )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
 endif()
 
-######################## Libraries ########################
-# These commands must be given prior to defining any target.
+# JSON library.
+find_package( nlohmann_json CONFIG REQUIRED )
 
 # find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
 find_package( Boost COMPONENTS filesystem REQUIRED )
@@ -50,7 +55,8 @@ link_directories(
 		/usr/local/lib
 		/usr/local/petsc/lib
 		/usr/local/p4est-2.2/lib
-		/usr/local/opt/libomp/lib )
+		/usr/local/opt/libomp/lib
+		/usr/local/OpenBlas/lib )
 
 link_libraries(
 		mpi
@@ -59,6 +65,8 @@ link_libraries(
 		sc
 		voro++
 		omp
+		openblas
+		nlohmann_json::nlohmann_json
 		${Boost_FILESYSTEM_LIBRARY} )
 
 include_directories(
@@ -69,6 +77,7 @@ include_directories(
 		/usr/local/p4est-2.2/include
 		/usr/local/include/voro++
 		/usr/local/opt/libomp/include
+		/usr/local/OpenBlas/include
 		${Boost_INCLUDE_DIR} )
 
 ######################## Creating the executable ########################
