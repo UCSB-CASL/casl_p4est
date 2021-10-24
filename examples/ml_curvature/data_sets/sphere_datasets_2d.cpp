@@ -1,22 +1,22 @@
 /**
- * Generate datasets for training a feedforward neural network on spherical interfaces using samples from a signed
- * distance function and from a reinitialized level-set function.
- * NOTE: This hasn't been tested on 3D, but the code is prepared for the 3D scenario.
+ * Generate datasets for training a neural network on circular interfaces using samples from a signed distance function
+ * and from a reinitialized level-set function.
  *
  * The samples collected for signed and reinitialized level-set functions have one-to-one correlation.  That is, the nth
  * sample (i.e. nth row in both files) correspond to the same standing point adjacent to the interface and its 9-stencil
- * neighborhood.  This correspondance can be used, eventually, to train denoising-like autoencoders.
+ * neighborhood.  This correspondance can be used, eventually, to train denoising-like autoencoders if you wish.
  *
  * The files generated are named sphere_[X]_Y.csv, where [X] is one of "sdf" or "rls", for signed distance function and
  * reinitialized level-set, respectively, and Y is the highest level of tree resolution.
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
- * Updated: May 3, 2021.
+ * Updated: October 24, 2021.
  *
- * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
+ * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
  * the local coordinate system centered at the 00 node.  This tries to simplify the architecture of the neural network.
+ * [Update on October 23, 2021] Data sets include normal unit vector components as additional training cues.
  */
 
 // System.
@@ -45,6 +45,7 @@
 
 #include <src/casl_geometry.h>
 #include <src/petsc_compatibility.h>
+#include <src/parameter_list.h>
 #include <string>
 #include <algorithm>
 #include <random>
@@ -56,81 +57,84 @@
 
 int main ( int argc, char* argv[] )
 {
-	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
-	// Modified to allow comparison between different levels of refinement.  Instead of considering h*kappa, we need
-	// to base our computations on kappa only.
-	// We used to depart from our previous calculations with h = 1 / 2^7.
-
-	const int MAX_REFINEMENT_LEVEL = 6;						// Always take H from unit squares with this maximum
-	const double H = 1. / pow( 2, MAX_REFINEMENT_LEVEL );	// level of refinement.
-	const double H_BASE = 1. / pow( 2, MIN( MAX_REFINEMENT_LEVEL, 7 ) );	// To avoid data explosion, the number of samples depends on
-															// a base value for mesh size (equiv. to max. lvl. at most 7).
-	const int NUM_REINIT_ITERS = 10;						// Number of iterations for PDE reintialization.
-	const double MIN_KAPPA = 0.5;							// Minimum and maximum curvature values.  Computed by
-	const double MAX_KAPPA = 1. / H;						// considering H_BASE: hk_max = h/(1.5h) (kmax used to be 85+1/3), and hk_min = 0.5h.
-	const double MIN_RADIUS = 1. / MAX_KAPPA;				// All resolutions must meet these radius constraints.
-	const double MAX_RADIUS = 1. / MIN_KAPPA;
-	const double FLAT_LIM_KAPPA = 2.5;						// Flatness limit for triggering hybrid method using a multiple of this (used to be 5, use 2.5 for lvl 6).
-	const double FLAT_LIM_RADIUS = 1. / FLAT_LIM_KAPPA;		// All resolutions adhere to this constraint.  Then, the
-															// hybrid model is used whenever:
-															// 1 * h7 * kLim  = 0.0390625,  (for max lvl of ref = 7),
-															// 2 * h8 * kLim  = 0.0390625,
-															// 4 * h9 * kLim  = 0.0390625,
-															// 8 * h10 * klim = 0.0390625.
-	const double DIM = ceil( MAX_RADIUS + 2 * H );			// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
-
-	// Number of circles is proportional to radii difference and to H_BASE ratio to H.
-	// Originally, 2 circles per finest quad/oct.  Change constant from 2 to 3 for lvl=6.
-	const int NUM_CIRCLES = ceil( 2 * ((MAX_RADIUS - MIN_RADIUS) / H_BASE + 1) * (log2( H_BASE / H ) + 1) );
-
-	// Expected number of samples per distinct radius.
-	// First, we allow to generate a tentative number of samples.  Then, we randomly collect only the expected number
-	// that we would get if we had used H_BASE instead.  This allows varying the origin of the circles, and then pick
-	// a smaller subset that encompasses samples from several configurations.
-	// Number of samples per radius is approximated by 5 times 1 sample per h^2, which comes from the area difference of
-	// the largest circle and the second to that circle.  This ensures that each radius gets the same number of samples.
-	// By doing this, we are reducing the data sets for very small spacing.
-	const int SAMPLES_PER_RADIUS = ceil( 5 * M_PI / SQR( H ) * (SQR( FLAT_LIM_RADIUS ) - SQR( FLAT_LIM_RADIUS - H )) );
-	const int MAX_SAMPLES_PER_RADIUS = ceil( 5 * M_PI / SQR( H_BASE ) * (SQR( FLAT_LIM_RADIUS ) - SQR( FLAT_LIM_RADIUS - H_BASE )) );
-
-	// Destination folder.
-	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde-0521/data/" + std::to_string( MAX_REFINEMENT_LEVEL ) + "/";
-	const int NUM_COLUMNS = num_neighbors_cube + 2;			// Number of columns in resulting dataset.
-	std::string COLUMN_NAMES[NUM_COLUMNS];					// Column headers following the x-y truth table of
-	kutils::generateColumnHeaders( COLUMN_NAMES );			// 3-state variables.
-
-	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
-	std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
-	std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
+	// Setting up parameters from command line.
+	param_list_t pl;
+	param_t<unsigned short> maxRL( pl, 10, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 10)" );
+	param_t<double> minHK( pl, 0.005, "minHK", "Minimum dimensionless curvature (default: 0.005)" );
+	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
+	param_t<int> circlesPerH( pl, 2, "circlesPerH", "How many circle radii to roughly fit in a cell (default: 2)" );
+	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<int> skipEveryXSamples( pl, 4, "skipEveryXSamples", "Skip every x samples next to Gamma randomly (default: 4)" );
+	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where file will be written (default: same folder as the executable)" );
 
 	try
 	{
 		// Initializing parallel environment (although in reality we're working on a single process).
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
-		PetscErrorCode ierr;
 
 		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
 		// sets to files.
 		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
+		// Loading parameters from command line.
+		cmdParser cmd;
+		pl.initialize_parser( cmd );
+		if( cmd.parse( argc, argv, "Generating sphere data sets for curvature inference" ) )
+			return 0;
+		pl.set_from_cmd_all( cmd );
+
+		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
+
+		const double ONE_OVER_H = 1 << maxRL();
+		const double H = 1. / ONE_OVER_H;					// Maximum level of refinement.
+		const double MAX_KAPPA = maxHK() * ONE_OVER_H;		// Steepest curvature (by default, (2/3)/H).
+		const double MIN_KAPPA = minHK() * ONE_OVER_H;		// Flattest curvature.
+		const double MIN_RADIUS = 1. / MAX_KAPPA;
+		const double MAX_RADIUS = 1. / MIN_KAPPA;
+		const double D_DIM = ceil( MAX_RADIUS + 4 * H );	// Symmetric units around origin: [-DIM, +DIM]^{P4EST_DIM}.
+		const int NUM_CIRCLES = ceil( circlesPerH() * ((MAX_RADIUS - MIN_RADIUS) * ONE_OVER_H + 1) );	// Number of circles is proportional to radii difference and H.
+
+		// Expected number of samples per distinct radius.
+		// First, we allow to generate a tentative number of samples.  Then, we randomly subsample.  This allows varying
+		// the origin of the circles, and then pick a smaller subset with samples from several configurations.
+		// Number of samples per radius is approximated by 5 times 1 sample per H^2, which comes from the area
+		// difference of the average circle and the second to that circle.  This ensures that each radius gets the same
+		// number of samples.
+		// If user wants it, skip every x samples randomly to reduce data set size.
+		const double AVG_RADIUS = (MAX_RADIUS - MIN_RADIUS) / 2.;
+		const int SAMPLES_PER_RADIUS = (int)ceil( 5 * M_PI / SQR( H ) * (SQR( AVG_RADIUS ) - SQR( AVG_RADIUS - H )) ) / skipEveryXSamples();
+
+		// Destination folder.
+		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() ) + "/";
+		const int NUM_COLUMNS = (P4EST_DIM + 1) * num_neighbors_cube + 2;		// Number of columns in dataset.
+		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
+		kutils::generateColumnHeaders( COLUMN_NAMES );		// variables: includes phi values and normal components.
+
+		// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
+		std::mt19937 gen{}; 		// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
+		std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
+
+		std::mt19937 genSkip{};		// NOLINT.
+		std::uniform_real_distribution<double> skipDist;
+
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
 
 		parStopWatch watch;
-		printf( ">> Began to generate datasets for %i circles with maximum level of refinement = %i and finest h = %g\n",
-			NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H );
+		PetscPrintf( mpi.comm(), ">> Began to generate datasets for %i circles with maximum level of refinement = %i "
+								 "and finest h = %g\n", NUM_CIRCLES, maxRL(), H );
 		watch.start();
 
 		// Prepare samples files: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
 		std::ofstream sdfFile;
-		std::string sdfFileName = DATA_PATH + "sphere_sdf_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		std::string sdfFileName = DATA_PATH + "sphere_sdf_" + std::to_string( maxRL() ) +  ".csv";
 		sdfFile.open( sdfFileName, std::ofstream::trunc );
 		if( !sdfFile.is_open() )
 			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
 
 		std::ofstream rlsFile;
-		std::string rlsFileName = DATA_PATH + "sphere_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		std::string rlsFileName = DATA_PATH + "sphere_rls_" + std::to_string( maxRL() ) +  ".csv";
 		rlsFile.open( rlsFileName, std::ofstream::trunc );
 		if( !rlsFile.is_open() )
 			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
@@ -156,9 +160,9 @@ int main ( int argc, char* argv[] )
 			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
 
 		// Domain information, applicable to all spherical interfaces.
-		int n_xyz[] = { 2 * (int)DIM, 2 * (int)DIM, 2 * (int)DIM };		// Symmetric num. of trees in +ve and -ve axes.
-		double xyz_min[] = { -DIM, -DIM, -DIM };			// Squared domain.
-		double xyz_max[] = { DIM, DIM, DIM };
+		int n_xyz[] = { 2 * (int)D_DIM, 2 * (int)D_DIM, 2 * (int)D_DIM };	// Symmetric num. of trees in +ve and -ve axes.
+		double xyz_min[] = { -D_DIM, -D_DIM, -D_DIM };		// Squared domain.
+		double xyz_max[] = { D_DIM, D_DIM, D_DIM };
 		int periodic[] = { 0, 0, 0 };						// Non-periodic domain.
 
 		int nSamples = 0;
@@ -172,8 +176,7 @@ int main ( int argc, char* argv[] )
 			std::vector<std::vector<double>> sdfSamples;
 
 			// Generate a given number of randomly centered circles with the same radius and accumulate samples until we
-			// reach a given maximum for current H.  Then, filter out samples by using the expected max number from
-			// using H_BASE.
+			// reach a given maximum for current H.  Then, perform random subsampling.
 			double maxRE = 0;								// Maximum relative error.
 			int nSamplesForSameRadius = 0;
 			while( nSamplesForSameRadius < SAMPLES_PER_RADIUS )
@@ -201,15 +204,18 @@ int main ( int argc, char* argv[] )
 				// is also way faster.
 				geom::SphereNSD sphereNsd( DIM( C[0], C[1], C[2] ), R );
 				geom::Sphere sphere( DIM( C[0], C[1], C[2] ), R );
-				splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &sphere, 6.0 );
+				splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, maxRL(), &sphere, 4.0 );
 
 				// Create the forest using a level set as refinement criterion.
 				p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 				p4est->user_pointer = (void *)( &levelSetSC );
 
-				// Refine and recursively partition forest.
-				my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf_and_uniform_band, nullptr );
-				my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+				// Refine and partition forest.
+				for( int i = 0; i < maxRL(); i++ )
+				{
+					my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
+					my_p4est_partition( p4est, P4EST_FALSE, nullptr );
+				}
 
 				// Create the ghost (cell) and node structures.
 				ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -230,53 +236,59 @@ int main ( int argc, char* argv[] )
 
 				// Ghosted parallel PETSc vectors to store level-set function values.
 				Vec sdfPhi, rlsPhi;
-				ierr = VecCreateGhostNodes( p4est, nodes, &sdfPhi );
-				CHKERRXX( ierr );
+				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sdfPhi ) );
+				CHKERRXX( VecCreateGhostNodes( p4est, nodes, &rlsPhi ) );
 
-				ierr = VecDuplicate( sdfPhi, &rlsPhi );
-				CHKERRXX( ierr );
-
-				Vec curvature, normal[P4EST_DIM];
-				ierr = VecDuplicate( rlsPhi, &curvature );
-				CHKERRXX( ierr );
-				for( auto& dim : normal )
+				Vec curvature, rlsNormal[P4EST_DIM], sdfNormal[P4EST_DIM];
+				CHKERRXX( VecDuplicate( rlsPhi, &curvature ) );
+				for( int dim = 0; dim <P4EST_DIM; dim++ )
 				{
-					VecCreateGhostNodes( p4est, nodes, &dim );
-					CHKERRXX( ierr );
+					CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sdfNormal[dim] ) );
+					CHKERRXX( VecCreateGhostNodes( p4est, nodes, &rlsNormal[dim] ) );
 				}
 
 				// Calculate the level-set function values for all independent nodes.
 				sample_cf_on_nodes( p4est, nodes, sphere, sdfPhi );
 				sample_cf_on_nodes( p4est, nodes, sphereNsd, rlsPhi );
 
-				// Reinitialize level-set function using PDE equation.
+				// Reinitialize level-set function.
 				my_p4est_level_set_t ls( &nodeNeighbors );
-				ls.reinitialize_2nd_order( rlsPhi, NUM_REINIT_ITERS );
+				ls.reinitialize_2nd_order( rlsPhi, reinitNumIters() );
 
-				// Compute curvature with reinitialized data, which will be interpolated at the interface.
-				compute_normals( nodeNeighbors, rlsPhi, normal );
-				compute_mean_curvature( nodeNeighbors, rlsPhi, normal, curvature );
+				// Compute numerical curvature with reinitialized data, which will be interpolated at the interface.
+				// Also need normal vectors with both level-set functions.
+				compute_normals( nodeNeighbors, rlsPhi, rlsNormal );
+				compute_normals( nodeNeighbors, sdfPhi, sdfNormal );
+				compute_mean_curvature( nodeNeighbors, rlsPhi, rlsNormal, curvature );
 
 				// Prepare interpolation.
 				my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
-				interpolation.set_input( curvature, linear );
+				interpolation.set_input( curvature, interpolation_method::linear );
 
-				// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these
-				// are the points we'll use to create our sample files and compare with the signed distance function.
-				NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
+				// Once the level-set function is reinitialized, collect nodes on or next to the interface; these are
+				// the points we'll use to create our sample files and compare with the signed distance function.
+				NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, (char)maxRL() );
 				std::vector<p4est_locidx_t> indices;
 				nodesAlongInterface.getIndices( &rlsPhi, indices );
 
 				// Getting the full uniform stencils of interface points.
 				const double *sdfPhiReadPtr, *rlsPhiReadPtr;
-				ierr = VecGetArrayRead( sdfPhi, &sdfPhiReadPtr );
-				CHKERRXX( ierr );
-				ierr = VecGetArrayRead( rlsPhi, &rlsPhiReadPtr );
-				CHKERRXX( ierr );
+				CHKERRXX( VecGetArrayRead( sdfPhi, &sdfPhiReadPtr ) );
+				CHKERRXX( VecGetArrayRead( rlsPhi, &rlsPhiReadPtr ) );
+
+				const double *rlsNormalReadPtr[P4EST_DIM], *sdfNormalReadPtr[P4EST_DIM];
+				for( int dim = 0; dim < P4EST_DIM; dim++ )
+				{
+					CHKERRXX( VecGetArrayRead( rlsNormal[dim], &rlsNormalReadPtr[dim] ) );
+					CHKERRXX( VecGetArrayRead( sdfNormal[dim], &sdfNormalReadPtr[dim] ) );
+				}
 
 				for( auto n : indices )
 				{
-					std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D, 27 values in 3D.
+					if( skipEveryXSamples() > 1 && skipDist( genSkip ) <= 1. / skipEveryXSamples() )	// Premature subsampling.
+						continue;
+
+					std::vector<p4est_locidx_t> stencil;	// Contains 9*3 values in 2D, 27*4 values in 3D.
 					std::vector<double> sdfDataNve;			// Phi and h*kappa results in negative form only.
 					std::vector<double> rlsDataNve;
 					sdfDataNve.reserve( NUM_COLUMNS );		// Efficientize containers.
@@ -285,53 +297,66 @@ int main ( int argc, char* argv[] )
 					{
 						if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
 						{
+							// First the phi-values.
 							for( auto s : stencil )
 							{
 								// First the signed distance function.
-								sdfDataNve.push_back( -sdfPhiReadPtr[s] );		// Negative curvature phi values.
+								sdfDataNve.push_back( -sdfPhiReadPtr[s] * ONE_OVER_H );		// H-normalized negative-curvature phi values.
 
 								// Then the reinitialized data.
-								rlsDataNve.push_back( -rlsPhiReadPtr[s] );
+								rlsDataNve.push_back( -rlsPhiReadPtr[s] * ONE_OVER_H );
 
 								// Error.
-								double error = ABS( sdfPhiReadPtr[s] - rlsPhiReadPtr[s] ) / H;
+								double error = ABS( sdfPhiReadPtr[s] - rlsPhiReadPtr[s] ) * ONE_OVER_H;
 								maxRE = MAX( maxRE, error );
 							}
 
-							// Appending the target h*kappa.
+							// Now the normal unit vectors' components.
+							for( int dim = 0; dim < P4EST_DIM; dim++ )
+							{
+								for( auto s: stencil )
+								{
+									sdfDataNve.push_back( -sdfNormalReadPtr[dim][s] );	// Flip gradients.
+									rlsDataNve.push_back( -rlsNormalReadPtr[dim][s] );
+								}
+							}
+
+							// Appending the target hk.
 							sdfDataNve.push_back( -H_KAPPA );
 							rlsDataNve.push_back( -H_KAPPA );
 
-							// Appending the interpolated h*kappa.
-							double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
+							// Appending the interpolated hk.
+							double xyz[P4EST_DIM];							// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
-							double grad[P4EST_DIM];					// Getting its gradient (i.e. normal).
-							const quad_neighbor_nodes_of_node_t *qnnnPtr;
-							nodeNeighbors.get_neighbors( n, qnnnPtr );
-							qnnnPtr->gradient( rlsPhiReadPtr, grad );
-							double gradNorm = sqrt( SUMD( SQR( grad[0] ), SQR( grad[1] ), SQR( grad[2] ) ) );	// Get the unit gradient.
+							double nveGrad[P4EST_DIM];
+							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient and make sure no component is exactly zero.
+								nveGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? -EPS : -rlsNormalReadPtr[dim][n];
 
-							for( int i = 0; i < P4EST_DIM; i++ )	// Translation: this is where we need to interpolate
-							{										// the numerical curvature.
-								xyz[i] -= grad[i] / gradNorm * rlsPhiReadPtr[n];
-								grad[i] *= -1.0;					// After using the gradient, let's negate it to use it below.
-							}
+							for( int i = 0; i < P4EST_DIM; i++ )			// Translation: this is where we need to
+								xyz[i] += nveGrad[i] * rlsPhiReadPtr[n];	// interpolate the numerical curvature.
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
-							rlsDataNve.push_back( -iHKappa );		// Attach interpolated h*kappa to reinit. data only.
-							sdfDataNve.push_back( -0 );				// For signed distance function data, add dummy -0's.
+							rlsDataNve.push_back( -iHKappa );		// Attach interpolated hk to reinitialized data only.
+							sdfDataNve.push_back( -H_KAPPA );		// For signed distance function data, the exact hk.
 
-							// Rotate stencil so that (negated) gradient at node 00 has an angle in first quadrant.
-
-							kutils::rotateStencilToFirstQuadrant( rlsDataNve, grad );
-							kutils::rotateStencilToFirstQuadrant( sdfDataNve, grad );
+							// Reorienting stencil so that (negated) gradient at node 00 has an angle in first quadrant.
+							kutils::rotateStencilToFirstQuadrant( rlsDataNve, nveGrad );
+							kutils::rotateStencilToFirstQuadrant( sdfDataNve, nveGrad );
 
 							// Accumulating samples.
 							sdfSamples.push_back( sdfDataNve );
 							rlsSamples.push_back( rlsDataNve );
 
+							// Data augmentation.
+							kutils::reflectStencil_yEqx( rlsDataNve );
+							kutils::reflectStencil_yEqx( sdfDataNve );
+
+							// Accumulating reflected samples.
+							sdfSamples.push_back( sdfDataNve );
+							rlsSamples.push_back( rlsDataNve );
+
 							// Counting samples.
-							nSamplesForSameRadius++;				// Negatives only for a given interface node.
+							nSamplesForSameRadius++;
 						}
 					}
 					catch( std::exception &e )
@@ -341,37 +366,34 @@ int main ( int argc, char* argv[] )
 				}
 
 				// Cleaning up.
-				ierr = VecRestoreArrayRead( sdfPhi, &sdfPhiReadPtr );
-				CHKERRXX( ierr );
-
-				ierr = VecRestoreArrayRead( rlsPhi, &rlsPhiReadPtr );
-				CHKERRXX( ierr );
+				CHKERRXX( VecRestoreArrayRead( sdfPhi, &sdfPhiReadPtr ) );
+				CHKERRXX( VecRestoreArrayRead( rlsPhi, &rlsPhiReadPtr ) );
+				for( int dim = 0; dim < P4EST_DIM; dim++ )
+				{
+					CHKERRXX( VecRestoreArrayRead( rlsNormal[dim], &rlsNormalReadPtr[dim] ) );
+					CHKERRXX( VecRestoreArrayRead( sdfNormal[dim], &sdfNormalReadPtr[dim] ) );
+				}
 
 				// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
-				ierr = VecDestroy( sdfPhi );
-				CHKERRXX( ierr );
+				CHKERRXX( VecDestroy( sdfPhi ) );
+				CHKERRXX( VecDestroy( rlsPhi ) );
+				CHKERRXX( VecDestroy( curvature ) );
 
-				ierr = VecDestroy( rlsPhi );
-				CHKERRXX( ierr );
-
-				ierr = VecDestroy( curvature );
-				CHKERRXX( ierr );
-
-				for( auto& dim : normal )
+				for( int dim = 0; dim < P4EST_DIM; dim++ )
 				{
-					ierr = VecDestroy( dim );
-					CHKERRXX( ierr );
+					CHKERRXX( VecDestroy( rlsNormal[dim] ) );
+					CHKERRXX( VecDestroy( sdfNormal[dim] ) );
 				}
 
 				// Destroy the p4est and its connectivity structure.
 				p4est_nodes_destroy( nodes );
 				p4est_ghost_destroy( ghost );
 				p4est_destroy( p4est );
-				p4est_connectivity_destroy( connectivity );
+				my_p4est_brick_destroy( connectivity, &brick );
 			}
 
 			// Collect randomly as many samples as we need.
-			if( nSamplesForSameRadius > MAX_SAMPLES_PER_RADIUS )
+			if( nSamplesForSameRadius > SAMPLES_PER_RADIUS )
 			{
 				std::mt19937 gen2{}; 			// NOLINT In order to keep correlated sdf and rls samples, use the same
 												// sampling generator and reset its seed.
@@ -387,7 +409,7 @@ int main ( int argc, char* argv[] )
 				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
 				sdfFile << row.back() << std::endl;
 
-				if( ++nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
+				if( ++nSamplesForSameRadius >= SAMPLES_PER_RADIUS )
 					break;
 			}
 
@@ -397,25 +419,25 @@ int main ( int argc, char* argv[] )
 				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
 				rlsFile << row.back() << std::endl;
 
-				if( ++nSamplesForSameRadius >= MAX_SAMPLES_PER_RADIUS )
+				if( ++nSamplesForSameRadius >= SAMPLES_PER_RADIUS )
 					break;
 			}
 
 			nc++;
 			nSamples += nSamplesForSameRadius;
 
-			std::cout << "     (" << nc << ") Done with radius = " << R
-					  << ".  Maximum relative error = " << maxRE
-					  << ".  Samples = " << nSamplesForSameRadius << ";" << std::endl;
+			PetscPrintf( mpi.comm(), "     (%d) Done with radius = %f.  Maximum relative error = %f.  Samples = %d;\n",
+						 nc, R, maxRE, nSamplesForSameRadius );
 
 			if( nc % 10 == 0 )
-				printf( "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
+				PetscPrintf( mpi.comm(), "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
 		}
 
 		sdfFile.close();
 		rlsFile.close();
 
-		printf( "<< Finished generating %i circles and %i samples in %f secs.\n", nc, nSamples, watch.get_duration_current() );
+		PetscPrintf( mpi.comm(), "<< Finished generating %i circles and %i samples in %f secs.\n",
+					 nc, nSamples, watch.get_duration_current() );
 		watch.stop();
 	}
 	catch( const std::exception &e )

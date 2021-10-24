@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC finding_hk_spectrum_2d.cpp)
+	list( APPEND SRC data_sets/sphere_datasets_2d.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
