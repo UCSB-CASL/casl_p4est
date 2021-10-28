@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <src/my_p4est_utils.h>
+#include <unordered_map>
 #include "data_sets/star_theta_root_finding.h"
 
 namespace kutils
@@ -259,8 +260,8 @@ namespace kutils
 				else
 				{
 					valOfDerivative = 1;
-					theta = distThetaDerivative( stencil[s], xyz[0], xyz[1], star, theta, H, gen, normalDistribution,
-												 valOfDerivative, newDistance );
+					theta = distThetaDerivative_Star( stencil[s], xyz[0], xyz[1], star, theta, H, gen,
+													  normalDistribution, valOfDerivative, newDistance );
 
 //				if( s == 4 )
 //				{

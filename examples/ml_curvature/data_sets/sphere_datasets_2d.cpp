@@ -11,12 +11,12 @@
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
- * Updated: October 24, 2021.
+ * Updated: October 27, 2021.
  *
  * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
  * the local coordinate system centered at the 00 node.  This tries to simplify the architecture of the neural network.
- * [Update on October 23, 2021] Data sets include normal unit vector components as additional training cues.
+ * [Update on October 27, 2021] Data sets include normal unit vector components as additional training cues.
  */
 
 // System.
@@ -59,7 +59,7 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> maxRL( pl, 10, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 10)" );
+	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
 	param_t<double> minHK( pl, 0.005, "minHK", "Minimum dimensionless curvature (default: 0.005)" );
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
 	param_t<int> circlesPerH( pl, 2, "circlesPerH", "How many circle radii to roughly fit in a cell (default: 2)" );
@@ -88,7 +88,7 @@ int main ( int argc, char* argv[] )
 		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
 
 		const double ONE_OVER_H = 1 << maxRL();
-		const double H = 1. / ONE_OVER_H;					// Maximum level of refinement.
+		const double H = 1. / ONE_OVER_H;					// Mesh size.
 		const double MAX_KAPPA = maxHK() * ONE_OVER_H;		// Steepest curvature (by default, (2/3)/H).
 		const double MIN_KAPPA = minHK() * ONE_OVER_H;		// Flattest curvature.
 		const double MIN_RADIUS = 1. / MAX_KAPPA;
@@ -115,8 +115,6 @@ int main ( int argc, char* argv[] )
 		// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 		std::mt19937 gen{}; 		// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
 		std::uniform_real_distribution<double> uniformDistribution( -H / 2, +H / 2 );
-
-		std::mt19937 genSkip{};		// NOLINT.
 		std::uniform_real_distribution<double> skipDist;
 
 		/////////////////////////////////////////// Preparing data set files ///////////////////////////////////////////
@@ -285,7 +283,7 @@ int main ( int argc, char* argv[] )
 
 				for( auto n : indices )
 				{
-					if( skipEveryXSamples() > 1 && skipDist( genSkip ) <= 1. / skipEveryXSamples() )	// Premature subsampling.
+					if( skipEveryXSamples() > 1 && skipDist( gen ) <= 1. / skipEveryXSamples() )	// Premature subsampling.
 						continue;
 
 					std::vector<p4est_locidx_t> stencil;	// Contains 9*3 values in 2D, 27*4 values in 3D.
@@ -328,20 +326,23 @@ int main ( int argc, char* argv[] )
 							// Appending the interpolated hk.
 							double xyz[P4EST_DIM];							// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
-							double nveGrad[P4EST_DIM];
+							double rlsGrad[P4EST_DIM], sdfGrad[P4EST_DIM];
 							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient and make sure no component is exactly zero.
-								nveGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? -EPS : -rlsNormalReadPtr[dim][n];
+							{
+								rlsGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? -EPS : -rlsNormalReadPtr[dim][n];
+								sdfGrad[dim] = (sdfNormalReadPtr[dim][n] == 0)? -EPS : -sdfNormalReadPtr[dim][n];
+							}
 
 							for( int i = 0; i < P4EST_DIM; i++ )			// Translation: this is where we need to
-								xyz[i] += nveGrad[i] * rlsPhiReadPtr[n];	// interpolate the numerical curvature.
+								xyz[i] += rlsGrad[i] * rlsPhiReadPtr[n];	// interpolate the numerical curvature.
 
 							double iHKappa = H * interpolation( DIM( xyz[0], xyz[1], xyz[2] ) );
 							rlsDataNve.push_back( -iHKappa );		// Attach interpolated hk to reinitialized data only.
 							sdfDataNve.push_back( -H_KAPPA );		// For signed distance function data, the exact hk.
 
 							// Reorienting stencil so that (negated) gradient at node 00 has an angle in first quadrant.
-							kutils::rotateStencilToFirstQuadrant( rlsDataNve, nveGrad );
-							kutils::rotateStencilToFirstQuadrant( sdfDataNve, nveGrad );
+							kutils::rotateStencilToFirstQuadrant( rlsDataNve, rlsGrad );
+							kutils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
 
 							// Accumulating samples.
 							sdfSamples.push_back( sdfDataNve );
