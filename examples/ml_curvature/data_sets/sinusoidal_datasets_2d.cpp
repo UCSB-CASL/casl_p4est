@@ -163,7 +163,7 @@ int main ( int argc, char* argv[] )
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
 	param_t<double> easeOffMaxProb( pl, 0.4, "easeOffMaxProb", "Easing-off distribution max probability to keep midpoint hk (default: 0.4)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where file will be written (default: same folder as the executable)" );
+	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
 	param_t<bool> verbose( pl, false, "verbose", "Show or not debugging messages (default: 0)" );
 
 	try

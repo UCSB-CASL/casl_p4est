@@ -4,8 +4,8 @@
 
 d = 0;		% Shape parameters: phase.
 p = 5;		% Number of arms.
-a = 0.225;
-b = 0.355;
+a = 0.265;
+b = 0.36;
 
 r = @(theta) a * cos( p * theta - d ) + b;
 rPrime = @(theta) -a * p * sin( p * theta - d );
@@ -20,9 +20,10 @@ axis equal;
 grid on; 
 limits = [-1, 1];
 xlim( limits ); ylim( limits );
+hold on;
 
-figure;
-k = curvature(t);
-plot( t, k, "-" );
-grid on;
-axis normal;
+% figure;
+% k = curvature(t);
+% plot( t, k, "-" );
+% grid on;
+% axis normal;

@@ -114,7 +114,7 @@ public:
 double distThetaDerivative_Star( p4est_locidx_t n, double u, double v, const geom::Star& star,
 							const double INITIAL_THETA, const double H,
 							std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
-							double& valOfDerivative, double& minDistance, bool verbose = true )
+							double& valOfDerivative, double& minDistance, bool verbose=true )
 {
 	using namespace boost::math::tools;						// For bisect and newton_raphson_iterate.
 

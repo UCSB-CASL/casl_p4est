@@ -193,6 +193,8 @@ namespace kutils
 	 * @param [out] pOnGamma Normal projection onto interface.
 	 * @param [in,out] visitedNodes Hash map functioning as a memoization mechanism to speed up access to visited nodes.
 	 * @param [in] normalReadPtr Pointer to normal vector components backed by parallel PETSc vectors.
+	 * @param [out] tgtHK Target hk.
+	 * @param [in] verbose Whether to print debugging messages or not.
 	 * @return Vector of sampled, reinitialized level-set function values for the stencil centered at the nodeIdx node.
 	 */
 	std::vector<double> sampleNodeNextToStarInterface( const p4est_locidx_t nodeIdx, const int NUM_COLUMNS,
@@ -203,11 +205,13 @@ namespace kutils
 													   std::ofstream *pointsFile, std::ofstream *anglesFile,
 													   std::vector<double>& distances, double pOnGamma[P4EST_DIM],
 													   std::unordered_map<p4est_locidx_t, Point2>& visitedNodes,
-													   const double *normalReadPtr[P4EST_DIM] )
+													   const double *normalReadPtr[P4EST_DIM], double& tgtHK,
+													   const bool& verbose=true )
 	{
-		std::vector<double> sample( NUM_COLUMNS, 0 );		// Level-set function values and target hk.
+		std::vector<double> sample;			// Here, we write h-normalized level-set values.
+		sample.reserve( NUM_COLUMNS );
 		distances.clear();
-		distances.reserve( NUM_COLUMNS );					// True distances and target hk.
+		distances.reserve( NUM_COLUMNS );	// True distances and target hk.
 
 		int s;												// Index to fill in the sample vector.
 		double xyz[P4EST_DIM];
@@ -216,7 +220,7 @@ namespace kutils
 		double dx, dy, newDistance;
 		for( s = 0; s < num_neighbors_cube; s++ )			// Collect phi(x) for each of the 9 grid points.
 		{
-			sample[s] = phiReadPtr[stencil[s]];				// This is the distance obtained after reinitialization.
+			sample.push_back( phiReadPtr[stencil[s]] );		// This is the distance obtained after reinitialization.
 
 			// Approximate position of point projected on interface.
 			const double grad[P4EST_DIM] = {DIM( normalReadPtr[0][stencil[s]], normalReadPtr[1][stencil[s]], normalReadPtr[2][stencil[s]] )};
@@ -261,7 +265,7 @@ namespace kutils
 				{
 					valOfDerivative = 1;
 					theta = distThetaDerivative_Star( stencil[s], xyz[0], xyz[1], star, theta, H, gen,
-													  normalDistribution, valOfDerivative, newDistance );
+													  normalDistribution, valOfDerivative, newDistance, verbose );
 
 //				if( s == 4 )
 //				{
@@ -272,8 +276,8 @@ namespace kutils
 //							  << "plot(" << xOnGamma << ", " << yOnGamma << ", 'ko');" << std::endl;
 //				}
 
-					double relDist = (newDistance - distances[s]) / distances[s];
-					if( relDist > 1e-8  )					// Verify that new point is closer than previous approximation.
+					double relDist = (newDistance - distances[s]) / H;
+					if( relDist > 1e-4  )					// Verify that new point is closer than previous approximation.
 					{
 						std::ostringstream stream;
 						stream << "Failure with node " << stencil[s] << ".  Val. of Der: " << std::scientific << valOfDerivative
@@ -294,10 +298,13 @@ namespace kutils
 
 			if( s == 4 )									// For center node we need theta to yield curvature.
 				centerTheta = theta;
+
+			// Normalize by H.
+			sample[s] /= H;
+			distances[s] /= H;
 		}
 
-		sample[s] = H * star.curvature( centerTheta );		// Last column holds h*kappa.
-		distances.push_back( sample[s] );
+		tgtHK = H * star.curvature( centerTheta );			// Write output expected hk.
 
 		// Write center sample node index and coordinates.
 		if( pointsFile )
