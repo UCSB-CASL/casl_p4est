@@ -351,7 +351,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_DIM **v, double dt, Vec &
 
     advect_from_n_to_np1(dt, v, phi, phi_xx, phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -469,7 +469,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 	// because I cannot declare the method refine_and_coarsen virtual because it uses default-valued parameters.
 	if( band <= 1 )		// Not using explicit band?
 	{
-	  splitting_criteria_tag_t sp_tag_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip );
+	  splitting_criteria_tag_t sp_tag_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band );
 	  is_grid_changing = sp_tag_p.refine_and_coarsen( p4est, nodes, phi_np1_eff_p );
 	}
 	else				// Using explicit band around interface?
@@ -788,7 +788,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 // END: ELYCE TRYING SOMETHING ----------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx, Vec phi_add_refine)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -854,10 +854,33 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
                          phi, phi_xx,
                          phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
+    Vec phi_np1_eff;
+    double *phi_np1_eff_p = phi_np1_p;
+
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecDuplicate(phi_np1, &phi_np1_eff);
+      my_p4est_interpolation_nodes_t interp(ngbd_phi);
+      interp.add_all_nodes(p4est, nodes);
+      interp.set_input(phi_add_refine, linear);
+      interp.interpolate(phi_np1_eff);
+
+      ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
+      }
+    }
+
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
+    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_eff_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
+    }
 
     if (is_grid_changing) {
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
@@ -868,6 +891,26 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+    } else {
+
+      my_p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      advect_from_n_to_np1(dt_nm1, dt_n,
+                           vnm1, vxx_nm1,
+                           vn, vxx_n,
+                           phi, phi_xx,
+                           phi_np1_p);
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
@@ -966,7 +1009,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
 
       advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx, phi_np1_p);
 
-      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
       is_grid_changing = sp.refine(p4est, nodes, phi_np1_p);
 
       ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -1092,7 +1135,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
 
     advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -1271,7 +1314,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
     for (int i = 0; i < num_lsf; i++) { ierr = VecRestoreArray(phi_np1[i], &phi_np1_ptr[i]); CHKERRXX(ierr); }
 
     // refine and coarsen grid using the effective LSF
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
 //    sp.set_refine_only_inside(true);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_eff_ptr);
 
@@ -1441,7 +1484,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
     for (int i = 0; i < num_lsf; i++) { ierr = VecRestoreArray(phi_np1[i], &phi_np1_ptr[i]); CHKERRXX(ierr); }
 
     // refine and coarsen grid using the effective LSF
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_eff_ptr);
 
     ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);

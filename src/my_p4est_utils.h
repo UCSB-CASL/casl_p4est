@@ -91,6 +91,30 @@ enum {
 };
 }
 
+inline int  cube_nei(DIM(int i, int j, int k)) { return SUMD((i+1), 3*(j+1), 9*(k+1)); }
+inline int  cube_nei(int ijk[]) { return cube_nei(DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, DIM(int &i, int &j, int &k))
+{
+  ONLY3D( k = n / 9 - 1; n = n % 9; );
+  j = n / 3 - 1;
+  i = n % 3 - 1;
+}
+inline void cube_nei_dir(int n, int    ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, double ijk[]) {
+  int ijk_int[P4EST_DIM];
+  cube_nei_dir(n, ijk_int);
+  EXECD(ijk[0] = double(ijk_int[0]),
+        ijk[1] = double(ijk_int[1]),
+        ijk[2] = double(ijk_int[2]));
+}
+
+inline int  cube_nei_op(int n)
+{
+  int ijk[P4EST_DIM];
+  cube_nei_dir(n, ijk);
+  return cube_nei(DIM(-ijk[0], -ijk[1], -ijk[2]));
+}
+
 enum node_neighbor_cube_t
 {
 #ifdef P4_TO_P8
@@ -242,8 +266,8 @@ const static std::string stderr_str  = "stderr";
 //                                                             { nn_m00, nn_000, nn_mp0, nn_0p0 },
 //                                                             { nn_000, nn_p00, nn_0p0, nn_pp0 } };
 //#endif
-const unsigned short q2c_num_pts = P4EST_CHILDREN;
-const unsigned short t2c_num_pts = P4EST_DIM+1;
+//const unsigned short q2c_num_pts = P4EST_CHILDREN;
+//const unsigned short t2c_num_pts = P4EST_DIM+1;
 
 struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-interpolation...
 {
@@ -254,37 +278,36 @@ struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-inte
     return (face_idx < other_one.face_idx);
   }
 };
+//#ifdef P4_TO_P8
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
 
-#ifdef P4_TO_P8
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
-                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
 
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
+//#else
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
 
-#else
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
-
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
-                                                          { nn_000, nn_p00, nn_0m0 },
-                                                          { nn_000, nn_m00, nn_0p0 },
-                                                          { nn_000, nn_p00, nn_0p0 } };
-#endif
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
+//                                                          { nn_000, nn_p00, nn_0m0 },
+//                                                          { nn_000, nn_m00, nn_0p0 },
+//                                                          { nn_000, nn_p00, nn_0p0 } };
+//#endif
 
 static double get_largest_dbl_smaller_than_dbl_max()
 {
@@ -1043,8 +1066,7 @@ int8_t find_max_level(const p4est_t* p4est);
 
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min);
+void get_dxyz_min(const p4est_t *p4est, double dxyz[], double *dxyz_min=NULL, double *diag_min=NULL);
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz);
 
@@ -1544,6 +1566,25 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
+ * \brief integrate_over_negative_domain integrate a quantity f over separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi
+ * \param map the characteristic function that identifies separate parts of the domain
+ * \param f the scalar to integrate
+ * \return the integral of f over the phi<0 domain, \int_{\phi<0} f
+ */
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_negative_domain(num, values.data(), p4est, nodes, phi, map, f);
+}
+
+/*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1557,6 +1598,24 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
  * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
  */
 double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
+
+/*!
+ * \brief area_in_negative_domain compute the area of separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
+ */
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map);
+inline void area_in_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  values.assign(num, 0.);
+  area_in_negative_domain(num, values.data(), p4est, nodes, phi, map);
+}
+
 
 /*!
  * \brief integrate_over_interface_in_one_quadrant
@@ -1577,6 +1636,24 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief integrate_over_interface integrate a scalar f over separate parts of the 0-contour of the level-set function phi.
+ *        note: first order convergence only
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param map the characteristic function that identifies separate parts of the interface
+ * \param f the scalar to integrate
+ */
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_interface(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_interface(num, values.data(), p4est, nodes, phi, map, f);
+}
 
 /*!
  * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
@@ -2188,6 +2265,7 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 PetscErrorCode VecReciprocalGhost(Vec input);
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode);
 
 struct vec_and_ptr_t
 {
@@ -2556,23 +2634,48 @@ public:
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double phi_eff = -10;
-    double phi_cur = -10;
-    for (size_t i=0; i<phi_cf.size(); ++i)
+    if (phi_cf.size() > 0)
     {
-      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
-      switch (action[i]) {
-      case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-      case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
-      default:
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (size_t i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+          default:
 #ifdef CASL_THROWS
         throw std::runtime_error("mls_eff_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
 #endif
         break;
+        }
       }
+      return phi_eff;
+    } else {
+      return -1;
     }
+  }
 
-    return phi_eff;
+  int get_idx(DIM(double x, double y, double z)) const
+  {
+    if (phi_cf.size() > 0)
+    {
+      int    idx     = 0;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+        }
+      }
+      return idx;
+    } else {
+      return -1;
+    }
   }
 };
 

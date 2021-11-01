@@ -1,0 +1,9 @@
+This directory contains examples for solving the Stefan problem with the CASL p4est library.
+
+It differs from the "stefan" directory in that these examples utilize the poisson_nodes_mls class to solve the Poisson problem,
+rather than the poisson_nodes class. It does not necessarily make use of the MLS(multiple level set) capabilities, but rather
+utilizes the poisson_nodes_mls solver because it is the most up to date and powerful Poisson solver contained in the library
+at the time.
+
+These examples were created by: Elyce Bayat, ebayat@ucsb.edu
+These examples were last modified on : November 27, 2019, by Elyce Bayat

@@ -170,9 +170,9 @@ int main(int argc, char *argv[]) {
   // Now, read the options and/or set default parameters
 
   // which molecule(s)
-  //  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
-  const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "single_sphere.");
+  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+  //const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
+  const string pqr_input                    = cmd.get<string>("pqr", "1etn.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
@@ -195,27 +195,27 @@ int main(int argc, char *argv[]) {
   const double rel_side_length_biggest_box  = cmd.get<double>("boxsize", 0.3);
   // grid construction
   const int ntree_per_dim                   = cmd.get<int>("ntree_dim", 1);
-  const int lmin                            = cmd.get<int>("lmin", 7);
-  const int lmax                            = cmd.get<int>("lmax", 9);
+  const int lmin                            = cmd.get<int>("lmin", 6);
+  const int lmax                            = cmd.get<int>("lmax", 8);
   const double lip                          = cmd.get<double>("lip", 1.2);
   const int surf_gen                        = cmd.get<int>("surfgen", 1);
-  const double probe_radius                 = cmd.get<double>("rp", 0.01);
+  const double probe_radius                 = cmd.get<double>("rp", 1.4);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
   // physical and solver parameters
   const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
   const double eps_elec                     = cmd.get<double>("eps_elec", 78.54);
   const int ion_charge                      = cmd.get<int>("ion", 1);
   const double temperature                  = cmd.get<double>("temperature", 298.15);
-  const double far_field_ion_concentration  = cmd.get<double>("n0", 0.000);
+  const double far_field_ion_concentration  = cmd.get<double>("n0", 0.1 );
   const double rtol                         = cmd.get<double>("rtol", 1e-11);
   const int niter_max                       = cmd.get<int>("niter", 1000);
-  const string linearization_string         = cmd.get<string>("linear", "yes");
+  const string linearization_string         = cmd.get<string>("linear", "no");
   const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
 
 
   // exportation folder and files
-  //  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
-  string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
+  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
+  //string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
   mkdir(output_folder.c_str(), 0755);
   string subvtk                             = cmd.get<string>("subvtk", "yes");
   const bool subvtk_flag                    = (boost::iequals("1", subvtk) || boost::iequals("yes", subvtk) || boost::iequals("true", subvtk));
@@ -278,69 +278,168 @@ int main(int argc, char *argv[]) {
   double xyz_min [] = {0, 0, 0};
   double xyz_max [] = {domain_side_length, domain_side_length, domain_side_length};
   int periodic []   = {0, 0, 0};
-  my_p4est_brick_t brick;
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+
+  double grid_xyz_min_shift[3];
+  double grid_xyz_max_shift[3];
+
+  int num_shifts_x_dir=1;
+  int num_shifts_y_dir=1;
+  int num_shifts_z_dir=1;
 
 
-  /* create the p4est, nodes and ghosts */
-  splitting_criteria_t sp(lmin, lmax, lip);
-  p4est_t *p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
-  p4est->user_pointer = (void *) &sp;
+  int num_splits=1;
+  int num_splits_per_split=1;
+  double solvation_energy_iter[num_splits*num_splits_per_split];
+  int count =0;
+  for(int iter=0; iter<num_splits; ++iter)
+  {
+    ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    //int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
+    int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
+    for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
+    {
+      double grid_xyz_min_alt[3];
+      double grid_xyz_max_alt[3];
+
+      double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
+      grid_xyz_min_alt[0] = xyz_min[0] - .5*(pow(2.,scale)-1)*(xyz_max[0]-xyz_min[0]); grid_xyz_max_alt[0] = xyz_max[0] + .5*(pow(2.,scale)-1)*(xyz_max[0]-xyz_min[0]);
+      grid_xyz_min_alt[1] = xyz_min[1] - .5*(pow(2.,scale)-1)*(xyz_max[1]-xyz_min[1]); grid_xyz_max_alt[1] = xyz_max[1] + .5*(pow(2.,scale)-1)*(xyz_max[1]-xyz_min[1]);
+      grid_xyz_min_alt[2] = xyz_min[2] - .5*(pow(2.,scale)-1)*(xyz_max[2]-xyz_min[2]); grid_xyz_max_alt[2] = xyz_max[2] + .5*(pow(2.,scale)-1)*(xyz_max[2]-xyz_min[2]);
 
 
-  // read the molecules and rotate them
-  my_p4est_biomolecules_t my_biomol(&brick, p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
+      double dxyz[3] = { (grid_xyz_max_alt[0]-grid_xyz_min_alt[0])/pow(2., (double) lmax+iter),
+                         (grid_xyz_max_alt[1]-grid_xyz_min_alt[1])/pow(2., (double) lmax+iter),
+                         (grid_xyz_max_alt[2]-grid_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
+      double grid_xyz_min_shift[3];
+      double grid_xyz_max_shift[3];
 
-  my_biomol.set_grid_and_surface_parameters(lmin, lmax, lip, probe_radius, order_of_accuracy);
-  p4est = my_biomol.construct_SES(((surf_gen == 0)? brute_force: ((surf_gen == 1)?list_reduction:list_reduction_with_exact_phi)), SAS_timing_flag, SAS_subtiming_flag, subvtk_flag?output_folder:"null");
-  my_biomol.expand_ghost();
+      double dxyz_m = MIN(DIM(dxyz[0],dxyz[1],dxyz[2]));
+
+      ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
 
 
-  my_p4est_biomolecules_solver_t solver(&my_biomol);
-  solver.set_relative_permittivities(eps_mol, eps_elec);
-  solver.set_ion_charge(ion_charge);
-  solver.set_temperature_in_kelvin(temperature);
-  solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
-  solver.solve_nonlinear(rtol, (linearization_flag)?1:niter_max);
+      for (int k_shift = 0; k_shift < num_shifts_z_dir; ++k_shift)
+      {
+        grid_xyz_min_shift[2] = grid_xyz_min_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
+        grid_xyz_max_shift[2] = grid_xyz_max_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
+
+        for (int j_shift = 0; j_shift < num_shifts_y_dir; ++j_shift)
+        {
+          grid_xyz_min_shift[1] = grid_xyz_min_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
+          grid_xyz_max_shift[1] = grid_xyz_max_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
+
+          for (int i_shift = 0; i_shift < num_shifts_x_dir; ++i_shift)
+          {
+            grid_xyz_min_shift[0] = grid_xyz_min_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
+            grid_xyz_max_shift[0] = grid_xyz_max_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
+
+            my_p4est_brick_t brick;
+            //p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+            p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodic);
+
+
+            /* create the p4est, nodes and ghosts */
+            //splitting_criteria_t sp(lmin, lmax, lip);
+            splitting_criteria_t sp(lmin+iter, lmax+iter, lip);
+            p4est_t *p4est = p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+            p4est->user_pointer = (void *) &sp;
+
+
+            // read the molecules and rotate them
+            my_p4est_biomolecules_t my_biomol(&brick, p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
+
+            //my_biomol.set_grid_and_surface_parameters(lmin, lmax, lip, probe_radius, order_of_accuracy);
+            my_biomol.set_grid_and_surface_parameters(lmin+iter , lmax+iter , lip, probe_radius, order_of_accuracy);
+            p4est = my_biomol.construct_SES(((surf_gen == 0)? brute_force: ((surf_gen == 1)?list_reduction:list_reduction_with_exact_phi)), SAS_timing_flag, SAS_subtiming_flag, subvtk_flag?output_folder:"null");
+            my_biomol.expand_ghost();
+
+
+            my_p4est_biomolecules_solver_t solver(&my_biomol);
+            solver.set_relative_permittivities(eps_mol, eps_elec);
+            solver.set_ion_charge(ion_charge);
+            solver.set_temperature_in_kelvin(temperature);
+            solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
+            solver.solve_nonlinear_v2(rtol, (linearization_flag)?1:niter_max);
 #ifdef P4_TO_P8
-  solver.get_solvation_free_energy(!linearization_flag);
+            solvation_energy_iter[count]=solver.get_solvation_free_energy(!linearization_flag);
+            count++;
 #endif
 
-  Vec psi_hat = NULL;
-  solver.return_psi_hat(psi_hat);
+            Vec psi_hat = NULL;
+            Vec psi_star = NULL;
+            //Vec psi_bar = NULL;
 
-  Vec phi               = my_biomol.return_phi_vector();
-  p4est_nodes_t* nodes  = my_biomol.return_nodes();
-  p4est_ghost_t* ghost  = my_biomol.return_ghost();
-  if(!boost::iequals(null_str, vtk_name))
-  {
+            //solver.return_psi_bar(psi_bar);
+            Vec phi               = my_biomol.return_phi_vector();
+            p4est_nodes_t* nodes  = my_biomol.return_nodes();
+            p4est_ghost_t* ghost  = my_biomol.return_ghost();
 
-    double *phi_p = NULL,*psi_hat_p = NULL;
-    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
-    string vtk_file = output_folder + vtk_name;
+            if(!boost::iequals(null_str, vtk_name))
+            {
 
+              Vec psi= NULL;
+              Vec grad_psi = NULL;
+              ierr = VecCreateGhostNodes(p4est, nodes, &psi);
+              ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &grad_psi);
 
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           2, 0, vtk_file.c_str(),
-                           VTK_POINT_DATA, "psi_hat", psi_hat_p,
-                           VTK_POINT_DATA, "phi", phi_p);
+              solver.calculate_psi_and_grad_psi(psi, grad_psi);
+              solver.return_psi_hat(psi_hat);
+              solver.return_psi_star(psi_star);
+              double *phi_p = NULL,*psi_hat_p = NULL, *psi_star_p= NULL, *psi_p=NULL, *grad_psi_p=NULL; //*psi_bar_p= NULL;
+              ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+              ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
+              ierr = VecGetArray(grad_psi, &grad_psi_p); CHKERRXX(ierr);
+              ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
+              ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
+              //ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+              string vtk_file = output_folder + vtk_name;
+              my_p4est_vtk_write_all_general(p4est, nodes, ghost,
+                                             P4EST_TRUE, P4EST_TRUE,
+                                             4, 0, 1, 0, 0, 0, vtk_file.c_str(),
+                                             VTK_NODE_SCALAR, "psi_hat", psi_hat_p,
+                                             VTK_NODE_SCALAR, "psi_star", psi_star_p,
+                                             VTK_NODE_SCALAR, "phi", phi_p,
+                                             VTK_NODE_SCALAR, "psi", psi_p,
+                                             VTK_NODE_VECTOR_BLOCK, "grad_psi", grad_psi_p);
 
+              //ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(grad_psi, &grad_psi_p); grad_psi_p = NULL; CHKERRXX(ierr);
+              ierr = VecDestroy(grad_psi);
+              ierr = VecDestroy(psi);
+            }
 
-    ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
+            /* release memory */
+            ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
+            ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
+            ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);
+            //ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);
 
+            p4est_nodes_destroy (nodes);
+            p4est_ghost_destroy (ghost);
+            p4est_destroy (p4est);
+            my_p4est_brick_destroy(connectivity, &brick);
+          }
+        }
+      }
+    }
   }
+  count=0;
+  for(int iter=0; iter<num_splits; ++iter)
+  {
+    int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
+    for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
+    {
 
-  /* release memory */
-  ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
+      double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
 
-  p4est_nodes_destroy (nodes);
-  p4est_ghost_destroy (ghost);
-  p4est_destroy (p4est);
-  my_p4est_brick_destroy(connectivity, &brick);
+      ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f) solvation energy is %g kJ/mol\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale, solvation_energy_iter[count]); CHKERRXX(ierr);
+      count++;
+    }
+  }
 
   delete pqr;
   delete angles;

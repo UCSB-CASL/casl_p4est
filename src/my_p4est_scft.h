@@ -3,7 +3,6 @@
 
 #include <src/types.h>
 #include <src/casl_math.h>
-#undef P4_TO_P8
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
@@ -12,8 +11,10 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_poisson_nodes.h>
-#include <src/my_p8est_poisson_nodes_mls_sc.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_integration_mls.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
@@ -58,11 +59,16 @@ class my_p4est_scft_t
   /* densities */
   Vec rho_a;
   Vec rho_b;
+  double rho_avg;
 
   /* surface tensions */
   std::vector<CF_DIM *> gamma_a;
   std::vector<CF_DIM *> gamma_b;
   CF_DIM *gamma_air;
+  std::vector<bool> grafting;
+
+  /* grafting density */
+  std::vector<CF_DIM *> grafting_density;
 
   /* Robin coefficients */
   std::vector< std::vector<double> > pw_bc_values;
@@ -78,7 +84,9 @@ class my_p4est_scft_t
   double f;
   double XN;
   int    ns, fns;
-  double scalling;
+  double scaling;
+  bool   grafted;
+  double grafting_area;
 
   /* auxiliary variables */
   double ds_a, ds_b;
@@ -104,13 +112,15 @@ class my_p4est_scft_t
 
   Vec phi_smooth;
 
-  Vec mask;
+  Vec mask; // nodes where diffusion is solved (\phi < 0 and boundary nodes)
+  Vec mask_wo_bc; // mask excluding boundary nodes
   Vec integrating_vec;
   Vec q_tmp;
 
   int time_discretization;
   int integration_order;
   int cube_refinement;
+  int field_update; // 0 - explicit, 1 - approx SIS
 
   std::vector<Vec*> normal;
   std::vector<Vec>  kappa;
@@ -119,28 +129,17 @@ class my_p4est_scft_t
   my_p4est_poisson_nodes_mls_t solver_a;
   my_p4est_poisson_nodes_mls_t solver_b;
 
-  class bc_wall_type_t : public WallBCDIM
-  {
-  public:
-    BoundaryConditionType operator()( DIM(double, double, double) ) const
-    {
-      return NEUMANN;
-    }
-  } bc_wall_type;
-
 public:
   my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns);
   ~my_p4est_scft_t();
 
   void set_lambda(double value) { lambda = value; }
-  void set_polymer(double f, double XN);
-  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B);
-//  void set_potentials(Vec in_mu_m,  Vec in_mu_p)  { mu_m  = in_mu_m;  mu_p  = in_mu_p;  }
-//  void set_densities (Vec in_rho_a, Vec in_rho_b) { rho_a = in_rho_a; rho_b = in_rho_b; }
+  void set_polymer(double f, double XN, bool grafted=0);
+  void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B, bool grafting=0, CF_DIM *grafting_density=NULL);
 
   void initialize_solvers();
   void initialize_bc_simple(); // a naive method that produces singularities in the pressure field
-  void initialize_bc_smart(bool adaptive = true);  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
+  void initialize_bc_smart(bool adaptive = true, int bc_scheme=0);  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
 
   void   diffusion_step(my_p4est_poisson_nodes_mls_t &solver, double ds, Vec &sol, Vec &sol_nm1);
   void   solve_for_propogators();
@@ -151,11 +150,14 @@ public:
   void   update_potentials(bool update_mu_m=true, bool update_mu_p=true);
   void   smooth_singularity_in_pressure_field();
 
-  void save_VTK(int compt);
+  void save_VTK(int compt, const char *absolute_path_to_folder=NULL);
 
   double get_energy() { return energy;}
   double get_pressure_force() { return force_p_avg; }
   double get_exchange_force() { return force_m_avg; }
+  double get_rho_avg() { return rho_avg;}
+  void   set_rho_avg(double val) { rho_avg = val;}
+
 
   void   assemble_integrating_vec();
   double integrate_over_domain_fast(Vec f);
@@ -164,7 +166,7 @@ public:
 
   void compute_normal_and_curvature();
 
-  void compute_energy_shape_derivative(int phi_idx, Vec velo);
+  void compute_energy_shape_derivative(int phi_idx, Vec velo, bool assume_convergence=true);
   void compute_energy_shape_derivative_contact_term(int phi0_idx, int phi1_idx);
 
   double compute_change_in_energy(int phi_idx, Vec norm_velo, double dt);
@@ -183,13 +185,16 @@ public:
   inline Vec get_rho_a() { return rho_a; }
   inline Vec get_rho_b() { return rho_b; }
 
-  inline void set_scalling(double value) { scalling = value; }
-
-//  void recompute_matrices() { solver_a->set_is_matrix_computed(false);
-//                              solver_b->set_is_matrix_computed(false); }
-
+  inline void set_scaling(double value) { scaling = value; }
 
   void save_VTK_q(int compt);
+
+  inline int get_ns() { return ns; }
+
+  inline double get_grafted_area() { return grafting_area; }
+  inline Vec get_qf(int i) { return qf[i]; }
+  inline Vec get_qb(int i) { return qb[i]; }
+
 
   /* Density Optimization */
   Vec mu_t;
@@ -212,28 +217,29 @@ public:
 
   Vec psi_a;
   Vec psi_b;
+  double psi_avg;
 
-  void dsa_initialize();
-  void dsa_initialize_fields();
-  void dsa_solve_for_propogators();
-  void dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &nu);
-  void dsa_compute_densities();
-  void dsa_update_potentials();
-  void dsa_compute_shape_gradient(int phi_idx, Vec velo);
+  void   dsa_initialize();
+  void   dsa_initialize_fields();
+  void   dsa_solve_for_propogators();
+  void   dsa_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &nu, Vec &q, Vec &qm1);
+  void   dsa_compute_densities();
+  void   dsa_update_potentials();
+  void   dsa_compute_shape_gradient(int phi_idx, Vec velo);
   double dsa_compute_cost_function();
   double dsa_compute_change_in_functional(int phi_idx, Vec norm_velo, Vec density_grad_shape, double dt);
-  void dsa_save_VTK(int compt);
-  void dsa_save_VTK_before_moving(int compt);
+  void   dsa_save_VTK(int compt);
+  void   dsa_save_VTK_before_moving(int compt);
 
-  void dsa_sync_and_extend();
-  double dsa_get_nu_0() { return nu_0; }
-  double dsa_get_cost_function() { return cost_function; }
+  void   dsa_sync_and_extend();
+  double dsa_get_nu_0()           { return nu_0; }
+  double dsa_get_cost_function()  { return cost_function; }
   double dsa_get_pressure_force() { return force_nu_p_avg; }
   double dsa_get_exchange_force() { return force_nu_m_avg; }
 
-  Vec dsa_get_nu_m() { return nu_m; }
-  Vec dsa_get_nu_p() { return nu_p; }
-  Vec dsa_get_mu_t()  { return mu_t;  }
+  Vec    dsa_get_nu_m() { return nu_m; }
+  Vec    dsa_get_nu_p() { return nu_p; }
+  Vec    dsa_get_mu_t() { return mu_t; }
 
 };
 

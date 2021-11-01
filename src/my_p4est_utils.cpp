@@ -1,4 +1,4 @@
-#ifdef P4_TO_P8
+﻿#ifdef P4_TO_P8
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
@@ -937,7 +937,7 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
 }
 
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
+void get_dxyz_min(const p4est_t *p4est, double dxyz[], double *dxyz_min, double *diag_min)
 {
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
 
@@ -945,25 +945,23 @@ void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double *v = p4est->connectivity->vertices;
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+  double dxyz_own[P4EST_DIM];
+  if (dxyz == NULL) {
+    dxyz = dxyz_own;
+  }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir) {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
 
-  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
-}
+  }
 
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min)
-{
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+  if (dxyz_min != NULL) {
+    *dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
+  }
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double *v = p4est->connectivity->vertices;
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-
-  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
-  diag_min = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
+  if (diag_min != NULL) {
+    *diag_min = ABSD(dxyz[0], dxyz[1], dxyz[2]);
+  }
 }
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
@@ -1077,6 +1075,57 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 }
 
 
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx       = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                                    quad_idx + tree->quadrants_offset,
+                                                                    phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
+
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 
@@ -1126,6 +1175,56 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum;
+}
+
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += area_in_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                     quad_idx + tree->quadrants_offset,
+                                                     phi);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
@@ -1209,6 +1308,56 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
+}
+
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_interface_in_one_quadrant(p4est, nodes, quad,
+                                                              quad_idx + tree->quadrants_offset,
+                                                              phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sums */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
@@ -2215,11 +2364,11 @@ PetscErrorCode VecCopyGhost(Vec input, Vec output)
 {
   PetscErrorCode ierr;
   Vec src, out;
-  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &src);      if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecCopy(src, out);                      if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &src);  if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2227,9 +2376,9 @@ PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecSet(ptr, scalar);                 if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2237,9 +2386,9 @@ PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecShift(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2247,9 +2396,9 @@ PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecScale(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2257,13 +2406,13 @@ PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMult(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMult(out, in1, in2);        if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2271,11 +2420,11 @@ PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
 {
   PetscErrorCode ierr;
   Vec X, Y;
-  ierr = VecGhostGetLocalForm(x, &X);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(y, &Y);     CHKERRXX(ierr);
-  ierr = VecAXPBY(Y, alpha, beta, X);     CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(x, &X); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(x, &X);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(y, &Y);     if (ierr != 0) return ierr;
+  ierr = VecAXPBY(Y, alpha, beta, X);     if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(x, &X); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(y, &Y); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2283,13 +2432,13 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMin(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMin(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2297,13 +2446,13 @@ PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMax(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMax(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2311,9 +2460,17 @@ PetscErrorCode VecReciprocalGhost(Vec input)
 {
   PetscErrorCode ierr;
   Vec in;
-  ierr = VecGhostGetLocalForm(input, &in);     CHKERRXX(ierr);
-  ierr = VecReciprocal(in);                    CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &in); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &in);     if (ierr != 0) return ierr;
+  ierr = VecReciprocal(in);                    if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &in); if (ierr != 0) return ierr;
+  return ierr;
+}
+
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode)
+{
+  PetscErrorCode ierr;
+  ierr = VecGhostUpdateBegin(input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
+  ierr = VecGhostUpdateEnd  (input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2913,23 +3070,19 @@ double pascalTriangle(int a, int b) {
   return result;
 }
 
-double clamp(double x, double lowerlimit, double upperlimit)
-{
-  if (x < lowerlimit) x = lowerlimit;
-  if (x > upperlimit) x = upperlimit;
-  return x;
-}
-
 double smoothstep(int N, double x) {
-  x = clamp(x, 0, 1); // x must be equal to or between 0 and 1
-  double result = 0;
-  for (int n = 0; n <= N; ++n)
-  {
-    result += pascalTriangle(-N - 1, n) *
-              pascalTriangle(2 * N + 1, N - n) *
-              pow(x, N + n + 1);
+  if      (x <= 0) return 0;
+  else if (x >= 1) return 1;
+  else {
+    double result = 0;
+    for (int n = 0; n <= N; ++n)
+    {
+      result += pascalTriangle(-N - 1, n) *
+                pascalTriangle(2 * N + 1, N - n) *
+                pow(x, N + n + 1);
+    }
+    return result;
   }
-  return result;
 }
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs)

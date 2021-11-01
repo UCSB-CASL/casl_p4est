@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <numeric>
 
+using namespace std;
 #if (__cplusplus < 201103L) // for the dumbass outdated compilers
 namespace std {
 inline string to_string ( size_t x ) {
@@ -61,7 +62,6 @@ void iota(ForwardIterator first, ForwardIterator last, T value)
 //
 //---------------------------------------------------------------------
 
-static const std::string no_vtk = "null";
 
 /*!
  * \brief The Atom struct contains
@@ -72,7 +72,7 @@ static const std::string no_vtk = "null";
 struct Atom {
   double xyz_c[P4EST_DIM];
   double q, r_vdw;
-  static const std::string ATOM;
+  static const string ATOM;
   inline double dist_to_vdW_surface(DIM(const double& x, const double& y, const double& z)) const
   {
     return r_vdw - sqrt(SUMD(SQR(x-xyz_c[0]), SQR(y-xyz_c[1]), SQR(z-xyz_c[2])));
@@ -135,14 +135,18 @@ inline bool operator <(const Atom& lhs, const Atom& rhs)
 }
 #endif
 
-inline std::ostream& operator << (std::ostream& os, Atom& atom) {
-  os << "(x = " << atom.xyz_c[0] << ", y = " << atom.xyz_c[1] ONLY3D(<< ", z = " << atom.xyz_c[2]) << "; q = " << atom.q << ", r = " << atom.r_vdw << ")";
+inline ostream& operator << (ostream& os, Atom& atom) {
+  os << "(x = " << atom.xyz_c[0] << ", y = " << atom.xyz_c[1];
+#ifdef P4_TO_P8
+  os << ", z = " << atom.xyz_c[2];
+#endif
+  os << "; q = " << atom.q << ", r = " << atom.r_vdw << ")";
   return os;
 }
 
-inline bool operator >>(std::string& line, Atom& atom)
+inline bool operator >>(string& line, Atom& atom)
 {
-  std::string word = line.substr(0, 6); // first word in structured line
+  string word = line.substr(0, 6); // first word in structured line
   if(Atom::ATOM.compare(word))
     return false;
   else
@@ -219,7 +223,7 @@ public:
   }
 };
 
-typedef std::shared_ptr<reduced_list>  reduced_list_ptr;
+typedef shared_ptr<reduced_list>  reduced_list_ptr;
 
 class my_p4est_biomolecules_t
 {
@@ -315,7 +319,7 @@ private:
      * \param pqr: path to the pqr file
      * \param overlap: max number of characters per (relevant) line in the pqr file (or any integer greater than that!)
      */
-    void          read(const std::string &pqr, const int &overlap);
+    void          read(const string &pqr, const int &overlap);
 
   public:
     /*!
@@ -336,7 +340,7 @@ private:
      * \param overlap (optional): max number of characters per (relevant) line in the pqr file
      * (default value is 70, as observed from my own pqr files, including the '\n' characters)
      */
-    molecule(const my_p4est_biomolecules_t *owner, const std::string & pqr_, const double *angstrom_to_domain_ = NULL, const double *xyz_c = NULL, double *angles = NULL, const int& overlap = 70);
+    molecule(const my_p4est_biomolecules_t *owner, const string & pqr_, const double *angstrom_to_domain_ = NULL, const double *xyz_c = NULL, double *angles = NULL, const int& overlap = 70);
     /*!
      * \brief calculate_scaling_factor: calculates the angstrom_to_domain factor that would set the
      * ratio of the largest side length of the centroid-centered box bounding the molecule to the minimal
@@ -537,7 +541,7 @@ private:
   my_p4est_level_set_t*       ls;
   SAS_creator*                sas_creator;
   // what will be buit
-  std::map<p4est_locidx_t, reduced_list_ptr> old_reduced_lists;  // used for the list reduction method (only)
+  map<p4est_locidx_t, reduced_list_ptr> old_reduced_lists;  // used for the list reduction method (only)
   vector<reduced_list_ptr>  reduced_lists;                  // used for the list reduction method (only)
   bool                      update_last_current_level_only; // for balanced calculations in list reduction method (only)
   Vec                       phi;                      // node-sampled values of level-set function
@@ -545,8 +549,8 @@ private:
   Vec                       inner_domain;
 
   const int                 rank_encoding;
-  const int64_t             max_quad_loc_idx;
-
+  const ulong               max_quad_loc_idx;
+  const string              no_vtk = "null";
   int8_t                    global_max_level;         // max level of refinement of the forest in the entire domain
   vector<molecule>          bio_molecules;            // the vector of molecules
   vector<int>               atom_index_offset;        // atom index offset when atoms are serialized
@@ -554,12 +558,6 @@ private:
   int                       index_of_biggest_mol;     // self-explanatory
   double                    box_size_of_biggest_mol;  // self-explanatory
   double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
-
-  static inline bool compareChar(const char & c1, const char & c2) { return (c1 == c2); }
-  static inline bool case_sensitive_string_compare(const std::string & str1, const std::string &str2)
-  {
-    return (str1.size() == str2.size() && equal(str1.begin(), str1.end(), str2.begin(), &compareChar));
-  }
 
   /*!
    * \brief calculate_center_of_domain: self_explanatory
@@ -632,7 +630,7 @@ private:
    *  [/\ if inconsistent scaling has been detected, this is a logic error, it is fixed by rescaling all
    *      molecules accordingly in release mode, but a logic_error is thrown in debug mode;]
    */
-  void                add_single_molecule(const std::string& file_path, const double* centroid = NULL, double* angles = NULL, const double* angstrom_to_domain_ = NULL);
+  void                add_single_molecule(const string& file_path, const double* centroid = NULL, double* angles = NULL, const double* angstrom_to_domain_ = NULL);
   inline void         add_single_molecule(const molecule& mol)
   {
     if(nmol() == 0) // first molecule to be added in the vector of molecules
@@ -698,14 +696,14 @@ public:
    * If diregarded or NULL, the (possibly scaled) centroid of the molecule is the same as read
    * from the pqr file.
    */
-  my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<std::string>* pqr_names = NULL, const std::string* input_folder = NULL,
+  my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<string>* pqr_names = NULL, const string* input_folder = NULL,
                           vector<double>* angles = NULL, const vector<double>* centroids = NULL);
   /* overloads the constructor, allows to skip the input_folder argument */
-  my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<std::string>* pqr_names = NULL,
+  my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<string>* pqr_names = NULL,
                           vector<double>* angles = NULL, const vector<double>* centroids = NULL) :
     my_p4est_biomolecules_t(brick_, p4est_, rel_side_length_biggest_box, pqr_names, NULL, angles, centroids){}
   /* overloading the private method for public use, enabling sanity checks */
-  void                add_single_molecule(const std::string& file_path, const vector<double>* centroid = NULL, vector<double>* angles = NULL, const double* angstrom_to_domain = NULL);
+  void                add_single_molecule(const string& file_path, const vector<double>* centroid = NULL, vector<double>* angles = NULL, const double* angstrom_to_domain = NULL);
   /*!
    * \brief rescale_all_molecules: apply a new desired scaling factor angstrom_to_domain to all
    * molecules in the vector of molecules.
@@ -755,7 +753,7 @@ public:
   static void         set_quad_weight(p4est_quadrant_t* &quad, const p4est_nodes_t* & nodes, const double* const& phi_fct, const double& lower_bound);
   static int          weight_for_coarsening(p4est_t *forest, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant);
   void                remove_internal_cavities(const bool export_cavities = false);
-  p4est_t*            construct_SES(const sas_generation_method& method_to_use = list_reduction, const bool SAS_timing_flag = false, const bool SAS_subtiming_flag = false, std::string vtk_folder = no_vtk);
+  p4est_t*            construct_SES(const sas_generation_method& method_to_use = list_reduction, const bool SAS_timing_flag = false, const bool SAS_subtiming_flag = false, string vtk_folder = "null");
   void                expand_ghost();
   Vec                 return_phi_vector();
   p4est_nodes_t*      return_nodes();
@@ -785,9 +783,12 @@ class my_p4est_biomolecules_solver_t{
   PetscErrorCode ierr;
 
   my_p4est_general_poisson_nodes_mls_solver_t*  jump_solver= NULL;
+  my_p4est_poisson_nodes_mls_t*                 jump_solver_v2= NULL;
   my_p4est_poisson_nodes_t*                     node_solver = NULL;
 
   Vec           psi_star;
+  Vec           psi_naught;
+  Vec           psi_bar;
   Vec           psi_hat;
   bool          psi_star_is_set;
   bool          psi_hat_is_set;
@@ -817,14 +818,13 @@ class my_p4est_biomolecules_solver_t{
       {
 #ifdef P4_TO_P8
         const Atom* a = mol.get_charged_atom(charged_atom_idx);
-        psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
+        psi_star_value += (a->q*SQR(electron)*((double) ion_charge))
+            /(length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
 #else
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,
         // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
         // psi_star_value += (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*mol_rel_permittivity*kB*temperature); // constant = 0
-        (void) x; (void) y; // to avoid compiler warning
 #endif
       }
     }
@@ -832,6 +832,8 @@ class my_p4est_biomolecules_solver_t{
   }
 
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
+  void          calculate_jumps_in_normal_gradient_with_psi_bar(Vec& eps_grad_n_psi_hat_jump);
+
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
@@ -877,12 +879,18 @@ public:
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
 
-  void          solve_linear() {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
+  void          solve_linear() {(void) solve_nonlinear_v2(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
   int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
-  void          get_solvation_free_energy(const bool &nonlinear_flag);
+  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000);
+  int           solve_nonlinear_first_approach(double upper_bound_residual = 1e-8, int it_max = 10000);
+  //void          get_solvation_free_energy(const bool &nonlinear_flag);
+  double        get_solvation_free_energy(const bool &nonlinear_flag);
+  double        get_solvation_free_energy_first_approach(const bool &nonlinear_flag);
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_hat_out);
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star(Vec& psi_star_out);
+  void          return_psi_bar(Vec& psi_bar_out);
+  void          calculate_psi_and_grad_psi(Vec& psi, Vec& grad_psi);
 
   ~my_p4est_biomolecules_solver_t();
 };

@@ -79,6 +79,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_cell_neighbors.h \
   $$PARCASL/src/my_p4est_faces.h \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.h \
+  $$PARCASL/src/my_p4est_grid_aligned_extension.h \
   $$PARCASL/src/my_p4est_hierarchy.h \
   $$PARCASL/src/my_p4est_integration_mls.h \
   $$PARCASL/src/my_p4est_interpolation.h \
@@ -128,6 +129,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.cpp \
+  $$PARCASL/src/my_p4est_grid_aligned_extension.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
   $$PARCASL/src/my_p4est_integration_mls.cpp \
   $$PARCASL/src/my_p4est_interpolation.cpp \
@@ -258,6 +260,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \
   $$PARCASL/src/my_p8est_save_load.cpp \
 #  $$PARCASL/src/my_p8est_scft.cpp \
+  $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p8est_semi_lagrangian_ml.cpp \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
   $$PARCASL/src/my_p8est_surfactant.cpp \

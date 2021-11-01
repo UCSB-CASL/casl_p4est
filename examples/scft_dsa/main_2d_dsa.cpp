@@ -32,10 +32,10 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_tools_mls.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_scft.h>
+#include <src/my_p8est_save_load.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -50,153 +50,441 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/my_p4est_shapes.h>
-#include <src/my_p4est_tools_mls.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_scft.h>
+#include <src/my_p4est_save_load.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
 
-#define CMD_OPTIONS for (short option_action = 0; option_action < 2; ++option_action)
-#define ADD_OPTION(cmd, var, description) option_action == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
-#define PARSE_OPTIONS(cmd, argc, argv) if (option_action == 0) cmd.parse(argc, argv);
+param_list_t pl;
+
 using namespace std;
 
 // comptational domain
-M_PARSER_DEFINE2(double, xmin, -1, "xmin")
-M_PARSER_DEFINE2(double, ymin, -1, "ymin")
-M_PARSER_DEFINE2(double, zmin, -1, "zmin")
-M_PARSER_DEFINE2(double, xmax,  1, "xmax")
-M_PARSER_DEFINE2(double, ymax,  1, "ymax")
-M_PARSER_DEFINE2(double, zmax,  1, "zmax")
+param_t<double> xmin (pl, -12.5, "xmin", "xmin");
+param_t<double> ymin (pl, -12.5, "ymin", "ymin");
+param_t<double> zmin (pl, -12.5, "zmin", "zmin");
 
-M_PARSER_DEFINE2(bool, px, 0, "periodicity in x-dimension 0/1")
-M_PARSER_DEFINE2(bool, py, 0, "periodicity in y-dimension 0/1")
-M_PARSER_DEFINE2(bool, pz, 0, "periodicity in z-dimension 0/1")
+param_t<double> xmax (pl,  12.5, "xmax", "xmax");
+param_t<double> ymax (pl,  12.5, "ymax", "ymax");
+param_t<double> zmax (pl,  12.5, "zmax", "zmax");
 
-M_PARSER_DEFINE2(int, nx, 1, "number of trees in x-dimension")
-M_PARSER_DEFINE2(int, ny, 1, "number of trees in y-dimension")
-M_PARSER_DEFINE2(int, nz, 1, "number of trees in z-dimension")
+param_t<int> nx (pl, 1, "nx", "number of trees in x-dimension");
+param_t<int> ny (pl, 1, "ny", "number of trees in y-dimension");
+param_t<int> nz (pl, 1, "nz", "number of trees in z-dimension");
 
 // grid parameters
 #ifdef P4_TO_P8
-M_PARSER_DEFINE2(int, lmin, 7, "min level of trees")
-M_PARSER_DEFINE2(int, lmax, 7, "max level of trees")
+param_t<int> lmin (pl, 7, "lmin", "min level of trees");
+param_t<int> lmax (pl, 7, "lmax", "max level of trees");
 #else
-M_PARSER_DEFINE2(int, lmin, 7, "min level of trees")
-M_PARSER_DEFINE2(int, lmax, 7, "max level of trees")
+param_t<int> lmin (pl, 8, "lmin", "min level of trees");
+param_t<int> lmax (pl, 8, "lmax", "max level of trees");
 #endif
-M_PARSER_DEFINE2(double, lip, 1.5, "Lipschitz constant")
+
+param_t<double> lip (pl, 1.5, "lip", "Lipschitz constant");
 
 // advection parameters
-M_PARSER_DEFINE2(double, cfl, 0.5, "")
-M_PARSER_DEFINE2(int, max_iterations, 1000, "")
-M_PARSER_DEFINE2(int, scheme, 2, "// 0 - pure curvature, 1 - Gaddiel's method, 2 - gradient-based method")
-M_PARSER_DEFINE2(double, curvature_penalty, 0.01, "")
+param_t<double> cfl               (pl, 0.5, "cfl", "");
+param_t<int>    max_iterations    (pl, 1000, "max_iterations", "");
+param_t<int>    scheme            (pl, 2, "scheme", "0 - pure curvature, 1 - Gaddiel's method, 2 - gradient-based method");
+param_t<double> curvature_penalty (pl, 0.01*0, "curvature_penalty", "");
 
 // scft parameters
-M_PARSER_DEFINE2(int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
-M_PARSER_DEFINE2(int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-M_PARSER_DEFINE2(bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-M_PARSER_DEFINE2(double, scft_tol,            1.e-3, "Tolerance for SCFT")
-M_PARSER_DEFINE2(double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
+param_t<int>    num_scft_subiters   (pl, 1, "num_scft_subiters",   "Maximum SCFT iterations");
+param_t<int>    max_scft_iterations (pl, 200, "max_scft_iterations",   "Maximum SCFT iterations");
+param_t<int>    bc_adjust_min       (pl, 5, "bc_adjust_min",     "Minimun SCFT steps between adjusting BC");
+param_t<bool>   smooth_pressure     (pl, 1, "smooth_pressure",     "Smooth pressure after first BC adjustment 0/1");
+param_t<double> scft_tol            (pl, 1.e-3, "scft_tol", "Tolerance for SCFT");
+param_t<double> scft_bc_tol         (pl, 1.e-2, "scft_bc_tol", "Tolerance for adjusting BC");
 
 // polymer
-M_PARSER_DEFINE2(double, box_size, 7, "Box size in units of Rg")
-M_PARSER_DEFINE2(double, f,        0.3, "Fraction of polymer A")
-M_PARSER_DEFINE2(double, XN,       25,  "Flory-Higgins interaction parameter")
-M_PARSER_DEFINE2(int,    ns,       40,  "Discretization of polymer chain")
+param_t<double> box_size (pl, 1, "box_size.val", "Box size in units of Rg");
+param_t<double> f        (pl, 0.3, "f", "Fraction of polymer A");
+param_t<double> XN       (pl, 30, "XN.val",  "Flory-Higgins interaction parameter");
+param_t<int>    ns       (pl, 60, "ns",  "Discretization of polymer chain");
 
 // output parameters
-M_PARSER_DEFINE2(bool, save_vtk, 1, "")
-M_PARSER_DEFINE2(int,  save_data, 1, "")
-M_PARSER_DEFINE2(int,  save_parameters, 1, "")
-M_PARSER_DEFINE2(int,  save_every_dn, 1, "")
+param_t<bool> save_vtk        (pl, 1, "save_vtk", "");
+param_t<bool> save_p4est      (pl, 1, "save_p4est", "");
+param_t<int>  save_data       (pl, 1, "save_data", "");
+param_t<int>  save_parameters (pl, 1, "save_parameters", "");
+param_t<int>  save_every_dn   (pl, 1, "save_every_dn", "");
 
 // problem setting
-M_PARSER_DEFINE2(int, num_target, 4, "Target design: 0 - one circle, 1 - two circles, 2 - three circles, 3 - four circles")
-M_PARSER_DEFINE2(int, num_guess, 0, "Type of initial guess: 0 - target with margins, 1 - enclosing box")
-M_PARSER_DEFINE2(int, num_seed, 0, "Seed for SCFT: 0 - target field")
-M_PARSER_DEFINE2(int, num_example, 0, "")
+param_t<int> num_target  (pl, 17, "num_target", "Target design: "
+                                                   "0 - no target (for testing), "
+                                                   "1 - one circle, "
+                                                   "2 - two circles, "
+                                                   "3 - three circles aligned, "
+                                                   "4 - three circles triangle, "
+                                                   "5 - six circles hexagonal, "
+                                                   "6 - six circles v-shape, "
+                                                   "7 - seven circles L-shape, ");
+param_t<int> num_guess   (pl, 0, "num_guess", "Type of initial guess: 0 - target with margins, 1 - enclosing box");
+param_t<int> num_seed    (pl, 0, "num_seed", "Seed for SCFT: 0 - target field, 1 - random");
+param_t<int> num_example (pl, 0, "num_example", "");
+
+param_t<bool> minimize (pl, 0, "minimize", "");
+
+param_t<int> design_check_frequency  (pl, 0, "design_check_frequency", "");
+param_t<int> design_check_iterations (pl, 200, "design_check_iterations", "");
 
 // geometry parameters
-M_PARSER_DEFINE2(double, r0, 1, "Radius of target wells")
-M_PARSER_DEFINE2(double, guess_margin, 1.5, "")
-M_PARSER_DEFINE2(double, target_smoothing, sqrt(XN), "")
+param_t<double> r0               (pl, 1, "r0", "Radius of target wells");
+param_t<double> guess_margin     (pl, 1.0, "guess_margin", "");
+param_t<double> target_smoothing (pl, sqrt(XN.val), "target_smoothing", "");
+param_t<double> mask_smoothing   (pl, 0.2, "mask_smoothing", "");
 
 // surface tension
-M_PARSER_DEFINE2(double, XN_wall_avg, 0, "Polymer-air surface energy strength: average")
-M_PARSER_DEFINE2(double, XN_wall_del, 0, "Polymer-air surface energy strength: difference")
+param_t<double> XN_wall_avg (pl, 0.0, "XN.val_wall_avg", "Polymer-air surface energy strength: average");
+param_t<double> XN_wall_del (pl, 0.0, "XN.val_wall_del", "Polymer-air surface energy strength: difference");
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
+
+param_t<double> dist  (pl, 3.5, "dist", "Characteristic distance between wells");
+param_t<double> angle (pl, 120, "angle", "Characteristic distance between wells");
 
 /* target morphology */
 class phi_target_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_target)
+    switch (num_target.val)
     {
-      case 0: // 1 cylinder
-        {
-          double xc0 = 0.0, yc0 = 0.0;
-
-          return sqrt(SQR(x-xc0/box_size)+SQR(y-yc0/box_size)) - r0/box_size;
-        }
-      case 1: // 2 cylinders
-        {
-          double xc0 = -1.6, yc0 = 0;
-          double xc1 =  1.6, yc1 = 0;
-
-          double phi0 = sqrt(SQR(x-xc0/box_size)+SQR(y-yc0/box_size)) - r0/box_size;
-          double phi1 = sqrt(SQR(x-xc1/box_size)+SQR(y-yc1/box_size)) - r0/box_size;
-
-          return MIN(phi0, phi1);
-        }
-      case 2: // 3 cylinders
-        {
-          double dist = 1.7;
-          double h = dist*cos(PI/6.);
-          double xc0 = -dist, yc0 = -h;
-          double xc1 =  dist, yc1 = -h;
-          double xc2 =  0.0,  yc2 =  h;
-
-          double phi0 = sqrt(SQR(x-xc0/box_size)+SQR(y-yc0/box_size)) - r0/box_size;
-          double phi1 = sqrt(SQR(x-xc1/box_size)+SQR(y-yc1/box_size)) - r0/box_size;
-          double phi2 = sqrt(SQR(x-xc2/box_size)+SQR(y-yc2/box_size)) - r0/box_size;
-
-          return MIN(phi0, phi1, phi2);
-        }
-      case 3: // 4 cylinders
-        {
-          double dist = 1.7;
-          double xc0 = -dist, yc0 = -dist;
-          double xc1 =  dist, yc1 = -dist;
-          double xc2 = -dist, yc2 =  dist;
-          double xc3 =  dist, yc3 =  dist;
-
-          double phi0 = sqrt(SQR(x-xc0/box_size)+SQR(y-yc0/box_size)) - r0/box_size;
-          double phi1 = sqrt(SQR(x-xc1/box_size)+SQR(y-yc1/box_size)) - r0/box_size;
-          double phi2 = sqrt(SQR(x-xc2/box_size)+SQR(y-yc2/box_size)) - r0/box_size;
-          double phi3 = sqrt(SQR(x-xc3/box_size)+SQR(y-yc3/box_size)) - r0/box_size;
-
-          return MIN(MIN(phi0, phi1), MIN(phi2, phi3));
-        }
-      case 4: // rectangular
+      case 0:
+      return 0;
+      case 1: // 1 cylinder
       {
-        double H = 1/box_size;
-        double W = 7/box_size;
-        double phi_v = MAX(x-.5*W, -x-.5*W);
-        double phi_h = MAX(y-.5*H, -y-.5*H);
+        int num = 1;
+        double xc[] = {0.0};
+        double yc[] = {0.0};
+        double rc[] = {r0.val};
 
-        return smooth_max(phi_h, phi_v, 0.01);
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
       }
+      case 2: // 2 cylinders
+      {
+        int num = 2;
+        double xc[] = { -.5*dist.val, .5*dist.val };
+        double yc[] = { 0.0, 0.0 };
+        double rc[] = { r0.val, r0.val };
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 3: // 3 cylinders aligned
+      {
+        int num = 3;
+        double xc[] = { -dist.val, 0, dist.val };
+        double yc[] = { 0, 0, 0 };
+        double rc[] = { r0.val, r0.val, r0.val };
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 4: // 3 cylinders triangle
+      {
+        double h = dist.val*cos(PI/6.);
+        double xc0 = -.5*dist.val, yc0 = -.5*h;
+        double xc1 =  .5*dist.val, yc1 = -.5*h;
+        double xc2 =  0.0,  yc2 = .5*h;
+
+        double phi0 = sqrt(SQR(x-xc0/box_size.val)+SQR(y-yc0/box_size.val)) - r0.val/box_size.val;
+        double phi1 = sqrt(SQR(x-xc1/box_size.val)+SQR(y-yc1/box_size.val)) - r0.val/box_size.val;
+        double phi2 = sqrt(SQR(x-xc2/box_size.val)+SQR(y-yc2/box_size.val)) - r0.val/box_size.val;
+
+        return MIN(phi0, phi1, phi2);
+      }
+      case 5: // 7 cylinders hex
+      {
+        int num = 7;
+        double h = dist.val*cos(PI/6.);
+        double xc[] = { 0, -dist.val, dist.val, -.5*dist.val, .5*dist.val, -.5*dist.val, .5*dist.val };
+        double yc[] = { 0, 0, 0, -h, -h, h, h };
+        double rc[] = { r0.val, r0.val, r0.val, r0.val, r0.val, r0.val, r0.val };
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 6: // 6 cylinders V-shaped
+      {
+        int num = 6;
+        double h = dist.val*cos(PI/4.);
+        double xc[] = { -.55*dist.val - 2.*h, -.55*dist.val - 1.*h, -.55*dist.val,
+                         .55*dist.val + 2.*h,  .55*dist.val + 1.*h,  .55*dist.val};
+        double yc[] = { -h, 0, h, -h, 0, h, };
+        double rc[] = { r0.val, r0.val, r0.val, r0.val, r0.val, r0.val };
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 7: // 5 cylinders L-shaped
+      {
+        const int num = 5;
+        double xc[num], yc[num], rc[num];
+        yc[0] = -dist.val; xc[0] = -2.*dist.val; rc[0] = r0.val;
+        yc[1] = -dist.val; xc[1] = -1.*dist.val; rc[1] = r0.val;
+        yc[2] = -dist.val; xc[2] = -0.*dist.val; rc[2] = r0.val;
+        yc[3] = -dist.val + 1.*dist.val*sin(angle.val/180.*PI); xc[3] = -1.*dist.val*cos(angle.val/180.*PI); rc[3] = r0.val;
+        yc[4] = -dist.val + 2.*dist.val*sin(angle.val/180.*PI); xc[4] = -2.*dist.val*cos(angle.val/180.*PI); rc[4] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 8: // 3 cylinders L-shaped
+      {
+        int num = 3;
+        double xc[] = { -0.5*dist.val, -0.5*dist.val,  0.5*dist.val };
+        double yc[] = { -0.5*dist.val,  0.5*dist.val,  0.5*dist.val };
+        double rc[] = { r0.val, r0.val, r0.val };
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+      }
+      case 9: // 9 cylinders grqid
+      {
+        const int num = 5;
+        double xc[num], yc[num], rc[num];
+        yc[0] = -dist.val; xc[0] = -2.*dist.val; rc[0] = r0.val;
+        yc[1] = -dist.val; xc[1] = -1.*dist.val; rc[1] = r0.val;
+        yc[2] = -dist.val; xc[2] = -0.*dist.val; rc[2] = r0.val;
+        yc[3] = -dist.val + 1.*dist.val*sin(angle.val/180.*PI); xc[3] = -1.*dist.val*cos(angle.val/180.*PI); rc[3] = r0.val;
+        yc[4] = -dist.val + 2.*dist.val*sin(angle.val/180.*PI); xc[4] = -2.*dist.val*cos(angle.val/180.*PI); rc[4] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+
+        return result;
+
+        return result;
+      }
+      case 10: // 6 cylinders split
+      {
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        double dx = dist.val*cos(1.*PI/3.);
+        double dy = dist.val*sin(1.*PI/3.);
+        xc[0] = -1.*dist.val; yc[0] = 0; rc[0] = r0.val;
+        xc[1] = -0.*dist.val; yc[1] = 0; rc[1] = r0.val;
+        xc[2] = dx+1.*dist.val; yc[2] = dy; rc[2] = r0.val;
+        xc[3] = dx+0.*dist.val; yc[3] = dy; rc[3] = r0.val;
+        xc[4] = dx+1.*dist.val; yc[4] = -dy; rc[4] = r0.val;
+        xc[5] = dx+0.*dist.val; yc[5] = -dy; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 11: // 7 cylinders H
+      {
+        int num = 7;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  0.*dist.val; yc[0] =  0.*dist.val; rc[0] = r0.val;
+        xc[1] = -1.*dist.val; yc[1] = -1.*dist.val; rc[1] = r0.val;
+        xc[2] =  0.*dist.val; yc[2] = -1.*dist.val; rc[2] = r0.val;
+        xc[3] =  1.*dist.val; yc[3] = -1.*dist.val; rc[3] = r0.val;
+        xc[4] = -1.*dist.val; yc[4] =  1.*dist.val; rc[4] = r0.val;
+        xc[5] =  0.*dist.val; yc[5] =  1.*dist.val; rc[5] = r0.val;
+        xc[6] =  1.*dist.val; yc[6] =  1.*dist.val; rc[6] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 12: // 6 cylinders connector
+      {
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  0.*dist.val; yc[0] =  0.*dist.val; rc[0] = r0.val;
+        xc[1] = -1.*dist.val; yc[1] =  0.*dist.val; rc[1] = r0.val;
+        xc[2] = -2.*dist.val; yc[2] =  0.*dist.val; rc[2] = r0.val;
+        xc[3] =  0.*dist.val; yc[3] =  1.*dist.val; rc[3] = r0.val;
+        xc[4] =  1.*dist.val; yc[4] =  1.*dist.val; rc[4] = r0.val;
+        xc[5] =  2.*dist.val; yc[5] =  1.*dist.val; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 13: // U
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 8;
+        double xc[num], yc[num], rc[num];
+        xc[0] = -(.5+dx)*dist.val; yc[0] =  (1.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (.5+dx)*dist.val; yc[1] =  (1.   )*dist.val; rc[1] = r0.val;
+        xc[2] = -(.5+dx)*dist.val; yc[2] =  (0.   )*dist.val; rc[2] = r0.val;
+        xc[3] =  (.5+dx)*dist.val; yc[3] =  (0.   )*dist.val; rc[3] = r0.val;
+        xc[4] = -(.5+dx)*dist.val; yc[4] = -(1.   )*dist.val; rc[4] = r0.val;
+        xc[5] =  (.5+dx)*dist.val; yc[5] = -(1.   )*dist.val; rc[5] = r0.val;
+        xc[6] = -(.5   )*dist.val; yc[6] = -(1.+dx)*dist.val; rc[6] = r0.val;
+        xc[7] =  (.5   )*dist.val; yc[7] = -(1.+dx)*dist.val; rc[7] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 14: // C
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (.5+dx)*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] = -(.5+dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (1.   )*dist.val; yc[2] =  (.5+dx)*dist.val; rc[2] = r0.val;
+        xc[3] =  (1.   )*dist.val; yc[3] = -(.5+dx)*dist.val; rc[3] = r0.val;
+        xc[4] = -(0.+dx)*dist.val; yc[4] =  (.5   )*dist.val; rc[4] = r0.val;
+        xc[5] = -(0.+dx)*dist.val; yc[5] = -(.5   )*dist.val; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 15: // S
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 7;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (0.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] =  (2.*dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (0.   )*dist.val; yc[2] = -(2.*dx)*dist.val; rc[2] = r0.val;
+        xc[3] =  (1.*dx)*dist.val; yc[3] = -(1.*dx)*dist.val; rc[3] = r0.val;
+        xc[4] = -(1.*dx)*dist.val; yc[4] =  (1.*dx)*dist.val; rc[4] = r0.val;
+        xc[5] =  (1.   )*dist.val; yc[5] =  (2.*dx)*dist.val; rc[5] = r0.val;
+        xc[6] = -(1.   )*dist.val; yc[6] = -(2.*dx)*dist.val; rc[6] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 16: // B
+      {
+        double dx = 0.5*sqrt(2.);
+        int num = 9;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  (0.   )*dist.val; yc[0] =  (0.   )*dist.val; rc[0] = r0.val;
+        xc[1] =  (0.   )*dist.val; yc[1] =  (2.*dx)*dist.val; rc[1] = r0.val;
+        xc[2] =  (0.   )*dist.val; yc[2] = -(2.*dx)*dist.val; rc[2] = r0.val;
+        xc[3] = -(1.   )*dist.val; yc[3] =  (2.*dx)/3.*dist.val; rc[3] = r0.val;
+        xc[8] = -(1.   )*dist.val; yc[8] = -(2.*dx)/3.*dist.val; rc[8] = r0.val;
+        xc[4] = -(1.   )*dist.val; yc[4] =  (2.*dx)*dist.val; rc[4] = r0.val;
+        xc[5] = -(1.   )*dist.val; yc[5] = -(2.*dx)*dist.val; rc[5] = r0.val;
+        xc[6] =  (0.+dx)*dist.val; yc[6] =  (0.+dx)*dist.val; rc[6] = r0.val;
+        xc[7] =  (0.+dx)*dist.val; yc[7] = -(0.+dx)*dist.val; rc[7] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 17: // A
+      {
+        int num = 9;
+        double xc[num], yc[num], rc[num];
+        xc[0] = 0.0 *dist.val; yc[0] = 0.0 *dist.val; rc[0] = r0.val;
+        xc[1] = 0.0 *dist.val; yc[1] = 2.0 *dist.val; rc[1] = r0.val;
+        xc[2] = 1.0 *dist.val; yc[2] =-1.0 *dist.val; rc[2] = r0.val;
+        xc[3] = 1.0 *dist.val; yc[3] = 0.0 *dist.val; rc[3] = r0.val;
+        xc[4] = 1.0 *dist.val; yc[4] = 1.0 *dist.val; rc[4] = r0.val;
+        xc[5] = 1.0 *dist.val; yc[5] = 2.0 *dist.val; rc[5] = r0.val;
+        xc[6] =-0.5 *dist.val; yc[6] = 1.0 *dist.val; rc[6] = r0.val;
+        xc[7] =-1.0 *dist.val; yc[7] = 0.0 *dist.val; rc[7] = r0.val;
+        xc[8] =-1.5 *dist.val; yc[8] =-1.0 *dist.val; rc[8] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      case 18: // L
+      {
+        int num = 6;
+        double xc[num], yc[num], rc[num];
+        xc[0] =  -1. *dist.val; yc[0] =  2. *dist.val; rc[0] = r0.val;
+        xc[1] =  -1. *dist.val; yc[1] =  1. *dist.val; rc[1] = r0.val;
+        xc[2] =  -1. *dist.val; yc[2] =  0. *dist.val; rc[2] = r0.val;
+        xc[3] =  -1. *dist.val; yc[3] = -1. *dist.val; rc[3] = r0.val;
+        xc[4] =   0. *dist.val; yc[4] = -1. *dist.val; rc[4] = r0.val;
+        xc[5] =   1. *dist.val; yc[5] = -1. *dist.val; rc[5] = r0.val;
+
+        double result = 100;
+        for (int i = 0; i < num; ++i) {
+          double current = sqrt(SQR(x-xc[i]/box_size.val)+SQR(y-yc[i]/box_size.val)) - rc[i]/box_size.val;
+          result = MIN(result, current);
+        }
+        return result;
+      }
+      default: throw std::invalid_argument("Choose a valid test number");
     }
   }
 } phi_target_cf;
@@ -204,16 +492,16 @@ public:
 class target_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    double phi = phi_target_cf(x,y P8C(z));
+    double phi = phi_target_cf(DIM(x, y, z));
     double sign = -1;
 
     if      (phi > 0) sign = 1;
     else if (phi < 0) sign =-1;
     else              sign = 0;
 
-    return 0.5*XN*(sign*(exp(-fabs(phi)*target_smoothing*box_size)-1.0));
+    return 0.6*XN.val*(sign*(exp(-fabs(phi)*target_smoothing.val*box_size.val)-1.0));
   }
 } target_cf;
 
@@ -221,11 +509,11 @@ public:
 class guess_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_guess)
+    switch (num_guess.val)
     {
-      case 0: return phi_target_cf(x,y P8C(z)) - guess_margin/box_size;
+      case 0: return phi_target_cf(DIM(x, y, z)) - guess_margin.val/box_size.val;
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -235,17 +523,12 @@ public:
 class seed_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z) ) const
+  double operator()(DIM(double x, double y, double z) ) const
   {
-    switch (num_seed)
+    switch (num_seed.val)
     {
-      case 0: return 0;
-      case 1: return sin(6.*PI*x)*.5*XN;
-      case 2: return sin(6.*PI*y)*.5*XN;
-      case 3: return sin(6.*PI*x)*cos(6.*PI*y)*.5*XN;
-#ifdef P4_TO_P8
-      case 4: return sin(6.*PI*x)*cos(6.*PI*y)*cos(6.*PI*z)*.5*XN;
-#endif
+      case 0: return target_cf(DIM(x,y,z));
+      case 1: return 0.0*0.5*XN.val*(1.-2.*double(rand())/double(RAND_MAX));
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -255,20 +538,49 @@ public:
 class gamma_A_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_wall_avg + XN_wall_del);
+    EXECD((void) x, (void) y, (void) z);
+    return sqrt(XN_wall_avg.val + XN_wall_del.val);
   }
 } gamma_A_cf;
 
 class gamma_B_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    return sqrt(XN_wall_avg - XN_wall_del);
+    EXECD((void) x, (void) y, (void) z);
+    return sqrt(XN_wall_avg.val - XN_wall_del.val);
   }
 } gamma_B_cf;
+
+class vx_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return -x*cos(5.*t);
+  }
+} vx_cf;
+
+class vy_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return y*sin(5.*t);
+  }
+} vy_cf;
+
+class random_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double, double, double)) const
+  {
+    return 0.001*0.5*XN.val*(1.-2.*double(rand())/double(RAND_MAX));
+  }
+} random_cf;
 
 inline void interpolate_between_grids(my_p4est_interpolation_nodes_t &interp, p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, Vec *vec, Vec parent=NULL, interpolation_method method=quadratic_non_oscillatory_continuous_v2)
 {
@@ -288,10 +600,6 @@ inline void interpolate_between_grids(my_p4est_interpolation_nodes_t &interp, p4
   *vec = tmp;
 }
 
-void set_parameters();
-void write_parameters(MPI_Comm mpicomm, const std::string &output);
-void parse_cmd(int argc, char* argv[]);
-
 PetscErrorCode ierr;
 
 int main (int argc, char* argv[])
@@ -310,57 +618,47 @@ int main (int argc, char* argv[])
     return -1;
   }
 
-  std::ostringstream command;
+  if (mpi.rank() == 0) {
+    std::ostringstream command;
 
-  command << "mkdir -p " << out_dir << "/vtu";
-  int ret_sys = system(command.str().c_str());
-  if(ret_sys < 0)
-    throw std::invalid_argument("Could not create directory");
+    command << "mkdir -p " << out_dir << "/vtu";
+    int ret_sys = system(command.str().c_str());
+    if(ret_sys < 0)
+      throw std::invalid_argument("Could not create directory");
+  }
+
+  FILE *file_conv;
+  char file_conv_name[10000];
+  if (save_data())
+  {
+    sprintf(file_conv_name, "%s/data.dat", out_dir);
+
+    ierr = PetscFOpen(mpi.comm(), file_conv_name, "w", &file_conv); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), file_conv, "iteration "
+                                               "energy "
+                                               "energy_change_predicted "
+                                               "energy_change_effective\n"); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
+  }
 
   /* parse command line arguments */
   cmdParser cmd;
-  CMD_OPTIONS
-  {
-    ADD_OPTION(cmd, nx, "number of trees in x-dimension");
-    ADD_OPTION(cmd, ny, "number of trees in y-dimension");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, nz, "number of trees in z-dimension");
-#endif
+  pl.initialize_parser(cmd);
+  cmd.parse(argc, argv);
+  pl.set_from_cmd_all(cmd);
 
-    ADD_OPTION(cmd, px, "periodicity in x-dimension 0/1");
-    ADD_OPTION(cmd, py, "periodicity in y-dimension 0/1");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, pz, "periodicity in z-dimension 0/1");
-#endif
-
-    ADD_OPTION(cmd, xmin, "xmin"); ADD_OPTION(cmd, xmax, "xmax");
-    ADD_OPTION(cmd, ymin, "ymin"); ADD_OPTION(cmd, ymax, "ymax");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, zmin, "zmin"); ADD_OPTION(cmd, zmax, "zmax");
-#endif
-
-    ADD_OPTION(cmd, lmin, "min level of trees");
-    ADD_OPTION(cmd, lmax, "max level of trees");
-    ADD_OPTION(cmd, lip,  "Lipschitz constant");
-
-    ADD_OPTION(cmd, save_vtk,  "save_vtk");
-
-    PARSE_OPTIONS(cmd, argc, argv);
+  if (mpi.rank() == 0 && save_parameters()) {
+    std::ostringstream file;
+    file << out_dir << "/parameters.dat";
+    pl.save_all(file.str().c_str());
   }
 
-  double scalling = 1./box_size;
+  double scaling = 1./box_size.val;
 
-#ifdef P4_TO_P8
-  double xyz_min[] = { xmin, ymin, zmin };
-  double xyz_max[] = { xmax, ymax, zmax };
-  int nb_trees[] = { nx, ny, nz };
-  int periodic[] = { px, py, pz };
-#else
-  double xyz_min[] = { xmin, ymin };
-  double xyz_max[] = { xmax, ymax };
-  int nb_trees[] = { nx, ny };
-  int periodic[] = { px, py };
-#endif
+  double xyz_min[] = { DIM(xmin.val, ymin.val, zmin.val) };
+  double xyz_max[] = { DIM(xmax.val, ymax.val, zmax.val) };
+  int nb_trees[] = { DIM(nx.val, ny.val, nz.val) };
+  int periodic[] = { DIM(0, 0, 0) };
 
   /* create the p4est */
   my_p4est_brick_t brick;
@@ -368,10 +666,11 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
   p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-  splitting_criteria_cf_t data(lmin, lmax, &guess_cf, lip);
+  splitting_criteria_cf_t data(lmin.val, lmax.val, &guess_cf, lip.val);
+  data.set_refine_only_inside(1);
 
   p4est->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est, P4EST_TRUE, refine_inside_levelset_cf, NULL);
+  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -382,12 +681,17 @@ int main (int argc, char* argv[])
   ngbd->init_neighbors();
 
   double dxyz[P4EST_DIM], h, diag;
-  get_dxyz_min(p4est, dxyz, h, diag);
+  get_dxyz_min(p4est, dxyz, &h, &diag);
 
   /* initialize geometry */
-  Vec phi;
+  Vec phi; // phi is the template for all other Vec's
   ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   sample_cf_on_nodes(p4est, nodes, guess_cf, phi);
+
+  VecShiftGhost(phi, -mask_smoothing.val/box_size.val);
+  my_p4est_level_set_t ls(ngbd);
+  ls.reinitialize_2nd_order(phi);
+  VecShiftGhost(phi,  mask_smoothing.val/box_size.val);
 
   /* initialize potentials */
   Vec mu_m; ierr = VecDuplicate(phi, &mu_m); CHKERRXX(ierr);
@@ -395,7 +699,7 @@ int main (int argc, char* argv[])
   Vec nu_m; ierr = VecDuplicate(phi, &nu_m); CHKERRXX(ierr);
   Vec nu_p; ierr = VecDuplicate(phi, &nu_p); CHKERRXX(ierr);
 
-  sample_cf_on_nodes(p4est, nodes, target_cf, mu_m);
+  sample_cf_on_nodes(p4est, nodes, seed_cf, mu_m);
   VecSetGhost(mu_p, 0);
   VecSetGhost(nu_m, 0);
   VecSetGhost(nu_p, 0);
@@ -403,12 +707,14 @@ int main (int argc, char* argv[])
   double cost_function_nnn = 0;
   double cost_function_nm1 = 0;
 
+  double rho_avg_old = 1;
+
   /* main loop */
   int iteration = 0;
-  while (iteration < max_iterations)
+  while (iteration < max_iterations.val)
   {
     std::vector<Vec> phi_all(1);
-    std::vector<action_t> acn(1, INTERSECTION);
+    std::vector<mls_opn_t> acn(1, MLS_INTERSECTION);
     std::vector<int> clr(1);
 
     phi_all[0] = phi; clr[0] = 0;
@@ -433,64 +739,108 @@ int main (int argc, char* argv[])
     compute_normals_and_mean_curvature(*ngbd, phi, normal, kappa);
     ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, kappa, phi);
 
+    if (design_check_frequency() > 0) {
+      if (iteration%design_check_frequency() == 0) {
+
+        my_p4est_scft_t scft(ngbd, ns.val);
+
+        scft.add_boundary(phi, MLS_INT, gamma_A_cf, gamma_B_cf);
+
+        scft.set_scaling(scaling);
+        scft.set_polymer(f.val, XN.val);
+        scft.set_rho_avg(rho_avg_old);
+
+        Vec mu_m_tmp = scft.get_mu_m();
+        Vec mu_p_tmp = scft.get_mu_p();
+
+        sample_cf_on_nodes(p4est, nodes, random_cf, mu_m_tmp);
+        VecSetGhost(mu_p_tmp, 0);
+
+        scft.initialize_solvers();
+        scft.initialize_bc_smart(iteration != 0);
+
+        int scft_iteration = 0;
+        double scft_error = 2.*scft_tol.val;
+        bool adaptive = false;
+        while (scft_iteration < design_check_iterations.val)
+        {
+          for (int i= num_scft_subiters.val;i--;) {
+            scft.initialize_bc_smart(adaptive); adaptive = true;
+            scft.solve_for_propogators();
+            scft.calculate_densities();
+            ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+                               scft_iteration,
+                               scft.get_energy(),
+                               scft.get_pressure_force(),
+                               scft.get_exchange_force()); CHKERRXX(ierr);
+          }
+          scft.solve_for_propogators();
+          scft.calculate_densities();
+          scft.update_potentials();
+          scft_iteration++;
+
+          scft.save_VTK(scft_iteration);
+          ierr = PetscPrintf(mpi.comm(), "Desing check: %d Energy: %e; Pressure: %e; Exchange: %e\n", scft_iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force()); CHKERRXX(ierr);
+          scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
+        }
+      }
+    }
+
     /* get density field and non-curvature velocity */
-    Vec velo;
-    ierr = VecDuplicate(phi, &velo); CHKERRXX(ierr);
+    Vec shape_grad;
+    ierr = VecDuplicate(phi, &shape_grad); CHKERRXX(ierr);
 
-    if (scheme == 2)
+    bool adaptive = false;
+
+    if (scheme.val == 2)
     {
-      my_p4est_scft_t scft(ngbd);
+      my_p4est_scft_t scft(ngbd, ns.val);
 
-      scft.set_scalling(scalling);
-      scft.set_polymer(f, XN, ns);
-      scft.set_geometry(phi_all, acn);
+      scft.add_boundary(phi, MLS_INT, gamma_A_cf, gamma_B_cf);
+
+      scft.set_scaling(scaling);
+      scft.set_polymer(f.val, XN.val);
+      scft.set_rho_avg(rho_avg_old);
 
       Vec mu_m_tmp = scft.get_mu_m();
       Vec mu_p_tmp = scft.get_mu_p();
 
       VecCopyGhost(mu_m, mu_m_tmp);
       VecCopyGhost(mu_p, mu_p_tmp);
+      VecSetGhost(mu_p_tmp, 0);
 
-      std::vector<CF_DIM *> gamma_a_cf(1, NULL);
-      std::vector<CF_DIM *> gamma_b_cf(1, NULL);
-
-      gamma_a_cf[0] = &gamma_A_cf;
-      gamma_b_cf[0] = &gamma_B_cf;
-
-      scft.set_surface_tensions(gamma_a_cf, gamma_b_cf, zero_cf);
-
-      scft.initialize_linear_system();
+      scft.initialize_solvers();
       scft.initialize_bc_smart(iteration != 0);
 
       int scft_iteration = 0;
-      double scft_error = 2.*scft_tol;
+      double scft_error = 2.*scft_tol.val;
       int bc_iters = 0;
-      while (scft_iteration < max_scft_iterations && scft_error > scft_tol || scft_iteration < bc_adjust_min+1 || bc_iters == 0)
+      while (scft_iteration < max_scft_iterations.val && scft_error > scft_tol.val)
       {
+        for (int i= num_scft_subiters.val;i--;) {
+          scft.initialize_bc_smart(adaptive); adaptive = true;
+          scft.solve_for_propogators();
+          scft.calculate_densities();
+//          scft.save_VTK(scft_iteration++);
+          ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n",
+                             scft_iteration,
+                             scft.get_energy(),
+                             scft.get_pressure_force(),
+                             scft.get_exchange_force()); CHKERRXX(ierr);
+        }
         scft.solve_for_propogators();
         scft.calculate_densities();
         scft.update_potentials();
         scft_iteration++;
         bc_iters++;
 
-        if (scft.get_exchange_force() < scft_bc_tol && bc_iters >= bc_adjust_min)
-        {
-          scft.initialize_bc_smart();
-          if (smooth_pressure)
-          {
-            scft.smooth_singularity_in_pressure_field();
-            smooth_pressure = false;
-          }
-          scft.recompute_matrices();
-//          scft.initialize_linear_system();
-          ierr = PetscPrintf(mpi.comm(), "Robin coefficients have been adjusted\n"); CHKERRXX(ierr);
-          bc_iters = 0;
-        }
-
+        scft.save_VTK(scft_iteration);
         ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n", scft_iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force()); CHKERRXX(ierr);
 
         scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
       }
+
+      rho_avg_old = scft.get_rho_avg();
 
       scft.sync_and_extend();
       scft.dsa_initialize();
@@ -502,10 +852,12 @@ int main (int argc, char* argv[])
       VecCopyGhost(mu_t, mu_t_tmp);
       VecCopyGhost(nu_m, nu_m_tmp);
       VecCopyGhost(nu_p, nu_p_tmp);
+      VecSetGhost(nu_m_tmp, 0);
+      VecSetGhost(nu_p_tmp, 0);
 
       scft_iteration = 0;
-      scft_error = 2.*scft_tol;
-      while (scft_iteration < max_scft_iterations && scft_error > scft_tol)
+      scft_error = 2.*scft_tol.val;
+      while (scft_iteration < max_scft_iterations.val && scft_error > scft_tol.val)
       {
         scft.dsa_solve_for_propogators();
         scft.dsa_compute_densities();
@@ -517,10 +869,13 @@ int main (int argc, char* argv[])
 
       scft.dsa_sync_and_extend();
 
+      cost_function_nm1 = cost_function_nnn;
       cost_function_nnn = scft.dsa_get_cost_function();
-      scft.dsa_compute_shape_gradient(0, velo);
+      scft.dsa_compute_shape_gradient(0, shape_grad);
 
-      VecScaleGhost(velo, -1);
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, shape_grad, phi);
+
+      VecScaleGhost(shape_grad, -1);
 
       VecCopyGhost(mu_m_tmp, mu_m);
       VecCopyGhost(mu_p_tmp, mu_p);
@@ -528,18 +883,19 @@ int main (int argc, char* argv[])
       VecCopyGhost(nu_m_tmp, nu_m);
       VecCopyGhost(nu_p_tmp, nu_p);
     }
-    else if (scheme == 1)
+    else if (scheme.val == 1)
     {
       sample_cf_on_nodes(p4est, nodes, target_cf, mu_m);
 
       VecSetGhost(nu_m, 0);
       VecSetGhost(nu_p, 0);
 
-      my_p4est_scft_t scft(ngbd);
+      my_p4est_scft_t scft(ngbd, ns.val);
 
-      scft.set_scalling(scalling);
-      scft.set_polymer(f, XN, ns);
-      scft.set_geometry(phi_all, acn);
+      scft.set_scaling(scaling);
+      scft.set_polymer(f.val, XN.val);
+      scft.add_boundary(phi, MLS_INT, gamma_A_cf, gamma_B_cf);
+      scft.set_rho_avg(1);
 
       Vec mu_m_tmp = scft.get_mu_m();
       Vec mu_p_tmp = scft.get_mu_p();
@@ -547,20 +903,12 @@ int main (int argc, char* argv[])
       VecCopyGhost(mu_m, mu_m_tmp);
       VecCopyGhost(mu_p, mu_p_tmp);
 
-      std::vector<CF_DIM *> gamma_a_cf(1, NULL);
-      std::vector<CF_DIM *> gamma_b_cf(1, NULL);
-
-      gamma_a_cf[0] = &gamma_A_cf;
-      gamma_b_cf[0] = &gamma_B_cf;
-
-      scft.set_surface_tensions(gamma_a_cf, gamma_b_cf, zero_cf);
-
-      scft.initialize_linear_system();
+      scft.initialize_solvers();
       scft.initialize_bc_smart(true);
 
       int scft_iteration = 0;
-      double scft_error = 2.*scft_tol;
-      while (scft_iteration < max_scft_iterations && scft_error > scft_tol)
+      double scft_error = 2.*scft_tol.val;
+      while (scft_iteration < max_scft_iterations.val && scft_error > scft_tol.val)
       {
         scft.solve_for_propogators();
         scft.calculate_densities();
@@ -574,31 +922,35 @@ int main (int argc, char* argv[])
 
       scft.sync_and_extend();
 
-      VecCopyGhost(mu_p_tmp, velo);
-      VecScaleGhost(velo, 1);
+      cost_function_nnn = scft.dsa_get_cost_function();
+      VecCopyGhost(mu_p_tmp, shape_grad);
+
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, shape_grad, phi);
+
+//      VecScaleGhost(shape_grad, -1);
+
+      VecCopyGhost(mu_m_tmp, mu_m);
       VecCopyGhost(mu_p_tmp, mu_p);
 
-      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, velo, phi);
+      VecSetGhost(nu_m, 0);
+      VecSetGhost(nu_p, 0);
     }
-    else if (scheme == 0)
+    else if (scheme.val == 0)
     {
-      sample_cf_on_nodes(p4est, nodes, target_cf, mu_m);
+      sample_cf_on_nodes(p4est, nodes, seed_cf, mu_m);
       VecSetGhost(mu_p, 0);
-      VecSetGhost(velo, 0);
+      VecSetGhost(shape_grad, 0);
 
       VecSetGhost(nu_m, 0);
       VecSetGhost(nu_p, 0);
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e\n", cost_function_nnn, cost_function_nnn-cost_function_nm1);
-    cost_function_nm1 = cost_function_nnn;
-
-    /* compute velocity and contact angle */
+    // -------------------------------------------
+    // compute full shape gradient
+    // -------------------------------------------
     Vec surf_tns;
-    Vec cos_angle;
 
     ierr = VecDuplicate(phi, &surf_tns); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &cos_angle); CHKERRXX(ierr);
 
     double *mu_m_ptr;
     double *mu_t_ptr;
@@ -610,14 +962,8 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(nu_m, &nu_m_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
 
-    double xyz[P4EST_DIM];
-    foreach_node(n, nodes)
-    {
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-      double gA = gamma_A_cf.value(xyz)*scalling;
-      double gB = gamma_B_cf.value(xyz)*scalling;
-
-      surf_tns_ptr[n] = curvature_penalty + (sqrt(XN_wall_avg+XN_wall_del) - sqrt(XN_wall_avg-XN_wall_del))*(mu_m_ptr[n] - mu_t_ptr[n] + nu_m_ptr[n])/XN;
+    foreach_node(n, nodes) {
+      surf_tns_ptr[n] = curvature_penalty.val + 1*(sqrt(XN_wall_avg.val+XN_wall_del.val) - sqrt(XN_wall_avg.val-XN_wall_del.val))*(mu_m_ptr[n] - mu_t_ptr[n] + nu_m_ptr[n])/XN.val;
     }
 
     ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
@@ -625,86 +971,126 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(nu_m, &nu_m_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
 
-    // average velocity
-    Vec velo_full;
-    Vec velo_full_tmp;
+    Vec shape_grad_full;
     Vec surf_tns_d[P4EST_DIM];
     Vec tmp;
 
-    ierr = VecDuplicate(phi, &velo_full); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &velo_full_tmp); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &shape_grad_full); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &tmp); CHKERRXX(ierr);
     foreach_dimension(dim) { ierr = VecDuplicate(normal[dim], &surf_tns_d[dim]); CHKERRXX(ierr); }
 
     ls.extend_from_interface_to_whole_domain_TVD(phi, surf_tns, tmp);
-    VecPointwiseMultGhost(velo_full_tmp, kappa, tmp);
+    VecPointwiseMultGhost(shape_grad_full, kappa, tmp);
 
     ngbd->first_derivatives_central(surf_tns, surf_tns_d);
     foreach_dimension(dim)
     {
       VecPointwiseMultGhost(surf_tns_d[dim], surf_tns_d[dim], normal[dim]);
       ls.extend_from_interface_to_whole_domain_TVD(phi, surf_tns_d[dim], tmp);
-      VecAXPBYGhost(velo_full_tmp, 1, 1, tmp);
+      VecAXPBYGhost(shape_grad_full, 1, 1, tmp);
     }
 
-    VecScaleGhost(velo_full_tmp, -1);
-    VecAXPBYGhost(velo_full_tmp, 1, 1, velo);
+    VecScaleGhost(shape_grad_full, -1);
+    VecAXPBYGhost(shape_grad_full, 1, 1, shape_grad);
 
-    ls.extend_from_interface_to_whole_domain_TVD(phi, velo_full_tmp, velo_full);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, shape_grad_full, phi);
 
     ierr = VecDestroy(tmp); CHKERRXX(ierr);
-    ierr = VecDestroy(velo_full_tmp); CHKERRXX(ierr);
     foreach_dimension(dim) { ierr = VecDestroy(surf_tns_d[dim]); CHKERRXX(ierr); }
 
-    double vn_avg = integration.integrate_over_interface(0, velo_full)/integration.measure_of_interface(0);
+    // -------------------------------------------
+    // select velocity
+    // -------------------------------------------
+    Vec velo;
+    Vec velo_full;
+    ierr = VecDuplicate(phi, &velo); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi, &velo_full); CHKERRXX(ierr);
 
-//    VecShiftGhost(velo, -vn_avg);
-//    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, velo, phi);
+    if (minimize.val) {
+      VecCopyGhost(shape_grad,      velo);
+      VecCopyGhost(shape_grad_full, velo_full);
+    } else {
+      double *normal_ptr[P4EST_DIM];
+      double *velo_ptr;
 
-    /* compute time step dt */
-    double dt_local = DBL_MAX;
-    double dt;
+      ierr = VecGetArray(velo, &velo_ptr); CHKERRXX(ierr);
+      foreach_dimension(dim) {
+        ierr = VecGetArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
+      }
+
+      foreach_node(n, nodes) {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        velo_ptr[n] = SUMD(normal_ptr[0][n]*vx_cf.value(xyz), normal_ptr[1][n]*vy_cf.value(xyz), TODO);
+      }
+
+      ierr = VecRestoreArray(velo, &velo_ptr); CHKERRXX(ierr);
+      foreach_dimension(dim) {
+        ierr = VecRestoreArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
+      }
+
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi, velo, phi);
+
+      ierr = VecCopyGhost(velo, velo_full); CHKERRXX(ierr);
+    }
+
+    // -------------------------------------------
+    // compute time step dt
+    // -------------------------------------------
+    double dt = DBL_MAX;
+    double vmax = 0;
 
     double *velo_ptr;
+    double *velo_full_ptr;
 
     ierr = VecGetArray(velo, &velo_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(velo_full, &velo_full_ptr); CHKERRXX(ierr);
 
-    quad_neighbor_nodes_of_node_t qnnn;
-    foreach_local_node(n, nodes)
-    {
-      ngbd->get_neighbors(n, qnnn);
 
-      double xyzn[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyzn);
+    foreach_local_node(n, nodes) {
+      const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
 
-      double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
-      double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
-  #ifdef P4_TO_P8
-      double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
-  #endif
-  #ifdef P4_TO_P8
-      double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
-  #else
-      double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
-  #endif
+      double dx_min = DBL_MAX;
+      foreach_direction(dir) {
+        dx_min = MIN(dx_min, fabs(qnnn.distance(dir)));
+      }
 
-      dt_local = MIN(dt_local, cfl*fabs(s_min/velo_ptr[n]));
+      dt = MIN(dt, cfl()*fabs(dx_min/velo_ptr[n]));
+      dt = MIN(dt, cfl()*fabs(dx_min/velo_full_ptr[n]));
+      vmax = MAX(vmax, fabs(velo_ptr[n]));
+      vmax = MAX(vmax, fabs(velo_full_ptr[n]));
     }
 
     ierr = VecRestoreArray(velo, &velo_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(velo_full, &velo_full_ptr); CHKERRXX(ierr);
 
-    MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+    MPI_Allreduce(MPI_IN_PLACE, &dt,   1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+    MPI_Allreduce(MPI_IN_PLACE, &vmax, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
-    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
+//    ierr = PetscPrintf(mpi.comm(), "Max velo: %e, Time step: %e\n", vmax, dt);
 
-//    Vec surf_tns_tmp;
-//    ierr = VecDuplicate(phi, &surf_tns_tmp); CHKERRXX(ierr);
-//    ls.extend_from_interface_to_whole_domain_TVD(phi, surf_tns, surf_tns_tmp, 20);
-//    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
-//    surf_tns = surf_tns_tmp;
+    // ------------------------------------------------------------------------------------------------------------------
+    // compute expected change in energy due to free surface
+    // ------------------------------------------------------------------------------------------------------------------
+    Vec integrand;
+    ierr = VecDuplicate(phi, &integrand); CHKERRXX(ierr);
+    ierr = VecPointwiseMultGhost(integrand, velo_full, shape_grad_full); CHKERRXX(ierr);
+    double energy_change_predicted = -dt*integration.integrate_over_interface(0, integrand);
+    ierr = VecDestroy(integrand); CHKERRXX(ierr);
 
-    /* save data */
-    if (save_vtk && iteration%save_every_dn == 0)
+    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", cost_function_nnn, cost_function_nnn-cost_function_nm1, energy_change_predicted);
+
+    // -------------------------------------------
+    // save data
+    // -------------------------------------------
+    if (save_data())
+    {
+      ierr = PetscFOpen  (mpi.comm(), file_conv_name, "a", &file_conv); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e\n", (int) round(iteration), cost_function_nnn, energy_change_predicted, cost_function_nnn-cost_function_nm1); CHKERRXX(ierr);
+      ierr = PetscFClose (mpi.comm(), file_conv); CHKERRXX(ierr);
+    }
+
+    if (save_vtk.val && iteration%save_every_dn.val == 0)
     {
       std::ostringstream oss;
 
@@ -714,9 +1100,9 @@ int main (int argc, char* argv[])
           << brick.nxyztrees[0] << "x"
           << brick.nxyztrees[1] <<
        #ifdef P4_TO_P8
-             "x" << brick.nxyztrees[2] <<
+             "x" << brick.nx.valyztrees[2] <<
        #endif
-             "." << (int) round(iteration/save_every_dn);
+             "." << (int) round(iteration/save_every_dn.val);
 
       PetscPrintf(mpi.comm(), "VTK is being saved in %s\n", oss.str().c_str());
 
@@ -796,15 +1182,42 @@ int main (int argc, char* argv[])
       PetscPrintf(mpi.comm(), "VTK saved in %s\n", oss.str().c_str());
     }
 
-    /* advect interface and impose contact angle */
-    ls.set_use_neumann_for_contact_angle(0);
-    ls.set_contact_angle_extension(0);
-    ls.advect_in_normal_direction_with_contact_angle(velo, surf_tns, NULL, NULL, phi, dt);
+    if (save_p4est.val && iteration%save_every_dn.val == 0) {
+      std::ostringstream p4est_dir;
+      p4est_dir << out_dir << "/p4est";
 
-    ls.reinitialize_1st_order_time_2nd_order_space(phi, 50);
+      std::ostringstream grid_file; grid_file << "grid_" << (int) round(iteration/save_every_dn.val);
+      std::ostringstream vecs_file; vecs_file << "vecs_" << (int) round(iteration/save_every_dn.val);
+
+      vector<Vec> vecs_to_save;
+      vecs_to_save.push_back(phi);
+      vecs_to_save.push_back(mu_t);
+      vecs_to_save.push_back(mu_m);
+      vecs_to_save.push_back(mu_p);
+
+      my_p4est_save_forest_and_data(p4est_dir.str().c_str(), p4est, nodes, grid_file.str().c_str(), 1,
+                                    vecs_file.str().c_str(), vecs_to_save.size(), vecs_to_save.data());
+    }
+
+    // -------------------------------------------
+    // advect interface and impose contact angle
+    // -------------------------------------------
+    if (minimize.val) {
+      ls.set_use_neumann_for_contact_angle(0);
+      ls.set_contact_angle_extension(0);
+      ls.advect_in_normal_direction_with_contact_angle(velo, surf_tns, NULL, NULL, phi, dt);
+    } else {
+      ls.advect_in_normal_direction(velo, phi, dt);
+      vx_cf.t += dt;
+      vy_cf.t += dt;
+    }
+
+    ls.reinitialize_2nd_order(phi, 50);
 
     ierr = VecDestroy(velo); CHKERRXX(ierr);
     ierr = VecDestroy(velo_full); CHKERRXX(ierr);
+    ierr = VecDestroy(shape_grad); CHKERRXX(ierr);
+    ierr = VecDestroy(shape_grad_full); CHKERRXX(ierr);
     ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
 
     /* refine and coarsen grid */
@@ -812,7 +1225,7 @@ int main (int argc, char* argv[])
       double *phi_ptr;
       ierr = VecGetArray(phi, &phi_ptr); CHKERRXX(ierr);
 
-      splitting_criteria_tag_t sp(lmin, lmax, lip);
+      splitting_criteria_tag_t sp(lmin.val, lmax.val, lip.val);
       sp.set_refine_only_inside(1);
 
       p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
@@ -877,163 +1290,5 @@ int main (int argc, char* argv[])
   my_p4est_brick_destroy(connectivity, &brick);
 
   return 0;
-}
-
-void set_parameters()
-{
-}
-
-void parse_cmd(int argc, char *argv[])
-{
-  /* parse command line arguments */
-  cmdParser cmd;
-  M_PARSER_START
-  {
-    M_PARSER_ADD_OPTION(cmd, int, num_example, 0, "Number of predefined example")
-
-    M_PARSER_STAGE_1 { set_parameters(); }
-
-    // comptational domain
-    M_PARSER_ADD_OPTION(cmd, double, xmin, -1, "xmin")
-    M_PARSER_ADD_OPTION(cmd, double, ymin, -1, "ymin")
-    M_PARSER_ADD_OPTION(cmd, double, zmin, -1, "zmin")
-    M_PARSER_ADD_OPTION(cmd, double, xmax,  1, "xmax")
-    M_PARSER_ADD_OPTION(cmd, double, ymax,  1, "ymax")
-    M_PARSER_ADD_OPTION(cmd, double, zmax,  1, "zmax")
-
-    M_PARSER_ADD_OPTION(cmd, bool, px, 0, "periodicity in x-dimension 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool, py, 0, "periodicity in y-dimension 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool, pz, 0, "periodicity in z-dimension 0/1")
-
-    M_PARSER_ADD_OPTION(cmd, int, nx, 1, "number of trees in x-dimension")
-    M_PARSER_ADD_OPTION(cmd, int, ny, 1, "number of trees in y-dimension")
-    M_PARSER_ADD_OPTION(cmd, int, nz, 1, "number of trees in z-dimension")
-
-    // grid parameters
-    #ifdef P4_TO_P8
-    M_PARSER_ADD_OPTION(cmd, int, lmin, 7, "min level of trees")
-    M_PARSER_ADD_OPTION(cmd, int, lmax, 7, "max level of trees")
-    #else
-    M_PARSER_ADD_OPTION(cmd, int, lmin, 7, "min level of trees")
-    M_PARSER_ADD_OPTION(cmd, int, lmax, 7, "max level of trees")
-    #endif
-    M_PARSER_ADD_OPTION(cmd, double, lip, 1.5, "Lipschitz constant")
-
-    // advection parameters
-    M_PARSER_ADD_OPTION(cmd, double, cfl, 0.5, "")
-    M_PARSER_ADD_OPTION(cmd, int, max_iterations, 1000, "")
-    M_PARSER_ADD_OPTION(cmd, int, scheme, 2, "// 0 - pure curvature, 1 - Gaddiel's method, 2 - gradient-based method")
-    M_PARSER_ADD_OPTION(cmd, double, curvature_penalty, 0.01, "")
-
-    // scft parameters
-    M_PARSER_ADD_OPTION(cmd, int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
-    M_PARSER_ADD_OPTION(cmd, int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-    M_PARSER_ADD_OPTION(cmd, bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-    M_PARSER_ADD_OPTION(cmd, double, scft_tol,            1.e-3, "Tolerance for SCFT")
-    M_PARSER_ADD_OPTION(cmd, double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
-
-    // polymer
-    M_PARSER_ADD_OPTION(cmd, double, box_size, 10, "Box size in units of Rg")
-    M_PARSER_ADD_OPTION(cmd, double, f,        0.5, "Fraction of polymer A")
-    M_PARSER_ADD_OPTION(cmd, double, XN,       20,  "Flory-Higgins interaction parameter")
-    M_PARSER_ADD_OPTION(cmd, int,    ns,       40,  "Discretization of polymer chain")
-
-    // output parameters
-    M_PARSER_ADD_OPTION(cmd, bool, save_vtk, 1, "")
-    M_PARSER_ADD_OPTION(cmd, int,  save_data, 1, "")
-    M_PARSER_ADD_OPTION(cmd, int,  save_parameters, 1, "")
-    M_PARSER_ADD_OPTION(cmd, int,  save_every_dn, 1, "")
-
-    // problem setting
-    M_PARSER_ADD_OPTION(cmd, int, num_target, 2, "Target design: 0 - one circle, 1 - two circles, 2 - three circles, 3 - four circles")
-    M_PARSER_ADD_OPTION(cmd, int, num_guess, 0, "Type of initial guess: 0 - target with margins, 1 - enclosing box")
-    M_PARSER_ADD_OPTION(cmd, int, num_seed, 0, "Seed for SCFT: 0 - target field")
-
-    // geometry parameters
-    M_PARSER_ADD_OPTION(cmd, double, r0, 1, "Radius of target wells")
-    M_PARSER_ADD_OPTION(cmd, double, guess_margin, 1.5, "")
-    M_PARSER_ADD_OPTION(cmd, double, target_smoothing, sqrt(XN), "")
-
-    // surface tension
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_avg, 20, "Polymer-air surface energy strength: average")
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_del, 10, "Polymer-air surface energy strength: difference")
-
-    M_PARSER_PARSE(cmd, argc, argv);
-  }
-}
-
-void write_parameters(MPI_Comm mpicomm, const std::string &output)
-{
-  /* save parameters */
-  FILE *fich;
-  ierr = PetscFOpen(mpicomm, output.c_str(), "w", &fich); CHKERRXX(ierr);
-
-  // comptational domain
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, xmin, -1, "xmin")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, ymin, -1, "ymin")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, zmin, -1, "zmin")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, xmax,  1, "xmax")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, ymax,  1, "ymax")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, zmax,  1, "zmax")
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, px, 0, "periodicity in x-dimension 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, py, 0, "periodicity in y-dimension 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, pz, 0, "periodicity in z-dimension 0/1")
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, nx, 1, "number of trees in x-dimension")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, ny, 1, "number of trees in y-dimension")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, nz, 1, "number of trees in z-dimension")
-
-  // grid parameters
-  #ifdef P4_TO_P8
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmin, 7, "min level of trees")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmax, 7, "max level of trees")
-  #else
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmin, 7, "min level of trees")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmax, 7, "max level of trees")
-  #endif
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, lip, 1.5, "Lipschitz constant")
-
-  // advection parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, cfl, 0.5, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, max_iterations, 1000, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, scheme, 2, "// 0 - pure curvature, 1 - Gaddiel's method, 2 - gradient-based method")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, curvature_penalty, 0.01, "")
-
-  // scft parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, scft_tol,            1.e-3, "Tolerance for SCFT")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
-
-  // polymer
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, box_size, 10, "Box size in units of Rg")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, f,        0.5, "Fraction of polymer A")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN,       20,  "Flory-Higgins interaction parameter")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    ns,       40,  "Discretization of polymer chain")
-
-  // output parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, save_vtk, 1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,  save_data, 1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,  save_parameters, 1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,  save_every_dn, 1, "")
-
-  // problem setting
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_target, 2, "Target design: 0 - one circle, 1 - two circles, 2 - three circles, 3 - four circles")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_guess, 0, "Type of initial guess: 0 - target with margins, 1 - enclosing box")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_seed, 0, "Seed for SCFT: 0 - target field")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_example, 0, "")
-
-  // geometry parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, r0, 1, "Radius of target wells")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, guess_margin, 1.5, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, target_smoothing, sqrt(XN), "")
-
-  // surface tension
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_avg, 20, "Polymer-air surface energy strength: average")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_del, 10, "Polymer-air surface energy strength: difference")
-
-  ierr = PetscFClose(mpicomm, fich); CHKERRXX(ierr);
 }
 
