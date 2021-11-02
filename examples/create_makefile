@@ -37,8 +37,8 @@ else
     echo "The file $project_file does not exist... Aborting. "
     exit 1;
   fi
-  dimension=$2
-  if [[ "$dimension" != "2d" ]] && [[ "$dimension" != "2D" ]] && [[ "$dimension" != "3d" ]] && [[ "$dimension" != "3D" ]]; then
+  dimension=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+  if [[ "$dimension" != "2d" ]] && [[ "$dimension" != "3d" ]]; then
     echo "Unknown dimensionality: choose 2d, 2D, 3d or 3D for the second argument... Aborting. "
     exit 1;
   fi

@@ -63,13 +63,13 @@ class my_p4est_poisson_faces_t
 
   int matrix_has_nullspace[P4EST_DIM];
 
-  void preallocate_matrix(const unsigned char &dir);
+  void preallocate_matrix(const u_char &dir);
 
 #ifndef P4_TO_P8
-  void clip_voro_cell_by_interface(Voronoi2D &voro_cell, const p4est_locidx_t &f_idx, const unsigned char &dir);
+  void clip_voro_cell_by_interface(Voronoi2D &voro_cell, const p4est_locidx_t &f_idx, const u_char &dir);
 #endif
 
-  void setup_linear_system(const unsigned char &dir);
+  void setup_linear_system(const u_char &dir);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_faces_t(const my_p4est_poisson_faces_t& other);
@@ -77,12 +77,12 @@ class my_p4est_poisson_faces_t
 
   void setup_linear_solver(int dim, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type);
 
-  inline void reset_current_diag(const unsigned char &dir)
+  inline void reset_current_diag(const u_char &dir)
   {
     current_diag[dir] = 0.0;
   }
 
-  inline bool current_diag_is_as_desired(const unsigned char &dir) const
+  inline bool current_diag_is_as_desired(const u_char &dir) const
   {
     return (fabs(current_diag[dir] - desired_diag[dir]) < EPS*MAX(fabs(current_diag[dir]), fabs(desired_diag[dir])) || (fabs(current_diag[dir]) < EPS && fabs(desired_diag[dir]) < EPS));
   }
@@ -110,7 +110,7 @@ public:
 
   void solve(Vec *solution, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 
-  void print_partition_VTK(const char *file, const unsigned char &dir);
+  void print_partition_VTK(const char *file, const u_char &dir);
 
   void global_volume_of_voronoi_tesselation(double voro_global_volume[P4EST_DIM]) const;
 };

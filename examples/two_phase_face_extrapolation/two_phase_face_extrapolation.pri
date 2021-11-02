@@ -7,5 +7,5 @@ CONFIG(3d, 2d|3d): {
   SOURCES += $$PWD/main_3d.cpp
 }
 
-include(../../qmake/libparcasl.pri)
+include($$PWD/../../qmake/libparcasl.pri)
 

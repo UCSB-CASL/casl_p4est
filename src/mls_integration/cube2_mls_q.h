@@ -69,7 +69,7 @@ public:
   cube2_mls_q_t(double x0 = 0., double x1 = 1., double y0 = 0., double y1 = 1.)
     : x0(x0), x1(x1), y0(y0), y1(y1), eps_rel_(1.e-12) {}
 
-  void construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(std::vector<double> &phi_all, const std::vector<action_t> &acn, const std::vector<int> &clr);
 
   void quadrature_over_domain      (                    std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);
   void quadrature_over_interface   (int num,            std::vector<double> &weights, std::vector<double> &X, std::vector<double> &Y);

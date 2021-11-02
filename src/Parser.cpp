@@ -30,7 +30,7 @@ bool cmdParser::parse(int argc, char* argv[], const std::string &extra_info)
       throw std::runtime_error("[ERROR]: invalid option syntax '" + key + "'.");
     }
 
-    if (key != "help" && options.find(key) == options.end())
+    if (key != "help" && key != "casl_help" && options.find(key) == options.end())
     {
       PetscPrintf(MPI_COMM_WORLD, "[WARNING]: option '%s' does not exists in the database -- ignoring.\n", key.c_str());
       continue;
@@ -38,7 +38,7 @@ bool cmdParser::parse(int argc, char* argv[], const std::string &extra_info)
 
     buffer.insert(std::make_pair(key, val));
   }
-  bool to_return = contains("help");
+  bool to_return = contains("help") || contains("casl_help");
 
   if (to_return){
     if(!extra_info.empty())

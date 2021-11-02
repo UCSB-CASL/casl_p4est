@@ -1,6 +1,8 @@
 #include "cube3_mls.h"
+#include "vtk/simplex3_mls_l_vtk.h"
+#include "vtk/simplex3_mls_q_vtk.h"
 
-void cube3_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int order)
+void cube3_mls_t::initialize(const double xyz_min[], const double xyz_max[], const int mnk[], const int& order)
 {
   check_for_curvature_ = true;
 
@@ -55,7 +57,7 @@ cube3_mls_t::~cube3_mls_t()
 }
 
 
-void cube3_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void cube3_mls_t::reconstruct(const std::vector<double> &phi, const std::vector<action_t> &acn, const std::vector<int> &clr)
 {
   unsigned int num_phi = acn.size();
 
@@ -200,3 +202,28 @@ void cube3_mls_t::quadrature_in_dir(int dir, std::vector<double> &W, std::vector
 
 }
 
+void cube3_mls_t::save_vtk(const std::string& directory, const std::string& suffix) const
+{
+  if(order_ == 1)
+  {
+    std::vector<simplex3_mls_l_t*>  tmp;
+    for(size_t k = 0; k < cubes_l_.size(); k++)
+    {
+      for(size_t uu = 0; uu < cubes_l_[k]->simplex.size(); uu++)
+        tmp.push_back(&cubes_l_[k]->simplex[uu]);
+    }
+    simplex3_mls_l_vtk::write_simplex_geometry(tmp, directory, suffix);
+  }
+  else if(order_ == 2)
+  {
+    std::vector<simplex3_mls_q_t*>  tmp;
+    for(size_t k = 0; k < cubes_q_.size(); k++)
+    {
+      for(size_t uu = 0; uu < cubes_q_[k]->simplex.size(); uu++)
+        tmp.push_back(&cubes_q_[k]->simplex[uu]);
+    }
+    simplex3_mls_q_vtk::write_simplex_geometry(tmp, directory, suffix);
+  }
+  else
+    throw;
+}

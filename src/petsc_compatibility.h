@@ -44,8 +44,8 @@
 #define PetscBinaryWrite(a, b, c, d, e) PetscBinaryWrite(a, b, c, d)
 #endif
 
-#if PETSC_VERSION_GE(3,12,0)
-#define PetscBinaryRead(a, b, c, d) PetscBinaryRead(a, b, c, NULL, d)
+#if PETSC_VERSION_LT(3,12,0)
+#define PetscBinaryRead(a, b, c, d, e) PetscBinaryRead(a, b, c, e)
 #endif
 
 #if PETSC_VERSION_GT(3,4,3)

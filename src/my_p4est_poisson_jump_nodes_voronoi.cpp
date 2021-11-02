@@ -1,5 +1,11 @@
+#ifdef P4_TO_P8
+#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p8est_refine_coarsen.h>
+#else
 #include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_refine_coarsen.h>
+#endif
+
 
 #include <algorithm>
 

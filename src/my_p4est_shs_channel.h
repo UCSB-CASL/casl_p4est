@@ -696,7 +696,7 @@ public:
     P4EST_ASSERT(is_configured);
     if (sp != NULL)
       delete sp;
-    sp = new splitting_criteria_cf_and_uniform_band_t(lmin, max_lvl, this, calculate_uniform_band_for_ns_solver(wall_layer), lip_user);
+    sp = new splitting_criteria_cf_and_uniform_band_t(lmin, max_lvl, this, calculate_uniform_band_for_ns_solver(wall_layer), calculate_lip_for_ns_solver(lip_user));
 
     if(forest != NULL)
       p4est_destroy(forest);

@@ -570,6 +570,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
   Vec phi_np1;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
 
+// note to self: consider changing to the standard vector way to avoid compilation warnings 
 //  Vec fields_np1[num_fields];
   Vec fields_np1[num_fields];
 //  std::vector<Vec> fields_np1;

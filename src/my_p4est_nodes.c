@@ -25,16 +25,17 @@
 #include <p4est_algorithms.h>
 #include <p4est_bits.h>
 #include <p4est_communication.h>
+#include <src/my_p4est_log_wrappers.h>
 #include "my_p4est_nodes.h"
 #else
 #include <p8est_algorithms.h>
 #include <p8est_bits.h>
 #include <p8est_communication.h>
+#include <src/my_p8est_log_wrappers.h>
 #include "my_p8est_nodes.h"
 #endif
 #include <sc_notify.h>
 #include <petsclog.h>
-#include <src/my_p4est_log_wrappers.h>
 #include <src/ipm_logging.h>
 
 // logging variable -- defined in src/petsc_logging.cpp
@@ -72,7 +73,7 @@ p4est_node_peer_t;
 #endif
 
 void
-p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
+p4est_node_canonicalize (const p4est_t * p4est, p4est_topidx_t treeid,
                          const p4est_quadrant_t * n, p4est_quadrant_t * c)
 {
   p4est_connectivity_t *conn = p4est->connectivity;

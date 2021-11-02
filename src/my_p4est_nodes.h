@@ -52,7 +52,7 @@ extern              "C"
  *                      Its piggy data will be filled with owning tree id.
  * [Raphael:] removed the static qualifier, because I needed access from another file...
  */
-void p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
+void p4est_node_canonicalize (const p4est_t * p4est, p4est_topidx_t treeid,
                               const p4est_quadrant_t * n, p4est_quadrant_t * c);
 
 /** Create node information.

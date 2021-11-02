@@ -16,7 +16,6 @@
 #include <p4est.h>
 #endif
 
-#include <set>
 #include <vector>
 #include <stdexcept>
 
@@ -52,33 +51,36 @@ struct splitting_criteria_t {
 
   int max_lvl, min_lvl;
   double lip;
+  virtual ~splitting_criteria_t() {};
 };
 
 struct splitting_criteria_cf_t : splitting_criteria_t {
-  CF_DIM *phi;
+  const CF_DIM *phi;
   bool refine_only_inside;
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_DIM *phi, double lip=1.2) : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, const CF_DIM *phi, double lip=1.2) : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
     this->phi = phi;
   }
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
+  virtual ~splitting_criteria_cf_t() {};
 };
 
 struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
   const double uniform_band;
-  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_DIM *phi_, double uniform_band_, double lip=1.2)
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, const CF_DIM *phi_, double uniform_band_, double lip=1.2)
     : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
 };
 
 struct splitting_criteria_thresh_t : splitting_criteria_t {
-  CF_DIM *f;
+  const CF_DIM *f;
   double thresh;
-  splitting_criteria_thresh_t(int min_lvl, int max_lvl, CF_DIM *f, double thresh)
+  splitting_criteria_thresh_t(int min_lvl, int max_lvl, const CF_DIM *f, double thresh)
     : splitting_criteria_t(min_lvl, max_lvl)
   {
     this->f = f;
     this->thresh = thresh;
   }
+  virtual ~splitting_criteria_thresh_t() {};
 };
 
 struct splitting_criteria_random_t : splitting_criteria_t {
@@ -90,6 +92,7 @@ struct splitting_criteria_random_t : splitting_criteria_t {
     this->max_quads = max_quads;
     num_quads = 0;
   }
+  virtual ~splitting_criteria_random_t() {};
 };
 
 class splitting_criteria_marker_t: public splitting_criteria_t {
@@ -111,6 +114,7 @@ public:
   }
   inline p4est_bool_t& operator[](p4est_locidx_t q) { return markers[q]; }
   inline const p4est_bool_t& operator[](p4est_locidx_t q) const { return markers[q]; }
+  virtual ~splitting_criteria_marker_t() {};
 };
 
 class splitting_criteria_tag_t: public splitting_criteria_t {
@@ -151,19 +155,29 @@ protected:
 
   void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
 
+  double uniform_band;
   bool refine_only_inside;
 public:
-  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2, double uniform_band_ = -1.0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), uniform_band(uniform_band_), refine_only_inside(false)
   {
   }
-  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_)
-    : splitting_criteria_t(*splitting_criteria_), refine_only_inside(false)
+  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_, double uniform_band_ = -1.0)
+    : splitting_criteria_t(*splitting_criteria_), uniform_band(uniform_band_), refine_only_inside(false)
   {
   }
 
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  inline bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, Vec phi, bool finest_in_negative_flag = false)
+  {
+    const double *phi_p;
+    PetscErrorCode ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    const bool to_return = refine(p4est, nodes, phi_p, finest_in_negative_flag);
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+    return to_return;
+  }
+
   // ELYCE TRYING SOMETHING:
 
   bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
@@ -236,15 +250,18 @@ public:
                           std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
 
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
+
+  virtual ~ splitting_criteria_tag_t() {};
 };
 
 struct splitting_criteria_grad_t: public splitting_criteria_t {
-  CF_DIM* cf;
+  const CF_DIM* cf;
   double fmax, tol;
 
-  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_DIM* cf, double fmax, double tol = 1e-2)
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, const CF_DIM* cf, double fmax, double tol = 1e-2)
   : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
   {}
+  virtual ~splitting_criteria_grad_t() {};
 };
 
 /*!

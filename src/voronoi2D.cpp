@@ -7,6 +7,7 @@ void Voronoi2D::clear()
   nb_seeds.resize(0);
   partition.resize(0);
   phi_values.resize(0);
+  type = unknown;
 }
 
 void Voronoi2D::operator=( const Voronoi2D& voro )
@@ -16,6 +17,7 @@ void Voronoi2D::operator=( const Voronoi2D& voro )
   partition = voro.partition;
   phi_values = voro.phi_values;
   phi_c = voro.phi_c;
+  type = voro.type;
 }
 
 void Voronoi2D::get_neighbor_seeds(const vector<ngbd2Dseed>*& neighbors) const

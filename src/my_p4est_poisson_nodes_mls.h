@@ -20,8 +20,6 @@
 #include <src/mls_integration/cube3_mls.h>
 #include <src/mls_integration/cube2_mls.h>
 
-#define DO_NOT_PREALLOCATE
-
 using std::vector;
 
 class my_p4est_poisson_nodes_mls_t
@@ -58,18 +56,25 @@ protected:
   Vec     rhs_jump_;
   double *rhs_jump_ptr;
 
+  Vec     rhs_gf_;
+  double *rhs_gf_ptr;
+
   // subcomponents of linear system
   Mat     submat_main_;
   Vec     submat_diag_;
   double *submat_diag_ptr;
   Vec     submat_diag_ghost_;
   double *submat_diag_ghost_ptr;
-  Mat     submat_jump_;
-  Mat     submat_jump_ghost_;
+  Mat     submat_jump_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_jump_ghost_; // expresses ghost values through real values
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
   std::vector< std::vector<mat_entry_t> > entries_robin_sc;
+
+  // for imposing dirichlet using ghost fluid method
+  Mat     submat_gf_; // describes contribution of ghost nodes into main matrix
+  Mat     submat_gf_ghost_; // expresses ghost values through real values
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -99,10 +104,10 @@ protected:
   std::vector<PetscInt> global_node_offset_;
   std::vector<PetscInt> petsc_gloidx_;
 
-  // pinning point (for ill-defined all-neumann case)
-  bool           matrix_has_nullspace_;
-  p4est_gloidx_t fixed_value_idx_g_;
-  p4est_gloidx_t fixed_value_idx_l_;
+  // tracking nullspace
+  bool nullspace_main_;
+  bool nullspace_diag_;
+  bool nullspace_robin_;
 
   // geometry
   class geometry_t
@@ -216,7 +221,11 @@ protected:
   int    cube_refinement_;
   int    jump_scheme_;
   int    fv_scheme_;
+  int    dirichlet_scheme_; // 0 - Shortley-Weller, 1 - ghost fluid
+  int    gf_order_;
+  int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
 
+  bool   use_sc_scheme_;
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
   bool   neumann_wall_first_order_;
@@ -226,6 +235,7 @@ protected:
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
+  double gf_thresh_;
 
   interpolation_method interp_method_;
 
@@ -256,11 +266,12 @@ protected:
   enum discretization_scheme_t
   {
     UNDEFINED,
-    NO_DISCRETIZATION,
+    DOMAIN_OUTSIDE,
+    DOMAIN_INSIDE,
     WALL_DIRICHLET,
     WALL_NEUMANN,
-    FINITE_DIFFERENCE,
-    FINITE_VOLUME,
+    BOUNDARY_DIRICHLET,
+    BOUNDARY_NEUMANN,
     IMMERSED_INTERFACE,
   };
 
@@ -273,8 +284,8 @@ protected:
   std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
   std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
 
-  std::vector<CF_DIM *> bdry_phi_cf_;
-  std::vector<CF_DIM *> infc_phi_cf_;
+  std::vector<const CF_DIM *> bdry_phi_cf_;
+  std::vector<const CF_DIM *> infc_phi_cf_;
 
   void interpolators_initialize();
   void interpolators_prepare(p4est_locidx_t n);
@@ -283,20 +294,33 @@ protected:
   // discretization
   void setup_linear_system (bool setup_rhs);
 
-  void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
+  void discretize_inside      (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
 
-  void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
-                            std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc);
+  void discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
 
-  void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                            bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
-                            std::vector<mat_entry_t> *row_jump, PetscInt &d_nnz_jump, PetscInt &o_nnz_jump,
-                            std::vector<mat_entry_t> *row_jump_aux, PetscInt &d_nnz_jump_aux, PetscInt &o_nnz_jump_aux);
+  void discretize_dirichlet_gf(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               vector<int> &gf_map, vector<double> &gf_nodes, vector<double> &gf_phi,
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_gf, PetscInt &d_nnz_gf, PetscInt &o_nnz_gf,
+                               std::vector<mat_entry_t> *row_gf_ghost, PetscInt &d_nnz_gf_ghost, PetscInt &o_nnz_gf_ghost);
+
+
+
+  void discretize_robin       (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               double infc_phi_eff_000, bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc);
+
+  void discretize_jump        (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                               bool is_wall[],
+                               std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                               std::vector<mat_entry_t> *row_jump, PetscInt &d_nnz_jump, PetscInt &o_nnz_jump,
+                               std::vector<mat_entry_t> *row_jump_ghost, PetscInt &d_nnz_jump_ghost, PetscInt &o_nnz_jump_ghost);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
@@ -314,6 +338,13 @@ protected:
   void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
   void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
   void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix);
+
+  inline int gf_stencil_size() {
+    return gf_stabilized_ == 0 ? gf_order_ + 1 : gf_order_ + 2;
+  }
+
+  bool gf_is_ghost(const quad_neighbor_nodes_of_node_t &qnnn);
+  void gf_direction(const quad_neighbor_nodes_of_node_t &qnnn, const p4est_locidx_t neighbors[], int &dir, double del_xyz[]);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -370,7 +401,7 @@ public:
       case DIRICHLET: there_is_dirichlet_ = true; break;
       default:
 #ifdef CASL_THROWS
-        throw std::runtime_error("my_p4est_poisson_nodes_mls_t::add_boundary: unknown boundary condition type, only DIRICHLET, NEUMANN, and ROBIN implemented. ");
+      throw std::runtime_error("my_p4est_poisson_nodes_mls_t:add_boundary: unknown boundary condition type, only DIRICHLET, NEUMANN and ROBIN implemented.");
 #endif
         break;
     }
@@ -598,7 +629,7 @@ public:
   inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
 
-  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+  inline bool get_matrix_has_nullspace() { return (nullspace_main_ && nullspace_diag_ && nullspace_robin_); }
 
   inline Mat get_matrix() { return A_; }
 
@@ -641,6 +672,81 @@ public:
     nonlinear_itmax_            = itmax;
     nonlinear_change_tol_       = change_tol;
     nonlinear_pde_residual_tol_ = pde_residual_tol;
+  }
+
+  inline void set_dirichlet_scheme (int    val) { dirichlet_scheme_ = val; }
+  inline void set_gf_order         (int    val) { gf_order_         = val; }
+  inline void set_gf_stabilized    (int    val) { gf_stabilized_    = val; }
+  inline void set_gf_thresh        (double val) { gf_thresh_        = val; }
+
+
+  inline const p4est_t* get_p4est() const { return p4est_; }
+  inline const p4est_nodes_t* get_nodes() const { return nodes_; }
+  inline const my_p4est_node_neighbors_t* get_ngbd() const { return ngbd_; }
+  inline const p4est_ghost_t* get_ghost() const { return ghost_; }
+
+
+  inline void get_ghosted_solutions(Vec sharp_solution, Vec ghosted_solution_minus, Vec ghosted_solution_plus)
+  {
+    PetscErrorCode ierr;
+    Vec sol_ghost;
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &sol_ghost); CHKERRXX(ierr);
+    if (there_is_jump_mu_)
+    {
+      ierr = MatMultAdd(submat_jump_ghost_, sharp_solution, sharp_solution, sol_ghost); CHKERRXX(ierr);
+    }
+    else
+    {
+      ierr = VecCopyGhost(sharp_solution, sol_ghost); CHKERRXX(ierr);
+    }
+
+    ierr = VecAXPY(sol_ghost, -1.0, rhs_jump_); CHKERRXX(ierr);
+    const double *sharp_solution_ptr, *ghost_solution_ptr;
+    double *ghosted_solution_minus_ptr, *ghosted_solution_plus_ptr;
+
+    ierr = VecGetArrayRead(sharp_solution, &sharp_solution_ptr); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(sol_ghost, &ghost_solution_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(ghosted_solution_minus, &ghosted_solution_minus_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(ghosted_solution_plus, &ghosted_solution_plus_ptr); CHKERRXX(ierr);
+    infc_.get_arrays();
+    foreach_local_node(n, nodes_)
+    {
+      double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
+      if(infc_phi_eff_000 < 0.0)
+      {
+        ghosted_solution_minus_ptr[n] = sharp_solution_ptr[n];
+        ghosted_solution_plus_ptr[n] = NAN;
+      }
+      else
+      {
+        ghosted_solution_minus_ptr[n] = NAN;
+        ghosted_solution_plus_ptr[n] = sharp_solution_ptr[n];
+      }
+
+      if(node_scheme_[n] == IMMERSED_INTERFACE)
+      {
+        const my_p4est_finite_volume_t& fv_m = infc_fvs_->at(infc_node_to_fv_[n]);
+
+        if(fv_m.volume_in_negative_domain() > 0.001*fv_m.full_cell_volume && fv_m.volume_in_positive_domain() > 0.001*fv_m.full_cell_volume)
+        {
+          if(infc_phi_eff_000 < 0.0)
+            ghosted_solution_plus_ptr[n] = ghost_solution_ptr[n];
+          else
+            ghosted_solution_minus_ptr[n] = ghost_solution_ptr[n];
+        }
+      }
+    }
+    infc_.restore_arrays();
+    ierr = VecGhostUpdateBegin(ghosted_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(ghosted_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(ghosted_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(ghosted_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(ghosted_solution_plus, &ghosted_solution_plus_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(ghosted_solution_minus, &ghosted_solution_minus_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol_ghost, &ghost_solution_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sharp_solution, &sharp_solution_ptr); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_ghost); CHKERRXX(ierr);
   }
 };
 

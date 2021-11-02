@@ -1,4 +1,3 @@
-
 #ifdef P4_TO_P8
 #include "my_p8est_biomolecules.h"
 #include <p8est_bits.h>
@@ -88,7 +87,7 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
 
   while ((is_a_bundle || file_idx == 1) && file_exists(filename)){
     // copy the path to the file (MPI_File_open requires a non-constant char*... :-B)
-    char file_name[filename.size()+1];
+    char *file_name = new char[filename.size() + 1];
     filename.copy(file_name, filename.size(), 0);
     file_name[filename.size()] = '\0';
 
@@ -194,6 +193,7 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
 
     file_idx++;
     filename = pqr + ((is_a_bundle)? to_string(file_idx):"") + ((add_extension)? extension:"");
+    delete [] file_name;
   }
 
   vector<int> byte_offset_in_proc(environment->p4est->mpisize);
