@@ -59,12 +59,14 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
-	param_t<double> minHK( pl, 0.005, "minHK", "Minimum dimensionless curvature (default: 0.005)" );
+	param_t<unsigned short> maxRL( pl, 8, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 8)" );
+	param_t<double> minHK( pl, 0.004, "minHK", "Minimum dimensionless curvature (default: 0.004)" );
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
-	param_t<int> circlesPerH( pl, 2, "circlesPerH", "How many circle radii to roughly fit in a cell (default: 2)" );
+	param_t<int> circlesPerH( pl, 2, "circlesPerH", "How many circle radii to fit in a cell (default: 2)" );
+	param_t<int> samplesPerH2( pl, 5, "samplesPerH2", "Samples per H^2 based on the average radius (default: 5)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<int> skipEveryXSamples( pl, 4, "skipEveryXSamples", "Skip every x samples next to Gamma randomly (default: 4)" );
+	param_t<int> keepEveryXSamples( pl, 4, "keepEveryXSamples", "Keep record every x samples next to Gamma randomly (default: 4)" );
+	param_t<bool> writeSDF( pl, true, "writeSDF", "Write signed distance function samples (default: 1)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where file will be written (default: same folder as the executable)" );
 
 	try
@@ -99,12 +101,13 @@ int main ( int argc, char* argv[] )
 		// Expected number of samples per distinct radius.
 		// First, we allow to generate a tentative number of samples.  Then, we randomly subsample.  This allows varying
 		// the origin of the circles, and then pick a smaller subset with samples from several configurations.
-		// Number of samples per radius is approximated by 5 times 1 sample per H^2, which comes from the area
-		// difference of the average circle and the second to that circle.  This ensures that each radius gets the same
-		// number of samples.
-		// If user wants it, skip every x samples randomly to reduce data set size.
-		const double AVG_RADIUS = (MAX_RADIUS - MIN_RADIUS) / 2.;
-		const int SAMPLES_PER_RADIUS = (int)ceil( 5 * M_PI / SQR( H ) * (SQR( AVG_RADIUS ) - SQR( AVG_RADIUS - H )) ) / skipEveryXSamples();
+		// Number of samples per radius is approximated by samplesPerH2 samples per H^2, which comes from the area
+		// difference of the average circle and the second to that circle.
+		// Then, use a ramp from 0.75*SAMPLES_PER_RADIUS to 1.25*SAMPLES_PER_RADIUS for MIN_RADIUS and MAX_RADIUS.  This
+		// ensures sufficient samples for the small radii.
+		// If user wants it, keep every xth sample randomly to reduce data set size.
+		const double AVG_RADIUS = (MAX_RADIUS + MIN_RADIUS) / 2.;
+		const int AVG_SAMPLES_PER_RADIUS = (int)ceil( samplesPerH2() * M_PI / SQR( H ) * (SQR( AVG_RADIUS ) - SQR( AVG_RADIUS - H )) ) / keepEveryXSamples();
 
 		// Destination folder.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() ) + "/";
@@ -126,10 +129,13 @@ int main ( int argc, char* argv[] )
 
 		// Prepare samples files: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
 		std::ofstream sdfFile;
-		std::string sdfFileName = DATA_PATH + "sphere_sdf_" + std::to_string( maxRL() ) +  ".csv";
-		sdfFile.open( sdfFileName, std::ofstream::trunc );
-		if( !sdfFile.is_open() )
-			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+		if( writeSDF() )
+		{
+			std::string sdfFileName = DATA_PATH + "sphere_sdf_" + std::to_string( maxRL()) + ".csv";
+			sdfFile.open( sdfFileName, std::ofstream::trunc );
+			if( !sdfFile.is_open())
+				throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+		}
 
 		std::ofstream rlsFile;
 		std::string rlsFileName = DATA_PATH + "sphere_rls_" + std::to_string( maxRL() ) +  ".csv";
@@ -142,10 +148,12 @@ int main ( int argc, char* argv[] )
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
 			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-		sdfFile << headerStream.str() << std::endl;
+		if( writeSDF() )
+		{
+			sdfFile << headerStream.str() << std::endl;
+			sdfFile.precision( 15 );
+		}
 		rlsFile << headerStream.str() << std::endl;
-
-		sdfFile.precision( 15 );							// Precision for floating point numbers.
 		rlsFile.precision( 15 );
 
 		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
@@ -153,9 +161,12 @@ int main ( int argc, char* argv[] )
 		// Variables to control the spread of circles' radii.
 		// These must vary depending on the uniform spread of curvature.
 		double kappaDistance = MIN_KAPPA - MAX_KAPPA;		// Circles' radii are in [1/MAX_KAPPA, 1/MIN_KAPPA].
-		double linspace[NUM_CIRCLES];
+		double rLinspace[NUM_CIRCLES];
 		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
-			linspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
+			rLinspace[i] = (double)( i ) / ( NUM_CIRCLES - 1.0 );
+
+		std::vector<double> samplesPerRadius;
+		linspace( 0.75 * AVG_SAMPLES_PER_RADIUS, 1.25 * AVG_SAMPLES_PER_RADIUS, NUM_CIRCLES, samplesPerRadius );
 
 		// Domain information, applicable to all spherical interfaces.
 		int n_xyz[] = { 2 * (int)D_DIM, 2 * (int)D_DIM, 2 * (int)D_DIM };	// Symmetric num. of trees in +ve and -ve axes.
@@ -167,7 +178,7 @@ int main ( int argc, char* argv[] )
 		int nc = 0;							// Keeps track of number of circles whose samples have been collected.
 		while( nc < NUM_CIRCLES )
 		{
-			const double KAPPA = MAX_KAPPA + linspace[nc] * kappaDistance;
+			const double KAPPA = MAX_KAPPA + rLinspace[nc] * kappaDistance;
 			const double R = 1 / KAPPA;						// Circle radius to be evaluated.
 			const double H_KAPPA = H * KAPPA;				// Expected dimensionless curvature: h*kappa = h/r.
 			std::vector<std::vector<double>> rlsSamples;
@@ -177,7 +188,7 @@ int main ( int argc, char* argv[] )
 			// reach a given maximum for current H.  Then, perform random subsampling.
 			double maxRE = 0;								// Maximum relative error.
 			int nSamplesForSameRadius = 0;
-			while( nSamplesForSameRadius < SAMPLES_PER_RADIUS )
+			while( nSamplesForSameRadius < round( samplesPerRadius[nc] ) )
 			{
 				const double C[] = {
 					DIM( uniformDistribution( gen ),		// Center coords are randomly chosen around the origin.
@@ -283,7 +294,7 @@ int main ( int argc, char* argv[] )
 
 				for( auto n : indices )
 				{
-					if( skipEveryXSamples() > 1 && skipDist( gen ) <= 1. / skipEveryXSamples() )	// Premature subsampling.
+					if( keepEveryXSamples() > 1 && skipDist( gen ) >= 1. / keepEveryXSamples() )	// Probabilistic subsampling.
 						continue;
 
 					std::vector<p4est_locidx_t> stencil;	// Contains 9*3 values in 2D, 27*4 values in 3D.
@@ -345,7 +356,8 @@ int main ( int argc, char* argv[] )
 							kutils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
 
 							// Accumulating samples.
-							sdfSamples.push_back( sdfDataNve );
+							if( writeSDF() )
+								sdfSamples.push_back( sdfDataNve );
 							rlsSamples.push_back( rlsDataNve );
 
 							// Data augmentation.
@@ -353,7 +365,8 @@ int main ( int argc, char* argv[] )
 							kutils::reflectStencil_yEqx( sdfDataNve );
 
 							// Accumulating reflected samples.
-							sdfSamples.push_back( sdfDataNve );
+							if( writeSDF() )
+								sdfSamples.push_back( sdfDataNve );
 							rlsSamples.push_back( rlsDataNve );
 
 							// Counting samples.
@@ -394,7 +407,7 @@ int main ( int argc, char* argv[] )
 			}
 
 			// Collect randomly as many samples as we need.
-			if( nSamplesForSameRadius > SAMPLES_PER_RADIUS )
+			if( nSamplesForSameRadius > round( samplesPerRadius[nc] ) )
 			{
 				std::mt19937 gen2{}; 			// NOLINT In order to keep correlated sdf and rls samples, use the same
 												// sampling generator and reset its seed.
@@ -404,23 +417,28 @@ int main ( int argc, char* argv[] )
 			}
 
 			// Write all samples collected for all circles with the same radius but randomized center content to files.
-			nSamplesForSameRadius = 0;
-			for( const auto& row : sdfSamples )
+			if( writeSDF() )
 			{
-				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );	// Inner elements.
-				sdfFile << row.back() << std::endl;
+				nSamplesForSameRadius = 0;
+				for( const auto &row: sdfSamples )
+				{
+					std::copy( row.begin(), row.end() - 1,
+							   std::ostream_iterator<double>( sdfFile, "," ));	// Inner elements.
+					sdfFile << row.back() << std::endl;
 
-				if( ++nSamplesForSameRadius >= SAMPLES_PER_RADIUS )
-					break;
+					if( ++nSamplesForSameRadius >= round( samplesPerRadius[nc] ) )
+						break;
+				}
 			}
 
 			nSamplesForSameRadius = 0;
 			for( const auto& row : rlsSamples )
 			{
-				std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
+				std::copy( row.begin(), row.end() - 1,
+						   std::ostream_iterator<double>( rlsFile, "," ) );	// Inner elements.
 				rlsFile << row.back() << std::endl;
 
-				if( ++nSamplesForSameRadius >= SAMPLES_PER_RADIUS )
+				if( ++nSamplesForSameRadius >= round( samplesPerRadius[nc] ) )
 					break;
 			}
 
@@ -434,7 +452,8 @@ int main ( int argc, char* argv[] )
 				PetscPrintf( mpi.comm(), "   [%i radii evaluated after %f secs.]\n", nc, watch.get_duration_current() );
 		}
 
-		sdfFile.close();
+		if( writeSDF() )
+			sdfFile.close();
 		rlsFile.close();
 
 		PetscPrintf( mpi.comm(), "<< Finished generating %i circles and %i samples in %f secs.\n",

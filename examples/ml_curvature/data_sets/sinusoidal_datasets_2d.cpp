@@ -158,12 +158,13 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
-	param_t<double> minHK( pl, 0.005, "minHK", "Minimum dimensionless curvature (default: 0.005)" );
+	param_t<unsigned short> maxRL( pl, 8, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 8)" );
+	param_t<double> minHK( pl, 0.004, "minHK", "Minimum dimensionless curvature (default: 0.004)" );
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
 	param_t<double> easeOffMaxProb( pl, 0.4, "easeOffMaxProb", "Easing-off distribution max probability to keep midpoint hk (default: 0.4)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
+	param_t<bool> writeSDF( pl, true, "writeSDF", "Write signed distance function samples (default: 1)" );
 	param_t<bool> verbose( pl, false, "verbose", "Show or not debugging messages (default: 0)" );
 
 	try
@@ -194,15 +195,15 @@ int main ( int argc, char* argv[] )
 		const double H = 1. / ONE_OVER_H;				// Mesh size.
 		const double MAX_KAPPA = maxHK() * ONE_OVER_H;	// Steepest curvature.
 		const double MIN_KAPPA = minHK() * ONE_OVER_H;	// Flattest curvature.
-		const double MIN_A = 4. / MAX_KAPPA;			// Slightly flat wave (equivalent to four times the minimum radius in circular data sets).
-		const double MAX_A = 1. / MIN_KAPPA;			// Tallest wave amplitude (equivalent to the maximum radius in circular data sets).
+		const double MIN_A = 4. / MAX_KAPPA;			// Slightly flat wave (proportional to the minimum radius in circular data sets).
+		const double MAX_A = 1. / MIN_KAPPA;			// Tallest wave amplitude (proportional to the maximum radius in circular data sets).
 
 		// Let's define a bounding box for sampling.  Then, define the whole domain with integer-side lengths based on it.
 		const double SAMPLING_BOX_HALF_SIDE_LEN = 2 * MAX_A;
 		const double MIN_D = -ceil( (SAMPLING_BOX_HALF_SIDE_LEN + 4 * H) / 0.5 ) * 0.5;
 		const double MAX_D = -MIN_D;					// The canonical space is square and has integral side lengths.
 		const double HALF_D = (MAX_D - MIN_D) / 2;		// Half domain length.
-		const int NUM_AMPLITUDES = (int)((MAX_A - MIN_A) * ONE_OVER_H / 5);	// Number of distinct sine amplitudes (~38 for all resolutions).
+		const int NUM_AMPLITUDES = (int)((MAX_A - MIN_A) * ONE_OVER_H / 7);	// Number of distinct sine amplitudes (~34 for all resolutions).
 
 		const double MAX_HKAPPA_LB = maxHK() / 2;		// Lower and upper bounds for maximum hk.  These define the
 		const double MAX_HKAPPA_UB = maxHK();			// frequencies based on amplitude.
@@ -212,7 +213,7 @@ int main ( int argc, char* argv[] )
 
 		const double MIN_THETA = -M_PI_2;		// For each amplitude, we vary the rotation of the wave with respect
 		const double MAX_THETA = +M_PI_2;		// to the horizontal axis from -pi/2 to +pi/2, without the end point.
-		const int NUM_THETAS = M_PI * SAMPLING_BOX_HALF_SIDE_LEN * ONE_OVER_H / 29;		// Must be ~43 for all resolutions: half circunference / (29h).
+		const int NUM_THETAS = M_PI * SAMPLING_BOX_HALF_SIDE_LEN * ONE_OVER_H / 41;		// Must be ~38 for all resolutions: half circunference / (29h).
 
 		// Destination folder.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() ) + "/";
@@ -242,10 +243,13 @@ int main ( int argc, char* argv[] )
 			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
 
 		std::ofstream sdfFile;
-		std::string sdfFileName = DATA_PATH + "sine_sdf_" + std::to_string( maxRL() ) +  ".csv";
-		sdfFile.open( sdfFileName, std::ofstream::trunc );
-		if( !sdfFile.is_open() )
-			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+		if( writeSDF() )
+		{
+			std::string sdfFileName = DATA_PATH + "sine_sdf_" + std::to_string( maxRL()) + ".csv";
+			sdfFile.open( sdfFileName, std::ofstream::trunc );
+			if( !sdfFile.is_open())
+				throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+		}
 
 		// Write column headers: enforcing strings by adding quotes around them.
 		std::ostringstream headerStream;
@@ -253,23 +257,22 @@ int main ( int argc, char* argv[] )
 			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
 		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
 		rlsFile << headerStream.str() << std::endl;
-		sdfFile << headerStream.str() << std::endl;
+		rlsFile.precision( 15 );
 
-		rlsFile.precision( 15 );							// Precision for floating point numbers.
-		sdfFile.precision( 15 );
+		if( writeSDF() )
+		{
+			sdfFile << headerStream.str() << std::endl;
+			sdfFile.precision( 15 );
+		}
 
 		// Variables to control the spread of sine waves' amplitudes, which must vary uniformly from MIN_A to MAX_A.
-		double A_DIST = MAX_A - MIN_A;						// Amplitudes are in [1.5*H_BASE, 0.5], inclusive.
-		double linspaceA[NUM_AMPLITUDES];
-		for( int i = 0; i < NUM_AMPLITUDES; i++ )			// Uniform linear space from 0 to 1, with NUM_AMPLITUDES steps.
-			linspaceA[i] = (double)( i ) / (NUM_AMPLITUDES - 1.0);
+		std::vector<double> linspaceA;
+		linspace( MIN_A, MAX_A, NUM_AMPLITUDES, linspaceA );
 
 		// Variables to control the spread of rotation angles per amplitude, which must vary uniformly from MIN_THETA to
 		// MAX_THETA, in a finite number of steps.
-		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/2, +pi/2).
-		double linspaceTheta[NUM_THETAS];
-		for( int i = 0; i < NUM_THETAS; i++ )				// Uniform linear space from 0 to 1, with NUM_TETHAS steps.
-			linspaceTheta[i] = (double)( i ) / (NUM_THETAS - 1.0);
+		std::vector<double> linspaceTheta;
+		linspace( MIN_THETA, MAX_THETA, NUM_THETAS, linspaceTheta );
 
 		// Domain information, applicable to all sinusoidal interfaces.
 		const int N_TREES = (int)(MAX_D - MIN_D);
@@ -286,28 +289,26 @@ int main ( int argc, char* argv[] )
 		double maxRelAbsError = 0;
 		for( ; na < NUM_AMPLITUDES; na++ )					// Go through all wave amplitudes evaluated.
 		{
-			const double A = MIN_A + linspaceA[na] * A_DIST;			// Amplitude to be evaluated.
+			const double A = linspaceA[na];					// Amplitude to be evaluated.
 
 			const double MIN_OMEGA = sqrt( MAX_HKAPPA_LB / (H * A) );	// Range of frequencies to ensure that the max
 			const double MAX_OMEGA = sqrt( MAX_HKAPPA_UB / (H * A) );	// kappa is in the range of [MAX_KAPPA/2, MAX_KAPPA].
-			const double OMEGA_DIST = MAX_OMEGA - MIN_OMEGA;
 			const double OMEGA_PEAK_DIST = M_PI_2 * (1 / MIN_OMEGA - 1 / MAX_OMEGA);	// Shortest u-distance between crests obtained with omega max and min.
 			const int NUM_OMEGAS = (int)ceil( OMEGA_PEAK_DIST * ONE_OVER_H ) + 1;		// Num. of omegas per amplitude.
-			double linspaceOmega[NUM_OMEGAS];
-			for( int i = 0; i < NUM_OMEGAS; i++ )			// Uniform linear space from 0 to 1, with NUM_OMEGA steps.
-				linspaceOmega[i] = (double)( i ) / ( NUM_OMEGAS - 1.0 );
+			std::vector<double> linspaceOmega;
+			linspace( MIN_OMEGA, MAX_OMEGA, NUM_OMEGAS, linspaceOmega );
 
-			for( int no = 0; no < NUM_OMEGAS; no++ )		// Evaluate all frequencies for the same amplitude.
+			for( int no = 0; no < NUM_OMEGAS; no++ )			// Evaluate all frequencies for the same amplitude.
 			{
 				std::vector<std::vector<double>> rlsSamples;	// Reinitialized level-set function samples.
 				std::vector<std::vector<double>> sdfSamples;	// Exact signed-distance function samples.
 				double maxRE = 0;								// Maximum relative error for verification.
 				double minRE = PETSC_MAX_REAL;					// Minimum relative error.
 
-				const double OMEGA = MIN_OMEGA + linspaceOmega[no] * OMEGA_DIST;
+				const double OMEGA = linspaceOmega[no];
 				for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same amplitude and frequency
 				{												// (skipping last endpoint because we do augmentation).
-					const double THETA = MIN_THETA + linspaceTheta[nt] * THETA_DIST;	// Rotation of main wave axis.
+					const double THETA = linspaceTheta[nt];		// Rotation of main wave axis.
 					const double T[] = {
 						(MIN_D + MAX_D) / 2 + uniformDistributionH_2( gen ),	// Translate origin coords by a random
 						(MIN_D + MAX_D) / 2 + uniformDistributionH_2( gen )		// perturbation from grid's midpoint.
@@ -444,7 +445,7 @@ int main ( int argc, char* argv[] )
 									continue;
 
 								// Accumulating samples: we always take samples with hk > midpoint; for those with
-								// hk <= midpoint, we take them with an easing-off probability from 0.5 to 0.025, where
+								// hk <= midpoint, we take them with an easing-off probability, where
 								// Pr(hk = midpoint) = easeOffMaxProb param and Pr(hk = minHK) = 0.01.
 								double p = MIN( 1.0, (ABS( tgtHK ) - minHK()) / (MAX_HKAPPA_MIDPOINT - minHK()) );
 								if( uniformDistribution( gen ) <= 0.01 + (sin( -M_PI_2 + p * M_PI ) + 1) * (easeOffMaxProb() - 0.01) / 2  )
@@ -471,22 +472,8 @@ int main ( int argc, char* argv[] )
 										sdfGrad[dim] = (sdfNormalReadPtr[dim][n] == 0)? EPS : sdfNormalReadPtr[dim][n];
 									}
 
-									if( tgtHK > 0 )						// Flip sign for positive samples.
-									{
-										for( int i = 0; i < NUM_COLUMNS; i++ )
-										{
-											data[i] *= -1.0;
-											distances[i] *= -1.0;
-										}
-
-										for( int dim = 0; dim < P4EST_DIM; dim++ )	// Flip sign of gradient too.
-										{
-											rlsGrad[dim] *= -1.0;
-											sdfGrad[dim] *= -1.0;
-										}
-									}
-
-									// Error metric for validation.  Before reorientation because the sdf gradient might
+									// Error metric for validation.  Before negative-curvature normalization and
+									// reorientation because the signs might be opposite or the sdf gradient might
 									// rotate or not the sdf stencil in comparison to the rls stencil.
 									for( int i = 0; i < num_neighbors_cube; i++ )
 									{
@@ -495,18 +482,39 @@ int main ( int argc, char* argv[] )
 										minRE = MIN( minRE, ABS( error ) );
 									}
 
+									// Flip sign for positive samples: treat reinitialized and signed distance samples separately.
+									if( data.back() > 0 )
+									{
+										for( int i = 0; i < NUM_COLUMNS; i++ )
+											data[i] *= -1.0;
+
+										for( double& dim : rlsGrad )	// Flip sign of gradient too.
+											dim *= -1.0;
+									}
+
+									if( distances.back() > 0 )
+									{
+										for( int i = 0; i < NUM_COLUMNS; i++ )
+											distances[i] *= -1.0;
+
+										for( double& dim : sdfGrad )	// Flip sign of gradient too.
+											dim *= -1.0;
+									}
+
 									// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
 									kutils::rotateStencilToFirstQuadrant( data, rlsGrad );
 									kutils::rotateStencilToFirstQuadrant( distances, sdfGrad );
 
 									rlsSamples.push_back( data );			// Store original sample.
-									sdfSamples.push_back( distances );
+									if( writeSDF() )
+										sdfSamples.push_back( distances );
 
 									// Data augmentation by reflection along y=x line.
 									kutils::reflectStencil_yEqx( data );
 									kutils::reflectStencil_yEqx( distances );
 									rlsSamples.push_back( data );			// Store augmented sample too.
-									sdfSamples.push_back( distances );
+									if( writeSDF() )
+										sdfSamples.push_back( distances );
 								}
 							}
 						}
@@ -546,17 +554,22 @@ int main ( int argc, char* argv[] )
 				// randomized origin and for all rotations of main axis.
 				for( const auto& row : rlsSamples )
 				{
-					std::copy( row.begin(), row.end() - 2, std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
+					std::copy( row.begin(), row.end() - 2,
+							   std::ostream_iterator<double>( rlsFile, "," ) );		// Inner elements.
 					rlsFile << std::setprecision( 8 ) << row[NUM_COLUMNS - 2] << "," << row.back()
 							<< std::setprecision( 15 ) << std::endl;
 				}
 
 				// Same for signed distance function.
-				for( const auto& row : sdfSamples )
+				if( writeSDF() )
 				{
-					std::copy( row.begin(), row.end() - 2, std::ostream_iterator<double>( sdfFile, "," ) );		// Inner elements.
-					sdfFile << std::setprecision( 8 ) << row[NUM_COLUMNS - 2] << "," << row.back()
-							<< std::setprecision( 15 ) << std::endl;
+					for( const auto &row: sdfSamples )
+					{
+						std::copy( row.begin(), row.end() - 2,
+								   std::ostream_iterator<double>( sdfFile, "," ));	// Inner elements.
+						sdfFile << std::setprecision( 8 ) << row[NUM_COLUMNS - 2] << "," << row.back()
+								<< std::setprecision( 15 ) << std::endl;
+					}
 				}
 
 				nSamples += rlsSamples.size();

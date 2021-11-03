@@ -74,7 +74,7 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> maxRL( pl, 10, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<unsigned short> maxRL( pl, 8, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 8)" );
 	param_t<unsigned int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
 	param_t<bool> verbose( pl, true, "verbose", "Show or not debugging messages (default: 1)" );
@@ -112,13 +112,14 @@ int main ( int argc, char* argv[] )
 
 		/////////////////////////////////////// Star-shaped interface parameters ///////////////////////////////////////
 
-		// Steep curvature parameters.
-//		A = 0.111, B = 0.314 for level 6.
+		// Steep curvature parameters: check the results folder in the python project for other smoother parameters.
+//		A = 0.085, B = 0.300 for level 6.
 //		A = 0.120, B = 0.305 for level 7.
+//		A = 0.170, B = 0.330 for level 8.
 //		A = 0.225, B = 0.355 for level 9.
 //		A = 0.258, B = 0.356 for level 10.
-		const double A = 0.258;
-		const double B = 0.356;
+		const double A = 0.170;
+		const double B = 0.330;
 		const int ARMS = 5;
 
 		geom::Star star( A, B, ARMS );			// Define the star interface and determine domain bound based on it.
