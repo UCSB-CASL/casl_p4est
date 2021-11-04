@@ -52,7 +52,7 @@
 class my_p4est_node_neighbors_t;
 class quad_neighbor_nodes_of_node_t;
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT, V_X, V_Y, V_Z, _X_, _Y_, _Z_ };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 

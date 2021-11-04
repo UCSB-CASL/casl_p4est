@@ -1331,7 +1331,7 @@ void splitting_criteria_band_t::tag_quadrant( p4est_t const *p4est, p4est_locidx
 	{											// Decide if quadrant should be tag for refinement or coarsening.
 		double dxyz[P4EST_DIM];
 		double dxyzMin, diagMin;
-		get_dxyz_min( p4est, dxyz, dxyzMin, diagMin );	// Domain metrics.
+    get_dxyz_min( p4est, dxyz, &dxyzMin, &diagMin );	// Domain metrics.
 		const double quadDiag = diagMin * (1 << (max_lvl - quad->level));
 
 		bool coarsen = (quad->level > min_lvl);	// Beging by deciding if quadrant must be coarsened.

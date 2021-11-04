@@ -475,23 +475,23 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0( Vec phi, const un
         }
       }
 
-      if (show_convergence)
-      {
-        double dxyz[P4EST_DIM];
-        ::dxyz_min(p4est, dxyz);
+//      if (show_convergence)
+//      {
+//        double dxyz[P4EST_DIM];
+//        ::dxyz_min(p4est, dxyz);
 
-        double change = 0.0;
-        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
-          {
-            double change_loc = 0.5*fabs(phi_np2_p[n] - phi_n_p[n]);
-            if (change_loc > change) change = change_loc;
-          }
+//        double change = 0.0;
+//        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+//          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
+//          {
+//            double change_loc = 0.5*fabs(phi_np2_p[n] - phi_n_p[n]);
+//            if (change_loc > change) change = change_loc;
+//          }
 
-        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
-      }
+//        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
+//      }
 
       /* update phi */
       for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
@@ -499,23 +499,23 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0( Vec phi, const un
     }
     else
     {
-      if (show_convergence)
-      {
-        double dxyz[P4EST_DIM];
-        ::dxyz_min(p4est, dxyz);
+//      if (show_convergence)
+//      {
+//        double dxyz[P4EST_DIM];
+//        ::dxyz_min(p4est, dxyz);
 
-        double change = 0.0;
-        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
-          {
-            double change_loc = fabs(phi_np1_p[n] - phi_n_p[n]);
-            if (change_loc > change) change = change_loc;
-          }
+//        double change = 0.0;
+//        for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+//          if (fabs(phi_n_p[n]) < show_convergence_band*dxyz[0])
+//          {
+//            double change_loc = fabs(phi_np1_p[n] - phi_n_p[n]);
+//            if (change_loc > change) change = change_loc;
+//          }
 
-        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
-      }
+//        ierr = PetscPrintf(p4est->mpicomm, "Reinitializing, iteration: %d, error: %e\n", i, change); CHKERRXX(ierr);
+//      }
 
       /* update phi */
       memcpy(phi_n_p, phi_np1_p, nodes->indep_nodes.elem_count*sizeof(double));
@@ -3702,22 +3702,22 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
       ierr = VecRestoreArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
     }
 
-    if (show_convergence)
-    {
-      double change = 0.0;
-      for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      {
-        if (fabs(phi_p[n]) < show_convergence_band*dl)
-        {
-          double change_loc = 0.5*fabs(q2_p[n] - q_p[n]);
-          if (change_loc > change) change = change_loc;
-        }
-      }
+//    if (show_convergence)
+//    {
+//      double change = 0.0;
+//      for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
+//      {
+//        if (fabs(phi_p[n]) < show_convergence_band*dl)
+//        {
+//          double change_loc = 0.5*fabs(q2_p[n] - q_p[n]);
+//          if (change_loc > change) change = change_loc;
+//        }
+//      }
 
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &change, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-      ierr = PetscPrintf(p4est->mpicomm, "Extending in normal direction, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
-    }
+//      ierr = PetscPrintf(p4est->mpicomm, "Extending in normal direction, iteration: %d, error: %e\n", it, change); CHKERRXX(ierr);
+//    }
 
     //---------------------------------------------------------------------
     // The third step of TVD RK-2 : q = .5*(q + q2)
@@ -3746,354 +3746,355 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(const std::vector<int>& map, DIM(vector<double>& nx, vector<double>& ny, vector<double>& nz),
-                                                                                   double *q_out_p, double *q_p, DIM(double *qxx_p, double *qyy_p, double *qzz_p),
-                                                                                   std::vector<int>& map_grid_to_interface,
-                                                                                   std::vector<int>& interface_directions,
-                                                                                   std::vector<double>& interface_distances,
-                                                                                   std::vector<double>& interface_values) const
-{
-  for (size_t n_map = 0; n_map < map.size(); ++n_map) {
-    p4est_locidx_t n = map[n_map];
 
-    const quad_neighbor_nodes_of_node_t qnnn = (*ngbd)[n];
+//void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(const std::vector<int>& map, DIM(vector<double>& nx, vector<double>& ny, vector<double>& nz),
+//                                                                                   double *q_out_p, double *q_p, DIM(double *qxx_p, double *qyy_p, double *qzz_p),
+//                                                                                   std::vector<int>& map_grid_to_interface,
+//                                                                                   std::vector<int>& interface_directions,
+//                                                                                   std::vector<double>& interface_distances,
+//                                                                                   std::vector<double>& interface_values) const
+//{
+//  for (size_t n_map = 0; n_map < map.size(); ++n_map) {
+//    p4est_locidx_t n = map[n_map];
 
-    //---------------------------------------------------------------------
-    // Neighborhood information
-    //---------------------------------------------------------------------
-    double q_000, q_nei[P4EST_FACES];
-    qnnn.ngbd_with_quadratic_interpolation(q_p, q_000, q_nei);
+//    const quad_neighbor_nodes_of_node_t qnnn = (*ngbd)[n];
 
-    double s_nei_[P4EST_FACES] = { DIMPM(qnnn.d_m00, qnnn.d_p00,
-                                         qnnn.d_0m0, qnnn.d_0p0,
-                                         qnnn.d_00m, qnnn.d_00p) };
-    //---------------------------------------------------------------------
-    // Fetch interface values
-    //---------------------------------------------------------------------
-    for (int i = map_grid_to_interface[n]; i < map_grid_to_interface[n+1]; ++i) {
-      int dir     = interface_directions[i];
-      s_nei_[dir] = interface_distances[i];
-      q_nei [dir] = interface_values[i];
-    }
+//    //---------------------------------------------------------------------
+//    // Neighborhood information
+//    //---------------------------------------------------------------------
+//    double q_000, q_nei[P4EST_FACES];
+//    qnnn.ngbd_with_quadratic_interpolation(q_p, q_000, q_nei);
 
-    //---------------------------------------------------------------------
-    // Fetch second derivatives and determine direction
-    //---------------------------------------------------------------------
-    double DIM(qxx, qyy, qzz);
-    int    DIM(nei_x, nei_y, nei_z);
+//    double s_nei_[P4EST_FACES] = { DIMPM(qnnn.d_m00, qnnn.d_p00,
+//                                         qnnn.d_0m0, qnnn.d_0p0,
+//                                         qnnn.d_00m, qnnn.d_00p) };
+//    //---------------------------------------------------------------------
+//    // Fetch interface values
+//    //---------------------------------------------------------------------
+//    for (int i = map_grid_to_interface[n]; i < map_grid_to_interface[n+1]; ++i) {
+//      int dir     = interface_directions[i];
+//      s_nei_[dir] = interface_distances[i];
+//      q_nei [dir] = interface_values[i];
+//    }
 
-    if (nx[n] > 0) { nei_x = dir::f_m00; qxx = MINMOD(qxx_p[n], qnnn.f_m00_linear(qxx_p));}
-    else           { nei_x = dir::f_p00; qxx = MINMOD(qxx_p[n], qnnn.f_p00_linear(qxx_p));}
+//    //---------------------------------------------------------------------
+//    // Fetch second derivatives and determine direction
+//    //---------------------------------------------------------------------
+//    double DIM(qxx, qyy, qzz);
+//    int    DIM(nei_x, nei_y, nei_z);
 
-    if (ny[n] > 0) { nei_y = dir::f_0m0; qyy = MINMOD(qyy_p[n], qnnn.f_0m0_linear(qyy_p));}
-    else           { nei_y = dir::f_0p0; qyy = MINMOD(qyy_p[n], qnnn.f_0p0_linear(qyy_p));}
-#ifdef P4_TO_P8
-    if (nz[n] > 0) { nei_z = dir::f_00m; qzz = MINMOD(qzz_p[n], qnnn.f_00m_linear(qzz_p));}
-    else           { nei_z = dir::f_00p; qzz = MINMOD(qzz_p[n], qnnn.f_00p_linear(qzz_p));}
-#endif
+//    if (nx[n] > 0) { nei_x = dir::f_m00; qxx = MINMOD(qxx_p[n], qnnn.f_m00_linear(qxx_p));}
+//    else           { nei_x = dir::f_p00; qxx = MINMOD(qxx_p[n], qnnn.f_p00_linear(qxx_p));}
 
-    //---------------------------------------------------------------------
-    // Neumann boundary condition on the walls
-    //---------------------------------------------------------------------
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+//    if (ny[n] > 0) { nei_y = dir::f_0m0; qyy = MINMOD(qyy_p[n], qnnn.f_0m0_linear(qyy_p));}
+//    else           { nei_y = dir::f_0p0; qyy = MINMOD(qyy_p[n], qnnn.f_0p0_linear(qyy_p));}
+//#ifdef P4_TO_P8
+//    if (nz[n] > 0) { nei_z = dir::f_00m; qzz = MINMOD(qzz_p[n], qnnn.f_00m_linear(qzz_p));}
+//    else           { nei_z = dir::f_00p; qzz = MINMOD(qzz_p[n], qnnn.f_00p_linear(qzz_p));}
+//#endif
 
-    /* wall in the x direction */
-    if     (is_node_xmWall(p4est, node)) { s_nei_[dir::f_m00] = s_nei_[dir::f_p00]; q_nei[dir::f_m00] = q_nei[dir::f_p00]; qxx = 0; }
-    else if(is_node_xpWall(p4est, node)) { s_nei_[dir::f_p00] = s_nei_[dir::f_m00]; q_nei[dir::f_p00] = q_nei[dir::f_m00]; qxx = 0; }
+//    //---------------------------------------------------------------------
+//    // Neumann boundary condition on the walls
+//    //---------------------------------------------------------------------
+//    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
 
-    /* wall in the y direction */
-    if     (is_node_ymWall(p4est, node)) { s_nei_[dir::f_0m0] = s_nei_[dir::f_0p0]; q_nei[dir::f_0m0] = q_nei[dir::f_0p0]; qyy = 0; }
-    else if(is_node_ypWall(p4est, node)) { s_nei_[dir::f_0p0] = s_nei_[dir::f_0m0]; q_nei[dir::f_0p0] = q_nei[dir::f_0m0]; qyy = 0; }
-#ifdef P4_TO_P8
-    /* wall in the y direction */
-    if     (is_node_zmWall(p4est, node)) { s_nei_[dir::f_00m] = s_nei_[dir::f_00p]; q_nei[dir::f_00m] = q_nei[dir::f_00p]; qzz = 0; }
-    else if(is_node_zpWall(p4est, node)) { s_nei_[dir::f_00p] = s_nei_[dir::f_00m]; q_nei[dir::f_00p] = q_nei[dir::f_00m]; qzz = 0; }
-#endif
+//    /* wall in the x direction */
+//    if     (is_node_xmWall(p4est, node)) { s_nei_[dir::f_m00] = s_nei_[dir::f_p00]; q_nei[dir::f_m00] = q_nei[dir::f_p00]; qxx = 0; }
+//    else if(is_node_xpWall(p4est, node)) { s_nei_[dir::f_p00] = s_nei_[dir::f_m00]; q_nei[dir::f_p00] = q_nei[dir::f_m00]; qxx = 0; }
 
-    //---------------------------------------------------------------------
-    // Second order accurate One-Sided Differecing
-    //---------------------------------------------------------------------
-    double DIM( qxnx = fabs(nx[n])*((q_000-q_nei[nei_x])/s_nei_[nei_x] + 0.5*s_nei_[nei_x]*qxx),
-                qyny = fabs(ny[n])*((q_000-q_nei[nei_y])/s_nei_[nei_y] + 0.5*s_nei_[nei_y]*qyy),
-                qznz = fabs(nz[n])*((q_000-q_nei[nei_z])/s_nei_[nei_z] + 0.5*s_nei_[nei_z]*qzz) );
+//    /* wall in the y direction */
+//    if     (is_node_ymWall(p4est, node)) { s_nei_[dir::f_0m0] = s_nei_[dir::f_0p0]; q_nei[dir::f_0m0] = q_nei[dir::f_0p0]; qyy = 0; }
+//    else if(is_node_ypWall(p4est, node)) { s_nei_[dir::f_0p0] = s_nei_[dir::f_0m0]; q_nei[dir::f_0p0] = q_nei[dir::f_0m0]; qyy = 0; }
+//#ifdef P4_TO_P8
+//    /* wall in the y direction */
+//    if     (is_node_zmWall(p4est, node)) { s_nei_[dir::f_00m] = s_nei_[dir::f_00p]; q_nei[dir::f_00m] = q_nei[dir::f_00p]; qzz = 0; }
+//    else if(is_node_zpWall(p4est, node)) { s_nei_[dir::f_00p] = s_nei_[dir::f_00m]; q_nei[dir::f_00p] = q_nei[dir::f_00m]; qzz = 0; }
+//#endif
 
-    //---------------------------------------------------------------------
-    // Upwind Scheme
-    //---------------------------------------------------------------------
-    double dt = MIN(MIN(DIM(s_nei_[dir::f_m00], s_nei_[dir::f_0m0], s_nei_[dir::f_00m])),
-                    MIN(DIM(s_nei_[dir::f_p00], s_nei_[dir::f_0p0], s_nei_[dir::f_00p])))/double(P4EST_DIM);
+//    //---------------------------------------------------------------------
+//    // Second order accurate One-Sided Differecing
+//    //---------------------------------------------------------------------
+//    double DIM( qxnx = fabs(nx[n])*((q_000-q_nei[nei_x])/s_nei_[nei_x] + 0.5*s_nei_[nei_x]*qxx),
+//                qyny = fabs(ny[n])*((q_000-q_nei[nei_y])/s_nei_[nei_y] + 0.5*s_nei_[nei_y]*qyy),
+//                qznz = fabs(nz[n])*((q_000-q_nei[nei_z])/s_nei_[nei_z] + 0.5*s_nei_[nei_z]*qzz) );
 
-    q_out_p[n] = q_000 - dt * SUMD(qxnx, qyny, qznz);
-  }
-}
+//    //---------------------------------------------------------------------
+//    // Upwind Scheme
+//    //---------------------------------------------------------------------
+//    double dt = MIN(MIN(DIM(s_nei_[dir::f_m00], s_nei_[dir::f_0m0], s_nei_[dir::f_00m])),
+//                    MIN(DIM(s_nei_[dir::f_p00], s_nei_[dir::f_0p0], s_nei_[dir::f_00p])))/double(P4EST_DIM);
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_daniil_ver(Vec phi, Vec qi, Vec q, int iterations,
-                                                                     Vec mask, double band_zero, double band_smooth,
-                                                                     double (*func)(p4est_locidx_t, int, double)) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+//    q_out_p[n] = q_000 - dt * SUMD(qxnx, qyny, qznz);
+//  }
+//}
 
-  if (qi == NULL && func == NULL) {
-    throw std::invalid_argument("Must provide at least one: qi or func");
-  }
+//void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_daniil_ver(Vec phi, Vec qi, Vec q, int iterations,
+//                                                                     Vec mask, double band_zero, double band_smooth,
+//                                                                     double (*func)(p4est_locidx_t, int, double)) const
+//{
+//  PetscErrorCode ierr;
+//  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
+//  if (qi == NULL && func == NULL) {
+//    throw std::invalid_argument("Must provide at least one: qi or func");
+//  }
 
-  /* find dx and dy smallest */
-  double dxyz[P4EST_DIM];
-  p4est_dxyz_min(p4est, dxyz);
-  double dl = ABSD(dxyz[0], dxyz[1], dxyz[2]);
+//  /* init the neighborhood information if needed */
+//  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
+//   * at the end of this function if they were not initialized beforehand ?
+//   */
+//  ngbd->init_neighbors();
 
-  /* compute second order derivatives of phi and q*/
-  // note that even if we use func to compute interface values,
-  // these allocated q_dd's will still be used during iterations
-  Vec     phi_dd  [P4EST_DIM];
-  double *phi_dd_p[P4EST_DIM];
+//  /* find dx and dy smallest */
+//  double dxyz[P4EST_DIM];
+//  p4est_dxyz_min(p4est, dxyz);
+//  double dl = ABSD(dxyz[0], dxyz[1], dxyz[2]);
 
-  Vec     q_dd  [P4EST_DIM];
-  double *q_dd_p[P4EST_DIM];
+//  /* compute second order derivatives of phi and q*/
+//  // note that even if we use func to compute interface values,
+//  // these allocated q_dd's will still be used during iterations
+//  Vec     phi_dd  [P4EST_DIM];
+//  double *phi_dd_p[P4EST_DIM];
 
-  foreach_dimension(dim) {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_dd[dim]); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi_dd[dim], &q_dd[dim]); CHKERRXX(ierr);
-  }
+//  Vec     q_dd  [P4EST_DIM];
+//  double *q_dd_p[P4EST_DIM];
 
-  compute_derivatives(phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]));
-  if (func == NULL) {
-    compute_derivatives(qi, DIM(q_dd[0], q_dd[1], q_dd[2]));
-  }
+//  foreach_dimension(dim) {
+//    ierr = VecCreateGhostNodes(p4est, nodes, &phi_dd[dim]); CHKERRXX(ierr);
+//    ierr = VecDuplicate(phi_dd[dim], &q_dd[dim]); CHKERRXX(ierr);
+//  }
 
-  double *q_p, *qi_p, *phi_p, *mask_p;
+//  compute_derivatives(phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]));
+//  if (func == NULL) {
+//    compute_derivatives(qi, DIM(q_dd[0], q_dd[1], q_dd[2]));
+//  }
 
-  ierr = VecGetArray(q,   &q_p);   CHKERRXX(ierr);
-  ierr = VecGetArray(qi,  &qi_p);  CHKERRXX(ierr);
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+//  double *q_p, *qi_p, *phi_p, *mask_p;
 
-  if (mask != NULL) {
-    band_zero   *= dl;
-    band_smooth *= dl;
-    ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
-  }
+//  ierr = VecGetArray(q,   &q_p);   CHKERRXX(ierr);
+//  ierr = VecGetArray(qi,  &qi_p);  CHKERRXX(ierr);
+//  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-  foreach_dimension(dim) {
-    ierr = VecGetArray(phi_dd[dim], &phi_dd_p[dim]); CHKERRXX(ierr);
-    ierr = VecGetArray(q_dd  [dim], &q_dd_p  [dim]); CHKERRXX(ierr);
-  }
+//  if (mask != NULL) {
+//    band_zero   *= dl;
+//    band_smooth *= dl;
+//    ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+//  }
 
-  /* compute the normals */
-  std::vector<double> DIM(nx(nodes->num_owned_indeps),
-                          ny(nodes->num_owned_indeps),
-                          nz(nodes->num_owned_indeps));
+//  foreach_dimension(dim) {
+//    ierr = VecGetArray(phi_dd[dim], &phi_dd_p[dim]); CHKERRXX(ierr);
+//    ierr = VecGetArray(q_dd  [dim], &q_dd_p  [dim]); CHKERRXX(ierr);
+//  }
 
-  foreach_local_node(n, nodes) {
-    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
-    EXECD(nx[n] = qnnn.dx_central(phi_p),
-          ny[n] = qnnn.dy_central(phi_p),
-          nz[n] = qnnn.dz_central(phi_p));
-    double norm = ABSD(nx[n], ny[n], nz[n]);
+//  /* compute the normals */
+//  std::vector<double> DIM(nx(nodes->num_owned_indeps),
+//                          ny(nodes->num_owned_indeps),
+//                          nz(nodes->num_owned_indeps));
 
-    if(norm > EPS) {
-      if (phi_p[n] < 0) norm = -norm;
-      EXECD(nx[n] /= norm,
-            ny[n] /= norm,
-            nz[n] /= norm);
-    } else {
-      EXECD(nx[n] = 0,
-            ny[n] = 0,
-            nz[n] = 0);
-    }
-  }
+//  foreach_local_node(n, nodes) {
+//    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+//    EXECD(nx[n] = qnnn.dx_central(phi_p),
+//          ny[n] = qnnn.dy_central(phi_p),
+//          nz[n] = qnnn.dz_central(phi_p));
+//    double norm = ABSD(nx[n], ny[n], nz[n]);
 
-  /* initialize the quantities at the interface (instead of doing it each time in the loop ...) */
-  std::vector<int>    map_grid_to_interface(nodes->num_owned_indeps+1); // map_grid_to_interface[n]: starting position, map_grid_to_interface[n+1]-map_grid_to_interface[n]: number of elements
-  std::vector<int>    interface_directions;
-  std::vector<double> interface_values;
-  std::vector<double> interface_distances;
+//    if(norm > EPS) {
+//      if (phi_p[n] < 0) norm = -norm;
+//      EXECD(nx[n] /= norm,
+//            ny[n] /= norm,
+//            nz[n] /= norm);
+//    } else {
+//      EXECD(nx[n] = 0,
+//            ny[n] = 0,
+//            nz[n] = 0);
+//    }
+//  }
 
-  map_grid_to_interface[0] = 0;
-  foreach_local_node(n, nodes)
-  {
-    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
+//  /* initialize the quantities at the interface (instead of doing it each time in the loop ...) */
+//  std::vector<int>    map_grid_to_interface(nodes->num_owned_indeps+1); // map_grid_to_interface[n]: starting position, map_grid_to_interface[n+1]-map_grid_to_interface[n]: number of elements
+//  std::vector<int>    interface_directions;
+//  std::vector<double> interface_values;
+//  std::vector<double> interface_distances;
 
-    double xyz_n[P4EST_DIM];
-    node_xyz_fr_n(n, p4est, nodes, xyz_n);
+//  map_grid_to_interface[0] = 0;
+//  foreach_local_node(n, nodes)
+//  {
+//    const quad_neighbor_nodes_of_node_t &qnnn = (*ngbd)[n];
 
-    double p_000, p_nei[P4EST_FACES];
-    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_nei);
+//    double xyz_n[P4EST_DIM];
+//    node_xyz_fr_n(n, p4est, nodes, xyz_n);
 
-    double s_nei_[P4EST_FACES] = { DIMPM(qnnn.d_p00, qnnn.d_m00,
-                                         qnnn.d_0p0, qnnn.d_0m0,
-                                         qnnn.d_00p, qnnn.d_00m) };
+//    double p_000, p_nei[P4EST_FACES];
+//    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_nei);
 
-    //---------------------------------------------------------------------
-    // Second Order derivatives
-    //---------------------------------------------------------------------
-    double q_000, q_nei[P4EST_FACES];
-    bool   q_ngbd_initialized = false;
+//    double s_nei_[P4EST_FACES] = { DIMPM(qnnn.d_p00, qnnn.d_m00,
+//                                         qnnn.d_0p0, qnnn.d_0m0,
+//                                         qnnn.d_00p, qnnn.d_00m) };
 
-    double mask_000, mask_nei[P4EST_FACES];
-    bool   mask_ngbd_initialized = false;
+//    //---------------------------------------------------------------------
+//    // Second Order derivatives
+//    //---------------------------------------------------------------------
+//    double q_000, q_nei[P4EST_FACES];
+//    bool   q_ngbd_initialized = false;
 
-    map_grid_to_interface[n+1] = map_grid_to_interface[n];
+//    double mask_000, mask_nei[P4EST_FACES];
+//    bool   mask_ngbd_initialized = false;
 
-    foreach_direction(dir) {
-      int dim = dir/2;
-      if (p_000*p_nei[dir] < 0) {
+//    map_grid_to_interface[n+1] = map_grid_to_interface[n];
 
-        // find intersection
-        double dist = interface_Location_With_Second_Order_Derivative(0, s_nei_[dir], p_000, p_nei[dir], phi_dd_p[dim][n], qnnn.f_linear(dir, phi_dd_p[dim]));
-        dist = MAX(dist,EPS);
+//    foreach_direction(dir) {
+//      int dim = dir/2;
+//      if (p_000*p_nei[dir] < 0) {
 
-        double value;
-        // compute value at intersection
-        if (func == NULL) {
-          if (!q_ngbd_initialized) {
-            qnnn.ngbd_with_quadratic_interpolation(qi_p, q_000, q_nei);
-            q_ngbd_initialized = true;
-          }
-          double q_dd_minmod = MINMOD(q_dd_p[dim][n], qnnn.f_linear(dir, q_dd_p[dim]));
-          value = q_000*(1-dist/s_nei_[dir]) + q_nei[dir]*dist/s_nei_[dir] + 0.5*dist*(dist-s_nei_[dir])*q_dd_minmod;
-        } else {
-          value = func(n, dir, dist);
-        }
+//        // find intersection
+//        double dist = interface_Location_With_Second_Order_Derivative(0, s_nei_[dir], p_000, p_nei[dir], phi_dd_p[dim][n], qnnn.f_linear(dir, phi_dd_p[dim]));
+//        dist = MAX(dist,EPS);
 
-        // fade to zero according to mask if needed
-        if (mask != NULL) {
-          if (!mask_ngbd_initialized) {
-            qnnn.ngbd_with_quadratic_interpolation(mask_p, mask_000, mask_nei);
-            mask_ngbd_initialized = true;
-          }
-          double mask_val = mask_000*(1-dist/s_nei_[dir]) + mask_nei[dir]*dist/s_nei_[dir];
-          value *= 1.-smoothstep(1, (mask_val-band_zero)/band_smooth);
-        }
+//        double value;
+//        // compute value at intersection
+//        if (func == NULL) {
+//          if (!q_ngbd_initialized) {
+//            qnnn.ngbd_with_quadratic_interpolation(qi_p, q_000, q_nei);
+//            q_ngbd_initialized = true;
+//          }
+//          double q_dd_minmod = MINMOD(q_dd_p[dim][n], qnnn.f_linear(dir, q_dd_p[dim]));
+//          value = q_000*(1-dist/s_nei_[dir]) + q_nei[dir]*dist/s_nei_[dir] + 0.5*dist*(dist-s_nei_[dir])*q_dd_minmod;
+//        } else {
+//          value = func(n, dir, dist);
+//        }
 
-        // save info
-        map_grid_to_interface[n+1]++;
-        interface_distances.push_back(dist);
-        interface_directions.push_back(dir);
-        interface_values.push_back(value);
-      }
-    }
-  }
+//        // fade to zero according to mask if needed
+//        if (mask != NULL) {
+//          if (!mask_ngbd_initialized) {
+//            qnnn.ngbd_with_quadratic_interpolation(mask_p, mask_000, mask_nei);
+//            mask_ngbd_initialized = true;
+//          }
+//          double mask_val = mask_000*(1-dist/s_nei_[dir]) + mask_nei[dir]*dist/s_nei_[dir];
+//          value *= 1.-smoothstep(1, (mask_val-band_zero)/band_smooth);
+//        }
 
-  /* initialization of q near interface (for faster convergence) */
-  if (qi != NULL) { // for simplicity we will provide initial guess only through qi
-    if (mask == NULL) {
-      foreach_node(n, nodes) {
-        q_p[n] = fabs(phi_p[n]) < 1.5*dl ? qi_p[n] : 0;
-      }
-    } else {
-      double *mask_p;
-      ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
-      foreach_node(n, nodes) {
-        q_p[n] = MAX(mask_p[n], fabs(phi_p[n])) < 1.5*dl ? qi_p[n] : 0;
-      }
-      ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
-    }
-  } else {
-    foreach_node(n, nodes) {
-      q_p[n] = 0;
-    }
-  }
+//        // save info
+//        map_grid_to_interface[n+1]++;
+//        interface_distances.push_back(dist);
+//        interface_directions.push_back(dir);
+//        interface_values.push_back(value);
+//      }
+//    }
+//  }
 
-  // Auxiliary arrays for time-stepping
-  Vec     q1,    q2;
-  double *q1_p, *q2_p;
-  ierr = VecDuplicate(phi, &q1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &q2); CHKERRXX(ierr);
-  ierr = VecGetArray(q1, &q1_p); CHKERRXX(ierr);
-  ierr = VecGetArray(q2, &q2_p); CHKERRXX(ierr);
+//  /* initialization of q near interface (for faster convergence) */
+//  if (qi != NULL) { // for simplicity we will provide initial guess only through qi
+//    if (mask == NULL) {
+//      foreach_node(n, nodes) {
+//        q_p[n] = fabs(phi_p[n]) < 1.5*dl ? qi_p[n] : 0;
+//      }
+//    } else {
+//      double *mask_p;
+//      ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+//      foreach_node(n, nodes) {
+//        q_p[n] = MAX(mask_p[n], fabs(phi_p[n])) < 1.5*dl ? qi_p[n] : 0;
+//      }
+//      ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+//    }
+//  } else {
+//    foreach_node(n, nodes) {
+//      q_p[n] = 0;
+//    }
+//  }
 
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+//  // Auxiliary arrays for time-stepping
+//  Vec     q1,    q2;
+//  double *q1_p, *q2_p;
+//  ierr = VecDuplicate(phi, &q1); CHKERRXX(ierr);
+//  ierr = VecDuplicate(phi, &q2); CHKERRXX(ierr);
+//  ierr = VecGetArray(q1, &q1_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(q2, &q2_p); CHKERRXX(ierr);
 
-  for (int it = 0; it < iterations; ++it)
-  {
-    //---------------------------------------------------------------------
-    // q1 = q - dt*sgn(phi)*n \cdot \nabla(q) by the Godunov scheme with ENO-2 and subcell resolution
-    //---------------------------------------------------------------------
-    foreach_dimension(dim) { ierr = VecRestoreArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr); }
-    compute_derivatives(q1, DIM(q_dd[0], q_dd[1], q_dd[2]));
-    foreach_dimension(dim) { ierr = VecGetArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr);}
+//  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+//  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
-    /* First do layer nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(layer_nodes, DIM(nx, ny, nz),
-        q1_p, q_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
-        map_grid_to_interface, interface_directions, interface_distances, interface_values);
+//  for (int it = 0; it < iterations; ++it)
+//  {
+//    //---------------------------------------------------------------------
+//    // q1 = q - dt*sgn(phi)*n \cdot \nabla(q) by the Godunov scheme with ENO-2 and subcell resolution
+//    //---------------------------------------------------------------------
+//    foreach_dimension(dim) { ierr = VecRestoreArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr); }
+//    compute_derivatives(q1, DIM(q_dd[0], q_dd[1], q_dd[2]));
+//    foreach_dimension(dim) { ierr = VecGetArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr);}
 
-    /* initiate communication for q1 */
-    ierr = VecGhostUpdateBegin(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    /* First do layer nodes */
+//    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(layer_nodes, DIM(nx, ny, nz),
+//        q1_p, q_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
+//        map_grid_to_interface, interface_directions, interface_distances, interface_values);
 
-    /* compute the local nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(local_nodes, DIM(nx, ny, nz),
-        q1_p, q_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
-        map_grid_to_interface, interface_directions, interface_distances, interface_values);
+//    /* initiate communication for q1 */
+//    ierr = VecGhostUpdateBegin(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    /* finish communication for q1 */
-    ierr = VecGhostUpdateEnd(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    /* compute the local nodes */
+//    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(local_nodes, DIM(nx, ny, nz),
+//        q1_p, q_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
+//        map_grid_to_interface, interface_directions, interface_distances, interface_values);
 
-    foreach_dimension(dim) { ierr = VecRestoreArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr); }
-    compute_derivatives(q1, DIM(q_dd[0], q_dd[1], q_dd[2]));
-    foreach_dimension(dim) { ierr = VecGetArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr);}
+//    /* finish communication for q1 */
+//    ierr = VecGhostUpdateEnd(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    //---------------------------------------------------------------------
-    // q2 = q1 - dt*sgn(phi)*n \cdot \nabla(q1) by the Godunov scheme with ENO-2 and subcell resolution
-    //---------------------------------------------------------------------
-    /* First do layer nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(layer_nodes, DIM(nx, ny, nz),
-        q2_p, q1_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
-        map_grid_to_interface, interface_directions, interface_distances, interface_values);
+//    foreach_dimension(dim) { ierr = VecRestoreArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr); }
+//    compute_derivatives(q1, DIM(q_dd[0], q_dd[1], q_dd[2]));
+//    foreach_dimension(dim) { ierr = VecGetArray(q_dd[dim], &q_dd_p[dim]); CHKERRXX(ierr);}
 
-    /* initiate communication for q2 */
-    ierr = VecGhostUpdateBegin(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    //---------------------------------------------------------------------
+//    // q2 = q1 - dt*sgn(phi)*n \cdot \nabla(q1) by the Godunov scheme with ENO-2 and subcell resolution
+//    //---------------------------------------------------------------------
+//    /* First do layer nodes */
+//    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(layer_nodes, DIM(nx, ny, nz),
+//        q2_p, q1_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
+//        map_grid_to_interface, interface_directions, interface_distances, interface_values);
 
-    /* compute the local nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(local_nodes, DIM(nx, ny, nz),
-        q2_p, q1_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
-        map_grid_to_interface, interface_directions, interface_distances, interface_values);
+//    /* initiate communication for q2 */
+//    ierr = VecGhostUpdateBegin(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    /* finish communication for q2 */
-    ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    /* compute the local nodes */
+//    extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(local_nodes, DIM(nx, ny, nz),
+//        q2_p, q1_p, DIM(q_dd_p[0], q_dd_p[1], q_dd_p[2]),
+//        map_grid_to_interface, interface_directions, interface_distances, interface_values);
 
-    //---------------------------------------------------------------------
-    // The third step of TVD RK-2 : q = .5*(q + q2)
-    //---------------------------------------------------------------------
-    foreach_node(n, nodes) {
-      q_p[n] = .5*(q_p[n] + q2_p[n]);
-    }
-  }
+//    /* finish communication for q2 */
+//    ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  /* destroy the local petsc vectors */
-  ierr = VecRestoreArray(q1, &q1_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(q2, &q2_p); CHKERRXX(ierr);
-  ierr = VecDestroy(q1); CHKERRXX(ierr);
-  ierr = VecDestroy(q2); CHKERRXX(ierr);
+//    //---------------------------------------------------------------------
+//    // The third step of TVD RK-2 : q = .5*(q + q2)
+//    //---------------------------------------------------------------------
+//    foreach_node(n, nodes) {
+//      q_p[n] = .5*(q_p[n] + q2_p[n]);
+//    }
+//  }
 
-  foreach_dimension(dim) {
-    ierr = VecRestoreArray(q_dd  [dim], &q_dd_p  [dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_dd[dim], &phi_dd_p[dim]); CHKERRXX(ierr);
-  }
+//  /* destroy the local petsc vectors */
+//  ierr = VecRestoreArray(q1, &q1_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(q2, &q2_p); CHKERRXX(ierr);
+//  ierr = VecDestroy(q1); CHKERRXX(ierr);
+//  ierr = VecDestroy(q2); CHKERRXX(ierr);
 
-  if (mask != NULL) {
-    ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
-  }
+//  foreach_dimension(dim) {
+//    ierr = VecRestoreArray(q_dd  [dim], &q_dd_p  [dim]); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_dd[dim], &phi_dd_p[dim]); CHKERRXX(ierr);
+//  }
 
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(qi,  &qi_p);  CHKERRXX(ierr);
-  ierr = VecRestoreArray(q,   &q_p);   CHKERRXX(ierr);
+//  if (mask != NULL) {
+//    ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+//  }
 
-  foreach_dimension(dim) {
-    ierr = VecDestroy(q_dd[dim]); CHKERRXX(ierr);
-    ierr = VecDestroy(phi_dd[dim]); CHKERRXX(ierr);
-  }
+//  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(qi,  &qi_p);  CHKERRXX(ierr);
+//  ierr = VecRestoreArray(q,   &q_p);   CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
-}
+//  foreach_dimension(dim) {
+//    ierr = VecDestroy(q_dd[dim]); CHKERRXX(ierr);
+//    ierr = VecDestroy(phi_dd[dim]); CHKERRXX(ierr);
+//  }
+
+//  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+//}
 
 void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations, Vec normal[]) const
 {

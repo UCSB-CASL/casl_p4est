@@ -42,6 +42,8 @@ FastSweeping::SEED_STATE FastSweeping::_checkSeedState( p4est_locidx_t n )
 	{
 		// At this point, the seed state is UNDEFINED: we need to verify whether the point is a viable seed node or not by
 		// checking if it lies exactly on the interface or at least one of its outgoing edges is crossed by \Gamma.
+    #ifdef CASL_THROWS
+    // has_valid_qnnn is only defined if CASL_THROWS==1. a dirty fix just to get overall library compiled, needs to be fixed properly (Daniil)
 		if( _neighbors->has_valid_qnnn( n ) )
 		{
 			if( ABS( _uCpy[n] ) <= _zeroDistanceThreshold )		// Point lies in on the interface.  It's then a valid
@@ -80,6 +82,7 @@ FastSweeping::SEED_STATE FastSweeping::_checkSeedState( p4est_locidx_t n )
 			}
 		}
 		else
+    #endif
 		{
 			_seedStates[n] = SEED_STATE::INVALID;		// Point is a ghost node with no well defined neighborhood.
 		}
@@ -326,12 +329,22 @@ void FastSweeping::_approximateInterfaceAndSeedNodes()
 
 	// Gather and scatter seed nodes and init state across processes.
 	if( _p4est->mpisize > 1 )
-	{
+  {
 		PetscErrorCode ierr;
-		ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );			// Gather minimum value for u from foreign ghost nodes.
+    // Daniil: older PETSc version seems not to have MIN_VALUES capability
+    // so a dirty fix using MAX_VALUES
+//    ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );			// Gather minimum value for u from foreign ghost nodes.
+//		CHKERRXX( ierr );
+//		ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+//		CHKERRXX( ierr );
+    ierr = VecScaleGhost( *_u, -1.0);
+    CHKERRXX( ierr );
+    ierr = VecGhostUpdateBegin( *_u, MAX_VALUES, SCATTER_REVERSE );			// Gather minimum value for u from foreign ghost nodes.
 		CHKERRXX( ierr );
-		ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+    ierr = VecGhostUpdateEnd( *_u, MAX_VALUES, SCATTER_REVERSE );
 		CHKERRXX( ierr );
+    ierr = VecScaleGhost( *_u, -1.0);
+    CHKERRXX( ierr );
 		ierr = VecGhostUpdateBegin( _rhs, MAX_VALUES, SCATTER_REVERSE );		// Gather maximum value for rhs from foreign ghost nodes.
 		CHKERRXX( ierr );
 		ierr = VecGhostUpdateEnd( _rhs, MAX_VALUES, SCATTER_REVERSE );
@@ -501,8 +514,11 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 		{
 			for( size_t j = 0; j < N_INDEP_NODES; j++ )						// Update each valid node in the order given by curren sweep.
 			{
-				p4est_locidx_t n = _orderings[i][j];
+        p4est_locidx_t n = _orderings[i][j];
+#ifdef CASL_THROWS
+// has_valid_qnnn is only defined if CASL_THROWS==1. a dirty fix just to get overall library compiled, needs to be fixed properly (Daniil)
 				if( _neighbors->has_valid_qnnn( n ) )						// Valid locally ownded or ghost node?
+#endif
 					_uPtr[n] = MIN( _uPtr[n], _computeNewUAtNode( n ) );
 			}
 		}
@@ -510,10 +526,23 @@ void FastSweeping::reinitializeLevelSetFunction( Vec *u, unsigned maxIter )
 		// Gather updated "common boundary" ghost nodes solution onto remotely owned nodes.
 		if( _p4est->mpisize > 1 )			// Must check this or Petsc fails in the case of a single-process run.
 		{
-			ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );
-			CHKERRXX( ierr );
-			ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
-			CHKERRXX( ierr );
+      // Daniil: older PETSc version seems not to have MIN_VALUES capability
+      // so a dirty fix using MAX_VALUES
+//			ierr = VecGhostUpdateBegin( *_u, MIN_VALUES, SCATTER_REVERSE );
+//			CHKERRXX( ierr );
+//			ierr = VecGhostUpdateEnd( *_u, MIN_VALUES, SCATTER_REVERSE );
+//			CHKERRXX( ierr );
+
+      ierr = VecScaleGhost( *_u, -1.0);
+      CHKERRXX( ierr );
+
+      ierr = VecGhostUpdateBegin( *_u, MAX_VALUES, SCATTER_REVERSE );
+      CHKERRXX( ierr );
+      ierr = VecGhostUpdateEnd( *_u, MAX_VALUES, SCATTER_REVERSE );
+      CHKERRXX( ierr );
+
+      ierr = VecScaleGhost( *_u, -1.0);
+      CHKERRXX( ierr );
 
 			// Scatter minimum solution values from local onto remote ghost nodes.
 			ierr = VecGhostUpdateBegin( *_u, INSERT_VALUES, SCATTER_FORWARD );

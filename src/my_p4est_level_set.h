@@ -750,46 +750,46 @@ public:
   void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
 
   
-  /*!
-   * \brief extend_from_interface_to_whole_domain_TVD_one_iteration performs one iteration of extension in normal direction
-   * \param map                   [in]
-   * \param nx                    [in]
-   * \param ny                    [in]
-   * \param q_out_p               [out]
-   * \param q_p                   [in]
-   * \param qxx_p                 [in]
-   * \param qyy_p                 [in]
-   * \param map_grid_to_interface [in]  a look-up table that contains information about wheter a given node
-   *                                    has interface points next to it
-   * \param interface_directions  [in]
-   * \param interface_distances   [in]
-   * \param interface_values      [in]
-   * \return
-   */
-  void extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(const std::vector<int>& map, DIM(vector<double>& nx, vector<double>& ny, vector<double>& nz),
-                                                               double *q_out_p, double *q_p, DIM(double *qxx_p, double *qyy_p, double *qzz_p),
-                                                               std::vector<int>& map_grid_to_interface,
-                                                               std::vector<int>& interface_directions,
-                                                               std::vector<double>& interface_distances,
-                                                               std::vector<double>& interface_values) const;
+//  /*!
+//   * \brief extend_from_interface_to_whole_domain_TVD_one_iteration performs one iteration of extension in normal direction
+//   * \param map                   [in]
+//   * \param nx                    [in]
+//   * \param ny                    [in]
+//   * \param q_out_p               [out]
+//   * \param q_p                   [in]
+//   * \param qxx_p                 [in]
+//   * \param qyy_p                 [in]
+//   * \param map_grid_to_interface [in]  a look-up table that contains information about wheter a given node
+//   *                                    has interface points next to it
+//   * \param interface_directions  [in]
+//   * \param interface_distances   [in]
+//   * \param interface_values      [in]
+//   * \return
+//   */
+//  void extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(const std::vector<int>& map, DIM(vector<double>& nx, vector<double>& ny, vector<double>& nz),
+//                                                               double *q_out_p, double *q_p, DIM(double *qxx_p, double *qyy_p, double *qzz_p),
+//                                                               std::vector<int>& map_grid_to_interface,
+//                                                               std::vector<int>& interface_directions,
+//                                                               std::vector<double>& interface_distances,
+//                                                               std::vector<double>& interface_values) const;
 
-  /*!
-   * \brief extend_from_interface_to_whole_domain_TVD extends a field from interface in normal direction (``flattening'')
-   * \param phi         [in]  level-set function
-   * \param qi          [in]  original field that needs to be ``flattened''
-   *                          (can be NULL, but must provide func in this case)
-   *                          (even when func is provided, qi can be used to set initial guess)
-   * \param q           [out] ``flattened'' around interface field
-   * \param mask        [in]  if not NULL, interface values where (mask > band_zero*diag_min) will be set to zero
-   *                          (usefull when dealing with intersecting level-set function)
-   * \param band_zero   [in]  the threshold defining which interface values will be set to zero
-   * \param band_smooth [in]  transition width to zeros (in units of diag_min)
-   * \param func        [in]  optional function to compute interface values
-   * \return
-   */
-  void extend_from_interface_to_whole_domain_TVD_daniil_ver(Vec phi, Vec qi, Vec q, int iterations=20,
-                                                 Vec mask=NULL, double band_zero=2, double band_smooth=10,
-                                                 double (*func)(p4est_locidx_t, int, double)=NULL) const;
+//  /*!
+//   * \brief extend_from_interface_to_whole_domain_TVD extends a field from interface in normal direction (``flattening'')
+//   * \param phi         [in]  level-set function
+//   * \param qi          [in]  original field that needs to be ``flattened''
+//   *                          (can be NULL, but must provide func in this case)
+//   *                          (even when func is provided, qi can be used to set initial guess)
+//   * \param q           [out] ``flattened'' around interface field
+//   * \param mask        [in]  if not NULL, interface values where (mask > band_zero*diag_min) will be set to zero
+//   *                          (usefull when dealing with intersecting level-set function)
+//   * \param band_zero   [in]  the threshold defining which interface values will be set to zero
+//   * \param band_smooth [in]  transition width to zeros (in units of diag_min)
+//   * \param func        [in]  optional function to compute interface values
+//   * \return
+//   */
+//  void extend_from_interface_to_whole_domain_TVD_daniil_ver(Vec phi, Vec qi, Vec q, int iterations=20,
+//                                                 Vec mask=NULL, double band_zero=2, double band_smooth=10,
+//                                                 double (*func)(p4est_locidx_t, int, double)=NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;

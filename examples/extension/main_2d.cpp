@@ -28,7 +28,7 @@
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_grid_aligned_extension.h>
+//#include <src/my_p8est_grid_aligned_extension.h>
 #endif
 
 #include <src/Parser.h>
