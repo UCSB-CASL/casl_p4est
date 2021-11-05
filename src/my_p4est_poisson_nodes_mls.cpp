@@ -1019,7 +1019,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = 1; areas_p_ptr[n] = 0; }
           else                      { areas_m_ptr[n] = 0; areas_p_ptr[n] = 1; }
           break;
-         case BOUNDARY_NEUMANN: // for 2-phase flows problem
+        case BOUNDARY_NEUMANN: // for 2-phase flows problem
         case FINITE_VOLUME:
         {
           if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
@@ -1039,7 +1039,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = face_area_max/face_area_scalling_; areas_p_ptr[n] = 0; }
             else                      { areas_p_ptr[n] = face_area_max/face_area_scalling_; areas_m_ptr[n] = 0; }
           }
-          break;
+        }
+         break;
 
           case IMMERSED_INTERFACE:
           {
@@ -1885,8 +1886,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   }
 }
 
-void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix)
-{
+void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix){
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submatrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
   PetscInt num_owned_global = global_node_offset_[p4est_->mpisize];
@@ -5134,7 +5134,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     double sign_to_use;
 
 // note: Daniil and Raphael have different versions of this in develop vs two_phase_flows. We have taken Daniil's version for now. [Elyce & Rochi, 11/2/21]
-    switch (jump_sub_scheme_)
+    switch (jump_scheme_)
     {
       case 0:
         sign_to_use = (mu_m_proj < mu_p_proj) ? ((num_neg >= P4EST_DIM+1) ? -1 :  1)

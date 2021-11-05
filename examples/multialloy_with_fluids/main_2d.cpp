@@ -4668,96 +4668,116 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   VecScaleGhost(phi.vec,-1.0);
 
-  // Get arrays:
-  phi.get_array();
-  if(example_uses_inner_LSF) phi_2.get_array();
-  if(solve_stefan){
-    Tl.get_array();
-    if(do_we_solve_for_Ts) Ts.get_array();
-    v_int.get_array();
-  }
-  if (solve_navier_stokes && !no_flow){
-    v_NS.get_array();
-    press.get_array();
-    vorticity.get_array();
-  }
-  kappa.get_array();
+//  // Get arrays:
+//  phi.get_array();
+//  if(example_uses_inner_LSF) phi_2.get_array();
+//  if(solve_stefan){
+//    Tl.get_array();
+//    if(do_we_solve_for_Ts) Ts.get_array();
+//    v_int.get_array();
+//  }
+//  if (solve_navier_stokes && !no_flow){
+//    v_NS.get_array();
+//    press.get_array();
+//    vorticity.get_array();
+//  }
+//  kappa.get_array();
 
 
   // Save data:
-  std::vector<std::string> point_names;
-  std::vector<double*> point_data;
-  // phi
-  point_names.push_back("phi");
-  point_data.push_back(phi.ptr);
+//  const std::vector<std::string> point_names;
+//  const std::vector<const double*> point_data;
 
-  point_names.push_back("kappa");
-  point_data.push_back(kappa.ptr);
+  std::vector<Vec_for_vtk_export_t> point_fields;
+  point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+  point_fields.push_back(Vec_for_vtk_export_t(kappa.vec, "kappa"));
+//  // phi
+//  point_names.push_back("phi");
+//  point_data.push_back(phi.ptr);
+
+//  point_names.push_back("kappa");
+//  point_data.push_back(kappa.ptr);
 
   //phi cylinder
   if(example_uses_inner_LSF){
-    point_names.push_back("phi_cyl");
-    point_data.push_back(phi_2.ptr);
+//    point_names.push_back("phi_cyl");
+//    point_data.push_back(phi_2.ptr);
+      point_fields.push_back(Vec_for_vtk_export_t(phi_2.vec, "phi_cyl"));
   }
 
   // stefan related fields
   if(solve_stefan){
-    point_names.push_back("T_l");
-    point_data.push_back(Tl.ptr);
-
+//    point_names.push_back("T_l");
+//    point_data.push_back(Tl.ptr);
+      point_fields.push_back(Vec_for_vtk_export_t(Tl.vec, "Tl"));
     if(do_we_solve_for_Ts){
-      point_names.push_back("T_s");
-      point_data.push_back(Ts.ptr);
+//      point_names.push_back("T_s");
+//      point_data.push_back(Ts.ptr);
+        point_fields.push_back(Vec_for_vtk_export_t(Ts.vec, "Ts"));
     }
 
-    point_names.push_back("v_interface_x");
-    point_data.push_back(v_int.ptr[0]);
+//    point_names.push_back("v_interface_x");
+//    point_data.push_back(v_int.ptr[0]);
 
-    point_names.push_back("v_interface_y");
-    point_data.push_back(v_int.ptr[1]);
+    point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[0], "v_interface_x"));
+//    point_names.push_back("v_interface_y");
+//    point_data.push_back(v_int.ptr[1]);
+
+    point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[1], "v_interface_y"));
   }
 
   if(solve_navier_stokes && !no_flow){
-    point_names.push_back("u");
-    point_data.push_back(v_NS.ptr[0]);
+//    point_names.push_back("u");
+//    point_data.push_back(v_NS.ptr[0]);
 
-    point_names.push_back("v");
-    point_data.push_back(v_NS.ptr[1]);
+//    point_names.push_back("v");
+//    point_data.push_back(v_NS.ptr[1]);
 
-    point_names.push_back("vorticity");
-    point_data.push_back(vorticity.ptr);
+//    point_names.push_back("vorticity");
+//    point_data.push_back(vorticity.ptr);
 
-    point_names.push_back("pressure");
-    point_data.push_back(press.ptr);
+//    point_names.push_back("pressure");
+//    point_data.push_back(press.ptr);
+
+      point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[0], "u"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[1], "v"));
+      point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+      point_fields.push_back(Vec_for_vtk_export_t(press.vec, "pressure"));
 
   }
 
-  std::vector<std::string> cell_names = {};
-  std::vector<double*> cell_data = {};
+//  std::vector<std::string> cell_names = {};
+//  std::vector<double*> cell_data = {};
+  std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
-  my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+  my_p4est_vtk_write_all_lists(p4est,nodes,ghost,
+                               P4EST_TRUE,P4EST_TRUE,filename,
+                               point_fields, cell_fields);
 
-  point_names.clear();point_data.clear();
-  cell_names.clear(); cell_data.clear();
+//  point_names.clear();point_data.clear();
+//  cell_names.clear(); cell_data.clear();
 
-  // Restore arrays:
-  phi.restore_array();
-  if(example_uses_inner_LSF) phi_2.restore_array();
+  point_fields.clear();
+  cell_fields.clear();
 
-  if(solve_stefan){
-    Tl.restore_array();
-    if(do_we_solve_for_Ts) Ts.restore_array();
-    v_int.restore_array();
-  }
-  if(solve_navier_stokes && !no_flow){
-    v_NS.restore_array();
-    press.restore_array();
-    vorticity.restore_array();
-  }
+//  // Restore arrays:
+//  phi.restore_array();
+//  if(example_uses_inner_LSF) phi_2.restore_array();
 
-  kappa.restore_array();
-  kappa.destroy();
-  normal.destroy();
+//  if(solve_stefan){
+//    Tl.restore_array();
+//    if(do_we_solve_for_Ts) Ts.restore_array();
+//    v_int.restore_array();
+//  }
+//  if(solve_navier_stokes && !no_flow){
+//    v_NS.restore_array();
+//    press.restore_array();
+//    vorticity.restore_array();
+//  }
+
+//  kappa.restore_array();
+//  kappa.destroy();
+//  normal.destroy();
 
 }
 
@@ -4898,19 +4918,39 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
 
   // If we are saving this timestep, output the results to vtk:
   if(are_we_saving_vtk){
-      std::vector<std::string> point_names;
-      std::vector<double*> point_data;
+//      std::vector<std::string> point_names;
+//      std::vector<double*> point_data;
 
-      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","phi_ana","T_ana","v_interface_vec_ana","phi_err","T_l_err","T_s_err","v_interface_vec_err"};
-      point_data = {phi.ptr,T_l.ptr,T_s.ptr,v_interface.ptr[0],v_interface.ptr[1],phi_ana.ptr,T_ana.ptr,v_interface_ana.ptr,phi_err.ptr,T_l_err.ptr,T_s_err.ptr,v_interface_err.ptr};
+//      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","phi_ana","T_ana","v_interface_vec_ana","phi_err","T_l_err","T_s_err","v_interface_vec_err"};
+//      point_data = {phi.ptr,T_l.ptr,T_s.ptr,v_interface.ptr[0],v_interface.ptr[1],phi_ana.ptr,T_ana.ptr,v_interface_ana.ptr,phi_err.ptr,T_l_err.ptr,T_s_err.ptr,v_interface_err.ptr};
+
+      std::vector<Vec_for_vtk_export_t> point_fields;
+      point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_l.vec, "T_l"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_s.vec, "T_s"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[0], "v_interface_x"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[1], "v_interface_y"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_ana.vec, "phi_ana"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_ana.vec, "T_ana"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface_ana.vec, "v_interface_vec_ana"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_err.vec, "phi_err"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_l_err.vec, "T_l_err"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_s_err.vec, "T_s_err"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_interface_err.vec, "v_interface_vec_err"));
 
 
-      std::vector<std::string> cell_names = {};
-      std::vector<double*> cell_data = {};
+//      std::vector<std::string> cell_names = {};
+//      std::vector<double*> cell_data = {};
 
-      my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+      std::vector<Vec_for_vtk_export_t> cell_fields = {};
+      my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_fields, cell_fields);
+
+      point_fields.clear();
+      cell_fields.clear();
 
     }
+
+
 
   T_l.restore_array();
   T_s.restore_array();
@@ -5001,27 +5041,47 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
 
 
   if(are_we_saving_vtk){
-    vorticity.get_array();
+//    vorticity.get_array();
 
     // Save data:
-    std::vector<std::string> point_names;
-    std::vector<double*> point_data;
+//    std::vector<std::string> point_names;
+//    std::vector<double*> point_data;
 
-    point_names = {"phi","u","v","vorticity","pressure","u_ana","v_ana","P_ana","u_err","v_err","P_err"};
-    point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,vn_analytical.ptr[0],vn_analytical.ptr[1],
-                  pn_analytical.ptr,vn_error.ptr[0],vn_error.ptr[1],press_error.ptr};
+//    point_names = {"phi","u","v","vorticity","pressure","u_ana","v_ana","P_ana","u_err","v_err","P_err"};
+//    point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,vn_analytical.ptr[0],vn_analytical.ptr[1],
+//                  pn_analytical.ptr,vn_error.ptr[0],vn_error.ptr[1],press_error.ptr};
 
 
-    std::vector<std::string> cell_names = {};
-    std::vector<double*> cell_data = {};
+//    std::vector<std::string> cell_names = {};
+//    std::vector<double*> cell_data = {};
+    std::vector<Vec_for_vtk_export_t> point_fields = {};
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[0], "u"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[1], "v"));
+    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+    point_fields.push_back(Vec_for_vtk_export_t(press.vec, "pressure"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_analytical.vec[0], "u_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_analytical.vec[1], "v_ana"));
+
+    point_fields.push_back(Vec_for_vtk_export_t(pn_analytical.vec, "P_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec[0], "u_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec[1], "v_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(press_error.vec, "P_err"));
+
+
+
+    // ELYCE TO-DO -- update these with the vector export wrapper
 //    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
-    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_fields, cell_fields);
+    point_fields.clear();
+    cell_fields.clear();
 
-    point_names.clear(); point_data.clear();
-    cell_names.clear(); cell_data.clear();
+//    point_names.clear(); point_data.clear();
+//    cell_names.clear(); cell_data.clear();
 
-    vorticity.restore_array();
+//    vorticity.restore_array();
   }
 
 
@@ -5211,40 +5271,75 @@ void save_coupled_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 
 
   if(are_we_saving_vtk){
-    vorticity.get_array();
+//    vorticity.get_array();
 
     // Save data:
-    std::vector<std::string> point_names;
-    std::vector<double*> point_data;
+//    std::vector<std::string> point_names;
+//    std::vector<double*> point_data;
+    std::vector<Vec_for_vtk_export_t> point_fields;
+    std::vector<Vec_for_vtk_export_t> cell_fields = {};
+
+    point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[0], "u"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[1], "v"));
+    point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
+    point_fields.push_back(Vec_for_vtk_export_t(press.vec, "pressure"));
+    point_fields.push_back(Vec_for_vtk_export_t(Tl.vec, "Tl"));
+    point_fields.push_back(Vec_for_vtk_export_t(Ts.vec, "Ts"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[0], "v_int_x"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[1], "v_int_y"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_analytical.vec[0], "u_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_analytical.vec[1], "v_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(pn_analytical.vec, "P_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(Tl_analytical.vec, "Tl_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(Ts_analytical.vec, "Ts_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_interface_analytical.vec[0], "v_int_x_ana"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_interface_analytical.vec[1], "v_int_y_ana"));
+//    point_fields.push_back(Vec_for_vtk_export_t(phi_error.vec, "phi_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec[0], "u_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(vn_error.vec[1], "v_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(press_error.vec, "P_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(Tl_error.vec, "Tl_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(Ts_error.vec, "Ts_err"));
+    point_fields.push_back(Vec_for_vtk_export_t(v_int_error.vec, "v_int_err"));
+
 
     if((tn+dt)>=tfinal){
-      point_names = {"phi","u","v","vorticity","pressure","Tl","Ts","v_int_x","v_int_y",
-                     "phi_ana","u_ana","v_ana","P_ana","Tl_ana","Ts_ana","v_int_x_ana","v_int_y_ana",
-                     "phi_err","u_err","v_err","P_err","Tl_err","Ts_err","v_int_err"};
-      point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl.ptr,Ts.ptr,v_interface.ptr[0],v_interface.ptr[1],
-                    phi_analytical.ptr,vn_analytical.ptr[0],vn_analytical.ptr[1],pn_analytical.ptr, Tl_analytical.ptr,Ts_analytical.ptr,v_interface_analytical.ptr[0],v_interface_analytical.ptr[1],
-                    phi_error.ptr,vn_error.ptr[0],vn_error.ptr[1],press_error.ptr,Tl_error.ptr,Ts_error.ptr,v_int_error.ptr};
+        point_fields.push_back(Vec_for_vtk_export_t(phi_analytical.vec, "phi_ana"));
+        point_fields.push_back(Vec_for_vtk_export_t(phi_error.vec, "phi_err"));
+
+
+//      point_names = {"phi","u","v","vorticity","pressure","Tl","Ts","v_int_x","v_int_y",
+//                     "phi_ana","u_ana","v_ana","P_ana","Tl_ana","Ts_ana","v_int_x_ana","v_int_y_ana",
+//                     "phi_err","u_err","v_err","P_err","Tl_err","Ts_err","v_int_err"};
+//      point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl.ptr,Ts.ptr,v_interface.ptr[0],v_interface.ptr[1],
+//                    phi_analytical.ptr,vn_analytical.ptr[0],vn_analytical.ptr[1],pn_analytical.ptr, Tl_analytical.ptr,
+        //Ts_analytical.ptr,v_interface_analytical.ptr[0],v_interface_analytical.ptr[1],
+//                    phi_error.ptr,vn_error.ptr[0],vn_error.ptr[1],press_error.ptr,Tl_error.ptr,Ts_error.ptr,v_int_error.ptr};
 
     }
-    else{
-      point_names = {"phi","u","v","vorticity","pressure","Tl","Ts","v_int_x","v_int_y",
-                     "u_ana","v_ana","P_ana","Tl_ana","Ts_ana","v_int_x_ana","v_int_y_ana",
-                     "u_err","v_err","P_err","Tl_err","Ts_err","v_int_err"};
-      point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl.ptr,Ts.ptr,v_interface.ptr[0],v_interface.ptr[1],
-                    vn_analytical.ptr[0],vn_analytical.ptr[1],pn_analytical.ptr, Tl_analytical.ptr,Ts_analytical.ptr,v_interface_analytical.ptr[0],v_interface_analytical.ptr[1],
-                    vn_error.ptr[0],vn_error.ptr[1],press_error.ptr,Tl_error.ptr,Ts_error.ptr,v_int_error.ptr};
-    }
+//    else{
+//      point_names = {"phi","u","v","vorticity","pressure","Tl","Ts","v_int_x","v_int_y",
+//                     "u_ana","v_ana","P_ana","Tl_ana","Ts_ana","v_int_x_ana","v_int_y_ana",
+//                     "u_err","v_err","P_err","Tl_err","Ts_err","v_int_err"};
+//      point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl.ptr,Ts.ptr,v_interface.ptr[0],v_interface.ptr[1],
+//                    vn_analytical.ptr[0],vn_analytical.ptr[1],pn_analytical.ptr, Tl_analytical.ptr,Ts_analytical.ptr,v_interface_analytical.ptr[0],v_interface_analytical.ptr[1],
+//                    vn_error.ptr[0],vn_error.ptr[1],press_error.ptr,Tl_error.ptr,Ts_error.ptr,v_int_error.ptr};
+//    }
 
 
-    std::vector<std::string> cell_names = {};
-    std::vector<double*> cell_data = {};
+//    std::vector<std::string> cell_names = {};
+//    std::vector<double*> cell_data = {};
+    // ELYCE TO-DO -- update these with the vector export wrapper
 
-    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+    my_p4est_vtk_write_all_lists(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_fields, cell_fields);
 
-    point_names.clear(); point_data.clear();
-    cell_names.clear(); cell_data.clear();
+    point_fields.clear(); cell_fields.clear();
 
-    vorticity.restore_array();
+//    point_names.clear(); point_data.clear();
+//    cell_names.clear(); cell_data.clear();
+
+//    vorticity.restore_array();
   }
 
   // Restore arrays:
@@ -5406,7 +5501,7 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
           throw std::invalid_argument("The file storing the solver's integer parameters could not be found");
         if(mpi->rank()==0){
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-            ierr = PetscBinaryRead(fd, integer_parameters, num_integers, PETSC_INT); CHKERRXX(ierr);
+            ierr = PetscBinaryRead(fd, integer_parameters, num_integers, NULL, PETSC_INT); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
           }
         int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
@@ -5419,7 +5514,7 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
         if(mpi->rank() == 0)
         {
           ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-          ierr = PetscBinaryRead(fd, double_parameters, num_doubles, PETSC_DOUBLE); CHKERRXX(ierr);
+          ierr = PetscBinaryRead(fd, double_parameters, num_doubles, NULL, PETSC_DOUBLE); CHKERRXX(ierr);
           ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
 
         }

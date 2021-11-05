@@ -265,6 +265,9 @@ protected:
   // discretization type
   enum discretization_scheme_t
   {
+    NO_DISCRETIZATION,
+    FINITE_DIFFERENCE,
+    FINITE_VOLUME,
     UNDEFINED,
     DOMAIN_OUTSIDE,
     DOMAIN_INSIDE,
