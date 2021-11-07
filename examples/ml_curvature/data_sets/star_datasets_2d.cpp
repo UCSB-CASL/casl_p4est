@@ -118,6 +118,7 @@ int main ( int argc, char* argv[] )
 //		A = 0.170, B = 0.330 for level 8.
 //		A = 0.225, B = 0.355 for level 9.
 //		A = 0.258, B = 0.356 for level 10.
+//		A = 0.274, B = 0.345 for level 11.
 		const double A = 0.170;
 		const double B = 0.330;
 		const int ARMS = 5;
@@ -208,7 +209,7 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Definining the non-signed distance level-set function to be reinitialized.
-		splitting_criteria_cf_and_uniform_band_t levelSetSC( 1, maxRL(), &star, 7.0 );
+		splitting_criteria_cf_and_uniform_band_t levelSetSC( MAX( 1, maxRL() - 5 ), maxRL(), &star, 7.0, 1.2 );
 
 		// Create the forest using a level set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
