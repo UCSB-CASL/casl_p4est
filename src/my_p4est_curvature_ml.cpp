@@ -466,6 +466,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 					xyz[dim] -= normalReadPtr[dim][n] * phiReadPtr[n];
 				sample.push_back( interp( xyz ) );
 
+				samples.push_back( sample );
 				indices.push_back( n );		// Keep track of which locally owned nodes we are looking at.
 			}
 		}
@@ -546,7 +547,7 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 		}
 
 		// Fix sign according to (untouched) curvature.
-		hybHK[outIdxToSampleIdx[i]] = hk * SIGN0( ihk );
+		hybHK[outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );
 	}
 
 	// Clean up.
@@ -564,10 +565,10 @@ void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Ve
 	// Data accessors.
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
 
-	// We start by computing the numerical mean curvature.
+	// We start by computing the numerical mean curvature (as a byproduct of calling this function).
 	compute_mean_curvature( ngbd, phi, normal, numCurvature );
 
-	// Numerical dimensionless curvature at the grid points.
+	// Numerical dimensionless curvature *at* the grid points.
 	Vec hk;
 	CHKERRXX( VecDuplicate( numCurvature, &hk ) );
 	CHKERRXX( VecCopy( numCurvature, hk ) );
