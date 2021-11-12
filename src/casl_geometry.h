@@ -291,7 +291,7 @@ namespace geom
 	/**
 	 * Project a 3D point on the plane subtended by a triangle given by its three input vertices.  If the projected
 	 * point, P, falls within the triangle, the function returns true, and P's barycentric coordinates are given:
-	 *                P = u * v0 + v * v1 + ( 1 - u - v ) * v2,   for 0 <= u, c <= 1
+	 *                P = u * v0 + v * v1 + ( 1 - u - v ) * v2,   for 0 <= u, v <= 1
 	 * If P falls outside of triangle, the function yields the end-points of the first line segment that is found to
 	 * fail the inside/outside test.  This implies that there might still exist at most another side for which the same
 	 * inside/outside test fails.
@@ -346,6 +346,7 @@ namespace geom
 		x = y = nullptr;
 
 		Point3 edge0 = *v1 - *v0;					// Edge 0.
+		vp0 = P - *v0;
 		C = edge0.cross( vp0 );
 		if( N.dot( C ) < 0 )						// P is on the right side of edge 0, opposed to v2.
 		{

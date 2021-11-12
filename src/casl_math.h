@@ -64,6 +64,19 @@ inline double SIGN(double a)
   return (a>0) ? 1:-1;
 }
 
+/**
+ * Signum function that considers 0 as a third value.
+ * @cite https://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c/10133700
+ * @tparam T Data type.
+ * @param [in] val Value to check.
+ * @return -1 for negative, zero for 0, and +1 for positive value.
+ */
+template<typename T>
+inline int SIGN0( T val )
+{
+	return (T(0) < val) - (val < T(0));
+}
+
 inline double MINMOD( double a, double b )
 {
   if(a*b<=0) return 0;

@@ -24,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Date: July 22, 2020.
- * Updated: October 29, 2021.
+ * Updated: November 11, 2021.
  *
  * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -57,6 +57,7 @@
 #include <src/my_p4est_fast_sweeping.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_curvature_ml.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -74,7 +75,7 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<unsigned short> maxRL( pl, 8, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 8)" );
+	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
 	param_t<unsigned int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
 	param_t<bool> verbose( pl, true, "verbose", "Show or not debugging messages (default: 1)" );
@@ -102,7 +103,7 @@ int main ( int argc, char* argv[] )
 
 		const int NUM_COLUMNS = (P4EST_DIM + 1) * num_neighbors_cube + 2;		// Number of columns in dataset (includes phi and normal components).
 		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state variables.
-		kutils::generateColumnHeaders( COLUMN_NAMES );
+		kml::utils::generateColumnHeaders( COLUMN_NAMES );
 
 		// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 		std::mt19937 gen{}; 				// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
@@ -119,8 +120,8 @@ int main ( int argc, char* argv[] )
 //		A = 0.225, B = 0.355 for level 9.
 //		A = 0.258, B = 0.356 for level 10.
 //		A = 0.274, B = 0.345 for level 11.
-		const double A = 0.170;
-		const double B = 0.330;
+		const double A = 0.120;
+		const double B = 0.305;
 		const int ARMS = 5;
 
 		geom::Star star( A, B, ARMS );			// Define the star interface and determine domain bound based on it.
@@ -344,7 +345,7 @@ int main ( int argc, char* argv[] )
 					}
 
 					// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
-					kutils::rotateStencilToFirstQuadrant( sample, gradient );
+					kml::utils::rotateStencilToFirstQuadrant( sample, gradient );
 
 					samples.push_back( sample );
 					nSamples++;
