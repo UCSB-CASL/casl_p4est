@@ -33,6 +33,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
+ * Updated: November 12, 2021.
  */
 namespace kml
 {
@@ -60,10 +61,10 @@ namespace kml
 		static void _printParams( const json& params, const std::string& paramsFileName );
 
 	public:
-		const int    PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
-		const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
-													  18,19,20,21,22,23,24,25,26};	// then y.
-		const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
+		const int                            PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
+		__attribute__((unused)) const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
+																			  18,19,20,21,22,23,24,25,26};	// then y.
+		__attribute__((unused)) const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
 
 		/**
 		 * Transform input data in place.
@@ -333,11 +334,11 @@ namespace kml
 		 * @param [in] ngbd Node neighborhood struct.
 		 * @param [in] phi Reinitialized level-set values.
 		 * @param [in] normal Nodal normal components.
-		 * @param [in] hk Numerical dimensionless curvature (which we use for linear interpolation).
+		 * @param [in] numCurvature Numerical curvature (which we use for linear interpolation at Gamma).
 		 * @param [out] samples Vector of samples for valid nodes next to Gamma.
 		 * @param [out] indices Center nodal indices for collected samples (a one-to-one mapping).
 		 */
-		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec hk,
+		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
 							  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const;
 
 		/**
@@ -373,10 +374,11 @@ namespace kml
 		 * @param [out] numCurvature Numerical curvature computed at the nodes using the conventional approach.
 		 * @param [out] hybCurvature Hybrid curvature computed at the normal interface-projection of nodes next to Gamma.
 		 * @param [out] hybFlag Indicator vector with 1s where we used the hybrid approach and 0s everywhere else.
+		 * @param [in] dimensionless Whether to scale curvature by h.
 		 * @throws Runtime exception if any vector is nullptr.
 		 */
 		void compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
-					  Vec hybCurvature, Vec hybFlag ) const;
+					  Vec hybCurvature, Vec hybFlag, const bool& dimensionless=false ) const;
 	};
 }
 

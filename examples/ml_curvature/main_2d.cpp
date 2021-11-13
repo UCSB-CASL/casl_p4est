@@ -3,6 +3,8 @@
  * tion of the star_datasets_2d.cpp code base.  It requires the validation.json file in the same location as the neural
  * network.  To generate validation.json, execute the Evaluating.py module in the Hybrid_DL_Curvature python project.
  *
+ * Tested on one and multiple processes.
+ *
  * Developer: Luis Ángel.
  * Created: November 12, 2021.
  */
@@ -34,6 +36,7 @@ int main ( int argc, char* argv[] )
 	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
 	param_t<unsigned int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> nnetsDir( pl, "/Users/youngmin/k_nnets", "nnetsDir", "Folder where nnets are found (default: same folder as the executable)" );
+	param_t<bool> exportVTK( pl, true, "exportVTK", "Export VTK file (default: 1)" );
 
 	try
 	{
@@ -151,30 +154,34 @@ int main ( int argc, char* argv[] )
 		ls.reinitialize_2nd_order( phi, (int)reinitNumIters() );
 
 		// Compute normal unit vectors: we'll use them to compute the numerical curvature.
-		Vec numCurvature, hybCurvature, hybFlag, normal[P4EST_DIM];
+		Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM];
 		CHKERRXX( VecDuplicate( phi, &numCurvature ) );
-		CHKERRXX( VecDuplicate( phi, &hybCurvature ) );
+		CHKERRXX( VecDuplicate( phi, &hybHK ) );
 		CHKERRXX( VecDuplicate( phi, &hybFlag ) );
 		for( auto& dim : normal )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
 		compute_normals( nodeNeighbors, phi, normal );
 
-		// Compute hybrid curvature.
+		// Compute hybrid (dimensionless) curvature.
 		parStopWatch watch;
 		watch.start();
 		kml::Curvature mlCurvature( &nnet, H );
-		mlCurvature.compute( nodeNeighbors, phi, normal, numCurvature, hybCurvature, hybFlag );
+		mlCurvature.compute( nodeNeighbors, phi, normal, numCurvature, hybHK, hybFlag, true );
 		double duration = watch.get_duration_current();
 		watch.stop();
 
-		const double *hybCurvatureReadPtr, *hybFlagReadPtr;
-		CHKERRXX( VecGetArrayRead( hybCurvature, &hybCurvatureReadPtr ) );
+		const double *hybHKReadPtr, *hybFlagReadPtr, *phiReadPtr, *normalReadPtr[P4EST_DIM];
+		CHKERRXX( VecGetArrayRead( hybHK, &hybHKReadPtr ) );
 		CHKERRXX( VecGetArrayRead( hybFlag, &hybFlagReadPtr ) );
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+		for( int i = 0; i < P4EST_DIM; i++ )
+			CHKERRXX( VecGetArrayRead( normal[i], &normalReadPtr[i] ) );
 
 		// Perform validation against data from the off-line inference to check correctness of online inference.
 		double xyz[P4EST_DIM];
 		const FDEEP_FLOAT_TYPE FLOAT_32_EPS = 1. / (1 << 23);
+		char msg[256];
 		size_t totalNodesEvaluated = 0;
 		size_t matchingNodes = 0;
 		for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
@@ -191,7 +198,7 @@ int main ( int argc, char* argv[] )
 				if( got != validationMap.end() )
 				{
 					auto offlineHK = (FDEEP_FLOAT_TYPE)got->second[2];							// Validation hybrid hk.
-					auto onlineHK = (FDEEP_FLOAT_TYPE)(hybCurvatureReadPtr[n] * H);
+					auto onlineHK = (FDEEP_FLOAT_TYPE)hybHKReadPtr[n];
 					if( ABS( onlineHK - offlineHK ) < FLOAT_32_EPS )							// A match?
 					{
 						matchingNodes++;
@@ -200,30 +207,59 @@ int main ( int argc, char* argv[] )
 					else
 					{
 						const char *coords = key.c_str();
-						PetscPrintf( mpi.comm(), "xxxx Rank %i: Node %i's (%s) hybHK %.7f doesn't match with the offline value %.7f!\n",
-									 mpi.rank(), n, coords, onlineHK, offlineHK );
+						sprintf( msg, "xxxx Rank %i: Node %i's (%s) hybHK %.7f doesn't match with the offline value %.7f!",
+								 mpi.rank(), n, coords, onlineHK, offlineHK );
+						std::cerr << msg << std::endl;
 					}
 				}
 				else
-					PetscPrintf( mpi.comm(), "---- Node %i is not in the validation map!\n", n );
+				{
+					sprintf( msg, "---- Rank %i: Node %i is not in the validation map!", mpi.rank(), n );
+					std::cerr << msg << std::endl;
+				}
 			}
 		}
 
-		if( !validationMap.empty() )
-			PetscPrintf( mpi.comm(), "\nRank %i: Validation map is not empty, it has %i elements!\n", mpi.rank(), validationMap.size() );
+		if( mpi.size() == 1 && !validationMap.empty() )
+			std::cerr << "\nValidation map is not empty, it has " << validationMap.size() << " elements!" << std::endl;
 
-		PetscPrintf( mpi.comm(), "\n<< Done!  Matching nodes = %u/%u.\n"
-								 "   It took %f seconds to compute the hybrid curvature.\n",
-								 matchingNodes, totalNodesEvaluated, duration );
+		printf( "\n<< Rank %i: Done!  Matching nodes = %zu/%zu.\n   It took %f seconds to compute the hybrid curvature.\n",
+				mpi.rank(), matchingNodes, totalNodesEvaluated, duration );
+
+		// Write paraview file to visualize the star interface and nodes following it along -- mainly for debugging.
+		if( exportVTK() )
+		{
+			char auxA[10], auxB[10];
+			sprintf( auxA, "%.3f", A );
+			sprintf( auxB, "%.3f", B );
+
+			std::ostringstream oss;
+			oss << "star_a_" << std::string( auxA ) << "_b_" << std::string( auxB );
+			my_p4est_vtk_write_all( p4est, nodes, ghost,
+									P4EST_TRUE, P4EST_TRUE,
+									3 + P4EST_DIM, 0, oss.str().c_str(),
+									VTK_POINT_DATA, "phi", phiReadPtr,
+									VTK_POINT_DATA, "flag", hybFlagReadPtr,
+									VTK_POINT_DATA, "hybHK", hybHKReadPtr,
+									VTK_POINT_DATA, "nx", normalReadPtr[0],
+									VTK_POINT_DATA, "ny", normalReadPtr[1]
+#ifdef P4_TO_P8
+									, VTK_POINT_DATA, "nz", normalReadPtr[2]
+#endif
+									);
+		}
 
 		// Cleaning up.
-		CHKERRXX( VecRestoreArrayRead( hybCurvature, &hybCurvatureReadPtr ) );
+		for( int i = 0; i < P4EST_DIM; i++ )
+			CHKERRXX( VecRestoreArrayRead( normal[i], &normalReadPtr[i] ) );
+		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( hybHK, &hybHKReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( hybFlag, &hybFlagReadPtr ) );
 
 		// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 		CHKERRXX( VecDestroy( phi ) );
 		CHKERRXX( VecDestroy( numCurvature ) );
-		CHKERRXX( VecDestroy( hybCurvature ) );
+		CHKERRXX( VecDestroy( hybHK ) );
 		CHKERRXX( VecDestroy( hybFlag ) );
 		for( auto& dim : normal )
 			CHKERRXX( VecDestroy( dim ) );

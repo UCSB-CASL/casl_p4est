@@ -411,7 +411,7 @@ kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const dou
 }
 
 
-void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec hk,
+void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
 									  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const
 {
 	// Data accessors.
@@ -429,7 +429,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 
 	// We'll interpolate numerical hk at the interface linearly: prepare structure.
 	my_p4est_interpolation_nodes_t interp( &ngbd );
-	interp.set_input( hk, interpolation_method::linear );
+	interp.set_input( numCurvature, interpolation_method::linear );
 
 	// Collect samples: one per valid (i.e., with full h-uniform stencil) locally owned node next to Gamma.
 	NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL );
@@ -464,7 +464,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 				node_xyz_fr_n( n, p4est, nodes, xyz );				// Finally, the interpolated numerical hk on Gamma.
 				for( int dim = 0; dim < P4EST_DIM; dim++ )
 					xyz[dim] -= normalReadPtr[dim][n] * phiReadPtr[n];
-				sample.push_back( interp( xyz ) );
+				sample.push_back( interp( xyz ) * H );
 
 				samples.push_back( sample );
 				indices.push_back( n );		// Keep track of which locally owned nodes we are looking at.
@@ -557,7 +557,7 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 
 
 void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
-							  Vec hybCurvature, Vec hybFlag ) const
+							  Vec hybCurvature, Vec hybFlag, const bool& dimensionless ) const
 {
 	if( !phi || !normal || !numCurvature || !hybCurvature || !hybFlag )
 		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::compute: One of the provided vectors is null!" );
@@ -568,21 +568,10 @@ void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Ve
 	// We start by computing the numerical mean curvature (as a byproduct of calling this function).
 	compute_mean_curvature( ngbd, phi, normal, numCurvature );
 
-	// Numerical dimensionless curvature *at* the grid points.
-	Vec hk;
-	CHKERRXX( VecDuplicate( numCurvature, &hk ) );
-	CHKERRXX( VecCopy( numCurvature, hk ) );
-
-	double *hkPtr;
-	CHKERRXX( VecGetArray( hk, &hkPtr ) );
-	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
-		hkPtr[n] *= H;
-	CHKERRXX( VecRestoreArray( hk, &hkPtr ) );
-
 	// Collect samples.
 	std::vector<std::vector<double>> samples;
 	std::vector<p4est_locidx_t> indices;
-	_collectSamples( ngbd, phi, normal, hk, samples, indices );
+	_collectSamples( ngbd, phi, normal, numCurvature, samples, indices );
 
 	// Compute hybrid (dimensionless) curvature.
 	std::vector<double> hybHK;
@@ -599,14 +588,13 @@ void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Ve
 	for( int i = 0; i < indices.size(); i++ )	// Go through the nodes where we computed the hybrid solution.
 	{
 		p4est_locidx_t idx = indices[i];
-		hybCurvaturePtr[idx] = hybHK[i] / H;
+		hybCurvaturePtr[idx] = dimensionless? hybHK[i] : hybHK[i] / H;
 		hybFlagPtr[idx] = 1;					// Signal that node idx contains kappa "at" the interface.
 	}
 
 	// Cleaning up.
 	CHKERRXX( VecRestoreArray( hybCurvature, &hybCurvaturePtr ) );
 	CHKERRXX( VecRestoreArray( hybFlag, &hybFlagPtr ) );
-	CHKERRXX( VecDestroy( hk ) );
 
 	// Let's synchronize the machine learning flag vector among all processes.
 	CHKERRXX( VecGhostUpdateBegin( hybFlag, INSERT_VALUES, SCATTER_FORWARD ) );
