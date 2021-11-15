@@ -31,7 +31,7 @@ const static string main_description =
 const int default_lmin = 3;
 const int default_lmax = 4;
 
-const int default_ngrids  = 4;
+const int default_ngrids  = 5;
 const int default_ntree   = 2;
 
 const BoundaryConditionType default_bc_wtype = DIRICHLET; // NEUMANN;
@@ -44,7 +44,7 @@ const bool default_get_integral     = false;
 const bool default_print_summary    = false;
 const bool default_subrefinement    = true;
 const bool default_extrapolation    = false;
-const int default_test_number       = 3;
+const int default_test_number       = 7;  //  Elyce and Rochi after merge with multialloy_fluids-- example 7 having convergence issues. For coarser grids, just seems underresolved. For finer grids though, we are not sure. Will need to investigate this later.
 
 const bool track_xgfm_residuals_and_corrections = false;
 
@@ -55,7 +55,7 @@ const string default_work_folder = "/scratch/regan/poisson_jump_cells";
 #elif defined(ABADDON)
 const string default_work_folder = "/Users/raphael/workspace/projects/poisson_jump_cells";
 #else
-const string default_work_folder = "/home/regan/workspace/projects/poisson_jump_cells";
+const string default_work_folder = "/home/rochi/work/CASL/release/poisson_jump_cells/vtk";
 #endif
 
 std::istream& operator>> (std::istream& is, std::vector<jump_solver_tag>& solvers_to_test)

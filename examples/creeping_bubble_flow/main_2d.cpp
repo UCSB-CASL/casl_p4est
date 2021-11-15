@@ -62,7 +62,7 @@ static const double default_mu_p    = 0.5; // --> different mu_m and mu_p show t
 static const double default_gamma_0 = 0.075;
 static const double default_beta    = -2.0/15.0;
 static const bool default_voro_fly  = false;
-static jump_solver_tag default_solver = xGFM;
+static jump_solver_tag default_solver = FV;
 static const uint default_ngrids    = 3;
 static const bool default_save_vtk  = false;
 static const bool default_print     = false;
@@ -78,7 +78,7 @@ const string default_work_folder = "/scratch/04965/tg842642/creeping_bubble_flow
 #elif defined(POD_CLUSTER)
 const string default_work_folder = "/scratch/regan/creeping_bubble_flow";
 #else
-const string default_work_folder = "/home/regan/workspace/projects/creeping_bubble_flow";
+const string default_work_folder = "/home/rochi/work/CASL/release/creeping_flows";
 #endif
 
 class LEVEL_SET : public CF_DIM {
