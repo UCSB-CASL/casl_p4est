@@ -459,5 +459,23 @@ inline void linspace( const double& start, const double& end, const unsigned int
 	values.push_back( end );
 }
 
+/**
+ * Compute the mean of a list of (pointers to) numerical entities.
+ * @tparam T Data type - must overload the =, +, and / operators.  The / must work for scalar operand.
+ * @param [in] data Vector of (pointers to) numerical entities.
+ * @return mean numerical entity.
+ */
+template<typename T>
+inline T mean( const std::vector<const T*>& data )
+{
+	if( data.empty() )
+		throw std::runtime_error( "CASL_MATH::mean - Empty container!" );
+
+	T m = *(data[0]);
+	for( size_t i = 1; i < data.size(); i++ )
+		m = m + *(data[i]);
+	return m / data.size();
+}
+
 
 #endif // MY_P4EST_MATH_H

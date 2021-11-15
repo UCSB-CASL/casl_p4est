@@ -8,7 +8,7 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC main_2d.cpp )
+	list( APPEND SRC triangulation_distance_test.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )

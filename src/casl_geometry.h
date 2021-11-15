@@ -1,17 +1,21 @@
-//
-// Created by Im YoungMin on 4/30/20.
-//
+/**
+ * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
+ * Developer: Luis Ángel.
+ * Created: April 30, 2020.
+ * Updated: November 14, 2021.
+ */
 
 #ifndef CASL_GEOMETRY_H
 #define CASL_GEOMETRY_H
 
+#include <iostream>
+#include <src/types.h>
+#include <src/my_p4est_macros.h>
 #include <src/casl_math.h>
 #include <src/point2.h>
 #include <src/point3.h>
+#include <random>
 
-/**
- * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
- */
 namespace geom
 {
 	//////////////////////////////////////////////// Level-Set Classes /////////////////////////////////////////////////
@@ -426,6 +430,287 @@ namespace geom
 			T3 tmpC = c; c = w; w = tmpC;
 		}
 	}
+
+	/////////////////////////////////////// Balltree and related functionalities ///////////////////////////////////////
+
+	struct BalltreeNode
+	{
+		int id = -1;							// Node identifier (mostly used for debugging).
+		Point3 center;							// Ball center.
+		double radius = 0;						// Ball radius.
+		Point3 axis;							// Axis of maximum spread for children under this node.
+		double m = 0;							// Decision boundary for left (< m) and right (>= m) projections onto the axis.
+		BalltreeNode *leftChild = nullptr;		// Left an right children.  If node is a leaf, these should remain null.
+		BalltreeNode *rightChild = nullptr;
+		std::vector<const Point3 *> points;		// For leaf nodes, these is the list of (pointers to) actual points.
+	};
+
+	/**
+	 * Balltree implementation as discussed in:
+	 * @cite https://www.cs.cornell.edu/courses/cs4780/2018fa/lectures/lecturenote16.html
+	 * @cite http://www.cs.cmu.edu/~agray/approxnn.pdf
+	 *
+	 * For the sklearn documentation of the balltree used in knn operations see:
+	 * @cite https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.BallTree.html
+	 */
+	class Balltree
+	{
+	private:
+		const size_t _k;						// Minimum number of points to create a leaf.
+		BalltreeNode *_root = nullptr;			// Tree root.
+		std::vector<Point3> _points;			// Save a copy of all points (at the leaves) in tree.
+		std::mt19937 _rng;						// Random generator.
+		size_t _nodeCount;						// Used for node ids.
+		bool _trace;							// Trace nodes visited during a knn query.
+
+		/**
+		 * Find the farthest point in a list S from a query point q.
+		 * @param [in] q Query point.
+		 * @param [in] S List of (pointers to) points to test.
+		 * @return Pointer to farthest point.
+		 */
+		static const Point3 *_findFarthest( const Point3 *q, const std::vector<const Point3 *>& S )
+		{
+			double dFarthest = -1;
+			const Point3 *farthest = nullptr;
+			for( const auto& s : S )
+			{
+				double d = (*q - *s).norm_L2();
+				if( d > dFarthest )
+				{
+					dFarthest = d;
+					farthest = s;
+				}
+			}
+
+			return farthest;
+		}
+
+		/**
+		 * Find the closest point in a list S to a query point q.
+		 * @param [in] q Query point.
+		 * @param [in] S List of (pointers) to test.
+		 * @param [out] d Shortest distance with closest point.
+		 * @return Closest point.
+		 */
+		static const Point3 *_findClosest( const Point3& q, const std::vector<const Point3 *>& S, double& d )
+		{
+			d = DBL_MAX;
+			const Point3 *closest = nullptr;
+			for( const auto& s : S )
+			{
+				double dist = (q - *s).norm_L2();
+				if( dist < d )
+				{
+					d = dist;
+					closest = s;
+				}
+			}
+
+			return closest;
+		}
+
+		/**
+		 * Construct tree and subtrees recursively.
+		 * @param [in] S List of (pointers) to points.
+		 * @return A pointer to a balltree node, which can be a leaf or an internal node with children.
+		 */
+		BalltreeNode *_buildTree( const std::vector<const Point3 *>& S )
+		{
+			// Populate (internal) node info.
+			auto *node = new BalltreeNode;
+			node->id = (int)_nodeCount;
+			_nodeCount++;
+			if( S.size() == 1 )					// Even for leaves, we must have a center and radius.
+			{									// Here, we just speed out for the case of a single point.
+				node->center = *S[0];
+				node->radius = 0;
+			}
+			else
+			{
+				node->center = mean( S );
+				const Point3 *xf = _findFarthest( &(node->center), S );
+				node->radius = (*xf - node->center).norm_L2();
+			}
+
+			// Build (sub)tree rooted at node.
+			if( S.size() <= _k )				// Got to a leaf?
+			{
+				node->points.reserve( _k );		// Store pointers to points to local storage.
+				for( const auto& s : S )
+					node->points.emplace_back( s );
+			}
+			else
+			{
+				// Find axis of maximum spread (approximately).
+				std::uniform_int_distribution<size_t> dist( 0, S.size() - 1 );
+				size_t x0Idx = dist( _rng );
+				const Point3 *x1 = _findFarthest( S[x0Idx], S );
+				const Point3 *x2 = _findFarthest( x1, S );
+				node->axis = ( *x1 - *x2 );
+
+				if( ANDD( ABS( node->axis.x ) <= PETSC_MACHINE_EPSILON, ABS( node->axis.y ) <= PETSC_MACHINE_EPSILON,
+						  ABS( node->axis.z ) <= PETSC_MACHINE_EPSILON ) )
+					throw std::runtime_error( "[CASL_ERROR]: geom::Balltree::_builTree: Singular axis!" );
+
+				// Project data onto axis of maximum spread and classify them into left and right.
+				Point3 midPoint = (*x1 + *x2) / 2;
+				node->m = node->axis.dot( midPoint );		// This just an approximation to the median on the axis.
+				std::vector<const Point3 *> Sl, Sr;
+				Sl.reserve( 2 * S.size() / 3 );
+				Sr.reserve( 2 * S.size() / 3 );
+				for( const auto& s : S )
+				{
+					double z = node->axis.dot( *s );
+					if( z < node->m )						// To the left or right of decision boundary?
+						Sl.emplace_back( s );
+					else
+						Sr.emplace_back( s );
+				}
+
+				// Catch any possibility of having a degenerate tree where either the left or righ subtree don't exist.
+				if( Sl.empty() || Sr.empty() )
+					throw std::runtime_error( "[CASL_ERROR]: geom::Balltree::_buildTree: Either the left or right subtree is empty!" );
+				node->leftChild = _buildTree( Sl );
+				node->rightChild = _buildTree( Sr );
+			}
+			return node;
+		}
+
+		/**
+		 * Deallocate (sub)trees recursively.  Upon exiting, the (sub)tree's root (n) becomes null.
+		 * @param [in,out] n (Sub)tree root node.
+		 */
+		void _destroy( BalltreeNode *& n )
+		{
+			if( n->leftChild )
+			{
+				_destroy( n->leftChild );	// Destroy left subtree.
+				n->leftChild = nullptr;
+			}
+			if( n->rightChild )
+			{
+				_destroy( n->rightChild );	// Destroy right subtree.
+				n->rightChild = nullptr;
+			}
+
+			delete n;
+			n = nullptr;
+		}
+
+		/**
+		 * Explore the (sub)tree rooted at n recursively to find the closest data point x (with distance d) to the query
+		 * point q.
+		 * @param [in] q Query point.
+		 * @param [out] x Closest point to q in currently explored (sub)tree.
+		 * @param [out] d Distance from q to closest point x.
+		 * @param [in] n (Sub)tree root or node to explore (if a leaf).
+		 */
+		void _findNearestNeighbor( const Point3& q, const Point3 *& x, double& d, const BalltreeNode *n ) const
+		{
+			if( _trace )
+				std::cout << n->id << " ";
+
+			if( !n->leftChild && !n->rightChild )	// If a leaf, compare against all nodes in it.
+			{
+				double dist;
+				const Point3 *closest = _findClosest( q, n->points, dist );
+				if( dist < d )						// Update closest point and shortest distance.
+				{
+					d = dist;
+					x = closest;
+				}
+
+				if( _trace )
+					std::cout << "* tested leaf points" << std::endl;
+			}
+			else
+			{
+				if( _trace )
+					std::cout << std::endl;
+
+				double z = n->axis.dot( q );		// Project point on node's main axis and determine which child
+				const BalltreeNode *first, *second;	// subtree to explore first.
+				if( z < n->m )
+				{
+					first = n->leftChild;
+					second = n->rightChild;
+				}
+				else
+				{
+					first = n->rightChild;
+					second = n->leftChild;
+				}
+
+				if( (first->center - q).norm_L2() - first->radius < d )		// Probe and prune left subtree if no
+					_findNearestNeighbor( q, x, d, first );					// member in it is within distance d from q.
+
+				if( (second->center - q).norm_L2() - second->radius < d )	// Probe and prune right subtree if no
+					_findNearestNeighbor( q, x, d, second );				// member in it is within distance d from q.
+			}
+		}
+
+	public:
+		/**
+		 * Constructor.
+		 * Default leaf size k based on value used in Python's scikit-learn module.
+		 * @param [in] points List of points to arrange in the balltree.
+		 * @param [in] k Maximum number of points in a leaf node.
+		 * @param [in] trace Whether to trace nodes visited during a knn query.
+		 */
+		explicit Balltree( const std::vector<Point3>& points, const size_t& k=40, const bool& trace=false )
+				  : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )	// NOLINT.
+		{
+			// First, copy all points into local storage.  At the same time, populate the list to pass to buid function.
+			std::vector<const Point3 *> S;
+			S.reserve( points.size() );
+			_points.reserve( points.size() );
+			for( const Point3& point : points )
+			{
+				_points.emplace_back( point );
+				S.emplace_back( &_points.back() );
+			}
+
+			// Next, build the tree.
+			_root = _buildTree( S );
+		}
+
+		/**
+		 * Find the nearest point in the structure to a query point q.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance.
+		 * @return Nearest neighbor.
+		 */
+		const Point3 *findNearestNeighbor( const Point3& q, double& d ) const
+		{
+			if( _trace )
+			{
+				std::cout << "Tracing query for [" << q.x << ", " << q.y << ", " << q.z << "]" << std::endl;
+				std::cout << "--- Visited nodes ---" << std::endl;
+			}
+
+			const Point3 *x = nullptr;
+			d = DBL_MAX;
+			_findNearestNeighbor( q, x, d, _root );
+
+			if( _trace )
+				std::cout << "--- end ---" << std::endl;
+
+			return x;
+		}
+
+		/**
+		 * Destructor.
+		 */
+		~Balltree()
+		{
+			if( _root )
+				_destroy( _root );
+
+			_nodeCount = 0;		// Reset node counter.
+		}
+	};
+
 }
 
 #endif // CASL_GEOMETRY_H
