@@ -4,6 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
+ * Updated: November 16, 2021.
  */
 #include <src/casl_geometry.h>
 
@@ -33,6 +34,26 @@ int main()
 	double d2;
 	const Point3 *nn2 = balltree.findNearestNeighbor( q2, d2 );
 	std::cout << "Closest point: " << *nn2 << "Dist: " << d2 << std::endl << std::endl;
+
+	// Testing distances from points in 3D to a triangle.
+	Point3 vertices[] = {{0,0,0}, {2,0,0}, {0,3,0}};
+	geom::Triangle triangle( &vertices[0], &vertices[1], &vertices[2] );
+
+	Point3 queryPoints[] = {{1,0,1}, {1,1,1}, {0.5,2,-1}, {-1,2,2}, {3,0,-1}, {1.5,1.5,-2}, {1.5,-1,-1}, {-0.5,4,1}};
+	Point3 closestPoints[] = {{1,0,0},{1,1,0}, {0.5,2,0}, {0,2,0}, {2,0,0}, {1.153846153846154,1.269230769230769,0}, {1.5,0,0}, {0,3,0}};
+	double distances[] = {1, 1, 1, sqrt(5), M_SQRT2, 2.042811034598385, M_SQRT2, 1.5};
+
+	for( int i = 0; i < 7; i++ )
+	{
+		std::cout << "Point " << i << "... ";
+		Point3 P = triangle.findClosestPointToQuery( &queryPoints[i] );
+		double d = (P - queryPoints[i]).norm_L2();
+		assert( ABS( d - distances[i] ) < EPS );
+		std::cout << "d ok, ";
+		assert( (P - closestPoints[i]).norm_L2() < EPS );
+		std::cout << "P ok." << std::endl;
+	}
+	std::cout << "All triangle tests succeeded!" << std::endl;
 
 	return 0;
 }

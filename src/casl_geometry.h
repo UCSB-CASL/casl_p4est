@@ -293,119 +293,6 @@ namespace geom
 	}
 
 	/**
-	 * Project a 3D point on the plane subtended by a triangle given by its three input vertices.  If the projected
-	 * point, P, falls within the triangle, the function returns true, and P's barycentric coordinates are given:
-	 *                P = u * v0 + v * v1 + ( 1 - u - v ) * v2,   for 0 <= u, v <= 1
-	 * If P falls outside of triangle, the function yields the end-points of the first line segment that is found to
-	 * fail the inside/outside test.  This implies that there might still exist at most another side for which the same
-	 * inside/outside test fails.
-	 * Regardless of the point being or not within the triangle, the projection point P is always computed, unless the
-	 * triangle is degenerate (i.e. colinear vertices).
-	 * This function is an adaptation of the CG's ray-hitting-triangle algorithm provided in
-	 * https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/barycentric-coordinates
-	 * @param [in] p Query point.
-	 * @param [in] v0 Triangle's first vertex.
-	 * @param [in] v1 Triangle's second vertex.
-	 * @param [in] v2 Triangle's third vertex.
-	 * @param [out] u Produced barycentric coordinate of projected point within the triangle corresponding to v0.
-	 * @param [out] v Produced barycentric coordinate of proejcted point within the triangle corresponding to v1.
-	 * @param [out] P Normal projection of point p onto the triangle's plane.
-	 * @param [out] x First end-point of first triangle's side to fail the inside/outside test.
-	 * @param [out] y Second end-point of first triangle's side to fail the inside/outside test.
-	 * @return True and valid barycentric coordinates if projected point falls within input triangle, false otherwise
-	 * 		   and pointers to the end-points of first triangle's side to fail the inside/outside test.
-	 * @throws Runtime exception if input triangle vertices are collinear.
-	 */
-	inline bool projectPointOnTriangleAndPlane( const Point3 *p, const Point3 *v0, const Point3 *v1, const Point3 *v2,
-										 double& u, double& v, Point3& P, const Point3*& x, const Point3*& y )
-	{
-		// Compute triangle's subtended plane's normal vector.
-		Point3 v0v1 = *v1 - *v0;
-		Point3 v0v2 = *v2 - *v0;
-
-		// No need to normalize.
-		Point3 N = v0v1.cross( v0v2 );
-		double denom = N.dot( N );
-
-		if( sqrt( denom ) <= EPS )					// Check for colinear points.
-			throw std::runtime_error( "[CASL_ERROR]: geom::projectPointOnTriangleAndPlane - Triangle's vertices are colinear!" );
-
-		// Step 1: finding P, the projection of p onto the triangle's plane.
-		Point3 vp0 = ( *p - *v0 );
-		P = *p - N * vp0.dot( N ) / denom;
-
-		// Step 2: inside-outside test.
-		// This test uses the cross product with a reference vector (i.e. a triangle's side).  When a point is outside
-		// the triangle, we have at most two sides for which the inside/outside test fails:
-		//         \                          \
-		//          \   o Point                \
-		//           \                    ------*.....
-		//     -------*.....                     .  o Point
-		//             .                          .
-		//          (a)                       (b)
-		// In case (a), there is just one side failing the inside/outside test.  In case (b), there are two.  In the
-		// latter, just the first triangle's side to fail the test will be reported back.  However, in case (b) the
-		// closest point on the triangle is the shared corner, here denoted as '*'.
-		Point3 C; 									// Vector perpendicular to plane used for inside-outside test.
-		x = y = nullptr;
-
-		Point3 edge0 = *v1 - *v0;					// Edge 0.
-		vp0 = P - *v0;
-		C = edge0.cross( vp0 );
-		if( N.dot( C ) < 0 )						// P is on the right side of edge 0, opposed to v2.
-		{
-			x = v0;
-			y = v1;
-			return false;
-		}
-
-		Point3 edge1 = *v2 - *v1;					// Edge 1.
-		Point3 vp1 = P - *v1;
-		C = edge1.cross( vp1 );
-		if( ( u = N.dot( C ) ) < 0 )				// P is on the right side of edge 1, opposed to v0.
-		{
-			x = v1;
-			y = v2;
-			return false;
-		}
-
-		Point3 edge2 = *v0 - *v2;					// Edge 2.
-		Point3 vp2 = P - *v2;
-		C = edge2.cross( vp2 );
-		if( ( v = N.dot( C ) ) < 0 )				// P is on the right side of edge 2, opposed to v1.
-		{
-			x = v2;
-			y = v0;
-			return false;
-		}
-
-		u /= denom;
-		v /= denom;
-
-		return true; 								// The projected point P falls within the triangle.
-	}
-
-	/**
-	 * Find the closest point on a triangle to another query point in 3D.
-	 * @param [in] p Query point pointer.
-	 * @param [in] v0 Pointer to first triangle's vertex.
-	 * @param [in] v1 Pointer to second triangle's vertex.
-	 * @param [in] v2 Pointer to third triangle's vertex.
-	 * @param [in] TOL Zero-checking tolerance.
-	 * @return Closest point on triangle.
-	 */
-	inline Point3 findClosestPointOnTriangleToPoint( const Point3 *p, const Point3 *v0, const Point3 *v1, const Point3 *v2, double TOL = EPS )
-	{
-		double a, b;				// (Dummy) barycentric coordinates for projected point on triangle's plane.
-		Point3 P;					// Projected point triangle's plane.
-		const Point3 *u0, *u1;		// Pointers to vertices of line segment closest to P if the latter doesn't fall within the triangle.
-		if( projectPointOnTriangleAndPlane( p, v0, v1, v2, a, b, P, u0, u1 ) )
-			return P;
-		else						// Find closest point from projected point to nearest triangle's segment that failed in/out test.
-			return geom::findClosestPointOnLineSegmentToPoint( P, *u0, *u1, TOL );
-	}
-
-	/**
 	 * Some general purpose functions.
 	 */
 	namespace utils
@@ -430,6 +317,138 @@ namespace geom
 			T3 tmpC = c; c = w; w = tmpC;
 		}
 	}
+
+	///////////////////////////// A triangle class useful for triangulating Monge patches //////////////////////////////
+
+	class Triangle
+	{
+	private:
+		const Point3 *_v0, *_v1, *_v2;	// Pointers to triangle vertices to avoid redundancy with adjacent triangles.
+		Point3 _n;						// (Non-normalized) normal vector to triangle's underlying plane.
+		double _nNorm2;					// Norm^2 of normal vector.
+		Point3 _edge0, _edge1, _edge2;	// The three sides of the triangle, being careful about the ordering.
+
+		/**
+		 * Project a 3D point on the plane subtended by the triangle.  If the projected point P falls within the
+		 * triangle, the function returns true and sets P's barycentric coordinates u and v as follows:
+		 *                P = u * v0 + v * v1 + ( 1 - u - v ) * v2,   for 0 <= u, v <= 1
+		 * If P falls outside of triangle, the function yields the end-points of the first line segment that is found to
+		 * fail the inside/outside test.  This implies that there might still exist at most another side for which the
+		 * same inside/outside test fails.
+		 * Regardless of the point being or not within the triangle, the projection point P is always computed.
+		 * This function is an adaptation of the CG's ray-hitting-triangle algorithm provided in
+		 * https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/barycentric-coordinates
+		 * @param [in] p Query point.
+		 * @param [out] u Produced barycentric coordinate of projected point within the triangle corresponding to v0.
+		 * @param [out] v Produced barycentric coordinate of proejcted point within the triangle corresponding to v1.
+		 * @param [out] P Normal projection of point p onto the triangle's plane.
+		 * @param [out] x First end-point of first detected triangle's side to fail the inside/outside test.
+		 * @param [out] y Second end-point of first detected triangle's side to fail the inside/outside test.
+		 * @return True and valid barycentric coordinates if projected point falls within input triangle, false otherwise
+		 * 		   and pointers to the end-points of first detected triangle's side to fail the inside/outside test.
+		 */
+		bool _projectPoint( const Point3 *p, double& u, double& v, Point3& P, const Point3*& x, const Point3*& y )
+		{
+			// Step 1: finding P, the projection of p onto the triangle's plane.
+			Point3 vp0 = ( *p - *_v0 );
+			P = *p - _n * vp0.dot( _n ) / _nNorm2;
+
+			// Step 2: inside-outside test.
+			// This test uses the cross product with a reference vector (i.e. a triangle's side).  When a point is
+			// outside the triangle, we have at most two sides for which the inside/outside test fails:
+			//         \                          \
+			//          \   o Point                \
+			//           \                    ------*.....
+			//     -------*.....                     .  o Point
+			//             .                          .
+			//          (a)                       (b)
+			// In case (a), there is just one side failing the inside/outside test.  In case (b), there are two.  In the
+			// latter, just the first triangle's side to fail the test will be reported back.  However, in case (b) the
+			// closest point on the triangle is the shared corner, here denoted as '*'.
+			Point3 C; 							// Vector perpendicular to plane used for inside-outside test.
+			x = y = nullptr;
+
+			// Compare with edge 0.
+			vp0 = P - *_v0;
+			C = _edge0.cross( vp0 );
+			if( _n.dot( C ) < 0 )				// P is on the right side of edge 0, opposed to v2.
+			{
+				x = _v0;
+				y = _v1;
+				return false;
+			}
+
+			// Compare with edge 1.
+			Point3 vp1 = P - *_v1;
+			C = _edge1.cross( vp1 );
+			if( ( u = _n.dot( C ) ) < 0 )		// P is on the right side of edge 1, opposed to v0.
+			{
+				x = _v1;
+				y = _v2;
+				return false;
+			}
+
+			// Compare with edge 2.
+			Point3 vp2 = P - *_v2;
+			C = _edge2.cross( vp2 );
+			if( ( v = _n.dot( C ) ) < 0 )		// P is on the right side of edge 2, opposed to v1.
+			{
+				x = _v2;
+				y = _v0;
+				return false;
+			}
+
+			u /= _nNorm2;
+			v /= _nNorm2;
+
+			return true; 						// The projected point P falls within the triangle.
+		}
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] v0 Pointer to triangle's first vertex.
+		 * @param [in] v1 Pointer to triangle's second vertex.
+		 * @param [in] v2 Pointer to triangle's third vertex.
+		 * @param [in] TOL Optional tolerance to detect degenerate triangles by measuring collinearity.
+		 */
+		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2, const double& TOL=EPS )
+				: _v0( v0 ), _v1( v1 ), _v2( v2 )
+		{
+			// Compute triangle's subtended plane's normal vector.
+			Point3 v0v1 = *v1 - *v0;
+			Point3 v0v2 = *v2 - *v0;
+
+			// No need to normalize, but we keep its norm^2.
+			_n = v0v1.cross( v0v2 );
+			_nNorm2 = _n.dot( _n );
+
+			if( sqrt( _nNorm2 ) <= TOL )	// Check for collinear points.
+				throw std::runtime_error( "[CASL_ERROR]: geom::Triangle::constructor: Triangle's vertices are collinear!" );
+
+			// Let's compute the edges.
+			_edge0 = *_v1 - *_v0;			// Defined in a circular fashion.
+			_edge1 = *_v2 - *_v1;
+			_edge2 = *_v0 - *_v2;
+		}
+
+		/**
+		 * Find the closest point on triangle to another query point.
+		 * @param [in] p Query point pointer.
+		 * @param [in] TOL Zero-checking tolerance.
+		 * @return Closest point on triangle.
+		 */
+		Point3 findClosestPointToQuery( const Point3 *p, double TOL=EPS )
+		{
+			double a, b;			// (Dummy) barycentric coordinates for projected point on triangle's plane.
+			Point3 P;				// Projected point triangle's plane.
+			const Point3 *u0, *u1;	// Pointers to vertices of line segment closest to P if the latter doesn't fall within the triangle.
+			if( _projectPoint( p, a, b, P, u0, u1 ) )
+				return P;
+			else						// Find closest point from projected point to nearest triangle's segment that failed in/out test.
+				return geom::findClosestPointOnLineSegmentToPoint( P, *u0, *u1, TOL );
+		}
+	};
 
 	/////////////////////////////////////// Balltree and related functionalities ///////////////////////////////////////
 
