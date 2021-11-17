@@ -4,9 +4,24 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: November 16, 2021.
+ * Updated: November 17, 2021.
  */
 #include <src/casl_geometry.h>
+
+struct MongeFunction1 : public geom::MongeFunction
+{
+	// Pyramidal function with appex at the origin.
+	double operator()( double x, double y ) const override
+	{
+		return 1.0 - ABS( x ) - ABS( y );
+	}
+
+	// Dummy curvature function to pass the polymorphism test.
+	double meanCurvature( const double& x, const double& y ) const override
+	{
+		return 0;
+	}
+};
 
 int main()
 {
@@ -17,7 +32,7 @@ int main()
 								  {11,8,0}, {13,6,0}, {13,8,0}, {14,7,0}, {14,7.5,0}, {13.5,8.5,0}, {14,9,0}, {16,8,0}};
 
 	// Let's build a balltree to perform knn queries efficiently.
-	geom::Balltree balltree( points, 5, true );
+	geom::Balltree balltree( points, false, 5, true );
 
 	// Let's perform knn search, for k=1.
 	Point3 q0(4.5, 3, 0);
@@ -53,7 +68,48 @@ int main()
 		assert( (P - closestPoints[i]).norm_L2() < EPS );
 		std::cout << "P ok." << std::endl;
 	}
-	std::cout << "All triangle tests succeeded!" << std::endl;
+	std::cout << "All triangle tests succeeded!" << std::endl << std::endl;
+
+	// Let's create Monge patch and test it.
+	MongeFunction1 dummyFunction;
+	geom::DiscretizedMongePatch discretizedMongePatch( 1, 2, &dummyFunction, 5 );
+
+	std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
+	std::string rlsFileName = "triangles.csv";
+	trianglesFile.open( rlsFileName, std::ofstream::trunc );
+	if( !trianglesFile.is_open() )
+		throw std::runtime_error( "Triangles file couldn't be opened for dumping mesh!" );
+	trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
+	discretizedMongePatch.dumpTriangles( trianglesFile );
+	trianglesFile.precision( 15 );
+	trianglesFile.close();
+
+	q0 = Point3( 0.4, -0.2, 0.6 );
+	Point3 r0 = discretizedMongePatch.findNearestPoint( q0, d0 );
+	assert( (Point3( 1./3, -4./30, 16./30 ) - r0).norm_L2() < EPS );
+	assert( ABS( d0 - 0.11547005383792514 ) < EPS );
+	std::cout << "Fourth-quadrant test... ok." << std::endl;
+
+	q1 = Point3( -0.2, -0.4, 0.8 );
+	Point3 r1 = discretizedMongePatch.findNearestPoint( q1, d1 );
+	assert( (Point3( -2./30, -8./30, 2./3 ) - r1).norm_L2() < EPS );
+	assert( ABS( d1 - 0.23094010767585033 ) < EPS );
+	std::cout << "Third-quadrant test... ok." << std::endl;
+
+	q2 = Point3( 0.5, 0.5, 1 );
+	Point3 r2 = discretizedMongePatch.findNearestPoint( q2, d2 );
+	assert( (Point3( 5./30, 5./30, 2./3 ) - r2).norm_L2() < EPS );
+	assert( ABS( d2 - 0.577350269189626 ) < EPS );
+	std::cout << "First-quadrant test... ok." << std::endl;
+
+	Point3 q3 = Point3( -0.125, 0.125, 1 );
+	double d3;
+	Point3 r3 = discretizedMongePatch.findNearestPoint( q3, d3 );
+	assert( (Point3( -125./3000, 125./3000, 275./300 ) - r3).norm_L2() < EPS );
+	assert( ABS( d3 - 0.14433756729740646 ) < EPS );
+	std::cout << "Second-quadrant test... ok." << std::endl;
+
+	std::cout << "All shortest distance tests succeeded!" << std::endl;
 
 	return 0;
 }

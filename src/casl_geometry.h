@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: November 14, 2021.
+ * Updated: November 17, 2021.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -347,7 +347,7 @@ namespace geom
 		 * @return True and valid barycentric coordinates if projected point falls within input triangle, false otherwise
 		 * 		   and pointers to the end-points of first detected triangle's side to fail the inside/outside test.
 		 */
-		bool _projectPoint( const Point3 *p, double& u, double& v, Point3& P, const Point3*& x, const Point3*& y )
+		bool _projectPoint( const Point3 *p, double& u, double& v, Point3& P, const Point3*& x, const Point3*& y ) const
 		{
 			// Step 1: finding P, the projection of p onto the triangle's plane.
 			Point3 vp0 = ( *p - *_v0 );
@@ -438,7 +438,7 @@ namespace geom
 		 * @param [in] TOL Zero-checking tolerance.
 		 * @return Closest point on triangle.
 		 */
-		Point3 findClosestPointToQuery( const Point3 *p, double TOL=EPS )
+		Point3 findClosestPointToQuery( const Point3 *p, double TOL=EPS ) const
 		{
 			double a, b;			// (Dummy) barycentric coordinates for projected point on triangle's plane.
 			Point3 P;				// Projected point triangle's plane.
@@ -447,6 +447,22 @@ namespace geom
 				return P;
 			else						// Find closest point from projected point to nearest triangle's segment that failed in/out test.
 				return geom::findClosestPointOnLineSegmentToPoint( P, *u0, *u1, TOL );
+		}
+
+		/**
+		 * Get one of triangles vertices.
+		 * @param [in] i Index from 0 to 3.
+		 * @return Pointer to requested vertex.
+		 */
+		const Point3 *getVertex( unsigned char i ) const
+		{
+			i = i % 3;
+			switch( i )
+			{
+				case 0: return _v0;
+				case 1: return _v1;
+				default: return _v2;
+			}
 		}
 	};
 
@@ -674,20 +690,31 @@ namespace geom
 		 * Constructor.
 		 * Default leaf size k based on value used in Python's scikit-learn module.
 		 * @param [in] points List of points to arrange in the balltree.
+		 * @param [in] copyPoints Whether to make local copies of input points.
 		 * @param [in] k Maximum number of points in a leaf node.
 		 * @param [in] trace Whether to trace nodes visited during a knn query.
 		 */
-		explicit Balltree( const std::vector<Point3>& points, const size_t& k=40, const bool& trace=false )
-				  : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )	// NOLINT.
+		explicit Balltree( const std::vector<Point3>& points, const bool& copyPoints=true, const size_t& k=40,
+						   const bool& trace=false )
+						   : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )	// NOLINT.
 		{
-			// First, copy all points into local storage.  At the same time, populate the list to pass to buid function.
+			// First, copy all points into local storage if user wants that.
+			// At the same time, populate the list to pass to buid function.
 			std::vector<const Point3 *> S;
 			S.reserve( points.size() );
-			_points.reserve( points.size() );
-			for( const Point3& point : points )
+			if( copyPoints )
 			{
-				_points.emplace_back( point );
-				S.emplace_back( &_points.back() );
+				_points.reserve( points.size() );
+				for( const Point3& point : points )
+				{
+					_points.emplace_back( point );
+					S.emplace_back( &_points.back() );
+				}
+			}
+			else
+			{
+				for( const Point3& point : points )		// If no copy is desired, user is responsible for not releasing
+					S.emplace_back( &point );			// the list of points to avoid memory issues.
 			}
 
 			// Next, build the tree.
@@ -727,6 +754,184 @@ namespace geom
 				_destroy( _root );
 
 			_nodeCount = 0;		// Reset node counter.
+		}
+	};
+
+	/**
+	 * Abstract Monge patch function f(x,y).
+	 */
+	class MongeFunction : public CF_2
+	{
+	public:
+		virtual double meanCurvature( const double& x, const double& y ) const = 0;
+	};
+
+	/**
+	 * A two-dimensional Monge patch (surface) triangulated and discretized into a balltree for fast shortest-distance
+	 * calculations.
+	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
+	 * The domain R will have the same number of grid points along x and y and is determined by the same number of unit-
+	 * square macro cells along x and y too.  Thus, h = 2^{-L}, where L > 0.  This is similar to how we handle quad-
+	 * trees, but here there are no intermediate cells.
+	 */
+	class DiscretizedMongePatch
+	{
+	private:
+		size_t _nPointsAlongAxis;				// How many points in each Cartesian direction.
+		double _dMin;							// Minimum coordinates (_dMin, _dMin) or the lower-left corner.
+		double _h;								// "Mesh" size or the spacing between grid points on the xy plane.
+		Balltree *_balltree;					// Underlying balltree organization of points in space.
+		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
+		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
+		std::vector<Point3> _points;			// Points defining the grid.
+		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] k Number of halves to define a symmetric domain (i.e., domain is [-0.5k, 0.5k]^2)
+		 * @param [in] L Number of refinement levels.
+		 * @param [in] mongeFunction A function of the form f(x,y).
+		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 */
+		DiscretizedMongePatch( size_t k, const size_t& L, const MongeFunction *mongeFunction, const size_t& btKLeaf=40 )
+							   : _mongeFunction( mongeFunction )
+		{
+			// Validate inputs.
+			std::string errorPrefix = "[CASL_ERROR]: geom::DiscretizedMongePatch::constructor: ";
+			if( !mongeFunction )
+				throw std::runtime_error( errorPrefix + "Monge patch function can't be null!" );
+
+			if( L == 0 )
+				throw std::runtime_error( errorPrefix + "Monge patch function can't be null!" );
+
+			if( k == 0 )
+				throw std::runtime_error( errorPrefix + "Number of halves from the origin can't be zero!" );
+
+			// Initializing space variables and domain.
+			_dMin = -(double)k * 0.5;						// Lower-left coordinate is at (-_dMin, -_dMin)
+			_h = 1. / (1 << L);								// Spacing.
+			_nPointsAlongAxis = (1 << L) * k + 1;			// This is equivalent to (nHalvesDist/h + 1).
+
+			// Let's create the grid.
+			for( size_t j = 0; j < _nPointsAlongAxis; j++ )		// Rows, starting from the bottom-left corner.
+			{
+				for( size_t i = 0; i < _nPointsAlongAxis; i++ )	// Columns.
+				{
+					double x = _dMin + (double)i * _h;
+					double y = _dMin + (double)j * _h;
+					double z = _mongeFunction->operator()( x, y );
+					_points.emplace_back( x, y, z );
+				}
+			}
+
+			// Organize the points into a balltree for fast knn search: don't make copies of points.  We'll keep them in
+			// this object to link them to triangles.
+			_balltree = new Balltree( _points, false );
+
+			// Triangulation.  The pattern is the following, starting from the bottom-left corner of the domain.
+			//     :    :    :    :
+			//   2 +----+----+----+····
+			//     |  / |  / |  / |
+			//     | /  | /  | /  |
+			//   1 +----+----+----+····
+			//     |  / |  / |  / |
+			//     | /  | /  | /  |
+			//     +----+----+----+····
+			//   0      1    2    3
+			_triangles.reserve( SQR( _nPointsAlongAxis - 1 ) * 2 );	// Here, we save the real triangles; then we use pointers to them.
+
+			for( size_t p = 0; p < _points.size(); p++ )			// Let's make space for the map of points to triangles.
+			{
+				_pointsToTriangles.emplace_back( std::vector<const Triangle *>() );
+				_pointsToTriangles.back().reserve( 6 );				// Each point is part of at most 6 triangles under the above
+			}														// scheme.  Edge points belong to 3, and corners belong to 1 or 2.
+
+			for( size_t j = 0; j < _nPointsAlongAxis - 1; j++ )		// Rows first (without getting to the very last).
+			{
+				for( size_t i = 0; i < _nPointsAlongAxis - 1; i++ )	// Columns next.
+				{
+					//                         idx3 +----+ idx2
+					// Each quad has indices:       |  / |
+					//                              | /  |
+					//                         idx0 +----+ idx1
+					size_t idx0 = _nPointsAlongAxis * j + i;		// Node indices in ccw direction.
+					size_t idx1 = idx0 + 1;
+					size_t idx2 = idx1 + _nPointsAlongAxis;
+					size_t idx3 = idx0 + _nPointsAlongAxis;
+					_triangles.emplace_back( &_points[idx0], &_points[idx1], &_points[idx2] );	// Lower triangle...
+					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
+					_pointsToTriangles[idx1].push_back( &_triangles.back() );
+					_pointsToTriangles[idx2].push_back( &_triangles.back() );
+					_triangles.emplace_back( &_points[idx0], &_points[idx2], &_points[idx3] );	// Upper triangle...
+					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
+					_pointsToTriangles[idx2].push_back( &_triangles.back() );
+					_pointsToTriangles[idx3].push_back( &_triangles.back() );
+				}
+			}
+		}
+
+		/**
+		 * Find nearest point to triangulated surface.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance to triangulated surface.
+		 * @return Nearest point.
+		 */
+		Point3 findNearestPoint( const Point3& q, double& d )
+		{
+			// Validate that query point is whithin the domain of the Monge patch.
+			if( ABS( q.x ) > -_dMin || ABS( q.y ) > -_dMin )
+				throw std::runtime_error( "[CASL_ERROR]: geom::DiscretizedMongePatch::findeNearestPoint: Query point out of domain!" );
+
+			// First, find the closest discrete point in the cloud.
+			double d0 = DBL_MAX;
+			const Point3* nn = _balltree->findNearestNeighbor( q, d0 );
+
+			// Next, compute distance to triangles, and keep the minimum.
+			auto j = (size_t)((nn->y - _dMin) / _h);		// Row.
+			auto i = (size_t)((nn->x - _dMin) / _h);		// Col.
+			size_t idx = j * _nPointsAlongAxis + i;			// Node id.
+			d = DBL_MAX;
+			Point3 closestPoint;
+			for( const auto& triangle : _pointsToTriangles[idx] )
+			{
+				Point3 p = triangle->findClosestPointToQuery( &q );
+				double d1 = (p - q).norm_L2();
+				if( d1 < d )								// Found a closer point?
+				{
+					closestPoint = p;
+					d = d1;
+				}
+			}
+
+			return closestPoint;
+		}
+
+		/**
+		 * Destructor.
+		 */
+		~DiscretizedMongePatch()
+		{
+			delete _balltree;
+		}
+
+		/**
+		 * Dump triangle vertices for debugging.
+		 * @param [in,out] output File stream that has been already opened.
+		 */
+		void dumpTriangles( std::ofstream& output ) const
+		{
+			for( const auto& triangle : _triangles )
+			{
+				const Point3 *v;
+				for( char unsigned i = 0; i < 2; i++ )
+				{
+					v = triangle.getVertex( i );
+					output << v->x << "," << v->y << "," << v->z << ",";
+				}
+				v = triangle.getVertex( 2 );
+				output << v->x << "," << v->y << "," << v->z << std::endl;
+			}
 		}
 	};
 
