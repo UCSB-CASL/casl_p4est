@@ -8,11 +8,11 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC triangulation_distance_test.cpp )
+	list( APPEND SRC dlib_optimization_example.cpp )
 endif()
 
 #if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC sphere_datasets_3d.cpp )
+#	list( APPEND SRC main_3d.cpp )
 #endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
@@ -67,6 +67,7 @@ link_libraries(
 		omp
 		openblas
 		nlohmann_json::nlohmann_json
+		dlib
 		${Boost_FILESYSTEM_LIBRARY} )
 
 include_directories(
