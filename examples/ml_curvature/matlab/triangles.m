@@ -1,5 +1,5 @@
 % Visualizing triangles from C++ discretized Monge patch.
-C = readmatrix( "../cmake-build-debug-2d/triangles.csv", "Range", 2 );
+C = readmatrix( "../cmake-build-debug-3d/triangles.csv", "Range", 2 );
 
 figure;
 hold on;

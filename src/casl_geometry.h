@@ -776,7 +776,7 @@ namespace geom
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
-	private:
+	protected:
 		size_t _nPointsAlongAxis;				// How many points in each Cartesian direction.
 		double _dMin;							// Minimum coordinates (_dMin, _dMin) or the lower-left corner.
 		double _h;								// "Mesh" size or the spacing between grid points on the xy plane.
@@ -789,9 +789,9 @@ namespace geom
 	public:
 		/**
 		 * Constructor.
-		 * @param [in] k Number of halves to define a symmetric domain (i.e., domain is [-0.5k, 0.5k]^2)
-		 * @param [in] L Number of refinement levels per unit length.
-		 * @param [in] mongeFunction A function of the form f(x,y).
+		 * @param [in] k Number of cells in each half direction to define a symmetric domain (i.e., domain is [-kH, +kH]^2).
+		 * @param [in] L Number of refinement levels per unit length to define the cell width as H = 2^{-L}.
+		 * @param [in] mongeFunction A function of the form f(u,v) --parametrized as [u,v,f(u,v)].
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
 		 */
 		DiscretizedMongePatch( const size_t& k, const size_t& L, const MongeFunction *mongeFunction,
@@ -807,12 +807,12 @@ namespace geom
 				throw std::runtime_error( errorPrefix + "Monge patch function can't be null!" );
 
 			if( k == 0 )
-				throw std::runtime_error( errorPrefix + "Number of halves from the origin can't be zero!" );
+				throw std::runtime_error( errorPrefix + "Number of cells can't be zero!" );
 
 			// Initializing space variables and domain.
-			_dMin = -(double)k * 0.5;						// Lower-left coordinate is at (-_dMin, -_dMin)
 			_h = 1. / (1 << L);								// Spacing.
-			_nPointsAlongAxis = (1 << L) * k + 1;			// This is equivalent to (nHalvesDist/h + 1).
+			_dMin = -(double)k * _h;						// Lower-left coordinate is at (-_dMin, -_dMin)
+			_nPointsAlongAxis = 2 * k + 1;					// This is equivalent to (2|_dMin|/h + 1).
 
 			// Let's create the grid.
 			for( size_t j = 0; j < _nPointsAlongAxis; j++ )		// Rows, starting from the bottom-left corner.

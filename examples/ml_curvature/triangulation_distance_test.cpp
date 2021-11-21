@@ -72,7 +72,8 @@ int main()
 
 	// Let's create Monge patch and test it.
 	MongeFunction1 dummyFunction;
-	geom::DiscretizedMongePatch discretizedMongePatch( 1, 2, &dummyFunction, 5 );
+	size_t L = 2;
+	geom::DiscretizedMongePatch discretizedMongePatch( 1 << (L - 1), 2, &dummyFunction, 5 );
 
 	std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
 	std::string rlsFileName = "triangles.csv";
@@ -80,8 +81,8 @@ int main()
 	if( !trianglesFile.is_open() )
 		throw std::runtime_error( "Triangles file couldn't be opened for dumping mesh!" );
 	trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
-	discretizedMongePatch.dumpTriangles( trianglesFile );
 	trianglesFile.precision( 15 );
+	discretizedMongePatch.dumpTriangles( trianglesFile );
 	trianglesFile.close();
 
 	q0 = Point3( 0.4, -0.2, 0.6 );

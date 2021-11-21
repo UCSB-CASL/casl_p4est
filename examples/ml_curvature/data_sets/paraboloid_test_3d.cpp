@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: November 20, 2021.
+ * Updated: November 21, 2021.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -48,6 +48,9 @@ int main ( int argc, char* argv[] )
 
 		std::cout << "Testing paraboloid level-set function in 3D" << std::endl;
 
+		parStopWatch watch;
+		watch.start();
+
 		// Domain information.
 		const double MIN_D = -0.5, MAX_D = -MIN_D;			// The canonical space is [-0.5, +0.5]^3.
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
@@ -71,7 +74,8 @@ int main ( int argc, char* argv[] )
 		const Point3 rotationAxis = {0, 0, 1};				// Axis of rotation.
 		const double beta = 0;								// Rotation angle about RotAxis.
 
-		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, 1, maxRL(), &paraboloid );
+		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, (size_t)(MAX_D * (1 << maxRL())), maxRL(), &paraboloid );
+		paraboloidLevelSet.dumpTriangles( "paraboloid_triangles.csv" );
 		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &paraboloidLevelSet, 2.0 );
 
 		// Create the forest using a level-set as refinement criterion.
@@ -79,7 +83,8 @@ int main ( int argc, char* argv[] )
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
-		for( int i = 0; i < maxRL(); i++ )
+		paraboloidLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
+		for( int i = 0; i < maxRL(); i++ )					// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
@@ -112,6 +117,8 @@ int main ( int argc, char* argv[] )
 		}
 
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+		paraboloidLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
+		paraboloidLevelSet.clearCache();
 
 		// Reinitialize level-set function.
 		my_p4est_level_set_t ls( &ngbd );
@@ -178,6 +185,9 @@ int main ( int argc, char* argv[] )
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
+
+		std::cout << "Duration: " << watch.get_duration_current() << std::endl;
+		watch.stop();
 	}
 	catch( const std::exception &e )
 	{

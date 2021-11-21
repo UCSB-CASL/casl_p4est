@@ -3,6 +3,10 @@
 
 #include <src/casl_geometry.h>
 #include <dlib/optimization.h>
+#include <unordered_map>
+#include <string>
+#include <iostream>
+#include <fstream>
 
 ///////////////////////////////////////////// Paraboloid in canonical space ////////////////////////////////////////////
 
@@ -185,10 +189,13 @@ private:
 
 	const Paraboloid *_paraboloid;	// Paraboloid in canonical coordinates.
 
+	bool _useCache = false;									// Computing distance to triangulated surface is expensive
+	mutable std::unordered_map<std::string, double> _cache;	// -- let's have a cache to avoid repeated queries.
+
 public:
 	/**
 	 * Constructor.
-	 * @param [in] k Number of halves to define a symmetric domain (i.e., domain is [-0.5k, 0.5k]^2)
+	 * @param [in] k Number of min cells in each half direction to define a symmetric domain (i.e., domain is [-kH, +kH]^2).
 	 * @param [in] L Number of refinement levels per unit length.
 	 * @param [in] paraboloid Paraboloid object in canonical coordinates.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
@@ -251,6 +258,8 @@ public:
 
 	/**
 	 * Get signed distance to discretized paraboloid (triangulated and with vertices structured into a balltree).
+	 * @note You can speed up the process by caching grid point distance to the surface iff these map to integer-based
+	 * coordinates.
 	 * @param [in] x x-coordinate.
 	 * @param [in] y y-coordinate.
 	 * @param [in] z z-coordinate.
@@ -258,6 +267,18 @@ public:
 	 */
 	double operator()( double x, double y, double z ) const override
 	{
+		std::string coords;
+		if( _useCache )		// Use this only if you know that the coordinate normalized by h yields an integer!
+		{
+			coords = std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
+			auto record = _cache.find( coords );
+			if( record != _cache.end() )
+			{
+//				std::cout << "From cache [" << record->first << "] (" << x << ", " << y << ", " << z << "): " << record->second << std::endl;
+				return record->second;
+			}
+		}
+
 		Point3 q = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coordinates.
 		double d = geom::DiscretizedMongePatch::operator()( q.x, q.y, q.z );
 		double refZ = (*_paraboloid)( q.x, q.y );
@@ -266,8 +287,46 @@ public:
 		if( z > refZ )
 			d *= -1;
 
-		std::cout << "(" << x << ", " << y << ", " << z << "): " << d << std::endl;
+		if( _useCache )
+		{
+			_cache[coords] = d;
+//			std::cout << "Cached [" << coords << "] (" << x << ", " << y << ", " << z << "): " << d << std::endl;
+		}
 		return d;
+	}
+
+	/**
+	 * Dump triangles into a data file for debugging/visualizing.
+	 * @param [in] filename Output file.
+	 * @throws Runtime error if file can't be opened.
+	 */
+	void dumpTriangles( const std::string& filename )
+	{
+		std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
+		trianglesFile.open( filename, std::ofstream::trunc );
+		if( !trianglesFile.is_open() )
+			throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
+		trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
+		trianglesFile.precision( 15 );
+		geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
+		trianglesFile.close();
+	}
+
+	/**
+	 * Turn on/off cache for faster distance retrieval.
+	 * @param [in] useCache True to enable cache, false to disable it.
+	 */
+	void toggleCache( const bool& useCache )
+	{
+		_useCache = useCache;
+	}
+
+	/**
+	 * Empty cache.
+	 */
+	void clearCache()
+	{
+		_cache.clear();
 	}
 };
 
