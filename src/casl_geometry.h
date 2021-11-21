@@ -774,7 +774,7 @@ namespace geom
 	 * square macro cells along x and y too.  Thus, h = 2^{-L}, where L > 0.  This is similar to how we handle quad-
 	 * trees, but here there are no intermediate cells.
 	 */
-	class DiscretizedMongePatch
+	class DiscretizedMongePatch : public CF_3
 	{
 	private:
 		size_t _nPointsAlongAxis;				// How many points in each Cartesian direction.
@@ -790,11 +790,12 @@ namespace geom
 		/**
 		 * Constructor.
 		 * @param [in] k Number of halves to define a symmetric domain (i.e., domain is [-0.5k, 0.5k]^2)
-		 * @param [in] L Number of refinement levels.
+		 * @param [in] L Number of refinement levels per unit length.
 		 * @param [in] mongeFunction A function of the form f(x,y).
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
 		 */
-		DiscretizedMongePatch( size_t k, const size_t& L, const MongeFunction *mongeFunction, const size_t& btKLeaf=40 )
+		DiscretizedMongePatch( const size_t& k, const size_t& L, const MongeFunction *mongeFunction,
+							   const size_t& btKLeaf=40 )
 							   : _mongeFunction( mongeFunction )
 		{
 			// Validate inputs.
@@ -877,7 +878,7 @@ namespace geom
 		 * @param [out] d Shortest distance to triangulated surface.
 		 * @return Nearest point.
 		 */
-		Point3 findNearestPoint( const Point3& q, double& d )
+		Point3 findNearestPoint( const Point3& q, double& d ) const
 		{
 			// Validate that query point is whithin the domain of the Monge patch.
 			if( ABS( q.x ) > -_dMin || ABS( q.y ) > -_dMin )
@@ -908,9 +909,26 @@ namespace geom
 		}
 
 		/**
+		 * Implementation of query function for distance.  This is not "signed" distance though.
+		 * @note A child class should re-implement this function accounting for the signed distance to the discretized
+		 * interface.
+		 * @param [in] x Coordinate in x.
+		 * @param [in] y Coordinate in y.
+		 * @param [in] z Coordinate in z.
+		 * @return Distance to triangulated surface.
+		 */
+		double operator()( double x, double y, double z ) const override
+		{
+			Point3 q( x, y, z );
+			double d = DBL_MAX;
+			findNearestPoint( q, d );
+			return  d;
+		}
+
+		/**
 		 * Destructor.
 		 */
-		~DiscretizedMongePatch()
+		~DiscretizedMongePatch() override
 		{
 			delete _balltree;
 		}

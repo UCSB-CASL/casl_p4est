@@ -8,12 +8,12 @@ set( CMAKE_CXX_STANDARD 14 )
 ######################## Source code ########################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC dlib/dlib_paraboloid_example.cpp )
+	list( APPEND SRC main_2d.cpp )
+elseif( DIMENSION MATCHES 3d )
+	list( APPEND SRC data_sets/paraboloid_test_3d.cpp )
+else()
+	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
 endif()
-
-#if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC main_3d.cpp )
-#endif()
 #add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
 add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
