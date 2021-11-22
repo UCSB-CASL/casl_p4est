@@ -770,16 +770,15 @@ namespace geom
 	 * A two-dimensional Monge patch (surface) triangulated and discretized into a balltree for fast shortest-distance
 	 * calculations.
 	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
-	 * The domain R will have the same number of grid points along x and y and is determined by the same number of unit-
-	 * square macro cells along x and y too.  Thus, h = 2^{-L}, where L > 0.  This is similar to how we handle quad-
-	 * trees, but here there are no intermediate cells.
+	 * The domain R is rectangular, with h = 2^{-L}, where L > 0.  This is similar to how we handle quadtrees, but here
+	 * there are no intermediate cells.
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
 	protected:
-		size_t _nPointsAlongAxis;				// How many points in each Cartesian direction.
-		double _dMin;							// Minimum coordinates (_dMin, _dMin) or the lower-left corner.
-		double _h;								// "Mesh" size or the spacing between grid points on the xy plane.
+		size_t _nPointsAlongU, _nPointsAlongV;	// How many points in each Cartesian direction.
+		double _uMin, _vMin;					// Minimum coordinates (_uMin, _vMin) or the lower-left corner.
+		double _h;								// "Mesh" size or the spacing between grid points on the uv plane.
 		Balltree *_balltree;					// Underlying balltree organization of points in space.
 		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
@@ -789,12 +788,13 @@ namespace geom
 	public:
 		/**
 		 * Constructor.
-		 * @param [in] k Number of cells in each half direction to define a symmetric domain (i.e., domain is [-kH, +kH]^2).
+		 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
+		 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
 		 * @param [in] L Number of refinement levels per unit length to define the cell width as H = 2^{-L}.
 		 * @param [in] mongeFunction A function of the form f(u,v) --parametrized as [u,v,f(u,v)].
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
 		 */
-		DiscretizedMongePatch( const size_t& k, const size_t& L, const MongeFunction *mongeFunction,
+		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
 							   const size_t& btKLeaf=40 )
 							   : _mongeFunction( mongeFunction )
 		{
@@ -806,21 +806,23 @@ namespace geom
 			if( L == 0 )
 				throw std::runtime_error( errorPrefix + "Monge patch function can't be null!" );
 
-			if( k == 0 )
+			if( ku == 0 || kv == 0 )
 				throw std::runtime_error( errorPrefix + "Number of cells can't be zero!" );
 
 			// Initializing space variables and domain.
 			_h = 1. / (1 << L);								// Spacing.
-			_dMin = -(double)k * _h;						// Lower-left coordinate is at (-_dMin, -_dMin)
-			_nPointsAlongAxis = 2 * k + 1;					// This is equivalent to (2|_dMin|/h + 1).
+			_uMin = -(double)ku * _h;						// Lower-left coordinate is at (_uMin, _vMin).
+			_vMin = -(double)kv * _h;
+			_nPointsAlongU = 2 * ku + 1;					// This is equivalent to (2|_dMin|/h + 1).
+			_nPointsAlongV = 2 * kv + 1;
 
 			// Let's create the grid.
-			for( size_t j = 0; j < _nPointsAlongAxis; j++ )		// Rows, starting from the bottom-left corner.
+			for( size_t j = 0; j < _nPointsAlongV; j++ )		// Rows, starting from the bottom-left corner.
 			{
-				for( size_t i = 0; i < _nPointsAlongAxis; i++ )	// Columns.
+				for( size_t i = 0; i < _nPointsAlongU; i++ )	// Columns.
 				{
-					double x = _dMin + (double)i * _h;
-					double y = _dMin + (double)j * _h;
+					double x = _uMin + (double)i * _h;
+					double y = _vMin + (double)j * _h;
 					double z = _mongeFunction->operator()( x, y );
 					_points.emplace_back( x, y, z );
 				}
@@ -840,7 +842,7 @@ namespace geom
 			//     | /  | /  | /  |
 			//     +----+----+----+····
 			//   0      1    2    3
-			_triangles.reserve( SQR( _nPointsAlongAxis - 1 ) * 2 );	// Here, we save the real triangles; then we use pointers to them.
+			_triangles.reserve( (_nPointsAlongU - 1) * (_nPointsAlongV - 1) * 2 );	// Here, we save the real triangles; then we use pointers to them.
 
 			for( size_t p = 0; p < _points.size(); p++ )			// Let's make space for the map of points to triangles.
 			{
@@ -848,18 +850,18 @@ namespace geom
 				_pointsToTriangles.back().reserve( 6 );				// Each point is part of at most 6 triangles under the above
 			}														// scheme.  Edge points belong to 3, and corners belong to 1 or 2.
 
-			for( size_t j = 0; j < _nPointsAlongAxis - 1; j++ )		// Rows first (without getting to the very last).
+			for( size_t j = 0; j < _nPointsAlongV - 1; j++ )		// Rows first (without getting to the very last).
 			{
-				for( size_t i = 0; i < _nPointsAlongAxis - 1; i++ )	// Columns next.
+				for( size_t i = 0; i < _nPointsAlongU - 1; i++ )	// Columns next.
 				{
 					//                         idx3 +----+ idx2
 					// Each quad has indices:       |  / |
 					//                              | /  |
 					//                         idx0 +----+ idx1
-					size_t idx0 = _nPointsAlongAxis * j + i;		// Node indices in ccw direction.
+					size_t idx0 = _nPointsAlongU * j + i;		// Node indices in ccw direction.
 					size_t idx1 = idx0 + 1;
-					size_t idx2 = idx1 + _nPointsAlongAxis;
-					size_t idx3 = idx0 + _nPointsAlongAxis;
+					size_t idx2 = idx1 + _nPointsAlongU;
+					size_t idx3 = idx0 + _nPointsAlongU;
 					_triangles.emplace_back( &_points[idx0], &_points[idx1], &_points[idx2] );	// Lower triangle...
 					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
 					_pointsToTriangles[idx1].push_back( &_triangles.back() );
@@ -880,18 +882,14 @@ namespace geom
 		 */
 		Point3 findNearestPoint( const Point3& q, double& d ) const
 		{
-			// Validate that query point is whithin the domain of the Monge patch.
-			if( ABS( q.x ) > -_dMin || ABS( q.y ) > -_dMin )
-				throw std::runtime_error( "[CASL_ERROR]: geom::DiscretizedMongePatch::findeNearestPoint: Query point out of domain!" );
-
 			// First, find the closest discrete point in the cloud.
 			double d0 = DBL_MAX;
 			const Point3* nn = _balltree->findNearestNeighbor( q, d0 );
 
 			// Next, compute distance to triangles, and keep the minimum.
-			auto j = (size_t)((nn->y - _dMin) / _h);		// Row.
-			auto i = (size_t)((nn->x - _dMin) / _h);		// Col.
-			size_t idx = j * _nPointsAlongAxis + i;			// Node id.
+			auto j = (size_t)((nn->y - _vMin) / _h);		// Row.
+			auto i = (size_t)((nn->x - _uMin) / _h);		// Col.
+			size_t idx = j * _nPointsAlongU + i;			// Node id.
 			d = DBL_MAX;
 			Point3 closestPoint;
 			for( const auto& triangle : _pointsToTriangles[idx] )

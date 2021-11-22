@@ -74,7 +74,16 @@ int main ( int argc, char* argv[] )
 		const Point3 rotationAxis = {0, 0, 1};				// Axis of rotation.
 		const double beta = 0;								// Rotation angle about RotAxis.
 
-		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, (size_t)(MAX_D * (1 << maxRL())), maxRL(), &paraboloid );
+		// Finding how far to go in the half-axes to get a lower bound on the maximum height in Q(u,v) = A*u^2 + B*v^2.
+		const double R = MAX_D * sqrt( 3 );					// Radius of circumscribing circle (i.e., containing the domain cube).
+		const double hiQU = 0.5 * (-1/A + sqrt(1./SQR(A) + 4*SQR(R)));	// Lower bound for Q along u axis (for v=0).
+		const size_t halfU = ceil(sqrt( hiQU / A ) / H);				// Half u axis in terms of H.
+		const double hiQV = 0.5 * (-1/B + sqrt(1./SQR(B) + 4*SQR(R)));	// Lower bound for Q along v axis (for u=0).
+		const size_t halfV = ceil(sqrt( hiQV / B ) / H);				// Half v axis in terms of H.
+
+		double timeCreate = watch.get_duration_current();
+		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid );
+		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
 		paraboloidLevelSet.dumpTriangles( "paraboloid_triangles.csv" );
 		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &paraboloidLevelSet, 2.0 );
 
@@ -83,6 +92,7 @@ int main ( int argc, char* argv[] )
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
+		double timeProcessingQueries = watch.get_duration_current();
 		paraboloidLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
 		for( int i = 0; i < maxRL(); i++ )					// queries for grid points.
 		{
@@ -165,6 +175,9 @@ int main ( int argc, char* argv[] )
 			}
 		}
 
+		std::cout << "Query processing duration: " << watch.get_duration_current() - timeProcessingQueries << std::endl;
+		watch.stop();
+
 		std::ostringstream oss;
 		oss << "paraboloid_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
@@ -185,9 +198,6 @@ int main ( int argc, char* argv[] )
 		p4est_ghost_destroy( ghost );
 		p4est_destroy( p4est );
 		my_p4est_brick_destroy( connectivity, &brick );
-
-		std::cout << "Duration: " << watch.get_duration_current() << std::endl;
-		watch.stop();
 	}
 	catch( const std::exception &e )
 	{

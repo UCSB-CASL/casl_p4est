@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: November 17, 2021.
+ * Updated: November 21, 2021.
  */
 #include <src/casl_geometry.h>
 
@@ -73,7 +73,7 @@ int main()
 	// Let's create Monge patch and test it.
 	MongeFunction1 dummyFunction;
 	size_t L = 2;
-	geom::DiscretizedMongePatch discretizedMongePatch( 1 << (L - 1), 2, &dummyFunction, 5 );
+	geom::DiscretizedMongePatch discretizedMongePatch( 1 << (L - 1), 1 << (L - 1), L, &dummyFunction, 5 );
 
 	std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
 	std::string rlsFileName = "triangles.csv";
