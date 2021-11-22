@@ -209,7 +209,7 @@ public:
   //--------------------------------------------------
   // Domain Reconstruction
   //--------------------------------------------------
-  void construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr);
+  void construct_domain(const std::vector<double> &phi, const std::vector<action_t> &acn, const std::vector<int> &clr);
 
   //--------------------------------------------------
   // Quadrature Points

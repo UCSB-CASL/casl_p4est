@@ -19,9 +19,11 @@
 #undef MIN
 #undef MAX
 
+using namespace std;
+
 #ifndef P4_TO_P8
 // --> extra info to be printed when -help is invoked
-static const std::string extra_info = "\
+static const string extra_info = "\
     This program provides a general setup for running the Navier-Stokes solver for the canonical \n\
     cavity flow, in 2D only. \n\
     A solid interface ('hole') can be added in the center of the computational domain. \n\
@@ -31,10 +33,157 @@ static const std::string extra_info = "\
     (raphaelegan@ucsb.edu) based on a general main file by Arthur Guittet";
 
 #if defined(LAPTOP)
-const std::string default_export_dir  = "/home/raphael/workspace/projects/cavity_flow";
+const string default_export_dir  = "/home/raphael/workspace/projects/cavity_flow";
 #else
-const std::string default_export_dir  = "/home/regan/workspace/projects/cavity_flow";
+const string default_export_dir  = "/home/regan/workspace/projects/cavity_flow";
 #endif
+
+void get_ertuk_results(const double& Re, vector<pair<double, double>>& u_data, vector<pair<double, double>>& v_data)
+{
+  // results from "Numerical solutions of 2-D steady incompressible driven cavity flow at high Reynolds number",
+  // E. ERTURK, T. C. CORKE AND C. GOKCOL, Int. J. Numer. Meth. Fluids 2005; 48:747–774
+  const double Reynolds[10] = {1000, 2500, 5000, 7500, 10000, 12500, 15000, 17500, 20000, 21000}; // from the paper, common to both
+  u_data.clear();
+  v_data.clear();
+  int col_idx = -1;
+  for(int k = 0; k < 10; k++)
+    if(fabs(Reynolds[k] - Re) < 0.0001*MAX(fabs(Reynolds[k]), fabs(Re)))
+      col_idx = k;
+  if(col_idx == -1)
+    return;
+
+#if defined(POD_CLUSTER)
+  const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
+#elif defined(STAMPEDE)
+  const string directory = "/work2/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+#elif defined(LAPTOP)
+  const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
+#else
+  const string directory = "/home/regan/workspace/casl_p4est/examples/cavity_flow/";
+#endif
+
+  FILE *file;
+  string path_to_file = directory + "u_profiles_data_points_ertuk.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ertuk_results: impossible to open data file " + path_to_file);
+
+  double y_raw_data[23];
+  double u_raw_data[23][10];
+  int ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 10){
+      int count = fscanf(file," %lf", &u_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ertuk_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 23; i++)
+    u_data.push_back(pair<double, double>(y_raw_data[i], u_raw_data[i][col_idx]));
+
+  path_to_file = directory + "v_profiles_data_points_ertuk.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ertuk_results: impossible to open data file " + path_to_file);
+
+  double v_raw_data[23][10];
+  ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 10){
+      int count = fscanf(file," %lf", &v_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ertuk_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 23; i++)
+    v_data.push_back(pair<double, double>(y_raw_data[i], v_raw_data[i][col_idx]));
+
+  return;
+}
+
+void get_ghia_results(const double& Re, vector<pair<double, double>>& u_data, vector<pair<double, double>>& v_data)
+{
+  // results from "High-Re Solutions for Incompressible Flow Using the Navier-Stokes Equations and a Multigrid Method",
+  // U. Ghia, K.N. Ghia, amd C.T. Shin, Journal of Computational Physics 48, 387-411 (1982)
+  const double Reynolds[10] = {100, 400, 1000, 3200, 5000, 7500, 10000}; // from the paper, common to both
+  u_data.clear();
+  v_data.clear();
+  int col_idx = -1;
+  for(int k = 0; k < 7; k++)
+    if(fabs(Reynolds[k] - Re) < 0.0001*MAX(fabs(Reynolds[k]), fabs(Re)))
+      col_idx = k;
+  if(col_idx == -1)
+    return;
+
+#if defined(POD_CLUSTER)
+  const string directory = "/home/regan/casl_p4est/examples/cavity_flow/";
+#elif defined(STAMPEDE)
+  const string directory = "/work2/04965/tg842642/stampede2/casl_p4est/examples/cavity_flow/";
+#elif defined(LAPTOP)
+  const string directory = "/home/raphael/workspace/casl_p4est/examples/cavity_flow/";
+#else
+  const string directory = "/home/regan/workspace/casl_p4est/examples/cavity_flow/";
+#endif
+
+  FILE *file;
+  string path_to_file = directory + "u_profiles_data_points_ghia.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ghia_results: impossible to open data file " + path_to_file);
+
+  double y_raw_data[17];
+  double u_raw_data[17][7];
+  int ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 7){
+      int count = fscanf(file," %lf", &u_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ghia_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 17; i++)
+    u_data.push_back(pair<double, double>(y_raw_data[i], u_raw_data[i][col_idx]));
+
+  path_to_file = directory + "v_profiles_data_points_ghia.dat";
+  file = fopen(path_to_file.c_str(), "r");
+  if(file == NULL)
+    throw std::runtime_error("get_ghia_results: impossible to open data file " + path_to_file);
+
+  double v_raw_data[17][7];
+  ll = 0;
+  while(fscanf(file,"%lf", &y_raw_data[ll]) == 1)
+  {
+    int cc = 0;
+    while(cc < 7){
+      int count = fscanf(file," %lf", &v_raw_data[ll][cc++]);
+      if(count != 1)
+        throw runtime_error("get_ghia_results: an error happened while reading data from " + path_to_file);
+    }
+    ll++;
+  }
+  fclose(file);
+
+  for(int i = 0; i < 17; i++)
+    v_data.push_back(pair<double, double>(y_raw_data[i], v_raw_data[i][col_idx]));
+
+  return;
+}
+
 
 const double default_side_length  = 1.0;
 const double default_top_velocity = 1.0;
@@ -52,16 +201,18 @@ const double default_tf                     = 37.0;
 const double default_Re                     = 1000.0;
 const double default_rho                    = 1.0;
 
-const std::string default_pc_cell             = "sor";
-const std::string default_cell_solver         = "bicgstab";
-const std::string default_pc_face             = "sor";
+const string default_pc_cell                = "sor";
+const string default_cell_solver            = "bicgstab";
+const string default_pc_face                = "sor";
 
-const double default_cfl            = 1.0;
-const double default_thresh         = 0.1;
-const double default_uniform_band   = 5.0;
-const double default_smoke_thresh   = 0.5;
-const double default_vtk_dt         = 0.2;
-const std::string default_root_vtk_dir = "/home/regan/workspace/projects/cavity_flow/" + std::to_string(P4EST_DIM) + "d";
+const double default_cfl                = 1.0;
+const double default_vorticity_thresh   = 0.1;
+const double default_norm_grad_u_thresh = DBL_MAX;
+const double default_uniform_band       = 5.0;
+const double default_smoke_thresh       = 0.5;
+const double default_vtk_dt             = 0.2;
+const interpolation_method default_interp_v_viscosity = quadratic;
+const interpolation_method default_interp_v_update    = quadratic;
 
 class INIT_SMOKE : public CF_2
 {
@@ -92,7 +243,7 @@ public:
   {
     lip = 1.2;
     if(hole_radius <= 0.0)
-      throw std::invalid_argument("INTERFACE_LEVEL_SET::INTERFACE_LEVEL_SET() : the radius of the hole must be strictly positive");
+      throw invalid_argument("INTERFACE_LEVEL_SET::INTERFACE_LEVEL_SET() : the radius of the hole must be strictly positive");
   }
 
   double operator()(double x, double y) const
@@ -143,7 +294,7 @@ double Reynolds(const BCWALLVALUE_U &bc_wall_u, const my_p4est_navier_stokes_t *
   return bc_wall_u.top_wall_velocity*ns->get_length_of_domain()/ns->get_nu();
 }
 
-void export_velocity_cavity(const std::string &export_dir, my_p4est_navier_stokes_t *ns, const BCWALLVALUE_U &bc_wall_u)
+void export_velocity_cavity(const string &export_dir, my_p4est_navier_stokes_t *ns, const BCWALLVALUE_U &bc_wall_u)
 {
   PetscErrorCode ierr;
 
@@ -171,44 +322,69 @@ void export_velocity_cavity(const std::string &export_dir, my_p4est_navier_stoke
     interp1_phi.add_point(i, xyz1);
   }
 
-  std::vector<double> v0(N + 1);
+  vector<double> v0(N + 1);
   interp0.set_input(vn[1], quadratic);
   interp0.interpolate(v0.data());
 
-  std::vector<double> v1(N + 1);
+  vector<double> v1(N + 1);
   interp1.set_input(vn[0], quadratic);
   interp1.interpolate(v1.data());
 
-  std::vector<double> phi0(N + 1);
+  vector<double> phi0(N + 1);
   interp1.set_input(phi, quadratic);
   interp1.interpolate(phi0.data());
 
-  std::vector<double> phi1(N + 1);
+  vector<double> phi1(N + 1);
   interp1.set_input(phi, quadratic);
   interp1.interpolate(phi1.data());
 
   if(!ns->get_mpirank())
   {
+    vector<pair<double, double>> u_data_points_ertuk, v_data_points_ertuk;
+    vector<pair<double, double>> u_data_points_ghia, v_data_points_ghia;
+    get_ertuk_results(Reynolds(bc_wall_u, ns), u_data_points_ertuk, v_data_points_ertuk);
+    get_ghia_results(Reynolds(bc_wall_u, ns), u_data_points_ghia, v_data_points_ghia);
+
     FILE* fp;
-    std::ostringstream filename;
-    filename << std::fixed << std::setprecision(2);
+    ostringstream filename;
+    filename << fixed << setprecision(2);
     filename << "velocity_" << data->min_lvl << "-" << data->max_lvl << "_" << brick->nxyztrees[0] << "x" << brick->nxyztrees[1]
         << "_Re_" << Reynolds(bc_wall_u, ns) << "_cfl_" << ns->get_cfl() << ".dat";
     fp = fopen((export_dir + "/" + filename.str()).c_str(), "w");
 
     if(fp == NULL)
-      throw std::invalid_argument("export_velocity_cavity: could not open file.");
+      throw invalid_argument("export_velocity_cavity: could not open file.");
 
-    ierr = PetscFPrintf(ns->get_mpicomm(), fp, "%% normalized x/y \t vx \t vy\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(ns->get_mpicomm(), fp, ("%% normalized x/y \t vx \t vy" +
+                                                string(u_data_points_ertuk.size() > 0 ? "\t normalized y \t vx" : "") +
+                                                string(v_data_points_ertuk.size() > 0 ? "\t normalized x \t vy" : "") +
+                                                string(u_data_points_ghia.size() > 0 ? "\t normalized y \t vx" : "") +
+                                                string(v_data_points_ghia.size() > 0 ? "\t normalized x \t vy" : "") +
+                                                " \n").c_str()); CHKERRXX(ierr);
+    const string base_format = "%g, %g, %g";
     for(int i = 0; i <= N; ++i)
     {
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "%g, %g, %g\n", (double)i/(double)N, phi0[i] < 0.0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0); CHKERRXX(ierr);
+      string format = base_format;
+      if(i < (int) u_data_points_ertuk.size())
+        format += ", %g, %g";
+      if(i < (int) v_data_points_ertuk.size())
+        format += ", %g, %g";
+      if(i < (int) u_data_points_ghia.size())
+        format += ", %g, %g";
+      if(i < (int) v_data_points_ghia.size())
+        format += ", %g, %g";
+      format += "\n";
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, format.c_str(), (double)i/(double)N, phi0[i] < 0.0 ? v0[i] : 0, phi1[i]<0 ? v1[i] : 0,
+                          (i < (int) u_data_points_ertuk.size() ? u_data_points_ertuk[i].first : NAN), (i < (int) u_data_points_ertuk.size() ? u_data_points_ertuk[i].second : NAN),
+                          (i < (int) v_data_points_ertuk.size() ? v_data_points_ertuk[i].first : NAN), (i < (int) v_data_points_ertuk.size() ? v_data_points_ertuk[i].second : NAN),
+                          (i < (int) u_data_points_ghia.size() ? u_data_points_ghia[i].first : NAN), (i < (int) u_data_points_ghia.size() ? u_data_points_ghia[i].second : NAN),
+                          (i < (int) v_data_points_ghia.size() ? v_data_points_ghia[i].first : NAN), (i < (int) v_data_points_ghia.size() ? v_data_points_ghia[i].second : NAN)); CHKERRXX(ierr);
     }
 
     fclose(fp);
 
 
-    const std::string data_file = filename.str();
+    const string data_file = filename.str();
     filename.str("");
     filename << "velocity_profiles.gnu";
     if(!file_exists(export_dir + "/" + filename.str()))
@@ -216,7 +392,7 @@ void export_velocity_cavity(const std::string &export_dir, my_p4est_navier_stoke
       FILE* gnuplot_script_fp = fopen((export_dir + "/" + filename.str()).c_str(), "w");
 
       if(gnuplot_script_fp == NULL)
-        throw std::invalid_argument("export_velocity_cavity: could not open gnuplot script file.");
+        throw invalid_argument("export_velocity_cavity: could not open gnuplot script file.");
 
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set term wxt noraise 0\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set key top right Left font \"Arial,14\"\n"); CHKERRXX(ierr);
@@ -224,7 +400,12 @@ void export_velocity_cavity(const std::string &export_dir, my_p4est_navier_stoke
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set ylabel \"v\" font \"Arial,14\"\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set xrange [0.0 : 1.0]\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set yrange [%g : %g]\n", (Reynolds(bc_wall_u, ns) <= 1500.0 ? -0.6 : -0.8), (Reynolds(bc_wall_u, ns) < 1500.0 ? 0.4 : 0.6)); CHKERRXX(ierr);
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 1:2 with lines lw 3 notitle\n\n", data_file.c_str()); CHKERRXX(ierr);
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 1:2 with lines lw 3 notitle", data_file.c_str()); CHKERRXX(ierr);
+      if(u_data_points_ertuk.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 6:7 with points pointtype 3 lc 'red' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      if(u_data_points_ghia.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 10:11 with points pointtype 6 lc 'black' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "\n\n", data_file.c_str()); CHKERRXX(ierr);
 
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set term wxt noraise 1\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set key top right Left font \"Arial,14\"\n"); CHKERRXX(ierr);
@@ -232,7 +413,12 @@ void export_velocity_cavity(const std::string &export_dir, my_p4est_navier_stoke
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set ylabel \"y\" font \"Arial,14\"\n"); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set xrange [%g : %g]\n", (Reynolds(bc_wall_u, ns) <= 1500.0 ? -0.4 : -0.5), 1.0); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "set yrange [0.0 : 1.0]\n"); CHKERRXX(ierr);
-      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 3:1 with lines lw 3 notitle\n\n", data_file.c_str()); CHKERRXX(ierr);
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "plot\t \"%s\" using 3:1 with lines lw 3 notitle", data_file.c_str()); CHKERRXX(ierr);
+      if(v_data_points_ertuk.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 5:4 with points pointtype 3 lc 'red' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      if(v_data_points_ghia.size() > 0){
+        ierr = PetscFPrintf(ns->get_mpicomm(), fp, ", \\\n\t \"%s\" using 9:8 with points pointtype 6 lc 'black' notitle", data_file.c_str()); CHKERRXX(ierr); }
+      ierr = PetscFPrintf(ns->get_mpicomm(), fp, "\n\n", data_file.c_str()); CHKERRXX(ierr);
 
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "pause 2 \n", filename.str().c_str()); CHKERRXX(ierr);
       ierr = PetscFPrintf(ns->get_mpicomm(), fp, "reread", filename.str().c_str()); CHKERRXX(ierr);
@@ -248,7 +434,7 @@ void create_macromesh(const cmdParser &cmd, my_p4est_brick_t *&brick, p4est_conn
   // build the macromesh first
   const double side_length = cmd.get<double>("length", default_side_length);
   if(cmd.contains("hole_radius") && cmd.get<double>("hole_radius", default_hole_radius) > side_length/2.0)
-    throw std::invalid_argument("create_macromesh: the radius of the hole is larger than half the length of the domain, please correct that.");
+    throw invalid_argument("create_macromesh: the radius of the hole is larger than half the length of the domain, please correct that.");
   const double xyz_min_[2] = {0.0, 0.0};
   const double xyz_max_[2] = {side_length, side_length};
   const int n_tree_x = cmd.get<int>("nx", default_nx);
@@ -341,8 +527,11 @@ my_p4est_navier_stokes_t* create_ns_solver(const mpi_environment_t &mpi, const c
                      rho,
                      cmd.get<int>("sl_order", default_sl_order),
                      data->uniform_band,
-                     cmd.get<double>("thresh", default_thresh),
-                     cmd.get<double>("cfl", default_cfl));
+                     cmd.get<double>("vort_thresh", default_vorticity_thresh),
+                     cmd.get<double>("cfl", default_cfl),
+                     cmd.get<double>("grad_u_thresh", default_norm_grad_u_thresh));
+  ns->set_interpolation_method_for_velocity_in_viscosity_step(cmd.get<interpolation_method>("interp_v_visc", default_interp_v_viscosity));
+  ns->set_interpolation_method_for_velocity_in_update_step(cmd.get<interpolation_method>("interp_v_update", default_interp_v_update));
 
   CF_2 *initial_velocity[2];
   for (unsigned char dim = 0; dim < 2; ++dim)
@@ -355,9 +544,9 @@ my_p4est_navier_stokes_t* create_ns_solver(const mpi_environment_t &mpi, const c
 
 void get_solver_and_pc_type(const mpi_environment_t &mpi, const cmdParser &cmd, KSPType &cell_solver_type, PCType &pc_cell, PCType &pc_face)
 {
-  const std::string des_pc_cell = cmd.get<std::string>("pc_cell", default_pc_cell);
-  const std::string des_solver_cell = cmd.get<std::string>("cell_solver", default_cell_solver);
-  const std::string des_pc_face = cmd.get<std::string>("pc_face", default_pc_face);
+  const string des_pc_cell = cmd.get<string>("pc_cell", default_pc_cell);
+  const string des_solver_cell = cmd.get<string>("cell_solver", default_cell_solver);
+  const string des_pc_face = cmd.get<string>("pc_face", default_pc_face);
   if (des_pc_cell.compare("hypre") == 0)
     pc_cell = PCHYPRE;
   else if (des_pc_cell.compare("jacobi'") == 0)
@@ -365,7 +554,7 @@ void get_solver_and_pc_type(const mpi_environment_t &mpi, const cmdParser &cmd, 
   else
   {
     if (des_pc_cell.compare("sor") != 0 && mpi.rank() == 0)
-      std::cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+      cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << endl;
     pc_cell = PCSOR;
   }
   if (des_solver_cell.compare("cg") == 0)
@@ -373,7 +562,7 @@ void get_solver_and_pc_type(const mpi_environment_t &mpi, const cmdParser &cmd, 
   else
   {
     if (des_solver_cell.compare("bicgstab") != 0 && mpi.rank() == 0)
-      std::cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. BiCGStab is used instead" << std::endl;
+      cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. BiCGStab is used instead" << endl;
     cell_solver_type = KSPBCGS;
   }
   if (des_pc_face.compare("hypre") == 0)
@@ -383,7 +572,7 @@ void get_solver_and_pc_type(const mpi_environment_t &mpi, const cmdParser &cmd, 
   else
   {
     if (des_pc_face.compare("sor") != 0 && mpi.rank() == 0)
-      std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+      cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << endl;
     pc_face = PCSOR;
   }
 }
@@ -394,7 +583,7 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
 #ifdef P4_TO_P8
-  std::cerr << "This program is not developed for 3D application, implemented for 2D run and validation only..." << std::endl;
+  cerr << "This program is not developed for 3D application, implemented for 2D run and validation only..." << endl;
   return 1;
 #else
 
@@ -402,26 +591,32 @@ int main (int argc, char* argv[])
   // computational grid parameters
   cmd.add_option("lmin",                  "min level of the trees, default is " + std::to_string(default_lmin));
   cmd.add_option("lmax",                  "max level of the trees, default is " + std::to_string(default_lmax));
-  cmd.add_option("thresh",                "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
+  cmd.add_option("vort_thresh",           "the threshold used for the vorticity-based refinement criterion, default is " + std::to_string(default_vorticity_thresh));
+  cmd.add_option("grad_u_thresh",         "the threshold used for the norm-of-velocity-gradient-based refinement criterion, default is " + (default_norm_grad_u_thresh > largest_dbl_smaller_than_dbl_max ? "DBL_MAX" : std::to_string(default_norm_grad_u_thresh)));
   cmd.add_option("uniform_band",          "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced), default is " + std::to_string(default_uniform_band));
   cmd.add_option("nx",                    "number of trees in the macromesh along x. The default value is " + std::to_string(default_nx));
   cmd.add_option("ny",                    "number of trees in the macromesh along y. The default value is " + std::to_string(default_ny));
   cmd.add_option("smoke_thresh",          "threshold for smoke refinement, default is " + std::to_string(default_smoke_thresh));
   cmd.add_option("refine_with_smoke",     "refine the grid with the smoke density and threshold smoke_thresh if present");
   // physical parameters for the simulations
-  cmd.add_option("duration",              "the duration of the simulation. tstart = 0.0, default duration is " + std::to_string(default_tf));
-  cmd.add_option("Re",                    "the Reynolds number = rho*u_top*L/mu, default is " + std::to_string(default_Re));
+  cmd.add_option("duration",              "the duration of the simulation. tstart = 0.0, default duration is " + to_string(default_tf));
+  cmd.add_option("Re",                    "the Reynolds number = rho*u_top*L/mu, default is " + to_string(default_Re));
   cmd.add_option("smoke",                 "no smoke if option not present, with smoke if option present");
-  cmd.add_option("length",                "side length of the cavity, default is " + std::to_string(default_side_length));
-  cmd.add_option("hole_radius",           "if defined, adds a hole (solid, non-penetrable interface) in the center of the domain. The radius of the hole can be specified by the user. Default value is " + std::to_string(default_hole_radius));
-  cmd.add_option("top_velocity",          "velocity of the top wall of the cavity. Default value is "  + std::to_string(default_top_velocity));
-  cmd.add_option("mass_density",          "mass density of the fluid. Default value is "  + std::to_string(default_rho));
+  cmd.add_option("length",                "side length of the cavity, default is " + to_string(default_side_length));
+  cmd.add_option("hole_radius",           "if defined, adds a hole (solid, non-penetrable interface) in the center of the domain. The radius of the hole can be specified by the user. Default value is " + to_string(default_hole_radius));
+  cmd.add_option("top_velocity",          "velocity of the top wall of the cavity. Default value is "  + to_string(default_top_velocity));
+  cmd.add_option("mass_density",          "mass density of the fluid. Default value is "  + to_string(default_rho));
   // method-related parameters
-  cmd.add_option("sl_order",              "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + std::to_string(default_sl_order));
-  cmd.add_option("cfl",                   "dt = cfl * dx/vmax, default is " + std::to_string(default_cfl));
+  cmd.add_option("sl_order",              "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + to_string(default_sl_order));
+  ostringstream oss;
+  oss << default_interp_v_viscosity;
+  cmd.add_option("interp_v_visc",         "desired interpolation method for velocity at backtraced points in viscous step, default is " + oss.str());
+  oss.str(""); oss << default_interp_v_update;
+  cmd.add_option("interp_v_update",       "desired interpolation method for velocity in grid update, default is " + oss.str());
+  cmd.add_option("cfl",                   "dt = cfl * dx/vmax, default is " + to_string(default_cfl));
   cmd.add_option("hodge_tol",             "numerical tolerance used for the convergence criterion on the Hodge variable (or its gradient), at all time steps.\n\
-                 Default is " + std::to_string(default_hodge_tol) + ": w.r.t absolute value of hodge if checking against 'value'; relative to top wall velocity otherwise)");
-  cmd.add_option("niter_hodge",           "max number of iterations for convergence of the Hodge variable, at all time steps, default is " + std::to_string(default_niter_hodge_max));
+                 Default is " + to_string(default_hodge_tol) + ": w.r.t absolute value of hodge if checking against 'value'; relative to top wall velocity otherwise)");
+  cmd.add_option("niter_hodge",           "max number of iterations for convergence of the Hodge variable, at all time steps, default is " + to_string(default_niter_hodge_max));
   cmd.add_option("hodge_control",         "type of convergence check used for inner loops, i.e. convergence criterion on the Hodge variable. \n\
                  Possible values are 'u', 'v' (, 'w'), 'uvw' (for gradient components) or 'value' (for local values of Hodge), default is " + convert_to_string(def_hodge_control));
   cmd.add_option("pc_cell",               "preconditioner for cell-solver: jacobi, sor or hypre, default is " + default_pc_cell);
@@ -431,7 +626,7 @@ int main (int argc, char* argv[])
   cmd.add_option("export_folder",         "exportation_folder if not defined otherwise in the environment variable OUT_DIR,\n\
                  subfolder(s) will be created, default is " + default_export_dir);
   cmd.add_option("save_vtk",              "activates exportation of results in vtk format");
-  cmd.add_option("vtk_dt",                "export vtk files every vtk_dt time lapse. If not specified, default is " + std::to_string(default_vtk_dt));
+  cmd.add_option("vtk_dt",                "export vtk files every vtk_dt time lapse. If not specified, default is " + to_string(default_vtk_dt));
   cmd.add_option("timing",                "if defined, activates the internal timer and prints final information .");
 
   if(cmd.parse(argc, argv, extra_info))
@@ -486,36 +681,36 @@ int main (int argc, char* argv[])
   {
     vtk_dt = cmd.get<double>("vtk_dt", default_vtk_dt);
     if (vtk_dt <= 0.0)
-      throw std::invalid_argument("cavity_flow::main: the value of vtk_dt must be strictly positive.");
+      throw invalid_argument("cavity_flow::main: the value of vtk_dt must be strictly positive.");
   }
   const double dxmin = MIN(ns->get_length_of_domain()/brick->nxyztrees[0], ns->get_height_of_domain()/brick->nxyztrees[1])/((double) (1 << data.max_lvl));
   double dt = MIN(dxmin*ns->get_cfl()/bc_wall_value_u.top_wall_velocity, vtk_dt, duration);
   ns->set_dt(dt);
 
-  std::map<ns_task, double> global_computational_times;
+  map<ns_task, double> global_computational_times;
   if(cmd.contains("timing"))
   {
     ns->activate_timer();
     global_computational_times[grid_update] = global_computational_times[viscous_step] = global_computational_times[projection_step] = global_computational_times[velocity_interpolation] = 0.0;
   }
 
-  const std::string export_root = cmd.get<std::string>("export_folder", (getenv("OUT_DIR") == NULL ? default_export_dir : getenv("OUT_DIR")));
-  std::ostringstream oss;
-  oss << std::fixed << std::setprecision(2);
+  const string export_root = cmd.get<string>("export_folder", (getenv("OUT_DIR") == NULL ? default_export_dir : getenv("OUT_DIR")));
+  oss.str("");
+  oss << fixed << setprecision(2);
   oss << export_root << "/" << (with_hole ? "with" : "without") << "_hole/Re_" << Reynolds(bc_wall_value_u, ns) << "_cfl_" << ns->get_cfl() << "/nx_" << brick->nxyztrees[0]
       << "_ny_" << brick->nxyztrees[1] << "_lmin_" << data.min_lvl << "_lmax_" << data.max_lvl;
-  const std::string export_dir  = oss.str();
-  const std::string vtk_path    = export_dir + "/vtu";
+  const string export_dir  = oss.str();
+  const string vtk_path    = export_dir + "/vtu";
   if(create_directory(export_dir, ns->get_mpirank(), ns->get_mpicomm()))
-    throw std::runtime_error("cavity_flow::main: could not create exportation directory " + export_dir);
+    throw runtime_error("cavity_flow::main: could not create exportation directory " + export_dir);
   if(save_vtk)
   {
     if(save_vtk && create_directory(vtk_path, ns->get_mpirank(), ns->get_mpicomm()))
-      throw std::runtime_error("cavity_flow::main: could not create exportation directory for vtk files " + vtk_path);
+      throw runtime_error("cavity_flow::main: could not create exportation directory for vtk files " + vtk_path);
   }
 
   oss.str("");
-  oss << std::scientific << std::setprecision(2);
+  oss << scientific << setprecision(2);
   oss << "Parameters : Re = " << Reynolds(bc_wall_value_u, ns) << ", mu = " << ns->get_mu() << ", rho = " << ns->get_rho() << ", macromesh is "
       << ns->get_brick()->nxyztrees[0] << " X " << ns->get_brick()->nxyztrees[1] << "\n";
   ierr = PetscPrintf(ns->get_mpicomm(), oss.str().c_str()); CHKERRXX(ierr);
@@ -608,7 +803,7 @@ int main (int argc, char* argv[])
 
     if(cmd.contains("timing"))
     {
-      const std::map<ns_task, execution_time_accumulator>& timings = ns->get_timings();
+      const map<ns_task, execution_time_accumulator>& timings = ns->get_timings();
       P4EST_ASSERT(timings.find(projection_step) != timings.end() && timings.find(viscous_step) != timings.end() && timings.find(velocity_interpolation) != timings.end()); // should *always* find those
       P4EST_ASSERT(timings.at(projection_step).read_counter() == timings.at(viscous_step).read_counter()); // the number of subiterations should match
 
@@ -623,15 +818,15 @@ int main (int argc, char* argv[])
     if(ns->get_max_L2_norm_u() > 100.0)
     {
       if(save_vtk)
-        ns->save_vtk((vtk_path + "/snapshot_" + std::to_string(vtk_iter + 1)).c_str());
-      std::cerr << "The simulation blew up..." << std::endl;
+        ns->save_vtk((vtk_path + "/snapshot_" + to_string(vtk_iter + 1)).c_str());
+      cerr << "The simulation blew up..." << endl;
       break;
     }
 
     if(save_vtk && int(tn/vtk_dt) != vtk_iter)
     {
       vtk_iter = int(tn/vtk_dt);
-      ns->save_vtk((vtk_path + "/snapshot_" + std::to_string(vtk_iter)).c_str());
+      ns->save_vtk((vtk_path + "/snapshot_" + to_string(vtk_iter)).c_str());
       export_velocity_cavity(export_dir, ns, bc_wall_value_u);
     }
     iter++;
@@ -658,6 +853,7 @@ int main (int argc, char* argv[])
   delete ns;
   // the brick and the connectivity are deleted within the above destructor...
   delete levelset;
+  delete brick; // not done in the Navier-Stokes destructor
 
   return 0;
 

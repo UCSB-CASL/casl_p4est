@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <vector>
+#include <set>
 
 #include <src/my_p4est_utils.h>
 #include <src/casl_math.h>
@@ -67,6 +68,7 @@ private:
   vector<double> phi_values;
   double phi_c;
   double volume;
+  voro_cell_type type;
 
   /*!
      * \brief add a point to the list of collocation points, WITHOUT making sure there is no repetition
@@ -83,7 +85,7 @@ public:
   /*!
      * \brief default constructor for the Voronoi2D class
      */
-  Voronoi2D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; volume = 0.0;}
+  Voronoi2D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; volume = 0.0; type = unknown; }
 
 //  bool comparison (ngbd2Dseed nb_left, ngbd2Dseed nb_right) {return (nb_left.dist < nb_right.dist);}
 
@@ -122,7 +124,7 @@ public:
      * \param partition_ the new partition
      * \param volume_ the volume/area of the partition
      */
-  void set_neighbors_and_partition( vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_ );
+  void set_neighbors_and_partition( vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_);
 
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition
@@ -293,6 +295,9 @@ public:
      * \brief overload the << operator for Voronoi2D
      */
   friend std::ostream& operator<<(std::ostream& os, const Voronoi2D& v);
+
+  inline void set_type(const voro_cell_type& cell_type) { type = cell_type; }
+  inline voro_cell_type get_type() const {return type; }
 };
 
 #endif /* VORONOI2D_H */

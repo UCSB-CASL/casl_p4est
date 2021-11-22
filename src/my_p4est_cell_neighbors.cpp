@@ -1,16 +1,17 @@
 #ifdef P4_TO_P8
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_solve_lsqr.h>
 #include "my_p8est_cell_neighbors.h"
-#include "my_p8est_node_neighbors.h"
-#include "my_p8est_solve_lsqr.h"
 #else
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_cell_neighbors.h"
-#include "my_p4est_node_neighbors.h"
-#include "my_p4est_solve_lsqr.h"
 #endif
 
 /*
  * + SOURCE FILE REVISED, DEBUGGED (existing bug in 3D) AND CLEANED UP BY on (FEBRUARY 6, 2020) [Raphael Egan]
  * + added optional functionality to calculate smallest logical size of cells on-the-fly, on April 4, 2020 [Raphael Egan]
+ * + cleaned up even more to alleviate duplication with find_neighbor_cell_of_node, on June 2, 2020 [Raphael Egan]
  */
 
 void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size) const
@@ -24,86 +25,29 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(set_of_neighboring_q
   else
     quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
 
-  /* construct the coordinate of the neighbor cell of the same size in the given direction */
+  /* construct the node that would be the center of the (possibly hypothetical) quadrant of the same size to find in the direction queried by the user */
   const p4est_qcoord_t size = P4EST_QUADRANT_LEN(quad->level);
-  const p4est_qcoord_t quad_xyz[P4EST_DIM] = {DIM(quad->x, quad->y, quad->z)};
-  const bool* pxyz = hierarchy->get_periodicity();
-
-  /* (logical) coordinates of the (possibly hypothetical) quadrant of the same size to find: */
-  p4est_qcoord_t ijk_nb[P4EST_DIM];
-  /* tree index of the (possibly hypothetical) quadrant  to find, except if border case(s) */
-  p4est_topidx_t nb_tree_idx = tree_idx;
-  /* list of border cases (corner if size of P4EST_DIM, edge (in 3D if size 2), or face is size of 1, inside the same tree if size of 0) */
-  std::vector<unsigned char> border_cases; border_cases.resize(0);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-  {
-    P4EST_ASSERT(dir_xyz[dim] == -1 || dir_xyz[dim] == 0 || dir_xyz[dim] == 1);
-    ijk_nb[dim] = quad_xyz[dim] + dir_xyz[dim]*size;
-    if((quad_xyz[dim] == 0 && dir_xyz[dim] == -1) || ijk_nb[dim]== P4EST_ROOT_LEN)
-      border_cases.push_back(dim);
-  }
-  P4EST_ASSERT(border_cases.size() <= P4EST_DIM);
-
-  if(border_cases.size() == P4EST_DIM) // across tree corner
-  {
-    if(ORD(!pxyz[0] && myb->nxyztrees[0] == 1, !pxyz[1] && myb->nxyztrees[1] == 1, !pxyz[2] && myb->nxyztrees[2] == 1)) return; // no neighbor to be found here...
-    const unsigned char local_corner_idx = SUMD((dir_xyz[0] == -1 ? 0 : 1), (dir_xyz[1] == -1 ? 0 : 2), (dir_xyz[2] == -1 ? 0 : 4));
-    P4EST_ASSERT(local_corner_idx < P4EST_CHILDREN);
-    const p4est_topidx_t corner = p4est->connectivity->tree_to_corner[P4EST_CHILDREN*tree_idx + local_corner_idx];
-    if(corner == -1) return; // the corner exists indeed, but it does not connect with any other tree -> no neighbor to be found here
-
-    const p4est_topidx_t offset = p4est->connectivity->ctt_offset[corner];
-    nb_tree_idx = p4est->connectivity->corner_to_tree[offset + local_corner_idx];
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim){
-      P4EST_ASSERT(dir_xyz[dim] != 0);
-      ijk_nb[dim] = (dir_xyz[dim] == 1 ? 0 : P4EST_ROOT_LEN - size);
-    }
-  }
+  p4est_indep_t node; node.level = P4EST_MAXLEVEL; node.p.which_tree = tree_idx;
+  node.x = quad->x + size/2 + dir_xyz[0]*size;
+  node.y = quad->y + size/2 + dir_xyz[1]*size;
 #ifdef P4_TO_P8
-  else if (border_cases.size() == 2) // across tree edge
-  {
-    // we go through two different trees in this case
-    const unsigned char first_dim = border_cases[0];
-    P4EST_ASSERT(first_dim < P4EST_DIM - 1 && dir_xyz[first_dim] != 0);
-    const unsigned char first_face_dir = 2*first_dim + (dir_xyz[first_dim] == -1 ? 0 : 1);
-    const p4est_topidx_t first_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + first_face_dir];
-    if(!pxyz[first_dim] && first_tree_idx == tree_idx) return; // no other tree there, so nothing to find
-    ijk_nb[first_dim] = (dir_xyz[first_dim] == -1 ? P4EST_ROOT_LEN - size : 0);
-
-    // find the second direction
-    const unsigned char second_dim = border_cases[1];
-    P4EST_ASSERT(second_dim < P4EST_DIM && dir_xyz[second_dim] != 0);
-    const unsigned char second_face_dir = 2*second_dim + (dir_xyz[second_dim] == -1 ? 0 : 1);
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*first_tree_idx + second_face_dir];
-    if(!pxyz[second_dim] && nb_tree_idx == first_tree_idx) return; // no other tree there, so nothing to find
-    ijk_nb[second_dim] = (dir_xyz[second_dim] == -1 ? P4EST_ROOT_LEN - size : 0);
-  }
+  node.z = quad->z + size/2 + dir_xyz[2]*size;
 #endif
-  else if(border_cases.size() == 1)
-  {
-    const unsigned char dim = border_cases[0];
-    P4EST_ASSERT(dim < P4EST_DIM && dir_xyz[dim] != 0);
-    const unsigned char face_dir = 2*dim + (dir_xyz[dim] == -1 ? 0 : 1);
-    nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + face_dir];
-    if(!pxyz[dim] && nb_tree_idx == tree_idx) return; // no other tree there, so nothing to find
-    ijk_nb[dim] = (dir_xyz[dim] == -1 ? P4EST_ROOT_LEN - size : 0);
-  }
+  if(!is_node_in_domain(node, myb, p4est->connectivity))
+    return; // no neighbor to find there --> return
 
-  /* find the constructed neighbor cell of the same size */
-  int ind = 0;
-  while( hierarchy->trees[nb_tree_idx][ind].level != quad->level && hierarchy->trees[nb_tree_idx][ind].child != CELL_LEAF )
-  {
-    p4est_qcoord_t half_size = P4EST_QUADRANT_LEN(hierarchy->trees[nb_tree_idx][ind].level) / 2;
-    bool i_search = ( ijk_nb[0] >= hierarchy->trees[nb_tree_idx][ind].imin + half_size );
-    bool j_search = ( ijk_nb[1] >= hierarchy->trees[nb_tree_idx][ind].jmin + half_size );
+  /* find the constructed neighbor HierarchyCell of the same size */
+  const p4est_topidx_t owning_tree_idx = node.p.which_tree;
+  p4est_quadrant_t neighbor_quad; neighbor_quad.level = quad->level;
+  neighbor_quad.x = node.x - size/2;
+  neighbor_quad.y = node.y - size/2;
 #ifdef P4_TO_P8
-    bool k_search = ( ijk_nb[2] >= hierarchy->trees[nb_tree_idx][ind].kmin + half_size );
+  neighbor_quad.z = node.z - size/2;
 #endif
-    ind = hierarchy->trees[nb_tree_idx][ind].child + SUMD(i_search, 2*j_search, 4*k_search);
-  }
+  int ind = hierarchy->get_index_of_hierarchy_cell_matching_or_containing_quad(&neighbor_quad, owning_tree_idx);
 
   /* now find the children of this constructed cell in the desired direction and add them to the list */
-  find_neighbor_cells_of_cell_recursive(ngbd, nb_tree_idx, ind, dir_xyz, smallest_quad_size);
+  find_neighbor_cells_of_cell_recursive(ngbd, owning_tree_idx, ind, dir_xyz, smallest_quad_size);
 }
 
 void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_neighboring_quadrants& ngbd, const p4est_topidx_t& tr, const int& ind, const char dir_xyz[P4EST_DIM], p4est_qcoord_t *smallest_quad_size) const
@@ -148,7 +92,7 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive(set_of_nei
         find_neighbor_cells_of_cell_recursive(ngbd, tr, hierarchy->trees[tr][ind].child + SUMD((child_x == -1 ? 0 : 1), (child_y == -1 ? 0 : 2), (child_z == -1 ? 0 : 4)), dir_xyz, smallest_quad_size);
 }
 
-p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors) const
+p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors, const bool *no_search) const
 {
   /* gather the neighborhood */
   ngbd.insert(quad_with_correct_local_num_in_piggy3);
@@ -159,10 +103,17 @@ p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4
   if(add_second_degree_neighbors)
     close_ngbd = new set_of_neighboring_quadrants; // we need to get the close neighbors separately first in that case --> use a temporary buffer set
 
-  for(char i = -1; i < 2; ++i)
-    for(char j = -1; j < 2; ++j)
+  char search_range_low[P4EST_DIM]  = {DIM(-1, -1, -1)};
+  char search_range_high[P4EST_DIM] = {DIM( 1,  1,  1)};
+  if(no_search != NULL)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      if(no_search[dim])
+        search_range_low[dim] = search_range_high[dim] = 0;
+
+  for(char i = search_range_low[0]; i <= search_range_high[0]; ++i)
+    for(char j = search_range_low[1]; j <= search_range_high[1]; ++j)
 #ifdef P4_TO_P8
-      for(char k = -1; k < 2; ++k)
+      for(char k = search_range_low[2]; k <= search_range_high[2]; ++k)
 #endif
       {
         if(ANDD(i == 0, j == 0, k == 0)) // no need to search for that one, of course...
@@ -173,10 +124,10 @@ p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4
           for (set_of_neighboring_quadrants::const_iterator it = close_ngbd->begin(); it != close_ngbd->end(); ++it)
           {
             ngbd.insert(*it); // the smallest_quad_size was already done in the operation here above, if needed/desired
-            for(char ii = -1; ii < 2; ++ii)
-              for(char jj = -1; jj < 2; ++jj)
+            for(char ii = search_range_low[0]; ii <= search_range_high[0]; ++ii)
+              for(char jj = search_range_low[1]; jj <= search_range_high[1]; ++jj)
 #ifdef P4_TO_P8
-                for(char kk = -1; kk < 2; ++kk)
+                for(char kk = search_range_low[2]; kk <= search_range_high[2]; ++kk)
 #endif
                 {
                   if(ANDD(ii == 0, jj == 0, kk == 0))
@@ -194,90 +145,249 @@ p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_cell(const p4
   return smallest_quad_size;
 }
 
+p4est_qcoord_t my_p4est_cell_neighbors_t::gather_neighbor_cells_of_node(const p4est_locidx_t& node_idx, const p4est_nodes_t* nodes, set_of_neighboring_quadrants& cell_neighbors, const bool& add_second_degree_neighbors) const
+{
+#ifdef CASL_THROWS
+  bool at_least_one_direct_neighbor_is_local = false;
+#endif
+  p4est_qcoord_t smallest_quad_size = P4EST_ROOT_LEN;
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+
+  for(char i = -1; i < 2; i += 2)
+    for(char j = -1; j < 2; j += 2)
+#ifdef P4_TO_P8
+      for(char k = -1; k < 2; k += 2)
+#endif
+      {
+        hierarchy->find_neighbor_cell_of_node(node_idx, nodes, DIM(i, j, k), quad_idx, tree_idx);
+        if(quad_idx != NOT_A_VALID_QUADRANT)
+        {
+          p4est_quadrant_t quad;
+          if(quad_idx < p4est->local_num_quadrants)
+          {
+            p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+            quad = *p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+          }
+          else
+            quad = *p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
+
+          quad.p.piggy3.local_num = quad_idx;
+          quad.p.piggy3.which_tree = tree_idx;
+
+#ifdef CASL_THROWS
+          at_least_one_direct_neighbor_is_local = at_least_one_direct_neighbor_is_local || quad_idx < p4est->local_num_quadrants;
+#endif
+
+          cell_neighbors.insert(quad);
+          smallest_quad_size = MIN(smallest_quad_size, P4EST_QUADRANT_LEN(quad.level));
+          if(add_second_degree_neighbors)
+          {
+            // fetch an extra layer in all nonzero directions and their possible combinations
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx, DIM(i, 0, 0));
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx, DIM(0, j, 0));
+#ifdef P4_TO_P8
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx,     0, 0, k );
+#endif
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx, DIM(i, j, 0));
+#ifdef P4_TO_P8
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx,     i, 0, k );
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx,     0, j, k );
+            find_neighbor_cells_of_cell(cell_neighbors, quad_idx, tree_idx,     i, j, k );
+#endif
+          }
+        }
+      }
+
+#ifdef CASL_THROWS
+  if(!at_least_one_direct_neighbor_is_local) {
+    PetscErrorCode ierr = PetscPrintf(p4est->mpicomm, "Warning !! my_p4est_cell_neighbors_t::gather_neighbor_cells_of_node(): the node has no direct local neighbor quadrant."); CHKERRXX(ierr); }
+#endif
+
+  return smallest_quad_size;
+}
+
+
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc, const Vec phi)
 {
-  PetscErrorCode ierr;
-
   const p4est_t* p4est = c_ngbd->get_p4est();
   const p4est_nodes_t* nodes = n_ngbd->get_nodes();
-  const my_p4est_brick_t* brick = c_ngbd->get_brick();
   const double * tree_dimensions = c_ngbd->get_tree_dimensions();
 
   double xyz_node[P4EST_DIM];
   node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
-
-  SC_ASSERT ((size_t) node_idx < nodes->indep_nodes.elem_count);
-  const p4est_indep_t *node = (p4est_indep_t*) (nodes->indep_nodes.array + ((size_t) node_idx)*nodes->indep_nodes.elem_size);
+  const p4est_indep_t *node = (p4est_indep_t*) sc_const_array_index(&nodes->indep_nodes, node_idx);
 
   if(bc != NULL && is_node_Wall(p4est, node) && bc->wallType(xyz_node) == DIRICHLET)
     return bc->wallValue(xyz_node);
 
-  const double *cell_field_p;
-  ierr = VecGetArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
-
   /* gather the neighborhood and get the (logical) size of the smallest quadrant in the first-degree neighborhood */
   set_of_neighboring_quadrants cell_ngbd; cell_ngbd.clear();
-  const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = n_ngbd->gather_neighbor_cells_of_node(cell_ngbd, c_ngbd, node_idx, true);
+  const p4est_qcoord_t logical_size_smallest_first_degree_cell_neighbor = c_ngbd->gather_neighbor_cells_of_node(node_idx, nodes, cell_ngbd, true);
   const double scaling = 0.5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))*(double)logical_size_smallest_first_degree_cell_neighbor/(double) P4EST_ROOT_LEN;
 
-  matrix_t A;
-  A.resize(1, 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
-  std::vector<double> rhs; rhs.resize(0);
-  std::set<int64_t> nb[P4EST_DIM];
-
-  const double min_weight     = 1e-6;
-  const double inv_max_weight = 1e-6;
-
+  PetscErrorCode ierr;
+  const double *cell_field_p;
+  ierr = VecGetArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
   const double *phi_p = NULL;
-  P4EST_ASSERT(bc == NULL || bc->interfaceType() == NOINTERFACE || phi != NULL); // if we have BCs for an interface, we need phi!
+  P4EST_ASSERT(bc == NULL || bc->interfaceType() == NOINTERFACE || phi != NULL); // if we have BCs for an interface, we need node_sampled_phi!
   if(phi != NULL){
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr); }
 
-  for(set_of_neighboring_quadrants::const_iterator it = cell_ngbd.begin(); it != cell_ngbd.end(); ++it)
-    if(bc == NULL || quadrant_value_is_well_defined(*bc, p4est, n_ngbd->get_ghost(), n_ngbd->get_nodes(), it->p.piggy3.local_num,it->p.piggy3.which_tree, phi_p))
+  const double to_return = get_lsqr_interpolation_at_node(xyz_node, c_ngbd, cell_ngbd, scaling, cell_field_p, bc, n_ngbd, phi_p);
+
+  ierr = VecRestoreArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
+  if(phi != NULL){
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr); }
+
+  return to_return;
+}
+
+double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                      const double* cell_sampled_field_p, const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
+                                      const u_char &degree, const double &thresh_condition_number, linear_combination_of_dof_t* interpolator)
+{
+  matrix_t A;
+  A.resize(1, 1 + (degree > 0 ? P4EST_DIM : 0) + (degree  > 1 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
+  std::vector<double> lsqr_rhs; lsqr_rhs.resize(0);
+  if(interpolator != NULL)
+    interpolator->clear();
+  std::set<int64_t> set_of_qcoord[P4EST_DIM];
+
+  const double min_weight     = 1.0e-6;
+  const double inv_max_weight = 1.0e-6;
+  P4EST_ASSERT(ngbd_of_cells.size() > 0);
+
+  for(set_of_neighboring_quadrants::const_iterator it = ngbd_of_cells.begin(); it != ngbd_of_cells.end(); ++it)
+    if(bc == NULL || quadrant_value_is_well_defined(*bc, ngbd_n->get_p4est(), ngbd_n->get_ghost(), ngbd_n->get_nodes(), it->p.piggy3.local_num, it->p.piggy3.which_tree, node_sampled_phi_p))
     {
       /* the value is well-defined we can use it */
-      const p4est_locidx_t &qm_idx = it->p.piggy3.local_num;
+      const p4est_locidx_t &quad_idx = it->p.piggy3.local_num;
 
       double xyz_t[P4EST_DIM];
-      int64_t logical_qcoord_diff[P4EST_DIM];
-      rel_qxyz_quad_fr_node(p4est, *it, xyz_node, node, tree_dimensions, brick, xyz_t, logical_qcoord_diff);
+      int64_t qcoord_quad[P4EST_DIM];
+      rel_xyz_quad_fr_point(ngbd_c->get_p4est(), *it, xyz_node, ngbd_c->get_brick(), xyz_t, qcoord_quad);
 
-      for(unsigned char i = 0; i < P4EST_DIM; ++i)
+      for(u_char i = 0; i < P4EST_DIM; ++i)
+      {
         xyz_t[i] /= scaling;
+        set_of_qcoord[i].insert(qcoord_quad[i]);
+      }
 
       const double weight = MAX(min_weight, 1./MAX(inv_max_weight, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
-      A.set_value(rhs.size(), 0,                1                 * weight);
-      A.set_value(rhs.size(), 1,                xyz_t[0]          * weight);
-      A.set_value(rhs.size(), 2,                xyz_t[1]          * weight);
-#ifdef P4_TO_P8
-      A.set_value(rhs.size(), 3,                xyz_t[2]          * weight);
-#endif
-      A.set_value(rhs.size(), 1 +   P4EST_DIM,  xyz_t[0]*xyz_t[0] * weight);
-      A.set_value(rhs.size(), 2 +   P4EST_DIM,  xyz_t[0]*xyz_t[1] * weight);
-#ifdef P4_TO_P8
-      A.set_value(rhs.size(), 3 +   P4EST_DIM,  xyz_t[0]*xyz_t[2] * weight);
-#endif
-      A.set_value(rhs.size(), 1 + 2*P4EST_DIM,  xyz_t[1]*xyz_t[1] * weight);
-#ifdef P4_TO_P8
-      A.set_value(rhs.size(), 2 + 2*P4EST_DIM,  xyz_t[1]*xyz_t[2] * weight);
-      A.set_value(rhs.size(),     3*P4EST_DIM,  xyz_t[2]*xyz_t[2] * weight);
-#endif
-      rhs.push_back(cell_field_p[qm_idx]*weight);
+      u_char col_idx = 0;
+      // constant term
+      A.set_value(lsqr_rhs.size(), col_idx++, weight);
+      // linear terms
+      if(degree > 0)
+        for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+          A.set_value(lsqr_rhs.size(), col_idx++, xyz_t[uu]*weight);
+      // quadratic terms
+      if(degree > 1)
+        for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+          for (u_char vv = uu; vv < P4EST_DIM; ++vv)
+            A.set_value(lsqr_rhs.size(), col_idx++, xyz_t[uu]*xyz_t[vv]*weight);
 
-      for(unsigned char d = 0; d < P4EST_DIM; ++d)
-        nb[d].insert(logical_qcoord_diff[d]);
+      lsqr_rhs.push_back(cell_sampled_field_p[quad_idx]*weight);
+
+      if(interpolator != NULL)
+        interpolator->add_term(quad_idx, weight);
     }
 
-  if(phi != NULL){
-    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr); }
-  ierr = VecRestoreArrayRead(cell_field, &cell_field_p); CHKERRXX(ierr);
+  P4EST_ASSERT((bc == NULL ? 0 < A.num_rows() && (size_t) A.num_rows() == ngbd_of_cells.size() : (size_t)A.num_rows() <= ngbd_of_cells.size()));
 
-  if(rhs.size() == 0)
+  if(lsqr_rhs.size() == 0)
+  {
+    if(interpolator != NULL)
+      interpolator->clear();
     return 0.0; // no valid neighbor (way into the positive domain for instance)
+  }
 
-  A.scale_by_maxabs(rhs);
+  const double abs_max = A.scale_by_maxabs(lsqr_rhs);
+  if(interpolator != NULL)
+    *interpolator /= abs_max;
+  P4EST_ASSERT(interpolator == NULL || interpolator->size() > 0);
+  std::vector<double>* interp_weights = (interpolator == NULL ? NULL : new std::vector<double>(interpolator->size()));
 
-  return solve_lsqr_system(A, rhs, DIM(nb[0].size(), nb[1].size(), nb[2].size()));
+  const double value_to_return = solve_lsqr_system(A, lsqr_rhs, DIM(set_of_qcoord[0].size(), set_of_qcoord[1].size(), set_of_qcoord[2].size()), degree, 0, interp_weights, thresh_condition_number);
+  if(interpolator != NULL)
+    (*interpolator) *= *interp_weights;
+
+  return value_to_return;
 }
+
+void get_lsqr_cell_gradient_operator_at_point(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& is_point_quad_center, const p4est_locidx_t& idx_of_quad_center)
+{
+  P4EST_ASSERT(ngbd_of_cells.size() > 0);
+  P4EST_ASSERT(!is_point_quad_center || idx_of_quad_center >= 0);
+#ifdef CASL_THROWS
+  if(ngbd_of_cells.size() < 1 + P4EST_DIM)
+    throw std::invalid_argument("get_lsqr_cell_gradient_operator_at_point() : not enough neighbor cells to build a gradient");
+#endif
+
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    grad_operator[dim].clear();
+
+  matrix_t A(ngbd_of_cells.size() - (is_point_quad_center ? 1 : 0), (is_point_quad_center ? 0 : 1 ) + P4EST_DIM);
+
+  std::set<int64_t> set_of_qcoord[P4EST_DIM];
+  int row_idx = 0;
+  for(set_of_neighboring_quadrants::const_iterator it = ngbd_of_cells.begin(); it != ngbd_of_cells.end(); ++it)
+  {
+    if(is_point_quad_center && it->p.piggy3.local_num == idx_of_quad_center)
+      continue; // done at the very end for that term
+    double xyz_t[P4EST_DIM];
+    int64_t qcoord_quad[P4EST_DIM];
+    rel_xyz_quad_fr_point(ngbd_c->get_p4est(), *it, xyz_node, ngbd_c->get_brick(), xyz_t, qcoord_quad);
+
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      grad_operator[dim].add_term(it->p.piggy3.local_num, 1.0);
+      set_of_qcoord[dim].insert(qcoord_quad[dim]);
+    }
+
+    // constant term
+    u_char col_idx = 0;
+    if(!is_point_quad_center)
+      A.set_value(row_idx, col_idx++, 1.0);
+    // linear terms
+    for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+      A.set_value(row_idx, col_idx++, xyz_t[uu]/scaling);
+
+    row_idx++;
+  }
+
+  matrix_t AtA, inv_AtA;
+  A.mtm_product(AtA);
+  const bool is_inversion_successful = solve_cholesky(AtA, NULL, NULL, 0, 1e4, NULL, &inv_AtA);
+
+  if(!is_inversion_successful)
+  {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      if(set_of_qcoord[dim].size() < 2)
+        throw std::runtime_error(std::string("get_lsqr_cell_gradient_operator_at_point : you have less than two linearly independent neighbors along cartesian direction ")
+                                 + std::string(dim == dir::x ? "x" : ONLY3D(OPEN_PARENTHESIS dim == dir::y ? ) "y" ONLY3D( : "z" CLOSE_PARENTHESIS)));
+    throw std::runtime_error("get_lsqr_cell_gradient_operator_at_point : the inversion of the lsqr system failed.");
+  }
+
+  matrix_t operator_coeffs;
+  A.matrix_product(inv_AtA, operator_coeffs);
+
+  double sum_of_coeffs[P4EST_DIM] = {DIM(0.0, 0.0, 0.0)};
+
+  for (int term = 0; term < A.num_rows(); ++term)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      grad_operator[dim][term].weight = operator_coeffs.get_value(term, (is_point_quad_center ? 0 : 1) + dim)/scaling;
+      sum_of_coeffs[dim] += grad_operator[dim][term].weight;
+    }
+
+  if(is_point_quad_center)
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      grad_operator[dim].add_term(idx_of_quad_center, -sum_of_coeffs[dim]);
+
+  return;
+}
+

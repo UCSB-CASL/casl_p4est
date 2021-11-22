@@ -24,6 +24,15 @@
 #include <vector>
 #include <sstream>
 
+#if __cplusplus >= 201103L
+#include <unordered_set>
+typedef std::unordered_set<p4est_locidx_t> set_of_local_node_index_t;
+#else
+#include <set>
+typedef std::set<p4est_locidx_t> set_of_local_node_index_t;
+#endif
+
+
 /*!
  * \brief The my_p4est_node_neighbors_t class provides the user with node neighborhood information,
  * but also with routines calculating first and second derivatives of node-sampled fields as well as
@@ -54,7 +63,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_level_set_cells_t;
-  friend class my_p4est_level_set_t;
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_poisson_cells_t;
@@ -79,6 +87,7 @@ class my_p4est_node_neighbors_t {
   p4est_ghost_t *ghost;
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
+  my_p4est_cell_neighbors_t c_ngbd;
   /*!
    * \brief neighbors: standard vector listing the node neighborhood for all node that
    * are locally known such that the neighborhood can be fully determined. This vector
@@ -192,7 +201,7 @@ public:
    * \param [in] nodes_     grid nodes
    */
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb), c_ngbd(hierarchy_)
   {
     periodic = hierarchy->get_periodicity();
     is_initialized = false;
@@ -456,35 +465,16 @@ public:
   }
 
   /*!
-   * \brief find_neighbor_cell_of_node finds the neighboring quadrant of a node in the given (i,j, k) direction. The direction
-   * must be "diagonal" for the function to work! (e.g. (-1,1,1) ... no cartesian direction!).
-   * \param [in] n              local index of the node whose neighboring cell is looked for
-   * \param [in] i              the x search direction, -1 or 1
-   * \param [in] j              the y search direction, -1 or 1
-   * \param [in] k              the z search direction, -1 or 1, only in 3D
-   * \param [out] quad_idx      the index of the found quadrant, in cumulative numbering over the trees. To fetch this quadrant
-   *                            from its corresponding tree you need to substract the tree quadrant offset.
-   *                            If no quadrant was found, this is set to NOT_A_P4EST_QUADRANT (not known from the local ghost
-   *                            domain partition) of NOT_A_VALID_QUADRANT (past the edge of a nonperiodic domain)
-   * \param [out] nb_tree_idx   the index of the tree in which the quadrant was found (valid and sensible if the quadrant was
-   *                            actually found, of course)
-   */
-   void find_neighbor_cell_of_node(p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx) const;
-
-   /*!
-    * \brief gather_neighbor_cells_of_node finds all neighbor cells of a node in all cartesian directions (and any of their
-    * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
-    * but it can be extended to second degree neighbors, if desired.
-    * \param [inout] cell_neighbors: the set of neighbor cells (not cleared on input but augmented with all candidates if not
-    *                           present in the list yet);
-    * \param [in] cell_ngbd: pointer to the cell_neighborhood information
-    * \param [in] node_idx: local index of the node whose neighbor cells are sought
-    * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
-    *                           (default value is false)
-    * \return the logical size of the smallest quadrant found in the first-degree cell neighborhood (first-degree only!!!)
-    *                           --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+    * \brief find_neighbor_cell_of_node [This function was moved to my_p4est_hierarchy to
+    * 1) alleviate duplicaton of elementary routines shared with functions to find neighbor cell(s) of cell
+    * 2) make gather_neighbor_cells_of_node accessible even if the my_p4est_node_neighbors_t object was not constructed
+    * --> see comment of the corresponding function in my_p4est_hierarchy.h]
     */
-   p4est_qcoord_t gather_neighbor_cells_of_node(set_of_neighboring_quadrants& cell_neighbors, const my_p4est_cell_neighbors_t* cell_ngbd, const p4est_locidx_t& node_idx, const bool& add_second_degree_neighbors = false) const;
+   inline void find_neighbor_cell_of_node(const p4est_locidx_t& n, DIM(const char& i, const char& j, const char& k), p4est_locidx_t& quad_idx, p4est_topidx_t& owning_tree_idx) const
+   {
+     hierarchy->find_neighbor_cell_of_node(n, nodes, DIM(i, j, k), quad_idx, owning_tree_idx);
+     return;
+   }
 
   /*!
    * \brief dd_central computes the second derivatives along the cartesian direction der on all nodes and updates the ghosts
@@ -562,12 +552,12 @@ public:
    * \param [in]  n_vecs  number of vectors to handle
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) const
   {
     second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
     return;
   }
-  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1) const
   {
     second_derivatives_central(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1, bs);
     return;
@@ -618,10 +608,20 @@ public:
   {
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), bs);
   }
-
+// Elyce and Rochi merge - 11/22/21 -- this function used to get all first degree neighbors of a node, but it appears Daniil has updated it to also get second degree neighbors. Therefore, there used to be a function which got the second degree neighbors that no longer exists bc this function handles it all.
   // Daniil would have to commment on this one
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const;
+
+  /*!
+   * \brief fetch_second_degree_node_neighbors_of_interpolation_node: self-explanatory!
+   * \param [in] node_idx:
+   *                node index whose second-degree node neighbors are inquired
+   * \param [inout] second_degree_neighbor_nodes:
+   *                set gathering the local indices of all node neighbors of node n up to second-degree neighbors,
+   *                i.e., including vertices of up to second-degree neighbor cells
+   */
+  void fetch_second_degree_node_neighbors_of_interpolation_node(const p4est_locidx_t& node_idx, set_of_local_node_index_t& second_degree_neighbor_nodes) const;
 
   /*!
    * \brief memory_estimate estimates the memory required to store this my-p4est_node_neighbors_t object in number of bytes

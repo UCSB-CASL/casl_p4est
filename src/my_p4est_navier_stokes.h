@@ -24,12 +24,6 @@
 #include <src/my_p4est_save_load.h>
 #endif
 
-typedef enum
-{
-  SAVE=3541,
-  LOAD
-} save_or_load;
-
 typedef enum {
   grid_update,
   viscous_step,
@@ -77,14 +71,15 @@ protected:
   private:
     void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes,
                       const double* tree_dimensions,
-                      const double *phi_p, const double *vorticity_p, const double *smoke_p = NULL);
+                      const double *phi_p, const double *vorticity_p, const double *smoke_p, const double* norm_grad_u_p);
   public:
     double max_L2_norm_u;
-    double threshold;
+    double threshold_vorticity;
+    double threshold_norm_grad_u;
     double uniform_band;
     double smoke_thresh;
-    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u, double smoke_thresh);
-    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke);
+    splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold_vorticity, double max_L2_norm_u, double smoke_thresh, double threshold_norm_grad_u);
+    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke, Vec norm_grad_u);
   };
 
   class wall_bc_value_hodge_t : public CF_DIM
@@ -133,9 +128,13 @@ protected:
   double dt_nm1;
   double max_L2_norm_u;
   double uniform_band;
-  double threshold_split_cell;
+  double vorticity_threshold_split_cell;
+  double norm_grad_u_threshold_split_cell;
   double n_times_dt;
   bool   dt_updated;
+
+  interpolation_method interp_v_viscosity;
+  interpolation_method interp_v_update;
 
   Vec phi, grad_phi;
   Vec hodge;
@@ -153,6 +152,7 @@ protected:
   bool semi_lagrangian_backtrace_is_done;
   std::vector<double> backtraced_v_n[P4EST_DIM];
   std::vector<double> backtraced_v_nm1[P4EST_DIM]; // used only if sl_order == 2
+  std::vector<double> ext_force_term_interpolation_from_nodes_to_faces;
 
   // face interpolator to nodes: store them in memory to accelerate execution if static grid
   bool interpolators_from_face_to_nodes_are_set;
@@ -163,6 +163,7 @@ protected:
   Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
 
   Vec vorticity;
+  Vec norm_grad_u;
 
   Vec pressure;
 
@@ -184,6 +185,9 @@ protected:
 
   CF_DIM *external_forces_per_unit_volume[P4EST_DIM];
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
+  Vec external_force_per_unit_volume;
+  Vec second_derivatives_external_force_per_unit_volume[P4EST_DIM];
+  public:bool boussinesq_approx=false;
 
   my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
@@ -294,6 +298,18 @@ protected:
     return (ANDD(bc_v[0].wallType(xyz_) == DIRICHLET, bc_v[1].wallType(xyz_) == DIRICHLET, bc_v[2].wallType(xyz_) == DIRICHLET) && bc_pressure->wallType(xyz_) == NEUMANN);
   }
 
+
+  // 7 integer parameters:
+  // P4EST_DIM, refine_with_smoke (converted), data->min_lvl, data->max_lvl, sl_order,
+  // interp_v_viscosity (converted), interp_v_update (converted). <-- added later on
+  const size_t min_n_integer_parameter_for_restart = 5;                // original backup files had 5 integer parameters for I/O --> can't have less
+  const size_t n_integer_parameter_for_restart     = 7;
+  // 4*P4EST_DIM + 12 double parameters:
+  // dxyz_min, xyz_min, xyz_max, convert_to_xyz, mu, rho, tn, dt_n, dt_nm1, max_L2_norm_u,
+  // uniform_band, threshold_split_cell, n_times_dt, smoke_thresh, data->lip,
+  // norm_grad_u_threshold_split_cell <-- added later on
+  const size_t min_n_double_parameter_for_restart  = 4*P4EST_DIM + 11; // original backup files had 4*P4EST_DIM + 11 double parameters for I/O --> can't have less
+  const size_t n_double_parameter_for_restart      = 4*P4EST_DIM + 12; // current version
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
    * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
@@ -303,6 +319,8 @@ protected:
    * - data->min_lvl
    * - data->max_lvl
    * - sl_order
+   * - interp_v_viscosity <-- could be absent from file on disk (added the option to change that thereafter)
+   * - interp_v_update    <-- could be absent from file on disk (added the option to change that thereafter)
    * The double parameters/variables that are saved/loaded are (in this order):
    * - dxyz_min[0:P4EST_DIM-1]
    * - xyz_min[0:P4EST_DIM-1]
@@ -319,6 +337,7 @@ protected:
    * - n_times_dt
    * - smoke_threshold
    * - data->lip
+   * - norm_grad_u_threshold_split_cell <-- could be absent from file on disk (added the option thereafter)
    * The integer and double parameters are saved separately in two different files to avoid reading errors due to
    * byte padding (occurs in order to ensure data alignment when written in file)...
    * \param filename[in]: basename of the path to the files to be written or read (absolute path)
@@ -334,8 +353,8 @@ protected:
    * Raphael EGAN
    */
   void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
-  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, double& tn);
-  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion);
+  void fill_or_load_double_parameters(save_or_load flag, std::vector<PetscReal>& data, splitting_criteria_t* splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, std::vector<PetscInt>& data, splitting_criteria_t* splitting_criterion);
 
   /*!
    * \brief load_state loads a solver state that has been previously saved on disk
@@ -409,11 +428,16 @@ public:
   my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
   ~my_p4est_navier_stokes_t();
 
-  void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
+  void set_parameters(double mu, double rho, int sl_order, double uniform_band, double vorticity_threshold_split_cell, double n_times_dt, double norm_grad_u_threshold_split_cell = DBL_MAX);
+
+  inline void set_interpolation_method_for_velocity_in_viscosity_step(const interpolation_method& desired_method) { interp_v_viscosity = desired_method; }
+  inline void set_interpolation_method_for_velocity_in_update_step(const interpolation_method& desired_method) { interp_v_update = desired_method; }
 
   void set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
 
   void set_phi(Vec phi);
+
+  void set_external_forces_using_vector(Vec f);
 
   // [Raphael:] original behavior was for forcing term defined as a force per unit volume
   inline void set_external_forces(CF_DIM **external_forces) { set_external_forces_per_unit_volume(external_forces); }
@@ -522,7 +546,13 @@ public:
   inline p4est_t *get_p4est() { return p4est_n; }
 
   // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
-  inline void nullify_p4est_nm1() { p4est_nm1 = NULL; }
+  inline void nullify_p4est_nm1() {
+    p4est_nm1 = NULL;
+    nodes_nm1 = NULL;
+    ghost_nm1 = NULL;
+    hierarchy_nm1=NULL;
+    ngbd_nm1 = NULL;
+  }
 
 
   inline const BoundaryConditionsDIM &get_bc_hodge() const { return bc_hodge; }
@@ -588,7 +618,7 @@ public:
 
   void copy_vorticity(Vec vort){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(vorticity,vort); CHKERRXX(ierr);
+    ierr = VecCopyGhost(vorticity, vort); CHKERRXX(ierr);
   }
   inline bool get_refine_with_smoke() { return refine_with_smoke; }
   inline double get_smoke_threshold() { return smoke_thresh; }
@@ -606,7 +636,9 @@ public:
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
   inline double get_mu()                const { return mu; }
-  inline double get_split_threshold()   const { return threshold_split_cell; }
+  inline double get_vorticity_split_threshold() const { return vorticity_threshold_split_cell; }
+  inline double get_norm_grad_u_split_threshold() const { return norm_grad_u_threshold_split_cell; }
+  inline double get_split_threshold()   const { return get_vorticity_split_threshold(); }
   inline double get_rho()               const { return rho; }
   inline double get_nu()                const { return mu/rho; }
   inline double get_uniform_band()      const { return uniform_band; }
@@ -622,7 +654,7 @@ public:
 #ifdef P4_TO_P8
   inline double get_width_of_domain()   const { return (xyz_max[2] - xyz_min[2]); }
 #endif
-  inline my_p4est_brick_t* get_brick()  const  { return brick; }
+  inline my_p4est_brick_t* get_brick()  const { return brick; }
 
   void solve_viscosity()
   {
@@ -694,8 +726,19 @@ public:
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
 
-  void update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
+  void update_from_tn_to_tnp1_grid_external(Vec phi_np1, Vec phi_n,
+                                            p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,
+                                            my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* &faces_np1,
+                                            my_p4est_cell_neighbors_t* &ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
   void compute_pressure();
+
+  /*!
+   * \brief compute_pressure_at_nodes
+   * \param pressure_nodes [inout]
+   * Interpolates pressure at cells and stores the output in the Vec pressure_nodes
+   * Code developed by Raphael Egan, adapted into a function by Elyce Bayat
+   */
+  void compute_pressure_at_nodes(Vec *pressure_nodes);
 
   void compute_forces(double *f);
 
@@ -850,6 +893,13 @@ public:
 
   void coupled_problem_partial_destructor();
 
+  const my_p4est_cell_neighbors_t* get_ngbd_c() const { return ngbd_c; }
+  const my_p4est_node_neighbors_t* get_ngbd_n() const { return ngbd_n; }
+  Vec get_pressure() const { return pressure; }
+  Vec const* get_node_velocities_nm1() const  { return vnm1_nodes;  }
+  Vec const* get_node_velocities_n() const    { return vn_nodes;    }
+  Vec const* get_node_velocities_np1() const  { return vnp1_nodes;  }
+  Vec get_phi() const { return phi; }
 };
 
 

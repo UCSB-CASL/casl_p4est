@@ -12,7 +12,6 @@
 #undef MIN
 #undef MAX
 
-
 const double xyz_m[P4EST_DIM]         = {DIM(-1.25, -1.25, -1.25)};
 const double xyz_M[P4EST_DIM]         = {DIM(+1.25, +1.25, +1.25)};
 const unsigned int default_lmin       = 5;
@@ -26,22 +25,28 @@ const int default_ny                  = 1;
 #ifdef P4_TO_P8
 const int default_nz                  = 1;
 #endif
-const double default_duration         = 250;
-const unsigned int default_sl_order   = 2;
-const double default_cfl              = 250;
-const double default_vtk_dt           = 1.0;
+const double default_duration         = 250.0;
+const unsigned int default_sl_order   = 1;
+const double default_cfl              = 1.0;
+const double default_vtk_dt           = 0.25;
 const std::string default_export_dir_root = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + std::to_string(P4EST_DIM) + "d";
+const bool default_voro_on_the_fly    = false;
 const double default_rho_m            = 1.0;
 const double default_rho_p            = 1.0;
 const double default_mu_m             = 1.0/12000.0;
 const double default_mu_p             = 1.0/12000.0;
 const double default_surf_tension     = 1.0/12000.0;
+const extrapolation_technique default_extrapolation_technique = PSEUDO_TIME;
+const unsigned int default_extrapolation_niter  = 20;
+const unsigned int default_extrapolation_degree = 1;
+const bool default_no_advection = true;
+//const bool default_no_advection = false;
 
 
 class LEVEL_SET: public CF_DIM {
   const double radius;
 public:
-  LEVEL_SET(const double rad_) : radius(rad_) { lip = 1.2; }
+  LEVEL_SET(const double& rad_) : radius(rad_) { lip = 1.2; }
   double operator()(DIM(double x, double y, double z)) const
   {
     return radius - sqrt(SUMD(SQR(x - 0.5*(xyz_m[0] + xyz_M[0])), SQR(y - 0.5*(xyz_m[1] + xyz_M[1])), SQR(z - 0.5*(xyz_m[2] + xyz_M[2]))));
@@ -215,6 +220,11 @@ int main (int argc, char* argv[])
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is" + std::to_string(default_sl_order));
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is " + std::to_string(default_cfl));
+  cmd.add_option("extrapolation", "face-based extrapolation technique (0: pseudo-time, 1: explicit iterative), default is " + std::string(default_extrapolation_technique == PSEUDO_TIME ? "pseudo time" : "explicit iterative"));
+  cmd.add_option("extrapolation_niter", "number of iterations used for the face-based extrapolation technique, default is " + std::to_string(default_extrapolation_niter));
+  cmd.add_option("extrapolation_degree", "degree of the face-based extrapolation technique (0: constant, 1: extrapolate normal derivatives too), default is " + std::to_string(default_extrapolation_degree));
+  cmd.add_option("voro_on_the_fly", "activates the calculation of Voronoi cells on the fly (default is " + std::string(default_voro_on_the_fly? "done on the fly)" : "stored in memory)"));
+  cmd.add_option("no_advection", "deactivates the advection, the fluid dynamics becomes diffusion problems (default is " + std::string(default_no_advection? "without" : "with") + " advection)");
   // output-control parameters
   cmd.add_option("no_save_vtk", "deactivates exportation of vtk files if present");
   cmd.add_option("vtk_dt", "vtk_dt = time_step between two vtk exportation, default is " + std::to_string(default_vtk_dt));
@@ -240,9 +250,13 @@ int main (int argc, char* argv[])
   const double uniform_band_m         = cmd.get<double>("uniform_band_m", default_unif_m_to_r*r0*(1 << lmax)/max_tree_dimensions);
   const double uniform_band_p         = cmd.get<double>("uniform_band_p", default_unif_p_to_r*r0*(1 << lmax)/max_tree_dimensions);
   const double cfl                    = cmd.get<double>("cfl", default_cfl);
+  const extrapolation_technique extrapolation = (cmd.contains("extrapolation") ? (cmd.get<unsigned int>("extrapolation") == 0 ? PSEUDO_TIME : EXPLICIT_ITERATIVE) : default_extrapolation_technique);
+  const unsigned int ext_nsteps       = cmd.get<unsigned int>("extrapolation_niter", default_extrapolation_niter);
+  const unsigned int ext_degree       = cmd.get<unsigned int>("extrapolation_degree", default_extrapolation_degree);
   const double duration               = cmd.get<double>("duration", default_duration);
   const std::string export_dir_root   = cmd.get<std::string>("export_dir_root", default_export_dir_root);
   const bool save_vtk                 = !cmd.contains("no_save_vtk");
+  const bool no_advection             = default_no_advection || cmd.contains("no_advection");
   double vtk_dt                       = -1.0;
   if(save_vtk)
   {
@@ -359,11 +373,30 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_densities(rho_m, rho_p);
   two_phase_flow_solver->set_surface_tension(surface_tension);
   two_phase_flow_solver->set_uniform_bands(uniform_band_m, uniform_band_p);
+  two_phase_flow_solver->do_voronoi_computations_on_the_fly(default_voro_on_the_fly || cmd.contains("voro_on_the_fly"));
   two_phase_flow_solver->set_vorticity_split_threshold(threshold_split_cell);
   two_phase_flow_solver->set_cfl(cfl);
   two_phase_flow_solver->set_semi_lagrangian_order(sl_order);
 
   two_phase_flow_solver->set_node_velocities(vnm1, vn, vnm1, vn);
+  if(no_advection)
+  {
+    two_phase_flow_solver->initialize_diffusion_problem_vectors();
+    Vec* vnm1_faces = two_phase_flow_solver->get_diffusion_vnm1_faces();
+    Vec* vn_faces = two_phase_flow_solver->get_diffusion_vn_faces();
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      double *vnm1_faces_dir_p, *vn_faces_dir_p;
+      ierr = VecGetArray(vnm1_faces[dir], &vnm1_faces_dir_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vn_faces[dir],   &vn_faces_dir_p); CHKERRXX(ierr);
+      for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[dir] + faces_n->num_ghost[dir]; ++face_idx) {
+        double xyz_face[P4EST_DIM]; faces_n->xyz_fr_f(face_idx, dir, xyz_face);
+        vnm1_faces_dir_p[face_idx]  = (*vnm1[dir])(xyz_face);
+        vn_faces_dir_p[face_idx]    = (*vn[dir])(xyz_face);
+      }
+      ierr = VecRestoreArray(vnm1_faces[dir], &vnm1_faces_dir_p); CHKERRXX(ierr);
+    }
+  }
+
 
   tstart = 0.0; // no restart so we assume we start from 0.0
   dt = sqrt((rho_m + rho_p)*pow(MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))/((double) (1 << lmax)), 3.0)/(4.0*M_PI*surface_tension));
@@ -380,31 +413,36 @@ int main (int argc, char* argv[])
   int iter = 0, iter_vtk = -1;
   double tn = tstart;
 
-  CF_DIM *zero_jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
-  for (int dd = 0; dd < P4EST_DIM; ++dd)
-    for (int kk = 0; kk < P4EST_DIM; ++kk)
-      zero_jump_mu_grad_v[dd][kk] = &zero_cf;
-
   double max_velocity = 0.0;
+
+  parStopWatch w;
+  w.start("Execution time");
 
   while(tn + 0.01*dt < tstart + duration)
   {
-//    if(iter > 0)
-//    {
-//      two_phase_flow_solver->compute_dt();
-//      dt = two_phase_flow_solver->get_dt();
-//      two_phase_flow_solver->update_from_tn_to_tnp1();
-//    }
+    if(iter > 0)
+    {
+      two_phase_flow_solver->compute_dt();
+      dt = two_phase_flow_solver->get_dt();
+      if(!no_advection)
+        two_phase_flow_solver->update_from_tn_to_tnp1();
+      else
+      {
+        two_phase_flow_solver->slide_face_fields(true);
+        two_phase_flow_solver->slide_node_velocities();
+      }
+    }
 
-    two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
-//    two_phase_flow_solver->compute_jump_mu_grad_v();
+    two_phase_flow_solver->compute_viscosity_jumps();
     two_phase_flow_solver->compute_jumps_hodge();
-//    two_phase_flow_solver->solve_viscosity_explicit();
-    two_phase_flow_solver->solve_viscosity();
-    two_phase_flow_solver->solve_projection(false);
 
-    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 40);
-//    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
+    if(!no_advection)
+      two_phase_flow_solver->solve_viscosity();
+    else
+      two_phase_flow_solver->solve_diffusion_viscosity();
+
+    two_phase_flow_solver->solve_projection(false);
+    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(extrapolation, ext_nsteps, ext_degree);
     two_phase_flow_solver->compute_velocity_at_nodes();
 
     if(save_vtk && (int) floor((tn + dt)/vtk_dt) != iter_vtk)
@@ -414,14 +452,17 @@ int main (int argc, char* argv[])
     }
 
     tn += dt;
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
-                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_u = %.5e (Omega minus), \t %.5e (Omega plus), \t number of leaves = %d\n",
+                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity_m(), two_phase_flow_solver->get_max_velocity_p(), two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
     max_velocity = MAX(max_velocity, two_phase_flow_solver->get_max_velocity());
 
     iter++;
   }
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_velocity);
 
+
+  w.stop();
+  w.read_duration();
 
   delete two_phase_flow_solver;
   delete data;

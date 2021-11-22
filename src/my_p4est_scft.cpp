@@ -1,5 +1,3 @@
-#include "my_p4est_scft.h"
-
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_vtk.h>
@@ -7,6 +5,7 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_interpolation_nodes_local.h>
 #include <src/my_p8est_macros.h>
+#include "my_p8est_scft.h"
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
@@ -14,6 +13,7 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_interpolation_nodes_local.h>
 #include <src/my_p4est_macros.h>
+#include "my_p4est_scft.h"
 #endif
 
 my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)

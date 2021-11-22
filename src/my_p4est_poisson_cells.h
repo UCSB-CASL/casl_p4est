@@ -83,11 +83,7 @@ class my_p4est_poisson_cells_t
 
   inline p4est_gloidx_t compute_global_index(p4est_locidx_t quad_idx) const
   {
-    if(quad_idx<p4est->local_num_quadrants)
-      return p4est->global_first_quadrant[p4est->mpirank] + quad_idx;
-
-    const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
-    return p4est->global_first_quadrant[quad_find_ghost_owner(ghost, quad_idx-p4est->local_num_quadrants)] + quad->p.piggy3.local_num;
+    return compute_global_index_of_quad(quad_idx, p4est, ghost);
   }
 
   inline PetscErrorCode reset_current_diag()

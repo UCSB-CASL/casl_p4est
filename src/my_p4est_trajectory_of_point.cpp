@@ -1,9 +1,9 @@
-#include "my_p4est_trajectory_of_point.h"
-
 #ifdef P4_TO_P8
 #include "my_p8est_interpolation_nodes.h"
+#include "my_p8est_trajectory_of_point.h"
 #else
 #include "my_p4est_interpolation_nodes.h"
+#include "my_p4est_trajectory_of_point.h"
 #endif
 
 

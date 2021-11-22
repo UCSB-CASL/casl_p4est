@@ -87,7 +87,7 @@ void matrix_t::tranpose_matvec(const vector<double> x[], vector<double> b[], con
   }
 }
 
-void matrix_t::matrix_product(matrix_t& b, matrix_t& c)
+void matrix_t::matrix_product(const matrix_t& b, matrix_t& c) const
 {
 #ifdef CASL_THROWS
   if(n != b.m) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product: the matrix sizes don't match");
@@ -95,12 +95,28 @@ void matrix_t::matrix_product(matrix_t& b, matrix_t& c)
   c.resize(m, b.n);
 //  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, m, b.n, n, 1.0, this->values.data(), n, b.values.data(), b.n, 0.0, c.values.data(), c.n);
   for(int i = 0; i < m; i++)
-    for(int k = 0; k<b.n; k++)
+    for(int k = 0; k < b.n; k++)
     {
-      double sum = 0;
+      double sum = 0.0;
       for(int j = 0; j < n; j++)
-        sum += values[i*n + j]*b.values[j*n+k];
-      c.values[i*n+k] = sum;
+        sum += values[i*n + j]*b.values[j*b.n + k];
+      c.values[i*b.n + k] = sum;
+    }
+}
+
+void matrix_t::matrix_product_transpose(const matrix_t& b, matrix_t& c) const
+{
+#ifdef CASL_THROWS
+  if(n != b.n) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product_transpose: the matrix sizes don't match");
+#endif
+  c.resize(m, b.m);
+  for(int i = 0; i < m; i++)
+    for(int k = 0; k < b.m; k++)
+    {
+      double sum = 0.0;
+      for(int j = 0; j < n; j++)
+        sum += values[i*n + j]*b.values[k*b.n + j];
+      c.values[i*b.m + k] = sum;
     }
 }
 
@@ -171,7 +187,7 @@ matrix_t matrix_t::tr()
   matrix_t out(n, m);
   for(int i = 0;i < m;i++)
     for(int j = 0;j < n;j++)
-      out.values[j*n + i] = values[i*n + j];
+      out.values[j*m + i] = values[i*n + j];
   return out;
 }
 
@@ -194,7 +210,7 @@ void matrix_t::sub(int im, int jm, int iM, int jM, matrix_t& M)
   M.resize(iM - im + 1, jM - jm + 1);
   for(int i = im; i <= iM; i++)
     for(int j = jm; j <= jM; j++)
-      M.values[(i - im)*n + (j - jm)] = get_value(i,j);
+      M.values[(i - im)*(jM - jm + 1) + (j - jm)] = get_value(i,j);
 }
 
 void matrix_t::truncate_matrix(int M, int N, const matrix_t& Mat)

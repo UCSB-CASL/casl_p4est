@@ -225,6 +225,7 @@ protected:
   int    gf_order_;
   int    gf_stabilized_; // 0 - only non-stab, 1 - only stab, 2 - both (stab prefered over non-stab)
 
+  bool   use_sc_scheme_;
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
   bool   neumann_wall_first_order_;
@@ -266,6 +267,9 @@ protected:
   // discretization type
   enum discretization_scheme_t
   {
+    NO_DISCRETIZATION,
+    FINITE_DIFFERENCE,
+    FINITE_VOLUME,
     UNDEFINED,
     DOMAIN_OUTSIDE,
     DOMAIN_INSIDE,
@@ -285,8 +289,8 @@ protected:
   std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
   std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
 
-  std::vector<CF_DIM *> bdry_phi_cf_;
-  std::vector<CF_DIM *> infc_phi_cf_;
+  std::vector<const CF_DIM *> bdry_phi_cf_;
+  std::vector<const CF_DIM *> infc_phi_cf_;
 
   void interpolators_initialize();
   void interpolators_prepare(p4est_locidx_t n);
@@ -407,7 +411,7 @@ public:
       case DIRICHLET: there_is_dirichlet_ = true; break;
       default:
 #ifdef CASL_THROWS
-        throw std::runtime_error("my_p4est_poisson_nodes_mls_t::add_boundary: unknown boundary condition type, only DIRICHLET, NEUMANN, and ROBIN implemented. ");
+      throw std::runtime_error("my_p4est_poisson_nodes_mls_t:add_boundary: unknown boundary condition type, only DIRICHLET, NEUMANN and ROBIN implemented.");
 #endif
         break;
     }

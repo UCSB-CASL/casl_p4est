@@ -47,12 +47,12 @@ extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_level_set_t::compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM]) const
+void my_p4est_level_set_t::compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM], const u_int& blocksize) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  ngbd->second_derivatives_central(phi, phi_xxyyzz);
+  ngbd->second_derivatives_central(phi, phi_xxyyzz, blocksize);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -214,7 +214,7 @@ void my_p4est_level_set_t::reinitialize_one_iteration(double *phi_np1_p, const s
       //---------------------------------------------------------------------
       // Neumann boundary condition on the walls
       //---------------------------------------------------------------------
-      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
+      p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, node_idx);
 
       if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
       if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; if(second_order) { phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }}
@@ -538,6 +538,8 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0( Vec phi, const un
       ierr = VecDestroy(phi_0_xxyyzz[dim]);       CHKERRXX(ierr);
       ierr = VecDestroy(current_phi_xxyyzz[dim]); CHKERRXX(ierr);
     }
+    delete [] phi_0_xxyyzz;       delete [] phi_0_xxyyzz_read_p;
+    delete [] current_phi_xxyyzz; delete [] current_phi_xxyyzz_read_p;
   }
   free(phi_0_p);
 
@@ -601,7 +603,7 @@ void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(const std::v
     //---------------------------------------------------------------------
     // Neumann boundary condition on the walls
     //---------------------------------------------------------------------
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, node_idx);
 
     if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; phi_n_m00 = phi_n_p00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
     if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; phi_n_p00 = phi_n_m00; phi_n_xx_000 = phi_n_xx_m00 = phi_n_xx_p00 = 0.0; }
@@ -683,22 +685,22 @@ void my_p4est_level_set_t::advect_in_normal_direction(Vec phi, const double &dt,
 
   memcpy(phi_n_p, current_phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* now phi(Lnp1, Bnp1, Gnp1) */
   compute_derivatives(phi, current_phi_xxyyzz);
 
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateEnd  (phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -1848,8 +1850,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   /* initialize first order derivatives */
   if (order >=1 ) {
@@ -1867,6 +1869,31 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     EXECD( ierr = VecGetArray(qx, &qx_p); CHKERRXX(ierr),
            ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
            ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr); );
+
+    // second-order derivatives
+    if (order == 2)
+    {
+      if (q_d == NULL)
+      {
+        ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+        ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
+#endif
+      } else {
+        qxx = q_dd[0];
+        qyy = q_dd[1];
+#ifdef P4_TO_P8
+        qzz = q_dd[2];
+#endif
+      }
+
+      ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
+      ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+    }
 
     ierr = VecCreateGhostNodes(p4est, nodes, &b_qn_well_defined); CHKERRXX(ierr);
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
@@ -3146,35 +3173,42 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 #endif
 }
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
-                                                                                    DIM(std::vector<double>& nx, std::vector<double>& ny, std::vector<double>& nz),
-                                                                                    double *q_out_p,
-                                                                                    double *q_p,
-                                                                                    DIM(double *qxx_p, double *qyy_p, double *qzz_p),
-                                                                                    std::vector<double>& qi_m00, std::vector<double>& qi_p00,
-                                                                                    std::vector<double>& qi_0m0, std::vector<double>& qi_0p0
-                                                                                    ONLY3D(COMMA std::vector<double>& qi_00m COMMA std::vector<double>& qi_00p),
-                                                                                    std::vector<double>& s_m00 , std::vector<double>& s_p00,
-                                                                                    std::vector<double>& s_0m0 , std::vector<double>& s_0p0
-                                                                                    ONLY3D(COMMA std::vector<double>& s_00m COMMA std::vector<double>& s_00p)
-                                                                                    ) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iteration(const std::vector<int>& map, const double *phi_p, const double* grad_phi_p,
+                                                                                   double *q_out_p,
+                                                                                   const double *q_p, const double *qxxyyzz_p[P4EST_DIM],
+                                                                                   std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                                                   std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                                                   #ifdef P4_TO_P8
+                                                                                   std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                                                   #endif
+                                                                                   std::vector<double>& s_m00 , std::vector<double>& s_p00,
+                                                                                   std::vector<double>& s_0m0 , std::vector<double>& s_0p0,
+                                                                                   #ifdef P4_TO_P8
+                                                                                   std::vector<double>& s_00m , std::vector<double>& s_00p,
+                                                                                   #endif
+                                                                                   const u_int& blocksize) const
 {
   quad_neighbor_nodes_of_node_t qnnn;
   for(size_t n_map = 0; n_map < map.size(); ++n_map)
   {
     p4est_locidx_t n = map[n_map];
+    if(fabs(phi_p[n]) < zero_distance_threshold)
+    {
+      for (u_int k = 0; k < blocksize; ++k)
+        q_out_p[blocksize*n + k] = q_p[blocksize*n + k]; // you're literally on the interface so move on
+      continue;
+    }
     ngbd->get_neighbors(n, qnnn);
     //---------------------------------------------------------------------
     // Neighborhood information
     //---------------------------------------------------------------------
-    double p_000, p_m00, p_p00, p_0m0, p_0p0;
-    double q_000, q_m00, q_p00, q_0m0, q_0p0;
-#ifdef P4_TO_P8
-    double p_00m, p_00p;
-    double q_00m, q_00p;
-#endif
+    double p_000, p_m00, p_p00, p_0m0, p_0p0 ONLY3D(COMMA p_00m COMMA p_00p);
+    std::vector<double> q_000(blocksize), q_m00(blocksize), q_p00(blocksize), q_0m0(blocksize), q_0p0(blocksize) ONLY3D(COMMA q_00m(blocksize) COMMA q_00p(blocksize));
     qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000, p_m00, p_p00, p_0m0, p_0p0 ONLY3D(COMMA p_00m COMMA p_00p));
-    qnnn.ngbd_with_quadratic_interpolation(q_p  , q_000, q_m00, q_p00, q_0m0, q_0p0 ONLY3D(COMMA q_00m COMMA q_00p));
+    if(blocksize > 1)
+      qnnn.ngbd_with_quadratic_interpolation_all_components(&q_p, q_000.data(), q_m00.data(), q_p00.data(), q_0m0.data(), q_0p0.data() ONLY3D(COMMA q_00m.data() COMMA q_00p.data()), 1, blocksize);
+    else
+      qnnn.ngbd_with_quadratic_interpolation(&q_p, q_000.data(), q_m00.data(), q_p00.data(), q_0m0.data(), q_0p0.data() ONLY3D(COMMA q_00m.data() COMMA q_00p.data()), 1);
 
     double s_p00_ = qnnn.d_p00; double s_m00_ = qnnn.d_m00;
     double s_0p0_ = qnnn.d_0p0; double s_0m0_ = qnnn.d_0m0;
@@ -3184,82 +3218,69 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 
     if(p_000*p_m00 < 0.0) {
       s_m00_ = s_m00[n];
-      q_m00 = qi_m00[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_m00[k] = qi_m00[blocksize*n + k];
     }
     if(p_000*p_p00 < 0.0) {
       s_p00_ = s_p00[n];
-      q_p00 = qi_p00[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_p00[k] = qi_p00[blocksize*n + k];
     }
     if(p_000*p_0m0 < 0.0) {
       s_0m0_ = s_0m0[n];
-      q_0m0 = qi_0m0[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_0m0[k] = qi_0m0[blocksize*n + k];
     }
     if(p_000*p_0p0 < 0.0){
       s_0p0_ = s_0p0[n];
-      q_0p0 = qi_0p0[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_0p0[k] = qi_0p0[blocksize*n + k];
     }
 #ifdef P4_TO_P8
     if(p_000*p_00m < 0.0){
       s_00m_ = s_00m[n];
-      q_00m = qi_00m[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_00m[k] = qi_00m[blocksize*n + k];
     }
     if(p_000*p_00p < 0.0){
       s_00p_ = s_00p[n];
-      q_00p = qi_00p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        q_00p[k] = qi_00p[blocksize*n + k];
     }
 #endif
 
 //    double sgn = (p_000 > 0.0) ? 1.0 : -1.0;
-    double qxx_000, qxx_m00, qxx_p00, qxx_0m0, qxx_0p0;
-    double qyy_000, qyy_m00, qyy_p00, qyy_0m0, qyy_0p0;
+    std::vector<double> qxxyyzz_000(P4EST_DIM*blocksize);
+    std::vector<double> qxxyyzz_m00(P4EST_DIM*blocksize);
+    std::vector<double> qxxyyzz_p00(P4EST_DIM*blocksize);
+    std::vector<double> qxxyyzz_0m0(P4EST_DIM*blocksize);
+    std::vector<double> qxxyyzz_0p0(P4EST_DIM*blocksize);
 #ifdef P4_TO_P8
-    double qxx_00m, qxx_00p;
-    double qyy_00m, qyy_00p;
-    double qzz_000, qzz_m00, qzz_p00, qzz_0m0, qzz_0p0, qzz_00m, qzz_00p;
+    std::vector<double> qxxyyzz_00m(P4EST_DIM*blocksize);
+    std::vector<double> qxxyyzz_00p(P4EST_DIM*blocksize);
 #endif
-    qnnn.ngbd_with_quadratic_interpolation(qxx_p, qxx_000, qxx_m00, qxx_p00, qxx_0m0, qxx_0p0 ONLY3D(COMMA qxx_00m COMMA qxx_00p));
-    qnnn.ngbd_with_quadratic_interpolation(qyy_p, qyy_000, qyy_m00, qyy_p00, qyy_0m0, qyy_0p0 ONLY3D(COMMA qyy_00m COMMA qyy_00p));
-#ifdef P4_TO_P8
-    qnnn.ngbd_with_quadratic_interpolation(qzz_p, qzz_000, qzz_m00, qzz_p00, qzz_0m0, qzz_0p0, qzz_00m, qzz_00p);
-#endif
+    if(blocksize > 1)
+      qnnn.ngbd_with_quadratic_interpolation_all_components(qxxyyzz_p, qxxyyzz_000.data(), qxxyyzz_m00.data(), qxxyyzz_p00.data(), qxxyyzz_0m0.data(), qxxyyzz_0p0.data() ONLY3D(COMMA qxxyyzz_00m.data() COMMA qxxyyzz_00p.data()), P4EST_DIM, blocksize);
+    else
+      qnnn.ngbd_with_quadratic_interpolation(qxxyyzz_p, qxxyyzz_000.data(), qxxyyzz_m00.data(), qxxyyzz_p00.data(), qxxyyzz_0m0.data(), qxxyyzz_0p0.data() ONLY3D(COMMA qxxyyzz_00m.data() COMMA qxxyyzz_00p.data()), P4EST_DIM);
 
     //---------------------------------------------------------------------
     // Neumann boundary condition on the walls
     //---------------------------------------------------------------------
-    p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    p4est_indep_t *node = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, n);
 
     /* wall in the x direction */
-    if     (is_node_xmWall(p4est, node)) { s_m00_ = s_p00_; q_m00 = q_p00; qxx_000 = qxx_m00 = qxx_p00 = 0.0; }
-    else if(is_node_xpWall(p4est, node)) { s_p00_ = s_m00_; q_p00 = q_m00; qxx_000 = qxx_m00 = qxx_p00 = 0.0; }
+    if     (is_node_xmWall(p4est, node)) { s_m00_ = s_p00_; for (u_int k = 0; k < blocksize; ++k) { q_m00[k] = q_p00[k]; qxxyyzz_000[blocksize*0 + k] = qxxyyzz_m00[blocksize*0 + k] = qxxyyzz_p00[blocksize*0 + k] = 0.0; } }
+    else if(is_node_xpWall(p4est, node)) { s_p00_ = s_m00_; for (u_int k = 0; k < blocksize; ++k) { q_p00[k] = q_m00[k]; qxxyyzz_000[blocksize*0 + k] = qxxyyzz_m00[blocksize*0 + k] = qxxyyzz_p00[blocksize*0 + k] = 0.0; } }
 
     /* wall in the y direction */
-    if     (is_node_ymWall(p4est, node)) { s_0m0_ = s_0p0_; q_0m0 = q_0p0; qyy_000 = qyy_0m0 = qyy_0p0 = 0.0; }
-    else if(is_node_ypWall(p4est, node)) { s_0p0_ = s_0m0_; q_0p0 = q_0m0; qyy_000 = qyy_0m0 = qyy_0p0 = 0.0; }
+    if     (is_node_ymWall(p4est, node)) { s_0m0_ = s_0p0_; for (u_int k = 0; k < blocksize; ++k) { q_0m0[k] = q_0p0[k]; qxxyyzz_000[blocksize*1 + k] = qxxyyzz_0m0[blocksize*1 + k] = qxxyyzz_0p0[blocksize*1 + k] = 0.0; } }
+    else if(is_node_ypWall(p4est, node)) { s_0p0_ = s_0m0_; for (u_int k = 0; k < blocksize; ++k) { q_0p0[k] = q_0m0[k]; qxxyyzz_000[blocksize*1 + k] = qxxyyzz_0m0[blocksize*1 + k] = qxxyyzz_0p0[blocksize*1 + k] = 0.0; } }
 
 #ifdef P4_TO_P8
     /* wall in the y direction */
-    if     (is_node_zmWall(p4est, node)) { s_00m_ = s_00p_; q_00m = q_00p; qzz_000 = qzz_00m = qzz_00p = 0.0; }
-    else if(is_node_zpWall(p4est, node)) { s_00p_ = s_00m_; q_00p = q_00m; qzz_000 = qzz_00m = qzz_00p = 0.0; }
-#endif
-
-    //---------------------------------------------------------------------
-    // Second order accurate One-Sided Differecing
-    //---------------------------------------------------------------------
-//    double qxm = (q_000- q_m00)/s_m00_ + 0.5*s_m00_*MC(qxx_m00, qxx_000);
-//    double qxp = (q_p00- q_000)/s_p00_ - 0.5*s_p00_*MC(qxx_p00, qxx_000);
-//    double qym = (q_000- q_0m0)/s_0m0_ + 0.5*s_0m0_*MC(qyy_0m0, qyy_000);
-//    double qyp = (q_0p0- q_000)/s_0p0_ - 0.5*s_0p0_*MC(qyy_0p0, qyy_000);
-//#ifdef P4_TO_P8
-//    double qzm = (q_000- q_00m)/s_00m_ + 0.5*s_00m_*MC(qzz_00m, qzz_000);
-//    double qzp = (q_00p- q_000)/s_00p_ - 0.5*s_00p_*MC(qzz_00p, qzz_000);
-//#endif
-    double qxm = (q_000- q_m00)/s_m00_ + 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
-    double qxp = (q_p00- q_000)/s_p00_ - 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
-    double qym = (q_000- q_0m0)/s_0m0_ + 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
-    double qyp = (q_0p0- q_000)/s_0p0_ - 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
-#ifdef P4_TO_P8
-    double qzm = (q_000- q_00m)/s_00m_ + 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
-    double qzp = (q_00p- q_000)/s_00p_ - 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
+    if     (is_node_zmWall(p4est, node)) { s_00m_ = s_00p_; for (u_int k = 0; k < blocksize; ++k) { q_00m[k] = q_00p[k]; qxxyyzz_000[blocksize*2 + k] = qxxyyzz_00m[blocksize*2 + k] = qxxyyzz_00p[blocksize*2 + k] = 0.0; } }
+    else if(is_node_zpWall(p4est, node)) { s_00p_ = s_00m_; for (u_int k = 0; k < blocksize; ++k) { q_00p[k] = q_00m[k]; qxxyyzz_000[blocksize*2 + k] = qxxyyzz_00m[blocksize*2 + k] = qxxyyzz_00p[blocksize*2 + k] = 0.0; } }
 #endif
 
     //---------------------------------------------------------------------
@@ -3272,58 +3293,56 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 #endif
     dt /= ((double) P4EST_DIM);
 
-//    q_out_p[n] = q_000 - (dt*sgn) * ( nx[n]*( (sgn*nx[n] > 0.0) ? qxm : qxp) +
-//                                      ny[n]*( (sgn*ny[n] > 0.0) ? qym : qyp)
-//                                  #ifdef P4_TO_P8
-//                                      + nz[n]*( (sgn*nz[n] > 0.0) ? qzm : qzp)
-//                                  #endif
-//                                      );
-    q_out_p[n] = q_000 - dt*(SUMD(nx[n]*(nx[n] > 0.0 ? qxm : qxp), ny[n]*(ny[n] > 0.0 ? qym : qyp), nz[n]*(nz[n] > 0.0 ? qzm : qzp)));
+    const double mag_grad_phi = sqrt(SUMD(SQR(grad_phi_p[P4EST_DIM*n]), SQR(grad_phi_p[P4EST_DIM*n + 1]), SQR(grad_phi_p[P4EST_DIM*n + 2])));
+    const double nx = (mag_grad_phi > EPS ? (phi_p[n] < 0.0 ? -1.0 : +1.0)*grad_phi_p[P4EST_DIM*n + 0]/mag_grad_phi : 0.0);
+    const double ny = (mag_grad_phi > EPS ? (phi_p[n] < 0.0 ? -1.0 : +1.0)*grad_phi_p[P4EST_DIM*n + 1]/mag_grad_phi : 0.0);
+#ifdef P4_TO_P8
+    const double nz = (mag_grad_phi > EPS ? (phi_p[n] < 0.0 ? -1.0 : +1.0)*grad_phi_p[P4EST_DIM*n + 2]/mag_grad_phi : 0.0);
+#endif
+
+    //---------------------------------------------------------------------
+    // Second order accurate One-Sided Differecing
+    //---------------------------------------------------------------------
+    for (u_int k = 0; k < blocksize; ++k) {
+      double qxm = (q_000[k] - q_m00[k])/s_m00_ + 0.5*s_m00_*MINMOD(qxxyyzz_m00[blocksize*0 + k], qxxyyzz_000[blocksize*0 + k]);
+      double qxp = (q_p00[k] - q_000[k])/s_p00_ - 0.5*s_p00_*MINMOD(qxxyyzz_p00[blocksize*0 + k], qxxyyzz_000[blocksize*0 + k]);
+      double qym = (q_000[k] - q_0m0[k])/s_0m0_ + 0.5*s_0m0_*MINMOD(qxxyyzz_0m0[blocksize*1 + k], qxxyyzz_000[blocksize*1 + k]);
+      double qyp = (q_0p0[k] - q_000[k])/s_0p0_ - 0.5*s_0p0_*MINMOD(qxxyyzz_0p0[blocksize*1 + k], qxxyyzz_000[blocksize*1 + k]);
+#ifdef P4_TO_P8
+      double qzm = (q_000[k] - q_00m[k])/s_00m_ + 0.5*s_00m_*MINMOD(qxxyyzz_00m[blocksize*2 + k], qxxyyzz_000[blocksize*2 + k]);
+      double qzp = (q_00p[k] - q_000[k])/s_00p_ - 0.5*s_00p_*MINMOD(qxxyyzz_00p[blocksize*2 + k], qxxyyzz_000[blocksize*2 + k]);
+#endif
+      q_out_p[blocksize*n + k] = q_000[k] - dt*(SUMD(nx*(nx > 0.0 ? qxm : qxp), ny*(ny > 0.0 ? qym : qyp), nz*(nz > 0.0 ? qzm : qzp)));
+    }
   }
 }
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Vec qi, Vec q, int iterations, Vec mask, double band_zero, double band_smooth, double (*cf)(p4est_locidx_t, int, double)) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Vec qi, Vec q, int iterations, Vec mask, double band_zero, double band_smooth, double (*cf)(p4est_locidx_t, int, double),
+                                                                     Vec grad_phi_in, const u_int& blocksize) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
 
   if (mask != NULL && cf != NULL) throw std::invalid_argument("No mask and cf simultaneously at the moment");
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
+  P4EST_ASSERT(blocksize == 1 || (mask == NULL && cf == NULL)); // [Raphael:] I have augmented this for blocksize > 1. Since there is no documentation whatsoever for mask and/of cf, and I am no mind-reader, this is a restriction I had to enforce for my own sake
 
   /* find dx and dy smallest */
   splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-  double dl = MAX(DIM(dx, dy, dz));
+  const double dxyz_min[P4EST_DIM] = {DIM(tree_dimensions[0]/pow(2., (double) data->max_lvl), tree_dimensions[1]/pow(2., (double) data->max_lvl), tree_dimensions[2]/pow(2., (double) data->max_lvl))};
+  const double dl = MAX(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
 
   Vec qxxyyzz[P4EST_DIM];
-  double *qxxyyzz_p[P4EST_DIM];
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecCreateGhostNodes(p4est, nodes, &qxxyyzz[dim]); CHKERRXX(ierr);
+  const double *qxxyyzz_p[P4EST_DIM];
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostNodesBlock(p4est, nodes, blocksize, &qxxyyzz[dim]); CHKERRXX(ierr);
   }
-  compute_derivatives(qi, qxxyyzz);
+  compute_derivatives(qi, qxxyyzz, blocksize);
 
   Vec q1, q2;
   double *q1_p, *q2_p, *q_p, *qi_p, *phi_p;
-  ierr = VecDuplicate(phi, &q1); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &q2); CHKERRXX(ierr);
+  ierr = VecDuplicate(qi, &q1); CHKERRXX(ierr);
+  ierr = VecDuplicate(qi, &q2); CHKERRXX(ierr);
 
   ierr = VecGetArray(qi, &qi_p); CHKERRXX(ierr);
   ierr = VecGetArray(q , &q_p); CHKERRXX(ierr);
@@ -3331,43 +3350,21 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   ierr = VecGetArray(q2, &q2_p); CHKERRXX(ierr);
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-  /* compute the normals */
-  std::vector<double> nx(nodes->num_owned_indeps);
-  std::vector<double> ny(nodes->num_owned_indeps);
-#ifdef P4_TO_P8
-  std::vector<double> nz(nodes->num_owned_indeps);
-#endif
-  quad_neighbor_nodes_of_node_t qnnn;
-
-  for(p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-  {
-    ngbd->get_neighbors(n, qnnn);
-    qnnn.gradient(phi_p, DIM(nx[n], ny[n], nz[n]));
-    double norm = sqrt(SUMD(nx[n]*nx[n], ny[n]*ny[n], nz[n]*nz[n]));
-
-    if(norm > EPS)
-    {
-      if (phi_p[n] < 0.0) norm = -norm;
-      nx[n] /= norm;
-      ny[n] /= norm;
-#ifdef P4_TO_P8
-      nz[n] /= norm;
-#endif
-    }
-    else
-    {
-      nx[n] = 0.0;
-      ny[n] = 0.0;
-#ifdef P4_TO_P8
-      nz[n] = 0.0;
-#endif
-    }
+  /* fetch or compute grad phi */
+  Vec grad_phi = grad_phi_in;
+  const bool grad_phi_was_constructed_locally = (grad_phi == NULL);
+  if(grad_phi == NULL){
+    ierr = VecCreateNoGhostNodesBlock(p4est, nodes, P4EST_DIM, &grad_phi); CHKERRXX(ierr);
+    ngbd->first_derivatives_central(phi, grad_phi);
   }
+  const double *grad_phi_p;
+  ierr = VecGetArrayRead(grad_phi, &grad_phi_p); CHKERRXX(ierr);
 
+  quad_neighbor_nodes_of_node_t qnnn;
 
   /* compute second order derivatives of phi for second order accurate location */
   Vec dxxyyzz[P4EST_DIM]; double *dxxyyzz_p[P4EST_DIM];
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecCreateGhostNodes(p4est, nodes, &dxxyyzz[dim]); CHKERRXX(ierr);
   }
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
@@ -3375,56 +3372,66 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   compute_derivatives(phi, dxxyyzz);
 
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecGetArray(dxxyyzz[dim], &dxxyyzz_p[dim]); CHKERRXX(ierr);
   }
 
   /* initialization of q */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if (cf == NULL)
   {
     if (mask == NULL)
     {
       for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-        q_p[n] = fabs(phi_p[n])<1.5*dl ? qi_p[n] : 0;
+        for (u_int k = 0; k < blocksize; ++k)
+          q_p[blocksize*n + k] = fabs(phi_p[n]) < 1.5*dl ? qi_p[blocksize*n + k] : 0;
     } else {
       double *mask_p;
       ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
       for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-        q_p[n] = MAX(mask_p[n], fabs(phi_p[n]))<1.5*dl ? qi_p[n] : 0;
+        for (u_int k = 0; k < blocksize; ++k)
+          q_p[blocksize*n + k] = MAX(mask_p[n], fabs(phi_p[n])) < 1.5*dl ? qi_p[blocksize*n + k] : 0;
       ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
     }
   } else {
     for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      q_p[n] = 0.0;
+      for (u_int k = 0; k < blocksize; ++k)
+        q_p[blocksize*n + k] = 0.0;
   }
 
   // first initialize the quantities at the interface (instead of doing it each time in the loop ...)
-  std::vector<double> qi_m00(nodes->num_owned_indeps);
-  std::vector<double> qi_p00(nodes->num_owned_indeps);
-  std::vector<double> qi_0m0(nodes->num_owned_indeps);
-  std::vector<double> qi_0p0(nodes->num_owned_indeps);
+  // Raphael : this looks horrible and is probably fairly bad in case memory is tight:
+  // --> my advice is to use maps linking (unordered) pairs of node indices to interface values instead
+  // in order to keep that data to the bare minimum... (see structure which_interface_neighbor_t and
+  // the corresponding maps in my_p4est_interface_manager_t for example of implementation/usage
+  //
+  // --> with appropriate such management, you would also have only one single blocking call in order to
+  // interpolate the relevant interface values (instead of P4EST_FACES) --> better scalability
+  std::vector<double> qi_m00(blocksize*nodes->num_owned_indeps);
+  std::vector<double> qi_p00(blocksize*nodes->num_owned_indeps);
+  std::vector<double> qi_0m0(blocksize*nodes->num_owned_indeps);
+  std::vector<double> qi_0p0(blocksize*nodes->num_owned_indeps);
   std::vector<double> s_m00(nodes->num_owned_indeps);
   std::vector<double> s_p00(nodes->num_owned_indeps);
   std::vector<double> s_0m0(nodes->num_owned_indeps);
   std::vector<double> s_0p0(nodes->num_owned_indeps);
 
 #ifdef P4_TO_P8
-  std::vector<double> qi_00m(nodes->num_owned_indeps);
-  std::vector<double> qi_00p(nodes->num_owned_indeps);
+  std::vector<double> qi_00m(blocksize*nodes->num_owned_indeps);
+  std::vector<double> qi_00p(blocksize*nodes->num_owned_indeps);
   std::vector<double> s_00m(nodes->num_owned_indeps);
   std::vector<double> s_00p(nodes->num_owned_indeps);
 #endif
 
-  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
 #ifdef P4_TO_P8
-  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
-  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
+  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, DIM(qxxyyzz[0], qxxyyzz[1], qxxyyzz[2]), interpolation_on_interface, blocksize);
 #endif
 
   my_p4est_interpolation_nodes_t interp_mask(ngbd); interp_mask.set_input(mask, linear);
@@ -3480,7 +3487,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     }
     else
     {
-      qi_m00[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_m00[blocksize*n + k] = qi_p[blocksize*n + k];
       s_m00[n] = s_m00_;
     }
 
@@ -3496,7 +3504,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     }
     else
     {
-      qi_p00[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_p00[blocksize*n + k] = qi_p[blocksize*n + k];
       s_p00[n] = s_p00_;
     }
 
@@ -3511,7 +3520,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     }
     else
     {
-      qi_0m0[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_0m0[blocksize*n + k] = qi_p[blocksize*n + k];
       s_0m0[n] = s_0m0_;
     }
 
@@ -3528,42 +3538,45 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     }
     else
     {
-      qi_0p0[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_0p0[blocksize*n + k] = qi_p[blocksize*n + k];
       s_0p0[n] = s_0p0_;
     }
 
 #ifdef P4_TO_P8
     if(p_000*p_00m < 0.0)
     {
-//      dist = interface_Location(0, s_00m_, p_000, p_00m);
+      //      dist = interface_Location(0, s_00m_, p_000, p_00m);
       dist = interface_Location_With_Second_Order_Derivative(0, s_00m_, p_000, p_00m, pzz_000, pzz_00m);
       dist = MAX(dist, EPS);
       double xyz[] = { x, y, z - dist };
 
-        if (cf == NULL) interp_00m.add_point(n, xyz);
-        else qi_00m[n] = (*cf)(n, dir::f_00m, dist);
-        s_00m[n] = dist;
+      if (cf == NULL) interp_00m.add_point(n, xyz);
+      else qi_00m[n] = (*cf)(n, dir::f_00m, dist);
+      s_00m[n] = dist;
     }
     else
     {
-      qi_00m[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_00m[blocksize*n + k] = qi_p[blocksize*n + k];
       s_00m[n] = s_00m_;
     }
 
     if(p_000*p_00p < 0.0)
     {
-//      dist = interface_Location(0, s_00p_, p_000, p_00p);
+      //      dist = interface_Location(0, s_00p_, p_000, p_00p);
       dist = interface_Location_With_Second_Order_Derivative(0, s_00p_, p_000, p_00p, pzz_000, pzz_00p);
       dist = MAX(dist, EPS);
       double xyz[] = { x, y, z + dist };
 
-        if (cf == NULL) interp_00p.add_point(n, xyz);
-        else qi_00p[n] = (*cf)(n, dir::f_00p, dist);
-        s_00p[n] = dist;
+      if (cf == NULL) interp_00p.add_point(n, xyz);
+      else qi_00p[n] = (*cf)(n, dir::f_00p, dist);
+      s_00p[n] = dist;
     }
     else
     {
-      qi_00p[n] = qi_p[n];
+      for (u_int k = 0; k < blocksize; ++k)
+        qi_00p[blocksize*n + k] = qi_p[blocksize*n + k];
       s_00p[n] = s_00p_;
     }
 #endif
@@ -3624,82 +3637,82 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     // q1 = q - dt*sgn(phi)*n \cdot \nabla(q) by the Godunov scheme with ENO-2 and subcell resolution
     //---------------------------------------------------------------------
 
-    compute_derivatives(q, qxxyyzz);
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecGetArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    compute_derivatives(q, qxxyyzz, blocksize);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
     }
 
     /* First do layer nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, DIM(nx, ny, nz),
+    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, grad_phi_p,
                                                             q1_p,
-                                                            q_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
+                                                            q_p, qxxyyzz_p,
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
                                                             s_m00, s_p00,
                                                             s_0m0, s_0p0
-                                                            ONLY3D(COMMA s_00m COMMA s_00p));
+                                                            ONLY3D(COMMA s_00m COMMA s_00p), blocksize);
 
     /* initiate communication for q1 */
     ierr = VecGhostUpdateBegin(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* compute the local nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, DIM(nx, ny, nz),
+    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, grad_phi_p,
                                                             q1_p,
-                                                            q_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
+                                                            q_p, qxxyyzz_p,
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
                                                             s_m00, s_p00,
                                                             s_0m0, s_0p0
-                                                            ONLY3D(COMMA s_00m COMMA s_00p));
+                                                            ONLY3D(COMMA s_00m COMMA s_00p), blocksize);
 
     /* finish communication for q1 */
     ierr = VecGhostUpdateEnd(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecRestoreArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
     }
 
-    compute_derivatives(q, qxxyyzz);
+    compute_derivatives(q1, qxxyyzz, blocksize);
 
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecGetArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecGetArrayRead(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
     }
 
     //---------------------------------------------------------------------
     // q2 = q1 - dt*sgn(phi)*n \cdot \nabla(q1) by the Godunov scheme with ENO-2 and subcell resolution
     //---------------------------------------------------------------------
     /* First do layer nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, DIM(nx, ny, nz),
+    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, grad_phi_p,
                                                             q2_p,
-                                                            q1_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
+                                                            q1_p, qxxyyzz_p,
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
                                                             s_m00, s_p00,
                                                             s_0m0, s_0p0
-                                                            ONLY3D(COMMA s_00m COMMA s_00p));
+                                                            ONLY3D(COMMA s_00m COMMA s_00p), blocksize);
 
     /* initiate communication for q2 */
     ierr = VecGhostUpdateBegin(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     /* compute the local nodes */
-    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, DIM(nx, ny, nz),
+    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, grad_phi_p,
                                                             q2_p,
-                                                            q1_p, DIM(qxxyyzz_p[0], qxxyyzz_p[1], qxxyyzz_p[2]),
+                                                            q1_p, qxxyyzz_p,
                                                             qi_m00, qi_p00,
                                                             qi_0m0, qi_0p0
                                                             ONLY3D(COMMA qi_00m COMMA qi_00p),
                                                             s_m00, s_p00,
                                                             s_0m0, s_0p0
-                                                            ONLY3D(COMMA s_00m COMMA s_00p));
+                                                            ONLY3D(COMMA s_00m COMMA s_00p), blocksize);
 
     /* finish communication for q2 */
     ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecRestoreArray(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArrayRead(qxxyyzz[dim], &qxxyyzz_p[dim]); CHKERRXX(ierr);
     }
 
 //    if (show_convergence)
@@ -3723,7 +3736,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
     // The third step of TVD RK-2 : q = .5*(q + q2)
     //---------------------------------------------------------------------
     for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
-      q_p[n] = .5*(q_p[n] + q2_p[n]);
+      for (u_int k = 0; k < blocksize; ++k)
+        q_p[blocksize*n + k] = .5*(q_p[blocksize*n + k] + q2_p[blocksize*n + k]);
   }
 
 
@@ -3737,10 +3751,13 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 
   ierr = VecDestroy(q1); CHKERRXX(ierr);
   ierr = VecDestroy(q2); CHKERRXX(ierr);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecDestroy(qxxyyzz[dim]); CHKERRXX(ierr);
     ierr = VecRestoreArray(dxxyyzz[dim], &dxxyyzz_p[dim]); CHKERRXX(ierr);
     ierr = VecDestroy(dxxyyzz[dim]);  CHKERRXX(ierr);
+  }
+  if(grad_phi_was_constructed_locally){
+    ierr = VecDestroy(grad_phi); CHKERRXX(ierr);
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
@@ -4113,10 +4130,8 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
 
   dxyz_min(p4est, dxyz);
 
-  /* init the neighborhood information if needed */
-  ngbd->init_neighbors();
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   /* compute the normals */
   double *normal_p[P4EST_DIM];
@@ -4506,12 +4521,6 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
 
   dxyz_min(p4est, dxyz);
 
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   double *normal_p[P4EST_DIM];
 
@@ -4570,8 +4579,8 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if(order >= 1)
   {
@@ -5403,13 +5412,6 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
 
   dxyz_min(p4est, dxyz);
 
-
-  /* init the neighborhood information if needed */
-  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
-   * at the end of this function if they were not initialized beforehand ?
-   */
-  ngbd->init_neighbors();
-
   /* compute the normals */
   std::vector<double> nx(nodes->num_owned_indeps);
   std::vector<double> ny(nodes->num_owned_indeps);
@@ -5445,8 +5447,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
 
   if(order >= 1)
   {

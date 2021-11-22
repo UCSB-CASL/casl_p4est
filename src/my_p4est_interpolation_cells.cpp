@@ -1,13 +1,14 @@
 #ifdef P4_TO_P8
+#include <src/my_p8est_solve_lsqr.h>
 #include "my_p8est_interpolation_cells.h"
 #else
+#include <src/my_p4est_solve_lsqr.h>
 #include "my_p4est_interpolation_cells.h"
 #endif
 
 #include <algorithm>
 
 #include <src/matrix.h>
-#include <src/my_p4est_solve_lsqr.h>
 
 void my_p4est_interpolation_cells_t::set_input(Vec* F, const Vec phi_, const BoundaryConditionsDIM *bc_, const size_t &n_vecs_)
 {
@@ -17,13 +18,13 @@ void my_p4est_interpolation_cells_t::set_input(Vec* F, const Vec phi_, const Bou
   P4EST_ASSERT(bc != NULL);
 }
 
-void my_p4est_interpolation_cells_t::operator ()(const double *xyz, double* results) const
+void my_p4est_interpolation_cells_t::operator ()(const double *xyz, double* results, const u_int &) const
 {
   int rank_found = -1;
   std::vector<p4est_quadrant_t> remote_matches;
   try
   {
-    clip_point_and_interpolate_all_on_the_fly(xyz, results, rank_found, remote_matches, true);
+    clip_point_and_interpolate_all_on_the_fly(xyz, ALL_COMPONENTS, results, rank_found, remote_matches, true); // second input is dummy in this case, interpolate allows only bs_f == 1
     // we allow the procedure to proceed even in ghost layer because it is conceptually possible
     // however with a possibly restricted cell neighborhood
     // --> this may introduce and trigger process-dependent outcomes which is not ideal
@@ -44,7 +45,7 @@ void my_p4est_interpolation_cells_t::operator ()(const double *xyz, double* resu
   return;
 }
 
-void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &) const
+void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const u_int &) const
 {
   PetscErrorCode ierr;
 
@@ -56,8 +57,8 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
   const size_t n_functions = n_vecs();
   P4EST_ASSERT(n_functions > 0);
   P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
-  const double *Fi_p[n_functions];
-  for (unsigned int k = 0; k < n_functions; ++k) {
+  std::vector<const double *> Fi_p(n_functions);
+  for (u_int k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
   }
 
@@ -65,7 +66,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
   const double *tree_dimensions = ngbd_c->get_tree_dimensions();
   double quad_xyz[P4EST_DIM]; quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, quad_xyz);
   bool is_quad_center = true;
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
     is_quad_center = is_quad_center && fabs(xyz[dim] - quad_xyz[dim]) < EPS*tree_dimensions[dim];
   if(is_quad_center)
   {
@@ -85,7 +86,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
 
   matrix_t A;
   A.resize(1, 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM+1)/2);
-  std::vector<double> p[n_functions];
+  std::vector<double>* p = new std::vector<double>[n_functions];
   for (size_t k = 0; k < n_functions; ++k)
     p[k].resize(0);
   std::vector<double> nb[P4EST_DIM];
@@ -99,41 +100,41 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
 
   const double min_w = 1e-6;
   const double inv_max_w = 1e-6;
-  unsigned int row_idx = 0;
+  int row_idx = 0;
 
   for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
     if(quadrant_value_is_well_defined(*bc, p4est, ghost, nodes, it->p.piggy3.local_num, it->p.piggy3.which_tree, node_sampled_phi_p))
     {
       double xyz_t[P4EST_DIM]; quad_xyz_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost, xyz_t);
 
-      for(unsigned char i = 0; i < P4EST_DIM; ++i)
+      for(u_char dim = 0; dim < P4EST_DIM; ++dim)
       {
-        xyz_t[i] = (xyz_t[i] - xyz[i]);
-        if(periodicity[i])
+        xyz_t[dim] = xyz_t[dim] - xyz[dim];
+        if(periodicity[dim])
         {
-          const double pp = xyz_t[i]/(xyz_max[i] - xyz_min[i]);
-          xyz_t[i] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[i] - xyz_min[i]);
+          const double pp = xyz_t[dim]/(xyz_max[dim] - xyz_min[dim]);
+          xyz_t[dim] -= (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
         }
-        xyz_t[i] /= scaling;
+        xyz_t[dim] /= scaling;
       }
 
       const double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
-      unsigned char col_idx = 0;
+      int col_idx = 0;
       A.set_value(row_idx, col_idx++, w); // constant term
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        A.set_value(row_idx, col_idx++, xyz_t[dir]*w); // linear terms
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        for (unsigned char dd = dir; dd < P4EST_DIM; ++dd)
-          A.set_value(row_idx, col_idx++, xyz_t[dir]*xyz_t[dd]*w); // quadratic terms
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        A.set_value(row_idx, col_idx++, xyz_t[dim]*w); // linear terms
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        for (u_char dd = dim; dd < P4EST_DIM; ++dd)
+          A.set_value(row_idx, col_idx++, xyz_t[dim]*xyz_t[dd]*w); // quadratic terms
       P4EST_ASSERT(col_idx == 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
 
       for (size_t k = 0; k < n_functions; ++k)
         p[k].push_back(Fi_p[k][it->p.piggy3.local_num] * w);
 
-      for(unsigned char d = 0; d < P4EST_DIM; ++d)
-        if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end()) // comparison of doubles... --> bad :-/
-          nb[d].push_back(xyz_t[d]);
+      for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+        if(std::find(nb[dim].begin(), nb[dim].end(), xyz_t[dim]) == nb[dim].end()) // comparison of doubles... --> bad :-/
+          nb[dim].push_back(xyz_t[dim]);
 
       row_idx++;
     }
@@ -144,11 +145,15 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
     results[k] = 0.0;
   }
   if(row_idx == 0) // that means no valid neighbor was found, we can't compute anything...
+  {
+    delete [] p;
     return;
+  }
 
   A.scale_by_maxabs(p, n_functions);
 
   solve_lsqr_system(A, p, n_functions, results, DIM(nb[0].size(), nb[1].size(), nb[2].size()));
+  delete [] p;
 
   return;
 }

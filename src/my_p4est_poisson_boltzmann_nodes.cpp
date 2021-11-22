@@ -1,15 +1,15 @@
-#include "my_p4est_poisson_boltzmann_nodes.h"
-
 #ifdef P4_TO_P8
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_poisson_nodes.h>
+#include "my_p8est_poisson_boltzmann_nodes.h"
 #else
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_poisson_nodes.h>
+#include "my_p4est_poisson_boltzmann_nodes.h"
 #endif
 
 #include <src/petsc_compatibility.h>

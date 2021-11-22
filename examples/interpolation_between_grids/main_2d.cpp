@@ -248,7 +248,7 @@ void evaluate_max_error_on_destination_grid(const unsigned int &method,
 {
   PetscErrorCode ierr;
   const double *results_block_p;
-  const double *results_p[nfields];
+  std::vector<const double *> results_p(nfields);
 
   if(method==2){
     ierr = VecGetArrayRead(results_block, &results_block_p); CHKERRXX(ierr); }
@@ -394,12 +394,12 @@ int main (int argc, char* argv[]){
   // Now create the destination forest
   create_grid_ghost_and_nodes(mpi, connectivity, lmin_to, lmax_to, circ, p4est_to, ghost_to, nodes_to);
 
-  const my_test_function *cf_field[nfields];
+  std::vector<const my_test_function *> cf_field(nfields);
   for (unsigned int k = 0; k < nfields; ++k)
     cf_field[k] = new my_test_function(DIM(random_generator(0.1, 0.9), random_generator(0.1, 0.9), random_generator(0.1, 0.9)));
 
-  Vec field_[nfields];
-  Vec DIM(field_xx[nfields], field_yy[nfields], field_zz[nfields]);
+  std::vector<Vec> field_(nfields);
+  std::vector<Vec> DIM(field_xx(nfields), field_yy(nfields), field_zz(nfields));
   for (unsigned int k = 0; k < nfields; ++k) {
     field_[k] = NULL; field_xx[k] = NULL; field_yy[k] = NULL; ONLY3D(field_zz[k] = NULL;)
   }
@@ -409,7 +409,7 @@ int main (int argc, char* argv[]){
   // We track the total time spent on interpolation
   double time_spent_on_interpolation = 0.0;
   // relevant error measures on former grid (--> '_m1') and on the current grid
-  double max_err_ssm1[nfields], max_err_ss[nfields];
+  std::vector<double> max_err_ssm1(nfields), max_err_ss(nfields);
 
   for (unsigned int ss = 0; ss < nsplits; ++ss) {
     if(ss > 0)
@@ -430,14 +430,15 @@ int main (int argc, char* argv[]){
       ngbd_from.init_neighbors(); // (this is not mandatory, but it can only help regarding performance given how much we'll neeed the node neighbors)
 
     ierr = create_vectors_and_sample_functions_on_nodes(method, precompute_derivatives,
-                                                        p4est_from, nodes_from, &ngbd_from, cf_field, nfields,
+                                                        p4est_from, nodes_from, &ngbd_from, cf_field.data(), nfields,
                                                         field_block, field_block_xxyyzz,
-                                                        field_, DIM(field_xx, field_yy, field_zz)); CHKERRXX(ierr);
+                                                        field_.data(), DIM(field_xx.data(), field_yy.data(), field_zz.data())); CHKERRXX(ierr);
 
     // now let's create the node interpolator tool
     my_p4est_interpolation_nodes_t node_interpolator(&ngbd_from);
     // let's initialize the results
-    Vec results_[nfields], results_block;
+    std::vector<Vec> results_(nfields);
+    Vec results_block;
     results_block = NULL;
     for (unsigned int k = 0; k < nfields; ++k)
       results_[k] = NULL;
@@ -469,9 +470,9 @@ int main (int argc, char* argv[]){
       break;
     case 1:
       if(precompute_derivatives)
-        node_interpolator.set_input(field_, DIM(field_xx, field_yy, field_zz), chosen_interpolation, nfields);
+        node_interpolator.set_input(field_, DIM(field_xx, field_yy, field_zz), chosen_interpolation);
       else
-        node_interpolator.set_input(field_, chosen_interpolation, nfields);
+        node_interpolator.set_input(field_, chosen_interpolation);
 
       for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
       {
@@ -507,11 +508,11 @@ int main (int argc, char* argv[]){
       for (unsigned int k = 0; k < nfields; ++k)
         max_err_ssm1[k] = max_err_ss[k];
 
-    evaluate_max_error_on_destination_grid(method, p4est_to, nodes_to, cf_field, nfields,
-                                           results_, results_block, max_err_ss);
+    evaluate_max_error_on_destination_grid(method, p4est_to, nodes_to, cf_field.data(), nfields,
+                                           results_.data(), results_block, max_err_ss.data());
     ierr = destroy_vectors_if_needed(nfields, field_block, field_block_xxyyzz,
-                                     field_, DIM(field_xx, field_yy, field_zz),
-                                     results_, &results_block); CHKERRXX(ierr);
+                                     field_.data(), DIM(field_xx.data(), field_yy.data(), field_zz.data()),
+                                     results_.data(), &results_block); CHKERRXX(ierr);
 
 
     if (mpi.rank() == 0 && ss>0)
