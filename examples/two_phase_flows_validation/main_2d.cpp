@@ -61,7 +61,7 @@ const string default_work_folder = "/scratch/regan/two_phase_flow/validation_tes
 #elif defined(ABADDON)
 const string default_work_folder = "/Users/raphael/workspace/projects/two_phase_flow/validation_tests/" + to_string(P4EST_DIM) + "D";
 #else
-const string default_work_folder = "/home/regan/workspace/projects/two_phase_flow/validation_tests/" + to_string(P4EST_DIM) + "D";
+const string default_work_folder = "/home/rochi/work/CASL/release/two_phase_flows_validation/" + to_string(P4EST_DIM) + "D";
 #endif
 
 void get_pressure_errors(double& error_p_minus, double& error_p_plus, const my_p4est_two_phase_flows_t* solver, test_case_for_two_phase_flows_t* test_problem)
