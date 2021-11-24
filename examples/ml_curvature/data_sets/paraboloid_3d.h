@@ -85,6 +85,7 @@ public:
  */
 class ParaboloidPointDistanceModel
 {
+public:
 	typedef dlib::matrix<double,0,1> column_vector;
 	typedef dlib::matrix<double> general_matrix;
 
@@ -169,6 +170,7 @@ public:
 	 * @param [out] grad Gradient of distance-point function.
 	 * @param [out] H Hessian of distance-point function.
 	 */
+	__attribute__((unused))
 	void get_derivative_and_hessian( const column_vector& x, column_vector& grad, general_matrix& H ) const
 	{
 		grad = _evalGradient( x );
@@ -181,18 +183,24 @@ public:
 class ParaboloidLevelSet : public geom::DiscretizedMongePatch
 {
 private:
-	const double _beta;				// Transformation parameters to vary canonical system w.r.t. world coordinate system.
-	const Point3 _axis;				// These include a rotation (unit) axis and angle, and a translation vector that sets
-	const Point3 _trns;				// the origin of the canonical system to any point in space.
-	const double _c, _s;			// Since we use cosine and sine of beta a lot, let's precompute them.
-	const double _one_m_c;			// (1-cos(beta)).
+	__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coor-
+	const Point3 _axis;							// dinate system.  These include a rotation (unit) axis and angle, and a
+	const Point3 _trns;							// translation vector that sets the origin of the canonical system to
+												// any point in space.
+	const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
+	const double _one_m_c;						// (1-cos(beta)).
 
-	const Paraboloid *_paraboloid;	// Paraboloid in canonical coordinates.
+	double _deltaStop;							// Convergence for Newton's method for finding close-to-analytical
+												// distance to paraboloid.
 
-	bool _useCache = false;									// Computing distance to triangulated surface is expensive
-	mutable std::unordered_map<std::string, double> _cache;	// -- let's have a cache to avoid repeated queries.
+	const Paraboloid *_paraboloid;				// Paraboloid in canonical coordinates.
+
+	bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
+	mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;		// distances and nearest points.
 
 public:
+	typedef dlib::matrix<double,0,1> column_vector;
+
 	/**
 	 * Constructor.
 	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
@@ -209,6 +217,7 @@ public:
 	{
 		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
 			throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::constructor: Rotation axis shouldn't be 0!" );
+		_deltaStop = 1e-8 * _h;
 	}
 
 	/**
@@ -240,6 +249,7 @@ public:
 	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
 	 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
 	 */
+	__attribute__((unused))
 	Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
 	{
 		Point3 r;
@@ -276,7 +286,7 @@ public:
 			if( record != _cache.end() )
 			{
 //				std::cout << "From cache [" << record->first << "] (" << x << ", " << y << ", " << z << "): " << record->second << std::endl;
-				return record->second;
+				return (record->second).first;
 			}
 		}
 
@@ -290,10 +300,71 @@ public:
 
 		if( _useCache )
 		{
-			_cache[coords] = d;
+			_cache[coords] = std::make_pair( d, getLastNearestUVQ() );
 //			std::cout << "Cached [" << coords << "] (" << x << ", " << y << ", " << z << "): " << d << std::endl;
 		}
 		return d;
+	}
+
+	/**
+	 * Compute exact signed distance to paraboloid using Newton's method and trust region in dlib.
+	 * @param [in] x Query x-coordinate.
+	 * @param [in] y Query y-coordinate.
+	 * @param [in] z Query z-coordinate.
+	 * @return Shortest distance.
+	 * @throws runtime error if new shortest distance is larger than the one from computed from the triangulated surface.
+	 */
+	double computeExactSignedDistance( double x, double y, double z ) const
+	{
+		if( _useCache )		// Use this only if you know that the coordinate normalized by h yields an integer!
+		{
+			std::string coords = std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
+			auto record = _cache.find( coords );
+			if( record != _cache.end() )
+			{
+				double initialTrustRadius = MAX( 3 * _h, ABS( (record->second).first ) );
+				column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// u and v coords for initial point.
+
+				Point3 p = toCanonicalCoordinates( x, y, z );
+				dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
+											 ParaboloidPointDistanceModel( p, *_paraboloid ), initialPoint, initialTrustRadius );
+
+				// Check if minimization produced a better d* distance from q to the paraboloid.  Exploit paraboloid's
+				// convexity to detect if the optimization process succeeded.  If p is in Omega+, then d* <= d always.
+				// If p is in Omega-, then |d*| >= |d| most of the time; the exception is for points inside the region
+				// between the linear approximation of Gamma and the exact surface.
+				Point3 q( initialPoint(0), initialPoint(1), (*_paraboloid)( initialPoint(0), initialPoint(1) ) );
+				double dist = (p - q).norm_L2();
+				if( record->second.first > 0 )
+				{
+					if( dist - ABS( (record->second).first ) > EPS * _h )
+						throw std::runtime_error( "Computed shortest distance is larger than before for node key " + coords + " in Omega+!" );
+				}
+				else
+				{
+					if( dist - ABS( (record->second).first ) < -EPS * _h )
+						throw std::runtime_error( "Computed shortest distance is smaller than before for node key " + coords + " in Omega-!" );
+				}
+
+				record->second.first = SIGN( (record->second).first ) * dist;	// Update shortest distance and closest point on the paraboloid.
+				record->second.second = q;
+				return record->second.first;
+			}
+			else
+				throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::computeExactSignedDistance: Can't locate point in cache!" );
+		}
+		else
+			throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::computeExactSignedDistance: Method works only with cache enabled and nonempty!" );
+	}
+
+	/**
+	 * @see computeExactSignedDistance( double x, double y, double z )
+	 * @param [in] xyz Query point in world coordinates.
+	 * @return Shortest distance to paraboloid.
+	 */
+	double computeExactSignedDistance( const double xyz[P4EST_DIM] ) const
+	{
+		return computeExactSignedDistance( xyz[0], xyz[1], xyz[2] );
 	}
 
 	/**
@@ -328,6 +399,15 @@ public:
 	void clearCache()
 	{
 		_cache.clear();
+	}
+
+	/**
+	 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
+	 * @param n
+	 */
+	void reserveCache( size_t n )
+	{
+		_cache.reserve( n );
 	}
 };
 

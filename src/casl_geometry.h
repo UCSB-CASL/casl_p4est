@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: November 17, 2021.
+ * Updated: November 23, 2021.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -772,6 +772,8 @@ namespace geom
 	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
 	 * The domain R is rectangular, with h = 2^{-L}, where L > 0.  This is similar to how we handle quadtrees, but here
 	 * there are no intermediate cells.
+	 *
+	 * @warning Not a thread-safe class!
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
@@ -784,6 +786,7 @@ namespace geom
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
 		std::vector<Point3> _points;			// Points defining the grid.
 		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
+		mutable Point3 _lastNearestUVQ;			// Stores the u-v-q coords of last nearest-point query.
 
 	public:
 		/**
@@ -830,7 +833,7 @@ namespace geom
 
 			// Organize the points into a balltree for fast knn search: don't make copies of points.  We'll keep them in
 			// this object to link them to triangles.
-			_balltree = new Balltree( _points, false );
+			_balltree = new Balltree( _points, false, btKLeaf );
 
 			// Triangulation.  The pattern is the following, starting from the bottom-left corner of the domain.
 			//     :    :    :    :
@@ -908,6 +911,7 @@ namespace geom
 
 		/**
 		 * Implementation of query function for distance.  This is not "signed" distance though.
+		 * Upon exiting, the function sets the variable _lastNearestUVQ with the coordinates of nearest point to query.
 		 * @note A child class should re-implement this function accounting for the signed distance to the discretized
 		 * interface.
 		 * @param [in] x Coordinate in x.
@@ -919,8 +923,18 @@ namespace geom
 		{
 			Point3 q( x, y, z );
 			double d = DBL_MAX;
-			findNearestPoint( q, d );
+			_lastNearestUVQ = findNearestPoint( q, d );
 			return  d;
+		}
+
+		/**
+		 * Retrieve the coordinates of the nearest point on the triangulated surface to a query point performed in the
+		 * ()-operator method.  Function useful for caching.
+		 * @return Last nearest point from a query.
+		 */
+		Point3 getLastNearestUVQ() const
+		{
+			return _lastNearestUVQ;
 		}
 
 		/**

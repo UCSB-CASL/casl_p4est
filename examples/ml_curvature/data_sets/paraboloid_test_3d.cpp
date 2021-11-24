@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: November 21, 2021.
+ * Updated: November 23, 2021.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -82,7 +82,7 @@ int main ( int argc, char* argv[] )
 		const size_t halfV = ceil(sqrt( hiQV / B ) / H);				// Half v axis in terms of H.
 
 		double timeCreate = watch.get_duration_current();
-		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid );
+		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid, 5 );
 		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
 		paraboloidLevelSet.dumpTriangles( "paraboloid_triangles.csv" );
 		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &paraboloidLevelSet, 2.0 );
@@ -94,6 +94,7 @@ int main ( int argc, char* argv[] )
 		// Refine and partition forest.
 		double timeProcessingQueries = watch.get_duration_current();
 		paraboloidLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
+		paraboloidLevelSet.reserveCache( (size_t)pow( 0.75 * MAX_D / H, 3 ) );	// Reserve space in cache to improve hashing.
 		for( int i = 0; i < maxRL(); i++ )					// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
@@ -114,16 +115,35 @@ int main ( int argc, char* argv[] )
 		Vec phi;
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 
-		// Calculate the level-set function values for each independent node.
-		double *phiPtr;
-		CHKERRXX( VecGetArray( phi, &phiPtr ) );
+		// A ghosted parallel vector to keep track of nodes where we computed exact signed distances to Gamma.
+		Vec exactFlag;
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
 
-		// TODO: Here, we should recompute the exact distance for vertices within a shell around Gamma.
+		// Calculate the level-set function values for each independent node and compute exact distances within a shell.
+		double *phiPtr, *exactFlagPtr;
+		CHKERRXX( VecGetArray( phi, &phiPtr ) );
+		CHKERRXX( VecGetArray( exactFlag, &exactFlagPtr ) );
+
+		// Compute the exact distance for vertices within a (rough) shell around Gamma.
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
-			phiPtr[n] = paraboloidLevelSet( xyz[0], xyz[1], xyz[2] );
+			phiPtr[n] = paraboloidLevelSet( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
+
+			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
+			if( ABS( phiPtr[n] ) <= 3 * H )
+			{
+				try
+				{
+					phiPtr[n] = paraboloidLevelSet.computeExactSignedDistance( xyz );	// Also modifies the cache.
+					exactFlagPtr[n] = 1;
+				}
+				catch( const std::exception &e )
+				{
+					std::cerr << e.what() << std::endl;
+				}
+			}
 		}
 
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
@@ -182,14 +202,17 @@ int main ( int argc, char* argv[] )
 		oss << "paraboloid_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								2, 0, oss.str().c_str(),
+								3, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
-								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr );
+								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
+								VTK_POINT_DATA, "exactFlag", exactFlagPtr );
 
 		// Clean up.
+		CHKERRXX( VecRestoreArray( exactFlag, &exactFlagPtr ) );
 		CHKERRXX( VecRestoreArray( interfaceFlag, &interfaceFlagPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
+		CHKERRXX( VecDestroy( exactFlag ) );
 		CHKERRXX( VecDestroy( interfaceFlag ) );
 		CHKERRXX( VecDestroy( phi ) );
 
