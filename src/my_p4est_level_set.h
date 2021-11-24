@@ -202,11 +202,11 @@ inline void add_dof_to_extrapolation_map(std::map<p4est_locidx_t, data_for_geome
 
 class my_p4est_level_set_t {
 
-  const my_p4est_brick_t *myb;
-  const p4est_t *p4est;
-  const p4est_nodes_t *nodes;
-  const p4est_ghost_t *ghost;
-  const my_p4est_node_neighbors_t *ngbd;
+  my_p4est_brick_t *myb;
+  p4est_t *p4est;
+  p4est_nodes_t *nodes;
+  p4est_ghost_t *ghost;
+  my_p4est_node_neighbors_t *ngbd;
   const double tree_dimensions[P4EST_DIM], zero_distance_threshold;
 
   void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM], const u_int& blocksize = 1) const;
@@ -383,39 +383,37 @@ public:
    * \param ngbd_ pointer to a my_p4est_node_neighbors object, this constructor will initialize the node neighborhood information
    */
   my_p4est_level_set_t(my_p4est_node_neighbors_t* ngbd_)
-    : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()),
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
       zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
-      interpolation_on_interface(quadratic_non_oscillatory),
+      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
       bc_rel_thresh(1.e-8), use_two_step_extrapolation(false)
   {}
 
+   //11/22/21 -- Elyce and Rochi merge -- commented out the below code, because show_convergence is no longer part of  this function in the updated version from Daniil
   /*!
    * \brief my_p4est_level_set_t constructor based on a pointer to a CONSTANT node-neighborhood object. Too bad for you if the node neighbors
    * are not initialized upon calling this constructor because you'll pay the price...
    * \param ngbd_ pointer to a (constant) my_p4est_node_neighbors object, this constructor will __NOT__ initialize the node neighborhood information
    */
+
+  // TO-DO: have to somehow resolve two phase flows use of const neighbors with the rest of us using non const neighbors 11/23/21 Elyce and Rochi
   my_p4est_level_set_t(const my_p4est_node_neighbors_t* ngbd_)
-    : myb(ngbd_->get_brick()), p4est(ngbd_->get_p4est()), nodes(ngbd_->get_nodes()), ghost(ngbd_->get_ghost()), ngbd(ngbd_),
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), /*ngbd(ngbd_),*/
       tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
       zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
-      interpolation_on_interface(quadratic_non_oscillatory),
+      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
-      show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
+      /*show_convergence(false), show_convergence_band(5.), */bc_rel_thresh(1.e-8),use_two_step_extrapolation(false)
   { }
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
-    ngbd_->init_neighbors();
-    update((const my_p4est_node_neighbors_t*) ngbd_);
-  }
-
-  inline void update(const my_p4est_node_neighbors_t *ngbd_) {
     ngbd  = ngbd_;
-    myb   = ngbd->get_brick();
-    p4est = ngbd->get_p4est();
-    nodes = ngbd->get_nodes();
-    ghost = ngbd->get_ghost();
+    myb   = ngbd->myb;
+    p4est = ngbd->p4est;
+    nodes = ngbd->nodes;
+    ghost = ngbd->ghost;
   }
 
   /*!

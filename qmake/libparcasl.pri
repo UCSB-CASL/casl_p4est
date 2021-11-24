@@ -130,7 +130,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_nodes.h \
   $$PARCASL/src/my_p4est_tools.h \
   $$PARCASL/src/my_p4est_two_phase_flows.h \
-  $$PARCASL/src/my_p4est_xgfm_cells.h \
+#  $$PARCASL/src/my_p4est_xgfm_cells.h \
   $$PARCASL/src/voronoi2D.h \
   $$PARCASL/src/my_p4est_fast_sweeping.h \
   $$PARCASL/src/my_p4est_nodes_along_interface.h
@@ -185,7 +185,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_two_phase_flows.cpp \
-  $$PARCASL/src/my_p4est_xgfm_cells.cpp \
+#  $$PARCASL/src/my_p4est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi2D.cpp \
   $$PARCASL/src/my_p4est_fast_sweeping.cpp \
   $$PARCASL/src/my_p4est_nodes_along_interface.cpp
@@ -247,7 +247,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_nodes.h \
   $$PARCASL/src/my_p8est_tools.h \
   $$PARCASL/src/my_p8est_two_phase_flows.h \
-  $$PARCASL/src/my_p8est_xgfm_cells.h \
+#  $$PARCASL/src/my_p8est_xgfm_cells.h \
   $$PARCASL/src/voronoi3D.h \
 #  $$PARCASL/src/my_p8est_fast_sweeping.h \
   $$PARCASL/src/my_p8est_nodes_along_interface.h
@@ -301,7 +301,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_two_phase_flows.cpp \
-  $$PARCASL/src/my_p8est_xgfm_cells.cpp \
+#  $$PARCASL/src/my_p8est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi3D.cpp \
 #  $$PARCASL/src/my_p8est_fast_sweeping.cpp \
   $$PARCASL/src/my_p8est_nodes_along_interface.cpp

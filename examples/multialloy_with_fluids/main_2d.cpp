@@ -139,7 +139,7 @@ DEFINE_PARAMETER(pl, double, mem_safety_limit, 60.e9, "Memory upper limit before
 DEFINE_PARAMETER(pl, int, timing_every_n, -1, "Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
 
 // Options for debugging: -- TO-DO: can remove all these now?
-DEFINE_PARAMETER(pl, bool, print_checkpoints, false, "Print checkpoints throughout script for debugging? ");
+DEFINE_PARAMETER(pl, bool, print_checkpoints, true, "Print checkpoints throughout script for debugging? ");
 
 // ---------------------------------------
 // Solution options:
@@ -3514,7 +3514,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
 
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
       foreach_dimension(d){
-         ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
+         ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d]);
       }
 
       // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
@@ -6070,7 +6070,6 @@ int main(int argc, char** argv) {
       phi.create(p4est,nodes);
       sample_cf_on_nodes(p4est,nodes,level_set,phi.vec);
       if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
-
       // Temperature fields:
       INITIAL_TEMP *T_init_cf[2];
       temperature_field* analytical_temp[2];
@@ -6765,17 +6764,16 @@ int main(int argc, char** argv) {
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi \n");
         ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec,
-                                          50, 2, 1.e-15,
+                                          50, 2,
                                           extension_band_use_, extension_band_extend_,
-                                          extension_band_check_,
                                           liquid_normals.vec, NULL,
                                           NULL, false, NULL,NULL);
-
+        // note to self: modifiied the arguments for extend over interface tvd full bc arguments changed slightly after daniil update w merge 11/22/21
+        // TO-DO: get rid of band check variable since now it is unused
         if(do_we_solve_for_Ts){
           ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec,
-                                            50, 2, 1.e-15,
+                                            50, 2,
                                             extension_band_use_, extension_band_extend_,
-                                            extension_band_check_,
                                             solid_normals.vec, NULL,
                                             NULL, false, NULL, NULL);
         }
@@ -6789,8 +6787,8 @@ int main(int argc, char** argv) {
 
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi_cylinder \n");
           ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec, T_s_n.vec,
-                                            50, 2, 1.e-15,
-                                            0.5*extension_band_use_, 0.5*extension_band_extend_, 0.5*extension_band_check_,
+                                            50, 2,
+                                            0.5*extension_band_use_, 0.5*extension_band_extend_,
                                             cyl_normals.vec, NULL, NULL,
                                             false, NULL, NULL);
 

@@ -1197,6 +1197,12 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 
+
+  // Define vectors which hold the Vec objects for vtk export. Elyce 11/22/21
+  std::vector<Vec_for_vtk_export_t> point_fields;
+  std::vector<Vec_for_vtk_export_t> cell_fields;
+
+
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
   {
@@ -1210,9 +1216,9 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d.%05d", out_dir, data->min_lvl, data->max_lvl, iter);
 
-  // cell data
-  std::vector<const double *>    cell_data;
-  std::vector<std::string> cell_data_names;
+//  // cell data // commented out -- old method of doing it. Elyce 11/22/21
+//  std::vector<const double *>    cell_data;
+//  std::vector<std::string> cell_data_names;
 
   /* save the size of the leaves */
   Vec leaf_level;
@@ -1236,7 +1242,15 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
     l_p[solid_p4est_->local_num_quadrants+q] = quad->level;
   }
 
-  cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+//  cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  cell_fields.push_back(Vec_for_vtk_export_t(leaf_level, "leaf_level"));
+
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+
+
+  // Now, save the relevant point fields:
 
   // point data
   vec_and_ptr_t solid_contr_phi(solid_front_phi_.vec);
@@ -1245,58 +1259,75 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   interp.set_input(contr_phi_.vec, linear);
   interp.interpolate(solid_contr_phi.vec);
 
-  std::vector<double *>    point_data;
-  std::vector<std::string> point_data_names;
+//  std::vector<double *>    point_data; // commented out -- old method of doing it. Elyce 11/22/21
+//  std::vector<std::string> point_data_names;
 
-  solid_contr_phi       .get_array(); point_data.push_back(solid_contr_phi.ptr);        point_data_names.push_back("contr");
-  solid_front_phi_      .get_array(); point_data.push_back(solid_front_phi_.ptr);       point_data_names.push_back("phi");
-  solid_front_curvature_.get_array(); point_data.push_back(solid_front_curvature_.ptr); point_data_names.push_back("kappa");
-  solid_front_velo_norm_.get_array(); point_data.push_back(solid_front_velo_norm_.ptr); point_data_names.push_back("vn");
-  solid_seed_           .get_array(); point_data.push_back(solid_seed_.ptr);            point_data_names.push_back("seed");
-  solid_smoothed_nodes_ .get_array(); point_data.push_back(solid_smoothed_nodes_.ptr);  point_data_names.push_back("smoothed_nodes");
-  solid_tf_             .get_array(); point_data.push_back(solid_tf_.ptr);              point_data_names.push_back("tf");
-  solid_time_           .get_array(); point_data.push_back(solid_time_.ptr);            point_data_names.push_back("time");
-  solid_cl_             .get_array();
+//  solid_contr_phi       .get_array(); point_data.push_back(solid_contr_phi.ptr);        point_data_names.push_back("contr");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_contr_phi.vec, "contr"));
+//  solid_front_phi_      .get_array(); point_data.push_back(solid_front_phi_.ptr);       point_data_names.push_back("phi");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_front_phi_.vec, "phi"));
+
+  //solid_front_curvature_.get_array(); point_data.push_back(solid_front_curvature_.ptr); point_data_names.push_back("kappa");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_front_curvature_.vec, "kappa"));
+
+  //solid_front_velo_norm_.get_array(); point_data.push_back(solid_front_velo_norm_.ptr); point_data_names.push_back("vn");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_front_velo_norm_.vec, "vn"));
+
+  //solid_seed_           .get_array(); point_data.push_back(solid_seed_.ptr);            point_data_names.push_back("seed");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_seed_.vec, "seed"));
+
+  //solid_smoothed_nodes_ .get_array(); point_data.push_back(solid_smoothed_nodes_.ptr);  point_data_names.push_back("smoothed_nodes");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_smoothed_nodes_.vec, "smoothed_nodes"));
+
+  //solid_tf_             .get_array(); point_data.push_back(solid_tf_.ptr);              point_data_names.push_back("tf");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_tf_.vec, "tf"));
+
+  //solid_time_           .get_array(); point_data.push_back(solid_time_.ptr);            point_data_names.push_back("time");
+  point_fields.push_back(Vec_for_vtk_export_t(solid_time_.vec, "time"));
+
+  //solid_cl_             .get_array();
   for (int i = 0; i < num_comps_; ++i)
   {
     char numstr[21];
     sprintf(numstr, "%d", i);
     std::string name("cl");
-    point_data.push_back(solid_cl_.ptr[i]); point_data_names.push_back(name + numstr);
+    //point_data.push_back(solid_cl_.ptr[i]); point_data_names.push_back(name + numstr);
+    point_fields.push_back(Vec_for_vtk_export_t(solid_cl_.vec[i], name + numstr));
   }
 
-  solid_part_coeff_.get_array();
+  //solid_part_coeff_.get_array();
   for (int i = 0; i < num_comps_; ++i)
   {
     char numstr[21];
     sprintf(numstr, "%d", i);
     std::string name("kp");
-    point_data.push_back(solid_part_coeff_.ptr[i]); point_data_names.push_back(name + numstr);
+    //point_data.push_back(solid_part_coeff_.ptr[i]); point_data_names.push_back(name + numstr);
+    point_fields.push_back(Vec_for_vtk_export_t(solid_part_coeff_.vec[i], name + numstr));
   }
 
   VecScaleGhost(solid_front_velo_norm_.vec, 1./scaling_);
 
+
   my_p4est_vtk_write_all_lists(solid_p4est_, solid_nodes_, solid_ghost_,
                                P4EST_TRUE, P4EST_TRUE,
                                name,
-                               point_data, point_data_names,
-                               cell_data, cell_data_names);
+                               point_fields, cell_fields/*point_data, point_data_names,
+                               cell_data, cell_data_names*/);
 
   VecScaleGhost(solid_front_velo_norm_.vec, scaling_);
 
-  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
-  solid_contr_phi       .restore_array();
-  solid_front_phi_      .restore_array();
-  solid_front_curvature_.restore_array();
-  solid_front_velo_norm_.restore_array();
-  solid_tf_             .restore_array();
-  solid_cl_             .restore_array();
-  solid_part_coeff_     .restore_array();
-  solid_seed_           .restore_array();
-  solid_smoothed_nodes_ .restore_array();
-  solid_time_           .restore_array();
+
+//  solid_contr_phi       .restore_array();
+//  solid_front_phi_      .restore_array();
+//  solid_front_curvature_.restore_array();
+//  solid_front_velo_norm_.restore_array();
+//  solid_tf_             .restore_array();
+//  solid_cl_             .restore_array();
+//  solid_part_coeff_     .restore_array();
+//  solid_seed_           .restore_array();
+//  solid_smoothed_nodes_ .restore_array();
+//  solid_time_           .restore_array();
 
   solid_contr_phi.destroy();
 

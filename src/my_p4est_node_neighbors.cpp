@@ -1305,6 +1305,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   {
+
     Vec f_l, fdd_l;
     PetscInt f_size, fdd_size, block_size;
 
@@ -1418,6 +1419,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
 
 void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs) const
 {
+
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogRegionBegin("2nd_derivatives");
@@ -2152,10 +2154,6 @@ void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_
   return;
 }
 
-void my_p4est_node_neighbors_t::fetch_second_degree_node_neighbors_of_interpolation_node(const p4est_locidx_t& node_idx, set_of_local_node_index_t& second_degree_neighbor_nodes) const
-{
-  set_of_neighboring_quadrants quad_neighbors;
-  c_ngbd.gather_neighbor_cells_of_node(node_idx, nodes, quad_neighbors, true);
 
 void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const
 {
@@ -2316,4 +2314,24 @@ void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_
   if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
   if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
 #endif
+}
+
+// Elyce and Rochi merge 11/22/21 -- keeping this function to preserve library functionality from old other classes, even though get_all_neighbors now handles this itself among other things
+void my_p4est_node_neighbors_t::fetch_second_degree_node_neighbors_of_interpolation_node(const p4est_locidx_t& node_idx, set_of_local_node_index_t& second_degree_neighbor_nodes) const
+{
+  set_of_neighboring_quadrants quad_neighbors;
+  c_ngbd.gather_neighbor_cells_of_node(node_idx, nodes, quad_neighbors, true);
+
+  second_degree_neighbor_nodes.clear();
+  for(set_of_neighboring_quadrants::const_iterator it = quad_neighbors.begin(); it != quad_neighbors.end(); it++)
+  {
+    const p4est_locidx_t quad_idx = it->p.piggy3.local_num;
+    for(u_char vv = 0; vv < P4EST_CHILDREN; vv++)
+    {
+      p4est_locidx_t neighbor_node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + vv];
+      if(neighbor_node_idx != node_idx)
+        second_degree_neighbor_nodes.insert(neighbor_node_idx);
+    }
+  }
+  return;
 }

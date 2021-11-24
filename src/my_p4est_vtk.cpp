@@ -2184,6 +2184,9 @@ my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t 
   ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 }
 
+// Elyce and Rochi 11/22/21 merge note: WARNING!! the vtk export function has changed. Some projects may have conflicts.
+// To-do: write an explanation of how to properly change the formatting to work
+// Temporary: see how this is used in multialloy_fluids main.cpp
 void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                           const int& write_rank, const int& write_tree, const char *filename,
                                           const std::vector<Vec_for_vtk_export_t> *node_scalar_fields,

@@ -4302,7 +4302,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1(const int& n_reinit_iter
     P4EST_ASSERT(fine_p4est_np1 != NULL && fine_ghost_np1 != NULL && fine_nodes_np1 != NULL && fine_nodes_np1 != nodes_np1 && fine_hierarchy_np1 != NULL && fine_ngbd_np1 != NULL && phi_np2_on_fine_nodes != NULL && phi_np2_on_fine_nodes != phi_np2_on_computational_nodes);
   }
 
-  const my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
+  my_p4est_node_neighbors_t* interface_resolving_ngbd_np1 = (fine_ngbd_np1 != NULL ? fine_ngbd_np1 : ngbd_np1);
   if(!static_interface && (nsolve_calls%n_reinit_iter == 0))
   {
     Vec& interface_resolving_phi_np2 = (fine_ngbd_np1 != NULL ? phi_np2_on_fine_nodes : phi_np2_on_computational_nodes);

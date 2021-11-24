@@ -63,6 +63,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_level_set_cells_t;
+  friend class my_p4est_level_set_t;
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_poisson_cells_t;
@@ -612,6 +613,8 @@ public:
   // Daniil would have to commment on this one
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors) const;
+
+  // Elyce and Rochi merge 11/22/21 -- keeping this function to preserve library functionality from old other classes, even though get_all_neighbors now handles this itself among other things
 
   /*!
    * \brief fetch_second_degree_node_neighbors_of_interpolation_node: self-explanatory!

@@ -1016,7 +1016,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         double infc_phi_eff_000 = (infc_.num_phi == 0) ? -1 : infc_.phi_eff_ptr[n];
 
         switch (node_scheme_[n])
-        {
+        { // start switch case
           case DOMAIN_OUTSIDE: areas_m_ptr[n] = 0; areas_p_ptr[n] = 0; break;
           case DOMAIN_INSIDE:
           case WALL_DIRICHLET:
@@ -1026,7 +1026,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             else                      { areas_m_ptr[n] = 0; areas_p_ptr[n] = 1; }
           break;
           case BOUNDARY_NEUMANN:
-          {
+          { // start bdry neumann case
             if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
             else
             {
@@ -1040,12 +1040,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
             if (infc_phi_eff_000 < 0) { areas_m_ptr[n] = face_area_max/face_area_scalling_; areas_p_ptr[n] = 0; }
             else                      { areas_p_ptr[n] = face_area_max/face_area_scalling_; areas_m_ptr[n] = 0; }
-          }
-        }
+          } // end bdry neumann
+
          break;
 
           case IMMERSED_INTERFACE:
-          {
+          { // begin imm int
             if (finite_volumes_initialized_) fv = infc_fvs_->at(infc_node_to_fv_[n]);
             else
             {
@@ -1064,7 +1064,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
             areas_m_ptr[n] = face_area_max_m/face_area_scalling_;
             areas_p_ptr[n] = face_area_max_p/face_area_scalling_;
-          }
+          } // end imm int case
           break;
           default:
             {
@@ -1074,8 +1074,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 #endif
              }
            break;
-        }
-      }
+        } // end switch case
+      } // end for loop over nodes
 
       ierr = VecGhostUpdateBegin(areas_m_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd  (areas_m_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1086,7 +1086,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
     }
-  }
+  } // end if new submat main <-- still suspicious ... do you have a chaperone?
 
   // prepare stuff for ghost-fluid method for imposing dirichlet bc
   std::vector<int>    gf_map;
@@ -3256,7 +3256,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_inside(bool setup_rhs, p4est_locid
   }
 }
 
-
+// Elyce and Rochi merge 11/22/21 -- commented out this fxn bc git duplicated it weirdly, and we want the version that came from long_overdue_merge
+/*
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                            double infc_phi_eff_000, bool is_wall[],
                                                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
@@ -3658,7 +3659,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est
   }
 }
 
-
+*/
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                            double infc_phi_eff_000, bool is_wall[],
                                                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
@@ -4136,8 +4137,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
         if (is_interface[dir::f_00p]) mue_00p = qnnn.interpolate_in_dir(dir::f_00p, bdry_point_dist[dir::f_00p], mue_ptr, mue_dd_ptr);
 #endif
       }
-    }
-  } else {
+//    }
+//   else {
 
       // discretization of Laplace operator
       double DIM(w_m00 = 0, w_0m0 = 0, w_00m = 0);
@@ -4395,7 +4396,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet_sw_ext(bool setup_rhs, p
       if (is_wall[dir::f_00p]) rhs_ptr[n] += 2.*mue_000*(*wc_value_)( DIM(x_C+eps_x, y_C+eps_y, z_C) ) / qnnn.d_00m;
 #endif
     }
-  }
+  }//suss
 
   // save information about interface points
   if (new_submat_main_ & there_is_dirichlet_)

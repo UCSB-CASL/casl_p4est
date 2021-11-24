@@ -51,7 +51,6 @@ void my_p4est_level_set_t::compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
-
   ngbd->second_derivatives_central(phi, phi_xxyyzz, blocksize);
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -344,6 +343,7 @@ void my_p4est_level_set_t::reinitialize_within_range_of_phi_0( Vec phi, const un
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_0_xxyyzz[dim]);       CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &current_phi_xxyyzz[dim]); CHKERRXX(ierr);
     }
+
     compute_derivatives(phi, phi_0_xxyyzz);
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
       ierr = VecGetArrayRead(phi_0_xxyyzz[dim], &phi_0_xxyyzz_read_p[dim]); CHKERRXX(ierr);
@@ -685,22 +685,22 @@ void my_p4est_level_set_t::advect_in_normal_direction(Vec phi, const double &dt,
 
   memcpy(phi_n_p, current_phi_p, sizeof(double) * nodes->indep_nodes.elem_count);
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
+  advect_in_normal_direction_one_iteration(ngbd->local_nodes, node_sampled_vn_p, dt, current_phi_xxyyzz_p, phi_n_p, current_phi_p);
   ierr = VecGhostUpdateEnd  (phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* now phi(Lnp1, Bnp1, Gnp1) */
   compute_derivatives(phi, current_phi_xxyyzz);
 
   // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->get_layer_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateBegin(phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->get_local_nodes(), (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
+  advect_in_normal_direction_one_iteration(ngbd->local_nodes, (node_sampled_vnp1_p != NULL ? node_sampled_vnp1_p : node_sampled_vn_p),
                                            dt, current_phi_xxyyzz_p, current_phi_p, phi_np2_p);
   ierr = VecGhostUpdateEnd  (phi_np2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -1850,8 +1850,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   /* initialize first order derivatives */
   if (order >=1 ) {
@@ -3377,8 +3377,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   }
 
   /* initialization of q */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   if (cf == NULL)
   {
@@ -4130,8 +4130,8 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
 
   dxyz_min(p4est, dxyz);
 
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   /* compute the normals */
   double *normal_p[P4EST_DIM];
@@ -4579,8 +4579,8 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   if(order >= 1)
   {
@@ -5447,8 +5447,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
   ierr = VecGetArray(q , &q_p) ; CHKERRXX(ierr);
 
   /* initialize qn */
-  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->get_layer_nodes();
-  const std::vector<p4est_locidx_t>& local_nodes = ngbd->get_local_nodes();
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
   if(order >= 1)
   {
