@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: November 23, 2021.
+ * Updated: November 24, 2021.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -850,8 +850,8 @@ namespace geom
 			for( size_t p = 0; p < _points.size(); p++ )			// Let's make space for the map of points to triangles.
 			{
 				_pointsToTriangles.emplace_back( std::vector<const Triangle *>() );
-				_pointsToTriangles.back().reserve( 6 );				// Each point is part of at most 6 triangles under the above
-			}														// scheme.  Edge points belong to 3, and corners belong to 1 or 2.
+				_pointsToTriangles.back().reserve( 8 );				// Each point is part of at most 6 triangles under the above scheme plus 2 to
+			}														// complete the quads.  Edge points belong to 3+1, and corners belong to 1+1.
 
 			for( size_t j = 0; j < _nPointsAlongV - 1; j++ )		// Rows first (without getting to the very last).
 			{
@@ -869,10 +869,12 @@ namespace geom
 					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
 					_pointsToTriangles[idx1].push_back( &_triangles.back() );
 					_pointsToTriangles[idx2].push_back( &_triangles.back() );
+					_pointsToTriangles[idx3].push_back( &_triangles.back() );
 					_triangles.emplace_back( &_points[idx0], &_points[idx2], &_points[idx3] );	// Upper triangle...
 					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
 					_pointsToTriangles[idx2].push_back( &_triangles.back() );
 					_pointsToTriangles[idx3].push_back( &_triangles.back() );
+					_pointsToTriangles[idx1].push_back( &_triangles.back() );
 				}
 			}
 		}

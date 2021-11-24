@@ -45,15 +45,16 @@ public:
 	}
 
 	/**
-	 * Compute mean curvature.
+	 * Compute mean curvature (always positive because the paraboloid is convex).
 	 * @param [in] u x-coordinate value.
 	 * @param [in] v y-coordinate value.
-	 * @return
-	 * TODO: Implement.
+	 * @return 2H, where H is the mean curvature at (u,v,Q(u,v)) on the paraboloid.
 	 */
 	double meanCurvature( const double& u, const double& v ) const override
 	{
-		return 0;
+		double num = 2 * _a * (1 + SQR( 2 * _b * v )) + 2 * _b * (1 + SQR( 2 * _a * u ));
+		double den = pow( sqrt( 1 + SQR( 2 * _a * u ) + SQR( 2 * _b * v ) ), 3 );
+		return num / den;
 	}
 
 	/**
@@ -322,7 +323,7 @@ public:
 			auto record = _cache.find( coords );
 			if( record != _cache.end() )
 			{
-				double initialTrustRadius = MAX( 3 * _h, ABS( (record->second).first ) );
+				double initialTrustRadius = MAX( _h, ABS( (record->second).first ) );
 				column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// u and v coords for initial point.
 
 				Point3 p = toCanonicalCoordinates( x, y, z );
