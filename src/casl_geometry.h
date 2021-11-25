@@ -464,6 +464,15 @@ namespace geom
 				default: return _v2;
 			}
 		}
+
+		/**
+		 * Retrieve the *unnormalized* normal vector to triangle.
+		 * @return Pointer to normal vector.
+		 */
+		const Point3 *getNormal() const
+		{
+			return &_n;
+		}
 	};
 
 	/////////////////////////////////////// Balltree and related functionalities ///////////////////////////////////////
@@ -786,7 +795,8 @@ namespace geom
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
 		std::vector<Point3> _points;			// Points defining the grid.
 		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
-		mutable Point3 _lastNearestUVQ;			// Stores the u-v-q coords of last nearest-point query.
+		mutable Point3 _lastNearestUVQ;					// Stores the u-v-q coords and the triangle of last
+		mutable const Triangle *_lastNearestTriangle;	// nearest-point query
 
 	public:
 		/**
@@ -799,7 +809,7 @@ namespace geom
 		 */
 		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
 							   const size_t& btKLeaf=40 )
-							   : _mongeFunction( mongeFunction )
+							   : _mongeFunction( mongeFunction ), _lastNearestTriangle( nullptr )
 		{
 			// Validate inputs.
 			std::string errorPrefix = "[CASL_ERROR]: geom::DiscretizedMongePatch::constructor: ";
@@ -861,6 +871,8 @@ namespace geom
 					// Each quad has indices:       |  / |
 					//                              | /  |
 					//                         idx0 +----+ idx1
+					// This way of enumerating the nodes in triangles sets their normal to vector 01×02 and 02×3 for low
+					// and up triangles, resp.  If the surface is flat, this means the normals point up.
 					size_t idx0 = _nPointsAlongU * j + i;		// Node indices in ccw direction.
 					size_t idx1 = idx0 + 1;
 					size_t idx2 = idx1 + _nPointsAlongU;
@@ -883,9 +895,10 @@ namespace geom
 		 * Find nearest point to triangulated surface.
 		 * @param [in] q Query point.
 		 * @param [out] d Shortest distance to triangulated surface.
+		 * @param [out] t Triangle where shortest distance was found.
 		 * @return Nearest point.
 		 */
-		Point3 findNearestPoint( const Point3& q, double& d ) const
+		Point3 findNearestPoint( const Point3& q, double& d, const Triangle *& t ) const
 		{
 			// First, find the closest discrete point in the cloud.
 			double d0 = DBL_MAX;
@@ -905,6 +918,7 @@ namespace geom
 				{
 					closestPoint = p;
 					d = d1;
+					t = triangle;
 				}
 			}
 
@@ -925,7 +939,7 @@ namespace geom
 		{
 			Point3 q( x, y, z );
 			double d = DBL_MAX;
-			_lastNearestUVQ = findNearestPoint( q, d );
+			_lastNearestUVQ = findNearestPoint( q, d, _lastNearestTriangle );
 			return  d;
 		}
 
@@ -940,11 +954,22 @@ namespace geom
 		}
 
 		/**
+		 * Retrieve the nearest triangle from a query point after using the ()-operator method.  This function is useful
+		 * to determine the sign of a grid point according to the linear reconstruction of the interface.
+		 * @return Pointer to triangle holding the nearest point to query.
+		 */
+		const Triangle *getLastNearestTriangle() const
+		{
+			return _lastNearestTriangle;
+		}
+
+		/**
 		 * Destructor.
 		 */
 		~DiscretizedMongePatch() override
 		{
 			delete _balltree;
+			_lastNearestTriangle = nullptr;
 		}
 
 		/**

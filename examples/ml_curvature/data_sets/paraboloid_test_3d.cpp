@@ -70,12 +70,13 @@ int main ( int argc, char* argv[] )
 		const double A = 4;									// Paraboloid params: Q(u,v) = A*u^2 + B*v^2.
 		const double B = 1;
 		Paraboloid paraboloid( A, B );
-		const Point3 translation = {0, 0, 0};				// Translation of canonical coordinate system.
-		const Point3 rotationAxis = {0, 0, 1};				// Axis of rotation.
-		const double beta = 0;								// Rotation angle about RotAxis.
+		const Point3 translation = {H/2, -H/2, H/2};		// Translation of canonical coordinate system.
+		const Point3 rotationAxis = {-1, 1, -1};			// Axis of rotation.
+		const double beta = M_PI_4;							// Rotation angle about RotAxis.
 
 		// Finding how far to go in the half-axes to get a lower bound on the maximum height in Q(u,v) = A*u^2 + B*v^2.
-		const double R = MAX_D * sqrt( 3 );					// Radius of circumscribing circle (i.e., containing the domain cube).
+		const double R = (MAX_D + H/2) * sqrt( 3 );			// Radius of circumscribing circle (i.e., containing the
+															// domain cube and accounting for shifted paraboloid origin).
 		const double hiQU = 0.5 * (-1/A + sqrt(1./SQR(A) + 4*SQR(R)));	// Lower bound for Q along u axis (for v=0).
 		const size_t halfU = ceil(sqrt( hiQU / A ) / H);				// Half u axis in terms of H.
 		const double hiQV = 0.5 * (-1/B + sqrt(1./SQR(B) + 4*SQR(R)));	// Lower bound for Q along v axis (for u=0).

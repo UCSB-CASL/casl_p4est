@@ -204,6 +204,9 @@ public:
 
 	/**
 	 * Constructor.
+	 * @param [in] trans Translation vector.
+	 * @param [in] rotAxis Rotation axis (must be nonzero).
+	 * @param [in] rotAngle Rotation angle about rotAxis.
 	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
 	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
 	 * @param [in] L Number of refinement levels per unit length.
@@ -212,7 +215,7 @@ public:
 	 */
 	ParaboloidLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 						const size_t& ku, const size_t& kv, const size_t& L, const Paraboloid *paraboloid, const size_t& btKLeaf=40 )
-						: _trns( trans ), _axis( rotAxis ), _beta( rotAngle), _paraboloid( paraboloid ),
+						: _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _paraboloid( paraboloid ),
 						_c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
 						DiscretizedMongePatch( ku, kv, L, paraboloid, btKLeaf )
 	{
@@ -291,12 +294,13 @@ public:
 			}
 		}
 
-		Point3 q = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coordinates.
-		double d = geom::DiscretizedMongePatch::operator()( q.x, q.y, q.z );
-		double refZ = (*_paraboloid)( q.x, q.y );
+		Point3 p = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coordinates.
+		double d = geom::DiscretizedMongePatch::operator()( p.x, p.y, p.z );	// Compute shortest distance and set nearest point/triangle vars.
 
-		// Fix sign: points inside paraboloid are negative and outside are positive.
-		if( z > refZ )
+		// Fix sign: points inside paraboloid are negative and outside are positive.  Because of the way we created the
+		// triangles, their normal vector points up in the canonical coord. system (into the negative region Omega-).
+		Point3 w = p - *(getLastNearestTriangle()->getVertex(0));
+		if( w.dot( *(getLastNearestTriangle()->getNormal()) ) >= 0 )			// In the direction of the normal?
 			d *= -1;
 
 		if( _useCache )
@@ -332,23 +336,39 @@ public:
 
 				// Check if minimization produced a better d* distance from q to the paraboloid.  Exploit paraboloid's
 				// convexity to detect if the optimization process succeeded.  If p is in Omega+, then d* <= d always.
-				// If p is in Omega-, then |d*| >= |d| most of the time; the exception is for points inside the region
-				// between the linear approximation of Gamma and the exact surface.
+				// If p is in Omega-, then |d*| >= |d| most of the time; the exception is for points inside critical
+				// regions between the linear approximation of Gamma and the exact surface.
 				Point3 q( initialPoint(0), initialPoint(1), (*_paraboloid)( initialPoint(0), initialPoint(1) ) );
+				double refSign = (p.z >= (*_paraboloid)( p.x, p.y ))? -1 : 1;	// This defines the exact sign for the distance to paraboloid.
 				double dist = (p - q).norm_L2();
+
+				// Let's check: it's possible that even the sign is wrong in the distance computed to the linear IR.
 				if( record->second.first > 0 )
 				{
-					if( dist - ABS( (record->second).first ) > EPS * _h )
-						throw std::runtime_error( "Computed shortest distance is larger than before for node key " + coords + " in Omega+!" );
+					if( refSign > 0 )		// Both IR and exact signs agree: the exact distance should only get smaller.
+					{
+						if( dist - (record->second).first > EPS * _h )
+							throw std::runtime_error( "Computed shortest distance is larger than before for node key " + coords + " in Omega+!" );
+					}
+					else	// Query point inside critical region: IR says dist > 0 but exact says dist <= 0.
+					{
+						if( dist > 0.15 * _h )		// We accept the exact distance only if it doesn't overshoot the width of the critical region.
+							throw std::runtime_error( "Distance overshoots critical region width for node key " + coords + "!" );
+					}
 				}
 				else
 				{
-					if( dist - ABS( (record->second).first ) < -EPS * _h )
-						throw std::runtime_error( "Computed shortest distance is smaller than before for node key " + coords + " in Omega-!" );
+					if( refSign <= 0 )		// Both IR and exact signs agree: the exact distance should only get bigger.
+					{
+						if( dist - ABS( (record->second).first ) < -EPS * _h )
+							throw std::runtime_error( "Computed shortest distance is smaller than before for node key " + coords + " in Omega-!" );
+					}
+					else					// If we get to this point, there's something really wrong with the discretization!
+						throw std::runtime_error( "Wrong discretization!" );
 				}
 
-				record->second.first = SIGN( (record->second).first ) * dist;	// Update shortest distance and closest point on the paraboloid.
-				record->second.second = q;
+				record->second.first = refSign * dist;	// Update shortest distance and closest point on the paraboloid
+				record->second.second = q;				// by fixing the sign if needed too.
 				return record->second.first;
 			}
 			else

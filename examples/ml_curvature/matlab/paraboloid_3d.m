@@ -14,7 +14,7 @@ h = 1/cellsPerUnitLengh;
 % Finding how far to go in the half-axes to get a lower bound on the
 % maximum height in Q(u,v) = a*u^2 + b*v^2.
 d = 0.5;			% Domain is [-d, d]^3.
-r = d * sqrt(3);	% Radius of circumscribing circle (containing the domain cube).
+r = (d+h/2) * sqrt(3);	% Radius of circumscribing circle (containing the domain cube).
 hu = 0.5 * (-1/a + sqrt(a^(-2) + 4*r^2));		% Expected min height along u axis (for v=0).
 mu = ceil(sqrt(hu / a)/h)*h;
 hv = 0.5 * (-1/b + sqrt(b^(-2) + 4*r^2));		% Expected min height along v axis (for u=0).
@@ -48,12 +48,13 @@ x = d*[cos(s+ph); cos(s+ph)]/cos(ph);
 y = d*[sin(s+ph); sin(s+ph)]/sin(ph);
 z = d*[-ones(size(s)); ones(size(s))];
 beta = pi/4;
-% Rot = [cos(beta), -sin(beta), 0; sin(beta), cos(beta), 0; 0, 0, 1];
-% Rot = Rot * [cos(beta), 0, sin(beta); 0, 1, 0; -sin(beta), 0, cos(beta)];
-Rot = eye(3);
+Rot = [cos(beta), -sin(beta), 0; sin(beta), cos(beta), 0; 0, 0, 1];
+% Rot = [cos(beta), 0, sin(beta); 0, 1, 0; -sin(beta), 0, cos(beta)] * Rot;
+% Rot = [1, 0, 0; 0, cos(beta), -sin(beta); 0, sin(beta), cos(beta)] * Rot;
+% Rot = eye(3);
 corners1 = Rot*[x(1,:);y(1,:);z(1,:)];
 corners2 = Rot*[x(2,:);y(2,:);z(2,:)];
-corners = [corners1; corners2];
+corners = [corners1; corners2] + h/2;				% Max offset added.
 surf( corners([1,4],:), corners([2,5],:), corners([3,6],:), 'FaceColor', 'm', 'FaceAlpha', 0.15 )	% Plot cube domain.
 patch( corners([1,4],:)', corners([2,5],:)', corners([3,6],:)', 'm', 'FaceAlpha', 0.3 )
 
