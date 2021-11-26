@@ -11,7 +11,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 12, 2020.
- * Updated: October 27, 2021.
+ * Updated: November 25, 2021.
  *
  * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -23,16 +23,6 @@
 #include <stdexcept>
 #include <iostream>
 
-#ifdef P4_TO_P8
-#include <src/my_p8est_utils.h>
-#include <src/my_p8est_nodes.h>
-#include <src/my_p8est_tools.h>
-#include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_hierarchy.h>
-#include <src/my_p8est_nodes_along_interface.h>
-#include <src/my_p8est_level_set.h>
-#else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
@@ -41,7 +31,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #include <src/my_p4est_level_set.h>
-#endif
+#include <src/my_p4est_curvature_ml.h>
 
 #include <src/casl_geometry.h>
 #include <src/petsc_compatibility.h>
@@ -52,7 +42,6 @@
 #include <iterator>
 #include <fstream>
 #include <unordered_map>
-#include "local_utils.h"
 
 
 int main ( int argc, char* argv[] )
@@ -113,7 +102,7 @@ int main ( int argc, char* argv[] )
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() ) + "/";
 		const int NUM_COLUMNS = (P4EST_DIM + 1) * num_neighbors_cube + 2;		// Number of columns in dataset.
 		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
-		kutils::generateColumnHeaders( COLUMN_NAMES );		// variables: includes phi values and normal components.
+		kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: includes phi values and normal components.
 
 		// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 		std::mt19937 gen{}; 		// NOLINT Standard mersenne_twister_engine with default seed for reproducibility.
@@ -352,8 +341,8 @@ int main ( int argc, char* argv[] )
 							sdfDataNve.push_back( -H_KAPPA );		// For signed distance function data, the exact hk.
 
 							// Reorienting stencil so that (negated) gradient at node 00 has an angle in first quadrant.
-							kutils::rotateStencilToFirstQuadrant( rlsDataNve, rlsGrad );
-							kutils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
+							kml::utils::rotateStencilToFirstQuadrant( rlsDataNve, rlsGrad );
+							kml::utils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
 
 							// Accumulating samples.
 							if( writeSDF() )
@@ -361,8 +350,8 @@ int main ( int argc, char* argv[] )
 							rlsSamples.push_back( rlsDataNve );
 
 							// Data augmentation.
-							kutils::reflectStencil_yEqx( rlsDataNve );
-							kutils::reflectStencil_yEqx( sdfDataNve );
+							kml::utils::reflectStencil_yEqx( rlsDataNve );
+							kml::utils::reflectStencil_yEqx( sdfDataNve );
 
 							// Accumulating reflected samples.
 							if( writeSDF() )

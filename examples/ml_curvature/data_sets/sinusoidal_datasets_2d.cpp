@@ -3,14 +3,14 @@
  * The level-set is implemented as the signed-distance function to a parameterized sine wave that is subject to an
  * affine transformation to allow for pattern variations.
  *
- * @cite arclength_parameterized_sine_2d.h
+ * @see arclength_parameterized_sine_2d.h
  *
  * To avoid a disproportionate ratio of hk ~ 0 samples, we use an easing-off probability distribution for subsampling.
  * Seek the [SAMPLING] subsection in this file.
  *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
- * Updated: October 27, 2021.
+ * Updated: November 25, 2021.
  *
  * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -22,16 +22,6 @@
 #include <stdexcept>
 #include <iostream>
 
-#ifdef P4_TO_P8
-#include <src/my_p8est_utils.h>
-#include <src/my_p8est_nodes.h>
-#include <src/my_p8est_tools.h>
-#include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_hierarchy.h>
-#include <src/my_p8est_nodes_along_interface.h>
-//#include <src/my_p8est_level_set.h>
-#else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
@@ -40,7 +30,7 @@
 #include <src/my_p4est_hierarchy.h>
 #include <src/my_p4est_nodes_along_interface.h>
 #include <src/my_p4est_level_set.h>
-#endif
+#include <src/my_p4est_curvature_ml.h>
 
 #include <src/petsc_compatibility.h>
 #include <src/parameter_list.h>
@@ -50,7 +40,6 @@
 #include <iterator>
 #include <fstream>
 #include "arclength_parameterized_sine_2d.h"
-#include "local_utils.h"
 #include <unordered_map>
 
 
@@ -219,7 +208,7 @@ int main ( int argc, char* argv[] )
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() ) + "/";
 		const int NUM_COLUMNS = (P4EST_DIM + 1) * num_neighbors_cube + 2;		// Number of columns in dataset.
 		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
-		kutils::generateColumnHeaders( COLUMN_NAMES );		// variables: includes phi values and normal components.
+		kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: includes phi values and normal components.
 
 		// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
 		std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
@@ -502,16 +491,16 @@ int main ( int argc, char* argv[] )
 									}
 
 									// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
-									kutils::rotateStencilToFirstQuadrant( data, rlsGrad );
-									kutils::rotateStencilToFirstQuadrant( distances, sdfGrad );
+									kml::utils::rotateStencilToFirstQuadrant( data, rlsGrad );
+									kml::utils::rotateStencilToFirstQuadrant( distances, sdfGrad );
 
 									rlsSamples.push_back( data );			// Store original sample.
 									if( writeSDF() )
 										sdfSamples.push_back( distances );
 
 									// Data augmentation by reflection along y=x line.
-									kutils::reflectStencil_yEqx( data );
-									kutils::reflectStencil_yEqx( distances );
+									kml::utils::reflectStencil_yEqx( data );
+									kml::utils::reflectStencil_yEqx( distances );
 									rlsSamples.push_back( data );			// Store augmented sample too.
 									if( writeSDF() )
 										sdfSamples.push_back( distances );
