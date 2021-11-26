@@ -1,5 +1,6 @@
 % Modeling the distance function from a 3D query point to a paraboloid.
-a = 4; b = 1;		% Paraboloid coefficients.
+clc; clear;
+a = 1; b = 4;		% Paraboloid coefficients.
 p = [0.5,0.5,0.5];	% Query point.
 
 % The paraboloid.
@@ -7,6 +8,9 @@ f = @(u,v) a*u.^2 + b*v.^2;
 
 % The distance function.
 D = @(u,v) 0.5 * ((u-p(1)).^2 + (v-p(2)).^2 + (a*u.^2 + b*v.^2 - p(3)).^2);
+
+% The curvature function.
+K = @(u,v) (2*a*(1+4*b^2*v.^2) + 2*b*(1+4*a^2*u.^2)) ./ (1+4*a^2*u.^2 + 4*b^2*v.^2).^1.5;
 
 cellsPerUnitLengh = 64;
 h = 1/cellsPerUnitLengh;
@@ -43,22 +47,43 @@ axis equal;
 
 % A cube representing the domain.
 s = -pi : pi/2 : pi;                                % Define corners.
-ph = pi/4;                                          % Define angular prientation ('phase').
+ph = pi/4;                                          % Define angular orientation ('phase').
 x = d*[cos(s+ph); cos(s+ph)]/cos(ph);
 y = d*[sin(s+ph); sin(s+ph)]/sin(ph);
 z = d*[-ones(size(s)); ones(size(s))];
-beta = pi/4;
-Rot = [cos(beta), -sin(beta), 0; sin(beta), cos(beta), 0; 0, 0, 1];
-% Rot = [cos(beta), 0, sin(beta); 0, 1, 0; -sin(beta), 0, cos(beta)] * Rot;
-% Rot = [1, 0, 0; 0, cos(beta), -sin(beta); 0, sin(beta), cos(beta)] * Rot;
-% Rot = eye(3);
-corners1 = Rot*[x(1,:);y(1,:);z(1,:)];
-corners2 = Rot*[x(2,:);y(2,:);z(2,:)];
-corners = [corners1; corners2] + h/2;				% Max offset added.
-surf( corners([1,4],:), corners([2,5],:), corners([3,6],:), 'FaceColor', 'm', 'FaceAlpha', 0.15 )	% Plot cube domain.
-patch( corners([1,4],:)', corners([2,5],:)', corners([3,6],:)', 'm', 'FaceAlpha', 0.3 )
+
+beta = pi/10;		% Angle of rotation.
+u = [1,1,0];		% Axis of rotation.
+u = u ./ norm(u);
+ux = u(1); uy = u(2); uz = u(3);
+c = cos(beta); s = sin(beta);
+R = [    c+(1-c)*ux^2, (1-c)*uy*ux-s*uz, (1-c)*uz*ux+s*uy;...
+	 (1-c)*ux*uy+s*uz,     c+(1-c)*uy^2, (1-c)*uz*uy-s*ux;...
+	 (1-c)*ux*uz-s*uy, (1-c)*uy*uz+s*ux,     c+(1-c)*uz^2];
+T = [0, 0, 0]';		% Translation vector.
+
+corners1 = R'*[x(1,:) - T(1); y(1,:) - T(2); z(1,:) - T(3)];
+corners2 = R'*[x(2,:) - T(1); y(2,:) - T(2); z(2,:) - T(3)];
+corners = [corners1; corners2];						% Max offset added.
+
+% Plot cube domain with coordinates with respect to paraboloid coordinate system.
+surf( corners([1,4],:), corners([2,5],:), corners([3,6],:), 'FaceColor', 'm', 'FaceAlpha', 0.15 );
+patch( corners([1,4],:)', corners([2,5],:)', corners([3,6],:)', 'm', 'FaceAlpha', 0.3 );
 
 title( "Paraboloid" );
+rotate3d on;
+grid on;
+hold off;
+
+Z = K( U, V );
+figure;
+hold on;
+surf(U, V, Z);
+xlabel( "x" );
+ylabel( "y" );
+zlabel( "z" );
+axis equal;
+title( "Curvature function" );
 rotate3d on;
 grid on;
 hold off;
