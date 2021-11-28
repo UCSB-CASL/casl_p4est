@@ -47,8 +47,8 @@ qlim = qvlim;				% Level curve where we achieve the minimum curvature (=qulim wo
 %%%%%%%%%%%%%%%%%%% 3) Transform Q(u,v) and its axes to find enclosing cylinder %%%%%%%%%%%%%%%%%%%%
 
 % Building the transformation matrix based on a translation and rotation.
-beta = 10.8*pi/36;			% Angle of rotation (11*pi/36 puts the corner up).
-u = [0,-1,0];				% Axis of rotation (for above, [1,-1,0]).
+beta = 11*pi/36;			% Angle of rotation (11*pi/36 puts the corner up).
+u = [1,-1,0];				% Axis of rotation (for above, [1,-1,0]).
 u = u ./ norm(u);
 ux = u(1); uy = u(2); uz = u(3);
 c = cos(beta); s = sin(beta);
@@ -84,6 +84,7 @@ rangeA = maxA - minA;
 cubeSideLen = max(rangeA);
 centroid = mean(A, 2);
 dp = cubeSideLen/2;			% Each axis begins at the centroid and extends to -dp and +dp.
+dp = dp + 2*h;				% Padding each direction (we won't sample points beyond dp, but need info from there).
 
 % Cube faces: six planes defined by a point and an outward-pointing normal vector.
 % Assume the z axis points up and y axis towards the screen.
@@ -130,9 +131,10 @@ end
 tHits( isnan(tHits) ) = 0;			% If q stayed as nan, we set its height to zero for consistency.
 qu = qlim + max(tHits(1:2));		% u=[-ulim,+ulim], v=0.
 qv = qlim + max(tHits(3:4));		% u=0, v=[-vlim,+vlim].
+q = max(qu, qv);					% Definite height.
 
-mu = ceil(sqrt(qu / a)/h)*h;	% New canonical domain boundaries in u and v directions.
-mv = ceil(sqrt(qv / b)/h)*h;
+mu = ceil(sqrt(q / a)/h)*h;	% New canonical domain boundaries in u and v directions.
+mv = ceil(sqrt(q / b)/h)*h;
 
 [U,V] = meshgrid( linspace( -mu, mu, 2*mu/h + 1 ), linspace( -mv, mv, 2*mv/h + 1 ) );
 Z = Q( U, V );
@@ -164,3 +166,39 @@ grid on;
 axis equal;
 zlim([min(zlim)-1, max(zlim)])
 hold off;
+
+% Let's plot the canonical domain in 2D and show points that we should keep to speed up queries to 
+% the balltree.
+ru2 = q/a;				% Semiaxis along u.
+rv2 = q/b;				% Semiaxis along v.
+t = linspace(0, 2*pi, 200);
+figure;
+plot( sqrt(ru2)*cos(t), sqrt(rv2)*sin(t), "k-" )
+hold on;
+xticks(linspace( -mu, mu, 2*mu/h + 1 ));
+yticks(linspace( -mv, mv, 2*mv/h + 1 ));
+
+for x = linspace(-mu, mu, 2*mu/h+1)		% Points lying inside the projected ellipse.
+	for y = linspace(-mv, mv, 2*mv/h+1)
+		if x^2/ru2 + y^2/rv2 <= 1
+			% Bring in the 8 neighbors. to valid set.
+			for px = [x-h, x, x+h]
+				for py = [y-h, y, y+h]
+					if px^2/ru2 + py^2/rv2 <= 1
+% 						plot(px, py, "g.");		% Plotting causes very slow response.
+					else
+						plot(px, py, "b.");
+					end
+				end
+			end
+		end
+	end
+end
+
+grid on;
+axis equal;
+set( gca, 'YTickLabel', [] );
+set( gca, 'XTickLabel', [] );
+xlim([-mu, mu]);
+ylim([-mv, mv]);
+title( "Canonical domain and its seed and boundary points" );
