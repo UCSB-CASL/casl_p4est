@@ -214,7 +214,6 @@ int main ( int argc, char* argv[] )
 		std::mt19937 gen{}; 			// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 		std::uniform_real_distribution<double> uniformDistributionH_2( -H/2, +H/2 );	// For tranlating origin of sine wave coord. syst.
 		std::uniform_real_distribution<double> uniformDistribution;						// For subsampling due to target hk.
-		std::uniform_real_distribution<double> skipDist;								// For randomly skipping points.
 
 		//////////////////////////////////////////// Generating the datasets ///////////////////////////////////////////
 
