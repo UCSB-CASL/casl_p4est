@@ -55,7 +55,7 @@ const string default_work_folder = "/scratch/regan/poisson_jump_cells";
 #elif defined(ABADDON)
 const string default_work_folder = "/Users/raphael/workspace/projects/poisson_jump_cells";
 #else
-const string default_work_folder = "/home/rochi/work/CASL/release/poisson_jump_cells/vtk";
+const string default_work_folder = "/home/rochi/work/CASL/debug/poisson_jump_cells/vtk";
 #endif
 
 std::istream& operator>> (std::istream& is, std::vector<jump_solver_tag>& solvers_to_test)
@@ -907,6 +907,7 @@ void print_convergence_summary_in_file(const string& out_folder, const string& t
 
 int main (int argc, char* argv[])
 {
+  // THIS FILE is IN DESTINATION FUCKED ! WAIT TILL IT IS SERVICED aka comment from ROCHI 12/7
   PetscErrorCode ierr;
   mpi_environment_t mpi;
   mpi.init(argc, argv);
@@ -1022,6 +1023,7 @@ int main (int argc, char* argv[])
 
     Vec interface_capturing_phi_xxyyzz = NULL;
     interface_manager = new my_p4est_interface_manager_t(faces, nodes, interface_capturing_ngbd_n);
+
     if(use_second_order_theta || (!use_subrefinement && phi_interp != linear)){
       ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n->get_p4est(), interface_capturing_ngbd_n->get_nodes(), P4EST_DIM, &interface_capturing_phi_xxyyzz); CHKERRXX(ierr);
       interface_capturing_ngbd_n->second_derivatives_central(interface_capturing_phi, interface_capturing_phi_xxyyzz);

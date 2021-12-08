@@ -1418,8 +1418,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
 }
 
 void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs) const
-{
-
+{ // this is being used rn
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
   IPMLogRegionBegin("2nd_derivatives");
@@ -1535,6 +1534,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 #endif
   }
 
+  int mpicomm = p4est->mpicomm;
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i = 0; i < layer_nodes.size(); i++)
@@ -1579,7 +1579,6 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fzz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
-
     // compute the derivaties for all internal nodes
     for (size_t i = 0; i < local_nodes.size(); i++){
       const p4est_locidx_t &node_idx = local_nodes[i];
@@ -1589,8 +1588,8 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
       else
         qnnn.laplace_all_components_insert_in_vectors(f_p.data(), DIM(fxx_p.data(), fyy_p.data(), fzz_p.data()), n_vecs, bs);
     }
-  } else {
-
+  }
+  else {
     quad_neighbor_nodes_of_node_t qnnn;
 
     // compute the derivatives on the boundary nodes -- fxx
@@ -1639,6 +1638,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 #endif
   }
 #endif // !DXX_USE_BLOCKS
+
 
   IPMLogRegionEnd("2nd_derivatives");
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);

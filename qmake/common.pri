@@ -21,6 +21,7 @@ CONFIG(profile): {
     QMAKE_LFLAGS += -g
     QMAKE_CFLAGS += -g
     QMAKE_CXXFLAGS += -g
+    QMAKE_CXXFLAGS += c++11
 }
 
 INCLUDEPATH += \

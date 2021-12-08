@@ -1873,7 +1873,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     // second-order derivatives
     if (order == 2)
     {
-      if (q_d == NULL)
+      if (q_dd == NULL)// Elyce bug fix : this was q_d==NULL, it should be q_dd
       {
         ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
         ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);

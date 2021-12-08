@@ -77,6 +77,11 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   {
     this->phi = phi;
   }
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, const CF_DIM *phi, double lip=1.2, double band = 0):splitting_criteria_t(min_lvl, max_lvl, lip, band)
+  {
+      this->phi =const_cast<CF_DIM*>(phi);
+      //this->phi = std::remove_const<typename std::remove_pointer<const CF_DIM*>::type>::type* CF_DIM(phi);
+  }
 };
 
 /*!
@@ -88,6 +93,8 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
   const double uniform_band;
   splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_DIM *phi_, double uniform_band_, double lip=1.2)
+    : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, const CF_DIM *phi_, double uniform_band_, double lip=1.2)
     : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
 };
 

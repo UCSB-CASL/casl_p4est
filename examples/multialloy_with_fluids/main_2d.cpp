@@ -184,6 +184,10 @@ bool example_requires_area_computation;
 
 bool do_we_solve_for_Ts;
 
+bool example_has_known_max_vint;
+
+double max_vint_known_for_ex = 1.0;
+
 void select_solvers(){
   switch(example_){
     case FRANK_SPHERE:
@@ -277,6 +281,26 @@ void select_solvers(){
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
+    example_has_known_max_vint = ((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)
+                                  || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE));
+
+    // Set the known maximum vint for relevant examples:
+    switch(example_){
+    case COUPLED_PROBLEM_EXAMPLE:
+        max_vint_known_for_ex = PI;
+        break;
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+        max_vint_known_for_ex = PI;
+        break;
+    case COUPLED_TEST_2:
+        max_vint_known_for_ex = 1.5;
+        break;
+    case FRANK_SPHERE:
+        max_vint_known_for_ex = 0.5;
+        break;
+    default:
+        break;
+    }
 }
 // ---------------------------------------
 // Refinement options:
@@ -3537,59 +3561,174 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
   }
 }
 
-void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],p4est_nodes_t *nodes, p4est_t *p4est){
+void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi,
+                      double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
+                      p4est_nodes_t *nodes, p4est_t *p4est, my_p4est_navier_stokes_t* ns,
+                      const int load_tstep, int &last_tstep ){
 
+  int mpicomm = p4est->mpicomm;
+
+  // Initialize variables and set max vint if known:
   double max_v_norm = 0.0;
   double global_max_vnorm = 0.0;
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
-    global_max_vnorm = PI; // known analytically
+  if(example_has_known_max_vint){
+      global_max_vnorm = max_vint_known_for_ex;
   }
-  else if (example_ == COUPLED_TEST_2){
-    global_max_vnorm = 1.5;
-  }
-  else {
 
-    // Check the values of v_interface locally:
-    v_interface.get_array();
-    phi.get_array();
-    foreach_local_node(n,nodes){
-      if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
-        max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
-// For checking dendrite tip velocity case:
-//        double xyz_[P4EST_DIM];
-//        node_xyz_fr_n(n,p4est,nodes,xyz_);
-//        bool is_xaxis = (fabs(xyz_[0] - (xmax - xmin)/2.)<dxyz_close_to_interface);
-//        bool is_yaxis = (fabs(xyz_[1] - (ymax - ymin)/2.)<dxyz_close_to_interface);
-//        bool is_tip = (is_xaxis && !is_yaxis) || (!is_xaxis && is_yaxis);
-//        if(is_tip){
+  // Compute initial timestep if relevant:
+  if(tstep==0){
+    dxyz_min(p4est,dxyz_smallest);
 
-//          double vnorm = sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n]));
-//          double Pe_tip = vnorm*vel_nondim_to_dim*d0/alpha_s;
-//          printf("Pe_tip = %0.4f \n",Pe_tip);
-//        }
+    // Initialize timesteps to use:
+    if(solve_stefan){
+        dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
+    }
 
+    if(solve_navier_stokes){
+      dt_NS = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
+
+      if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+          dt_NS=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
       }
     }
-    v_interface.restore_array();
-    phi.restore_array();
+    if(solve_stefan && solve_navier_stokes){
+        dt = min(dt_Stefan, dt_NS);
+        dt = min(dt, dt_max_allowed);
 
-    // Get the maximum v norm across all the processors:
-    int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
-    SC_CHECK_MPI(mpi_ret);
-  }
+    }
+    else if(solve_stefan && !solve_navier_stokes){
+        dt = min(dt_Stefan, dt_max_allowed);
+    }
+    else if(!solve_stefan && solve_navier_stokes){
+        dt = min(dt_NS, dt_max_allowed);
+    }
+    else{
+        throw std::runtime_error("Setting initial timestep: you are not solving any of the possible physics \n");
+    }
 
-  // Compute new timestep:
-  dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;//min(global_max_vnorm,1.0);//global_max_vnorm;
-  //dt = min(dt_computed,dt_max_allowed);
+    dt_nm1 = dt;
+  } // end of if tstep == 0
+  else{
+      // Compute dt_Stefan (and interfacial velocity if needed)
+      if(solve_stefan){
+          if(!example_has_known_max_vint){
+              // Check the values of v_interface locally:
+              v_interface.get_array();
+              phi.get_array();
+              foreach_local_node(n,nodes){
+                  if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
+                      max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
+                      // For checking dendrite tip velocity case:
+                      //        double xyz_[P4EST_DIM];
+                      //        node_xyz_fr_n(n,p4est,nodes,xyz_);
+                      //        bool is_xaxis = (fabs(xyz_[0] - (xmax - xmin)/2.)<dxyz_close_to_interface);
+                      //        bool is_yaxis = (fabs(xyz_[1] - (ymax - ymin)/2.)<dxyz_close_to_interface);
+                      //        bool is_tip = (is_xaxis && !is_yaxis) || (!is_xaxis && is_yaxis);
+                      //        if(is_tip){
 
-  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
-    double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
-    dt_Stefan = tfinal/N;
-  }
+                      //          double vnorm = sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n]));
+                      //          double Pe_tip = vnorm*vel_nondim_to_dim*d0/alpha_s;
+                      //          printf("Pe_tip = %0.4f \n",Pe_tip);
+                      //        }
+                  }
+              }
+              v_interface.restore_array();
+              phi.restore_array();
+
+              // Get the maximum v norm across all the processors:
+              int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+              SC_CHECK_MPI(mpi_ret);
+          }
+          else{
+              global_max_vnorm = max_vint_known_for_ex;
+          }
+
+          // Compute new Stefan timestep:
+          dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
+     } // end of if solve stefan
+
+    // Compute dt_NS if necessary
+    if(solve_navier_stokes){
+        ns->compute_dt();
+        dt_NS = ns->get_dt();
+        // Address the case where we are loading a simulation state
+        if(tstep==load_tstep){
+            dt_NS=dt_nm1;
+        }
+    }
+
+    // Compute the timestep that will be used depending on what physics we have:
+    if(solve_stefan && solve_navier_stokes){
+        // Take the minimum timestep of the NS and Stefan (dt_Stefan computed previously):
+        dt = min(dt_Stefan,dt_NS);
+        dt = min(dt, dt_max_allowed);
+    }
+    else if(solve_stefan && !solve_navier_stokes){
+        dt = min(dt_Stefan, dt_max_allowed);
+    }
+    else if(!solve_stefan && solve_navier_stokes){
+        dt = min(dt_NS, dt_max_allowed);
+    }
+    else{
+        throw std::runtime_error("setting the timestep : you are not solving any of the possible physics ... \n");
+    }
+
+  // Removed below 12-7: this is redundant bc max vint is already constant so we will have a constant timestep
+//  // Note: changed frank sphere problem to have a constant time step value during the Elyce Rochi merge 11/24
+//  if((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_TEST_2)
+//          || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP) || (example_ == FRANK_SPHERE)){
+//    double N = tfinal*global_max_vnorm/cfl/min(dxyz_smallest[0],dxyz_smallest[1]);
+//    dt_Stefan = tfinal/N;
+//  }
 
   v_interface_max_norm = global_max_vnorm;
-}
+  } // ends else (if tstep is not zero)
+
+  // Clip the timestep if we are near the end of our simulation, to get the proper end time:
+  if((tn + dt > tfinal) && (last_tstep<0)){
+
+      dt = max(tfinal - tn,dt_min_allowed);
+
+      // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
+      if(fabs(tfinal-tn)>dt_min_allowed){
+          last_tstep = tstep+1;
+      }
+      else{
+          last_tstep = tstep;
+      }
+
+      PetscPrintf(mpicomm,"Final tstep will be %d \n",last_tstep);
+  }
+
+  // Clip time and switch vel direction for coupled problem example:
+  if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
+      if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
+          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
+              PetscPrintf(mpicomm,"uneven situation \n");
+              dt = (tfinal/2.) - tn;
+          }
+          PetscPrintf(mpicomm,"SWITCH SIGN : %0.1f \n",coupled_test_sign);
+          coupled_test_switch_sign();
+          vel_has_switched=true;
+          PetscPrintf(mpicomm,"SWITCH SIGN : %0.1f \n dt : %e \n",coupled_test_sign,dt);
+
+      }
+  }
+
+  // Print the timestep info:
+  PetscPrintf(mpicomm,"\n"
+                         "Computed timestep: \n"
+                         " - dt used: %0.3e "
+                         " - dt_Stefan: %0.3e "
+                         " - dt_NS : %0.3e  "
+                         " - dxyz close to interface : %0.3e "
+                         "\n \n",
+                        dt, dt_Stefan, dt_NS,
+                        dxyz_close_to_interface);
+
+
+} // ends function
 
 
 void prepare_refinement_fields(vec_and_ptr_t phi, vec_and_ptr_t vorticity, vec_and_ptr_t vorticity_refine, vec_and_ptr_dim_t T_l_dd, my_p4est_node_neighbors_t* ngbd){
@@ -6375,6 +6514,7 @@ int main(int argc, char** argv) {
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
     while(tn<=tfinal){ // trying something
+
       // Enforce startup iterations for verification tests if needed:
       if((startup_iterations>0)){
         if(tstep<startup_iterations){
@@ -6411,22 +6551,37 @@ int main(int argc, char** argv) {
 
         }
       }
-
-      if(tstep==0){
-        dxyz_min(p4est,dxyz_smallest);
-
-        // Initialize timesteps to use:
-        if(solve_navier_stokes){
-          dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
-          if (example_==MELTING_ICE_SPHERE_NAT_CONV){
-              dt_nm1=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
-          }
-          dt = dt_nm1;
-        }
-        else{
-          dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.;
-          dt = dt_nm1;}
+      if(tstep ==0){
+          compute_timestep(v_interface, phi,
+                           dxyz_close_to_interface, dxyz_smallest,
+                           nodes_np1, p4est_np1, ns,
+                           load_tstep, last_tstep);
       }
+
+//      if(tstep==0){
+//        dxyz_min(p4est,dxyz_smallest);
+
+//        // Initialize timesteps to use:
+//        if(solve_navier_stokes && solve_stefan){
+//          dt_NS = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/max(u0,v0);
+//          if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+//              dt_NS=cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
+//          }
+
+//          double vint = 1.0;
+//          if(example_)
+
+//          dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/vint;
+
+//          }
+
+
+//          dt = dt_nm1;
+//        }
+//        else{
+//          dt_nm1 = cfl_NS*min(dxyz_smallest[0],dxyz_smallest[1])/1.;
+//          dt = dt_nm1;}
+//      }
 
 
       // Check if some startup time (before allowing interfacial growth) has been requested
@@ -6975,10 +7130,11 @@ int main(int argc, char** argv) {
           MPI_Abort(mpi.comm(),0);
         }
 
-        // -------------------------------
-        // Update timestep info as needed
-        // -------------------------------
-        if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
+        // 12-7 commented out below -- we added a section that handles this with all the other timestep stuff
+//        // -------------------------------
+//        // Update timestep info as needed
+//        // -------------------------------
+//        if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
 
         // -------------------------------
         // Clear out the interfacial BC for the next timestep, if needed
@@ -7119,42 +7275,74 @@ int main(int argc, char** argv) {
 
       // Compute stefan timestep:
       char stefan_timestep[1000];
-      if(solve_stefan){
-        compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest,nodes_np1,p4est_np1); // this function modifies the variable dt
+      sprintf(stefan_timestep,"Computed interfacial velocity: \n"
+                              " - Computational : %0.3e  "
+                              "- Physical : %0.3e [m/s]  "
+                              "- Physical : %0.3f  [mm/s] \n",
+              v_interface_max_norm,
+              v_interface_max_norm*vel_nondim_to_dim,
+              v_interface_max_norm*vel_nondim_to_dim*1000.);
 
-        sprintf(stefan_timestep,"Computed interfacial velocity: \n"
-                                " - Computational : %0.3e  "
-                                "- Physical : %0.3e [m/s]  "
-                                "- Physical : %0.3f  [mm/s] \n",
-                v_interface_max_norm,
-                v_interface_max_norm*vel_nondim_to_dim,
-                v_interface_max_norm*vel_nondim_to_dim*1000.);
-        if(example_ == DENDRITE_TEST){
-           PetscPrintf(mpi.comm()," ! vint*d0/alpha_s = %0.4f \n", v_interface_max_norm*vel_nondim_to_dim*d0/alpha_s);
-        }
-      }
-
-      // Take NS timestep into account if relevant:
-      if(solve_navier_stokes && tstep>0){
-        // Compute the corresponding timestep:
-        ns->compute_dt(/*NS_norm*/);
-        dt_NS = ns->get_dt();
+      compute_timestep(v_interface, phi,
+                       dxyz_close_to_interface, dxyz_smallest,
+                       nodes_np1, p4est_np1, ns,
+                       load_tstep, last_tstep); // this function modifies the variable dt
 
 
-        // Determine the timestep depending on timestep restrictions from both NS solver and from the Stefan problem
-        if(solve_stefan){
-            if(tstep==load_tstep){dt_NS=dt_nm1;} // TO-DO: not sure this logic is 100% correct, what about NS only case?
-            dt = min(dt_Stefan,dt_NS);
-            dt = min(dt, dt_max_allowed);
+
+
+/*
+//      // Take NS timestep into account if relevant:
+//      if(solve_navier_stokes && tstep>0){
+//        // Compute the corresponding timestep:
+//        ns->compute_dt();
+//        dt_NS = ns->get_dt();
+
+//        PetscPrintf(mpi.comm(), "dt = %0.4e \n dt_Stefan = %0.4e \n dt_NS = %0.4e \n",
+//                    dt, dt_Stefan, dt_NS);
+
+//        // Determine the timestep depending on timestep restrictions from both NS solver and from the Stefan problem
+//        if(solve_stefan){
+//            if(tstep==load_tstep){dt_NS=dt_nm1;} // TO-DO: not sure this logic is 100% correct, what about NS only case?
+//            dt = min(dt_Stefan,dt_NS);
+//            dt = min(dt, dt_max_allowed);
+//          }
+//        else{
+//            // If we are only solving Navier Stokes
+//            dt = min(dt_NS, dt_max_allowed);
+//          }
+//      }
+
+
+      // Assign the timesteps accordingly depending on the physics we are solving:
+      if(solve_navier_stokes && solve_stefan){
+          if(tstep>0){
+              // Compute the NS timestep:
+              ns->compute_dt();
+              dt_NS = ns->get_dt();
+
+              // Address the case where we are loading a simulation state
+              if(tstep==load_tstep){
+                  dt_NS=dt_nm1;
+              }
+              // Take the minimum timestep of the NS and Stefan (dt_Stefan computed previously):
+              dt = min(dt_Stefan,dt_NS);
+              dt = min(dt, dt_max_allowed);
           }
-        else{
-            // If we are only solving Navier Stokes
-            dt = min(dt_NS, dt_max_allowed);
+          else{
+              dt = min(dt_Stefan, dt_max_allowed);
           }
       }
-      // If only solving Stefan problem:
-      if(solve_stefan && !solve_navier_stokes){
-        dt = dt_Stefan;
+      else if(solve_stefan && !solve_navier_stokes){
+          dt = min(dt_Stefan, dt_max_allowed);
+      }
+      else if(!solve_stefan && solve_navier_stokes){
+          ns->compute_dt();
+          dt_NS = ns->get_dt();
+          dt = min(dt_NS, dt_max_allowed);
+      }
+      else{
+          throw std::runtime_error("setting the timestep : you are not solving any of the possible physics ... \n");
       }
 
       PetscPrintf(mpi.comm(),"\n"
@@ -7167,37 +7355,9 @@ int main(int argc, char** argv) {
                              "\n \n",solve_stefan?stefan_timestep:"",
                             dt, dt_Stefan, dt_NS,
                             dxyz_close_to_interface);
+                            */
 
-      // Clip the timestep if we are near the end of our simulation, to get the proper end time:
-      if((tn + dt > tfinal) && (last_tstep<0)){
 
-          dt = max(tfinal - tn,dt_min_allowed);
-
-          // if time remaining is too small for one more step, end here. otherwise, do one more step and clip timestep to end on exact ending time
-          if(fabs(tfinal-tn)>dt_min_allowed){
-            last_tstep = tstep+1;
-          }
-          else{
-            last_tstep = tstep;
-          }
-
-          PetscPrintf(mpi.comm(),"Final tstep will be %d \n",last_tstep);
-        }
-
-      // Clip time and switch vel direction for coupled problem example:
-      if((example_ == COUPLED_PROBLEM_EXAMPLE)|| (example_ == COUPLED_TEST_2) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)){
-        if(((tn+dt) >= tfinal/2.0) && !vel_has_switched){
-          if((tfinal/2. - tn)>dt_min_allowed){ // if we have some uneven situation
-            PetscPrintf(mpi.comm(),"uneven situation \n");
-            dt = (tfinal/2.) - tn;
-          }
-          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n",coupled_test_sign);
-          coupled_test_switch_sign();
-          vel_has_switched=true;
-          PetscPrintf(mpi.comm(),"SWITCH SIGN : %0.1f \n dt : %e \n",coupled_test_sign,dt);
-
-        }
-      }
 
       if(tstep!=last_tstep){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"

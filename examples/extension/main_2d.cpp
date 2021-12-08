@@ -54,11 +54,11 @@ const static std::string main_description =
 param_list_t pl;
 
 // grid parameters
-param_t<int>    lmin                 (pl, -1,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<int>    lmax                 (pl, 5,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmin                 (pl, 4,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmax                 (pl, 4,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
 param_t<double> lip                  (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
 param_t<double> uniform_band         (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
-param_t<int>    num_splits           (pl, 10,   "num_splits",           "Number of successive refinements (default: 5)");
+param_t<int>    num_splits           (pl, 5,   "num_splits",           "Number of successive refinements (default: 5)");
 param_t<int>    num_splits_per_split (pl, 1,   "num_splits_per_split", "Number of additional refinements (default: 1)");
 param_t<bool>   aggressive_coarsening(pl, 1,   "aggressive_corsening", "Enfornce lip = 0 (i.e. no smooth transition from uniform band to coarse grid");
 
