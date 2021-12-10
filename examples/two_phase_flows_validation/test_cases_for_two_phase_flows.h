@@ -1023,7 +1023,7 @@ static class test_case_2_t : public test_case_for_two_phase_flows_t
 public:
   test_case_2_t() : test_case_for_two_phase_flows_t()
   {
-    mu_m  = 0.1;
+    mu_m  = 0.5;
     rho_m = 0.1;
     mu_p  = 1.0;
     rho_p = 1.0;
@@ -1052,7 +1052,7 @@ public:
         + std::string("* levelset = 0.1 outside of [0, \\pi] x [0, \\pi], 0.1 - sin(x)*sin(y) inside (+ needs reinitialization)\n")
         + std::string("* (The user may enable interface advection or not, it is disabled by default) \n")
         + std::string("* mu_m = 0.1; \n")
-        + std::string("* mu_p = 0.1; \n")
+        + std::string("* mu_p = 1.0; \n")
         + std::string("* rho_m = 1.00; \n")
         + std::string("* rho_p = 1.00; \n")
         + std::string("* surface_tension = 0.1; \n")

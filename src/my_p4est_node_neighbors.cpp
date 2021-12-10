@@ -1533,8 +1533,6 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     ierr = VecGetArray(fzz[k],    &fzz_p[k]); CHKERRXX(ierr);
 #endif
   }
-
-  int mpicomm = p4est->mpicomm;
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i = 0; i < layer_nodes.size(); i++)

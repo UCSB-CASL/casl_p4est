@@ -392,6 +392,9 @@ public:
   {}
 
    //11/22/21 -- Elyce and Rochi merge -- commented out the below code, because show_convergence is no longer part of  this function in the updated version from Daniil
+   // 12/10/21 -- Elyce and Rochi merge -- added a const cast to this constructor to make it compatible with usage in the rest of the library. Essentially allows you to
+   // pass the neighbors as a const, but removes that const qualifier when providing it to the level set
+   // This was done to make two_phase_flows compatible with the updates done to the level set class
   /*!
    * \brief my_p4est_level_set_t constructor based on a pointer to a CONSTANT node-neighborhood object. Too bad for you if the node neighbors
    * are not initialized upon calling this constructor because you'll pay the price...
@@ -406,7 +409,9 @@ public:
       interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
       /*show_convergence(false), show_convergence_band(5.), */bc_rel_thresh(1.e-8),use_two_step_extrapolation(false)
-  { }
+  {
+      this->ngbd = const_cast<my_p4est_node_neighbors_t*>(ngbd_);
+  }
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
     ngbd  = ngbd_;

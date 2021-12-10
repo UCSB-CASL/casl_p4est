@@ -28,8 +28,8 @@ const static string main_description =
     + string("can be saved in vtk format as well. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018 and Summer 2020\n");
 
-const int default_lmin = 3;
-const int default_lmax = 4;
+const int default_lmin = 5;
+const int default_lmax = 7;
 
 const int default_ngrids  = 5;
 const int default_ntree   = 2;
@@ -489,11 +489,15 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_scalar_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_vector_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_vector_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_cell_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_cell_scalar_fields);
-
+  printf("aaa \n");
   // on computational grid nodes
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_minus, "exact_solution_minus"));
+  printf("bbb \n");
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_plus, "exact_solution_plus"));
+  printf("ccc \n");
+
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_phi_on_computational_nodes(), "phi"));
+  printf("ddd \n");
   for (size_t k = 0; k < convergence_anlayzers.size(); ++k) {
     my_p4est_poisson_jump_cells_t* jump_solver = convergence_anlayzers[k].jump_cell_solver;
     my_p4est_poisson_jump_cells_xgfm_t* xgfm_solver = dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(jump_solver);
@@ -503,8 +507,10 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
 
     comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(jump_solver->get_solution(), "solution" + name_extension));
     comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_error, "error" + name_extension));
-    if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections())
-      comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
+    if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections()){
+        comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
+    }
+    printf("eee \n");
 
     Vec extrapolated_solution_minus = jump_solver->get_extrapolated_solution_minus();
     if(extrapolated_solution_minus != NULL)
@@ -512,14 +518,22 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_minus, "extrapolated_solution_minus" + name_extension));
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_minus, "extrapolation_error_minus" + name_extension));
     }
+    printf("fff \n");
+
     Vec extrapolated_solution_plus  = jump_solver->get_extrapolated_solution_plus();
+    printf("fff1 \n");
     if(extrapolated_solution_plus != NULL)
     {
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
+      printf("fff2 \n");
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
     }
-    comp_cell_vector_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_sharp_flux_error, "error_sharp_flux" + name_extension));
+    printf("fff3 \n");
+    //comp_cell_vector_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_sharp_flux_error, "error_sharp_flux" + name_extension));
+    printf("fff4 \n");
   }
+  printf("ggg \n");
+
   // on interface-capturing grid nodes
   interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump(), "jump"));
   interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump_in_normal_flux(), "jump_normal_flux"));
@@ -562,13 +576,11 @@ void get_flattened_jumps(const my_p4est_interface_manager_t* interface_manager, 
 {
   PetscErrorCode ierr;
   my_p4est_level_set_t ls(&interface_manager->get_interface_capturing_ngbd_n());
-
   double *jump_u_p, *jump_normal_flux_p;
   const double *grad_phi_p;
   ierr = VecGetArray(jump_u,                                &jump_u_p);           CHKERRXX(ierr);
   ierr = VecGetArray(jump_normal_flux,                      &jump_normal_flux_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(interface_manager->get_grad_phi(), &grad_phi_p);         CHKERRXX(ierr);
-
   double node_xyz[P4EST_DIM];
   const my_p4est_node_neighbors_t& interface_capturing_ngbd_n = interface_manager->get_interface_capturing_ngbd_n();
   for(size_t k = 0; k < interface_capturing_ngbd_n.get_layer_size(); ++k) {
@@ -591,11 +603,14 @@ void get_flattened_jumps(const my_p4est_interface_manager_t* interface_manager, 
   ierr = VecRestoreArrayRead(interface_manager->get_grad_phi(), &grad_phi_p);         CHKERRXX(ierr);
   ierr = VecRestoreArray    (jump_normal_flux,                  &jump_normal_flux_p); CHKERRXX(ierr);
   ierr = VecRestoreArray    (jump_u,                            &jump_u_p);           CHKERRXX(ierr);
-
   Vec jump_u_flattened, jump_normal_flux_flattened;
   ierr = VecDuplicate(jump_u,           &jump_u_flattened);           CHKERRXX(ierr);
   ierr = VecDuplicate(jump_normal_flux, &jump_normal_flux_flattened); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_u,            jump_u_flattened,           20, NULL, 2, 10, NULL, interface_manager->get_grad_phi());
+  ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(),
+                                               jump_u,
+                                               jump_u_flattened,
+                                               20, NULL, 2, 10, NULL,
+                                               interface_manager->get_grad_phi());
   ls.extend_from_interface_to_whole_domain_TVD(interface_manager->get_phi(), jump_normal_flux,  jump_normal_flux_flattened, 20, NULL, 2, 10, NULL, interface_manager->get_grad_phi());
   ierr = VecDestroy(jump_u);            CHKERRXX(ierr); jump_u            = jump_u_flattened;           jump_u_flattened = NULL;
   ierr = VecDestroy(jump_normal_flux);  CHKERRXX(ierr); jump_normal_flux  = jump_normal_flux_flattened; jump_normal_flux_flattened = NULL;
@@ -950,13 +965,14 @@ int main (int argc, char* argv[])
   const bool use_second_order_theta     = default_use_second_order_theta || cmd.contains("second_order_ls");
   const bool get_integral               = default_get_integral || cmd.contains("get_integral");
   const bool print_summary              = default_print_summary || cmd.contains("summary");
-  const bool save_vtk                   = cmd.contains("save_vtk");
+//  const bool save_vtk                   = cmd.contains("save_vtk");
+  const bool save_vtk = true;
   const bool use_subrefinement          = cmd.get<bool>("subrefinement", default_subrefinement);
   const interpolation_method phi_interp = cmd.get<interpolation_method>("phi_interp", default_interp_method_phi);
   const bool extrapolate_solution       = cmd.get<bool>("extrapolate", default_extrapolation);
   const bool pin_normal_derivatives     = cmd.get<bool>("quad_pinning", default_quad_pinning);
 
-  std::vector<jump_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM); default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
+  std::vector<jump_solver_tag> default_solvers_to_test; default_solvers_to_test.push_back(GFM);default_solvers_to_test.push_back(xGFM); default_solvers_to_test.push_back(FV);
   const std::vector<jump_solver_tag> solvers_to_test = cmd.get<std::vector<jump_solver_tag> >("solver", default_solvers_to_test);
   if(solvers_to_test.size() > 3)
     throw std::invalid_argument("main for testing my_p4est_poisson_jump_cells : do not duplicate the solvers to test, that is not allowed...");
@@ -1023,7 +1039,6 @@ int main (int argc, char* argv[])
 
     Vec interface_capturing_phi_xxyyzz = NULL;
     interface_manager = new my_p4est_interface_manager_t(faces, nodes, interface_capturing_ngbd_n);
-
     if(use_second_order_theta || (!use_subrefinement && phi_interp != linear)){
       ierr = VecCreateGhostNodesBlock(interface_capturing_ngbd_n->get_p4est(), interface_capturing_ngbd_n->get_nodes(), P4EST_DIM, &interface_capturing_phi_xxyyzz); CHKERRXX(ierr);
       interface_capturing_ngbd_n->second_derivatives_central(interface_capturing_phi, interface_capturing_phi_xxyyzz);
@@ -1039,14 +1054,14 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(interface_manager->get_interface_capturing_ngbd_n().get_p4est(), interface_manager->get_interface_capturing_ngbd_n().get_nodes(), &jump_normal_flux); CHKERRXX(ierr);
     get_flattened_jumps(interface_manager, test_problem, jump_u, jump_normal_flux); // output
 
+
+
     /* TEST THE JUMP SOLVER AND COMPARE TO ORIGINAL GFM */
     Vec sharp_rhs_minus, sharp_rhs_plus;
     ierr = VecCreateNoGhostCells(p4est, &sharp_rhs_minus); CHKERRXX(ierr);
     ierr = VecCreateNoGhostCells(p4est, &sharp_rhs_plus); CHKERRXX(ierr);
     get_sharp_rhs(p4est, ghost, test_problem, sharp_rhs_minus, sharp_rhs_plus);
-
     for(size_t k = 0; k < solver_analyses.size(); ++k) {
-
       switch (solver_analyses[k].tag) {
       case GFM:
       case xGFM:
@@ -1080,15 +1095,12 @@ int main (int argc, char* argv[])
       jump_solver.set_diagonals(0.0, 0.0);
       jump_solver.set_bc(bc);
       jump_solver.set_rhs(sharp_rhs_minus, sharp_rhs_plus);
-
       watch.start("");
       KSPType ksp_solver = (dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(&jump_solver) != NULL ? KSPCG : KSPBCGS);
       jump_solver.solve_for_sharp_solution(ksp_solver, PCHYPRE);
       watch.stop();
       solver_analyses[k].add_solve_time(watch.get_duration());
-
       jump_solver.print_solve_info();
-
       /* if null space, shift solution */
       if(jump_solver.get_matrix_has_nullspace())
         shift_solution_to_match_exact_integral(jump_solver, test_problem);
@@ -1112,7 +1124,9 @@ int main (int argc, char* argv[])
         print_integral_of_exact_solution(exact_solution_minus, exact_solution_plus, phi, p4est, nodes);
 
       if(save_vtk)
+          printf("hi");
         save_VTK(vtk_out, iter, exact_solution_minus, exact_solution_plus, solver_analyses, &brick);
+        printf("poo");
       ierr = VecDestroy(exact_solution_minus); CHKERRXX(ierr);
       ierr = VecDestroy(exact_solution_plus); CHKERRXX(ierr);
     }

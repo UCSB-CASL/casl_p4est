@@ -289,9 +289,15 @@ void my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(const p4e
     {
       /* If no one-side, we assume that the interface is tesselated with uniform finest grid level */
       if(direct_neighbors.size() != 1)
-        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): did not find one single direct neighbor for a cell center across the interface. \n Is your grid uniform across the interface?");
-      if(quad->level != ((splitting_criteria_t*) p4est->user_pointer)->max_lvl || quad->level != direct_neighbors.begin()->level)
-        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
+        throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): "
+                                 "did not find one single direct neighbor for a cell center across the interface. \n "
+                                 "Is your grid uniform across the interface?");
+
+      if(quad->level != ((splitting_criteria_t*) p4est->user_pointer)->max_lvl || quad->level != direct_neighbors.begin()->level){
+          printf( "!! Quad level is %d, p4est max level is %d, direct neighbors level is %d \n", quad->level, ((splitting_criteria_t*) p4est->user_pointer)->max_lvl, direct_neighbors.begin()->level);
+          throw std::runtime_error("my_p4est_poisson_jump_cells_xgfm_t::build_discretization_for_quad(): the interface crosses two cells that are either not of the same size or bigger than expected.");
+
+      }
       const p4est_quadrant_t& neighbor_quad = *direct_neighbors.begin();
       const FD_interface_neighbor& cell_interface_neighbor = interface_manager->get_cell_FD_interface_neighbor_for(quad_idx, neighbor_quad.p.piggy3.local_num, oriented_dir);
       const double& mu_across = (sgn_quad > 0 ? mu_minus : mu_plus);

@@ -80,7 +80,7 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   splitting_criteria_cf_t(int min_lvl, int max_lvl, const CF_DIM *phi, double lip=1.2, double band = 0):splitting_criteria_t(min_lvl, max_lvl, lip, band)
   {
       this->phi =const_cast<CF_DIM*>(phi);
-      //this->phi = std::remove_const<typename std::remove_pointer<const CF_DIM*>::type>::type* CF_DIM(phi);
+      // this one did not work: Elyce and Rochi merge ~12/3/21 //this->phi = std::remove_const<typename std::remove_pointer<const CF_DIM*>::type>::type* CF_DIM(phi);
   }
 };
 

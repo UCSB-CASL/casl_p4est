@@ -24,10 +24,10 @@ const static string main_description =
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), 2019-2020-2021-...-2523\n");
 
 // test index
-const int default_test = 0;
+const int default_test = 2;
 // grid-related
 const int default_lmin = 4;
-const int default_lmax = 6;
+const int default_lmax = 8;
 const double default_vorticity_threshold    = DBL_MAX;
 const double default_uniform_band_in_dx_min = 5;
 const int default_ntree[P4EST_DIM] = {DIM(1, 1, 1)};
@@ -948,7 +948,6 @@ int main (int argc, char* argv[])
   if(save_vtk)
     export_error_visualization(vtk_dir, two_phase_flow_solver, test_problem);
   print_convergence_results(export_dir, two_phase_flow_solver, test_problem);
-
   delete two_phase_flow_solver;
   my_p4est_brick_destroy(connectivity, brick);
   delete brick;
