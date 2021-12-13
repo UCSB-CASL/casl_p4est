@@ -28,8 +28,8 @@ const static string main_description =
     + string("can be saved in vtk format as well. \n")
     + string("Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018 and Summer 2020\n");
 
-const int default_lmin = 5;
-const int default_lmax = 7;
+const int default_lmin = 3;
+const int default_lmax = 4;
 
 const int default_ngrids  = 5;
 const int default_ntree   = 2;
@@ -489,15 +489,11 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_scalar_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_node_vector_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_node_vector_fields);
   std::vector<Vec_for_vtk_export_t>* interface_capturing_cell_scalar_fields = (interface_manager->subcell_resolution() > 0 ? new std::vector<Vec_for_vtk_export_t> : &comp_cell_scalar_fields);
-  printf("aaa \n");
   // on computational grid nodes
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_minus, "exact_solution_minus"));
-  printf("bbb \n");
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(exact_solution_plus, "exact_solution_plus"));
-  printf("ccc \n");
 
   comp_node_scalar_fields.push_back(Vec_for_vtk_export_t(interface_manager->get_phi_on_computational_nodes(), "phi"));
-  printf("ddd \n");
   for (size_t k = 0; k < convergence_anlayzers.size(); ++k) {
     my_p4est_poisson_jump_cells_t* jump_solver = convergence_anlayzers[k].jump_cell_solver;
     my_p4est_poisson_jump_cells_xgfm_t* xgfm_solver = dynamic_cast<my_p4est_poisson_jump_cells_xgfm_t*>(jump_solver);
@@ -510,7 +506,6 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
     if(xgfm_solver != NULL && xgfm_solver->uses_xGFM_corrections()){
         comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(xgfm_solver->get_extended_interface_values(), "extension" + name_extension));
     }
-    printf("eee \n");
 
     Vec extrapolated_solution_minus = jump_solver->get_extrapolated_solution_minus();
     if(extrapolated_solution_minus != NULL)
@@ -518,21 +513,16 @@ void save_VTK(const string out_dir, const int &iter, Vec exact_solution_minus, V
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_minus, "extrapolated_solution_minus" + name_extension));
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_minus, "extrapolation_error_minus" + name_extension));
     }
-    printf("fff \n");
 
     Vec extrapolated_solution_plus  = jump_solver->get_extrapolated_solution_plus();
-    printf("fff1 \n");
     if(extrapolated_solution_plus != NULL)
     {
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(extrapolated_solution_plus, "extrapolated_solution_plus" + name_extension));
-      printf("fff2 \n");
       comp_cell_scalar_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_extrapolation_error_plus, "extrapolation_error_plus" + name_extension));
     }
-    printf("fff3 \n");
     //comp_cell_vector_fields.push_back(Vec_for_vtk_export_t(convergence_anlayzers[k].cell_sampled_sharp_flux_error, "error_sharp_flux" + name_extension));
-    printf("fff4 \n");
+    // commented out above bc otherwise save_to_vtk does not work (Elyce and Rochi merge 12/13/21)
   }
-  printf("ggg \n");
 
   // on interface-capturing grid nodes
   interface_capturing_node_scalar_fields->push_back(Vec_for_vtk_export_t(convergence_anlayzers[0].jump_cell_solver->get_jump(), "jump"));
@@ -922,7 +912,6 @@ void print_convergence_summary_in_file(const string& out_folder, const string& t
 
 int main (int argc, char* argv[])
 {
-  // THIS FILE is IN DESTINATION FUCKED ! WAIT TILL IT IS SERVICED aka comment from ROCHI 12/7
   PetscErrorCode ierr;
   mpi_environment_t mpi;
   mpi.init(argc, argv);
@@ -1124,9 +1113,7 @@ int main (int argc, char* argv[])
         print_integral_of_exact_solution(exact_solution_minus, exact_solution_plus, phi, p4est, nodes);
 
       if(save_vtk)
-          printf("hi");
         save_VTK(vtk_out, iter, exact_solution_minus, exact_solution_plus, solver_analyses, &brick);
-        printf("poo");
       ierr = VecDestroy(exact_solution_minus); CHKERRXX(ierr);
       ierr = VecDestroy(exact_solution_plus); CHKERRXX(ierr);
     }
