@@ -82,6 +82,7 @@ enum:int {
   PLANE_POIS_FLOW=9,
   DISSOLVING_DISK_BENCHMARK=10
 };
+// Elyce to-do: add dissolving porous media example
 
 enum{LIQUID_DOMAIN=0, SOLID_DOMAIN=1};
 
@@ -124,6 +125,7 @@ DEFINE_PARAMETER(pl, int, num_save_states, 20, "Number of save states we keep on
 // Load state options
 DEFINE_PARAMETER(pl ,bool, loading_from_previous_state, false,"Loads simulation from previous state if marked true");
 
+
 // ---------------------------------------
 // Debugging options:
 // ---------------------------------------
@@ -165,6 +167,15 @@ DEFINE_PARAMETER(pl, bool, no_flow, false, "An override switch for the ice cylin
 // Related to simulation duration settings:
 DEFINE_PARAMETER(pl, double, duration_overwrite, -100.0, "Overwrite the duration in minutes (works if set to a positive number, default:-100.0");
 DEFINE_PARAMETER(pl, double, duration_overwrite_nondim, -10.,"Overwrite the duration in nondimensional time (in nondimensional time) -- not fully implemented");
+
+
+
+// whether or not to use inner cylinders for the porous media example:
+DEFINE_PARAMETER(pl, bool, use_inner_surface_porous_media, false, "If true, will use inner cylinders in the porous media problem with an initial solid layer on top. This might represent a media with some solidified material or deposit already present on a fixed structure. a.k.a. Okada style (ice on cooled cyl) Default: false. ");
+
+DEFINE_PARAMETER(pl, double, porous_media_initial_thickness_multiplier, 1.05, "The initial thickness multiplier of the outer interface in relation to the inner interface, in the case when you are using both inner and outer interfaces for the porous media case. i.e. if there is an initial ice thickness on a porous media, then the media structure will have the geometry as defined in the provided files, and the ice will sit on the porous media geometry with an initial radius of porous_media_initial_thickness_multiplier*r_porous_media \n. Default value: 1.05 ");
+
+
 // ---------------------------------------
 
 bool analytical_IC_BC_forcing_term;
@@ -179,6 +190,7 @@ bool example_uses_inner_LSF;
 bool example_requires_area_computation;
 
 bool do_we_solve_for_Ts;
+bool solve_temp_not_conc; //modifies the Stefan condition and interfacial BC depending on whether we are solving a temperature problem or a concentration problem
 
 void select_solvers(){
   switch(example_){
@@ -258,12 +270,14 @@ void select_solvers(){
                                        (example_ == MELTING_POROUS_MEDIA) ||
                                        (example_ == DISSOLVING_DISK_BENCHMARK);
 
-    example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER);
+    example_uses_inner_LSF = (example_ == ICE_AROUND_CYLINDER) || ((example_ == MELTING_POROUS_MEDIA) && use_inner_surface_porous_media);
 
     example_requires_area_computation = (example_ == ICE_AROUND_CYLINDER) ||
                                         (example_ == MELTING_ICE_SPHERE) || (example_ == DISSOLVING_DISK_BENCHMARK);
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
+
+    solve_temp_not_conc = (example_ !=DISSOLVING_DISK_BENCHMARK);
 
 }
 // ---------------------------------------
@@ -309,9 +323,12 @@ double T_inf;
 
 // For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
 DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
+// TO-DO: change d_cyl to "d_length_scale" so that it is more general
 DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263, aka -10 C). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
 
 DEFINE_PARAMETER(pl, double, Twall, 275.5, "The freestream fluid temperature T_infty. (default: 275.5 K, or 2.5 C)");
+//to-do: decide whether to keep this pressure drop option. will need to add logic to either select pressure drop OR overwrite Reynolds, but not both
+//DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media)");
 
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
 double d_seed; // for dendrite test : set in TO-DO:update this
@@ -434,19 +451,19 @@ void set_geometry(){
 //      ny =5.0;
 
       // EASIER TO DO LOCALLY:
-      xmin = 0.0; xmax = 10.0;
-      ymin = 0.0; ymax = 10.0;
+      xmin = 0.0; xmax = 2.0;
+      ymin = 0.0; ymax = 2.0;
 
       // Number of trees:
-      nx = 5.0;
-      ny = 5.0;
+      nx = 2.0;
+      ny = 2.0;
 
       // Periodicity:
       px = 0;
       py = 0;
 
       // Problem geometry:
-      r0 = 0.5;     // Computational radius of the sphere
+      r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
@@ -617,64 +634,6 @@ void set_geometry(){
 
         }
       }
-
-      /*
-
-      // Initialize the arrays:
-      xshifts[0] = 0.; yshifts[0] = 0.; rvals[0] = 0.;
-
-      // First, generate the desired number of grains, with size and location:
-      for(int n=0; n<num_grains; n++){
-        // Initialize the values:
-        xshifts[n] = 0.; yshifts[n] = 0.; rvals[n] = 0.;
-
-
-        // We will generate random grains and check if they are eligible, aka:
-        // (a) is it far enough away from other existing grains?
-        // (b) is it far enough away from the wall?
-        bool is_this_eligible = false;
-        double x_; double y_; double r_;
-        while(!is_this_eligible){
-          x_ = ((double)rand()/RAND_MAX)*xmax + xmin;
-          y_ = ((double)rand()/RAND_MAX)*ymax + ymin;
-          r_ = (((double)rand()/RAND_MAX)*2 + 0.5)*r0; // r0*(1-3)
-
-          is_this_eligible=true;
-          for(int i=0; i<=n; i++){
-            // Check current distance from walls and existing grains:
-            double dist_c2c = sqrt(SQR(xshifts[i] - x_) + SQR(yshifts[i] - y_));
-
-            // Check distance to the wall:
-            double dist_c2wall[4] = {fabs(x_ - xmax),
-                                     fabs(x_ - xmin),
-                                     fabs(y_ - ymax),
-                                     fabs(y_ - ymin)};
-            // grab whatever the closest distance to a wall is:
-            double min_dwall=100.;
-            for(int k=0; k<4; k++){
-              min_dwall = min(min_dwall, dist_c2wall[k]);
-            }
-
-            // we are far enough from the wall if dist from grain edge to wall is larger than minimum pore size
-            bool is_far_enough_from_wall = min_dwall - r_ > min_pore_size;
-
-            // Update the is_this_eligible bool:
-            is_this_eligible = (dist_c2c >= min_pore_size*r0 + r_ + rvals[i]) &&
-                               is_far_enough_from_wall &&
-                               is_this_eligible;
-
-            // If current config not eligible, break the checking for loop and try again:
-            if(!is_this_eligible) break;
-
-//            printf("n = %d, i = %d, dist_c2c = %0.2f, dist_e2e = %0.2f, min_dwall = %0.2f, is_far_from_wall = %s, is_this_eligible = %s \n", n, i, dist_c2c, dist_c2c - r_ - rvals[i],min_dwall, is_far_enough_from_wall? "True": "False", is_this_eligible? "True": "False");
-
-          }
-        }
-        xshifts[n] = x_;
-        yshifts[n] = y_;
-        rvals[n] = r_;
-      }
-*/
       printf("end of operation on rank 0 \n");
     } // end of defining the grains on rank 0, now we need to broadcast the result to everyone
 
@@ -684,16 +643,42 @@ void set_geometry(){
     mpi_err = MPI_Bcast(yshifts.data(), num_grains, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpi_err);
     mpi_err = MPI_Bcast(rvals.data(), num_grains, MPI_DOUBLE, 0, mpi.comm()); SC_CHECK_MPI(mpi_err);
 
+}
 
+double return_LSF_porous_media(DIM(double x, double y, double z), bool is_inner_){
+  // bool is_inner_ corresponds to whether or not the LSF we are returning is for the inner or the outer LSF, in the case that we are using an inner and outer LSF (aka initial deposit layer, etc)
+  double radius_multiplier=1.0;
+
+  if(!is_inner_) radius_multiplier = porous_media_initial_thickness_multiplier;
+
+
+  double lsf_vals[num_grains];
+  // First, grab all the relevant LSF values for each grain:
+  for(int n=0; n<num_grains; n++){
+    double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
+    lsf_vals[n] = radius_multiplier*rvals[n] - r;
+  }
+
+  // Now, loop back over and return the value which has the min magnitude:
+  double current_min = 1.e9;
+  for(int n=0; n<num_grains; n++){
+    if(fabs(lsf_vals[n]) < fabs(current_min)){
+      current_min = lsf_vals[n];
+    }
+  }
+  return current_min;
 
 }
+
+
+
 double v_interface_max_norm; // For keeping track of the interfacial velocity maximum norm
 
 
 // ---------------------------------------
 // Non dimensional groups:
 // ---------------------------------------
-DEFINE_PARAMETER(pl, double, Re, 300., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 300 \n");
+DEFINE_PARAMETER(pl, double, Re, 0., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
 DEFINE_PARAMETER(pl, double, Pr, 0., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
 DEFINE_PARAMETER(pl, double, Pe, 0., "Peclet number - computed from Re and Pr \n");
 DEFINE_PARAMETER(pl, double, St, 0., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
@@ -720,6 +705,10 @@ double mu_l;    // Dynamic viscosity of fluid [Pa s]
 
 // For dissolution problem:
 DEFINE_PARAMETER(pl, double, gamma_diss, 3.69e-4, "The parameter dictates some dissolution behavior, default value is 0.00288 (corresponds to pure gypsum)");
+
+DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1.");
+
+DEFINE_PARAMETER(pl, double, molar_volume_diss, 3.69e-4, "The molar volume of the dissolving solid. Default is for gypsum, ");
 
 DEFINE_PARAMETER(pl, double , D_diss, 1.0e-9, "Dissolution diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
 DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
@@ -938,10 +927,10 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case MELTING_POROUS_MEDIA:{
-      u0 = 1.0;
+      u0 = 0.0;
       v0 = 0.;
 
-      G_press = Re*8./SQR(ymax - ymin);
+      G_press = 1.0; // Pressure drop of order 1
 
       hodge_percentage_of_max_u = 1.e-3;
 
@@ -965,8 +954,11 @@ void set_NS_info(){
       break;
     }
     case PLANE_POIS_FLOW:{
-      Re = 1.0;
-      u0 = 5.0625;
+      Re = 1.0; // this will get overwritten
+      u0 = 1.0;//5.0625;
+
+      G_press = 16.*Re/SQR(ymax-(r0 + ymin)); // selecting to yield uavg = 1, r0 = height of interface (y-wise)
+      // to-do : fix this pois example now that we are using wall reynolds for channel flow type problems ...
       v0 = 0.;
       hodge_percentage_of_max_u=1.0e-3;
       break;
@@ -1001,25 +993,91 @@ void set_NS_info(){
   outflow_v = 0.0;
 }
 
-
+// Elyce commented out 12/14/21 -- transitioning to new way
 // For selecting the appropriate nondimensionalized formulation of the problem:
-enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL, NONDIM_DISSOLUTION};
+//enum:int{NONDIM_NO_FLUID,NONDIM_YES_FLUID,DIMENSIONAL, NONDIM_DISSOLUTION};
 // TO-DO: change this to nondim_no_fluid_freezemelt, nondim_yes_fluid_freezemelt, nondim_no_fluid_dissodepo, nondim_yes_fluid_dissodepo, etc. erosion tbd
-int stefan_condition_type;
-int select_stefan_formulation(){
-  if(solve_navier_stokes){
-    if(example_ == DISSOLVING_DISK_BENCHMARK){
-      return NONDIM_DISSOLUTION;
-    }
-    else{
-      return NONDIM_YES_FLUID;
-    }
+// Elyce commented out 12/14/21 -- transitioning to new way
+//int problem_dimensionalization_type;
+//int select_problem_nondim_or_dim_formulation(){
+//  if(solve_navier_stokes){
+//    if(example_ == DISSOLVING_DISK_BENCHMARK){
+//      return NONDIM_DISSOLUTION;
+//    }
+//    else{
+//      return NONDIM_YES_FLUID;
+//    }
 
-  }
-  else{
-    return NONDIM_NO_FLUID;
-  }
+//  }
+//  else{
+//    return NONDIM_NO_FLUID;
+//  }
+//};
+
+enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_DIFFUSIVITY, DIMENSIONAL};
+// NONDIM_BY_FLUID_VELOCITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
+//                             a characteristic fluid velocity, and Reynolds number is used to setup the Navier-Stokes equations
+
+// NONDIM_BY_DIFFUSIVITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
+//                          a characteristic velocity defined by the fluid's thermal or concentration diffisuvity and char. length scale,
+//                          and Prandtl/Schmidt number is used to setup the Navier-Stokes equations
+
+// DIMENSIONAL -- corresponds to solving the dimensional problem
+
+int problem_dimensionalization_type;
+DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+
+void select_problem_nondim_or_dim_formulation(){
+  switch(example_){
+    case FRANK_SPHERE:{
+      problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
+      break;
+    }
+    case NS_GIBOU_EXAMPLE:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case COUPLED_TEST_2:{
+      problem_dimensionalization_type = DIMENSIONAL;
+      break;
+    }
+    case COUPLED_PROBLEM_EXAMPLE:{
+      problem_dimensionalization_type = DIMENSIONAL;
+      break;
+    }
+    case ICE_AROUND_CYLINDER:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case FLOW_PAST_CYLINDER:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case DENDRITE_TEST:{
+      break;
+    }
+    case MELTING_ICE_SPHERE:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case MELTING_POROUS_MEDIA:{
+      break;
+    }
+    case PLANE_POIS_FLOW:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case DISSOLVING_DISK_BENCHMARK:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY; // elyce to-do : will want to run this benchmark using the other formulation as well
+      break;
+    }
+      // Elyce to-do: add a case for Rochi's example
+    default:{
+      throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
+    }
+  } // end of switch case
 };
+
 
 // For defining appropriate nondimensional groups:
 double time_nondim_to_dim;
@@ -1028,13 +1086,13 @@ double vel_nondim_to_dim;
 // TO-DO: clean up how nondim groups are set
 // TO-DO: make checklist of things to change in main when adding a new example
 void set_nondimensional_groups(){
-   if(stefan_condition_type==NONDIM_YES_FLUID){
+   if(problem_dimensionalization_type==NONDIM_YES_FLUID){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
      if(example_ == ICE_AROUND_CYLINDER ||
          example_ == FLOW_PAST_CYLINDER ||
          example_ == MELTING_ICE_SPHERE ||
          example_ == MELTING_POROUS_MEDIA){
-       d_length_scale=d_cyl;
+       d_length_scale = d_cyl;
      }
      else if (example_ == DENDRITE_TEST){
        d_length_scale = d_seed;
@@ -1047,12 +1105,12 @@ void set_nondimensional_groups(){
 
      St = cp_s*fabs(deltaT)/L;
 
-     u_inf= Re*mu_l/rho_l/d_length_scale;
+     u_inf = Re*mu_l/rho_l/d_length_scale;
      vel_nondim_to_dim = u_inf;
      time_nondim_to_dim = d_length_scale/u_inf;
 
    }
-   else if(stefan_condition_type==NONDIM_NO_FLUID){
+   else if(problem_dimensionalization_type==NONDIM_NO_FLUID){
      double d_length_scale = 0.;
      if(example_ == ICE_AROUND_CYLINDER){
        d_length_scale=d_cyl;
@@ -1071,7 +1129,7 @@ void set_nondimensional_groups(){
      time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
      vel_nondim_to_dim = (alpha_s)/(d_length_scale);
    }
-   else if(stefan_condition_type==NONDIM_DISSOLUTION){
+   else if(problem_dimensionalization_type==NONDIM_DISSOLUTION){
      // Assuming Re is the input parameter
      // Calculate u_inf:
      // For this case, have to do it a bit differently, since diameter is not the length scale we use
@@ -1749,21 +1807,25 @@ public:
         return s0 - sqrt(SQR(x) + SQR(y));
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:{
-        double lsf_vals[num_grains];
-        // First, grab all the relevant LSF values for each grain:
-        for(int n=0; n<num_grains; n++){
-          double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
-          lsf_vals[n] = rvals[n] - r;
-        }
 
-        // Now, loop back over and return the value which has the min magnitude:
-        double current_min = 1.e9;
-        for(int n=0; n<num_grains; n++){
-          if(fabs(lsf_vals[n]) < fabs(current_min)){
-            current_min = lsf_vals[n];
-          }
-        }
-        return current_min;
+
+
+//        double lsf_vals[num_grains];
+//        // First, grab all the relevant LSF values for each grain:
+//        for(int n=0; n<num_grains; n++){
+//          double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
+//          lsf_vals[n] = rvals[n] - r;
+//        }
+
+//        // Now, loop back over and return the value which has the min magnitude:
+//        double current_min = 1.e9;
+//        for(int n=0; n<num_grains; n++){
+//          if(fabs(lsf_vals[n]) < fabs(current_min)){
+//            current_min = lsf_vals[n];
+//          }
+//        }
+//        return current_min;
+        return return_LSF_porous_media(DIM(x, y, z), false);
 
       }
       case DISSOLVING_DISK_BENCHMARK: {
@@ -1816,6 +1878,7 @@ public:
       case FRANK_SPHERE:
       case MELTING_ICE_SPHERE:
       case MELTING_POROUS_MEDIA:
+        return return_LSF_porous_media(DIM(x, y, z), true);
       case DISSOLVING_DISK_BENCHMARK:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
@@ -1865,6 +1928,8 @@ BoundaryConditionType inner_interface_bc_type_temp;
 void inner_interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case MELTING_POROUS_MEDIA:
+      inner_interface_bc_type_temp = DIRICHLET;
+      break;
     case FLOW_PAST_CYLINDER:
     case COUPLED_PROBLEM_EXAMPLE:
     case COUPLED_TEST_2:
@@ -2031,6 +2096,7 @@ public:
   double operator()(double x, double y) const
   {
     switch(example_){
+      case MELTING_POROUS_MEDIA:
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs){
             return ramp_BC(theta_wall,theta_cyl);
@@ -2045,6 +2111,7 @@ public:
   double operator()(double x, double y) const
   {
     switch(example_){
+      case MELTING_POROUS_MEDIA:
       case ICE_AROUND_CYLINDER:
         return 1.0;
       }
@@ -2543,31 +2610,42 @@ struct INITIAL_VELOCITY : CF_DIM
           throw std::runtime_error("initial velocity direction unrecognized \n");
         }
       }
-      case FLOW_PAST_CYLINDER:
-      case ICE_AROUND_CYLINDER:
+
       case MELTING_POROUS_MEDIA: {
-//        return 0.0;
-        double h_ = ymax - ymin;
-        double U = G_press/(2.* Re);
-        double Uy = (Da_init/porosity_init) *U*(y)*(h_ - y);
+        //        return 0.0;
+        //        double h_ = ymax - ymin;
+        //        double U = G_press/(2.* Re);
+        //        double Uy = (Da_init/porosity_init) *U*(y)*(h_ - y);
 
-        double lsf_dist = 0.1;
+        //        double lsf_dist = 0.1;
 
-        if(fabs(level_set.operator()(DIM(x,y,z)))<lsf_dist){
-          return (Uy/lsf_dist)*(-1.*level_set.operator()(DIM(x,y,z)));
-        }
-        else{
-          switch(dir){
-          case dir::x:{
-            return Uy;}
-          case dir::y:
-            return 0.;
-          default:
-              throw std::runtime_error("Unrecognized direction for velocity initial condition \n");
-          }
+        //        if(fabs(level_set.operator()(DIM(x,y,z)))<lsf_dist){
+        //          return (Uy/lsf_dist)*(-1.*level_set.operator()(DIM(x,y,z)));
+        //        }
+        //        else{
+        //          switch(dir){
+        //          case dir::x:{
+        //            return Uy;}
+        //          case dir::y:
+        //            return 0.;
+        //          default:
+        //              throw std::runtime_error("Unrecognized direction for velocity initial condition \n");
+        //          }
+        //        }
+
+        switch(dir){
+        case dir::x:
+          return u0;
+        case dir::y:
+          return v0;
+        default:
+          throw std::runtime_error("initial velocity direction unrecognized \n");
         }
 
       }
+
+      case FLOW_PAST_CYLINDER:
+      case ICE_AROUND_CYLINDER:
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
         else{
@@ -2694,7 +2772,7 @@ public:
       case PLANE_POIS_FLOW:{
         if(!dirichlet_velocity_walls(DIM(x,y,z))){
           if(xlower_wall(DIM(x,y,z))){
-            return (xmax - xmin); // start with delta P/L = 1 -- where L is length of domain
+            return G_press*(xmax-xmin); // updated: select Gpress in set_NS_info()OLD COMMENT: start with delta P/L = 1 -- where L is length of domain
           }
           else{
             return 0.0;
@@ -3144,7 +3222,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 
 double interfacial_velocity_expression(double Tl_d, double Ts_d){
 
-  switch(stefan_condition_type){
+  switch(problem_dimensionalization_type){
     // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
     case NONDIM_YES_FLUID:{
       return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d));
@@ -3153,7 +3231,14 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
       return ((St)*(Ts_d - (k_l/k_s)*Tl_d));
     }
     case DIMENSIONAL:{
-      return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
+      if(solve_temp_not_conc){
+        return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
+      }
+      else{
+        return -1.*molar_volume_diss*(D_diss/stoich_coeff_diss)*Tl_d;
+
+      }
+
     }
     case NONDIM_DISSOLUTION:{
       return -1.*(gamma_diss/Pe)*Tl_d;
@@ -3717,23 +3802,26 @@ void poisson_step(Vec phi, Vec phi_solid,
       }
     }
 
-  if(stefan_condition_type == NONDIM_YES_FLUID){
+  if(problem_dimensionalization_type == NONDIM_YES_FLUID){
     solver_Tl->set_mu(1./Pe);
     if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
   }
-  else if(stefan_condition_type== NONDIM_NO_FLUID){
+  else if(problem_dimensionalization_type== NONDIM_NO_FLUID){
     solver_Tl->set_mu(alpha_l/alpha_s);
     if(do_we_solve_for_Ts) solver_Ts->set_mu(1.);
   }
-  else if(stefan_condition_type == NONDIM_DISSOLUTION){
+  else if(problem_dimensionalization_type == NONDIM_DISSOLUTION){
     solver_Tl->set_mu(1./Pe);
     if(do_we_solve_for_Ts){
       solver_Ts->set_mu(1./Pe); // TO FIX
     }
   }
-  else{
+  else if(problem_dimensionalization_type == DIMENSIONAL){
     solver_Tl->set_mu(alpha_l);
     if(do_we_solve_for_Ts) solver_Ts->set_mu(alpha_s);
+  }
+  else{
+    throw std::invalid_argument("poisson_step: unrecognized problem dimensionalization type \n");
   }
 
 
@@ -3808,7 +3896,15 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   cell_solver = NULL;
 
   // Update the parameters: (this is only done to update the cfl potentially)
-  ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
+  if(problem_dimensionalization_type == DIMENSIONAL){
+    ns->set_parameters(rho_l, mu_l, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+  }
+  else{
+    ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
+  }
+
+
+
 
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
@@ -3950,7 +4046,14 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
   ns->set_velocities(v_nm1_NS,v_n_NS);
 
   PetscPrintf(p4est_np1->mpicomm,"CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
-  ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
+
+  if(problem_dimensionalization_type == DIMENSIONAL){
+    ns->set_parameters(rho_l, mu_l, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+  }
+  else{
+    ns->set_parameters((1./Re), 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+  }
+
 
 
 }
@@ -5398,8 +5501,8 @@ int main(int argc, char** argv) {
   select_solvers();
 
   solve_coupled = solve_navier_stokes && solve_stefan;
-
-  stefan_condition_type = select_stefan_formulation(); // select the form of the stefan condition we will use
+  select_problem_nondim_or_dim_formulation();
+//  problem_dimensionalization_type = select_stefan_formulation(); // select the form of the stefan condition we will use
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
   PetscPrintf(mpi.comm(),"Number of mpi tasks: %d \n",mpi.size());
   PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
@@ -6046,7 +6149,7 @@ int main(int argc, char** argv) {
           cfl_NS=0.5;
           double dxyz_s[P4EST_DIM];
           dxyz_min(p4est, dxyz_s);
-          dt_max_allowed = cfl_NS*min(dxyz_s[0], dxyz_s[1])/max(u0, v0);
+          dt_max_allowed = cfl_NS*min(dxyz_s[0], dxyz_s[1]); // assuming velocity of order 1 for this. avoids any divide by zero potential
 
           // loosen hodge criteria for initialization for porous media case:
           if(example_ == MELTING_POROUS_MEDIA){
@@ -6780,7 +6883,7 @@ int main(int argc, char** argv) {
         ns->compute_dt(/*NS_norm*/);
         dt_NS = ns->get_dt();
 
-
+        // to-do: make this logic cleaner and less of a mess
         // Determine the timestep depending on timestep restrictions from both NS solver and from the Stefan problem
         if(solve_stefan){
             if(tstep==load_tstep){dt_NS=dt_nm1;} // TO-DO: not sure this logic is 100% correct, what about NS only case?
@@ -6792,10 +6895,15 @@ int main(int argc, char** argv) {
             dt = min(dt_NS, dt_max_allowed);
           }
       }
+      else{
+        dt = solve_stefan? min(dt_Stefan, dt_max_allowed):dt_max_allowed;
+
+      }
       // If only solving Stefan problem:
       if(solve_stefan && !solve_navier_stokes){
         dt = dt_Stefan;
       }
+      PetscPrintf(mpi.comm(),"dt max allowed = %0.3e \n", dt_max_allowed);
 
       PetscPrintf(mpi.comm(),"\n"
                              "%s \n"
