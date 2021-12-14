@@ -148,8 +148,23 @@ DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 DEFINE_PARAMETER(pl, bool, do_advection, true, "Boolean flag whether or not to do advection (default : 1)");
 
+DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
+DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+
+
+
 // Related to LSF reinitialization:
-DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait before reinitializing the LSF in the case of a coupled problem (only implemented for coupled problem!). Default : 1. This can be helpful when the timescales governing interface evolution are much larger than those governing the flow. For example, if vint is 1000x smaller than vNS, we may want to reinitialize only every 1000 timesteps, or etc. This can prevent the interface from degrading via frequent reinitializations relative to the amount of movement it experiences. ");
+DEFINE_PARAMETER(pl, int, reinit_every_iter, 1, "An integer option for how many iterations we wait "
+                                                "before reinitializing the LSF in the case of a coupled problem"
+                                                " (only implemented for coupled problem!). "
+                                                "Default : 1. This can be helpful when the "
+                                                "timescales governing interface evolution are much "
+                                                "larger than those governing the flow. "
+                                                "For example, if vint is 1000x smaller than vNS, "
+                                                "we may want to reinitialize only every 1000 timesteps, or etc. "
+                                                "This can prevent the interface from degrading via frequent "
+                                                "reinitializations relative to the amount of movement it experiences. ");
+
 // Related to the Stefan and temperature/concentration problem:
 DEFINE_PARAMETER(pl, double, cfl, 0.5, "CFL number for Stefan problem (default:0.5)");
 DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:2)");
@@ -161,7 +176,7 @@ DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solut
 DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0)");
 DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3)");
 
-// Specifying flow or no flow: TO-DO: clean this up, make it usable for dendrite example too
+// Specifying flow or no flow: Elyce to-do 12/14/21: remove this no_flow option, we should be able to just turn on and off the solve_navier_stokes and have the same effect!
 DEFINE_PARAMETER(pl, bool, no_flow, false, "An override switch for the ice cylinder example to run a case with no flow (default: false)");
 
 // Related to simulation duration settings:
@@ -175,7 +190,8 @@ DEFINE_PARAMETER(pl, bool, use_inner_surface_porous_media, false, "If true, will
 
 DEFINE_PARAMETER(pl, double, porous_media_initial_thickness_multiplier, 1.05, "The initial thickness multiplier of the outer interface in relation to the inner interface, in the case when you are using both inner and outer interfaces for the porous media case. i.e. if there is an initial ice thickness on a porous media, then the media structure will have the geometry as defined in the provided files, and the ice will sit on the porous media geometry with an initial radius of porous_media_initial_thickness_multiplier*r_porous_media \n. Default value: 1.05 ");
 
-
+// ---------------------------------------
+// Booleans that we select to simplify logic in the main program for different processes that are required for different examples:
 // ---------------------------------------
 
 bool analytical_IC_BC_forcing_term;
@@ -189,8 +205,8 @@ bool interfacial_vel_bc_requires_vint;
 bool example_uses_inner_LSF;
 bool example_requires_area_computation;
 
-bool do_we_solve_for_Ts;
-bool solve_temp_not_conc; //modifies the Stefan condition and interfacial BC depending on whether we are solving a temperature problem or a concentration problem
+
+// ---------------------------------------
 
 void select_solvers(){
   switch(example_){
@@ -277,7 +293,7 @@ void select_solvers(){
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
 
-    solve_temp_not_conc = (example_ !=DISSOLVING_DISK_BENCHMARK);
+    is_dissolution_case = (example_ ==DISSOLVING_DISK_BENCHMARK);
 
 }
 // ---------------------------------------
@@ -319,31 +335,35 @@ double r0;
 
 // For frank sphere:
 double s0;
-double T_inf;
 
+// Elyce commented out 12/14/21: redefining these more generally next to the nondim groups
 // For ice growth on cylinder and melting ice sphere problems: // TO-DO: double check that this is correct
+/*
 DEFINE_PARAMETER(pl, double, d_cyl, 35.e-3, "Cylinder diamter in meters for ice cylinder problem, (default: 35.e-3) ");
 // TO-DO: change d_cyl to "d_length_scale" so that it is more general
+
+
 DEFINE_PARAMETER(pl, double, T_cyl, 263., "For ice growth over cooled cylinder example, this refers to Temperature of cooled cylinder in K (default : 263, aka -10 C). For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 263). ");
 
 DEFINE_PARAMETER(pl, double, Twall, 275.5, "The freestream fluid temperature T_infty. (default: 275.5 K, or 2.5 C)");
+*/
+
 //to-do: decide whether to keep this pressure drop option. will need to add logic to either select pressure drop OR overwrite Reynolds, but not both
 //DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media)");
 
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
-double d_seed; // for dendrite test : set in TO-DO:update this
 
 // For solution of temperature fields: set in set_physical_properties() TO-DO: maybe make these actual things the user can specify
 // TO-DO: ideal scenario -- the user *could* change all these things via inputs. Might need to make an overwrite boolean. aka bool_overwrite_default_temp_settings
 //double Twall;
-double Tinterface;
-double back_wall_temp_flux;
+//double Tinterface;
+DEFINE_PARAMETER(pl, double, back_wall_temp_flux, 0.0, "Temperature flux at back wall. Default: 0.0 \n");
 double deltaT;
 
 // Nondimensional temperature values (computed in set_physical_properties)
-double theta_wall;
+double theta_infty;
 double theta_interface;
-double theta_cyl;
+double theta0;
 
 // For surface tension: (used to apply some interfacial BC's in temperature) // TO-DO revisit this?
 double sigma; // set in set_physical_properties()
@@ -390,12 +410,6 @@ void set_geometry(){
       // Problem geometry:
       s0 = 0.628649269043202;
       r0 = s0; // for consistency, and for setting up NS problem (if wanted)
-
-      // Necessary boundary condition info:
-      Twall = -0.2;    T_inf = Twall;
-
-      Tinterface = 0.0;
-
       break;
       }
 
@@ -680,29 +694,68 @@ double v_interface_max_norm; // For keeping track of the interfacial velocity ma
 // ---------------------------------------
 DEFINE_PARAMETER(pl, double, Re, 0., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
 DEFINE_PARAMETER(pl, double, Pr, 0., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
+DEFINE_PARAMETER(pl, double, Sc, 0., "Schmidt number - computed from mu_l, D, rho_l \n");
+
 DEFINE_PARAMETER(pl, double, Pe, 0., "Peclet number - computed from Re and Pr \n");
 DEFINE_PARAMETER(pl, double, St, 0., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
 
-DEFINE_PARAMETER(pl, double, Da_init, 0.001, "Initial Darcy number -- just used to impose initial flow condition as nicely as possible for the solver at startup. Used for the porous media example \n");
-DEFINE_PARAMETER(pl, double, porosity_init, 1.0, "Initial porosity -- used to impose the initial flow condition as nicely as possible for the solver at startup. Used for the porous media example \n");
+DEFINE_PARAMETER(pl, double, Da, 0., "Damkohler number (k_diss*l_char/D_diss) \n");
+
+DEFINE_PARAMETER(pl, double, RaT, 0., "Rayleigh number by temperature (default:0) \n");
+DEFINE_PARAMETER(pl, double, RaC, 0., "Rayleigh number by concentration (default:0) \n");
 
 
 DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
+
+// ---------------------------------------
+// Problem parameters:
+// ---------------------------------------
+DEFINE_PARAMETER(pl, double, l_char, 0., "Characteristic length scale for the problem (in meters). i.e. For okada flow past cylinder, this should be set to the cylinder diameter \n. ");
+
+
+DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic low temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
+
+DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
+
+DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
+
+// Elyce to-do 12/14/21: make this pressure_drop variable actually be used
+DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media)");
+
+
 // ---------------------------------------
 // Physical properties:
 // ---------------------------------------
 // For solidification problem:
-double alpha_s; // Thermal diffusivity of solid [m^2/s]
-double alpha_l; // Thermal diffusivity of liquid [m^2/s]
-double k_s;     // Thermal conductivity of solid [W/(mK)]
-double k_l;     // Thermal conductivity of liquid [W/(mK)]
-double L;       // Latent heat of fusion [J/kg]
-double rho_l;   // Density of fluid [kg/m^3]
-double rho_s;   // Density of solid [kg/m^3]
-double cp_s;    // Specific heat of solid [J/(kg K)]
-double mu_l;    // Dynamic viscosity of fluid [Pa s]
+//double alpha_s; // Thermal diffusivity of solid [m^2/s]
+//double alpha_l; // Thermal diffusivity of liquid [m^2/s]
+//double k_s;     // Thermal conductivity of solid [W/(mK)]
+//double k_l;     // Thermal conductivity of liquid [W/(mK)]
+//double L;       // Latent heat of fusion [J/kg]
+//double rho_l;   // Density of fluid [kg/m^3]
+//double rho_s;   // Density of solid [kg/m^3]
+//double cp_s;    // Specific heat of solid [J/(kg K)]
+//double mu_l;    // Dynamic viscosity of fluid [Pa s]
 
+DEFINE_PARAMETER(pl, double, alpha_l, 1.0, "Thermal diffusivity of liquid [m^2/s]. Default: 1."
+                                           "This property is set inside specific examples.");
+DEFINE_PARAMETER(pl, double, alpha_s, 1.0, "Thermal diffusivity of solid [m^2/s]. Default: 1. "
+                                           "This property is set inside specific examples. ");
+DEFINE_PARAMETER(pl, double, k_l, 1.0, "Thermal conductivity of liquid [W/(mK)]. Default: 1."
+                                           "This property is set inside specific examples.");
+DEFINE_PARAMETER(pl, double, k_s, 1.0, "Thermal conductivity of solid [W/(mK)]. Default: 1. "
+                                           "This property is set inside specific examples. ");
+DEFINE_PARAMETER(pl, double, rho_l, 1.0, "Density of fluid [kg/m^3]. Default: 1."
+                                       "This property is set inside specific examples.");
+DEFINE_PARAMETER(pl, double, rho_s, 1.0, "Density of solid [kg/m^3]. Default: 1. "
+                                       "This property is set inside specific examples. ");
 
+DEFINE_PARAMETER(pl, double, cp_s, 1.0, "Specific heat of solid [J/(kg K)]. Default: 1."
+                                       "This property is set inside specific examples.");
+DEFINE_PARAMETER(pl, double, L, 1.0, "Latent heat of fusion [J/kg]. Default: 1. "
+                                       "This property is set inside specific examples. ");
+DEFINE_PARAMETER(pl, double, mu_l, 1.0, "Dynamic viscosity of fluid [Pa s]. Default: 1."
+                                       "This property is set inside specific examples.");
 // For dissolution problem:
 DEFINE_PARAMETER(pl, double, gamma_diss, 3.69e-4, "The parameter dictates some dissolution behavior, default value is 0.00288 (corresponds to pure gypsum)");
 
@@ -710,8 +763,11 @@ DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coeffic
 
 DEFINE_PARAMETER(pl, double, molar_volume_diss, 3.69e-4, "The molar volume of the dissolving solid. Default is for gypsum, ");
 
-DEFINE_PARAMETER(pl, double , D_diss, 1.0e-9, "Dissolution diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
-DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
+DEFINE_PARAMETER(pl, double , D, 1.0e-9, "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
+
+// Elyce commented out 12/14/21: the below parameter is now obselete
+//DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
+
 DEFINE_PARAMETER(pl, double, k_diss, 8.9125e-4/*4.5e-6*/, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
 
 
@@ -727,6 +783,12 @@ void set_physical_properties(){
       L = 1.0;
       rho_l = 1.0;
       rho_s = 1.0;
+
+      // Necessary boundary condition info:
+      Tinfty = -0.2;
+
+      Tinterface = 0.0;
+
       break;
     }
     case FLOW_PAST_CYLINDER:
@@ -746,20 +808,6 @@ void set_physical_properties(){
 
       L = 334.e3;  // J/kg
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
-
-      // Boundary condition info:
-      //Twall = 273. + 2.5;    // Physical wall temp [K] (aka T_infty)
-      Tinterface = 273.15; // Physical interface temp [K]
-
-      back_wall_temp_flux = 0.0; // Flux in temp on back wall (non dim) (?) TO-DO: check this
-
-      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
-
-      theta_wall = 1.0; // Non dim temp at wall
-      theta_cyl = 0.0; // Non dim temp at cylinder
-
-      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
-
       break;
       }
     case MELTING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
@@ -781,27 +829,28 @@ void set_physical_properties(){
       L = 334.e3;  // J/kg
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
 
-      // Temperature settings:
-      Tinterface = 273.15;
+      // Elyce to-do 12/14/21: commented out below bc no longer necessary. Delete once verified it's working
+//      // Temperature settings:
+////      Tinterface = 273.15;
 
-      back_wall_temp_flux = 0.0; // Flux in temp on back wall
+//      back_wall_temp_flux = 0.0; // Flux in temp on back wall
 
-      deltaT = Twall - T_cyl; // Characteristic Delta T [K] -- used for some non dimensionalization
+//      deltaT = Tinfty - T0; // Characteristic Delta T [K] -- used for some non dimensionalization
 
-      if(deltaT>0.){
-        theta_wall = 1.0;
-      }
-      else{
-        theta_wall = -1.0;
-      }
-      //ttheta_wall = 1.0; // Non dim temp at wall
-      theta_cyl = 0.0; // Non dim temp at cylinder
+//      if(deltaT>0.){
+//        theta_infty = 1.0;
+//      }
+//      else{
+//        theta_infty = -1.0;
+//      }
+//      //ttheta_infty = 1.0; // Non dim temp at wall
+//      theta0 = 0.0; // Non dim temp at cylinder
 
-      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
+//      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
 
-      // In this example, T_cyl corresponds to the initial temperature of the ice
-      // T_cyl is used to define the nondimensionalization, and applied as an initial condition.
-      // However, this is the only time it is used for this example.
+//      // In this example, T_cyl corresponds to the initial temperature of the ice
+//      // T_cyl is used to define the nondimensionalization, and applied as an initial condition.
+//      // However, this is the only time it is used for this example.
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
@@ -809,11 +858,14 @@ void set_physical_properties(){
       rho_l = 1000.0;
       rho_s = 2710.0;
 
-      theta_wall = 1.0; // wall undersaturation
-      theta_cyl = 0.0; // aka fully saturated at the disk
 
-      back_wall_temp_flux = 0.0;
-      // No need to set theta_interface --> we have a robin BC there, not Dirichlet
+      // Elyce to-do 12/14/21: commented out below bc no longer necessary. Delete once verified it's working
+
+//      theta_infty = 1.0; // wall undersaturation
+//      theta0 = 0.0; // aka fully saturated at the disk
+
+//      back_wall_temp_flux = 0.0;
+//      // No need to set theta_interface --> we have a robin BC there, not Dirichlet
       break;
     }
     case PLANE_POIS_FLOW:{
@@ -868,21 +920,22 @@ void set_physical_properties(){
       // Twall = deltaT*(L/cp_s) + Tinterface;
       // deltaT = Twall-Tinterface;
 
-      deltaT = -0.55;
-      theta_wall=0.;
-      theta_interface = 1.0;
+      // Elyce to-do 12/14/21: commented out below for now, going to overhaul this with Rochi anyways
+//      deltaT = -0.55;
+//      theta_infty=0.;
+//      theta_interface = 1.0;
 
-      Tinterface = 331.23;
-      Twall = Tinterface - deltaT;
+//      Tinterface = 331.23;
+//      Twall = Tinterface - deltaT;
 
-      // Set length scales:
-      // Updated 5/3/21:
-      double Tmelt = 331.23;
-      double gamma = 8.9e-3;
-      d0 = (Tmelt * gamma * cp_s)/(rho_s * SQR(L));
-      n_times_d0 = 500.0;
-      d_seed = n_times_d0 * d0; // like Al-Rawahi paper 2002
-      // physical property paper ""
+//      // Set length scales:
+//      // Updated 5/3/21:
+//      double Tmelt = 331.23;
+//      double gamma = 8.9e-3;
+//      d0 = (Tmelt * gamma * cp_s)/(rho_s * SQR(L));
+//      n_times_d0 = 500.0;
+//      d_seed = n_times_d0 * d0; // like Al-Rawahi paper 2002
+//      // physical property paper ""
 
       break;
     }
@@ -898,12 +951,10 @@ double pressure_prescribed_value;
 double u0;
 double v0;
 
-double Re_u; // reynolds number in x direction
-double Re_v; // reynolds number in y direction
-
 double outflow_u;
 double outflow_v;
 double hodge_percentage_of_max_u;
+
 int hodge_max_it = 100;
 double T_l_IC_band = 2.0;
 bool ramp_T_l_IC_space = false;
@@ -1025,7 +1076,6 @@ enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_DIFFUSIVITY, DIMENSIONAL};
 // DIMENSIONAL -- corresponds to solving the dimensional problem
 
 int problem_dimensionalization_type;
-DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
 void select_problem_nondim_or_dim_formulation(){
   switch(example_){
@@ -1079,14 +1129,17 @@ void select_problem_nondim_or_dim_formulation(){
 };
 
 
-// For defining appropriate nondimensional groups:
-double time_nondim_to_dim;
-double vel_nondim_to_dim;
 
+// Elyce to-do: delete all commented out once verified that it works correctly
 // TO-DO: clean up how nondim groups are set
 // TO-DO: make checklist of things to change in main when adding a new example
+/*
+ *
+ * // For defining appropriate nondimensional groups:
+double time_nondim_to_dim;
+double vel_nondim_to_dim;
 void set_nondimensional_groups(){
-   if(problem_dimensionalization_type==NONDIM_YES_FLUID){
+   if(problem_dimensionalization_type==NONDIM_BY_FLUID_VELOCITY){
      double d_length_scale = 1.; // set it as 1 if not one of the following examples:
      if(example_ == ICE_AROUND_CYLINDER ||
          example_ == FLOW_PAST_CYLINDER ||
@@ -1110,7 +1163,7 @@ void set_nondimensional_groups(){
      time_nondim_to_dim = d_length_scale/u_inf;
 
    }
-   else if(problem_dimensionalization_type==NONDIM_NO_FLUID){
+   else if(problem_dimensionalization_type==NONDIM_BY_DIFFUSIVITY){
      double d_length_scale = 0.;
      if(example_ == ICE_AROUND_CYLINDER){
        d_length_scale=d_cyl;
@@ -1129,21 +1182,21 @@ void set_nondimensional_groups(){
      time_nondim_to_dim = SQR(d_length_scale)/alpha_s;
      vel_nondim_to_dim = (alpha_s)/(d_length_scale);
    }
-   else if(problem_dimensionalization_type==NONDIM_DISSOLUTION){
-     // Assuming Re is the input parameter
-     // Calculate u_inf:
-     // For this case, have to do it a bit differently, since diameter is not the length scale we use
+   // ELyce 12/14/21 -- commented this out for now below, need to restructure this whole thing honestly
+//   else if(problem_dimensionalization_type==NONDIM_DISSOLUTION){
+//     // Assuming Re is the input parameter
+//     // Calculate u_inf:
+//     // For this case, have to do it a bit differently, since diameter is not the length scale we use
 
-     u_inf = (Re*mu_l)/(rho_l * (l_diss)); // freestream velocity is based on reynolds defined around sample diameter, even tho sample diameter is not the char length scale here
-     Pe = u_inf*l_diss/D_diss;
-     double Da = k_diss*l_diss/D_diss;
-     printf("Pe = %0.4f, Da = %0.4f, 1/Pe = %0.4f, Da/Pe = %0.4f, D = %0.4e , k = %0.4e\n", Pe, Da, 1./Pe, Da/Pe, D_diss, k_diss);
+//     u_inf = (Re*mu_l)/(rho_l * (l_diss)); // freestream velocity is based on reynolds defined around sample diameter, even tho sample diameter is not the char length scale here
+//     Pe = u_inf*l_diss/D_diss;
+////     double Da = k_diss*l_diss/D_diss;
+//     printf("Pe = %0.4f, Da = %0.4f, 1/Pe = %0.4f, Da/Pe = %0.4f, D = %0.4e , k = %0.4e\n", Pe, Da, 1./Pe, Da/Pe, D_diss, k_diss);
 
-     vel_nondim_to_dim = u_inf;
-     time_nondim_to_dim= l_diss/(u_inf/**gamma_diss*/);
+//     vel_nondim_to_dim = u_inf;
+//     time_nondim_to_dim= l_diss/(u_inf); // u_inf*gamma_diss
 
-
-   }
+//   }
    else{
      time_nondim_to_dim = 1.;
    };
@@ -1151,6 +1204,126 @@ void set_nondimensional_groups(){
      St = 1.0;
    }
 }
+*/
+
+
+// For defining appropriate nondimensional groups:
+double time_nondim_to_dim;
+double vel_nondim_to_dim;
+
+void set_temp_conc_nondim_defns(){
+  switch(example_){
+  case FRANK_SPHERE:{
+    break;
+  }
+  case NS_GIBOU_EXAMPLE:{
+    break;
+  }
+  case COUPLED_TEST_2:{
+    break;
+  }
+  case COUPLED_PROBLEM_EXAMPLE:{
+    break;
+  }
+  case ICE_AROUND_CYLINDER:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case FLOW_PAST_CYLINDER:{
+    break;
+  }
+  case DENDRITE_TEST:{
+    deltaT = fabs(T0 - Tinfty);
+
+    theta0 = 1.0;
+    theta_infty = 0.0;
+
+    theta_interface = (Tinterface - Tinfty)/deltaT;
+    break;
+  }
+  case MELTING_ICE_SPHERE:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case MELTING_POROUS_MEDIA:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case PLANE_POIS_FLOW:{
+    break;
+  }
+  case DISSOLVING_DISK_BENCHMARK:{
+    // To-do: will have to set this up with concentration stuff correctly since defn is diff
+
+    theta_infty=1.0; // wall undersaturation
+    theta0 = 0.0;
+    // no need to set theta_interface --> we have a robin BC there
+    break;
+  }
+  // Elyce to-do: add a case for Rochi's example
+  default:{
+    throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
+  }
+  }
+}
+
+void set_nondimensional_groups(){
+  // Setup the temperature stuff properly first:
+  set_temp_conc_nondim_defns();
+
+  // Compute the stuff that doesn't depend on velocity nondim:
+  Pr = mu_l/(alpha_l * rho_l);
+  Sc = mu_l/(D*rho_l);
+
+  St = cp_s * fabs(deltaT)/L;
+
+  // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
+  switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      // In this case, we assume a prescribed:
+      // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
+      // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
+      // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
+      u_inf = (Re*mu_l)/(rho_l * l_char);
+
+      vel_nondim_to_dim = u_inf;
+      time_nondim_to_dim = l_char/u_inf;
+
+      break;
+    }
+    case NONDIM_BY_DIFFUSIVITY:{
+      double u_char = (is_dissolution_case? (D/l_char):(alpha_l/l_char));
+      vel_nondim_to_dim = u_char;
+      time_nondim_to_dim = l_char/u_char;
+
+      break;
+    }
+    case DIMENSIONAL:{
+      vel_nondim_to_dim = 1.0;
+      time_nondim_to_dim = 1.0;
+    }
+      break;
+    default:{
+      throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
+      break;
+    }
+  } // end of switch case
+} // end of function
 
 // ---------------------------------------
 // For setting up simulation timing information:
@@ -1373,10 +1546,11 @@ double dF(double s){
 double frank_sphere_solution_t(double s){
 
   if (s<s0) return 0;
-  else      return T_inf*(1.0 - F(s)/F(s0));
+  else      return Tinfty*(1.0 - F(s)/F(s0));
 
 
 }
+
 // --------------------------------------------------------------------------------------------------------------
 // Functions/Structures for validating the Navier-Stokes problem:
 // --------------------------------------------------------------------------------------------------------------
@@ -1797,49 +1971,33 @@ struct external_heat_source: CF_DIM{
 // --------------------------------------------------------------------------------------------------------------
 // Level set functions:
 // --------------------------------------------------------------------------------------------------------------
-
 struct LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
     switch (example_){
-      case FRANK_SPHERE:
+      case FRANK_SPHERE:{
         return s0 - sqrt(SQR(x) + SQR(y));
-      case FLOW_PAST_CYLINDER:
+      }
       case MELTING_POROUS_MEDIA:{
-
-
-
-//        double lsf_vals[num_grains];
-//        // First, grab all the relevant LSF values for each grain:
-//        for(int n=0; n<num_grains; n++){
-//          double r = sqrt(SQR(x - xshifts[n]) + SQR(y - yshifts[n]));
-//          lsf_vals[n] = rvals[n] - r;
-//        }
-
-//        // Now, loop back over and return the value which has the min magnitude:
-//        double current_min = 1.e9;
-//        for(int n=0; n<num_grains; n++){
-//          if(fabs(lsf_vals[n]) < fabs(current_min)){
-//            current_min = lsf_vals[n];
-//          }
-//        }
-//        return current_min;
         return return_LSF_porous_media(DIM(x, y, z), false);
-
       }
       case DISSOLVING_DISK_BENCHMARK: {
         return r0 - sqrt(SQR(x-(xmax/2.)) + SQR(y - (ymax/2.)));
       }
+      case FLOW_PAST_CYLINDER:
       case MELTING_ICE_SPHERE:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
       }
-      case ICE_AROUND_CYLINDER:
+      case ICE_AROUND_CYLINDER:{
         return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
-      case NS_GIBOU_EXAMPLE:
+      }
+      case NS_GIBOU_EXAMPLE:{
         return r0 - sin(x)*sin(y);
-      case COUPLED_PROBLEM_EXAMPLE:
+      }
+      case COUPLED_PROBLEM_EXAMPLE:{
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+      }
       case COUPLED_TEST_2:{
         double x0 = 0.;//1./6.;
         double y0 = -1./4.;
@@ -1868,7 +2026,7 @@ public:
 } level_set;
 
 
-// This one is for the inner cylinder in example 2
+// Inner level set function for relevant cases:
 struct MINI_LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
@@ -1895,7 +2053,6 @@ double ramp_BC(double initial,double goal_value){
   else {
       return goal_value;
     }
-
 }
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1970,8 +2127,8 @@ public:
       kappa_interp->set_input(kappa,linear);
     }
   }
-  double Gibbs_Thomson(double sigma_, double T0, double dval, DIM(double x, double y, double z)) const {
-        return (theta_interface - (sigma_/dval)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT)); // corrected on 9/5/2020 Saturday, double checked 10/26/20 Monday
+  double Gibbs_Thomson(double sigma_, DIM(double x, double y, double z)) const {
+        return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -1980,54 +2137,56 @@ public:
         return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
       }
     case DENDRITE_TEST:{
+      // Elyce to-do: we have to overhaul this, I've just commented everything out 12/14/21
+//        // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
+//        //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
 
-        // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
-        //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
-
-        // Trying something:
-        //double theta = atan2(y-yc,x-xc); // not sure why exactly i was using normals instead of just angle based on location, may need to revisit
-        double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
-
-
-//        double As = 0.75;
-//        double m = 4.0;
-//        double theta0 = 0.;
-//        double sigma_ = sigma*(1 - As*cos(m*(theta - theta0)));
+//        // Trying something:
+//        //double theta = atan2(y-yc,x-xc); // not sure why exactly i was using normals instead of just angle based on location, may need to revisit
+//        double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
 
 
-        double min_theta = 2*PI;
-        unsigned long min_idx = 10;
-        for(unsigned long i=0;i<4;i++){
-          if(fabs(theta - theta0[i])<min_theta){
-            min_theta = fabs(theta - theta0[i]);
-            min_idx = i; // grab index corresponding to the closest axis of preferred crystal growth direction
-          }
-        }
-
-        P4EST_ASSERT(min_idx<4);
-        double sigma_ =
-            //sigma*(1 + Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
-            //sigma*(1. - 15.*Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
-            sigma*(1. + Gibbs_eps4*cos(4.*theta));
+////        double As = 0.75;
+////        double m = 4.0;
+////        double theta0 = 0.;
+////        double sigma_ = sigma*(1 - As*cos(m*(theta - theta0)));
 
 
-        print_stuff = false;
-//        if(fabs(fabs(theta)-PI/4)<0.1 || fabs(fabs(theta)-PI/2)<0.1){
-//          print_stuff=true;
-//          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
+//        double min_theta = 2*PI;
+//        unsigned long min_idx = 10;
+//        for(unsigned long i=0;i<4;i++){
+//          if(fabs(theta - theta0[i])<min_theta){
+//            min_theta = fabs(theta - theta0[i]);
+//            min_idx = i; // grab index corresponding to the closest axis of preferred crystal growth direction
+//          }
+//        }
 
-        //double sigma_ = sigma;
-        return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
+//        P4EST_ASSERT(min_idx<4);
+//        double sigma_ =
+//            //sigma*(1 + Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
+//            //sigma*(1. - 15.*Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
+//            sigma*(1. + Gibbs_eps4*cos(4.*theta));
+
+
+//        print_stuff = false;
+////        if(fabs(fabs(theta)-PI/4)<0.1 || fabs(fabs(theta)-PI/2)<0.1){
+////          print_stuff=true;
+////          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
+
+//        //double sigma_ = sigma;
+//        return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
 //        return theta_interface;
+//
+      return 0.0;
       }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER: {
-        double interface_val = Gibbs_Thomson(sigma,T_cyl,d_cyl,DIM(x,y,z));
+        double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
 
         // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-          return ramp_BC(theta_wall,interface_val);
+          return ramp_BC(theta_infty,interface_val);
         }
         else return interface_val;
     }
@@ -2085,7 +2244,8 @@ public:
       case COUPLED_PROBLEM_EXAMPLE:
         return 1.0;
       case DISSOLVING_DISK_BENCHMARK:
-        double Da = k_diss*l_diss/D_diss;
+        // Elyce to-do 12/14/21: update this appropriately (may have to adjust depending on nondim type)
+//        double Da = k_diss*l_char/D;
         return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
       }
   }
@@ -2099,9 +2259,9 @@ public:
       case MELTING_POROUS_MEDIA:
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs){
-            return ramp_BC(theta_wall,theta_cyl);
+            return ramp_BC(theta_infty,theta0);
           }
-        else return theta_cyl;
+        else return theta0;
       }
   }
 }bc_interface_val_inner;
@@ -2258,7 +2418,7 @@ public:
       case MELTING_ICE_SPHERE:
       case ICE_AROUND_CYLINDER:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
-          return theta_wall;
+          return theta_infty;
         }
         else{
           return back_wall_temp_flux;
@@ -2266,7 +2426,7 @@ public:
       }
       case DISSOLVING_DISK_BENCHMARK:{
         if(dirichlet_temperature_walls(DIM(x,y,z))){
-          return theta_wall;
+          return theta_infty;
         }
         else{
           return back_wall_temp_flux;
@@ -2313,7 +2473,7 @@ public:
       }
       case DENDRITE_TEST:{
         if(level_set(DIM(x,y,z))<0){
-          return theta_wall;
+          return theta_infty;
         }
         else{
           return theta_interface;
@@ -2323,10 +2483,10 @@ public:
       case MELTING_ICE_SPHERE:{
         switch(dom){
           case LIQUID_DOMAIN:{
-            return theta_wall;
+            return theta_infty;
           }
           case SOLID_DOMAIN:{
-            return theta_cyl; // coolest temp
+            return theta0; // coolest temp
           }
           default:{
             throw std::runtime_error("Initial condition for temperature: unrecognized domain \n");
@@ -2336,11 +2496,11 @@ public:
       case ICE_AROUND_CYLINDER:{ // TO-DO: is this best initial condition? might be missing on serious initial interface growth...
         switch(dom){
           case LIQUID_DOMAIN:{
-            return theta_wall;
+            return theta_infty;
           }
           case SOLID_DOMAIN:{
             if(ramp_bcs){
-              return theta_wall;
+              return theta_infty;
             }
             else{
               return theta_interface;
@@ -2352,7 +2512,7 @@ public:
         }
       }
       case DISSOLVING_DISK_BENCHMARK:{
-        return theta_wall;
+        return theta_infty;
       }
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:{
@@ -3172,77 +3332,35 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   P4EST_ASSERT(i==num_fields_interp);
 } // end of interpolate_values_onto_new_grid
 
-// TO-DO : is this used? if not, remove
-void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
-
-  compute_mean_curvature(*ngbd,normal.vec,curvature.vec);
-  /*
-  vec_and_ptr_t curvature_tmp;
-  curvature_tmp.create(curvature.vec);
-
-  // Get arrays needed:
-  curvature_tmp.get_array();
-  normal.get_array();
-  // Define the qnnn object to help compute the derivatives of the normal:
-  quad_neighbor_nodes_of_node_t qnnn;
-
-  // Compute curvature on layer nodes:
-  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-      p4est_locidx_t n = ngbd->get_layer_node(i);
-      ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
-    }
-
-  // Begin ghost update:
-  VecGhostUpdateBegin(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-  // Compute curvature on local nodes:
-  for(size_t i = 0; i<ngbd->get_local_size(); i++){
-      p4est_locidx_t n = ngbd->get_local_node(i);
-      ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
-    }
-
-  // End ghost update:
-  VecGhostUpdateEnd(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-  // Restore arrays needed:
-  curvature_tmp.restore_array();
-  normal.restore_array();
-
-  // Now go ahead and extend the curvature values to the whole domain -- Will be used to apply the pointwise Dirichlet condition, dependent on curvature
-  LS.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
-
-  // Destroy temp now:
-  curvature_tmp.destroy();
-*/
-
-}
-
 
 double interfacial_velocity_expression(double Tl_d, double Ts_d){
-
   switch(problem_dimensionalization_type){
     // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
-    case NONDIM_YES_FLUID:{
-      return ((St/Pe)*(alpha_s/alpha_l)*(Ts_d - (k_l/k_s)*Tl_d));
+    case NONDIM_BY_FLUID_VELOCITY:{
+      if(!is_dissolution_case){
+        return ( -1.*(St/Pe)*(alpha_s/alpha_l) * ((k_l/k_s)*Tl_d) - Ts_d );
+      }
+      else{
+        return -1.*(gamma_diss/Pe)*Tl_d;
+      }
     }
-    case NONDIM_NO_FLUID:{
-      return ((St)*(Ts_d - (k_l/k_s)*Tl_d));
+    case NONDIM_BY_DIFFUSIVITY:{
+      return ( -1.*(St)*(alpha_s/alpha_l)*( (k_l/k_s)*Tl_d - Ts_d ) );
+      // Elyce to-do 12/14/21: (1) expression here was incorrect so I fixed it, and (2) add a dissolution case
     }
     case DIMENSIONAL:{
-      if(solve_temp_not_conc){
+      if(!is_dissolution_case){
         return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
       }
       else{
-        return -1.*molar_volume_diss*(D_diss/stoich_coeff_diss)*Tl_d;
+        return -1.*molar_volume_diss*(D/stoich_coeff_diss)*Tl_d;
 
       }
 
     }
-    case NONDIM_DISSOLUTION:{
-      return -1.*(gamma_diss/Pe)*Tl_d;
-    }
+//    case NONDIM_DISSOLUTION:{
+//      return -1.*(gamma_diss/Pe)*Tl_d;
+//    }
 
     default:{
       throw std::invalid_argument("interfacial_velocity_expression: Unrecognized stefan condition type case \n");
@@ -3574,7 +3692,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     if(refine_by_d2T){
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est,dxyz_smallest);
-      double dTheta = fabs(theta_wall - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
+      double dTheta = fabs(theta_infty - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
 
       // Coarsening instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
@@ -3802,19 +3920,24 @@ void poisson_step(Vec phi, Vec phi_solid,
       }
     }
 
-  if(problem_dimensionalization_type == NONDIM_YES_FLUID){
-    solver_Tl->set_mu(1./Pe);
-    if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
+  if(problem_dimensionalization_type == NONDIM_BY_FLUID_VELOCITY){
+    // Elyce to-do 12/14/21: make this whole thing a switch case instead
+    if(!is_dissolution_case){
+      solver_Tl->set_mu(1./Pe);
+      if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
+    }
+    else{
+      solver_Tl->set_mu(1./Pe);
+      if(do_we_solve_for_Ts){
+        solver_Ts->set_mu(1./Pe); // TO FIX -- ELyce to-do 12/14/21: why was this marked to fix?
+      }
+    }
   }
-  else if(problem_dimensionalization_type== NONDIM_NO_FLUID){
+  else if(problem_dimensionalization_type== NONDIM_BY_DIFFUSIVITY){
     solver_Tl->set_mu(alpha_l/alpha_s);
     if(do_we_solve_for_Ts) solver_Ts->set_mu(1.);
-  }
-  else if(problem_dimensionalization_type == NONDIM_DISSOLUTION){
-    solver_Tl->set_mu(1./Pe);
-    if(do_we_solve_for_Ts){
-      solver_Ts->set_mu(1./Pe); // TO FIX
-    }
+
+    // Elyce to-do 12/14/21: add dissolution case
   }
   else if(problem_dimensionalization_type == DIMENSIONAL){
     solver_Tl->set_mu(alpha_l);
@@ -3823,7 +3946,6 @@ void poisson_step(Vec phi, Vec phi_solid,
   else{
     throw std::invalid_argument("poisson_step: unrecognized problem dimensionalization type \n");
   }
-
 
   solver_Tl->set_rhs(rhs_Tl);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
@@ -5676,7 +5798,8 @@ int main(int argc, char** argv) {
                            "With: \n"
                            "u_inf = %0.3e [m/s]\n"
                            "delta T = %0.2f [K]\n"
-                           "sigma = %0.3e, d = %0.3e, sigma/d = %0.3e \n", Re, Pr, Pe, St,u_inf,deltaT,sigma,d_cyl,sigma/d_cyl);
+                           "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n", Re, Pr, Pe, St,
+                                                                                     u_inf,deltaT,sigma,l_char,sigma/l_char);
 
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
@@ -6330,8 +6453,9 @@ int main(int argc, char** argv) {
         // Feed the curvature computed to the interfacial boundary condition:
         if(interfacial_temp_bc_requires_curvature){
           ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
+
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
-          compute_curvature(phi_solid,normal,curvature,ngbd_np1,ls_new_new);
+          compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
 
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
