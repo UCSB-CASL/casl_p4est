@@ -4,6 +4,8 @@
 #include "point2.h"
 #include "simplex2.h"
 #include "types.h"
+#include <src/casl_geometry.h>
+#include <unordered_map>
 
 /*!
  * \file Cube2.h
@@ -61,6 +63,28 @@ private:
 #endif
     return (p1*phi2 - p2*phi1)/(phi2-phi1);
   }
+
+	/**
+	 * Compute the minimum distance of the quad points to a 2D line segment.
+	 * Update a distance map by keeping only the minimum distance.
+	 * @param [in] allPoints Array of quad points' coordinates.
+	 * @param [in] phiAndIdxQuadValues Level-set function values and p4est partition indices of quad corners.
+	 * @param [in] v0 Pointer to first line segment vertex.
+	 * @param [in] v1 Pointer to second line segment vertex.
+	 * @param [out] distanceMap Hash map to hold the current miminum distance of points to \Gamma.
+	 * @param [in] TOL Tolerance for zero-distance checking.
+	 */
+	static void _computeDistanceToLineSegment( const Point2 allPoints[], const QuadValueExtended& phiAndIdxQuadValues,
+											   const Point2 *v0, const Point2 *v1,
+											   std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL = EPS );
+
+	/**
+     * Update a distance map with the minimum distance value for a given grid node.
+     * @param [in, out] distanceMap Distance hash map to update.
+     * @param [in] n Grid node index in partition.
+     * @param [in] d Distance.
+     */
+	static void _updateMinimumDistanceMap( std::unordered_map<p4est_locidx_t, double>& distanceMap, p4est_locidx_t n, double d );
 
 public:
   double xyz_mmm[2], xyz_ppp[2]; // nodes
@@ -138,6 +162,17 @@ public:
      * \return the maximum of f over the 0-level-set in the Cube2
      */
   double max_Over_Interface( const QuadValue& f, const QuadValue& level_set_values ) const;
+
+  	/**
+  	 * Approximate the distance of the nodes in a quad to the interface.  Computations are based on quad's simplices that
+  	 * are cut-out by the interface.  When this is true, a map of nodal indices to minimum distance is filled and
+  	 * provided back to the caller function.  This map will be empty if no quad's simplex is cut by the interface.
+  	 * @param [in] phiAndIdxQuadValues Container of level-set function values and indices associated to the quad nodes.
+  	 * @param [out] distanceMap Minimum approximated distance from nodes belonging to at least one of the quad's simplices cut-out by \Gamma.
+  	 * @param [in] TOL Distance tolerance for zero-checking.
+  	 */
+	void computeDistanceToInterface( const QuadValueExtended& phiAndIdxQuadValues,
+			std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL = EPS ) const;
 };
 
 #endif // MY_P4EST_CUBE2_H

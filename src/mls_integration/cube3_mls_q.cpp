@@ -1,6 +1,6 @@
 #include "cube3_mls_q.h"
 
-void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<action_t> &acn, std::vector<int> &clr)
+void cube3_mls_q_t::construct_domain(const std::vector<double> &phi_all, const std::vector<action_t> &acn, const std::vector<int> &clr)
 {
   num_of_lsfs = acn.size();
 
@@ -180,6 +180,7 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
       }
     }
 
+    all_positive = all_negative = false; // temporary fix found with Daniil's help!
     if (all_positive)
     {
       if (acn[p] == CUBE_MLS_INTERSECTION)

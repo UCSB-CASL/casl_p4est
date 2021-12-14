@@ -3292,10 +3292,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double d_0m0_m0=qnnn.d_0m0_m0; double d_0m0_p0=qnnn.d_0m0_p0;
     double d_0p0_m0=qnnn.d_0p0_m0; double d_0p0_p0=qnnn.d_0p0_p0;
 
-    double w_m00_mm, w_m00_pm;
-    double w_p00_mm, w_p00_pm;
-    double w_0m0_mm, w_0m0_pm;
-    double w_0p0_mm, w_0p0_pm;
+    double w_m00_mm, w_m00_pm; w_m00_mm = w_m00_pm = 0.0;
+    double w_p00_mm, w_p00_pm; w_p00_mm = w_p00_pm = 0.0;
+    double w_0m0_mm, w_0m0_pm; w_0m0_mm = w_0m0_pm = 0.0;
+    double w_0p0_mm, w_0p0_pm; w_0p0_mm = w_0p0_pm = 0.0;
 #ifdef P4_TO_P8
     double d_m00_0m=qnnn.d_m00_0m; double d_m00_0p=qnnn.d_m00_0p;
     double d_p00_0m=qnnn.d_p00_0m; double d_p00_0p=qnnn.d_p00_0p;
@@ -3307,15 +3307,15 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
     double d_00m_0m=qnnn.d_00m_0m; double d_00m_0p=qnnn.d_00m_0p;
     double d_00p_0m=qnnn.d_00p_0m; double d_00p_0p=qnnn.d_00p_0p;
 
-    double w_m00_mp, w_m00_pp;
-    double w_p00_mp, w_p00_pp;
-    double w_0m0_mp, w_0m0_pp;
-    double w_0p0_mp, w_0p0_pp;
+    double w_m00_mp, w_m00_pp; w_m00_mp = w_m00_pp = 0.0;
+    double w_p00_mp, w_p00_pp; w_p00_mp = w_p00_pp = 0.0;
+    double w_0m0_mp, w_0m0_pp; w_0m0_mp = w_0m0_pp = 0.0;
+    double w_0p0_mp, w_0p0_pp; w_0p0_mp = w_0p0_pp = 0.0;
 
-    double w_00m_mm, w_00m_pm;
-    double w_00p_mm, w_00p_pm;
-    double w_00m_mp, w_00m_pp;
-    double w_00p_mp, w_00p_pp;
+    double w_00m_mm, w_00m_pm; w_00m_mm = w_00m_pm = 0.0;
+    double w_00p_mm, w_00p_pm; w_00p_mm = w_00p_pm = 0.0;
+    double w_00m_mp, w_00m_pp; w_00m_mp = w_00m_pp = 0.0;
+    double w_00p_mp, w_00p_pp; w_00p_mp = w_00p_pp = 0.0;
 #endif
 
     p4est_locidx_t node_m00_mm=qnnn.node_m00_mm; p4est_locidx_t node_m00_pm=qnnn.node_m00_pm;

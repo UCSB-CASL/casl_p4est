@@ -27,6 +27,8 @@ class my_p4est_semi_lagrangian_t
 {
   friend class my_p4est_ns_free_surface_t;
   friend class my_p4est_surfactant_t;
+
+protected:			// Added to allow child classes to access previously declared private members of this base class.
   /*
    * The pointer-to-pointer member variables (i.e. the 'p_***' variables here below) are required
    * to udpate the pointer to grid data that the user passed when constructing this object.
@@ -98,13 +100,15 @@ public:
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.
-   * \param v       the velocity field. This is a pointer to an array of dimension P4EST_DIM.
-   * \param dt      the time step
-   * \param phi     the level set function
-   * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   *   Function is suitable for a velocity field that remains the same from tnm1 to tn.
+   * \param [in] v		 the velocity field. This is a pointer to an array of dimension P4EST_DIM.
+   * \param [in] dt		 the time step
+   * \param [in,out] phi the level set function
+   * \param [in] phi_xx	 the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \param [in] band	 desired band in min diags around interface.  No banding if <= 1.
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=nullptr, Vec phi_add_refine=nullptr, const double& band=0 );
 
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
@@ -147,7 +151,7 @@ public:
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
 
 
   /*!
@@ -186,6 +190,32 @@ public:
   void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, std::vector<Vec> &phi, std::vector<mls_opn_t> &action, int phi_idx, Vec *phi_xx=NULL);
 
   void set_ngbd_phi(my_p4est_node_neighbors_t *ngbd_phi) { this->ngbd_phi = ngbd_phi; }
+
+  /**
+   * Update a p4est from tn to tnp1, using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler
+   * along the characteristics.
+   * The forest at time tn is copied and then refined/coarsened and balance iteratively until convergence.
+   * The method is based on:
+   * [*] M. Mirzadeh, A. Guittet, C. Burstedde, and F. Gibou, Parallel Level-Set Method on Adaptive Tree-Based Grids.
+   * @note You need to update the node neighborhood and hierarchy objects yourself!
+   * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+   * @param [in] dt Time step.
+   * @param [in,out] phi Level-set function values at time n, and then updated at time n + 1.
+   * @param [in] band Desired minimum band around the interface, <= 1 to not refine based on band value.
+   */
+  void update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi, double band=0 );
+
+  /**
+   * Advect level-set function using a semi-Lagrangian scheme with a single velocity step (no midpoint) with Euler along
+   * the characteristics.
+   * @param [in] dt Time step.
+   * @param [in] vel Array of velocity parallel vectors in each Cartesian direction.
+   * @param [in] vel_xx Array of second derivatives for each velocity component w.r.t. each Cartesian direction.
+   * @param [in] phi Level-set function values at time n.
+   * @param [in] phi_xx Array of second derivatives of phi w.r.t. each Cartesian direction.
+   * @param [in,out] phiNewPtr Advected level-set function values.
+   */
+  void advect_from_n_to_np1_one_vel_step( double dt, Vec vel[], Vec *vel_xx[], Vec phi, Vec phi_xx[], double *phiNewPtr );
 
 };
 

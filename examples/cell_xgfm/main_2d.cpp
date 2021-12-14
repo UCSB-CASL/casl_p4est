@@ -208,7 +208,7 @@ BoundaryConditionType bc_wtype_ = DIRICHLET;
 bool use_second_order_theta_ = true;
 
 bool get_integral = false;
-bool print_summary = false;
+bool print_summary = true;
 
 int test_number_ = 5;
 /* run the program with the flag -help to know more about the various tests */
@@ -1191,7 +1191,7 @@ void save_VTK(const string out_dir, int test_number,
               p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
               p4est_t *p4est_fine, p4est_ghost_t *ghost_fine, p4est_nodes_t *nodes_fine,
               my_p4est_brick_t *brick,
-              Vec phi, Vec normals, Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2], Vec correction_jump_mu_grad,
+              Vec phi, Vec normals[], Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2][P4EST_DIM], Vec correction_jump_mu_grad[P4EST_DIM],
               Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm
 #ifndef P4_TO_P8
 , Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_coarse
@@ -1274,7 +1274,7 @@ void save_VTK(const string out_dir, int test_number,
   oss_fine << oss.str() << "/interface_capturing_" << data_fine->min_lvl;
 
   double *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
-  double *normals_p, *jump_mu_grad_u_p[2], *correction_jump_mu_grad_p;
+  double *normals_p[P4EST_DIM], *jump_mu_grad_u_p[2][P4EST_DIM], *correction_jump_mu_grad_p[P4EST_DIM];
   ierr = VecGetArray(jump_u, &jump_u_p); CHKERRXX(ierr);
   ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
 
@@ -1283,23 +1283,40 @@ void save_VTK(const string out_dir, int test_number,
   for (unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecGetArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
   }
-  ierr = VecGetArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
 
-  my_p4est_vtk_write_all_general(p4est_fine, nodes_fine, ghost_fine,
-                                 P4EST_TRUE, P4EST_TRUE,
-                                 4, 0, 4, 0, 0, 0, oss_fine.str().c_str(),
-                                 VTK_NODE_SCALAR, "phi", phi_p,
-                                 VTK_NODE_SCALAR, "jump", jump_u_p,
-                                 VTK_NODE_SCALAR, "jump_flux", jump_normal_flux_p,
-                                 VTK_NODE_VECTOR_BLOCK, "normal", normals_p,
-                                 VTK_NODE_VECTOR_BLOCK, "gfm_jump_mu_du", jump_mu_grad_u_p[0],
-      VTK_NODE_VECTOR_BLOCK, "xgfm_jump_mu_du", jump_mu_grad_u_p[1],
-      VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p,
-      VTK_NODE_SCALAR, "extension_xgfm", extended_field_fine_nodes_xgfm_p);
+  my_p4est_vtk_write_all(p4est_fine, nodes_fine, ghost_fine,
+                         P4EST_TRUE, P4EST_TRUE,
+                         4+4*P4EST_DIM, 0, oss_fine.str().c_str(),
+                         VTK_POINT_DATA, "phi", phi_p,
+                         VTK_POINT_DATA, "jump", jump_u_p,
+                         VTK_POINT_DATA, "jump_flux", jump_normal_flux_p,
+                         VTK_POINT_DATA, "nx", normals_p[0],
+      VTK_POINT_DATA, "ny", normals_p[1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "nz", normals_p[2],
+    #endif
+      VTK_POINT_DATA, "gfm_jump_mu_dxu", jump_mu_grad_u_p[0][0],
+      VTK_POINT_DATA, "gfm_jump_mu_dyu", jump_mu_grad_u_p[0][1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "gfm_jump_mu_dzu", jump_mu_grad_u_p[0][2],
+    #endif
+      VTK_POINT_DATA, "xgfm_jump_mu_dxu", jump_mu_grad_u_p[1][0],
+      VTK_POINT_DATA, "xgfm_jump_mu_dyu", jump_mu_grad_u_p[1][1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "xgfm_jump_mu_dzu", jump_mu_grad_u_p[1][2],
+    #endif
+      VTK_POINT_DATA, "corr_jump_mu_dxu", correction_jump_mu_grad_p[0],
+      VTK_POINT_DATA, "corr_jump_mu_dyu", correction_jump_mu_grad_p[1],
+    #ifdef P4_TO_P8
+      VTK_POINT_DATA, "corr_jump_mu_dzu", correction_jump_mu_grad_p[2],
+    #endif
+      VTK_POINT_DATA, "extension_xgfm", extended_field_fine_nodes_xgfm_p);
 
 
-  ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM ; ++dim) {
+    ierr = VecRestoreArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(correction_jump_mu_grad[dim], &correction_jump_mu_grad_p[dim]); CHKERRXX(ierr);
+  }
 
   ierr = VecRestoreArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
@@ -1312,7 +1329,9 @@ void save_VTK(const string out_dir, int test_number,
   for (unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecRestoreArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
+    for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecRestoreArray(jump_mu_grad_u[flag][dim], &jump_mu_grad_u_p[flag][dim]); CHKERRXX(ierr);
+    }
   }
 
   ierr = VecRestoreArray(extension_xgfm, &extension_xgfm_p); CHKERRXX(ierr);
@@ -1323,7 +1342,11 @@ void save_VTK(const string out_dir, int test_number,
 
 
 void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_fine, my_p4est_node_neighbors_t& ngbd_n_fine, Vec phi, bool use_second_order_theta, int test_number, double mu_p, double mu_m, //input
-                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals, Vec phi_xxyyzz ) // output
+                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals[P4EST_DIM], Vec phi_xx, Vec phi_yy // output
+                                     #ifdef P4_TO_P8
+                                     , Vec phi_zz // output
+                                     #endif
+                                     )
 {
   PetscErrorCode ierr;
   my_p4est_level_set_t ls(&ngbd_n_fine);
@@ -1331,16 +1354,20 @@ void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_f
   sample_cf_on_nodes(p4est_fine, nodes_fine, jump_u_cf, jump_u);
 
   if(use_second_order_theta)
-    ngbd_n_fine.second_derivatives_central(phi, phi_xxyyzz);
+#ifdef P4_TO_P8
+    ngbd_n_fine.second_derivatives_central(phi, phi_xx, phi_yy, phi_zz);
+#else
+    ngbd_n_fine.second_derivatives_central(phi, phi_xx, phi_yy);
+#endif
 
   my_p4est_interpolation_nodes_t interp_phi(&ngbd_n_fine);
   interp_phi.set_input(phi, linear);
   compute_normals(ngbd_n_fine, phi, normals);
 
-  double *jump_normal_flux_p;
-  const double *normals_p;
+  double *jump_normal_flux_p, *normals_p[P4EST_DIM];
   ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(normals, &normals_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecGetArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);}
 
   double node_xyz[P4EST_DIM];
   for (p4est_locidx_t nn = 0; nn < nodes_fine->num_owned_indeps; ++nn) {
@@ -1352,8 +1379,8 @@ void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_f
   }
   ierr = VecGhostUpdateBegin(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = VecRestoreArrayRead(normals, &normals_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecRestoreArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);}
 
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
 
@@ -1839,16 +1866,31 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     /* Get the normals, the second derivatives of the levelset (if required) and the relevant flattened jumps
      */
     Vec jump_u, jump_normal_flux;
-    Vec normals     = NULL;
-    Vec phi_xxyyzz  = NULL;
+    Vec normals[P4EST_DIM];
+    Vec phi_xx = NULL;
+    Vec phi_yy = NULL;
+#ifdef P4_TO_P8
+    Vec phi_zz = NULL;
+#endif
     ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &jump_u); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &jump_normal_flux); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &normals); CHKERRXX(ierr);
+    for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &normals[dim]); CHKERRXX(ierr);
+    }
     if(use_second_order_theta){
-      ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &phi_xxyyzz); CHKERRXX(ierr); }
+      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_xx); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_yy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_zz); CHKERRXX(ierr);
+#endif
+    }
 
     get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi, use_second_order_theta, test_number, mu_p, mu_m, //input
-                          jump_u, jump_normal_flux, normals, phi_xxyyzz); // output
+                          jump_u, jump_normal_flux, normals, phi_xx, phi_yy // output
+                      #ifdef P4_TO_P8
+                          , phi_zz // output
+                      #endif
+                          );
 
     /* TEST THE JUMP SOLVER */
     BoundaryConditionsDIM bc;
@@ -1867,7 +1909,11 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     for (unsigned char flag = 0; flag < 2; ++flag) {
       my_p4est_xgfm_cells_t solver(&ngbd_c, &ngbd_n, &ngbd_n_fine, flag);
       if(use_second_order_theta)
-        solver.set_phi(phi, phi_xxyyzz);
+  #ifdef P4_TO_P8
+        solver.set_phi(phi, phi_xx, phi_yy, phi_zz);
+  #else
+        solver.set_phi(phi, phi_xx, phi_yy);
+  #endif
       else
         solver.set_phi(phi);
       solver.set_normals(normals);
@@ -1976,16 +2022,18 @@ This test case is meant to check the AMR feature, hence the interface is suppose
       ierr = VecDestroy(rhs); CHKERRXX(ierr);
     }
 
-    Vec correction_jump_mu_grad, loc_ghost_jump_mu_grad_u_gfm, loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction;
-    ierr = VecDuplicate(jump_mu_grad_u[0], &correction_jump_mu_grad); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecCopy(loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecAXPY(loc_ghost_correction, -1.0, loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+    Vec correction_jump_mu_grad[P4EST_DIM], loc_ghost_jump_mu_grad_u_gfm, loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction;
+    for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      ierr = VecDuplicate(jump_mu_grad_u[0][dim], &correction_jump_mu_grad[dim]); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(jump_mu_grad_u[0][dim], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(jump_mu_grad_u[1][dim], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(correction_jump_mu_grad[dim], &loc_ghost_correction); CHKERRXX(ierr);
+      ierr = VecCopy(loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction); CHKERRXX(ierr);
+      ierr = VecAXPY(loc_ghost_correction, -1.0, loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(correction_jump_mu_grad[dim], &loc_ghost_correction); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[1][dim], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[0][dim], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+    }
 
     if(iter > 0){
       ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for  gfm: %.5e, order = %g\n", err[iter][0], log(err[iter-1][0]/err[iter][0])/log(2)); CHKERRXX(ierr);
@@ -2042,8 +2090,14 @@ This test case is meant to check the AMR feature, hence the interface is suppose
 
     ierr = VecDestroy(phi_coarse); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
-    if(use_second_order_theta){
-      ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }
+    if(use_second_order_theta)
+    {
+      ierr = VecDestroy(phi_xx); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_yy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecDestroy(phi_zz); CHKERRXX(ierr);
+#endif
+    }
     ierr = VecDestroy(jump_u); CHKERRXX(ierr);
     ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
     ierr = VecDestroy(normals); CHKERRXX(ierr);
@@ -2055,7 +2109,8 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     {
       ierr = VecDestroy(sol[flag]); CHKERRXX(ierr);
       ierr = VecDestroy(err_cells[flag]); CHKERRXX(ierr);
-      ierr = VecDestroy(jump_mu_grad_u[flag]); CHKERRXX(ierr);
+      for (short dim = 0; dim < P4EST_DIM; ++dim) {
+        ierr = VecDestroy(jump_mu_grad_u[flag][dim]); CHKERRXX(ierr);}
     }
 
     if(save_vtk || get_integral)

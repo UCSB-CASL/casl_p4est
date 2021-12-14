@@ -56,7 +56,7 @@ simplex2_mls_l_t::simplex2_mls_l_t(double x0, double y0,
 //--------------------------------------------------
 // Domain Reconstruction
 //--------------------------------------------------
-void simplex2_mls_l_t::construct_domain(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
+void simplex2_mls_l_t::construct_domain(const std::vector<double> &phi, const std::vector<action_t> &acn, const std::vector<int> &clr)
 {
   num_phi_ = acn.size();
 

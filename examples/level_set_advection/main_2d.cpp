@@ -68,13 +68,13 @@ param_t<double>       CFL        (pl, 1.0,  "cfl",        "CFL number (default: 
 param_t<double>       duration   (pl, 1.0,  "duration",   "Duration of the simulation (default: 1.0)");
 param_t<bool>         save_vtk   (pl, 1,    "save_vtk",   "Duration of the simulation (default: 1)");
 param_t<int>          num_it_vtk (pl, 8,    "num_it_vtk", "Save vtk files every num_it_vtk iterations (default: 8)");
-param_t<int>          vel_interp (pl, 2,    "vel_interp", "Interpolation method for the velocity field (default: 1)\n"
+param_t<int>          vel_interp (pl, 4,    "vel_interp", "Interpolation method for the velocity field (default: 1)\n"
                                                           "  0 - linear,\n"
                                                           "  1 - quadratic,\n"
                                                           "  2 - quadratic non oscillatory,\n"
                                                           "  3 - quadratic non oscillatory continuous v1,\n"
                                                           "  4 - quadratic non oscillatory continuous v2.");
-param_t<int>          phi_interp (pl, 1,    "phi_interp", "Interpolation method for the level-set function (default: 2)\n"
+param_t<int>          phi_interp (pl, 4,    "phi_interp", "Interpolation method for the level-set function (default: 2)\n"
                                                           "  0 - linear,\n"
                                                           "  1 - quadratic,\n"
                                                           "  2 - quadratic non oscillatory,\n"
@@ -285,7 +285,9 @@ int main(int argc, char** argv) {
     double dxyz[P4EST_DIM];
     double dxyz_min;
     double diag_min;
-    get_dxyz_min(p4est_n, dxyz, dxyz_min, diag_min);
+    //dxyz_min(p4est_n, dxyz, dxyz_min, diag_min);
+    get_dxyz_min(p4est_n, dxyz, &dxyz_min, &diag_min);
+
 
     // Create ghost layer and nodes structure
     ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);

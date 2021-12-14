@@ -10,6 +10,8 @@
 *.pro
 *.pro.user*
 *.creator.user*
+*examples/**/*.pri
+!examples/two_phase_flows_validation/two_phase_flows_validation.pri
 CMakeLists.txt.user
 *~
 *.vt[uks]
@@ -50,3 +52,6 @@ Default/
 *_BASE_*
 *_LOCAL_*
 *_REMOTE_*
+
+# CLion.
+.idea/

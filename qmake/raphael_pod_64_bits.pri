@@ -30,7 +30,7 @@ VORO_INCLUDES_DEBUG     = $$VORO_DIR/include/voro++
 VORO_LIBS_RELEASE       = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 
-QMAKE_CC                = /sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mpi/intel64/bin/mpicc
-QMAKE_CXX               = /sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mpi/intel64/bin/mpicxx
-QMAKE_LINK              = /sw/intel/parallel_studio_xe_2019/compilers_and_libraries_2019/linux/mpi/intel64/bin/mpicxx
+QMAKE_CC                = /sw/intel/parallel_studio_xe_2018/compilers_and_libraries_2018/linux/mpi/intel64/bin/mpicc
+QMAKE_CXX               = /sw/intel/parallel_studio_xe_2018/compilers_and_libraries_2018/linux/mpi/intel64/bin/mpicxx
+QMAKE_LINK              = /sw/intel/parallel_studio_xe_2018/compilers_and_libraries_2018/linux/mpi/intel64/bin/mpicxx
 

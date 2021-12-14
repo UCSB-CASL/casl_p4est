@@ -159,8 +159,9 @@ typedef struct node_linear_combination
 const double zero_threshold_qnnn = EPS;
 
 class quad_neighbor_nodes_of_node_t {
+  friend class my_p4est_level_set_t;
 private:
-  inline bool check_if_zero(const double& value) const { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
+  static inline bool check_if_zero(const double& value) { return (fabs(value) < zero_threshold_qnnn); } // needs a nondimensional argument, otherwise it's meaningless
   // very elementary operations in the most synthetic forms
   inline double dd_correction_weight_to_naive_first_derivative(const double &d_m, const double &d_p, const double &d_m_m, const double &d_m_p, const double &d_p_m, const double &d_p_p) const
   {
@@ -627,8 +628,13 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays*bs], tmp_m00[n_arrays*bs], tmp_p00[n_arrays*bs], tmp_0m0[n_arrays*bs], tmp_0p0[n_arrays*bs] ONLY3D(COMMA tmp_00m[n_arrays*bs] COMMA tmp_00p[n_arrays*bs]);
-    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs);
+    std::vector<double> tmp_000(n_arrays*bs);
+    std::vector<double> tmp_m00(n_arrays*bs); std::vector<double> tmp_p00(n_arrays*bs);
+    std::vector<double> tmp_0m0(n_arrays*bs); std::vector<double> tmp_0p0(n_arrays*bs);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays*bs); std::vector<double> tmp_00p(n_arrays*bs);
+#endif
+    laplace_all_components(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs);
     return;
   }
 
@@ -647,8 +653,13 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays] ONLY3D(COMMA tmp_00m[n_arrays] COMMA tmp_00p[n_arrays]);
-    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+    std::vector<double> tmp_000(n_arrays);
+    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
+    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
+#endif
+    laplace_component(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     return;
   }
 
@@ -665,12 +676,18 @@ private:
       return;
     }
     */
-    double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays] ONLY3D(COMMA tmp_00m[n_arrays] COMMA tmp_00p[n_arrays]);
-    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays);
+    std::vector<double> tmp_000(n_arrays);
+    std::vector<double> tmp_m00(n_arrays); std::vector<double> tmp_p00(n_arrays);
+    std::vector<double> tmp_0m0(n_arrays); std::vector<double> tmp_0p0(n_arrays);
+#ifdef P4_TO_P8
+    std::vector<double> tmp_00m(n_arrays); std::vector<double> tmp_00p(n_arrays);
+#endif
+    laplace(f, tmp_000.data(), tmp_m00.data(), tmp_p00.data(), tmp_0m0.data(), tmp_0p0.data() ONLY3D(COMMA tmp_00m.data() COMMA tmp_00p.data()), DIM(fxx, fyy, fzz), n_arrays);
     return;
   }
 
 
+  // results are serialized as follows: result associated with the kth component of the jth field is indexed by 'bs*j + k'
   inline void ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
@@ -698,8 +715,8 @@ private:
     }
     */
 
-    double DIM(fxx[n_arrays*bs], fyy[n_arrays*bs], fzz[n_arrays*bs]);
-    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs);
+    std::vector<double> DIM(fxx(n_arrays*bs), fyy(n_arrays*bs), fzz(n_arrays*bs));
+    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -750,8 +767,8 @@ private:
     }
     */
 
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs, comp);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays, bs, comp);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -798,8 +815,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays*bs], f_000[n_arrays*bs], f_p00[n_arrays*bs];
-    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00, f_000, f_p00, n_arrays, bs);
+    std::vector<double> f_m00(n_arrays*bs), f_000(n_arrays*bs), f_p00(n_arrays*bs);
+    x_ngbd_with_quadratic_interpolation_all_components(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -815,8 +832,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays], f_000[n_arrays], f_p00[n_arrays];
-    x_ngbd_with_quadratic_interpolation_component(f, f_m00, f_000, f_p00, n_arrays, bs, comp);
+    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
+    x_ngbd_with_quadratic_interpolation_component(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -830,8 +847,8 @@ private:
       return;
     }
     */
-    double f_m00[n_arrays], f_000[n_arrays], f_p00[n_arrays];
-    x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, n_arrays);
+    std::vector<double> f_m00(n_arrays), f_000(n_arrays), f_p00(n_arrays);
+    x_ngbd_with_quadratic_interpolation(f, f_m00.data(), f_000.data(), f_p00.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
     return;
@@ -846,8 +863,8 @@ private:
     }
     */
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-    double f_0m0[n_arrays*bs], f_000[n_arrays*bs], f_0p0[n_arrays*bs];
-    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0, f_000, f_0p0, n_arrays, bs);
+    std::vector<double> f_0m0(n_arrays*bs), f_000(n_arrays*bs), f_0p0(n_arrays*bs);
+    y_ngbd_with_quadratic_interpolation_all_components(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -863,8 +880,8 @@ private:
     */
     P4EST_ASSERT(bs > 1);
     P4EST_ASSERT(comp < bs);
-    double f_0m0[n_arrays], f_000[n_arrays], f_0p0[n_arrays];
-    y_ngbd_with_quadratic_interpolation_component(f, f_0m0, f_000, f_0p0, n_arrays, bs, comp);
+    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
+    y_ngbd_with_quadratic_interpolation_component(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -878,8 +895,8 @@ private:
       return;
     }
     */
-    double f_0m0[n_arrays], f_000[n_arrays], f_0p0[n_arrays];
-    y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, n_arrays);
+    std::vector<double> f_0m0(n_arrays), f_000(n_arrays), f_0p0(n_arrays);
+    y_ngbd_with_quadratic_interpolation(f, f_0m0.data(), f_000.data(), f_0p0.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k] = central_second_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
     return;
@@ -895,8 +912,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays*bs],f_000[n_arrays*bs],f_00p[n_arrays*bs];
-    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m, f_000, f_00p, n_arrays, bs);
+    std::vector<double> f_00m(n_arrays*bs), f_000(n_arrays*bs), f_00p(n_arrays*bs);
+    z_ngbd_with_quadratic_interpolation_all_components(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays*bs; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -912,8 +929,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays],f_000[n_arrays],f_00p[n_arrays];
-    z_ngbd_with_quadratic_interpolation_component(f, f_00m, f_000, f_00p, n_arrays, bs, comp);
+    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
+    z_ngbd_with_quadratic_interpolation_component(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -927,8 +944,8 @@ private:
       return;
     }
     */
-    double f_00m[n_arrays],f_000[n_arrays],f_00p[n_arrays];
-    z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p, n_arrays);
+    std::vector<double> f_00m(n_arrays), f_000(n_arrays), f_00p(n_arrays);
+    z_ngbd_with_quadratic_interpolation(f, f_00m.data(), f_000.data(), f_00p.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
     return;
@@ -1040,10 +1057,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays*bs], f_m00[n_arrays*bs], f_p00[n_arrays*bs], f_0m0[n_arrays*bs], f_0p0[n_arrays*bs] ONLY3D(COMMA f_00m[n_arrays*bs] COMMA f_00p[n_arrays*bs]);
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs);
+    std::vector<double> f_000(n_arrays*bs), f_m00(n_arrays*bs), f_p00(n_arrays*bs), f_0m0(n_arrays*bs), f_0p0(n_arrays*bs) ONLY3D(COMMA f_00m(n_arrays*bs) COMMA f_00p(n_arrays*bs));
+    linearly_interpolated_neighbors_all_components(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs);
 
-    double DIM(naive_Dx[n_arrays*bs], naive_Dy[n_arrays*bs], naive_Dz[n_arrays*bs]);
+    std::vector<double> DIM(naive_Dx(n_arrays*bs), naive_Dy(n_arrays*bs), naive_Dz(n_arrays*bs));
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1051,7 +1068,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, bs);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, bs);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1076,10 +1093,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays] ONLY3D(COMMA f_00m[n_arrays] COMMA f_00p[n_arrays]);
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs, comp);
+    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
+    linearly_interpolated_neighbors_component(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays, bs, comp);
 
-    double DIM(naive_Dx[n_arrays], naive_Dy[n_arrays], naive_Dz[n_arrays]);
+    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1087,7 +1104,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, comp);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, bs, comp);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1109,10 +1126,10 @@ private:
       return;
     }
     */
-    double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays] ONLY3D(COMMA f_00m[n_arrays] COMMA f_00p[n_arrays]);
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays);
+    std::vector<double> f_000(n_arrays), f_m00(n_arrays), f_p00(n_arrays), f_0m0(n_arrays), f_0p0(n_arrays) ONLY3D(COMMA f_00m(n_arrays) COMMA f_00p(n_arrays));
+    linearly_interpolated_neighbors(f, f_000.data(), f_m00.data(), f_p00.data(), f_0m0.data(), f_0p0.data() ONLY3D(COMMA f_00m.data() COMMA f_00p.data()), n_arrays);
 
-    double DIM(naive_Dx[n_arrays], naive_Dy[n_arrays], naive_Dz[n_arrays]);
+    std::vector<double> DIM(naive_Dx(n_arrays), naive_Dy(n_arrays), naive_Dz(n_arrays));
     for (unsigned int k = 0; k < n_arrays; ++k) {
       naive_Dx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
       naive_Dy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
@@ -1120,11 +1137,48 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, 1, 1);
+    correct_naive_first_derivatives(f, DIM(naive_Dx.data(), naive_Dy.data(), naive_Dz.data()), DIM(fx, fy, fz), n_arrays, 1, 1);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
+  }
+
+  /**
+   * Compute the gradient at the center of the quad neighborhood using central differences AND no naive correction of
+   * the first derivative.  The primarily use of this raw gradient is to serve as indicator of the distance function
+   * regularity and smoothness.
+   * @param [in] f Array of read-only pointers to PETSc backed functions to compute the gradient on.
+   * @param [out] fx Array of output derivatives of f with respect to x.
+   * @param [out] fy Array of output derivatives of f with respect to y.
+   * @param [out] fz Array of output dericatives of f with respect to z.
+   * @param [in] n_arrays Number of arrays for which we desire to compute the gradient of.
+   */
+  inline void gradient_without_correction( const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays ) const
+  {
+#ifdef CASL_LOG_TINY_EVENTS
+	  PetscErrorCode ierr_log_event = PetscLogEventBegin( log_quad_neighbor_nodes_of_node_t_gradient_without_correction, 0, 0, 0, 0 );
+	  CHKERRXX( ierr_log_event );
+#endif
+
+	  double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays],
+	  		 f_0m0[n_arrays], f_0p0[n_arrays]
+	  		 ONLY3D( COMMA f_00m[n_arrays] COMMA f_00p[n_arrays] );
+	  linearly_interpolated_neighbors( f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D( COMMA f_00m COMMA f_00p ), n_arrays );
+
+	  for( unsigned int k = 0; k < n_arrays; k++ )
+	  {
+		  fx[k] = central_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
+		  fy[k] = central_derivative(f_0p0[k], f_000[k], f_0m0[k], d_0p0, d_0m0);
+#ifdef P4_TO_P8
+		  fz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
+#endif
+	  }
+
+#ifdef CASL_LOG_TINY_EVENTS
+	  ierr_log_event = PetscLogEventEnd( log_quad_neighbor_nodes_of_node_t_gradient_without_correction, 0, 0, 0, 0 );
+	  CHKERRXX( ierr_log_event );
+#endif
   }
 
   void dx_central_internal(const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
@@ -1477,8 +1531,8 @@ public:
 
   inline void laplace(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays) const
   {
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace(f, DIM(fxx, fyy, fzz), n_arrays);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1492,8 +1546,8 @@ public:
 
   inline void laplace_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays) const
   {
-    double DIM(fxx_serial[n_arrays], fyy_serial[n_arrays], fzz_serial[n_arrays]);
-    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
+    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
+    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k][node_000] = fxx_serial[k];
       fyy[k][node_000] = fyy_serial[k];
@@ -1506,8 +1560,8 @@ public:
 
   inline void laplace_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays) const
   {
-    double DIM(fxx_serial[n_arrays], fyy_serial[n_arrays], fzz_serial[n_arrays]);
-    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
+    std::vector<double> DIM(fxx_serial(n_arrays), fyy_serial(n_arrays), fzz_serial(n_arrays));
+    laplace(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxxyyzz[k][l_offset]      = fxx_serial[k];
@@ -1523,8 +1577,8 @@ public:
   {
     P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fxx[n_arrays_bs], fyy[n_arrays_bs], fzz[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
+    std::vector<double> DIM(fxx(n_arrays_bs), fyy(n_arrays_bs), fzz(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1544,8 +1598,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs =n_arrays*bs;
-    double DIM(fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs], fzz_serial[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1566,8 +1620,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs =n_arrays*bs;
-    double DIM(fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs], fzz_serial[n_arrays_bs]);
-    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fxx_serial(n_arrays_bs), fyy_serial(n_arrays_bs), fzz_serial(n_arrays_bs));
+    laplace_all_components(f, DIM(fxx_serial.data(), fyy_serial.data(), fzz_serial.data()),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1586,8 +1640,8 @@ public:
 
   inline void laplace_component(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace_component(f, DIM(fxx.data(), fyy.data(), fzz.data()), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset + 0] = fxx[k];
@@ -1621,8 +1675,8 @@ public:
     }
     */
 
-    double DIM(fxx[n_arrays], fyy[n_arrays], fzz[n_arrays]);
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
+    std::vector<double> DIM(fxx(n_arrays), fyy(n_arrays), fzz(n_arrays));
+    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx.data(), fyy.data(), fzz.data()),  n_arrays);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= (0.5*d_m00_m0*d_m00_p0*fyy[k] ONLY3D( + 0.5*d_m00_0m*d_m00_0p*fzz[k]));
@@ -1654,6 +1708,12 @@ public:
     return;
   }
 
+  inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double f_nei[]) const
+  {
+    ngbd_with_quadratic_interpolation(&f, &f_000, DIMPM(&f_nei[dir::f_m00], &f_nei[dir::f_p00], &f_nei[dir::f_0m0], &f_nei[dir::f_0p0], &f_nei[dir::f_00m], &f_nei[dir::f_00p]), 1);
+    return;
+  }
+
   inline void x_ngbd_with_quadratic_interpolation(const double *f, double &f_m00, double &f_000, double &f_p00) const
   {
     x_ngbd_with_quadratic_interpolation(&f, &f_m00, &f_000, &f_p00, 1);
@@ -1681,8 +1741,8 @@ public:
   }
   inline void dxx_central_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays) const
   {
-    double fxx_serial[n_arrays];
-    dxx_central(f, fxx_serial, n_arrays);
+    std::vector<double> fxx_serial(n_arrays);
+    dxx_central(f, fxx_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fxx[k][node_000] = fxx_serial[k];
     return;
@@ -1690,8 +1750,8 @@ public:
   inline void dxx_central_all_components_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fxx_serial[n_arrays*bs];
-    dxx_central_all_components(f, fxx_serial, n_arrays, bs);
+    std::vector<double> fxx_serial(n_arrays*bs);
+    dxx_central_all_components(f, fxx_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1709,8 +1769,8 @@ public:
   }
   inline void dyy_central_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays) const
   {
-    double fyy_serial[n_arrays];
-    dyy_central(f, fyy_serial, n_arrays);
+    std::vector<double> fyy_serial(n_arrays);
+    dyy_central(f, fyy_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fyy[k][node_000] = fyy_serial[k];
     return;
@@ -1718,8 +1778,8 @@ public:
   inline void dyy_central_all_components_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fyy_serial[n_arrays*bs];
-    dyy_central_all_components(f, fyy_serial, n_arrays, bs);
+    std::vector<double>  fyy_serial(n_arrays*bs);
+    dyy_central_all_components(f, fyy_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1738,8 +1798,8 @@ public:
   }
   inline void dzz_central_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays) const
   {
-    double fzz_serial[n_arrays];
-    dzz_central(f, fzz_serial, n_arrays);
+    std::vector<double> fzz_serial(n_arrays);
+    dzz_central(f, fzz_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fzz[k][node_000] = fzz_serial[k];
     return;
@@ -1747,8 +1807,8 @@ public:
   inline void dzz_central_all_components_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fzz_serial[n_arrays*bs];
-    dzz_central_all_components(f, fzz_serial, n_arrays, bs);
+    std::vector<double>  fzz_serial(n_arrays*bs);
+    dzz_central_all_components(f, fzz_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1772,10 +1832,23 @@ public:
     gradient(&f, DIM(&fxyx[0], &fxyx[1], &fxyx[2]),  1);
     return;
   }
+
+  /**
+   * Compute the gradient of a scalar function at the center node of the quad neighborhood without correcting the naive
+   * approximation to the first derivatives.  The primarily use for this function is to serve as indicator for level-set
+   * regularity and smoothness.
+   * @param [in] f Read-only pointer backed by a PETSc array containing the function we need the gradient of.
+   * @param [out] fxyz Output array to store the (central-differences based) first derivatives.
+   */
+  inline void gradient_without_correction( const double *f, double fxyz[P4EST_DIM] ) const
+  {
+  	gradient_without_correction( &f, DIM( &fxyz[0], &fxyz[1], &fxyz[2] ), 1 );
+  }
+
   inline void gradient(const double **f, double **fxyz, const unsigned int &n_vecs) const
   {
-    double DIM(fx_serial[n_vecs], fy_serial[n_vecs], fz_serial[n_vecs]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_vecs);
+    std::vector<double> DIM(fx_serial(n_vecs), fy_serial(n_vecs), fz_serial(n_vecs));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_vecs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       fxyz[k][0] = fx_serial[k];
       fxyz[k][1] = fy_serial[k];
@@ -1794,8 +1867,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned bsnvecs = bs*n_vecs;
-    double DIM(fx_serial[bsnvecs], fy_serial[bsnvecs], fz_serial[bsnvecs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_vecs, bs);
+    std::vector<double>  DIM(fx_serial(bsnvecs), fy_serial(bsnvecs), fz_serial(bsnvecs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_vecs, bs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       const unsigned int bsk = bs*k;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1812,8 +1885,8 @@ public:
   inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double DIM(fx_serial[bs], fy_serial[bs], fz_serial[bs]);
-    gradient_all_components(&f, DIM(fx_serial, fy_serial, fz_serial),  1, bs);
+    std::vector<double> DIM(fx_serial(bs), fy_serial(bs), fz_serial(bs));
+    gradient_all_components(&f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  1, bs);
     for (unsigned int comp = 0; comp < bs; ++comp) {
       const unsigned int comp_dim = comp*P4EST_DIM;
       fxyz[comp_dim + 0] = fx_serial[comp];
@@ -1826,8 +1899,8 @@ public:
   }
   inline void gradient_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays) const
   {
-    double DIM(fx_serial[n_arrays], fy_serial[n_arrays], fz_serial[n_arrays]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays);
+    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fx[k][node_000] = fx_serial[k];
       fy[k][node_000] = fy_serial[k];
@@ -1839,8 +1912,8 @@ public:
   }
   inline void gradient_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays) const
   {
-    double DIM(fx_serial[n_arrays], fy_serial[n_arrays], fz_serial[n_arrays]);
-    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_arrays);
+    std::vector<double> DIM(fx_serial(n_arrays), fy_serial(n_arrays), fz_serial(n_arrays));
+    gradient(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxyz[k][l_offset]     = fx_serial[k];
@@ -1856,8 +1929,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fx_serial[n_arrays_bs], fy_serial[n_arrays_bs], fz_serial[n_arrays_bs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -1877,8 +1950,8 @@ public:
   {
     P4EST_ASSERT(bs > 1);
     const unsigned int n_arrays_bs = n_arrays*bs;
-    double DIM(fx_serial[n_arrays_bs], fy_serial[n_arrays_bs], fz_serial[n_arrays_bs]);
-    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
+    std::vector<double> DIM(fx_serial(n_arrays_bs), fy_serial(n_arrays_bs), fz_serial(n_arrays_bs));
+    gradient_all_components(f, DIM(fx_serial.data(), fy_serial.data(), fz_serial.data()),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       unsigned int kbs = k*bs;
@@ -1904,8 +1977,8 @@ public:
   }
   inline void dx_central_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays) const
   {
-    double fx_serial[n_arrays];
-    dx_central(f, fx_serial, n_arrays);
+    std::vector<double> fx_serial(n_arrays);
+    dx_central(f, fx_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fx[k][node_000] = fx_serial[k];
     return;
@@ -1919,8 +1992,8 @@ public:
   inline void dx_central_all_components_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fx_serial[n_arrays*bs];
-    dx_central_all_components(f, fx_serial, n_arrays, bs);
+    std::vector<double> fx_serial(n_arrays*bs);
+    dx_central_all_components(f, fx_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1938,8 +2011,8 @@ public:
   }
   inline void dy_central_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays) const
   {
-    double fy_serial[n_arrays];
-    dy_central(f, fy_serial, n_arrays);
+    std::vector<double> fy_serial(n_arrays);
+    dy_central(f, fy_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fy[k][node_000] = fy_serial[k];
     return;
@@ -1953,8 +2026,8 @@ public:
   inline void dy_central_all_components_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fy_serial[n_arrays*bs];
-    dy_central_all_components(f, fy_serial, n_arrays, bs);
+    std::vector<double> fy_serial(n_arrays*bs);
+    dy_central_all_components(f, fy_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -1973,8 +2046,8 @@ public:
   }
   inline void dz_central_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays) const
   {
-    double fz_serial[n_arrays];
-    dz_central(f, fz_serial, n_arrays);
+    std::vector<double> fz_serial(n_arrays);
+    dz_central(f, fz_serial.data(), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k)
       fz[k][node_000] = fz_serial[k];
     return;
@@ -1988,8 +2061,8 @@ public:
   inline void dz_central_all_components_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs > 1);
-    double fz_serial[n_arrays*bs];
-    dz_central_all_components(f, fz_serial, n_arrays, bs);
+    std::vector<double> fz_serial(n_arrays*bs);
+    dz_central_all_components(f, fz_serial.data(), n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k)
     {
@@ -2005,6 +2078,160 @@ public:
     return (der == dir::x ? dx_central(f) : ONLY3D(OPEN_PARENTHESIS der == dir::y ?) dy_central(f) ONLY3D(: dz_central(f)CLOSE_PARENTHESIS));
   }
 
+  /*!
+   * \brief get_gradient_of_normal evaluates the local gradient of the normal vector as (nabla (nabla phi/(magnitude of nabla of phi))).
+   * The user MUST provide nabla of phi (either by component or block-structued) to enable local calculation!
+   * \param [inout] grad_normal_p   : pointer to the data of a SQR_P4EST_DIM node-sampled vector storing the node-sampled result (values of gradient of normal)
+   * \param [in] phi_p              : pointer to the data of a node-sampled vector storing the values of phi
+   * \param [in] grad_phi_block_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
+   * \param [in] grad_phi_p         : pointer to an array of size P4EST_DIM for the components of the gradient of phi.
+   * \param [in] phi_xxyyzz_block_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * \param [in] phi_xxyyzz_p       : pointer to an array of size P4EST_DIM for the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * NOTE 1: if phi_xxyyzz_block_p or phi_xxyyzz_p is provided, the second derivatives of phi are read from that it and phi_p is disregarded.
+   * If they are not provided, they are calculated from phi_p.
+   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned
+   * value is set to 0.0, by default.
+   * NOTE 3: The result is structured as follows:
+   * The gradient along cartesian direction k of the ith component of the normal vector is stored in memory location
+   * [SQR_P4EST_DIM*node_000 + P4EST_DIM*i + k].
+   */
+  inline void get_gradient_of_normal(double *grad_normal_p,
+                                     const double *phi_p,
+                                     const double *grad_phi_block_p, const double *grad_phi_p[P4EST_DIM],
+                                     const double *phi_xxyyzz_block_p, const double *phi_xxyyzz_p[P4EST_DIM]) const
+  {
+    P4EST_ASSERT((grad_phi_block_p != NULL && grad_phi_p == NULL) || (grad_phi_block_p == NULL && grad_phi_p != NULL)); // must provide the gradient, one way or the other
+    P4EST_ASSERT(phi_p != NULL || phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL);
+    // fetch first derivatives
+
+    double local_grad[P4EST_DIM];
+    double mag_of_grad = 0.0;
+    local_grad[0] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 0] : grad_phi_p[0][node_000]); mag_of_grad += SQR(local_grad[0]);
+    local_grad[1] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 1] : grad_phi_p[1][node_000]); mag_of_grad += SQR(local_grad[1]);
+#ifdef P4_TO_P8
+    local_grad[2] = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 2] : grad_phi_p[2][node_000]); mag_of_grad += SQR(local_grad[2]);
+#endif
+    mag_of_grad = sqrt(mag_of_grad);
+
+    if(mag_of_grad > EPS)
+    {
+      double local_hessian[SQR_P4EST_DIM];
+      if(grad_phi_block_p != NULL)
+        gradient_all_components(grad_phi_block_p, local_hessian, P4EST_DIM);
+      else
+        gradient(grad_phi_p, DIM(local_hessian, (local_hessian + P4EST_DIM), (local_hessian + 2*P4EST_DIM)), P4EST_DIM); // the result is technically the transposed of the above in this case
+      // compute second derivatives
+      double dxxyyzz[P4EST_DIM];
+      if(phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL){
+        for (u_char der = 0; der < P4EST_DIM; ++der)
+          dxxyyzz[der] = (phi_xxyyzz_block_p != NULL ? phi_xxyyzz_block_p[P4EST_DIM*node_000 + der] : phi_xxyyzz_p[der][node_000]);
+      }
+      else
+        laplace(phi_p, dxxyyzz);
+
+      // make Hessian symmetric for sure (as it should be)
+      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+      {
+        local_hessian[P4EST_DIM*uu + uu] = dxxyyzz[uu]; // diagonal terms are second derivatives along Cartesian directions
+        for (u_char vv = uu + 1; vv < P4EST_DIM; ++vv) { // symmeterize off-diagonal terms
+          const double tmp = 0.5*(local_hessian[P4EST_DIM*uu + vv] + local_hessian[P4EST_DIM*vv + uu]);
+          local_hessian[P4EST_DIM*uu + vv] = local_hessian[P4EST_DIM*vv + uu] = tmp;
+        }
+      }
+
+      // fill result (i.e. grad of normal) in block-vectored output
+      for (u_char uu = 0; uu < P4EST_DIM; ++uu)
+        for (u_char vv = 0; vv < P4EST_DIM; ++vv)
+        {
+          grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] = local_hessian[P4EST_DIM*uu + vv]/mag_of_grad;
+          for (u_char ww = 0; ww < P4EST_DIM; ++ww)
+            grad_normal_p[SQR_P4EST_DIM*node_000 + P4EST_DIM*uu + vv] -= local_grad[uu]*local_hessian[P4EST_DIM*vv + ww]*local_grad[ww]/pow(mag_of_grad, 3.0);
+        }
+    }
+    else
+      for (u_char k = 0; k < SQR_P4EST_DIM; ++k)
+        grad_normal_p[SQR_P4EST_DIM*node_000 + k] = 0.0; // nothing better to suggest for now, sorry
+    return;
+  }
+
+  /*!
+   * \brief get_curvature evaluates the local mean curvature as divergence of (nabla phi/(magnitude of nabla of phi)).
+   * The user MUST provide nabla of phi (either by component or block-structued) to enable local calculation!
+   * \param [in] phi_p              : pointer to the data of a node-sampled vector storing the values of phi
+   * \param [in] grad_phi_block_p   : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the components of the gradient of phi
+   * \param [in] grad_phi_p         : pointer to an array of size P4EST_DIM for the components of the gradient of phi.
+   * \param [in] phi_xxyyzz_block_p : pointer to the data of a P4EST_DIM block-structured node-sampled vector storing the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * \param [in] phi_xxyyzz_p       : pointer to an array of size P4EST_DIM for the second derivatives of phi with
+   *                                  respect to the P4EST_DIM Cartesian directions x, y, z
+   * NOTE 1: if phi_xxyyzz_block_p or phi_xxyyzz_p is provided, the second derivatives of phi are read from that it and phi_p is disregarded.
+   * If they are not provided, they are calculated from phi_p.
+   * NOTE 2: if the magnitude of the local gradient of phi falls below EPS, the value is not calculated (ill-defined case) and the returned
+   * value is set to 0.0, by default.
+   * \return the value of the local mean curvature.
+   */
+  inline double get_curvature(const double *phi_p,
+                              const double *grad_phi_block_p, const double *grad_phi_p[P4EST_DIM],
+                              const double *phi_xxyyzz_block_p, const double *phi_xxyyzz_p[P4EST_DIM]) const
+  {
+    P4EST_ASSERT((grad_phi_block_p != NULL && grad_phi_p == NULL) || (grad_phi_block_p == NULL && grad_phi_p != NULL)); // must provide the gradient, one way or the other
+    P4EST_ASSERT(phi_p != NULL || phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL);
+    // fetch first derivatives
+    double mag_of_grad = 0.0;
+    const double dx = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 0] : grad_phi_p[0][node_000]); mag_of_grad += SQR(dx);
+    const double dy = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 1] : grad_phi_p[1][node_000]); mag_of_grad += SQR(dy);
+#ifdef P4_TO_P8
+    const double dz = (grad_phi_block_p != NULL ? grad_phi_block_p[P4EST_DIM*node_000 + 2] : grad_phi_p[2][node_000]); mag_of_grad += SQR(dz);
+#endif
+    mag_of_grad = sqrt(mag_of_grad);
+
+    if(mag_of_grad > EPS)
+    {
+      // compute second derivatives
+      double dxxyyzz[P4EST_DIM];
+      if(phi_xxyyzz_block_p != NULL || phi_xxyyzz_p != NULL){
+        for (u_char der = 0; der < P4EST_DIM; ++der)
+          dxxyyzz[der] = (phi_xxyyzz_block_p != NULL ? phi_xxyyzz_block_p[P4EST_DIM*node_000 + der] : phi_xxyyzz_p[der][node_000]);
+      }
+      else
+        laplace(phi_p, dxxyyzz);
+
+      const double dxy = (grad_phi_block_p != NULL ? dy_central_component(grad_phi_block_p, P4EST_DIM, dir::x) : dy_central(grad_phi_p[0])); // d/dy{d/dx}
+#ifdef P4_TO_P8
+      const double dxz = (grad_phi_block_p != NULL ? dz_central_component(grad_phi_block_p, P4EST_DIM, dir::x) : dz_central(grad_phi_p[0])); // d/dz{d/dx}
+      const double dyz = (grad_phi_block_p != NULL ? dz_central_component(grad_phi_block_p, P4EST_DIM, dir::y) : dz_central(grad_phi_p[1])); // d/dz{d/dy}
+#endif
+      return ((dxxyyzz[1] ONLY3D(+ dxxyyzz[2]))*SQR(dx) + (dxxyyzz[0] ONLY3D(+ dxxyyzz[2]))*SQR(dy) ONLY3D(+ (dxxyyzz[0] + dxxyyzz[1])*SQR(dz)) -
+          2.0*(dx*dy*dxy ONLY3D(+ dx*dz*dxz + dy*dz*dyz))) / (mag_of_grad*mag_of_grad*mag_of_grad);
+    }
+    else
+      return 0.0; // nothing better to suggest for now, sorry
+  }
+
+  inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p = NULL) const
+  {
+    return get_curvature(phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+  }
+
+  inline double get_curvature(const double *grad_phi_p[P4EST_DIM], const double *phi_p, const double *phi_xxyyzz_p[P4EST_DIM] = NULL) const
+  {
+    return get_curvature(phi_p, NULL, grad_phi_p, NULL, phi_xxyyzz_p);
+  }
+
+  /*!
+   * \brief get_curvature evaluates the local mean curvature as divergence of (normals). It is the user's responsibility
+   * to provide the ***normal vector*** (i.e. the normalized gradient, not the standard gradient)
+   * The user MUST provide the normal vectors (in a component by component) fashion to enable local calculation
+   * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
+   * \return mean curvature at a single point
+   */
+  inline double get_curvature(const double* normals_p[P4EST_DIM]) const
+  {
+    P4EST_ASSERT(normals_p != NULL);
+    return SUMD(dx_central(normals_p[0]), dy_central(normals_p[1]), dz_central(normals_p[2]));
+  }
 
   // biased-first-derivative-related procedures
   // based on linear-interpolation neighbors
@@ -2194,44 +2421,60 @@ public:
 
   inline p4est_locidx_t neighbor_m00() const
   {
-    if      (check_if_zero(d_m00_p0) ONLY3D(&& check_if_zero(d_m00_0m)))  return node_m00_pm;
-    else if (check_if_zero(d_m00_m0) ONLY3D(&& check_if_zero(d_m00_0m)))  return node_m00_mm;
+    const double max_hy = MAX(d_0m0, d_0p0);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_m00_m0)        && check_if_zero(d_m00_0p))   return node_m00_mp;
-    else if (check_if_zero(d_m00_p0)        && check_if_zero(d_m00_0p))   return node_m00_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_m00_p0/max_hy) ONLY3D(&& check_if_zero(d_m00_0m/max_hz)))  return node_m00_pm;
+    else if (check_if_zero(d_m00_m0/max_hy) ONLY3D(&& check_if_zero(d_m00_0m/max_hz)))  return node_m00_mm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_m00_m0/max_hy)        && check_if_zero(d_m00_0p/max_hz))   return node_m00_mp;
+    else if (check_if_zero(d_m00_p0/max_hy)        && check_if_zero(d_m00_0p/max_hz))   return node_m00_pp;
 #endif
     else return -1;
     //  else            throw std::invalid_argument("No neighbor in m00 direction \n");
   }
   inline p4est_locidx_t neighbor_p00() const
   {
-    if      (check_if_zero(d_p00_m0) ONLY3D(&& check_if_zero(d_p00_0m)))  return node_p00_mm;
-    else if (check_if_zero(d_p00_p0) ONLY3D(&& check_if_zero(d_p00_0m)))  return node_p00_pm;
+    const double max_hy = MAX(d_0m0, d_0p0);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_p00_m0)        && check_if_zero(d_p00_0p))   return node_p00_mp;
-    else if (check_if_zero(d_p00_p0)        && check_if_zero(d_p00_0p))   return node_p00_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_p00_m0/max_hy) ONLY3D(&& check_if_zero(d_p00_0m/max_hz)))  return node_p00_mm;
+    else if (check_if_zero(d_p00_p0/max_hy) ONLY3D(&& check_if_zero(d_p00_0m/max_hz)))  return node_p00_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_p00_m0/max_hy)        && check_if_zero(d_p00_0p/max_hz))   return node_p00_mp;
+    else if (check_if_zero(d_p00_p0/max_hy)        && check_if_zero(d_p00_0p/max_hz))   return node_p00_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in p00 direction \n");
   }
   inline p4est_locidx_t neighbor_0m0() const
   {
-    if      (check_if_zero(d_0m0_m0) ONLY3D(&& check_if_zero(d_0m0_0m)))  return node_0m0_mm;
-    else if (check_if_zero(d_0m0_p0) ONLY3D(&& check_if_zero(d_0m0_0m)))  return node_0m0_pm;
+    const double max_hx = MAX(d_m00, d_p00);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_0m0_m0)        && check_if_zero(d_0m0_0p))   return node_0m0_mp;
-    else if (check_if_zero(d_0m0_p0)        && check_if_zero(d_0m0_0p))   return node_0m0_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_0m0_m0/max_hx) ONLY3D(&& check_if_zero(d_0m0_0m/max_hz)))  return node_0m0_mm;
+    else if (check_if_zero(d_0m0_p0/max_hx) ONLY3D(&& check_if_zero(d_0m0_0m/max_hz)))  return node_0m0_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_0m0_m0/max_hx)        && check_if_zero(d_0m0_0p/max_hz))   return node_0m0_mp;
+    else if (check_if_zero(d_0m0_p0/max_hx)        && check_if_zero(d_0m0_0p/max_hz))   return node_0m0_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in 0m0 direction \n");
   }
   inline p4est_locidx_t neighbor_0p0() const
   {
-    if      (check_if_zero(d_0p0_m0) ONLY3D(&& check_if_zero(d_0p0_0m)))  return node_0p0_mm;
-    else if (check_if_zero(d_0p0_p0) ONLY3D(&& check_if_zero(d_0p0_0m)))  return node_0p0_pm;
+    const double max_hx = MAX(d_m00, d_p00);
 #ifdef P4_TO_P8
-    else if (check_if_zero(d_0p0_m0)        && check_if_zero(d_0p0_0p))   return node_0p0_mp;
-    else if (check_if_zero(d_0p0_p0)        && check_if_zero(d_0p0_0p))   return node_0p0_pp;
+    const double max_hz = MAX(d_00m, d_00p);
+#endif
+    if      (check_if_zero(d_0p0_m0/max_hx) ONLY3D(&& check_if_zero(d_0p0_0m/max_hz)))  return node_0p0_mm;
+    else if (check_if_zero(d_0p0_p0/max_hx) ONLY3D(&& check_if_zero(d_0p0_0m/max_hz)))  return node_0p0_pm;
+#ifdef P4_TO_P8
+    else if (check_if_zero(d_0p0_m0/max_hx)        && check_if_zero(d_0p0_0p/max_hz))   return node_0p0_mp;
+    else if (check_if_zero(d_0p0_p0/max_hx)        && check_if_zero(d_0p0_0p/max_hz))   return node_0p0_pp;
 #endif
     else return -1;
     //    else            throw std::invalid_argument("No neighbor in 0p0 direction \n");
@@ -2239,19 +2482,23 @@ public:
 #ifdef P4_TO_P8
   inline p4est_locidx_t neighbor_00m() const
   {
-    if      (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0m)) return node_00m_mm;
-    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0m)) return node_00m_pm;
-    else if (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0p)) return node_00m_mp;
-    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0p)) return node_00m_pp;
+    const double max_hx = MAX(d_m00, d_p00);
+    const double max_hy = MAX(d_0m0, d_0p0);
+    if      (check_if_zero(d_00m_m0/max_hx) && check_if_zero(d_00m_0m/max_hy)) return node_00m_mm;
+    else if (check_if_zero(d_00m_p0/max_hx) && check_if_zero(d_00m_0m/max_hy)) return node_00m_pm;
+    else if (check_if_zero(d_00m_m0/max_hx) && check_if_zero(d_00m_0p/max_hy)) return node_00m_mp;
+    else if (check_if_zero(d_00m_p0/max_hx) && check_if_zero(d_00m_0p/max_hy)) return node_00m_pp;
     else return -1;
     //  else throw std::invalid_argument("No neighbor in m00 direction \n");
   }
   inline p4est_locidx_t neighbor_00p() const
   {
-    if      (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0m)) return node_00p_mm;
-    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0m)) return node_00p_pm;
-    else if (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0p)) return node_00p_mp;
-    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0p)) return node_00p_pp;
+    const double max_hx = MAX(d_m00, d_p00);
+    const double max_hy = MAX(d_0m0, d_0p0);
+    if      (check_if_zero(d_00p_m0/max_hx) && check_if_zero(d_00p_0m/max_hy)) return node_00p_mm;
+    else if (check_if_zero(d_00p_p0/max_hx) && check_if_zero(d_00p_0m/max_hy)) return node_00p_pm;
+    else if (check_if_zero(d_00p_m0/max_hx) && check_if_zero(d_00p_0p/max_hy)) return node_00p_mp;
+    else if (check_if_zero(d_00p_p0/max_hx) && check_if_zero(d_00p_0p/max_hy)) return node_00p_pp;
     else return -1;
     //  else throw std::invalid_argument("No neighbor in m00 direction \n");
   }
@@ -2261,30 +2508,47 @@ public:
   {
     switch (dir)
     {
-    case dir::f_m00: return neighbor_m00();
-    case dir::f_p00: return neighbor_p00();
-    case dir::f_0m0: return neighbor_0m0();
-    case dir::f_0p0: return neighbor_0p0();
+      case dir::f_m00: return neighbor_m00();
+      case dir::f_p00: return neighbor_p00();
+      case dir::f_0m0: return neighbor_0m0();
+      case dir::f_0p0: return neighbor_0p0();
 #ifdef P4_TO_P8
-    case dir::f_00m: return neighbor_00m();
-    case dir::f_00p: return neighbor_00p();
+      case dir::f_00m: return neighbor_00m();
+      case dir::f_00p: return neighbor_00p();
 #endif
-    default: throw std::invalid_argument("Invalid direction\n");
+      default: throw std::invalid_argument("Invalid direction\n");
     }
   }
+
   inline double distance(int dir) const
   {
     switch (dir)
     {
-    case dir::f_m00: return d_m00;
-    case dir::f_p00: return d_p00;
-    case dir::f_0m0: return d_0m0;
-    case dir::f_0p0: return d_0p0;
+      case dir::f_m00: return d_m00;
+      case dir::f_p00: return d_p00;
+      case dir::f_0m0: return d_0m0;
+      case dir::f_0p0: return d_0p0;
 #ifdef P4_TO_P8
-    case dir::f_00m: return d_00m;
-    case dir::f_00p: return d_00p;
+      case dir::f_00m: return d_00m;
+      case dir::f_00p: return d_00p;
 #endif
-    default: throw std::invalid_argument("Invalid direction\n");
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline double f_linear(const int dir, const double *f) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return f_m00_linear(f);
+      case dir::f_p00: return f_p00_linear(f);
+      case dir::f_0m0: return f_0m0_linear(f);
+      case dir::f_0p0: return f_0p0_linear(f);
+#ifdef P4_TO_P8
+      case dir::f_00m: return f_00m_linear(f);
+      case dir::f_00p: return f_00p_linear(f);
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
     }
   }
 
@@ -2331,7 +2595,7 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
+    double         h        = distance(dir);
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
   }
@@ -2339,7 +2603,7 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
+    double         h        = distance(dir);
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
   }
@@ -2347,8 +2611,8 @@ public:
   inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr[]) const
   {
     p4est_locidx_t node_nei = neighbor(dir);
-    double         h   = distance(dir);
-    int            dim = dir / 2;
+    double         h        = distance(dir);
+    int            dim      = dir / 2;
     if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
   }

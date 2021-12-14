@@ -228,14 +228,14 @@ public:
 
         for (size_t i = 0; i < list.size(); ++i)
         {
-          out << list[i]->key << ":" << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
+          out << "-" << list[i]->key << " " << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
         }
       }
       else
       {
         for (size_t i = 0; i < list.size(); ++i)
         {
-          out << list[i]->key << ": " << list[i]->print_value() << "\n";
+          out << "-" << list[i]->key << " " << list[i]->print_value() << "\n";
         }
       }
 

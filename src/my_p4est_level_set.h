@@ -209,7 +209,7 @@ class my_p4est_level_set_t {
   my_p4est_node_neighbors_t *ngbd;
   const double tree_dimensions[P4EST_DIM], zero_distance_threshold;
 
-  void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM]) const;
+  void compute_derivatives(Vec phi, Vec phi_xxyyzz[P4EST_DIM], const u_int& blocksize = 1) const;
 
   /*!
    * \brief reinitialize_one_iteration performs one forward pseudotime-step of the reinitialization
@@ -280,6 +280,11 @@ class my_p4est_level_set_t {
    * \param [in] phi_0_limit_high     : upper threshold value on phi_0 to trigger calculation of local reinitialization (see description of reinitialize_one_iteration)
    * \param [in] phi_0_limit_low      : lower threshold value on phi_0 to trigger calculation of local reinitialization (see description of reinitialize_one_iteration)
    * \param [in] number_of_iterations : number of Forward pseudo-time steps to be executed
+   * \param [in] layer_nodes_p		  : optional pointer to a list of layer nodes that are updatable.
+   * \param [in] local_nodes_p		  : optional pointer to a list of local nodes (not in shared layer) that are updatable.
+   * \param [in] masked_layer_nodes_p : optional pointer to a list of layer nodes that are NOT updatable (i.e., masked).
+   * \param [in] masked_local_nodes_p : optional pointer to a list of local nodes (not in shared layer) that are NOT updatable.
+   * \note If at least one of the custom pointer to lists of layer/local nodes is present, then, all 4 lists must be given.
    * -----------------------------
    * Description of the algorithm:
    * -----------------------------
@@ -307,7 +312,11 @@ class my_p4est_level_set_t {
    * 2) destroy locally created data and return;
    */
   void reinitialize_within_range_of_phi_0(Vec phi, const unsigned char order_space, const unsigned char order_pseudotime,
-                                          const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations) const;
+                                          const double &phi_0_limit_high, const double &phi_0_limit_low, const int &number_of_iterations,
+                                          const std::vector<p4est_locidx_t> *layer_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *local_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *masked_layer_nodes_p=nullptr,
+                                          const std::vector<p4est_locidx_t> *masked_local_nodes_p=nullptr ) const;
 
 
   void advect_in_normal_direction_one_iteration(const std::vector<p4est_locidx_t> &list_of_node_idx, const double *vn, const double &dt,
@@ -363,19 +372,46 @@ class my_p4est_level_set_t {
   interpolation_method interpolation_on_interface;
   bool                 use_neumann_for_contact_angle;
   int                  contact_angle_extension;
-  bool                 show_convergence;
-  double               show_convergence_band;
+  double               bc_rel_thresh;
   bool                 use_two_step_extrapolation;
 
 public:
-  my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_)
+  /*!
+   * \brief my_p4est_level_set_t constructor using a nonconstant node-neighborhood object. If the node neighbors are not, initialized,
+   * this constructor will initialize them (reinitializations, extensions, extrapolations, etc. are *much* faster if the node neighbors
+   * are initialized!)
+   * \param ngbd_ pointer to a my_p4est_node_neighbors object, this constructor will initialize the node neighborhood information
+   */
+  my_p4est_level_set_t(my_p4est_node_neighbors_t* ngbd_)
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
-      tree_dimensions{DIM((ngbd_->myb->xyz_max[0] - ngbd_->myb->xyz_min[0])/ngbd_->myb->nxyztrees[0], (ngbd_->myb->xyz_max[1] - ngbd_->myb->xyz_min[1])/ngbd_->myb->nxyztrees[1], (ngbd_->myb->xyz_max[2] - ngbd_->myb->xyz_min[2])/ngbd_->myb->nxyztrees[2])},
-      zero_distance_threshold(EPS*MIN(DIM((ngbd_->myb->xyz_max[0] - ngbd_->myb->xyz_min[0])/ngbd_->myb->nxyztrees[0], (ngbd_->myb->xyz_max[1] - ngbd_->myb->xyz_min[1])/ngbd_->myb->nxyztrees[1], (ngbd_->myb->xyz_max[2] - ngbd_->myb->xyz_min[2])/ngbd_->myb->nxyztrees[2]))),
-      interpolation_on_interface(quadratic_non_oscillatory),
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
+      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
       use_neumann_for_contact_angle(true), contact_angle_extension(0),
-      show_convergence(false), show_convergence_band(5.), use_two_step_extrapolation(false)
+      bc_rel_thresh(1.e-8), use_two_step_extrapolation(false)
   {}
+
+   //11/22/21 -- Elyce and Rochi merge -- commented out the below code, because show_convergence is no longer part of  this function in the updated version from Daniil
+   // 12/10/21 -- Elyce and Rochi merge -- added a const cast to this constructor to make it compatible with usage in the rest of the library. Essentially allows you to
+   // pass the neighbors as a const, but removes that const qualifier when providing it to the level set
+   // This was done to make two_phase_flows compatible with the updates done to the level set class
+  /*!
+   * \brief my_p4est_level_set_t constructor based on a pointer to a CONSTANT node-neighborhood object. Too bad for you if the node neighbors
+   * are not initialized upon calling this constructor because you'll pay the price...
+   * \param ngbd_ pointer to a (constant) my_p4est_node_neighbors object, this constructor will __NOT__ initialize the node neighborhood information
+   */
+
+  // TO-DO: have to somehow resolve two phase flows use of const neighbors with the rest of us using non const neighbors 11/23/21 Elyce and Rochi
+  my_p4est_level_set_t(const my_p4est_node_neighbors_t* ngbd_)
+    : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), /*ngbd(ngbd_),*/
+      tree_dimensions{DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2])},
+      zero_distance_threshold(EPS*MIN(DIM((ngbd_->get_brick()->xyz_max[0] - ngbd_->get_brick()->xyz_min[0])/ngbd_->get_brick()->nxyztrees[0], (ngbd_->get_brick()->xyz_max[1] - ngbd_->get_brick()->xyz_min[1])/ngbd_->get_brick()->nxyztrees[1], (ngbd_->get_brick()->xyz_max[2] - ngbd_->get_brick()->xyz_min[2])/ngbd_->get_brick()->nxyztrees[2]))),
+      interpolation_on_interface(quadratic_non_oscillatory_continuous_v2),
+      use_neumann_for_contact_angle(true), contact_angle_extension(0),
+      /*show_convergence(false), show_convergence_band(5.), */bc_rel_thresh(1.e-8),use_two_step_extrapolation(false)
+  {
+      this->ngbd = const_cast<my_p4est_node_neighbors_t*>(ngbd_);
+  }
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
     ngbd  = ngbd_;
@@ -434,6 +470,61 @@ public:
     reinitialize_within_range_of_phi_0(phi, 2, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0, number_of_iterations);
     return;
   }
+
+  /**
+   * @brief Reinitialize the given node-sampled level-set function with quadratic interface localization in space and
+   * minmod corrections to second-derivatives and with 2nd order TVD Runge-Kutta explicit steps in pseudo-time (with
+   * adaptive time-stepping), only for nodes that are not masked out.
+   * @param [in,out] phi On input, node-sampled value of the level-set function whose reinitialization is required;
+   * 		on output, results of the reinitialization algorithm.
+   * @param [in] mask Parallel vector with 0s for nodes we don't want to update, !=0 for rest of updatable grid points.
+   * @param [in] number_of_masked A hint to reserve space in vectors with indices for nonupdatable nodes.
+   * @param [in] number_of_iterations Number of pseudotime steps to be executed (default is 50).
+   * @param [in] limit_absolute_value_phi_0 The reinitization procedure is executed only at nodes where the local value
+   * 		of phi is such that fabs(phi_node_on_input) < limit_absolute_value_phi_0 (default is DBL_MAX).
+   * @note More details to be found in header's comments of reinitialize_within_range_of_phi_0.
+   */
+  inline void reinitialize_2nd_order_with_mask( Vec phi, Vec mask, const int& number_of_masked,
+												const int& number_of_iterations=50,
+												const double& limit_absolute_value_phi_0=DBL_MAX ) const
+  {
+	std::vector<p4est_locidx_t> customLayerNodes, customLocalNodes;		// Will store indices of updatable nodes after
+	customLayerNodes.reserve( ngbd->layer_nodes.size() );				// removing masked nodes.
+	customLocalNodes.reserve( ngbd->local_nodes.size() );
+
+	std::vector<p4est_locidx_t> maskedLayerNodes, maskedLocalNodes;		// Store indices of nonupdatable nodes.
+	maskedLayerNodes.reserve( number_of_masked );
+	maskedLocalNodes.reserve( number_of_masked );
+
+	PetscErrorCode ierr;
+	const double *maskReadPtr;
+	ierr = VecGetArrayRead( mask, &maskReadPtr );
+	CHKERRXX( ierr );
+
+	for( const auto& n : ngbd->layer_nodes )	// Building custom list of updatable and nonupdatable layer nodes.
+	{
+	  if( maskReadPtr[n] != 0 )
+	  	customLayerNodes.push_back( n );
+	  else
+	  	maskedLayerNodes.push_back( n );
+	}
+
+	for( const auto& n : ngbd->local_nodes )	// Building custom list of updatable and nonupdatable local nodes.
+	{
+	  if( maskReadPtr[n] != 0 )
+		customLocalNodes.push_back( n );
+	  else
+	  	maskedLocalNodes.push_back( n );
+	}
+
+	ierr = VecRestoreArrayRead( mask, &maskReadPtr );
+	CHKERRXX( ierr );
+
+	reinitialize_within_range_of_phi_0( phi, 2, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0,
+									 	number_of_iterations, &customLayerNodes, &customLocalNodes,
+									 	&maskedLayerNodes, &maskedLocalNodes );
+  }
+
   /*!
    * \brief reinitialize_2nd_order_above_threshold reinitializes the given node-sampled levelset function with quadratic interface
    * localization in space and minmod corrections to second-derivatives and with 2nd order TVD Runge-Kutta explicit
@@ -468,7 +559,6 @@ public:
     reinitialize_within_range_of_phi_0(phi, 1, 2, limit_absolute_value_phi_0, -limit_absolute_value_phi_0, number_of_iterations);
     return;
   }
-
   /*!
    * \brief reinitialize_2nd_order_time_1st_order_space_above_threshold reinitializes the given node-sampled levelset function with linear interface
    * localization in space and with 2nd order TVD Runge-Kutta explicit steps in pseudo-time (with adaptive time-stepping)
@@ -640,35 +730,92 @@ public:
 
   /* extend a quantity over the interface with the TVD algorithm */
   void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2,
-                                 double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                 double band_use=-DBL_MAX, double band_extend=DBL_MAX,
                                  Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
                                  bool use_nonzero_guess=false, Vec q_n=NULL, Vec q_nn=NULL) const;
 
-  /* extend a quantity over the interface with the TVD algorithm (all derivatives are extended, not just q_n and q_nn) */
+  /*!
+   * \brief extend_Over_Interface_TVD_Full extends a quantity over the interface with the TVD algorithm
+   * (all derivatives are extended, not just q_n and q_nn)
+   * \param phi               [in]      level-set function representing interface
+   * \param q                 [in, out] field to extends
+   * \param iterations        [in]      number of iterations
+   * \param order             [out]     order of extrapolation
+   * \param band_use          [in]      how deep
+   * \param band_extend       [in]
+   * \param normal            [in]      provides normal vector field (
+   * \param mask              [in]
+   * \param bc                [in]
+   * \param use_nonzero_guess [in]
+   * \param q_d               [in]
+   * \param q_dd              [in]
+   * \return
+   */
   void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations=20, int order=2,
-                                      double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                      double band_use=-DBL_MAX, double band_extend=DBL_MAX,
                                       Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
                                       bool use_nonzero_guess=false, Vec *q_d=NULL, Vec *q_dd=NULL) const;
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
-  void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
-                                                                DIM(std::vector<double>& nx, std::vector<double>& ny, std::vector<double>& nz),
-                                                                double *q_out_p,
-                                                                double *q_p,
-                                                                DIM(double *qxx_p, double *qyy_p, double *qzz_p),
-                                                                std::vector<double>& qi_m00, std::vector<double>& qi_p00,
-                                                                std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
-                                                              #ifdef P4_TO_P8
-                                                                std::vector<double>& qi_00m, std::vector<double>& qi_00p,
-                                                              #endif
-                                                                std::vector<double>& s_m00, std::vector<double>& s_p00,
-                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0
-                                                              #ifdef P4_TO_P8
-                                                                , std::vector<double>& s_00m, std::vector<double>& s_00p
-                                                              #endif
-                                                                ) const;
-  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
+  void extend_from_interface_to_whole_domain_TVD_one_iteration(const std::vector<int>& map, const double *phi_p, const double* grad_phi_p,
+                                                               double *q_out_p,
+                                                               const double *q_p, const double *qxxyyzz_p[P4EST_DIM],
+                                                               std::vector<double>& qi_m00, std::vector<double>& qi_p00,
+                                                               std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
+                                                             #ifdef P4_TO_P8
+                                                               std::vector<double>& qi_00m, std::vector<double>& qi_00p,
+                                                             #endif
+                                                               std::vector<double>& s_m00, std::vector<double>& s_p00,
+                                                               std::vector<double>& s_0m0, std::vector<double>& s_0p0,
+                                                             #ifdef P4_TO_P8
+                                                               std::vector<double>& s_00m, std::vector<double>& s_00p,
+                                                             #endif
+                                                               const u_int& blocksize) const;
+  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL,
+                                                 Vec grad_phi_in = NULL, const u_int& blocksize = 1) const;
+
+  
+//  /*!
+//   * \brief extend_from_interface_to_whole_domain_TVD_one_iteration performs one iteration of extension in normal direction
+//   * \param map                   [in]
+//   * \param nx                    [in]
+//   * \param ny                    [in]
+//   * \param q_out_p               [out]
+//   * \param q_p                   [in]
+//   * \param qxx_p                 [in]
+//   * \param qyy_p                 [in]
+//   * \param map_grid_to_interface [in]  a look-up table that contains information about wheter a given node
+//   *                                    has interface points next to it
+//   * \param interface_directions  [in]
+//   * \param interface_distances   [in]
+//   * \param interface_values      [in]
+//   * \return
+//   */
+//  void extend_from_interface_to_whole_domain_TVD_one_iteration_daniil_ver(const std::vector<int>& map, DIM(vector<double>& nx, vector<double>& ny, vector<double>& nz),
+//                                                               double *q_out_p, double *q_p, DIM(double *qxx_p, double *qyy_p, double *qzz_p),
+//                                                               std::vector<int>& map_grid_to_interface,
+//                                                               std::vector<int>& interface_directions,
+//                                                               std::vector<double>& interface_distances,
+//                                                               std::vector<double>& interface_values) const;
+
+//  /*!
+//   * \brief extend_from_interface_to_whole_domain_TVD extends a field from interface in normal direction (``flattening'')
+//   * \param phi         [in]  level-set function
+//   * \param qi          [in]  original field that needs to be ``flattened''
+//   *                          (can be NULL, but must provide func in this case)
+//   *                          (even when func is provided, qi can be used to set initial guess)
+//   * \param q           [out] ``flattened'' around interface field
+//   * \param mask        [in]  if not NULL, interface values where (mask > band_zero*diag_min) will be set to zero
+//   *                          (usefull when dealing with intersecting level-set function)
+//   * \param band_zero   [in]  the threshold defining which interface values will be set to zero
+//   * \param band_smooth [in]  transition width to zeros (in units of diag_min)
+//   * \param func        [in]  optional function to compute interface values
+//   * \return
+//   */
+//  void extend_from_interface_to_whole_domain_TVD_daniil_ver(Vec phi, Vec qi, Vec q, int iterations=20,
+//                                                 Vec mask=NULL, double band_zero=2, double band_smooth=10,
+//                                                 double (*func)(p4est_locidx_t, int, double)=NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
@@ -696,8 +843,7 @@ public:
   inline void set_interpolation_on_interface   (interpolation_method value) { interpolation_on_interface = value; }
   inline void set_use_neumann_for_contact_angle(bool   value) { use_neumann_for_contact_angle = value; }
   inline void set_contact_angle_extension      (int    value) { contact_angle_extension       = value; }
-  inline void set_show_convergence             (bool   value) { show_convergence              = value; }
-  inline void set_show_convergence_band        (double value) { show_convergence_band         = value; }
+  inline void set_bc_rel_thresh                (bool   value) { bc_rel_thresh                 = value; }
   inline void set_use_two_step_extrapolation   (bool   value) { use_two_step_extrapolation    = value; }
 };
 

@@ -21,6 +21,7 @@ CONFIG(profile): {
     QMAKE_LFLAGS += -g
     QMAKE_CFLAGS += -g
     QMAKE_CXXFLAGS += -g
+    QMAKE_CXXFLAGS += c++11
 }
 
 INCLUDEPATH += \
@@ -75,9 +76,9 @@ QMAKE_CXXFLAGS += -std=c++11
 QMAKE_LFLAGS   += -std=c++11
 
 contains(DEFINES, STAMPEDE) { # i.e. if DEFINES += STAMPEDE was added to the user-specific .pri file
-QMAKE_CXXFLAGS  += $(TACC_VEC_FLAGS)
-QMAKE_CFLAGS    += $(TACC_VEC_FLAGS)
-QMAKE_LFLAGS    += $(TACC_VEC_FLAGS)
+QMAKE_CXXFLAGS  += "-xCORE-AVX2 -axCOMMON-AVX512,MIC-AVX512" # compiler issues were found when using the recommended $(TACC_VEC_FLAGS) with Intel 18 compilers
+QMAKE_CFLAGS    += "-xCORE-AVX2 -axCOMMON-AVX512,MIC-AVX512" # compiler issues were found when using the recommended $(TACC_VEC_FLAGS) with Intel 18 compilers
+QMAKE_LFLAGS    += "-xCORE-AVX2 -axCOMMON-AVX512,MIC-AVX512" # compiler issues were found when using the recommended $(TACC_VEC_FLAGS) with Intel 18 compilers
 # --> enables execution of the code on KNL as well as SKX nodes on Stampede2
 }
 

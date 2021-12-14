@@ -886,7 +886,7 @@ int main (int argc, char* argv[])
   cmd.add_option("sl_order",      "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is " + to_string(default_sl_order) + " or value read from restart");
   cmd.add_option("nsteps",        "number of time steps per oscillation period, default is " + to_string(default_ntimesteps_per_period));
   cmd.add_option("hodge_tol",     string("relative numerical tolerance used for the convergence criterion on the Hodge variable (or its gradient).\n")
-                 + string("\tIf converging with respect to the value of the hodge variable, relative to 0.5*rho*SQR(2.0*M_PI*X0*f0)\n")
+                 + string("\tIf converging with respect to the value of the hodge variable, relative to 0.5*SQR(2.0*M_PI*X0*f0)*dt\n")
                  + string("\tIf converging with respect to the gradient of the hodge variable, relative to 2.0*M_PI*X0*f0\n")
                  + string("\tDefault value is ") + to_string(default_hodge_tol));
   cmd.add_option("niter_hodge",           "max number of iterations for convergence of the Hodge variable, at all time steps, default is " + to_string(default_n_hodge));
@@ -978,7 +978,7 @@ int main (int argc, char* argv[])
 
     unsigned int iter_hodge = 0;
 
-    while(iter_hodge < setup.niter_hodge_max && convergence_check_on_hodge > setup.hodge_tol*(setup.control_hodge ? 0.5*SQR(setup.ls->vx_max())*ns->get_dt() : setup.ls->vx_max()))
+    while(iter_hodge < setup.niter_hodge_max && convergence_check_on_hodge > setup.hodge_tol*(setup.control_hodge == hodge_value ? 0.5*SQR(setup.ls->vx_max())*ns->get_dt() : setup.ls->vx_max()))
     {
       if(setup.control_hodge == hodge_value)
         ns->copy_hodge(hold_old, false);

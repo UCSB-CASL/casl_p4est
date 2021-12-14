@@ -52,7 +52,7 @@
 class my_p4est_node_neighbors_t;
 class quad_neighbor_nodes_of_node_t;
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT, V_X, V_Y, V_Z, _X_, _Y_, _Z_ };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
@@ -89,6 +89,30 @@ enum {
   ,z
 #endif
 };
+}
+
+inline int  cube_nei(DIM(int i, int j, int k)) { return SUMD((i+1), 3*(j+1), 9*(k+1)); }
+inline int  cube_nei(int ijk[]) { return cube_nei(DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, DIM(int &i, int &j, int &k))
+{
+  ONLY3D( k = n / 9 - 1; n = n % 9; );
+  j = n / 3 - 1;
+  i = n % 3 - 1;
+}
+inline void cube_nei_dir(int n, int    ijk[]) { cube_nei_dir(n, DIM(ijk[0], ijk[1], ijk[2])); }
+inline void cube_nei_dir(int n, double ijk[]) {
+  int ijk_int[P4EST_DIM];
+  cube_nei_dir(n, ijk_int);
+  EXECD(ijk[0] = double(ijk_int[0]),
+        ijk[1] = double(ijk_int[1]),
+        ijk[2] = double(ijk_int[2]));
+}
+
+inline int  cube_nei_op(int n)
+{
+  int ijk[P4EST_DIM];
+  cube_nei_dir(n, ijk);
+  return cube_nei(DIM(-ijk[0], -ijk[1], -ijk[2]));
 }
 
 enum node_neighbor_cube_t
@@ -203,9 +227,18 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m0
                                                                  { nn_mp0, nn_0p0, nn_pp0 }};
 const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
-const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
-const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
+const u_char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
+const u_char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
 #endif
+
+// Raphael: introducing these "types" for Voronoi cells to make my life easier in face-Voronoi tesselation in two-phase flows...
+enum voro_cell_type
+{
+  nonuniform,       // the Voronoi cell was constructed from a non-uniform neighborhood, without any wall neighbor
+  parallelepiped,   // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood (with or without a wall neighbor)
+  not_well_defined, // the face is irrelevant for computing purposes (based on tag values --> when solving in one domain only (one-phase N-S))
+  unknown           // default value (if irrelevant or not set at construction)
+};
 
 const static std::string null_str    = "NULL";
 const static std::string stdout_str  = "stdout";
@@ -242,49 +275,49 @@ const static std::string stderr_str  = "stderr";
 //                                                             { nn_m00, nn_000, nn_mp0, nn_0p0 },
 //                                                             { nn_000, nn_p00, nn_0p0, nn_pp0 } };
 //#endif
-const unsigned short q2c_num_pts = P4EST_CHILDREN;
-const unsigned short t2c_num_pts = P4EST_DIM+1;
+//const unsigned short q2c_num_pts = P4EST_CHILDREN;
+//const unsigned short t2c_num_pts = P4EST_DIM+1;
 
 struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-interpolation...
 {
   double xyz_face[P4EST_DIM];
   p4est_locidx_t face_idx;
+  double field_value;
   bool operator < (const indexed_and_located_face& other_one) const
   {
     return (face_idx < other_one.face_idx);
   }
 };
+//#ifdef P4_TO_P8
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
 
-#ifdef P4_TO_P8
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
-                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
+//                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
 
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
-                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
-                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
-                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
+//#else
+//const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
+//                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
+//                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
+//                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
 
-#else
-const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
-                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
-                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
-                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
-
-const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
-                                                          { nn_000, nn_p00, nn_0m0 },
-                                                          { nn_000, nn_m00, nn_0p0 },
-                                                          { nn_000, nn_p00, nn_0p0 } };
-#endif
+//const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
+//                                                          { nn_000, nn_p00, nn_0m0 },
+//                                                          { nn_000, nn_m00, nn_0p0 },
+//                                                          { nn_000, nn_p00, nn_0p0 } };
+//#endif
 
 static double get_largest_dbl_smaller_than_dbl_max()
 {
@@ -292,7 +325,7 @@ static double get_largest_dbl_smaller_than_dbl_max()
   while (DBL_MAX - p == DBL_MAX)
     p *= 2.0;
   return DBL_MAX - p;
-};
+}
 
 static const double largest_dbl_smaller_than_dbl_max = get_largest_dbl_smaller_than_dbl_max();
 
@@ -317,9 +350,9 @@ class CF_2
 {
 public:
   double lip, t;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
+  double value(const double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
-  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
+  double operator()(const double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -327,9 +360,9 @@ class CF_3
 {
 public:
   double lip, t;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  double value(const double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
   virtual double operator()(double x, double y,double z) const=0 ;
-  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
+  double operator()(const double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -344,10 +377,10 @@ enum {
   WALL_PARALLEL_TO_FACE = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with (very stretched) rectangular grids
 };
 
-inline int WALL_idx(unsigned char oriented_cart_dir)
+inline int WALL_idx(u_char oriented_cart_dir)
 {
   P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
-  return (-1 - ((int) oriented_cart_dir));
+  return (- 1 - ((int) oriented_cart_dir));
 }
 
 typedef enum {
@@ -377,8 +410,40 @@ public:
   virtual ~mixed_interface() {}
 };
 
+inline bool case_insenstive_char_compare(char a, char b) { return std::tolower(a) == std::tolower(b); }
+
+inline bool case_insenstive_str_compare(std::string const& a, std::string const& b) {
+  if (a.length() == b.length())
+    return std::equal(b.begin(), b.end(), a.begin(), case_insenstive_char_compare);
+  else
+    return false;
+}
+
+inline void case_insensitive_find_substr_in_str(const std::string& str, const std::string& substr, std::vector<size_t>& substr_was_found_in_str_at)
+{
+  substr_was_found_in_str_at.clear();
+  if(substr.size() > str.size() || substr.size() == 0)
+    return;
+  size_t k = 0;
+  while (k < str.size() - substr.size() + 1) {
+    size_t subk = 0;
+    while (subk < substr.size() && case_insenstive_char_compare(str[k], substr[subk])) {
+      subk++;
+      k++;
+    }
+    if(subk == substr.size())
+      substr_was_found_in_str_at.push_back(k - subk);
+    k += 1 - subk; // to catch possibly overlapping words like "find 'GFG' in GFGFGFGFGFGFG"
+  }
+  return;
+}
+
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
+
+std::ostream& operator << (std::ostream& os, interpolation_method method);
+std::istream& operator >> (std::istream& is, interpolation_method& method);
 
 std::string convert_to_string(const hodge_control& type);
 std::ostream& operator << (std::ostream& os, hodge_control type);
@@ -388,7 +453,8 @@ class WallBC2D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);} // VERY BAD (conversion to double) but used like that in poisson_nodes_mls...
+  BoundaryConditionType operator()(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual ~WallBC2D() = 0;
 };
 
@@ -396,7 +462,8 @@ class WallBC3D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
-  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);} // VERY BAD (conversion to double) but used like that in poisson_nodes_mls...
+  BoundaryConditionType operator()(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
   virtual ~WallBC3D() = 0;
 };
 
@@ -674,10 +741,132 @@ public:
   }
 };
 
+struct dof_weighted_term
+{
+  p4est_locidx_t  dof_idx;
+  double          weight;
+};
+
+class linear_combination_of_dof_t
+{
+  std::vector<dof_weighted_term> linear_combination;
+public:
+  linear_combination_of_dof_t(){ clear(); }
+
+  inline void add_term(const p4est_locidx_t &idx_, const double &weight_)
+  {
+    linear_combination.push_back({idx_, weight_});
+  }
+
+  inline linear_combination_of_dof_t& operator /=(const double& scaling) {
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight /= scaling;
+    return *this;
+  }
+
+  inline void clear() { linear_combination.clear(); }
+
+  inline double operator()(const double *dof_sampled_field_p, const u_int& comp = 0, const u_int& bs = 1) const
+  {
+    double value_to_return = 0.0;
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+    {
+      const dof_weighted_term& term = linear_combination[k];
+      value_to_return += term.weight*dof_sampled_field_p[bs*term.dof_idx + comp];
+    }
+    return value_to_return;
+  }
+
+  inline linear_combination_of_dof_t& operator*=(const std::vector<double> scaling_factors)
+  {
+    P4EST_ASSERT(scaling_factors.size() ==  size());
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight *= scaling_factors[k];
+    return *this;
+  }
+
+  inline linear_combination_of_dof_t& operator*=(const double& scaling_factor)
+  {
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+      linear_combination[k].weight *= scaling_factor;
+    return *this;
+  }
+
+  inline linear_combination_of_dof_t& add_operator_on_same_dofs(const linear_combination_of_dof_t& other, const double& scaling_factor = 1.0)
+  {
+    if(this->size() == 0) // empty operator
+    {
+      *this = other;
+      *this *= scaling_factor;
+      return *this;
+    }
+    P4EST_ASSERT(this->size() == other.size());
+    for (size_t k = 0; k < linear_combination.size(); ++k)
+    {
+      P4EST_ASSERT(this->linear_combination[k].dof_idx == other.linear_combination[k].dof_idx);
+      this->linear_combination[k].weight += scaling_factor*other.linear_combination[k].weight;
+    }
+    return *this;
+  }
+
+  inline size_t size() const {
+    return linear_combination.size();
+  }
+
+  inline const dof_weighted_term& operator[](size_t k) const
+  {
+    P4EST_ASSERT(k < linear_combination.size());
+    return linear_combination[k];
+  }
+
+  inline dof_weighted_term& operator[](size_t k)
+  {
+    P4EST_ASSERT(k < linear_combination.size());
+    return linear_combination[k];
+  }
+};
+
 struct bc_sample
 {
   BoundaryConditionType type;
   double value;
+};
+
+enum jump_solver_tag {
+  GFM   = 0, // --> standard GFM solver ("A Boundary Condition Capturing Method for Poisson's Equation on Irregular Domains", JCP, 160(1):151-178, Liu, Fedkiw, Kand, 2000);
+  xGFM  = 1, // --> xGFM solver ("xGFM: Recovering Convergence of Fluxes in the Ghost Fluid Method", JCP, Volume 409, 15 May 2020, 19351, R. Egan, F. Gibou);
+  FV    = 2  // --> finite volume approach with duplicated unknowns in cut cells ("Solving Elliptic Interface Problems with Jump Conditions on Cartesian Grids", JCP, Volume 407, 15 April 2020, 109269, D. Bochkov, F. Gibou)
+};
+
+std::istream& operator >> (std::istream& is, jump_solver_tag& solver);
+
+const static int multiply_by_sqrt_D = 153;
+const static int divide_by_sqrt_D = 154;
+
+inline std::string convert_to_string(const jump_solver_tag& tag)
+{
+  switch(tag){
+  case GFM:
+    return std::string("GFM");
+    break;
+  case xGFM:
+    return std::string("xGFM");
+    break;
+  case FV:
+    return std::string("FV");
+    break;
+  default:
+    return std::string("unknown type of jump solver");
+    break;
+  }
+}
+
+struct extrapolation_operator_t{
+  linear_combination_of_dof_t n_dot_grad;
+  double dtau;
+  extrapolation_operator_t() {
+    dtau = DBL_MAX; // initialize to a large value, the user needs to set it appropriately at construction
+  }
 };
 
 bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
@@ -701,22 +890,77 @@ inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_
  */
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
+p4est_gloidx_t compute_global_index_of_quad(const p4est_locidx_t& quad_local_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
+p4est_locidx_t find_local_index_of_quad(const p4est_gloidx_t& quad_global_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
+p4est_topidx_t tree_index_of_quad(const p4est_locidx_t& quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost);
+
 /*!
- * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
- * interpolation). The method also returns the cartesian difference in terms of logical coordinates units (in order to efficiently and
- * unambiguously count the number of independent points along Cartesian directions.
- * \param p4est               [in]  pointer to the forest owning the quadrant quad
- * \param quad                [in]  pointer to the quadrant (whose p.piggy3 data must be valid)
- * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
- * \param node                [in]  pointer to the grid node of interest
- * \param tree_dimensions     [in]  pointer to an array of P4EST_DIM doubles: dimensions of the trees in physical domain units (assumes trees of the same size everywhere)
- * \param brick               [in]  pointer to the brick (macromesh) structure
- * \param xyz_rel             [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the quadrant and the point in physical units
- * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the quadrant and the point in logical units
- * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
+ * \brief is_node_in_domain checks if a (possibly perturbed) node is in the computational domain captured by
+ * a brick and a connectivity or not. If it lies in the computational domain, the routine check the consistency of
+ * the logical coordinates x, y, z of the node and correct its p.which_tree if needed, i.e., if the node coordinates
+ * do not lie in a logical P4EST_ROOT_LEN x P4EST_ROOT_LEN x P4EST_ROOT_LEN box. In that case, the appropriate tree
+ * owning the perturbed point is found and the logical coordinates of the node are corrected accordingly.
+ * \param [inout] node      on input, its logical coordinates x, y, z MUST be in [-P4EST_ROOT_LEN; 2*P4EST_ROOT_LEN - 1]
+ *                                    (i.e. the node can be perturbed off its owning tree but not by more than one
+ *                                     root in any cartesian direction)
+ *                          on output,
+ *                            - undefined if the point doesn't lie in the domain (i.e. if returned value is false)
+ *                            - valid node structure with consistent logical representation otherwise, i.e.
+ *                              its logical coordinates x, y, z are all in [0; P4EST_ROOT_LEN] and the index of its
+ *                              owning tree is stored in p.which_tree
+ * \param [in] brick        pointer to a constant brick structure representing the computational domain
+ * \param [in] connectivity pointer to the p4est_connectivity (required connecting info related to the trees in the macromesh)
+ * \return true if the node lies in the computational domain; false if the point lies out of the copmutational domain.
  */
-void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
-                           double *xyz_rel, int64_t* logical_qcoord_diff);
+bool is_node_in_domain(p4est_indep_t& node, const my_p4est_brick_t* brick, const p4est_connectivity_t* connectivity);
+
+bool logical_vertex_in_quad_is_fine_node(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+                                         const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz),
+                                         p4est_locidx_t& fine_vertex_idx);
+
+inline bool quadrant_is_subrefined(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes,
+                                   const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx)
+{
+  p4est_locidx_t tmp;
+  return logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(0, 0, 0), tmp);
+}
+
+inline p4est_locidx_t get_fine_node_idx_of_quad_center(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes, const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx)
+{
+  p4est_locidx_t fine_node_idx = -1;
+  const bool is_found = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(0, 0, 0), fine_node_idx);
+  P4EST_ASSERT(!is_found || fine_node_idx >= 0); (void) is_found;
+  return fine_node_idx;
+}
+
+inline p4est_locidx_t get_fine_node_idx_of_face_in_quad(const p4est_t* fine_p4est, const p4est_nodes_t* fine_nodes, const p4est_quadrant_t &quad, const p4est_topidx_t& tree_idx,
+                                                        const u_char& oriented_face_dir)
+{
+  p4est_locidx_t fine_node_idx = -1;
+  char logical_vertex_in_quad[P4EST_DIM] = {DIM(0, 0, 0)}; logical_vertex_in_quad[oriented_face_dir/2] = (oriented_face_dir%2 == 1 ? 1 : -1);
+  const bool is_found = logical_vertex_in_quad_is_fine_node(fine_p4est, fine_nodes, quad, tree_idx, DIM(logical_vertex_in_quad[0], logical_vertex_in_quad[1], logical_vertex_in_quad[2]), fine_node_idx);
+  P4EST_ASSERT(!is_found || fine_node_idx >= 0);  (void) is_found;
+  return fine_node_idx;
+}
+
+// my rigorous interface-identification rule [Raphael]
+template<typename T> inline bool signs_of_phi_are_different(const T& phi_0, const T& phi_1) { return (phi_0 > (T) 0) != (phi_1 > (T) 0); }
+
+/*!
+ * \brief rel_xyz_quad_fr_point calculates the relative cartesian coordinates between a quad center and a given point (very useful for lsqr
+ * interpolation). The method also returns the logical coordinates of the given quadrant (in order to efficiently and unambiguously count
+ * the number of independent points along Cartesian directions.
+ * \param p4est       [in]  pointer to the forest owning the quadrant quad
+ * \param quad        [in]  pointer to the quadrant (whose p.piggy3 data must be valid)
+ * \param xyz         [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the point of interest
+ * \param brick       [in]  pointer to the brick (macromesh) structure
+ * \param xyz_rel     [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the quadrant and the point in physical units (periodicity wrapping done internally)
+ * \param qcoord_quad [out] pointer to an array of P4EST_DIM int64_t: Cartesian coordinates of the quadrant in logical units, i.e., in logical p4est-style grid units
+ * NOTE: qcoord_quad must point to int64_t type to make sure that logical differences and calculations across trees are correct.
+ */
+void rel_xyz_quad_fr_point(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz, const my_p4est_brick_t* brick, double *xyz_rel, int64_t* qcoord_quad);
 
 /*!
  * \brief get_local_interpolation_weights calculates the local geometry information and interpolation weights required for linear and, if desired,
@@ -791,7 +1035,6 @@ inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_
   return result;
 }
 
-
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
  * \param [in]    p4est the forest
@@ -816,9 +1059,24 @@ inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
 
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+p4est_bool_t ghosts_are_equal(const p4est_ghost_t* ghost_1, const p4est_ghost_t* ghost_2);
 
-PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
+inline void * sc_const_array_index (const sc_array_t * array, size_t iz) // same as p4est's function but works with constant data, too
+{
+  SC_ASSERT (iz < array->elem_count);
+
+  return (void *) (array->array + (array->elem_size * iz));
+}
+
+inline const p4est_quadrant_t * p4est_const_quadrant_array_index (const sc_array_t * array, size_t it) // same as p4est's function but works with constant data, too
+{
+  P4EST_ASSERT (array->elem_size == sizeof (p4est_quadrant_t));
+  P4EST_ASSERT (it < array->elem_count);
+
+  return (const p4est_quadrant_t *) (array->array + sizeof (p4est_quadrant_t) * it);
+}
+
+PetscErrorCode VecGetLocalAndGhostSizes(const Vec& v, PetscInt& local_size, PetscInt& ghosted_size, const bool &ghosted = true);
 
 /*!
  * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
@@ -829,14 +1087,29 @@ PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& 
 PetscErrorCode VecGhostCopy(Vec src, Vec dst);
 
 /*!
- * \brief vectorIsWellSetForNodes
- * \param v
- * \param nodes
- * \param mpicomm
- * \param block_size
- * \return
+ * \brief VecIsSetForNodes checks if a Petsc parallel vector has the appropriate layout for a node-sampled field.
+ * \param [in] v          : the vector whose layout needs to be checked
+ * \param [in] nodes      : a pointer to the p4est_nodes on which the node-sampled field must be defined
+ * \param [in] mpicomm    : the mpi communicator
+ * \param [in] blocksize  : the block size of the vector and/or of the field to be sampled within it
+ * \param [in] ghosted    : a flag indicating if the vector must be ghosted or not
+ * \return true is the layout fits (this function is a collective check across all processes)
  */
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
+bool VecIsSetForNodes(const Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &blocksize, const bool &ghosted = true);
+
+/*!
+ * \brief VecIsSetForCells checks if a Petsc parallel vector has the appropriate layout for a cell-sampled field.
+ * \param [in] v          : the vector whose layout needs to be checked
+ * \param [in] p4est      : a pointer to the p4est on which the cell-sampled field must be defined
+ * \param [in] ghost      : a pointer to the ghost of the p4est on which the cell-sampled field must be defined
+ *                          (relevant only if ghosted is true, can be set to NULL otherwise)
+ * \param [in] blocksize  : the block size of the vector and/or of the field to be sampled within it
+ * \param [in] ghosted    : a flag indicating if the vector must be ghosted or not
+ * \return true is the layout fits (this function is a collective check across all processes)
+ */
+bool VecIsSetForCells(const Vec& v, const p4est_t* p4est, const p4est_ghost_t* ghost, const unsigned int &blocksize, const bool &ghosted = true);
+
+PetscErrorCode delete_and_nullify_vector(Vec& vv);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
@@ -848,6 +1121,20 @@ bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm&
  */
 PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
 inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
+
+/*!
+ * \brief VecCreateNoGhostNodesBlock Creates a non-ghosted block PETSc parallel vector on the nodes
+ * \param p4est      [in]  p4est object
+ * \param nodes      [in]  the nodes object
+ * \param block_size [in]  block size of the vector
+ * \param v          [out] PETSc vector
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateNoGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateNoGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
 {
   return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
 }
@@ -1043,8 +1330,7 @@ int8_t find_max_level(const p4est_t* p4est);
 
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min);
+void get_dxyz_min(const p4est_t *p4est, double dxyz[], double *dxyz_min=NULL, double *diag_min=NULL);
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz);
 
@@ -1155,41 +1441,6 @@ inline double p4est_diag_max(const p4est_t* p4est) {
   return sqrt(SUMD(SQR(dx[0]), SQR(dx[1]), SQR(dx[2])));
 }
 
-/*!
- * \brief get the x-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
- */
-inline double quad_x_fr_i(const p4est_quadrant_t *qi){
-  return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
-}
-
-/*!
- * \brief get the y-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
- */
-inline double quad_y_fr_j(const p4est_quadrant_t *qi){
-  return static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
-}
-
-#ifdef P4_TO_P8
-/*!
- * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
- */
-inline double quad_z_fr_k(const p4est_quadrant_t *qi){
-  return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
-}
-#endif
-
-/*!
- * \brief get the xyz-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
- */
-inline void quad_xyz_fr_ijk(const p4est_quadrant_t *qi, double xyz[P4EST_DIM]){
-  xyz[0] = static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
-  xyz[1] = static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
-#ifdef P4_TO_P8
-  xyz[2] = static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
-#endif
-  return;
-}
-
 inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
 {
 #ifdef CASL_THROWS
@@ -1202,6 +1453,37 @@ inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
 #endif
 
   return p4est_tree_array_index(p4est->trees, tr);
+}
+
+inline p4est_quadrant_t get_quad(const p4est_locidx_t& cumulative_quad_idx, const p4est_t* p4est, const p4est_ghost_t* ghost, const bool& set_cumulative_local_index_in_piggy3 = false)
+{
+#ifdef CASL_THROWS
+  if(cumulative_quad_idx < 0 || cumulative_quad_idx >= p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count) {
+    std::ostringstream oss;
+    oss << "Quad with cumulative index " << cumulative_quad_idx << " is outside range. "
+        << "Number of quadrants on this partition is " << p4est->local_num_quadrants << " local quadrants + " << ghost->ghosts.elem_count << " ghost quadrants" << std::endl;
+    throw std::out_of_range(oss.str());
+  }
+#endif
+  p4est_quadrant_t quad;
+  if(cumulative_quad_idx < p4est->local_num_quadrants)
+  {
+    const p4est_topidx_t tree_idx = tree_index_of_quad(cumulative_quad_idx, p4est, ghost);
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = *p4est_const_quadrant_array_index(&tree->quadrants, cumulative_quad_idx - tree->quadrants_offset);
+    if(set_cumulative_local_index_in_piggy3)
+    {
+      quad.p.piggy3.local_num   = cumulative_quad_idx;
+      quad.p.piggy3.which_tree  = tree_idx;
+    }
+  }
+  else
+  {
+    quad = *p4est_const_quadrant_array_index(&ghost->ghosts, cumulative_quad_idx - p4est->local_num_quadrants);
+    quad.p.piggy3.local_num = cumulative_quad_idx;
+  }
+
+  return quad;
 }
 
 inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_tree_t* tree)
@@ -1245,29 +1527,108 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
   return (p4est_indep_t*) sc_array_index(&nodes->indep_nodes, n);
 }
 
-/*!
- * \brief get the x-coordinate of the center of a quadrant
- * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
- */
-inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+inline const p4est_quadrant_t* fetch_quad(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
-  const p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    return p4est_const_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
     P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
-    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+    return p4est_const_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
   }
+}
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  return (tree_xmax-tree_xmin)*(quad_x_fr_i(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_xmin;
+inline void fetch_quad_and_tree_coordinates(const p4est_quadrant_t* &quad, const double* &tree_xyz_min, const double* &tree_xyz_max,
+                                            const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+{
+  quad = fetch_quad(quad_idx, tree_idx, p4est, ghost);
+  tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx];
+  tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN - 1];
+  return;
+}
+
+inline double x_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max)
+{
+  return (tree_xyz_max[0] - tree_xyz_min[0])*((double)(quad->x + P4EST_QUADRANT_LEN(quad->level + 1))/(double) P4EST_ROOT_LEN) + tree_xyz_min[0];
+}
+inline double y_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max)
+{
+  return (tree_xyz_max[1] - tree_xyz_min[1])*((double)(quad->y + P4EST_QUADRANT_LEN(quad->level + 1))/(double) P4EST_ROOT_LEN) + tree_xyz_min[1];
+}
+#ifdef P4_TO_P8
+inline double z_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max)
+{
+  return (tree_xyz_max[2] - tree_xyz_min[2])*((double)(quad->z + P4EST_QUADRANT_LEN(quad->level + 1))/(double) P4EST_ROOT_LEN) + tree_xyz_min[2];
+}
+#endif
+inline void xyz_of_quad_center(const p4est_quadrant_t* quad, const double* tree_xyz_min, const double* tree_xyz_max, double *xyz, double dxyz_quad[P4EST_DIM] = NULL)
+{
+  xyz[0] = x_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+  xyz[1] = y_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+#ifdef P4_TO_P8
+  xyz[2] = z_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+#endif
+  if(dxyz_quad != NULL)
+  {
+    const double logical_size_quad = (double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN;
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+      dxyz_quad[dim] = logical_size_quad*(tree_xyz_max[dim] - tree_xyz_min[dim]);
+  }
+  return;
+}
+
+/*!
+ * \brief get the x-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_x_fr_q(const p4est_locidx_t& quad_idx, const p4est_topidx_t & tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+{
+  const p4est_quadrant_t *quad;
+  const double *tree_xyz_min, *tree_xyz_max;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  return x_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+}
+
+/*!
+ * \brief get the y-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_y_fr_q(const p4est_locidx_t& quad_idx, const p4est_topidx_t & tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+{
+  const p4est_quadrant_t *quad;
+  const double *tree_xyz_min, *tree_xyz_max;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  return y_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+}
+
+#ifdef P4_TO_P8
+/*!
+ * \brief get the z-coordinate of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline double quad_z_fr_q(const p4est_locidx_t& quad_idx, const p4est_topidx_t & tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
+{
+  const p4est_quadrant_t *quad;
+  const double *tree_xyz_min, *tree_xyz_max;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  return z_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
+}
+#endif
+/*!
+ * \brief get the xyz-coordinates of the center of a quadrant
+ * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
+ */
+inline void quad_xyz_fr_q(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost, double *xyz)
+{
+
+  const p4est_quadrant_t *quad;
+  const double *tree_xyz_min, *tree_xyz_max;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, ghost);
+  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz);
+  return;
 }
 
 /*!
@@ -1279,12 +1640,9 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  */
 inline double quad_x(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  return (tree_xmax-tree_xmin)*(quad_x_fr_i(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_xmin;
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+  return x_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
 }
 
 /*!
@@ -1296,38 +1654,10 @@ inline double quad_x(const p4est_t *p4est, const p4est_quadrant_t *quad)
  */
 inline double quad_dx(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
 
-  return (tree_xmax-tree_xmin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
-}
-
-/*!
- * \brief get the y-coordinate of the center of a quadrant
- * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
- */
-inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
-{
-  p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
-  {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-  }
-  else
-  {
-    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
-    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
-  }
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-  return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
+  return (tree_xyz_max[0] - tree_xyz_min[0])*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
 }
 
 /*!
@@ -1339,12 +1669,9 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  */
 inline double quad_y(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-  return (tree_ymax-tree_ymin)*(quad_y_fr_j(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_ymin;
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+  return y_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
 }
 
 /*!
@@ -1356,41 +1683,13 @@ inline double quad_y(const p4est_t *p4est, const p4est_quadrant_t *quad)
  */
 inline double quad_dy(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
 
-  return (tree_ymax-tree_ymin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
+  return (tree_xyz_max[1] - tree_xyz_min[1])*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
 }
 
 #ifdef P4_TO_P8
-/*!
- * \brief get the z-coordinate of the center of a quadrant
- * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
- */
-inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
-{
-  p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
-  {
-    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-  }
-  else
-  {
-    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
-    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
-  }
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + .5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
-}
-
 /*!
  * \brief quad_z        compute the y-coordinate of the center of a quadrant
  * \param p4est [in]    const pointer to the p4est structure
@@ -1400,12 +1699,9 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  */
 inline double quad_z(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  return (tree_zmax-tree_zmin)*(quad_z_fr_k(quad) + 0.5*(double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN) + tree_zmin;
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+  return z_of_quad_center(quad, tree_xyz_min, tree_xyz_max);
 }
 
 /*!
@@ -1417,32 +1713,15 @@ inline double quad_z(const p4est_t *p4est, const p4est_quadrant_t *quad)
  */
 inline double quad_dz(const p4est_t *p4est, const p4est_quadrant_t *quad)
 {
-  p4est_locidx_t tree_idx = quad->p.piggy3.which_tree;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
 
-  return (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
+  return (tree_xyz_max[2] - tree_xyz_min[2])*((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN);
 }
 #endif
 
-
 /*!
- * \brief get the xyz-coordinates of the center of a quadrant
- * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
- */
-inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost, double *xyz)
-{
-  xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
-  xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
-#ifdef P4_TO_P8
-  xyz[2] = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-#endif
-}
-
-/*!
- * \brief quad_z_fr_q   compute the y-coordinate of the center of a quadrant
+ * \brief quad_xyz      compute all coordinates of the center of a quadrant
  * \param p4est [in]    const pointer to the p4est structure
  * \param quad  [in]    const pointer to the quadrant.
  *        NOTE: Assumes that the piggy3 member if filled
@@ -1451,11 +1730,10 @@ inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
  */
 inline void quad_xyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double *xyz)
 {
-  xyz[0] = quad_x(p4est, quad);
-  xyz[1] = quad_y(p4est, quad);
-#ifdef P4_TO_P8
-  xyz[2] = quad_z(p4est, quad);
-#endif
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz);
+  return;
 }
 
 /*!
@@ -1468,10 +1746,13 @@ inline void quad_xyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double 
  */
 inline void quad_dxyz(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
 {
-  dxyz[0] = quad_dx(p4est, quad);
-  dxyz[1] = quad_dy(p4est, quad);
+  const double *tree_xyz_min = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree];
+  const double *tree_xyz_max = p4est->connectivity->vertices + 3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*quad->p.piggy3.which_tree + P4EST_CHILDREN - 1];
+
+  dxyz[0] = (tree_xyz_max[0] - tree_xyz_min[0])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN);
+  dxyz[1] = (tree_xyz_max[1] - tree_xyz_min[1])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN);
 #ifdef P4_TO_P8
-  dxyz[2] = quad_dz(p4est, quad);
+  dxyz[2] = (tree_xyz_max[2] - tree_xyz_min[2])*((double) P4EST_QUADRANT_LEN(quad->level)/(double) P4EST_ROOT_LEN);
 #endif
 }
 
@@ -1544,6 +1825,25 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
+ * \brief integrate_over_negative_domain integrate a quantity f over separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi
+ * \param map the characteristic function that identifies separate parts of the domain
+ * \param f the scalar to integrate
+ * \return the integral of f over the phi<0 domain, \int_{\phi<0} f
+ */
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_negative_domain(num, values.data(), p4est, nodes, phi, map, f);
+}
+
+/*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1557,6 +1857,24 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
  * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
  */
 double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
+
+/*!
+ * \brief area_in_negative_domain compute the area of separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
+ */
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map);
+inline void area_in_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  values.assign(num, 0.);
+  area_in_negative_domain(num, values.data(), p4est, nodes, phi, map);
+}
+
 
 /*!
  * \brief integrate_over_interface_in_one_quadrant
@@ -1579,6 +1897,24 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
+ * \brief integrate_over_interface integrate a scalar f over separate parts of the 0-contour of the level-set function phi.
+ *        note: first order convergence only
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param map the characteristic function that identifies separate parts of the interface
+ * \param f the scalar to integrate
+ */
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_interface(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_interface(num, values.data(), p4est, nodes, phi, map, f);
+}
+
+/*!
  * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
  * \param p4est the p4est
  * \param nodes the nodes structure associated to p4est
@@ -1589,33 +1925,26 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
- * \param qnnn neighborhood information for the point
- * \param phi pointer to the level set function
- * \param phi_x pointer to an array of size P4EST_DIM for the first derivatives of levelset. CANNOT be NULL.
- * \return mean curvature at a single point
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = +div(n) using a compact stencil
+ * \param [in] neighbors the node neighborhood information
+ * \param [in] phi levelset function
+ * \param [in] grad_phi an array of size P4EST_DIM representing the first derivatives of the levelset in the entire domain, component by component.
+ * \param [in] grad_phi_block a P4EST_DIM-block structured vector representing the first derivatives of the levelset in the entire domain.
+ * \param [in] phi_xxyyzz an array of size P4EST_DIM representing the second derivative of the levelset in the entire domain, "component by component" [this parameter is optional].
+ * \param [in] phi_xxyyzz_block a P4EST_DIM-block structured vector representing the second derivatives of the levelset in the entire domain [this parameter is optional].
+ * \param [in] kappa curvature function in the entire domain
+ * NOTE 1 : the user MUST provide the first derivatives (in either way) for using this function, i.e. grad_phi or grad_phi_block CANNOT be NULL
+ * NOTE 2 : providing the second derivatives is optional for this routine. If they are provided in either way the values are used; if not provided they're calculated on-the-fly;
  */
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* phi, double* phi_x[P4EST_DIM]);
+void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec grad_phi[P4EST_DIM], Vec grad_phi_block, Vec phi_xxyyzz[P4EST_DIM], Vec phi_xxyyzz_block, Vec kappa);
+
+inline void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec grad_phi[P4EST_DIM], Vec kappa)
+{
+  compute_mean_curvature(neighbors, phi, grad_phi, NULL, NULL, NULL, kappa);
+}
 
 /*!
- * \brief compute_mean_curvature computes the mean curvature using divergence of normal k = -div(n)
- * \param qnnn neighborhood information for the point
- * \param normals pointer to an array of size P4EST_DIM of the normals. CANNOT be NULL.
- * \return mean curvature at a single point
- */
-double compute_mean_curvature(const quad_neighbor_nodes_of_node_t& qnnn, double* normals[P4EST_DIM]);
-
-/*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
- * \param neighbors the node neighborhood information
- * \param phi levelset function
- * \param phi_x an array of size P4EST_DIM representing the first derivative of levelset in the entire domain. CANNOT be NULL.
- * \param kappa curvature function in the entire domain
- */
-void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[P4EST_DIM], Vec kappa);
-
-/*!
- * \brief compute_mean_curvature computes the mean curvature in the entire domain k = -div(n)
+ * \brief compute_mean_curvature computes the mean curvature in the entire domain k = +div(n)
  * \param neighbors the node neighborhood information
  * \param normals pointer to an array of size P4EST_DIM for the normals. CANNOT be NULL.
  * \param kappa curvature function in the entire domain
@@ -1742,7 +2071,7 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[
  * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
  */
-bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const u_char& oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1816,39 +2145,75 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_connectivity_t *const conn, const unsigned char & dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, const u_char & dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
-  P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
+  P4EST_ASSERT (dir < P4EST_DIM);
 
-  const unsigned char face = 2 * dir;
+  const u_char face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
   return !(conn->tree_to_tree[tfindex] == 0 &&
            conn->tree_to_face[tfindex] == face);
 }
-inline bool is_periodic(const p4est_t *p4est, const unsigned char &dir)
+inline bool is_periodic(const p4est_t *p4est, const u_char &dir)
 {
   return is_periodic(p4est->connectivity, dir);
 }
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    if(xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir])
+  for(u_char dim = 0; dim < P4EST_DIM; ++dim)
+    if(xyz[dim] < xyz_min[dim] || xyz[dim] > xyz_max[dim])
     {
-      if(periodic[dir])
-        xyz[dir] = xyz[dir] - floor((xyz[dir] - xyz_min[dir])/(xyz_max[dir] - xyz_min[dir]))*(xyz_max[dir] - xyz_min[dir]);
+      if(periodic[dim])
+        xyz[dim] = xyz[dim] - floor((xyz[dim] - xyz_min[dim])/(xyz_max[dim] - xyz_min[dim]))*(xyz_max[dim] - xyz_min[dim]);
       else
-        xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
+        xyz[dim] = MAX(xyz_min[dim], MIN(xyz_max[dim], xyz[dim]));
     }
+}
+
+/**
+ * Clip coordinates within domain and return whether the resulting coordinates are valid.  A valid set of coordinates is
+ * one where the point is inside the domain regardless of periodicity in any Cartesian direction.
+ * @note This function was introduced to create machine-learning samples that are as constrained as possible.  For
+ * example, a truncated point is problematic because it doesn't follow the expected/continuous behavior assumed a priori
+ * by a neural model.
+ * @param [in,out] xyz Query point.
+ * @param [in] xyz_min Minimum value in each Cartesian direction.
+ * @param [in] xyz_max Maximum value in each Cartesian direction.
+ * @param [in] periodic Whether the domain is periodic in each Cartesian direction.
+ * @return True if point xyz is within the domain; false otherwise.
+ */
+inline bool clip_in_domain_with_check( double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM],
+									   const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM] )
+{
+  bool valid = true;
+  for( unsigned char dir = 0; dir < P4EST_DIM; dir++ )
+  {
+    if( xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir] )
+    {
+      if( periodic[dir] )
+	  {
+      	xyz[dir] = xyz[dir] -
+      			   floor( (xyz[dir] - xyz_min[dir]) / (xyz_max[dir] - xyz_min[dir]) ) * (xyz_max[dir] - xyz_min[dir]);
+	  }
+      else
+	  {
+      	xyz[dir] = MAX( xyz_min[dir], MIN( xyz_max[dir], xyz[dir] ) );
+	  }
+      valid = false;	// Point lies outside of domain.
+    }
+  }
+
+  return valid;
 }
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
 {
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   bool periodic[P4EST_DIM];
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
   {
     xyz_min[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0]+dir];
     xyz_max[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*p4est->connectivity->num_trees - 1] + dir];
@@ -1880,10 +2245,10 @@ inline int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghos
  * is performed to ensure enough memory is available in the Vec object.
  */
 void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
+void sample_cf_on_cells(const p4est_t *p4est, const p4est_ghost_t *ghost, const CF_DIM& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, const p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f);
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
                  const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
@@ -2150,8 +2515,10 @@ PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar);
 PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
+PetscErrorCode VecAXPYGhost(Vec y, PetscScalar alpha, Vec x);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 PetscErrorCode VecReciprocalGhost(Vec input);
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode);
 
 struct vec_and_ptr_t
 {
@@ -2520,23 +2887,48 @@ public:
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double phi_eff = -10;
-    double phi_cur = -10;
-    for (size_t i=0; i<phi_cf.size(); ++i)
+    if (phi_cf.size() > 0)
     {
-      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
-      switch (action[i]) {
-      case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-      case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
-      default:
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (size_t i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+          default:
 #ifdef CASL_THROWS
         throw std::runtime_error("mls_eff_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
 #endif
         break;
+        }
       }
+      return phi_eff;
+    } else {
+      return -1;
     }
+  }
 
-    return phi_eff;
+  int get_idx(DIM(double x, double y, double z)) const
+  {
+    if (phi_cf.size() > 0)
+    {
+      int    idx     = 0;
+      double phi_eff = (*phi_cf[0])( DIM(x,y,z) );
+      double phi_cur = phi_eff;
+      for (int i=1; i<phi_cf.size(); ++i)
+      {
+        phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+        switch (action[i]) {
+          case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
+          case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+        }
+      }
+      return idx;
+    } else {
+      return -1;
+    }
   }
 };
 
@@ -2646,7 +3038,7 @@ public:
 //  }
 //};
 
-inline void reconstruct_cube(cube2_mls_t &cube, std::vector<double> &phi, std::vector<mls_opn_t> &opn, std::vector<int> &clr)
+inline void reconstruct_cube(cube2_mls_t &cube, const std::vector<double> &phi, const std::vector<mls_opn_t> &opn, const std::vector<int> &clr)
 {
   std::vector<action_t> acn;
 
@@ -2662,7 +3054,7 @@ inline void reconstruct_cube(cube2_mls_t &cube, std::vector<double> &phi, std::v
   cube.reconstruct(phi, acn, clr);
 }
 
-inline void reconstruct_cube(cube3_mls_t &cube, std::vector<double> &phi, std::vector<mls_opn_t> &opn, std::vector<int> &clr)
+inline void reconstruct_cube(cube3_mls_t &cube, const std::vector<double> &phi, const std::vector<mls_opn_t> &opn, const std::vector<int> &clr)
 {
   std::vector<action_t> acn;
 
@@ -2750,30 +3142,150 @@ struct interface_point_cartesian_t
   double interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM]);
 };
 
+/** The interface_info_t datatype encapsulates the data relevant for finite-volume interface-related operations
+ * (integration) within a cell crossed by (possibly several) interfaces */
 struct interface_info_t
 {
-  int    id;
-  double area;
-  double centroid[P4EST_DIM];
+  int    id;                  /**< integer ID of the interface (index of levelset function in the vector originally provided by the user) */
+  double area;                /**< area of the portion of the interface ID crossing the cell of interest */
+  double centroid[P4EST_DIM]; /**< coordinates of the centroid of that portion of the interface ID in cell
+                                --> function(centroid)*area ~= approximation of the integral of function over the portion of the interface in the cell */
 };
 
+/** The my_p4est_finite_volume_t datatype encapsulates all data relevant to finite-volume discretization, when
+ * considering a rectangular control volume, possibly crossed by (possibly several) interfaces. */
 struct my_p4est_finite_volume_t
 {
-  double full_cell_volume;
-  double volume;
+  double full_cell_volume;                      /**< volume of the full (Cartesian) control cell */
+  double volume;                                /**< volume of the control cell that lies in the negative domain */
 
-  std::vector<interface_info_t> interfaces;
+  std::vector<interface_info_t> interfaces;     /**< information about all interfaces that intersect this cell
+                                                  This vector contains as many elements as the number of interfaces in the cell of interest */
 
-  _CODE( double full_face_area [P4EST_FACES]; )
-  _CODE( double face_area      [P4EST_FACES]; )
-  XCODE( double face_centroid_x[P4EST_FACES]; )
-  YCODE( double face_centroid_y[P4EST_FACES]; )
-  ZCODE( double face_centroid_z[P4EST_FACES]; )
+  _CODE( double full_face_area [P4EST_FACES]; ) /**< full areas of the faces of the (Cartesian) control cell */
+  _CODE( double face_area      [P4EST_FACES]; ) /**< areas of the faces of the (Cartesian) control cell in the negative domain */
+  XCODE( double face_centroid_x[P4EST_FACES]; ) /**< x-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
+  YCODE( double face_centroid_y[P4EST_FACES]; ) /**< y-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
+  ZCODE( double face_centroid_z[P4EST_FACES]; ) /**< z-coordinates of the centroids of the negative part of the face of interest (relative to the center of the control cell) */
 
   my_p4est_finite_volume_t() { interfaces.reserve(1); }
+
+  // MIN(..., MAX(...)) in the following to ensure bounds are respected
+  double volume_in_negative_domain() const { return MIN(full_cell_volume, MAX(0.0, volume)); }
+  double volume_in_positive_domain() const { return MIN(full_cell_volume, MAX(0.0, full_cell_volume - volume)); }
+  double face_area_in_negative_domain(const u_char& face_dir) const { return MIN(full_face_area[face_dir], MAX(0.0, face_area[face_dir])); }
+  double face_area_in_positive_domain(const u_char& face_dir) const { return MIN(full_face_area[face_dir], MAX(0.0, full_face_area[face_dir] - face_area[face_dir])); }
+  void face_centroid_in_negative_domain(const u_char& face_dir, double* xyz_centroid) const
+  {
+    XCODE( xyz_centroid[0] = face_centroid_x[face_dir]; )
+    YCODE( xyz_centroid[1] = face_centroid_y[face_dir]; )
+    ZCODE( xyz_centroid[2] = face_centroid_z[face_dir]; )
+    return;
+  }
+
+  void face_centroid_in_positive_domain(const u_char& face_dir, double* xyz_centroid) const
+  {
+    face_centroid_in_negative_domain(face_dir, xyz_centroid);
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
+      if(dim == face_dir/2)
+        continue;
+      xyz_centroid[dim] *= -face_area[face_dir]/face_area_in_positive_domain(face_dir);
+    }
+    return;
+  }
+
+  inline void get_face_intersections(bool face_intersection[P4EST_FACES], const double& threshold = EPS) const
+  {
+    for(u_char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
+      face_intersection[face_dir] = is_face_intersected(face_dir, threshold);
+    return;
+  }
+  inline bool is_face_intersected(const u_char& face_dir, const double& threshold = EPS) const
+  {
+    return (face_area[face_dir] >= MAX(EPS, threshold)*full_face_area[face_dir]) && (face_area[face_dir] <= (1.0 - MAX(EPS, threshold))*full_face_area[face_dir]);
+  }
 };
 
-void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order=1, int cube_refinement=0, bool compute_centroids=false, double perturb=1.0e-12);
+/*!
+ * \brief construct_finite_volume constructs the finite-volume-related data structure for a cube centered at xyz_C, of
+ * dimensions dxyz.
+ * \param [out] fv                : finite-volume-related information to build (see my_p4est_finite_volume_t structure)
+ * \param [in]  xyz_C             : Cartesian coordinates of the center of the cube whose finite-volume data is desired
+ * \param [in]  dxyz              : Cartesian dimensions of the cube whose finite-volume data is desired
+ * \param [in]  is_wall           : array of P4EST_FACES flag indicating that xyz_C is lying on a wall in (oriented) direction face_dir if is_wall[face_dir] is true.
+ *                                  If not provided, i.e. if NULL, it assumes 'false' for all entries
+ * \param [in]  phi               : vector of (possibly multiple) levelset functors
+ * \param [in]  opn               : vector of (possibly multiple) levelset operations, must be of same size as phi
+ * \param [in]  order             : order of geometric elements (1 == linear, i.e. planar, elements, 2 == quadratic, i.e. curved, elements) used to represent the interface
+ * \param [in]  cube_refinement   : let d == cube_refinement, then you consider only the sub-cubes from the [MAX(1, 2*d), MAX(1, 2*d), MAX(1, 2*d)] sub-cubes that are in the domain.
+ * \param [in]  compute_centroids : flag activating the calculation of face_centroids in the my_p4est_finite_volume_t to construct (see my_p4est_finite_volume_t for more info)
+ * \param [in]  perturb           : if one of the relevant local levelset values is below perturb*diag (in absolute value), the routine will internally consider it is +perturb*diag
+ *                                  (supposed to removed very tiny volumes, where diag = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2]))))
+ */
+void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                             const double* xyz_C, const double* dxyz, const bool* is_wall,
+                             const std::vector<const CF_DIM *>& phi, const std::vector<mls_opn_t>& opn,
+                             const int& order, const int& cube_refinement, const bool& compute_centroids, const double& perturb);
+
+inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                                    const p4est_locidx_t& n, const p4est_t *p4est, const p4est_nodes_t *nodes,
+                                    const std::vector<const CF_DIM *>& phi, const std::vector<mls_opn_t>& opn,
+                                    const int& order = 1, const int& cube_refinement = 0, const bool& compute_centroids = false, const double& perturb=1.0e-12)
+{
+  double xyz_C[P4EST_DIM];
+  double dxyz [P4EST_DIM];
+  bool is_node_wall[P4EST_FACES];
+
+  node_xyz_fr_n(n, p4est, nodes, xyz_C);
+  dxyz_min(p4est, dxyz);
+  const p4est_indep_t *ni = (p4est_indep_t*)sc_const_array_index(&nodes->indep_nodes, n);
+  for (u_char oriented_dir = 0; oriented_dir < P4EST_FACES; ++oriented_dir)
+    is_node_wall[oriented_dir] = is_node_Wall(p4est, ni, oriented_dir);
+
+  construct_finite_volume(fv, xyz_C, dxyz, is_node_wall, phi, opn, order, cube_refinement, compute_centroids, perturb);
+  return;
+}
+
+inline void construct_finite_volume(my_p4est_finite_volume_t& fv,
+                                    const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const p4est_t *p4est,
+                                    const CF_DIM *phi,
+                                    const int& order = 1, const int& cube_refinement = 0, const bool& compute_centroids = false, const double& perturb=1.0e-12)
+{
+  if(quad_idx < 0 || quad_idx > p4est->local_num_quadrants)
+    throw std::out_of_range("my_p4est_utils::construct_finite_volume : only accepts local quadrants");
+
+  const double *tree_xyz_min, *tree_xyz_max;
+  const p4est_quadrant_t* quad;
+  fetch_quad_and_tree_coordinates(quad, tree_xyz_min, tree_xyz_max, quad_idx, tree_idx, p4est, NULL);
+  double xyz_C[P4EST_DIM], dxyz[P4EST_DIM];
+  xyz_of_quad_center(quad, tree_xyz_min, tree_xyz_max, xyz_C, dxyz);
+
+  const std::vector<const CF_DIM*> ls_functors(1, phi);
+  const std::vector<mls_opn_t> ls_opn(1, MLS_INTERSECTION);
+
+  try {
+    construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, order, cube_refinement, compute_centroids, perturb);
+  } catch (std::exception& e) {
+    std::cerr << "construct_finite_volume: Something went wrong when constructing finite volume data (for a cell) using the MLS sub-library." << std::endl;
+    if(order == 1)
+    {
+      std::cerr << "Minimal order of interface representation being used, no fallback option... throwing back the exception now." << std::endl;
+      throw e;
+    }
+    else
+    {
+      std::cerr << "Fallback: attempting linear elements..." << std::endl;
+      try {
+        construct_finite_volume(fv, xyz_C, dxyz, NULL, ls_functors, ls_opn, 1, cube_refinement, compute_centroids, perturb);
+      } catch (std::exception& ee) {
+        std::cerr << "Fallback failed; throwing back the second exception." << std::endl;
+        throw ee;
+      }
+    }
+  }
+
+  return;
+}
 
 void compute_wall_normal(const int &dir, double normal[]);
 
@@ -3189,6 +3701,24 @@ struct interface_conditions_t
 double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
+
+// WARNING: non-collective procedure, make sure only one process calls this (on a given file) at a time
+void truncate_exportation_file_up_to_tstart(const double& tstart, const std::string &filename, const u_int& n_extra_values_exported_per_line);
+
+
+/**
+ * Retrieve a convenient 3D matrix with a function sampled on a stencil from at the neighborhood of a given node.
+ * Each layer of the matrix maps to a dimension (i.e. x = 0, y = 1, z = 2), which has the following layout:
+ * {      Function value   |   Distance
+ * 	      {    f_m         ,     d_m    },		<--- Negative direction.
+ * 	      {    f_p         ,     d_p    }		<--- Positive direction.
+ * }
+ * @param [in] qnnnPtr Pointer to a valid neighborhood quad of a node.
+ * @param [in] f Pointer to the function to sample.
+ * @param [out] data Pointer to 3D matrix; must be backed by an array of appropriate dimensions in caller.
+ */
+void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] );
+
 #endif // UTILS_H
 
 

@@ -5,11 +5,7 @@
  */
 
 // System
-#if defined(JUPITER)
-#include <mpich/mpi.h>
-#else
 #include <mpi.h>
-#endif
 #include <iterator>
 #include <stdio.h>
 
@@ -79,8 +75,6 @@ const std::string default_export_dir  = "/scratch/04965/tg842642/superhydrophobi
 const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #elif defined(JUPITER)
 const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";
-#elif defined(NEPTUNE)
-const std::string default_export_dir  = "/home/hlevy/workspace/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #else
 const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #endif
@@ -406,7 +400,7 @@ void truncate_exportation_file_up_to_tstart(const double &tstart, const std::str
   double time;
   while ((len_read = getline(&read_line, &len, fp)) != -1) {
     sscanf(read_line, "%lg %*[^\n]", &time);
-    if (time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
+    if (time <= tstart - (1.0e-12)*pow(10.0, ceil(log10(tstart)))) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
       size_to_keep += (long) len_read;
     else
       break;
@@ -1254,8 +1248,8 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
                                    0, 2, 0,
                                    0, 0, 0,
                                    vtk_name.c_str(),
-                                   VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(v_exact_vtk_p[0], v_exact_vtk_p[1], v_exact_vtk_p[2]),
-        VTK_NODE_VECTOR_BY_COMPONENTS, "err_v", DIM(error_vtk_p[0], error_vtk_p[1], error_vtk_p[2]));
+                                   VTK_NODE_VECTOR_BY_COMPONENTS, "velocity_exact", DIM(v_exact_vtk_p[0], v_exact_vtk_p[1], v_exact_vtk_p[2]),
+                                   VTK_NODE_VECTOR_BY_COMPONENTS, "err_v", DIM(error_vtk_p[0], error_vtk_p[1], error_vtk_p[2]));
 
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {

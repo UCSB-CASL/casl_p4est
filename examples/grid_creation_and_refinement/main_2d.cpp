@@ -70,7 +70,7 @@ param_t<double>       b_width     (pl, 4.0,  "b_width",     "Bandwidth of unifor
 
 // Method setup
 param_t<bool>         output_iter (pl, true, "output_iter", "Output each refinement iteration (1)\n"
-                                                            "or only final grid (0) (default:1)");
+                                                            "or only macromesh and final grid (0) (default:1)");
 param_t<unsigned int> method      (pl, 1,    "method",      "Method of grid refinement (default: 1):\n"
                                                             "\t0 - Do nothing (export macromesh),\n"
                                                             "\t1 - Continuous function: distance to interface,\n"
@@ -143,13 +143,13 @@ int main(int argc, char** argv) {
 
   // Domain size information
 #ifdef P4_TO_P8
-  const int    n_xyz[]    = {     nx.val,      ny.val,      nz.val}; // Number of trees in each dimension from inputs
+  const int    n_xyz[]    = {        nx(),        ny(),        nz()}; // Number of trees in each dimension from inputs
 #else
-  const int    n_xyz[]    = {     nx.val,      ny.val,           0}; // Number of trees in each dimension from inputs
+  const int    n_xyz[]    = {        nx(),        ny(),           0}; // Number of trees in each dimension from inputs
 #endif
-  const double xyz_min[]  = {        0.0,         0.0,         0.0}; // Cartesian coordinates of the domain corner with minimum x, y, and z
-  const double xyz_max[]  = {n_xyz[0]*PI, n_xyz[1]*PI, n_xyz[2]*PI}; // Cartesian coordinates of the domain corner with maximum x, y, and z
-  const int    periodic[] = {          0,           0,           0}; // No periodicity of the tree in any dimension
+  const double xyz_min[]  = {         0.0,         0.0,         0.0}; // Cartesian coordinates of the domain corner with minimum x, y, and z
+  const double xyz_max[]  = { n_xyz[0]*PI, n_xyz[1]*PI, n_xyz[2]*PI}; // Cartesian coordinates of the domain corner with maximum x, y, and z
+  const int    periodic[] = {           0,           0,           0}; // No periodicity of the tree in any dimension
 
   // Declare continuous level-set function
   sphere_ls sphere(random_gen(xyz_min[0], xyz_max[0]),
@@ -174,24 +174,24 @@ int main(int argc, char** argv) {
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
   /*
    * [NOTE:] At this point in the script we have created the forest but
-   *         it is only the macromesh. You can export the macromesh to
-   *         VTK by choosing 'method=0' in the options.
-  */
+   *         it is only the macromesh. You can just export the macromesh
+   *         and exit by choosing 'method=0' in the options.
+   */
+
+  // Create ghosts and nodes
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  nodes = my_p4est_nodes_new(p4est, ghost);
+
+  // Output the grid (just macromesh since we haven't refined)
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
+                         P4EST_TRUE, P4EST_TRUE,
+                         0, 0, "visualization_0");
 
   // Grid refinement methods
-  switch(method.val)
+  switch(method())
   {
     case 0: /*------ DO NOTHING (EXPORT MACROMESH)----------------------------------------------------------------------*/
     {
-      // Create ghosts and nodes
-      ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-      nodes = my_p4est_nodes_new(p4est, ghost);
-
-      // Output the grid (just macromesh since we haven't refined)
-      my_p4est_vtk_write_all(p4est, nodes, ghost,
-                             P4EST_TRUE, P4EST_TRUE,
-                             0, 0, "visualization_0");
-
       break;
     }
     case 1: /*------ CONTINUOUS FUNCTION: DISTANCE TO INTERFACE ------ or ----------------------------------------------*/
@@ -204,11 +204,11 @@ int main(int argc, char** argv) {
       else
         sp = new splitting_criteria_cf_and_uniform_band_t(lmin(), lmax(), &sphere, b_width(), lip());
       /*
-         * [NOTE:] The classes 'splitting_criteria_cf_t' and
-         *         'splitting_criteria_cf_and_uniform_band_t' are both derived
-         *         from 'splitting_criteria_cf_t'. Therefore, it is allowed for
-         *         the pointer 'sp' to point at them.
-        */
+       * [NOTE:] The classes 'splitting_criteria_cf_t' and
+       *         'splitting_criteria_cf_and_uniform_band_t' are both derived
+       *         from 'splitting_criteria_t'. Therefore, it is allowed for
+       *         the pointer 'sp' to point at them.
+       */
 
       // Point the custom user_pointer of p4est to refinement object
       p4est->user_pointer = sp;
@@ -227,20 +227,21 @@ int main(int argc, char** argv) {
         if(output_iter() || iter==lmax()-1)
         {
           // Create ghosts and nodes
-          if(iter>0){ p4est_nodes_destroy(nodes); p4est_ghost_destroy(ghost); }
+          p4est_nodes_destroy(nodes);
+          p4est_ghost_destroy(ghost);
           ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
           nodes = my_p4est_nodes_new(p4est, ghost);
           /*
-             * [NOTE:] The ghosts and nodes are at this point only needed to output
-             *         the forest in vtk format. It is not encouraged to create
-             *         these objects at every refinement iteration, since they
-             *         are not needed at this point and the increase in
-             *         computational cost of their creation could be non-negligible.
-            */
+           * [NOTE:] The ghosts and nodes are at this point *only* needed to output
+           *         the forest in vtk format. In general, it is not advised to
+           *         create these objects at every refinement iteration, since they
+           *         are not needed for the refinement operations and the increase
+           *         in computational cost of their creation could be non-negligible.
+           */
 
           // Output each iteration to vtk
           char name[1024];
-          sprintf(name, "visualization_%1d", iter);
+          sprintf(name, "visualization_%1d", output_iter() ? iter+1 : 1);
           my_p4est_vtk_write_all(p4est, nodes, ghost,
                                  P4EST_TRUE, P4EST_TRUE,
                                  0, 0, name);
@@ -250,7 +251,7 @@ int main(int argc, char** argv) {
        * [NOTE:] The forest could also be refined *recursively*, avoiding
        *         the use of a loop, by setting the second input of
        *         'my_p4est_refine' to P4EST_TRUE. This however is in
-       *         general not encouraged, since in that case the forest is
+       *         general not advised, since in that case the forest is
        *         not partitioned between processors at each refinement
        *         iteration. This can result in an imbalance of workload
        *         between processors, especially in situations in which
@@ -262,9 +263,9 @@ int main(int argc, char** argv) {
        *         refinement is recursive, the newly created cells are never
        *         redistributed betweeen processors and the whole grid will
        *         be refined by only 4 (out of 1024 available!) processors.
-      */
+       */
 
-      // Destroy dynamically allocated object
+      // Destroy the dynamically allocated object
       delete sp;
 
       break;
@@ -272,17 +273,13 @@ int main(int argc, char** argv) {
 
     case 3: /*------ TAGGING QUADRANTS: DISTANCE TO INTERFACE ----------------------------------------------------------*/
     {
-      // Create ghosts, create nodes
-      ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-      nodes = my_p4est_nodes_new(p4est, ghost);
-
       // Sample a level-set function at nodes
       Vec phi; double *phi_p;
       ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
       sample_cf_on_nodes(p4est, nodes, sphere, phi);
 
       // Declare the continuous-function refinement object
-      splitting_criteria_tag_t sp(lmin.val, lmax.val, lip.val);
+      splitting_criteria_tag_t sp(lmin(), lmax(), lip());
 
       // Point the custom user_pointer of p4est to refinement object
       p4est->user_pointer = &sp;
@@ -309,21 +306,26 @@ int main(int argc, char** argv) {
           sample_cf_on_nodes(p4est, nodes, sphere, phi);
 
           // Output the grid and data
-          if(output_iter.val)
+          if(output_iter())
           {
             char name[1024];
-            sprintf(name, "visualization_%1d", iter);
+            sprintf(name, "visualization_%1d", iter+1);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
             my_p4est_vtk_write_all(p4est, nodes, ghost,
                                    P4EST_TRUE, P4EST_TRUE,
                                    1, 0, name,
                                    VTK_POINT_DATA, "phi", phi_p);
             ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+            /*
+             * [NOTE:] Since in the 'tagging' case we actually have data at grid points
+             *         available (in this case the level-set function), here we can also
+             *         output the data in the vtk files.
+             */
           }
 
           // Keep track of the iterations
           iter++;
-          if(iter>lmax.val)
+          if(iter>lmax())
           {
             ierr = PetscPrintf(mpi.comm(), "[WARNING:] The grid update did not converge.");
             break;
@@ -333,16 +335,16 @@ int main(int argc, char** argv) {
       }
 
       // Print the final grid if we did not print each iteration
-      if(!output_iter.val)
+      if(!output_iter())
       {
         ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
         my_p4est_vtk_write_all(p4est, nodes, ghost,
                                P4EST_TRUE, P4EST_TRUE,
-                               1, 0, "visualization_0",
+                               1, 0, "visualization_1",
                                VTK_POINT_DATA, "phi", phi_p);
       }
 
-      // Destry the dynamically allocated Vec
+      // Destroy the dynamically allocated object
       ierr = VecDestroy(phi); CHKERRXX(ierr);
 
       break;

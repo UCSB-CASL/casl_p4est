@@ -23,6 +23,14 @@
 #define XFOR(a) for (a)
 #define YFOR(a) for (a)
 
+#define ABS3(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
+#define ABS2(a,b)   ( sqrt((a)*(a) +  (b)*(b)) )
+#define ABS1(a)     ( fabs(a) )
+
+#define  SQRSUM3(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define  SQRSUM2(a,b)   ( (a)*(a) +  (b)*(b) )
+#define  SQRSUM1(a)     ( (a)*(a) )
+
 #ifdef P4_TO_P8
 
 #define ZCOMP(a) a
@@ -30,17 +38,21 @@
 #define CODE2D(a)
 #define CODE3D(a) a
 #define EXECD(a,b,c) a; b; c;
+#define EXECDPM(am, ap, bm, bp, cm, cp) am; ap; bm; bp; cm; cp;
 
 #define P8(a) a
 #define P8C(a) COMMA a
 #define P8EST(a) a
 #define ONLY3D(a) a
 #define DIM(a,b,c) a COMMA b COMMA c
+#define DIMPM(am,ap,bm,bp,cm,cp) am COMMA ap COMMA bm COMMA bp COMMA cm COMMA cp
 
 #define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
 #define MULTD(a,b,c) ( (a) *  (b) *  (c) )
 #define  ANDD(a,b,c) ( (a) && (b) && (c) )
 #define   ORD(a,b,c) ( (a) || (b) || (c) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
 
 #define CODEDIM(a,b) b
 
@@ -59,17 +71,21 @@ class Point3;
 #define CODE2D(a) a
 #define CODE3D(a)
 #define EXECD(a,b,c) a; b;
+#define EXECDPM(am, ap, bm, bp, cm, cp) am; ap; bm; bp;
 
 #define P8(a)
 #define P8C(a)
 #define P8EST(a)
 #define ONLY3D(a)
 #define DIM(a,b,c) a COMMA b
+#define DIMPM(am,ap,bm,bp,cm,cp) am COMMA ap COMMA bm COMMA bp
 
 #define  SUMD(a,b,c) ( (a) +  (b) )
 #define MULTD(a,b,c) ( (a) *  (b) )
 #define  ANDD(a,b,c) ( (a) && (b) )
 #define   ORD(a,b,c) ( (a) || (b) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b)) )
 
 #define CODEDIM(a,b) a
 
@@ -80,6 +96,12 @@ class Point2;
 #define CF_DIM CF_2
 #define PointDIM Point2
 
+#endif
+
+#ifdef P4EST_DEBUG
+#define ONLY_WITH_P4EST_DEBUG(a) a
+#else
+#define ONLY_WITH_P4EST_DEBUG(a)
 #endif
 
 #define foreach_dimension(dim) \

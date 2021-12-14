@@ -14,6 +14,7 @@
 #endif
 
 #include <vector>
+#include <set>
 
 /*!
  * \brief The my_p4est_cell_neighbors_t class acts as an interface tool that enables the user to
@@ -34,10 +35,10 @@ struct comparator_of_neighbor_cell
 
 typedef std::set<p4est_quadrant_t, comparator_of_neighbor_cell> set_of_neighboring_quadrants;
 
+
 class my_p4est_cell_neighbors_t {
 private:
   friend class my_p4est_poisson_cells_t;
-  friend class my_p4est_xgfm_cells_t;
 
   my_p4est_hierarchy_t *hierarchy;
   p4est_t *p4est;
@@ -70,6 +71,15 @@ public:
   {
 
   }
+
+  inline void update(my_p4est_hierarchy_t *hierarchy_)
+  {
+    hierarchy = hierarchy_;
+    p4est     = hierarchy_->p4est;
+    ghost     = hierarchy_->ghost;
+    myb       = hierarchy_->myb;
+  }
+
 
   /*!
    * \brief find_neighbor_cells_of_cell finds (all) the neighbor cell(s) of a cell in the direction (dir_x, dir_y [, dir_z]), any
@@ -164,7 +174,7 @@ public:
    * create a series of ambiguous calls because '0' represents either a 0 integer value or the NULL pointer
    * in c++)
    */
-  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& q, const p4est_topidx_t& tr, const unsigned char& face_dir) const
+  inline void find_neighbor_cells_of_cell(set_of_neighboring_quadrants& ngbd, const p4est_locidx_t& q, const p4est_topidx_t& tr, const u_char& face_dir) const
   {
     char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[face_dir/2] = (face_dir%2 == 1 ? 1 : -1);
     find_neighbor_cells_of_cell(ngbd, q, tr, search);
@@ -172,6 +182,7 @@ public:
   }
 
   const p4est_t* get_p4est() const { return p4est; }
+  const p4est_ghost_t* get_ghost() const { return ghost; }
   const my_p4est_brick_t* get_brick() const { return myb; }
   const double* get_tree_dimensions() const { return tree_dimensions; }
   const my_p4est_hierarchy_t* get_hierarchy() const { return hierarchy; }
@@ -190,13 +201,62 @@ public:
    *                        in the list yet);
    * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
    *                        (default value is false)
+   * \param [in] no_search : (optional) array of P4EST_DIM boolean flags de-activating search in Cartesian directions.
+   *                        The neighbor in direction dir are not sought if no_search[dir] is true. All Cartesian directions
+   *                        are probed by default.
    * \return the logical size of the smallest quadrant found in the nearby cell neighborhood (given quadrant and first-degree
    *                        neighbors ONLY!!!)
    *                        --> relevant for evaluating scaling distance in some least-square interpolation procedures.
    */
-  p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false) const;
+  p4est_qcoord_t gather_neighbor_cells_of_cell(const p4est_quadrant_t& quad_with_correct_local_num_in_piggy3, set_of_neighboring_quadrants& ngbd, const bool& add_second_degree_neighbors = false,
+                                               const bool *no_search = NULL) const;
+
+  /*!
+   * \brief gather_neighbor_cells_of_node finds all neighbor cells of a node in all cartesian directions (and any of their
+   * combination) and adds them to a set_of_neighboring_quadrants. This routine looks for first degree neighbors by default
+   * but it can be extended to second degree neighbors, if desired.
+   * \param [in] node_idx: local index of the node whose neighbor cells are sought
+   * \param [in] nodes:    a pointer to a node structure in which the above node is stored
+   * \param [inout] cell_neighbors: the set of neighbor cells (not cleared on input but augmented with all candidates if not
+   *                           present in the list yet);
+   * \param [in] add_second_degree_neighbors : (optional) boolean flag activating the search of second-degree neighbors if true
+   *                           (default value is false)
+   * \return the logical size of the smallest quadrant found in the first-degree cell neighborhood (first-degree only!!!)
+   *                           --> relevant for evaluating scaling distance in some least-square interpolation procedures.
+   */
+  p4est_qcoord_t gather_neighbor_cells_of_node(const p4est_locidx_t& node_idx, const p4est_nodes_t* nodes, set_of_neighboring_quadrants& cell_neighbors, const bool& add_second_degree_neighbors = false) const;
+
 };
 
+/*!
+ * \brief interpolate_cell_field_at_node interpolates a cell-sampled-field at a grid node using least-square interpolation
+ * \param [in] node_idx   : local index of the node where the least-square interpolated value is desired;
+ * \param [in] c_ngbd     : cell neighborhood information (built on the p4est grid)l
+ * \param [in] n_ngbd     : node-neighborhood information (built on the nodes of the p4est grid)l
+ * \param [in] cell_field : cell-sampled field to interpolatel
+ * \param [in] bc         : (optional) boundary condition associated with the cell-sampled field to interpolatel
+ * \param [in] phi        : (optional) node-sampled levelset function.
+ * \return result of the least-square interpolation, at node of index nbode_idx, of valid neighboring cell-sampled values
+ * of cell_field.
+ * NOTES:
+ * - if bc is disregarded (i.e. NULL) or if the interface-type is NOINTERFACE, all neighboring cell-sampled values are considered valid;
+ * - if bc is NOT disregarded and if the interface-type is _not_ NOINTERFACE, then phi is REQUIRED and must be provided
+ * (a local cell value is considered valid if the arithmetic average of the levelset sampled over the vertices of the cell is negative
+ * OR if the corresponding cell is crossed by the levelset and the interface-type is NEUMANN.
+ */
 double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc = NULL, const Vec phi = NULL);
+
+double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                      const double* cell_sampled_field_p, const BoundaryConditionsDIM* bc, const my_p4est_node_neighbors_t* ngbd_n, const double* node_sampled_phi_p,
+                                      const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL);
+
+inline double get_lsqr_interpolation_at_node(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                             const double* cell_sampled_field_p, const u_char &degree = 2, const double &thresh_condition_number = 1.0e4, linear_combination_of_dof_t* interpolator = NULL)
+{
+  return get_lsqr_interpolation_at_node(xyz_node, ngbd_c, ngbd_of_cells, scaling, cell_sampled_field_p, NULL, NULL, NULL, degree, thresh_condition_number, interpolator);
+}
+
+void get_lsqr_cell_gradient_operator_at_point(const double xyz_node[P4EST_DIM], const my_p4est_cell_neighbors_t* ngbd_c, const set_of_neighboring_quadrants &ngbd_of_cells, const double &scaling,
+                                              linear_combination_of_dof_t grad_operator[], const bool& point_is_quad_center = false, const p4est_locidx_t& idx_of_quad_center = -1);
 
 #endif /* !MY_P4EST_CELL_NEIGHBORS_H */

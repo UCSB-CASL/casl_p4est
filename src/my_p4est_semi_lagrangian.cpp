@@ -351,7 +351,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_DIM **v, double dt, Vec &
 
     advect_from_n_to_np1(dt, v, phi, phi_xx, phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -390,7 +390,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(const CF_DIM **v, double dt, Vec &
 
 
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const double& band )
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -464,8 +464,19 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     }
 
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_eff_p);
+    // Refining and coarsening.
+	// Note: I must declare two different splitting criteria even when the second one is a derived class.  This is
+	// because I cannot declare the method refine_and_coarsen virtual because it uses default-valued parameters.
+	if( band <= 1 )		// Not using explicit band?
+	{
+	  splitting_criteria_tag_t sp_tag_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band );
+	  is_grid_changing = sp_tag_p.refine_and_coarsen( p4est, nodes, phi_np1_eff_p );
+	}
+	else				// Using explicit band around interface?
+	{
+	  splitting_criteria_band_t sp_band_p( sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, band );
+	  is_grid_changing = sp_band_p.refine_and_coarsen_with_band( p4est, nodes, phi_np1_eff_p );
+	}
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     if (phi_add_refine != NULL)
@@ -570,6 +581,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
   Vec phi_np1;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
 
+// note to self: consider changing to the standard vector way to avoid compilation warnings 
 //  Vec fields_np1[num_fields];
   Vec fields_np1[num_fields];
 //  std::vector<Vec> fields_np1;
@@ -781,7 +793,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
 
 // END: ELYCE TRYING SOMETHING ----------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx, Vec phi_add_refine)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_2nd_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -847,10 +859,33 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
                          phi, phi_xx,
                          phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
+    Vec phi_np1_eff;
+    double *phi_np1_eff_p = phi_np1_p;
+
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecDuplicate(phi_np1, &phi_np1_eff);
+      my_p4est_interpolation_nodes_t interp(ngbd_phi);
+      interp.add_all_nodes(p4est, nodes);
+      interp.set_input(phi_add_refine, linear);
+      interp.interpolate(phi_np1_eff);
+
+      ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
+      }
+    }
+
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
+    is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_eff_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
+    }
 
     if (is_grid_changing) {
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
@@ -861,6 +896,26 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+    } else {
+
+      my_p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      advect_from_n_to_np1(dt_nm1, dt_n,
+                           vnm1, vxx_nm1,
+                           vn, vxx_n,
+                           phi, phi_xx,
+                           phi_np1_p);
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     }
 
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
@@ -959,7 +1014,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
 
       advect_from_n_to_np1(dt, velo, vxx, phi[i], phi_xx, phi_np1_p);
 
-      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
       is_grid_changing = sp.refine(p4est, nodes, phi_np1_p);
 
       ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -1085,7 +1140,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
 
     advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
 
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_p);
 
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
@@ -1264,7 +1319,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
     for (int i = 0; i < num_lsf; i++) { ierr = VecRestoreArray(phi_np1[i], &phi_np1_ptr[i]); CHKERRXX(ierr); }
 
     // refine and coarsen grid using the effective LSF
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
 //    sp.set_refine_only_inside(true);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_eff_ptr);
 
@@ -1434,7 +1489,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
     for (int i = 0; i < num_lsf; i++) { ierr = VecRestoreArray(phi_np1[i], &phi_np1_ptr[i]); CHKERRXX(ierr); }
 
     // refine and coarsen grid using the effective LSF
-    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip, sp_old->band);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_eff_ptr);
 
     ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
@@ -1490,4 +1545,214 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+
+void my_p4est_semi_lagrangian_t::update_p4est_one_vel_step( Vec vel[], double dt, Vec& phi, double band )
+{
+	PetscErrorCode ierr;
+	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+
+	/////////////////////////// Compute second derivatives of velocity field: vel_xx, vel_yy ///////////////////////////
+	// We need these to interpolate the velocity at X^{n+1} in the updated grid.
+	Vec *vel_xx[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )	// Choose velocity component: u, v, or w.
+	{
+		vel_xx[dir] = new Vec[P4EST_DIM];		// For each velocity component, we need the derivatives w.r.t. x, y, z.
+		if( dir == 0 )
+		{
+			for( int dd = 0; dd < P4EST_DIM; dd++ )
+			{
+				ierr = VecCreateGhostNodes( ngbd_n->p4est, ngbd_n->nodes, &vel_xx[dir][dd] );
+				CHKERRXX( ierr );
+			}
+		}
+		else
+		{
+			for( int dd = 0; dd < P4EST_DIM; dd++ )
+			{
+				ierr = VecDuplicate( vel_xx[0][dd], &vel_xx[dir][dd] );
+				CHKERRXX( ierr );
+			}
+		}
+		ngbd_n->second_derivatives_central( vel[dir], DIM( vel_xx[dir][0], vel_xx[dir][1], vel_xx[dir][2] ) );
+	}
+
+	/////////////////////// Compute second derivatives of level-set function: phi_xx and phi_yy ////////////////////////
+	// We need these in case of quadratic interpolation for phi.
+	Vec *phi_xx = new Vec[P4EST_DIM];
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		ierr = VecCreateGhostNodes( ngbd_phi->p4est, ngbd_phi->nodes, &phi_xx[dir] );
+		CHKERRXX( ierr );
+	}
+	ngbd_phi->second_derivatives_central( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ) );
+
+	// Save the old splitting criteria information.
+	auto *oldSplittingCriteria = (splitting_criteria_t*) p4est->user_pointer;
+
+	// Define splitting criteria.
+	// Note: I must declare these two different pointers even when the second one is a derived class.  This is because
+	// I cannot declare the method refine_and_coarsen virtual because it uses default-valued parameters.
+	splitting_criteria_tag_t *splittingCriteriaTagPtr = nullptr;
+	splitting_criteria_band_t *splittingCriteriaBandPtr = nullptr;
+	if( band <= 1 )		// Not using explicit band?
+		splittingCriteriaTagPtr = new splitting_criteria_tag_t( oldSplittingCriteria->min_lvl,
+																oldSplittingCriteria->max_lvl,
+																oldSplittingCriteria->lip );
+	else				// Using explicit band around interface?
+		splittingCriteriaBandPtr = new splitting_criteria_band_t( oldSplittingCriteria->min_lvl,
+																  oldSplittingCriteria->max_lvl,
+																  oldSplittingCriteria->lip, band );
+
+	// New grid level-set values: start from current grid values.
+	Vec phiNew;
+	ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );	// Notice p4est and nodes are the grid at time n so far.
+	CHKERRXX( ierr );
+
+	/////////////////////////////////////////// Update grid until convergence //////////////////////////////////////////
+	// Main loop in Algorithm 3 in reference [*].
+	bool isGridChanging = true;
+	int counter = 0;
+	while( isGridChanging )
+	{
+		ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
+		CHKERRXX( ierr );
+
+		// Advect from G^{n} to G^{n+1} to enable refinement.
+		double *phiNewPtr;
+		ierr = VecGetArray( phiNew, &phiNewPtr );
+		CHKERRXX( ierr );
+
+		// Perform first order advection.
+		advect_from_n_to_np1_one_vel_step( dt, vel, vel_xx, phi, phi_xx, phiNewPtr );
+
+		// Refine an coarsen grid; detect if it changes from previous coarsening/refinement operation.
+		if( band <= 1 )
+			isGridChanging = splittingCriteriaTagPtr->refine_and_coarsen( p4est, nodes, phiNewPtr );	// Modifies grid using advected phi.
+		else
+			isGridChanging = splittingCriteriaBandPtr->refine_and_coarsen_with_band( p4est, nodes, phiNewPtr );
+
+		ierr = VecRestoreArray( phiNew, &phiNewPtr );
+		CHKERRXX( ierr );
+
+		if( isGridChanging )
+		{
+			// Repartition grid as it changed.
+			my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+
+			// Reset nodes, ghost, and phi.
+			p4est_ghost_destroy( ghost );
+			ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+			p4est_nodes_destroy( nodes );
+			nodes = my_p4est_nodes_new( p4est, ghost );
+
+			// Allocate vector for new level-set values for most up-to-date grid.
+			ierr = VecDestroy( phiNew );
+			CHKERRXX( ierr );
+			ierr = VecCreateGhostNodes( p4est, nodes, &phiNew );
+			CHKERRXX( ierr );
+		}
+
+		ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0 );
+		CHKERRXX( ierr );
+		counter++;
+	}
+
+	p4est->user_pointer = (void *) oldSplittingCriteria;
+	*p_p4est = p4est;	// TODO: I still don't understand the use of these pointers if they are never returned to caller.
+	*p_nodes = nodes;
+	*p_ghost = ghost;
+
+	// Cleaning up.
+	ierr = VecDestroy( phi );
+	CHKERRXX( ierr );
+	phi = phiNew;
+
+	for( auto& dir : vel_xx )
+	{
+		for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
+		{
+			ierr = VecDestroy( dir[dd] );
+			CHKERRXX( ierr );
+		}
+		delete[] dir;
+	}
+
+	for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+	{
+		ierr = VecDestroy( phi_xx[dir] );
+		CHKERRXX( ierr );
+	}
+	delete[] phi_xx;
+
+	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+
+	delete splittingCriteriaTagPtr;
+	delete splittingCriteriaBandPtr;
+}
+
+
+void my_p4est_semi_lagrangian_t::advect_from_n_to_np1_one_vel_step( double dt, Vec vel[], Vec *vel_xx[], Vec phi,
+																	Vec phi_xx[], double *phiNewPtr )
+{
+	PetscErrorCode ierr;
+	ierr = PetscLogEventBegin( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
+
+	my_p4est_interpolation_nodes_t interp( ngbd_n );			// These node neighborhoods are the ones that preserve
+	my_p4est_interpolation_nodes_t interp_phi( ngbd_phi );		// the grid structure at time n.
+																// TODO: What's the difference between ngbd_n and ngbd_phi?
+
+	double *interpOutput[P4EST_DIM];
+
+	Vec xx_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][0], vel_xx[1][0], vel_xx[2][0] )};	// Reorganize velocity derivatives
+	Vec yy_v_derivatives[P4EST_DIM] = {DIM( vel_xx[0][1], vel_xx[1][1], vel_xx[2][1] )};	// by derivative direction.
+#ifdef P4_TO_P8
+	Vec zz_v_derivatives[P4EST_DIM] = {vel_xx[0][2], vel_xx[1][2], vel_xx[2][2]};
+#endif
+
+	// Domain features.
+	const double *xyz_min = get_xyz_min();
+	const double *xyz_max = get_xyz_max();
+	const bool *periodicity = get_periodicity();
+
+	/////////////////////////////////////////// Finding velocity at G^{n+1} ////////////////////////////////////////////
+	// Using quadratic interpolation to find u^{n+1} by means of G^{n}.
+	std::vector<double> velNew[P4EST_DIM];
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est, nodes, xyz );
+		interp.add_point( n, xyz );				// Defining points X^{n+1} where we need the velocity.
+	}
+
+	for( int dir = 0; dir < P4EST_DIM; dir++ )
+	{
+		velNew[dir].resize( nodes->indep_nodes.elem_count );
+		interpOutput[dir] = velNew[dir].data();
+	}
+	interp.set_input( vel, DIM( xx_v_derivatives, yy_v_derivatives, zz_v_derivatives ), quadratic, P4EST_DIM );
+	interp.interpolate( interpOutput );			// Interpolate velocities.  Save these in velNew vector.
+	interp.clear();
+
+	//////////////////////////////////////////// Find the backtracing value ////////////////////////////////////////////
+	// Using the semi-Lagrangian interpolation chosen by caller for phi.
+	for( p4est_locidx_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
+	{
+		double xyz[P4EST_DIM];
+		node_xyz_fr_n( n, p4est, nodes, xyz );
+		for( int dir = 0; dir < P4EST_DIM; dir++ )
+			xyz[dir] -= dt * velNew[dir][n];
+		clip_in_domain( xyz, xyz_min, xyz_max, periodicity );
+
+		interp_phi.add_point( n, xyz );
+	}
+	interp_phi.set_input( phi, DIM( phi_xx[0], phi_xx[1], phi_xx[2] ), phi_interpolation );
+	interp_phi.interpolate( phiNewPtr );
+
+	ierr = PetscLogEventEnd( log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0 );
+	CHKERRXX( ierr );
 }

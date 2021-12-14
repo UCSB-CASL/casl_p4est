@@ -46,11 +46,11 @@ private:
   //--------------------------------------------------
   // Auxiliary grid that does not coarsen to keep track of quantities inside the solid
   //--------------------------------------------------
-  p4est_t                     *history_p4est_;
-  p4est_ghost_t               *history_ghost_;
-  p4est_nodes_t               *history_nodes_;
-  my_p4est_hierarchy_t        *history_hierarchy_;
-  my_p4est_node_neighbors_t   *history_ngbd_;
+  p4est_t                     *solid_p4est_;
+  p4est_ghost_t               *solid_ghost_;
+  p4est_nodes_t               *solid_nodes_;
+  my_p4est_hierarchy_t        *solid_hierarchy_;
+  my_p4est_node_neighbors_t   *solid_ngbd_;
 
   //--------------------------------------------------
   // Grid characteristics
@@ -66,7 +66,6 @@ private:
   vec_and_ptr_t contr_phi_;
   vec_and_ptr_t front_phi_;
   vec_and_ptr_t front_curvature_;
-  vec_and_ptr_t front_curvature_filtered_;
 
   vec_and_ptr_dim_t contr_phi_dd_;
   vec_and_ptr_dim_t front_phi_dd_;
@@ -102,13 +101,16 @@ private:
   //--------------------------------------------------
   // Geometry on the auxiliary grid
   //--------------------------------------------------
-  vec_and_ptr_t       history_front_phi_;
-  vec_and_ptr_t       history_front_phi_nm1_;
-  vec_and_ptr_t       history_front_curvature_;
-  vec_and_ptr_t       history_front_velo_norm_;
-  vec_and_ptr_t       history_tf_; // temperature at which alloy solidified
-  vec_and_ptr_array_t history_cs_; // composition of solidified region
-  vec_and_ptr_t       history_seed_; // seed tag
+  vec_and_ptr_t       solid_front_phi_;
+  vec_and_ptr_t       solid_front_phi_nm1_;
+  vec_and_ptr_t       solid_front_curvature_;
+  vec_and_ptr_t       solid_front_velo_norm_;
+  vec_and_ptr_t       solid_time_; // temperature at which alloy solidified
+  vec_and_ptr_t       solid_tf_; // temperature at which alloy solidified
+  vec_and_ptr_array_t solid_cl_; // composition of solidified region
+  vec_and_ptr_array_t solid_part_coeff_; // partition coefficient at freezing
+  vec_and_ptr_t       solid_seed_; // seed tag
+  vec_and_ptr_t       solid_smoothed_nodes_; // is used to track nodes that were artificially solidified during front regularization
 
   //--------------------------------------------------
   // physical parameters
@@ -116,17 +118,16 @@ private:
   // composition parameters
   int            num_comps_;
   vector<double> solute_diff_;
-  vector<double> part_coeff_;
 
   // thermal parameters
   double density_l_, heat_capacity_l_, thermal_cond_l_;
   double density_s_, heat_capacity_s_, thermal_cond_s_;
   double latent_heat_;
 
-  // front conditions
-  double melting_temp_;
+  // phase diagram
   double (*liquidus_value_)(double *);
   double (*liquidus_slope_)(int, double *);
+  double (*part_coeff_)(int, double *);
 
   // undercoolings
   int              num_seeds_;
@@ -138,15 +139,15 @@ private:
   CF_DIM *vol_heat_gen_;
 
   // boundary conditions at container
-  BoundaryConditionType         contr_bc_type_temp_;
-  vector<BoundaryConditionType> contr_bc_type_conc_;
+  BoundaryConditionType contr_bc_type_temp_;
+  BoundaryConditionType contr_bc_type_conc_;
 
   CF_DIM           *contr_bc_value_temp_;
   vector<CF_DIM *>  contr_bc_value_conc_;
 
   // boundary condtions at walls
-  WallBCDIM           *wall_bc_type_temp_;
-  vector<WallBCDIM *>  wall_bc_type_conc_;
+  BoundaryConditionType wall_bc_type_temp_;
+  BoundaryConditionType wall_bc_type_conc_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
@@ -157,20 +158,16 @@ private:
   //--------------------------------------------------
   // solver parameters
   //--------------------------------------------------
-  int pin_every_n_iterations_;
   int max_iterations_;
   int update_c0_robin_;
-  int front_smoothing_;
+
+  double proximity_smoothing_;
 
   double bc_tolerance_;
-  double phi_thresh_;
   double cfl_number_;
-  double curvature_smoothing_;
-  double curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
-  bool save_history_;
   bool enforce_planar_front_;
 
   interpolation_method interpolation_between_grids_;
@@ -194,44 +191,64 @@ private:
   double         dt_min_;
   double         dt_max_;
   double         front_velo_norm_max_;
+  vec_and_ptr_t  smoothed_nodes_; // is used to track nodes that were artificially solidified during front regularization
+  vec_and_ptr_t  front_phi_unsmooth_; // is used to track nodes that were artificially solidified during front regularization
 
   static my_p4est_node_neighbors_t *v_ngbd;
-  static double *v_c_p, **v_c_d_p, **v_c_dd_p, **v_normal_p;
+  static double **v_c_p, **v_c0_d_p, **v_c0_dd_p, **v_normal_p;
   static double v_factor;
+  static double (*v_part_coeff)(int, double *);
+  static int v_num_comps;
 
-  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double *c_p, double **c_d_p, double **c_dd_p, double **normal_p, double factor)
+  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double **c_p, double **c0_d_p, double **c0_dd_p,
+                              double **normal_p, double factor)
   {
-    v_ngbd     = ngbd;
-    v_c_p      = c_p;
-    v_c_d_p    = c_d_p;
-    v_c_dd_p   = c_dd_p;
-    v_normal_p = normal_p;
-    v_factor   = factor;
+    v_ngbd       = ngbd;
+    v_c_p        = c_p;
+    v_c0_d_p     = c0_d_p;
+    v_c0_dd_p    = c0_dd_p;
+    v_normal_p   = normal_p;
+    v_factor     = factor;
+    v_part_coeff = part_coeff_;
+    v_num_comps  = num_comps_;
   }
 
   static double velo(p4est_locidx_t n, int dir, double dist)
   {
     const quad_neighbor_nodes_of_node_t &qnnn = (*v_ngbd)[n];
-    return -v_factor*
-        ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
-        + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
-        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
-  };
+    vector<double> cl_all (v_num_comps);
+    for (int j = 0; j < v_num_comps; ++j) {
+      cl_all[j] = qnnn.interpolate_in_dir(dir, dist, v_c_p[j]);
+    }
+    return -v_factor/(1.-v_part_coeff(0, cl_all.data()))*
+        ( qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
+        + qnnn.interpolate_in_dir(dir, dist, v_c0_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
+        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p[0], v_c0_dd_p[1]), 1e-7);
+  }
+
+  // input[] = { cl_{0}, ..., cl_{num_comps-1}, c0x, c0y, c0z, nx, ny, nz };
+  static double velo2(double input[])
+  {
+    return -v_factor/(1.-v_part_coeff(0, input))*
+        SUMD(input[v_num_comps + 0]*input[v_num_comps + P4EST_DIM + 0],
+             input[v_num_comps + 1]*input[v_num_comps + P4EST_DIM + 1],
+             input[v_num_comps + 2]*input[v_num_comps + P4EST_DIM + 2])
+        / MAX(input[0], 1e-7);
+  }
 
 
 public:
-  my_p4est_multialloy_t(int num_comps, int num_time_layers);
+  my_p4est_multialloy_t(int num_comps, int time_order);
   ~my_p4est_multialloy_t();
 
-  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip);
+  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
 
   inline void set_scaling(double value) { scaling_ = value; }
-  inline void set_composition_parameters(double solute_diff[], double part_coeff[])
+  inline void set_composition_parameters(double solute_diff[])
   {
     for (int i = 0; i < num_comps_; ++i)
     {
       solute_diff_[i] = solute_diff[i];
-      part_coeff_ [i] = part_coeff [i];
     }
   }
 
@@ -244,11 +261,11 @@ public:
     density_s_ = density_s; heat_capacity_s_ = heat_capacity_s; thermal_cond_s_ = thermal_cond_s;
   }
 
-  inline void set_liquidus(double melting_temp, double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *))
+  inline void set_liquidus(double (*liquidus_value)(double *), double (*liquidus_slope)(int, double *), double (*part_coeff)(int, double *))
   {
-    melting_temp_   = melting_temp;
     liquidus_value_ = liquidus_value;
     liquidus_slope_ = liquidus_slope;
+    part_coeff_ = part_coeff;
   }
 
   inline void set_undercoolings(int num_seeds, Vec seed_map, CF_DIM *eps_v[], CF_DIM *eps_c[])
@@ -269,14 +286,14 @@ public:
     my_p4est_interpolation_nodes_t interp(ngbd_);
 
     double xyz[P4EST_DIM];
-    foreach_node(n, history_nodes_)
+    foreach_node(n, solid_nodes_)
     {
-      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      node_xyz_fr_n(n, solid_p4est_, solid_nodes_, xyz);
       interp.add_point(n, xyz);
     }
 
     interp.set_input(seed_map_.vec, linear);
-    interp.interpolate(history_seed_.vec);
+    interp.interpolate(solid_seed_.vec);
   }
 
   inline void set_container_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
@@ -285,26 +302,26 @@ public:
     contr_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_container_conditions_composition(BoundaryConditionType bc_type[], CF_DIM *bc_value[])
+  inline void set_container_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    contr_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      contr_bc_type_conc_ [i] = bc_type [i];
       contr_bc_value_conc_[i] = bc_value[i];
     }
   }
 
-  inline void set_wall_conditions_thermal(WallBCDIM &bc_type, CF_DIM &bc_value)
+  inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
-    wall_bc_type_temp_  = &bc_type;
+    wall_bc_type_temp_  =  bc_type;
     wall_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_wall_conditions_composition(WallBCDIM *bc_type[], CF_DIM *bc_value[])
+  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    wall_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      wall_bc_type_conc_ [i] = bc_type [i];
       wall_bc_value_conc_[i] = bc_value[i];
     }
   }
@@ -321,16 +338,22 @@ public:
     }
 
     my_p4est_interpolation_nodes_t interp(ngbd_);
+    interp.add_all_nodes(solid_p4est_, solid_nodes_);
+    interp.set_input(ts_[0].vec, linear);
+    interp.interpolate(solid_tf_.vec);
+  }
 
-    double xyz[P4EST_DIM];
-    foreach_node(n, history_nodes_)
+  inline void set_temperature(CF_DIM &tl, CF_DIM &ts, CF_DIM &tf)
+  {
+    for (int i = 0; i < num_time_layers_; ++i)
     {
-      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
-      interp.add_point(n, xyz);
+      tl.t = -double(i)*dt_[0];
+      ts.t = -double(i)*dt_[0];
+      sample_cf_on_nodes(p4est_, nodes_, tl, tl_[i].vec);
+      sample_cf_on_nodes(p4est_, nodes_, ts, ts_[i].vec);
     }
 
-    interp.set_input(ts_[0].vec, linear);
-    interp.interpolate(history_tf_.vec);
+    sample_cf_on_nodes(solid_p4est_, solid_nodes_, tf, solid_tf_.vec);
   }
 
   inline void set_concentration(Vec cl[], Vec cs[])
@@ -344,19 +367,45 @@ public:
     }
 
     my_p4est_interpolation_nodes_t interp(ngbd_);
-
-    double xyz[P4EST_DIM];
-    foreach_node(n, history_nodes_)
-    {
-      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
-      interp.add_point(n, xyz);
-    }
+    interp.add_all_nodes(solid_p4est_, solid_nodes_);
 
     for (int j = 0; j < num_comps_; ++j)
     {
       interp.set_input(cs[j], linear);
-      interp.interpolate(history_cs_.vec[j]);
+      interp.interpolate(solid_cl_.vec[j]);
     }
+  }
+
+  inline void set_concentration(CF_DIM *cl[], CF_DIM *cs[])
+  {
+    for (int j = 0; j < num_comps_; ++j)
+    {
+      for (int i = 0; i < num_time_layers_; ++i)
+      {
+        cl[j]->t = -double(i)*dt_[0];
+        sample_cf_on_nodes(p4est_, nodes_, *cl[j], cl_[i].vec[j]);
+      }
+
+      sample_cf_on_nodes(solid_p4est_, solid_nodes_, *cs[j], solid_cl_.vec[j]);
+    }
+
+    // compute partition coefficient inside solid
+    solid_cl_.get_array();
+    solid_part_coeff_.get_array();
+
+    vector<double> cl_all(num_comps_);
+    foreach_node(n, solid_nodes_) {
+      for (int i = 0; i < num_comps_; ++i) {
+        cl_all[i] = solid_cl_.ptr[i][n];
+      }
+
+      for (int i = 0; i < num_comps_; ++i) {
+        solid_part_coeff_.ptr[i][n] = part_coeff_(i, cl_all.data());
+      }
+    }
+
+    solid_cl_.restore_array();
+    solid_part_coeff_.restore_array();
   }
 
   inline void set_normal_velocity(Vec v)
@@ -369,30 +418,81 @@ public:
         VecPointwiseMultGhost(front_velo_[i].vec[dim], v, front_normal_.vec[dim]);
       }
     }
-    // todo
-    // copy to history_front_velo
+  }
+
+  inline void set_velocity(CF_DIM &vn, DIM(CF_DIM &vx, CF_DIM &vy, CF_DIM &vz), CF_DIM &vf)
+  {
+    for (int i = 0; i < num_time_layers_; ++i)
+    {
+      vn.t = -double(i)*dt_[0];
+      EXECD( vx.t = -double(i)*dt_[0],
+             vy.t = -double(i)*dt_[0],
+             vz.t = -double(i)*dt_[0] );
+
+      sample_cf_on_nodes(p4est_, nodes_, vn, front_velo_norm_[i].vec);
+      EXECD( sample_cf_on_nodes(p4est_, nodes_, vx, front_velo_[i].vec[0]),
+             sample_cf_on_nodes(p4est_, nodes_, vy, front_velo_[i].vec[1]),
+             sample_cf_on_nodes(p4est_, nodes_, vz, front_velo_[i].vec[2]) );
+
+      VecScaleGhost(front_velo_norm_[i].vec, -1.);
+
+      if (i == 0) {
+        compute_dt();
+        for (int j = 1; j < num_time_layers_; ++j) {
+          dt_[j] = dt_[0];
+        }
+      }
+    }
+
+    sample_cf_on_nodes(solid_p4est_, solid_nodes_, vf, solid_front_velo_norm_.vec);
+  }
+
+  inline void set_ft(CF_DIM &ft_cf)
+  {
+    sample_cf_on_nodes(solid_p4est_, solid_nodes_, ft_cf, solid_time_.vec);
   }
 
   inline p4est_t*       get_p4est() { return p4est_; }
   inline p4est_nodes_t* get_nodes() { return nodes_; }
   inline p4est_ghost_t* get_ghost() { return ghost_; }
-  inline my_p4est_hierarchy_t* get_hierarchy() {return hierarchy_;}
   inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
-  inline my_p4est_brick_t          get_brick() {return brick_;}
 
-  inline Vec  get_contr_phi()    { return front_phi_.vec; }
+  inline p4est_t*       get_solid_p4est() { return solid_p4est_; }
+  inline p4est_nodes_t* get_solid_nodes() { return solid_nodes_; }
+  inline p4est_ghost_t* get_solid_ghost() { return solid_ghost_; }
+  inline my_p4est_node_neighbors_t* get_solid_ngbd()  { return solid_ngbd_; }
+
+  inline Vec  get_contr_phi()    { return contr_phi_.vec; }
   inline Vec  get_front_phi()    { return front_phi_.vec; }
   inline Vec* get_front_phi_dd() { return front_phi_dd_.vec; }
   inline Vec  get_normal_velocity() { return front_velo_norm_[0].vec; }
+
+  inline Vec  get_tl() { return tl_[0].vec; }
+  inline Vec  get_ts() { return ts_[0].vec; }
+  inline Vec* get_cl() { return cl_[0].vec.data(); }
+  inline Vec  get_cl(int idx) { return cl_[0].vec[idx]; }
+
+  inline Vec  get_ft() { return solid_time_.vec; }
+  inline Vec  get_tf() { return solid_tf_.vec; }
+  inline Vec  get_vf() { return solid_front_velo_norm_.vec; }
+  inline Vec* get_cs() { return solid_cl_.vec.data(); }
+  inline Vec  get_cs(int idx) { return solid_cl_.vec[idx]; }
+  inline Vec* get_kps() { return solid_part_coeff_.vec.data(); }
+  inline Vec  get_kps(int idx) { return solid_part_coeff_.vec[idx]; }
 
   inline double get_dt() { return dt_[0]; }
   inline double get_front_velocity_max() { return front_velo_norm_max_; }
 
 //  inline double get_max_interface_velocity() { return vgamma_max_; }
 
-  inline void set_dt(double dt)
+  inline void set_dt_all(double dt)
   {
     dt_.assign(num_time_layers_, dt);
+  }
+
+  inline void set_dt(double dt)
+  {
+    dt_[0] = dt;
   }
 
   inline void set_dt_limits(double dt_min, double dt_max)
@@ -406,42 +506,33 @@ public:
   inline void set_enforce_planar_front     (bool value)   { enforce_planar_front_      = value; }
 
   inline void set_update_c0_robin          (int value)    { update_c0_robin_           = value; }
-  inline void set_pin_every_n_iterations   (int value)    { pin_every_n_iterations_    = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
-  inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
-  inline void set_curvature_smoothing      (double value,
-                                            int    steps) { curvature_smoothing_       = value;
-                                                            curvature_smoothing_steps_ = steps; }
 
-  inline void set_phi_thresh               (double value) { phi_thresh_                = value; }
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }
   inline void set_cfl                      (double value) { cfl_number_                = value; }
   inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
   inline void set_dendrite_min_length      (double value) { dendrite_min_length_       = value; }
-  inline void set_volumetric_heat          (CF_DIM &value) { vol_heat_gen_              =&value; }
+  inline void set_volumetric_heat          (CF_DIM &value){ vol_heat_gen_              =&value; }
+  inline void set_proximity_smoothing      (double value) { proximity_smoothing_       = value; }
 
-
-  void regularize_front();
+  void regularize_front(Vec front_phi_old);
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();
-  void compute_filtered_curvature();
   void compute_velocity();
   void compute_solid();
 
   void compute_dt();
   void update_grid();
   void update_grid_eno();
-  void update_grid_history();
-  int  one_step();
+  void update_grid_solid();
+  int  one_step(int it_scheme=2, double *bc_error_max=NULL, double *bc_error_avg=NULL, std::vector<int> *num_pdes=NULL, std::vector<double> *bc_error_max_all=NULL, std::vector<double> *bc_error_avg_all=NULL);
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
+  void save_p4est(int iter);
+  void save_p4est_solid(int iter);
 
   void count_dendrites(int iter);
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
-
-  inline Vec  get_tl() { return tl_[0].vec; }
-  inline Vec  get_ts() { return ts_[0].vec; }
-  inline Vec* get_cl() { return cl_[0].vec.data(); }
 
 };
 

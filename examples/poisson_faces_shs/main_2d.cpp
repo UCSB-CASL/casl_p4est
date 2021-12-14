@@ -648,14 +648,10 @@ int main (int argc, char* argv[])
     // one should have EXACTLY the volume of the computational box for u and w components
     // and strictly less than the computational domain for v (because of face-wall alignment of Dirichlet boundary conditions --> the Voronoi cell is not even calculated there)
     const double expected_volume = MULTD(domain_dim[0], domain_dim[1], domain_dim[2]);
-    if(mpi.rank() == 0 && fabs(voro_global_volume[0] - expected_volume) > 10.0*EPS*expected_volume)
-      std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction x is " << voro_global_volume[0] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation (use option -save_voro)" << std::endl;
-    if(mpi.rank() == 0 && voro_global_volume[1] >= expected_volume)
-      std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction y is " << voro_global_volume[1] << " which is greater than the volume of the computational box (" << expected_volume << "): this is NOT NORMAL --> check the Voronoi tesselation (use option -save_voro)" << std::endl;
-#ifdef P4_TO_P8
-    if(mpi.rank() == 0 && fabs(voro_global_volume[2] - expected_volume) > 10.0*EPS*expected_volume)
-      std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction z is " << voro_global_volume[2] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation (use option -save_voro)" << std::endl;
-#endif
+    if(mpi.rank() == 0)
+      for (u_char dim = 0; dim < P4EST_DIM; ++dim)
+        if(fabs(voro_global_volume[dim] - expected_volume) > 10.0*EPS*expected_volume)
+          std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction " << (dim == dir::x ? "x" : (dim == dir::y ? "y" : "z")) << " is " << voro_global_volume[dim] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation (use option -save_voro)" << std::endl;
 
     if(print_timing){
       ierr = PetscPrintf(mpi.comm(), "Check for grid %d/%d executed in %.1f s. \nConstruction of grid data:\t %2.1f\%; \nProblem setup: \t\t\t %2.1f\%; \nSolve step: \t\t\t %2.1f\%; \nMeasure of errors: \t\t %2.1f\%\n", lmin + k, lmax + k, total, 100.0*grid_data/total, 100.0*problem_setup/total, 100.0*solve/total, 100.0*measure_errors/total); CHKERRXX(ierr);

@@ -42,7 +42,7 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
   p4est_topidx_t vtx_0_max      = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + P4EST_CHILDREN - 1];
   p4est_topidx_t vtx_0_min      = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
   /* set up the KSP solvers and other parameters*/
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     A[dim]            = NULL;
     A_null_space[dim] = NULL;
     null_space[dim]   = NULL;
@@ -69,7 +69,7 @@ my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces
 my_p4est_poisson_faces_t::~my_p4est_poisson_faces_t()
 {
   PetscErrorCode ierr;
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     if(A[dim] != NULL)              { ierr = MatDestroy(A[dim]);                     CHKERRXX(ierr); }
     if(null_space[dim] != NULL)     { ierr = VecDestroy(null_space[dim]);            CHKERRXX(ierr); }
     if(A_null_space[dim]  !=  NULL) { ierr = MatNullSpaceDestroy(A_null_space[dim]); CHKERRXX(ierr); }
@@ -149,7 +149,7 @@ void my_p4est_poisson_faces_t::set_phi(Vec phi_)
 {
   this->phi = phi_;
   interp_phi.set_input(phi, linear);
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim)
   {
     matrix_is_ready[dim]        = false;
     only_diag_is_modified[dim]  = false;
@@ -163,7 +163,7 @@ void my_p4est_poisson_faces_t::set_rhs(Vec *rhs)
 
 void my_p4est_poisson_faces_t::set_diagonal(double add)
 {
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     desired_diag[dim]           = add;
     if(!current_diag_is_as_desired(dim))
     {
@@ -179,7 +179,7 @@ void my_p4est_poisson_faces_t::set_mu(double mu_)
 {
   P4EST_ASSERT(mu > 0.0);
   if(fabs(this->mu - mu_) > EPS*MAX(this->mu, mu_)) // actual modification of mu
-    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
       only_diag_is_modified[dim]  = false;
       matrix_is_ready[dim]        = false;
     }
@@ -193,7 +193,7 @@ void my_p4est_poisson_faces_t::set_bc(const BoundaryConditionsDIM *bc_, Vec *dxy
   this->dxyz_hodge = dxyz_hodge_;
   this->face_is_well_defined = face_is_well_defined_;
   // change of bc and/or face_is_well_defined --> a full reset is needed!
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+  for (u_char dim = 0; dim < P4EST_DIM; ++dim) {
     only_diag_is_modified[dim]  = false;
     matrix_is_ready[dim]        = false;
   }
@@ -212,7 +212,7 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
 
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
-  for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
+  for(u_char dir=0; dir < P4EST_DIM; ++dir)
   {
     PetscInt sol_size;
     ierr = VecGetLocalSize(solution[dir], &sol_size); CHKERRXX(ierr);
@@ -227,7 +227,7 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
 
   ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_solve, A, rhs, solution, 0); CHKERRXX(ierr);
 
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for(u_char dir = 0; dir < P4EST_DIM; ++dir)
   {
     /* assemble the linear system if required, and initialize the Krylov solver and its preconditioner based on that*/
     setup_linear_system(dir);
@@ -248,7 +248,7 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
 }
 
 #ifndef P4_TO_P8
-void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(Voronoi2D &voro_cell, const p4est_locidx_t &f_idx, const unsigned char &dir)
+void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(Voronoi2D &voro_cell, const p4est_locidx_t &f_idx, const u_char &dir)
 {
   const vector<ngbd2Dseed> *points;
   vector<Point2> *partition;
@@ -257,11 +257,11 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(Voronoi2D &voro_cell,
   voro_cell.get_partition(partition);
 
   /* first clip the voronoi partition at the boundary of the domain */
-  const unsigned char other_dir = (dir + 1)%P4EST_DIM;
+  const u_char other_dir = (dir + 1)%P4EST_DIM;
   for(size_t m = 0; m < points->size(); m++)
     if((*points)[m].n < 0 &&  (-1 - (*points)[m].n)/2 == dir) // there is a "wall" point added because of a parallel wall
     {
-      const unsigned char which_wall = (-1 - (*points)[m].n)%2;
+      const u_char which_wall = (-1 - (*points)[m].n)%2;
       for(char i = -1; i < 1; ++i)
       {
         size_t k                        = mod(m + i                 , partition->size());
@@ -295,7 +295,7 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(Voronoi2D &voro_cell,
 }
 #endif
 
-void my_p4est_poisson_faces_t::preallocate_matrix(const unsigned char &dir)
+void my_p4est_poisson_faces_t::preallocate_matrix(const u_char &dir)
 {
   PetscErrorCode ierr;
 
@@ -333,25 +333,32 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const unsigned char &dir)
     {
       Voronoi_DIM &voro_cell = (compute_partition_on_the_fly ? voro[dir][0] : voro[dir][f_idx]);
       compute_voronoi_cell(voro_cell, faces, f_idx, dir, bc, face_is_well_defined_p);
+      const bool face_is_dirichlet_wall = !periodic[dir] && (fabs(xyz[dir] - xyz_min[dir]) < 0.1*dxyz[dir] || fabs(xyz[dir] - xyz_max[dir]) < 0.1*dxyz[dir]) && bc[dir].wallType(xyz) == DIRICHLET;
 
-      const vector<ngbdDIMseed > *points;
-      voro_cell.get_neighbor_seeds(points);
+      if(!face_is_dirichlet_wall) // if the face is wall dirichlet, the value is enforced there, otherwise, the neighborhood is relevant
+      {
+        const vector<ngbdDIMseed > *points;
+        voro_cell.get_neighbor_seeds(points);
 
-      for(size_t n = 0; n < points->size(); ++n)
-        if((*points)[n].n >= 0)
-        {
-          if((*points)[n].n < num_owned_local)  d_nnz[f_idx]++;
-          else                                  o_nnz[f_idx]++;
-        }
+        for(size_t n = 0; n < points->size(); ++n)
+          if((*points)[n].n >= 0)
+          {
+            if((*points)[n].n < num_owned_local)  d_nnz[f_idx]++;
+            else                                  o_nnz[f_idx]++;
+          }
+      }
 
 #ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */
-      try {
-        clip_voro_cell_by_interface(voro_cell, f_idx, dir);
-      } catch (std::exception e) {
-        // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
-        std::cout<<"Face index is : " << f_idx << " in direction " << dir << " , x = "<<faces->x_fr_f(f_idx,dir) <<", y = "<< faces->y_fr_f(f_idx,dir) << " on process "<<p4est->mpirank<<std::endl;
-        throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+      if(voro_cell.get_type() != parallelepiped) // already taken care of internally if it was found to be a parallelepiped
+      {
+        try {
+          clip_voro_cell_by_interface(voro_cell, f_idx, dir);
+        } catch (std::exception e) {
+          // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
+          std::cout << "Face index is : " << f_idx << " in direction " << int(dir) << " , x = "<< xyz[0] <<", y = "<< xyz[1] << " on process " << p4est->mpirank << std::endl;
+          throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+        }
       }
 #endif
     }
@@ -364,7 +371,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const unsigned char &dir)
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_matrix_preallocation, A, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
+void my_p4est_poisson_faces_t::setup_linear_system(const u_char &dir)
 { //E: Sets up the linear system for a given direction --
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
@@ -453,10 +460,10 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
     bool wall[P4EST_FACES];
     //E: Loop over each direction and record for both plus and minus faces whether or not there is a wall present
-    for(unsigned char d = 0; d < P4EST_DIM; ++d)
+    for(u_char d = 0; d < P4EST_DIM; ++d)
     {
-      unsigned char f_m = 2*d;
-      unsigned char f_p = 2*d+1;
+      u_char f_m = 2*d;
+      u_char f_p = 2*d+1;
       if(d == dir)
       {
         wall[f_m] = qm.p.piggy3.local_num == -1;
@@ -479,7 +486,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
     {
       compute_voronoi_cell(voro_tmp, faces, f_idx, dir, bc, face_is_well_defined_p);
 #ifndef P4_TO_P8
-      clip_voro_cell_by_interface(voro_tmp, f_idx, dir);
+      if(voro_tmp.get_type() != parallelepiped) // already taken care of internally if it was found to be a parallelepiped
+        clip_voro_cell_by_interface(voro_tmp, f_idx, dir);
 #endif
     }
 
@@ -523,7 +531,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       double phi[P4EST_FACES];
       // E: Check for presence of interface via a sign change in LSF and by checking the Voronoi points
       bool is_interface = false;
-      for (unsigned char ff = 0; ff < P4EST_FACES; ++ff) {
+      for (u_char ff = 0; ff < P4EST_FACES; ++ff) {
         double xyz_ngbd[P4EST_DIM] = {DIM(xyz[0], xyz[1], xyz[2])};
         xyz_ngbd[ff/2] += (ff%2 == 1 ? +dxyz[ff/2] : -dxyz[ff/2]);
         phi[ff] = interp_phi(xyz_ngbd);
@@ -539,7 +547,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       {
         bool face_is_across[P4EST_FACES];
         double stencil_arm[P4EST_FACES], val_interface[P4EST_FACES];
-        for (unsigned char ff = 0; ff < P4EST_FACES; ++ff)
+        for (u_char ff = 0; ff < P4EST_FACES; ++ff)
         {
           face_is_across[ff] = !wall[ff] && phi[ff]*phi_c <= 0.0;
           matrix_has_nullspace[dir] = matrix_has_nullspace[dir] && !face_is_across[ff]; // interface point with Dirichlet boundary condition --> no nullspace
@@ -562,9 +570,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
         double desired_coeff[P4EST_FACES], current_coeff[P4EST_FACES];
         double desired_scaling = desired_diag[dir];
         double current_scaling = (!only_diag_is_modified[dir] && !matrix_is_ready[dir] ? 0.0: current_diag[dir]);
-        for(unsigned char ff = 0; ff < P4EST_FACES; ++ff)
+        for(u_char ff = 0; ff < P4EST_FACES; ++ff)
         {
-          unsigned char fff = ff%2 == 0 ? ff + 1 : ff - 1;
+          u_char fff = ff%2 == 0 ? ff + 1 : ff - 1;
           desired_coeff[ff] = current_coeff[ff] = -2*mu/stencil_arm[ff]/(stencil_arm[ff]+stencil_arm[fff]);
           desired_scaling -= desired_coeff[ff];
           current_scaling -= current_coeff[ff];
@@ -573,7 +581,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
         //---------------------------------------------------------------------
         // diag scaling
         //---------------------------------------------------------------------
-        for(unsigned char ff = 0; ff < P4EST_FACES; ++ff)
+        for(u_char ff = 0; ff < P4EST_FACES; ++ff)
         {
           desired_coeff[ff] /= desired_scaling;
           if(only_diag_is_modified[dir] || matrix_is_ready[dir])
@@ -592,7 +600,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
         if(!only_diag_is_modified[dir] && !matrix_is_ready[dir]) {
           ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr); } // needs to be done if full reset only, the (raw) diag term will always be 1.0 for this...
 
-        for(unsigned char ff = 0; ff < P4EST_FACES; ++ff)
+        for(u_char ff = 0; ff < P4EST_FACES; ++ff)
         {
           /* this is the cartesian direction for which the linear system is assembled.
            * the treatment is different, for example x-velocity can be ON the x-walls
@@ -613,7 +621,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
                *
                * NB: d_[ff] and  d_[ff_op] are made equal beforehand in this case (mirror symmetry, see above + comment)
                */
-              unsigned char ff_op = ff%2 == 0 ? ff + 1 : ff - 1; /* the opposite direction. if ff = f_m00, then ff_op = f_p00 */
+              u_char ff_op = ff%2 == 0 ? ff + 1 : ff - 1; /* the opposite direction. if ff = f_m00, then ff_op = f_p00 */
               if(!face_is_across[ff_op]) // --> Neumann wall face but opposite face is not across the interface
               {
                 p4est_locidx_t face_opp_loc_idx = (ff%2 == 0? faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) : faces->q2f(qm.p.piggy3.local_num, 2*dir));
@@ -634,7 +642,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
               {
                 rhs_p[f_idx] -= desired_coeff[ff] * val_interface[ff_op];
                 double xyz_op[P4EST_DIM];
-                for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+                for (u_char dd = 0; dd < P4EST_DIM; ++dd)
                   xyz_op[dd] = xyz[dd] + (ff_op/2 == dd ? (ff_op%2 == 1 ? +stencil_arm[ff_op] : -stencil_arm[ff_op]) : 0.0);
                 interp_dxyz_hodge.add_point(bc_index.size(), xyz_op);
                 bc_index.push_back(f_idx);
@@ -731,7 +739,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       OctValue op;
       OctValue iv;
 
-      for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
+      for (u_char dd = 0; dd < P4EST_DIM; ++dd) {
         c3.xyz_mmm[dd] = (dir == dd && qm.p.piggy3.local_num == -1 ? xyz[dd] : xyz[dd] - dxyz[dd]/2);
         c3.xyz_ppp[dd] = (dir == dd && qp.p.piggy3.local_num == -1 ? xyz[dd] : xyz[dd] + dxyz[dd]/2);
       }
@@ -757,9 +765,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       bool is_pos = false;
       bool is_neg = false;
 
-      for (unsigned char xd = 0; xd < 2; ++xd)
-        for (unsigned char yd = 0; yd < 2; ++yd)
-          for (unsigned char zd = 0; zd < 2; ++zd)
+      for (u_char xd = 0; xd < 2; ++xd)
+        for (u_char yd = 0; yd < 2; ++yd)
+          for (u_char zd = 0; zd < 2; ++zd)
           {
             double xyz_eval[3] = {(xd == 0 ? c3.xyz_mmm[0] : c3.xyz_ppp[0]), (yd == 0 ? c3.xyz_mmm[1] : c3.xyz_ppp[1]), (zd == 0 ? c3.xyz_mmm[2] : c3.xyz_ppp[2])};
             iv.val[4*xd + 2*yd + zd] = bc[dir].interfaceValue(xyz_eval) + hodge_correction;
@@ -791,17 +799,17 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
         Cube2 cube_face;
         QuadValue ls_values_on_cube_face;
 
-        const unsigned char increment[3] = {4, 2, 1};
-        for (unsigned char ngbd_dir = 0; ngbd_dir < P4EST_FACES; ++ngbd_dir)
+        const u_char increment[3] = {4, 2, 1};
+        for (u_char ngbd_dir = 0; ngbd_dir < P4EST_FACES; ++ngbd_dir)
         {
-          const unsigned char first_dir   = (ngbd_dir/2 == dir::x ? dir::y : dir::x);
-          const unsigned char second_dir  = (ngbd_dir/2 == dir::z ? dir::y : dir::z);
+          const u_char first_dir   = (ngbd_dir/2 == dir::x ? dir::y : dir::x);
+          const u_char second_dir  = (ngbd_dir/2 == dir::z ? dir::y : dir::z);
           cube_face.xyz_mmm[0] = c3.xyz_mmm[first_dir];  cube_face.xyz_ppp[0] = c3.xyz_ppp[first_dir];
           cube_face.xyz_mmm[1] = c3.xyz_mmm[second_dir]; cube_face.xyz_ppp[1] = c3.xyz_ppp[second_dir];
 
-          const unsigned char offset = (ngbd_dir%2 == 1 ? increment[ngbd_dir/2] : 0);
-          for (unsigned char d1 = 0; d1 < 2; ++d1)
-            for (unsigned char d2 = 0; d2 < 2; ++d2)
+          const u_char offset = (ngbd_dir%2 == 1 ? increment[ngbd_dir/2] : 0);
+          for (u_char d1 = 0; d1 < 2; ++d1)
+            for (u_char d2 = 0; d2 < 2; ++d2)
               ls_values_on_cube_face.val[2*d1 + d2] = op.val[offset + d1*increment[first_dir] + d2*increment[second_dir]];
 
           const double exchange_surface = cube_face.area_In_Negative_Domain(ls_values_on_cube_face);
@@ -1006,8 +1014,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
   ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
-  int global_size_bc_index = bc_index.size();
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret); //E: Sum the number of BC additions to the RHS to make across all processors,
+  size_t global_size_bc_index = bc_index.size();
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, my_MPI_SIZE_T, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret); //E: Sum the number of BC additions to the RHS to make across all processors,
                                                                                                                               //store on all processors as global_size_bc_index
 
   /* -----------------------------------------------------------------------------------------------------------------
@@ -1074,7 +1082,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_faces_t::print_partition_VTK(const char *file, const unsigned char &dir)
+void my_p4est_poisson_faces_t::print_partition_VTK(const char *file, const u_char &dir)
 {
   if(compute_partition_on_the_fly)
     throw std::invalid_argument("[ERROR]: my_p4est_poisson_faces_t->print_partition_VTK: please don't use compute_partition_on_the_fly if you want to output the voronoi partition.");
@@ -1095,7 +1103,7 @@ void my_p4est_poisson_faces_t::global_volume_of_voronoi_tesselation(double voro_
   if(compute_partition_on_the_fly)
     throw std::invalid_argument("my_p4est_poisson_faces_t->global_volume_of_voronoi_tesselation: please don't use compute_partition_on_the_fly if you want to calculate the global volume of the voronoi tesselation.");
 
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+  for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     voro_global_volume[dir] = 0.0;
     for (p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
       voro_global_volume[dir] += voro[dir][f_idx].get_volume();

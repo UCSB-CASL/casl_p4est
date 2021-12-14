@@ -60,8 +60,8 @@ static const double mu_plus_        = 20.0;
 static const bool implicit_         = true;
 static const bool voro_fly_         = false;
 static const unsigned int ngrids_   = 3;
-static const bool save_vtk_         = true;
-//static const bool save_vtk_         = false;
+//static const bool save_vtk_         = true;
+static const bool save_vtk_         = false;
 const static double duration_       = 1.0;
 static const double vtk_dt_         = 0.05*duration_;
 static const bool print_            = false;
@@ -478,7 +478,7 @@ struct BCWALLVALUE_W : CF_3 {
 void evaluate_errors(my_p4est_two_phase_flows_t *solver, double error_vnp1_minus[P4EST_DIM], double error_vnp1_plus[P4EST_DIM], double *error_at_faces_minus_p[P4EST_DIM], double *error_at_faces_plus_p[P4EST_DIM])
 {
   PetscErrorCode ierr;
-  Vec *vnp1_faces = solver->get_test_vnp1_faces();
+  Vec *vnp1_faces = solver->get_diffusion_vnp1_faces();
   const double *vnp1_faces_p;
   double xyz_face[P4EST_DIM];
   my_p4est_faces_t* faces = solver->get_faces();
@@ -802,11 +802,11 @@ int main (int argc, char* argv[])
     two_phase_flow_solver->set_semi_lagrangian_order(2);
 
     // initialize face fields
-    two_phase_flow_solver->initialize_viscosity_test_vectors();
+    two_phase_flow_solver->initialize_diffusion_problem_vectors();
     // time nm1
 
     tn = -(implicit ? 2.0 : 1.0)*dt; // -2.0 for "implicit" because the exact_solution has the +dt increment implemented (for correct jump evaluations thereafter)
-    Vec* vnm1_faces = two_phase_flow_solver->get_test_vnm1_faces();
+    Vec* vnm1_faces = two_phase_flow_solver->get_diffusion_vnm1_faces();
     double xyz_face[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       double *vnm1_faces_dir_p;
@@ -834,7 +834,7 @@ int main (int argc, char* argv[])
     }
     // time n
     tn += dt;
-    Vec* vn_faces = two_phase_flow_solver->get_test_vn_faces();
+    Vec* vn_faces = two_phase_flow_solver->get_diffusion_vn_faces();
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       double *vn_faces_dir_p;
       ierr = VecGetArray(vn_faces[dir], &vn_faces_dir_p); CHKERRXX(ierr);
@@ -938,7 +938,7 @@ int main (int argc, char* argv[])
     {
       // set the jump conditions to what they are expected to be
       ierr = VecGetArray(two_phase_flow_solver->get_fine_jump_mu_grad_v(), &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
-      ierr = VecGetArray(two_phase_flow_solver->get_fine_jump_velocity_test(), &fine_jump_u_p);     CHKERRXX(ierr);
+      ierr = VecGetArray(two_phase_flow_solver->get_fine_jump_velocity(), &fine_jump_u_p);     CHKERRXX(ierr);
       for (size_t fine_node_idx = 0; fine_node_idx < nodes_fine->indep_nodes.elem_count; ++fine_node_idx) {
         double xyz_node[P4EST_DIM]; node_xyz_fr_n(fine_node_idx, p4est_fine, nodes_fine, xyz_node);
         for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
@@ -949,17 +949,17 @@ int main (int argc, char* argv[])
         }
       }
       ierr = VecRestoreArray(two_phase_flow_solver->get_fine_jump_mu_grad_v(), &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(two_phase_flow_solver->get_fine_jump_velocity_test(), &fine_jump_u_p);     CHKERRXX(ierr);
+      ierr = VecRestoreArray(two_phase_flow_solver->get_fine_jump_velocity(), &fine_jump_u_p);     CHKERRXX(ierr);
 
       if(!implicit)
       {
-        two_phase_flow_solver->test_viscosity_explicit();
+        two_phase_flow_solver->solve_diffusion_viscosity_explicit();
         tn += dt;
         // the bc objects were (and needed to be) set to tn, so the wall faces are not updated as they should. We fix that with
-        two_phase_flow_solver->enforce_dirichlet_bc_on_test_vnp1_faces();
+        two_phase_flow_solver->enforce_dirichlet_bc_on_diffusion_vnp1_faces();
       }
       else
-        two_phase_flow_solver->test_viscosity();
+        two_phase_flow_solver->solve_diffusion_viscosity();
 
       evaluate_errors(two_phase_flow_solver, error_vnp1_minus, error_vnp1_plus, error_at_faces_minus_p, error_at_faces_plus_p);
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {

@@ -42,6 +42,22 @@
  * It will be replaced with a generic transfinite blending scheme.  *
  ********************************************************************/
 
+struct Vec_for_vtk_export_t {
+  Vec vector;
+  const double* ptr;
+  std::string name;
+  Vec_for_vtk_export_t(Vec to_export, const std::string& name_tag)
+  {
+    vector = to_export;
+    PetscErrorCode ierr = VecGetArrayRead(vector, &ptr); CHKERRXX(ierr);
+    name = name_tag;
+  }
+  ~Vec_for_vtk_export_t()
+  {
+    PetscErrorCode ierr = VecRestoreArrayRead(vector, &ptr); CHKERRXX(ierr);
+  }
+};
+
 SC_EXTERN_C_BEGIN;
 
 static const int VTK_POINT_DATA = 0;
@@ -108,16 +124,16 @@ static const int VTK_CELL_VECTOR_BLOCK = 5;
  * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
  * given either component by component or in a block-structured vector.
  */
-void                my_p4est_vtk_write_all_general(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+void                my_p4est_vtk_write_all_general(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                                    int write_rank, int write_tree,
                                                    int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
                                                    int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
                                                    const char *filename, ...);
-void                my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+void                my_p4est_vtk_write_all (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                             int write_rank, int write_tree,
                                             int num_node_scalars, int num_cell_scalars,
                                             const char *filename, ...);
-void                my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+void                my_p4est_vtk_write_all_wrapper (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                                     int write_rank, int write_tree,
                                                     int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
                                                     int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
@@ -134,7 +150,7 @@ void                my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes
  * \param filename        (absolute) path of the exportation files
  * \return                this returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+int                 my_p4est_vtk_write_header (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
                                                const char *filename);
 
 
@@ -173,13 +189,13 @@ int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *n
  * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
  * given either component by component or in a block-structured vector.
  */
-int                 my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, const char *filename,
+int                 my_p4est_vtk_write_node_data (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost, const char *filename,
                                                    const int num_scalar, const int num_vector_block, const int num_vector_by_component,
                                                    const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
                                                    const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
                                                    const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
-inline int          my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t* ghost, const char *filename,
+inline int          my_p4est_vtk_write_point_scalar (const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t* ghost, const char *filename,
                                                      const int num, const char *list_name, const char **scalar_names, const double **values)
 {
   return my_p4est_vtk_write_node_data(p4est, nodes, ghost, filename, num, 0, 0, list_name, NULL, NULL, scalar_names, NULL, NULL, values, NULL, NULL);
@@ -218,14 +234,14 @@ inline int          my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_node
  * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
  * given either component by component or in a block-structured vector.
  */
-int                 my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
+int                 my_p4est_vtk_write_cell_data (const p4est_t * p4est, const p4est_ghost_t *ghost,
                                                   int write_rank, int write_tree, const char *filename,
                                                   const int num_scalar, const int num_vector_block, const int num_vector_by_component,
                                                   const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
                                                   const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
                                                   const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
-inline int        my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
+inline int        my_p4est_vtk_write_cell_scalar (const p4est_t * p4est, const p4est_ghost_t *ghost,
                                                   int write_rank, int write_tree,
                                                   const char *filename,
                                                   const int num, const char* list_name, const char **scalar_names, const double **values)
@@ -240,16 +256,62 @@ inline int        my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t
  * \param filename        (absolute) path of the exportation files
  * \return                this returns 0 if no error and -1 if there is an error.
  */
-int                 my_p4est_vtk_write_footer (p4est_t * p4est,
+int                 my_p4est_vtk_write_footer (const p4est_t * p4est,
                                                const char *filename);
 
-void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
+void my_p4est_vtk_write_ghost_layer(const p4est_t *p4est, const p4est_ghost_t *ghost);
 
-void my_p4est_vtk_write_all_lists(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-                                  int write_rank, int write_tree, const char *filename,
-                                  std::vector<double *> point_data, std::vector<std::string> point_data_names,
-                                  std::vector<double *> cell_data,  std::vector<std::string> cell_data_names);
+void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                          const int& write_rank, const int& write_tree, const char *filename,
+                                          const std::vector<const double *>* node_scalar_data,              const std::vector<std::string>* node_scalar_names,
+                                          const std::vector<const double *>* node_vector_data_by_component, const std::vector<std::string>* node_vector_data_by_component_names,
+                                          const std::vector<const double *>* node_vector_data_block,        const std::vector<std::string>* node_vector_data_block_names,
+                                          const std::vector<const double *>* cell_scalar_data,              const std::vector<std::string>* cell_scalar_names,
+                                          const std::vector<const double *>* cell_vector_data_by_component, const std::vector<std::string>* cell_vector_data_by_component_names,
+                                          const std::vector<const double *>* cell_vector_data_block,        const std::vector<std::string>* cell_vector_data_block_names);
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<const double *>& point_data, const std::vector<std::string>& point_data_names,
+                                         const std::vector<const double *>& cell_data,  const std::vector<std::string>& cell_data_names)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &point_data, &point_data_names,
+                                       NULL, NULL,
+                                       NULL, NULL,
+                                       &cell_data, &cell_data_names,
+                                       NULL, NULL,
+                                       NULL, NULL);
+}
 
 SC_EXTERN_C_END;
+
+
+// the following ones work with vectors defined as block-structured PetSc vectors only (no vector field given component by component)
+void my_p4est_vtk_write_all_general_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                          const int& write_rank, const int& write_tree, const char *filename,
+                                          const std::vector<Vec_for_vtk_export_t> *node_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *node_vector_fields_by_block,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_scalar_fields,
+                                          const std::vector<Vec_for_vtk_export_t> *cell_vector_fields_by_block);
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<Vec_for_vtk_export_t> &node_scalar_fields)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &node_scalar_fields, NULL, NULL, NULL);
+  return;
+}
+
+inline void my_p4est_vtk_write_all_lists(const p4est_t * p4est, const p4est_nodes_t *nodes, const p4est_ghost_t *ghost,
+                                         const int& write_rank, const int& write_tree, const char *filename,
+                                         const std::vector<Vec_for_vtk_export_t> &node_scalar_fields,
+                                         const std::vector<Vec_for_vtk_export_t> &cell_scalar_fields)
+{
+  my_p4est_vtk_write_all_general_lists(p4est, nodes, ghost, write_rank, write_tree, filename,
+                                       &node_scalar_fields, NULL, &cell_scalar_fields, NULL);
+  return;
+}
 
 #endif /* !MY_P4EST_VTK_H */

@@ -77,6 +77,19 @@ PetscLogEvent log_my_p4est_poisson_cells_rhsvec_setup;
 PetscLogEvent log_my_p4est_poisson_cells_solve;
 PetscLogEvent log_my_p4est_poisson_cells_KSPSolve;
 
+// my_p4est_poisson_jump_cells_t
+PetscLogEvent log_my_p4est_poisson_jump_cells_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_jump_cells_setup_linear_system;
+PetscLogEvent log_my_p4est_poisson_jump_cells_KSPSolve;
+
+// my_p4est_poisson_jump_cells_xgfm_t
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution;
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values;
+PetscLogEvent log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual;
+
+// my_p4est_poisson_jump_cells_fv_t
+PetscLogEvent log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution;
+
 // my_p4est_poisson_faces_t
 PetscLogEvent log_my_p4est_poisson_faces_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_faces_setup_linear_system;
@@ -87,6 +100,14 @@ PetscLogEvent log_my_p4est_poisson_faces_KSPSolve;
 PetscLogEvent log_my_p4est_navier_stokes_viscosity;
 PetscLogEvent log_my_p4est_navier_stokes_projection;
 PetscLogEvent log_my_p4est_navier_stokes_update;
+
+// my_p4est_two_phase_flows_t
+PetscLogEvent log_my_p4est_two_phase_flows_update;
+PetscLogEvent log_my_p4est_two_phase_flows_solve_pressure_guess;
+PetscLogEvent log_my_p4est_two_phase_flows_solve_projection;
+PetscLogEvent log_my_p4est_two_phase_flows_solve_viscosity;
+PetscLogEvent log_my_p4est_two_phase_flows_compute_backtracing;
+PetscLogEvent log_my_p4est_two_phase_flows_interpolate_velocity_at_nodes;
 
 // my_p4est_interpolation_t
 PetscLogEvent log_my_p4est_interpolation_interpolate;
@@ -262,6 +283,23 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::solve                           ", 0, &log_my_p4est_poisson_cells_solve); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_cells::KSPSolve                        ", 0, &log_my_p4est_poisson_cells_KSPSolve); CHKERRXX(ierr);
 
+  // my_p4est_poisson_jump_cells_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_t::matrix_preallocation     ", 0, &log_my_p4est_poisson_jump_cells_matrix_preallocation); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_t::setup_linear_system      ", 0, &log_my_p4est_poisson_jump_cells_setup_linear_system); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_t::solve_linear_system      ", 0, &log_my_p4est_poisson_jump_cells_KSPSolve); CHKERRXX(ierr);
+
+  // my_p4est_poisson_jump_cells_xgfm_
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::solve_for_sharp_solution",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_solve_for_sharp_solution); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::update_extension_of_interface_values",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_update_extension_of_interface_values); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_xgfm_::update_rhs_and_residual",
+                                                                                           0, &log_my_p4est_poisson_jump_cells_xgfm_update_rhs_and_residual); CHKERRXX(ierr);
+
+  // my_p4est_poisson_jump_cells_fv_t
+  ierr = PetscLogEventRegister("my_p4est_poisson_jump_cells_fv_t::solve_for_sharp_solution",
+                                                                                          0,  &log_my_p4est_poisson_jump_cells_fv_solve_for_sharp_solution); CHKERRXX(ierr);
+
   // my_p4est_poisson_faces_t
   ierr = PetscLogEventRegister("my_p4est_poisson_faces::matrix_preallocation            ", 0, &log_my_p4est_poisson_faces_matrix_preallocation); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_faces::setup_linear_system             ", 0, &log_my_p4est_poisson_faces_setup_linear_system); CHKERRXX(ierr);
@@ -272,6 +310,14 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_navier_stokes::viscosity                       ", 0, &log_my_p4est_navier_stokes_viscosity); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_navier_stokes::projection                      ", 0, &log_my_p4est_navier_stokes_projection); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_navier_stokes::update                          ", 0, &log_my_p4est_navier_stokes_update); CHKERRXX(ierr);
+
+  // my_p4est_two_phase_flows_t
+  ierr = PetscLogEventRegister("my_p4est_two_phase_flows_t::update_from_tn_to_tnp1      ", 0, &log_my_p4est_two_phase_flows_update); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_two_phase_flows_t::solve_for_pressure_guess    ", 0, &log_my_p4est_two_phase_flows_solve_pressure_guess); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_two_phase_flows_t::solve_projection            ", 0, &log_my_p4est_two_phase_flows_solve_projection); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_two_phase_flows_t::solve_viscosity             ", 0, &log_my_p4est_two_phase_flows_solve_viscosity); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_two_phase_flows_t::solve_viscosity             ", 0, &log_my_p4est_two_phase_flows_compute_backtracing); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_navier_stokes::update                          ", 0, &log_my_p4est_two_phase_flows_interpolate_velocity_at_nodes); CHKERRXX(ierr);
 
   // my_p4est_interpolation
   ierr = PetscLogEventRegister("my_p4est_interpolation::interpolate                     ", 0, &log_my_p4est_interpolation_interpolate); CHKERRXX(ierr);
@@ -287,7 +333,7 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_CF2            ", 0, &log_my_p4est_semi_lagrangian_update_p4est_CF2); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_1st_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_1st_order); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_2nd_order      ", 0, &log_my_p4est_semi_lagrangian_update_p4est_2nd_order); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_semi_lagrangian_t::update_p4est_multiple_phi   ", 0, &log_my_p4est_semi_lagrangian_update_p4est_multiple_phi); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister(" my_p4est_two_phase_flows_t::compute_velocities_at_nodes", 0, &log_my_p4est_semi_lagrangian_update_p4est_multiple_phi); CHKERRXX(ierr);
   
 
   // my_p4est_trajectory_of_point

@@ -32,25 +32,14 @@ class my_p4est_biofilm_t
 private:
   PetscErrorCode ierr;
 
-#ifdef P4_TO_P8
-  class zero_cf_t : public CF_3
+  class zero_f_t : public CF_1
   {
   public:
-    double operator()(double, double, double) const
+    double operator()(double) const
     {
       return 0;
     }
-  } zero_cf;
-#else
-  class zero_cf_t : public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-#endif
+  } zero_f;
 
   /* grid */
   my_p4est_brick_t            *brick_;
@@ -138,6 +127,9 @@ private:
   bool use_taylor_correction_;
   int integration_order_;
   int extend_iterations_;
+
+  double curvature_smoothing_;
+  double curvature_smoothing_steps_;
 
   interpolation_method interpolation_between_grids_;
 
@@ -244,6 +236,7 @@ public:
   void compute_geometric_properties();
   void compute_velocity_from_concentration();
   void compute_velocity_from_pressure();
+  void compute_filtered_curvature();
 
   void solve_concentration();
   void solve_pressure();
@@ -254,6 +247,8 @@ public:
   void save_VTK(int iter);
 
   void compute_concentration_global();
+
+  inline void set_curvature_smoothing (double value, int steps) { curvature_smoothing_ = value; curvature_smoothing_steps_ = steps; }
 
 };
 

@@ -1,0 +1,579 @@
+/**
+ * Generate datasets for training a feedforward neural network on merging spherical interfaces using samples from a
+ * signed distance function and from a reinitialized level-set function using the PDE equation with 10 iterations.
+ *
+ * The samples collected for signed and reinitialized level-set functions have one-to-one correlation.  That is, the nth
+ * sample (i.e. nth row in both files) correspond to the same standing point adjacent to the interface and its 9-stencil
+ * neighborhood.  This correspondance can be used, eventually, to train denoising-like autoencoders.
+ *
+ * [Update 09/07/2020] A new data set is generated to mirror the merging samples from reinitialized level-set functions.
+ * The mirrored data set contains the sample as if it wasn't near a discontinuity.  That is, if in sample s, the center
+ * node is closer to circle 1, than a corresponding sample with the exact signed distance to circle 1 will be created.
+ * This will serve as a way to reconstruct an encoder-decorder network that should be capable of regenerating samples
+ * with missing (i.e. discontinuous, noisy) information.
+ *
+ * The files generated are named merging_spheres_[X]_[Y].csv, where [X] is one of "sdf" or "rls", for signed distance
+ * function and reinitialized level-set, respectively, and [Y] is the highest level of tree resolution.  The new file
+ * for reconstructing missing distances from discontinuous entries is named continuous_mergin_spheres_rls_[Y].csv.
+ *
+ * Developer: Luis Ángel.
+ * Original Date: August 14, 2020.
+ * Updated: September 7, 2020.
+ */
+
+// System.
+#include <stdexcept>
+#include <iostream>
+
+#ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_hierarchy.h>
+#include <src/my_p8est_nodes_along_interface.h>
+#include <src/my_p8est_level_set.h>
+#else
+#include <src/my_p4est_utils.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_hierarchy.h>
+#include <src/my_p4est_nodes_along_interface.h>
+#include <src/my_p4est_level_set.h>
+#endif
+
+#include <src/casl_geometry.h>
+#include <src/petsc_compatibility.h>
+#include <string>
+#include <algorithm>
+#include <random>
+#include <iterator>
+#include <fstream>
+#include <unordered_map>
+//#include <iomanip>
+#include "local_utils.h"
+#include "two_spheres_levelset_2d.h"
+
+
+int main ( int argc, char* argv[] )
+{
+	///////////////////////////////////////////////////// Metadata /////////////////////////////////////////////////////
+
+	const double MIN_D = -1, MAX_D = 1;						// The canonical space is [-1,1]^{P4EST_DIM} so that there's
+	const double HALF_D = 0.5;								// space for each circle to the left and right of the origin.
+	const int MAX_REFINEMENT_LEVEL = 7;						// Maximum level of refinement for each tree.
+	const double H = 1 / pow( 2, MAX_REFINEMENT_LEVEL );	// Highest spatial resolution in x/y directions.
+	const int STENCIL_SIZE = (int)pow( 3, P4EST_DIM );		// Stencil size.
+
+	const double MIN_RADIUS = 1.5 * H;						// Ensures at least 4 nodes inside smallest circle.
+	const double MAX_RADIUS = HALF_D - 2 * H;				// Prevents falling off the domain.
+	const int NUM_CIRCLES = (int)ceil( (MAX_RADIUS - MIN_RADIUS) / H + 1 );	// Number of circles is proportional to finest resolution.
+
+	const int NUM_THETAS = (int)pow( 2, MAX_REFINEMENT_LEVEL - 5 ) + 1;
+	const double DELTA_THETA = M_PI_2 / NUM_THETAS;			// Angular step.
+	const double MIN_THETA = DELTA_THETA - M_PI_2;			// We vary the rotation of the circles' axis with respect to
+	const double MAX_THETA = 0;								// the world +x-axis so that we cover the whole space.
+
+	const std::string DATA_PATH = "/Volumes/YoungMinEXT/pde/data-merging/";		// Destination folder.
+	const int NUM_COLUMNS = STENCIL_SIZE + 2;	// Number of columns in resulting dataset.
+	std::string COLUMN_NAMES[NUM_COLUMNS];		// Column headers following the x-y truth table of 3-state variables.
+	generateColumnHeaders( COLUMN_NAMES );
+
+	// Random-number generator (https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution).
+	std::mt19937 gen( 5489u ); 					// Standard mersenne_twister_engine with (default) constant seed.
+	std::uniform_real_distribution<double> uniformDistributionH_2( -H / 2, +H / 2 );
+
+	try
+	{
+		// Initializing parallel environment (although in reality we're working on a single process).
+		mpi_environment_t mpi{};
+		mpi.init( argc, argv );
+		PetscErrorCode ierr;
+
+		// To generate datasets we don't admit more than a single process to avoid race conditions when writing data
+		// sets to files.
+		if( mpi.rank() > 1 )
+			throw std::runtime_error( "Only a single process is allowed!" );
+
+		// Collect samples from signed distance function and reinitialized level-set using PDE equation with 10 iterations.
+		std::cout << "Collecting samples from merging-circles level-set function..." << std::endl;
+
+		/////////////////////////////////////////// Generating the datasets ////////////////////////////////////////////
+
+		parStopWatch watch;
+		printf( ">> Began to generate datasets for %i circles with maximum refinement level of %i, finest h = %f, and "
+		  "%d tilts from -pi/8 to +pi/8.\n", NUM_CIRCLES, MAX_REFINEMENT_LEVEL, H, NUM_THETAS );
+		watch.start();
+
+		// Prepare samples files: rls_X.csv for reinitialized level-set, sdf_X.csv for signed-distance function values.
+		std::ofstream sdfFile;
+		std::string sdfFileName = DATA_PATH + "merging_sphere_sdf_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		sdfFile.open( sdfFileName, std::ofstream::trunc );
+		if( !sdfFile.is_open() )
+			throw std::runtime_error( "Output file " + sdfFileName + " couldn't be opened!" );
+
+		std::ofstream rlsFile;
+		std::string rlsFileName = DATA_PATH + "merging_sphere_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) +  ".csv";
+		rlsFile.open( rlsFileName, std::ofstream::trunc );
+		if( !rlsFile.is_open() )
+			throw std::runtime_error( "Output file " + rlsFileName + " couldn't be opened!" );
+
+		std::ofstream contFile;
+		std::string contFileName = DATA_PATH + "continuous_merging_sphere_rls_" + std::to_string( MAX_REFINEMENT_LEVEL ) + ".csv";
+		contFile.open( contFileName, std::ofstream::trunc );
+		if( !contFile.is_open() )
+			throw std::runtime_error( "Output file " + contFileName + " couldn't be opened!" );
+
+		// Write column headers: enforcing strings by adding quotes around them.
+		std::ostringstream headerStream;
+		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
+		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
+		sdfFile << headerStream.str() << std::endl;
+		rlsFile << headerStream.str() << std::endl;
+		contFile << headerStream.str() << std::endl;
+
+		sdfFile.precision( 15 );							// Precision for floating point numbers.
+		rlsFile.precision( 15 );
+		contFile.precision( 15 );
+
+		// Variables to control the spread of circles' radii, which must vary uniformly from H/MAX_RADIUS to H/MIN_RADIUS.
+		double kappaDistance = 1 / MAX_RADIUS - 1 / MIN_RADIUS;		// Circles' radii are in [1.5*H, 0.5-2H], inclusive.
+		double linspace[NUM_CIRCLES];
+		for( int i = 0; i < NUM_CIRCLES; i++ )				// Uniform linear space from 0 to 1, with NUM_CIRCLES steps.
+			linspace[i] = (double)( i ) / (NUM_CIRCLES - 1.0);
+
+		// Variables to control the spread of ratation angles, which must vary uniformly from MIN_THETA to MAX_THETA, in
+		// a finite number of steps.
+		const double THETA_DIST = MAX_THETA - MIN_THETA;	// As defined above, in [-pi/8, +pi/8].
+		double linspaceTheta[NUM_THETAS];
+		for( int i = 0; i < NUM_THETAS; i++ )				// Uniform linear space from 0 to 1, with NUM_TETHAS steps.
+			linspaceTheta[i] = (double)( i ) / (NUM_THETAS - 1.0);
+
+		const double HALF_AXIS_LEN = 0.5;
+
+		// Domain information, applicable to all merging circular interfaces.
+		int n_xyz[] = {2, 2, 2};							// One tree per unit square of the domain.
+		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
+		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
+		int periodic[] = {0, 0, 0};							// Non-periodic domain.
+
+		// Printing header for log.
+		std::cout << "Theta Val, Circle 1, Max Rel Error, Num Samples/Evaluated, Time" << std::endl;
+
+		// Varying the tilt of the merging circle's main axis.
+		int nSamples = 0;
+		for( int nt = 0; nt < NUM_THETAS; nt++ )
+		{
+			const double THETA = MIN_THETA + linspaceTheta[nt] * THETA_DIST;
+
+			// Varying the reference (i.e. left) circle radius.
+			for( int nc1 = 0; nc1 < NUM_CIRCLES; nc1++ )
+			{
+				const double KAPPA1 = 1 / MIN_RADIUS + linspace[nc1] * kappaDistance;
+				const double R1 = 1 / KAPPA1;				// Circle radius to be evaluated.
+				double maxRE = 0;							// Maximum absolute error, relative to H.
+				int totalInclusiveSamples = 0;				// A debugging var to check how many total samples are evaluated.
+
+				std::vector<std::vector<double>> rlsSamples;
+				std::vector<std::vector<double>> sdfSamples;
+				std::vector<std::vector<double>> contSamples;
+
+				const double T[] = {
+					uniformDistributionH_2( gen ),		// Translate center coords by a randomly chosen
+					uniformDistributionH_2( gen )		// perturbation from the grid's midpoint.
+				};
+
+				const double X1 = -(HALF_AXIS_LEN * cos( -THETA) + T[0]);	// Center coordinates for reference
+				const double Y1 = HALF_AXIS_LEN * sin( -THETA ) + T[1];		// circle in world coordinate system.
+
+				// Varying radii of second circle (i.e. to the right), which can get as big as the reference circle.
+				for( int nc2 = 0; nc2 <= nc1; nc2++ )
+				{
+					const double KAPPA2 = 1 / MIN_RADIUS + linspace[nc2] * kappaDistance;
+					const double R2 = 1 / KAPPA2;
+
+					// Now that we have both circle's, it remains to vary their distance from |R1 - R2| + H
+					// to R1 + R2 + 3H, in steps of 3H/2.
+					const double MIN_DIST = ABS( R1 - R2 ) + H;
+					const double MAX_DIST = R1 + R2 + 3 * H;
+					const int NUM_DIST_STEPS = (int)floor( (MAX_DIST - MIN_DIST) / (1.5 * H) ) + 1;
+
+					for( int nd = 0; nd < NUM_DIST_STEPS; nd++ )
+					{
+						const double D = MIN_DIST + (double)(nd) / (NUM_DIST_STEPS - 1) * (MAX_DIST - MIN_DIST);
+
+						// p4est variables and data structures: these change with every new merging-circles configuration.
+						p4est_t *p4est;
+						p4est_nodes_t *nodes;
+						my_p4est_brick_t brick;
+						p4est_ghost_t *ghost;
+						p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
+
+						// Defining the level-set function to be reinitialized.
+						TwoSpheres twoSpheres( X1, Y1, R1, R2, D, THETA );
+						splitting_criteria_cf_t levelSetSC( 1, MAX_REFINEMENT_LEVEL, &twoSpheres );
+
+						// Create the forest using a level-set as refinement criterion.
+						p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
+						p4est->user_pointer = (void *) ( &levelSetSC );
+
+						// Refine and recursively partition forest.
+						my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+						my_p4est_partition( p4est, P4EST_TRUE, nullptr );
+
+						// Create the ghost (cell) and node structures.
+						ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
+						nodes = my_p4est_nodes_new( p4est, ghost );
+
+						// Initialize the neighbor nodes structure.
+						my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
+						my_p4est_node_neighbors_t nodeNeighbors( &hierarchy, nodes );
+						nodeNeighbors.init_neighbors(); // This is not mandatory, but it can only help performance
+														// given how much we'll neeed the node neighbors.
+
+						// A ghosted parallel PETSc vector to store level-set function values.
+						Vec phi;
+						ierr = VecCreateGhostNodes( p4est, nodes, &phi );
+						CHKERRXX( ierr );
+
+						// Calculate the level-set function values for each independent node
+						// (i.e. locally owned and ghost nodes).
+						sample_cf_on_nodes( p4est, nodes, twoSpheres, phi );
+
+						// Vectors for curvature, normals, and exact points on interface (for debugging).
+						Vec curvature, normal[P4EST_DIM], pOnInterface[P4EST_DIM];
+						ierr = VecDuplicate( phi, &curvature );
+						CHKERRXX( ierr );
+
+						double *pOnInterfacePtr[P4EST_DIM];
+
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecCreateGhostNodes( p4est, nodes, &normal[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecCreateGhostNodes( p4est, nodes, &pOnInterface[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecGetArray( pOnInterface[dim], &pOnInterfacePtr[dim] );
+							CHKERRXX( ierr );
+						}
+
+						// A vector to store the signed distance function for all nodes to the compound interface.
+						Vec distPhi;
+						ierr = VecDuplicate( phi, &distPhi );
+						CHKERRXX( ierr );
+
+						double *distPhiPtr;
+						ierr = VecGetArray( distPhi, &distPhiPtr );
+						CHKERRXX( ierr );
+
+						// Vectors to store the exact distance to both interfaces: left and right circels.  Used for
+						// reconstruction samples assuming the interface is continuous.
+						Vec distPhi1, distPhi2;
+						ierr = VecDuplicate( phi, &distPhi1 );
+						CHKERRXX( ierr );
+						ierr = VecDuplicate( phi, &distPhi2 );
+						CHKERRXX( ierr );
+
+						const Point2 C2 = twoSpheres.getC2();
+						geom::Sphere sphere1( X1, Y1, R1 );			// Creating independent signed distance level-sets.
+						geom::Sphere sphere2( C2.x, C2.y, R2 );
+
+						sample_cf_on_nodes( p4est, nodes, sphere1, distPhi1 );		// Sampling: collecting the exact
+						sample_cf_on_nodes( p4est, nodes, sphere2, distPhi2 );		// signed distance to each circle.
+
+						const double *distPhi1ReadPtr, *distPhi2ReadPtr;			// Getting read references to
+						ierr = VecGetArrayRead( distPhi1, &distPhi1ReadPtr );		// access their data below.
+						CHKERRXX( ierr );
+						ierr = VecGetArrayRead( distPhi2, &distPhi2ReadPtr );
+						CHKERRXX( ierr );
+
+						// A vector to store which circle produces the closest distance to each node.
+						// This is later used to find troubling nodes.
+						Vec who;
+						ierr = VecDuplicate( phi, &who );
+						CHKERRXX( ierr );
+
+						double *whoPtr;
+						ierr = VecGetArray( who, &whoPtr );
+						CHKERRXX( ierr );
+
+						// A vector to store the target dimensionless curvature at nodes along the interface.
+						Vec hKappa;
+						ierr = VecDuplicate( phi, &hKappa );
+						CHKERRXX( ierr );
+
+						double *hKappaPtr;
+						ierr = VecGetArray( hKappa, &hKappaPtr );
+						CHKERRXX( ierr );
+
+						// Calculating the signed-distance and dimensionless curvature.
+						for( p4est_locidx_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
+						{
+							double xyz[P4EST_DIM];
+							node_xyz_fr_n( i, p4est, nodes, xyz );
+							distPhiPtr[i] = twoSpheres.getSignedDistance( xyz[0], xyz[1], H, hKappaPtr[i],
+																		  whoPtr[i],
+																		  pOnInterfacePtr[0][i], pOnInterfacePtr[1][i] );
+						}
+
+						// Reinitialize level-set function.
+						my_p4est_level_set_t ls( &nodeNeighbors );
+						ls.reinitialize_2nd_order( phi, 10 );
+
+						// Compute numerical curvature with reinitialized data, which will be interpolated at the
+						// interface for comparison purposes.
+						compute_normals( nodeNeighbors, phi, normal );
+						compute_mean_curvature( nodeNeighbors, phi, normal, curvature );
+
+						const double *normalReadPtr[P4EST_DIM];
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecGetArrayRead( normal[dim], &normalReadPtr[dim] );
+							CHKERRXX( ierr );
+						}
+
+						// Prepare interpolation.
+						my_p4est_interpolation_nodes_t interpolation( &nodeNeighbors );
+						interpolation.set_input( curvature, linear );
+
+						// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface; these are
+						// the points we'll use to create our sample files.
+						NodesAlongInterface nodesAlongInterface( p4est, nodes, &nodeNeighbors, MAX_REFINEMENT_LEVEL );
+
+						// Getting the full uniform stencils of interface points.
+						std::vector<p4est_locidx_t> indices;
+						nodesAlongInterface.getIndices( &phi, indices );
+
+						const double *phiReadPtr;
+						ierr = VecGetArrayRead( phi, &phiReadPtr );
+						CHKERRXX( ierr );
+
+						// Now, collect samples with reinitialized level-set function values and target h*kappa.
+						for( auto n : indices )
+						{
+							double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
+							node_xyz_fr_n( n, p4est, nodes, xyz );
+
+							std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
+							try
+							{
+								if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
+								{
+									std::vector<double> sdfData;	// Signed-distance function values.
+									std::vector<double> rlsData;	// Reinitialized level-set function values.
+									std::vector<double> contData;	// Reconstructing continuous data function values.
+									totalInclusiveSamples++;
+
+									// A troubling node is one that lies in a discontinuity region or owns at least one
+									// of its 9-point stencil neighbors lying on a discontinuity or with a phi value
+									// that is due to a circle different to n's.
+									auto reference = static_cast<short>( whoPtr[n] );
+									short fromSameCircle = 0;	// Counting how many nodes in the stencil are closer to the same center node circle.
+									bool troublingFlag = reference == 0;
+									double sampleError = 0;
+									for( auto s : stencil )
+									{
+										sdfData.push_back( -distPhiPtr[s] );
+										rlsData.push_back( -phiReadPtr[s] );
+
+										switch( reference )
+										{
+											case -1: contData.push_back( -distPhi1ReadPtr[s] ); break;	// Due to C1.
+											case +1: contData.push_back( -distPhi2ReadPtr[s] ); break;	// Due to C2.
+											default: contData.push_back( 0 );		// Discontinuous center point!
+										}
+
+										// Error for standing stencil.
+										double error = ABS( sdfData.back() - rlsData.back() ) / H;
+										sampleError = MAX( sampleError, error );
+
+										// Checking for trouble.
+										if( static_cast<short>( whoPtr[s] ) != reference )
+											troublingFlag = true;
+										else
+											fromSameCircle++;
+
+										// Debugging.
+/*										if( xyz[0] >= -0.04 && xyz[0] <= 0.04 && xyz[1] >= -0.03 && xyz[1] <= 0.05 )
+										{
+											double xyz2[P4EST_DIM];
+											node_xyz_fr_n( s, p4est, nodes, xyz2 );
+											std::cout << std::setprecision( 15 )		// The point and approximated normal projection onto Gamma.
+													  << "plot(" << xyz2[0] << ", " << xyz2[1] << ", 'b.', "
+													  << xyz2[0] - phiReadPtr[s] * normalReadPtr[0][s] << ", "
+													  << xyz2[1] - phiReadPtr[s] * normalReadPtr[1][s]
+													  << ", 'mo');" << std::endl;
+											std::cout << std::setprecision( 15 )		// The expected projection onto Gamma.
+													  << whoPtr[s] << "; "
+													  << "plot(" << pOnInterfacePtr[0][s] << ", " << pOnInterfacePtr[1][s]
+													  << ", 'ko');" << std::endl;
+										}*/
+									}
+
+									if( !troublingFlag )		// Skip samples that are not troubling.
+										continue;
+
+									// Sanity check.
+									if( reference )
+										assert( ABS( sdfData[4] - contData[4] ) < EPS );
+
+									maxRE = MAX( sampleError, maxRE );
+
+									// Appending target dimensionless curvature.
+									sdfData.push_back( -hKappaPtr[n] );
+									rlsData.push_back( -hKappaPtr[n] );
+									contData.push_back( -hKappaPtr[n] );	// Adding a target, though it isn't really needed.
+
+									// Computing the gradient.
+									double grad[P4EST_DIM];					// Getting its gradient (i.e. normal).
+									const quad_neighbor_nodes_of_node_t *qnnnPtr;
+									nodeNeighbors.get_neighbors( n, qnnnPtr );
+									qnnnPtr->gradient( phiReadPtr, grad );
+									double gradNorm = sqrt( SQR( grad[0] ) + SQR( grad[1] ) );
+
+									// Normalize gradient and translate center node to interface for interpolation.
+									for( int i = 0; i < P4EST_DIM; i++ )				// Translation: this is the location where
+										xyz[i] -= grad[i] / gradNorm * phiReadPtr[n];	// we need to interpolate numerical curvature.
+
+									double iHKappa = H * interpolation( xyz[0], xyz[1] );
+									sdfData.push_back( 0 );
+									rlsData.push_back( -iHKappa );			// Append interpolated h*kappa.
+									contData.push_back( fromSameCircle );	// For the continuous reconstruction data,
+																			// last column indicates how many stencil
+																			// nodes are closer to the same circle as
+																			// the center node.
+
+									// Add troubling samples to global samples vectors using data augmentation.
+									for( int i = 0; i < 4; i++ )	// Data augmentation by rotating samples 90 degrees
+									{								// three times.
+										rlsSamples.push_back( rlsData );
+										sdfSamples.push_back( sdfData );
+										contSamples.push_back( contData );
+
+										rotatePhiValues90( rlsData, NUM_COLUMNS );
+										rotatePhiValues90( sdfData, NUM_COLUMNS );
+										rotatePhiValues90( contData, NUM_COLUMNS );
+									}
+								}
+							}
+							catch( std::exception &e )
+							{
+								std::cerr << "Node " << n << " (" << xyz[0] << ", " << xyz[1] << "): " << e.what() << std::endl;
+							}
+						}
+
+						// Cleaning up.
+						ierr = VecRestoreArray( who, &whoPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArray( hKappa, &hKappaPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArray( distPhi, &distPhiPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArrayRead( phi, &phiReadPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArrayRead( distPhi1, &distPhi1ReadPtr );
+						CHKERRXX( ierr );
+
+						ierr = VecRestoreArrayRead( distPhi2, &distPhi2ReadPtr );
+						CHKERRXX( ierr );
+
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecRestoreArray( pOnInterface[dim], &pOnInterfacePtr[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecRestoreArrayRead( normal[dim], &normalReadPtr[dim] );
+							CHKERRXX( ierr );
+						}
+
+						// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
+						ierr = VecDestroy( who );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( hKappa );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( distPhi );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( phi );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( distPhi1 );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( distPhi2 );
+						CHKERRXX( ierr );
+
+						ierr = VecDestroy( curvature );
+						CHKERRXX( ierr );
+
+						for( int dim = 0; dim < P4EST_DIM; dim++ )
+						{
+							ierr = VecDestroy( normal[dim] );
+							CHKERRXX( ierr );
+
+							ierr = VecDestroy( pOnInterface[dim] );
+							CHKERRXX( ierr );
+						}
+
+						// Destroy the p4est and its connectivity structure.
+						p4est_nodes_destroy( nodes );
+						p4est_ghost_destroy( ghost );
+						p4est_destroy( p4est );
+						p4est_connectivity_destroy( connectivity );
+					}
+				}
+
+				// Write all samples collected for all circles with the same radius but randomized center content to files.
+				for( const auto& row : sdfSamples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( sdfFile, "," ) );
+					sdfFile << row.back() << std::endl;
+				}
+
+				for( const auto& row : rlsSamples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( rlsFile, "," ) );
+					rlsFile << row.back() << std::endl;
+				}
+
+				for( const auto& row : contSamples )
+				{
+					std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( contFile, "," ) );
+					contFile << row.back() << std::endl;
+				}
+
+				nSamples += rlsSamples.size();
+
+				// Log output.
+				std::cout << nt + 1 << ", " << nc1 + 1 << ", " << maxRE << ", " << rlsSamples.size() << "/"
+						  << totalInclusiveSamples * 4 << ", "					// The 4 is for the number of rotations per collected sample.
+				 		  << watch.get_duration_current() << ";" << std::endl;
+			}
+		}
+
+		sdfFile.close();
+		rlsFile.close();
+		contFile.close();
+
+		printf( "<< Finished generating %d samples in %f secs.\n", nSamples, watch.get_duration_current() );
+		watch.stop();
+	}
+	catch( const std::exception &e )
+	{
+		std::cerr << e.what() << std::endl;
+	}
+
+	return 0;
+}
