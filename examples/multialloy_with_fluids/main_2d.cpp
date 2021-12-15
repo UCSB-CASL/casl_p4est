@@ -140,8 +140,8 @@ DEFINE_PARAMETER(pl, double, mem_safety_limit, 60.e9, "Memory upper limit before
 // Options for checking timing:
 DEFINE_PARAMETER(pl, int, timing_every_n, -1, "Print timing info every n iterations (default -1 aka no use, to use this feature, set to a positive integer value)");
 
-// Options for debugging: -- TO-DO: can remove all these now?
-DEFINE_PARAMETER(pl, bool, print_checkpoints, true, "Print checkpoints throughout script for debugging? ");
+
+DEFINE_PARAMETER(pl, bool, print_checkpoints, false, "Print checkpoints throughout script for debugging? ");
 
 // ---------------------------------------
 // Solution options:
@@ -150,9 +150,10 @@ DEFINE_PARAMETER(pl, bool, print_checkpoints, true, "Print checkpoints throughou
 DEFINE_PARAMETER(pl, bool, solve_stefan, false, "Solve stefan ?");
 DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
-DEFINE_PARAMETER(pl, bool, do_advection, true, "Boolean flag whether or not to do advection (default : 1)");
 
 DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
+DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
 
@@ -219,7 +220,6 @@ void select_solvers(){
     case FRANK_SPHERE:
       solve_stefan = true;
       solve_navier_stokes = false;
-      do_advection = false;
       break;
 
     case MELTING_ICE_SPHERE:
@@ -228,12 +228,10 @@ void select_solvers(){
       if(!no_flow){
         solve_stefan = true;
         solve_navier_stokes = true;
-        do_advection=true;
       }
       else{
         solve_stefan=true;
         solve_navier_stokes=false;
-        do_advection=false;
       }
       break;
     case NS_GIBOU_EXAMPLE:
@@ -252,7 +250,7 @@ void select_solvers(){
       solve_stefan = true;
       solve_navier_stokes = true;
       break;
-    case DENDRITE_TEST: // will need to select solvers manually // TO-DO: just use the "no-flow" option for this!
+    case DENDRITE_TEST: // will need to select solvers manually
       break;
     case MELTING_POROUS_MEDIA:
       solve_stefan=true;
@@ -411,7 +409,6 @@ double x0_lsf;
 double y0_lsf;
 
 unsigned int num_fields_interp = 0;
-double d0; // for dendrite w convection case
 
 
 // Define a few parameters for the porous media case to create random grains:
@@ -617,15 +614,15 @@ void set_geometry(){
       // TO-DO: clean this out
       // (WIP) : was added to further verify coupled solver by demonstrating dendritic solidification of a pure substance, but never fully fledged this out.
       // Domain size:
-      xmin = 0.; xmax = 10.;
-      ymin = 0.; ymax = 10.;
+      xmin = 0.; xmax = 400.;
+      ymin = 0.; ymax = 400.;
 
       // Number of trees and periodicity:
-      nx = 2; ny = 2;
+      nx = 1; ny = 1;
       px = 1; py = 0;
 
       // level set size (initial seed size)
-      r0 = 0.5; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
+      r0 = 30.; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
 
 
       // capillary length scale and etc is set in set_physical_properties() 5/3/21
@@ -758,17 +755,17 @@ double v_interface_max_norm; // For keeping track of the interfacial velocity ma
 // ---------------------------------------
 // Non dimensional groups:
 // ---------------------------------------
-DEFINE_PARAMETER(pl, double, Re, 0., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
-DEFINE_PARAMETER(pl, double, Pr, 0., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
-DEFINE_PARAMETER(pl, double, Sc, 0., "Schmidt number - computed from mu_l, D, rho_l \n");
+DEFINE_PARAMETER(pl, double, Re, -1., "Reynolds number (rho Uinf d)/mu, where d is the characteristic length scale - default is 0. \n");
+DEFINE_PARAMETER(pl, double, Pr, -1., "Prandtl number - computed from mu_l, alpha_l, rho_l \n");
+DEFINE_PARAMETER(pl, double, Sc, -1., "Schmidt number - computed from mu_l, D, rho_l \n");
 
-DEFINE_PARAMETER(pl, double, Pe, 0., "Peclet number - computed from Re and Pr \n");
-DEFINE_PARAMETER(pl, double, St, 0., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
+DEFINE_PARAMETER(pl, double, Pe, -1., "Peclet number - computed from Re and Pr \n");
+DEFINE_PARAMETER(pl, double, St, -1., "Stefan number (cp_s deltaT/L)- computed from cp_s, deltaT, L \n");
 
-DEFINE_PARAMETER(pl, double, Da, 0., "Damkohler number (k_diss*l_char/D_diss) \n");
+DEFINE_PARAMETER(pl, double, Da, -1., "Damkohler number (k_diss*l_char/D_diss) \n");
 
-DEFINE_PARAMETER(pl, double, RaT, 0., "Rayleigh number by temperature (default:0) \n");
-DEFINE_PARAMETER(pl, double, RaC, 0., "Rayleigh number by concentration (default:0) \n");
+DEFINE_PARAMETER(pl, double, RaT, -1., "Rayleigh number by temperature (default:0) \n");
+DEFINE_PARAMETER(pl, double, RaC, -1., "Rayleigh number by concentration (default:0) \n");
 
 
 DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficient (default: 0.005), applicable in dendrite test cases \n");
@@ -779,7 +776,7 @@ DEFINE_PARAMETER(pl,double,Gibbs_eps4,0.005,"Gibbs Thomson anisotropy coefficien
 DEFINE_PARAMETER(pl, double, l_char, 0., "Characteristic length scale for the problem (in meters). i.e. For okada flow past cylinder, this should be set to the cylinder diameter \n. ");
 
 
-DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic low temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
+DEFINE_PARAMETER(pl, double, T0, 0., "Characteristic solid temperature of the problem. Usually corresponds to the solid phase. i.e.) For ice growth over cooled cylinder example, this refers to temperature of cooled cylinder in K. For the melting ice sphere example, this refers to the initial temperature of the ice in K (default: 0). This must be specified by the user. ");
 
 DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or concentration) in K (or INSERT HERE), i.e. the melt temperature. (default: 0.5 This needs to be set by the user to run a meaningful example).");
 
@@ -822,6 +819,11 @@ DEFINE_PARAMETER(pl, double, L, 1.0, "Latent heat of fusion [J/kg]. Default: 1. 
                                        "This property is set inside specific examples. ");
 DEFINE_PARAMETER(pl, double, mu_l, 1.0, "Dynamic viscosity of fluid [Pa s]. Default: 1."
                                        "This property is set inside specific examples.");
+
+DEFINE_PARAMETER(pl, double, grav, 9.81, "Gravity (m/s^2). Default: 9.81.");
+DEFINE_PARAMETER(pl, double, beta_T, 1.0, "Thermal expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
+DEFINE_PARAMETER(pl, double, beta_C, 1.0, "Concentration expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
+
 // For dissolution problem:
 DEFINE_PARAMETER(pl, double, gamma_diss, 3.69e-4, "The parameter dictates some dissolution behavior, default value is 0.00288 (corresponds to pure gypsum)");
 
@@ -936,75 +938,18 @@ void set_physical_properties(){
       break;
     }
     case PLANE_POIS_FLOW:{
-      rho_l = 1.0;
-      mu_l = 1.0;
-      Re = 1.0;
+      break;
     }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:{
-      alpha_s = 1.0;
-      alpha_l = 1.0;
-      k_s = 1.;
-      k_l = 1.;
-      L = 1.;
-      rho_l = 1.;
-      rho_s = 1.0;
-      mu_l = 1.0;
       break;
     }
     case NS_GIBOU_EXAMPLE:{
-      rho_l = 1.0;
-      mu_l = 1.0;
-      Re = 1.0;
       break;
     }
     case DENDRITE_TEST:{
-      cp_s = 1913.; // Specific heat of solid, [J/kgK]
-
-      //alpha_l = 1.12e-7;
-      alpha_s = 1.16e-7;
-
-      alpha_l = alpha_s;
-
-      //k_l = 0.223; // [W /(m K)]
-      k_s = 0.225;
-
-      k_l = k_s;
-      L = 4.7e4; // [J/kg]
-
-      //rho_l = 988.; // [kg/m^3]
-      rho_s = k_s/alpha_s/cp_s; // [kg/m^3]
-
-      rho_l = rho_s;
-      nu = 2.6e-6;
-      mu_l = nu*rho_l; // [Pa s]
-
-      sigma = 1.92e-10;
-
-      printf("rho_l = %0.3e, rho_s = %0.3e, sigma = %0.3e \n",rho_l,rho_s,sigma);
-      // BC info:
-      // Tinterface = 331.23;
-      // Twall = deltaT*(L/cp_s) + Tinterface;
-      // deltaT = Twall-Tinterface;
-
-      // Elyce to-do 12/14/21: commented out below for now, going to overhaul this with Rochi anyways
-//      deltaT = -0.55;
-//      theta_infty=0.;
-//      theta_interface = 1.0;
-
-//      Tinterface = 331.23;
-//      Twall = Tinterface - deltaT;
-
-//      // Set length scales:
-//      // Updated 5/3/21:
-//      double Tmelt = 331.23;
-//      double gamma = 8.9e-3;
-//      d0 = (Tmelt * gamma * cp_s)/(rho_s * SQR(L));
-//      n_times_d0 = 500.0;
-//      d_seed = n_times_d0 * d0; // like Al-Rawahi paper 2002
-//      // physical property paper ""
-
+      // can be specified by the user
       break;
     }
 
@@ -1109,7 +1054,6 @@ void set_NS_info(){
       break;
     }
     case DENDRITE_TEST:{
-      Re = 0.15;//.01507; // 10
       u0 = 0.;
       v0 = -1.;
       hodge_percentage_of_max_u = 1.e-2;
@@ -1180,6 +1124,7 @@ void select_problem_nondim_or_dim_formulation(){
       break;
     }
     case DENDRITE_TEST:{
+      problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
       break;
     }
     case MELTING_ICE_SPHERE:{
@@ -1195,6 +1140,14 @@ void select_problem_nondim_or_dim_formulation(){
     }
     case DISSOLVING_DISK_BENCHMARK:{
       problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY; // elyce to-do : will want to run this benchmark using the other formulation as well
+      break;
+    }
+    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+      break;
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
       break;
     }
       // Elyce to-do: add a case for Rochi's example
@@ -1302,6 +1255,9 @@ void set_temp_conc_nondim_defns(){
   case COUPLED_PROBLEM_EXAMPLE:{
     break;
   }
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+      break;
+  }
   case ICE_AROUND_CYLINDER:{
     deltaT = fabs(Tinfty - T0);
 
@@ -1315,7 +1271,7 @@ void set_temp_conc_nondim_defns(){
     break;
   }
   case DENDRITE_TEST:{
-    deltaT = fabs(T0 - Tinfty);
+    deltaT = T0 - Tinfty;
 
     theta0 = 1.0;
     theta_infty = 0.0;
@@ -1332,6 +1288,16 @@ void set_temp_conc_nondim_defns(){
     theta_interface = (Tinterface - T0)/deltaT;
     break;
   }
+  case MELTING_ICE_SPHERE_NAT_CONV:{
+      deltaT = fabs(Tinfty - T0);
+
+      theta0 = 0.0;
+      theta_infty = 1.0;
+
+      theta_interface = (Tinterface - T0)/deltaT;
+      break;
+  }
+
   case MELTING_POROUS_MEDIA:{
     deltaT = fabs(Tinfty - T0);
 
@@ -1364,10 +1330,10 @@ void set_nondimensional_groups(){
   set_temp_conc_nondim_defns();
 
   // Compute the stuff that doesn't depend on velocity nondim:
-  Pr = mu_l/(alpha_l * rho_l);
-  Sc = mu_l/(Dl*rho_l);
+  if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
+  if(Sc<0.) Sc = mu_l/(Dl*rho_l);
 
-  St = cp_s * fabs(deltaT)/L;
+  if(St<0.) St = cp_s * fabs(deltaT)/L;
 
   // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
   switch(problem_dimensionalization_type){
@@ -1395,6 +1361,14 @@ void set_nondimensional_groups(){
       vel_nondim_to_dim = u_char;
       time_nondim_to_dim = l_char/u_char;
 
+      if(!is_dissolution_case){
+        // Elyce to-do: this is a work in progress
+        if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
+        // T variable in this code refers to either temp or conc
+      }
+      else{
+        if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
+      }
       break;
     }
     case DIMENSIONAL:{
@@ -1505,21 +1479,9 @@ void simulation_time_info(){
       break;
     }
     case DENDRITE_TEST:{
-      //double tau =5.46e-11;// 3.2e-7;
-      //double tf_tau = 2.e4;
-      //tfinal =(tau*tf_tau)/(time_nondim_to_dim);//(1./10.)*(50.*tau)/(time_nondim_to_dim); // 1.2 microseconds
-
-
-      // Modifications (11-24-20):
-      //double tau = 3.12e-7;
-      //tfinal = (30.*tau)/(time_nondim_to_dim);
-
-      tfinal = (1.e6*SQR(d0)/alpha_s)/time_nondim_to_dim;
+      tfinal = 1000./time_nondim_to_dim;
       tstart=0.;
-      dt_max_allowed = tfinal/(100);
-      save_using_iter = 1;
-      save_every_iter = 1;
-      //save_every_dt = tfinal/100.;
+      dt_max_allowed = 10.; // unrestricted for now
       break;
     }
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
@@ -2212,6 +2174,7 @@ public:
         return -1.*(rval - (R)  - (pow(y - y0,5.) + 5.*(pow(x-x0,4.))*(y-y0) - 10.*SQR(x-x0)*pow(y-y0,3.))/(3.*pow(rval,5.) + 1e-5));
       }
       case DENDRITE_TEST:{
+        // check this later to-do
         double noise = 0.3;
         double xc =xmax/2.0;
         double yc =ymax/2.0;
@@ -2328,10 +2291,6 @@ private:
   my_p4est_interpolation_nodes_t* nx_interp;
   my_p4est_interpolation_nodes_t* ny_interp;
 
-
-
-  std::vector<double> theta0 = {0., PI/2.,-PI,-PI/2.};
-
 public:
 
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
@@ -2365,48 +2324,14 @@ public:
         return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
       }
     case DENDRITE_TEST:{
-      // Elyce to-do: we have to overhaul this, I've just commented everything out 12/14/21
-//        // OLD: TO FIX: first of all, i'm using atan2 incorrectly... so there's that
-//        //double theta = atan2((*nx_interp)(x,y),(*ny_interp)(x,y));
+//      double eps = 0.05;
+//      double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
 
-//        // Trying something:
-//        //double theta = atan2(y-yc,x-xc); // not sure why exactly i was using normals instead of just angle based on location, may need to revisit
-//        double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
-
-
-////        double As = 0.75;
-////        double m = 4.0;
-////        double theta0 = 0.;
-////        double sigma_ = sigma*(1 - As*cos(m*(theta - theta0)));
-
-
-//        double min_theta = 2*PI;
-//        unsigned long min_idx = 10;
-//        for(unsigned long i=0;i<4;i++){
-//          if(fabs(theta - theta0[i])<min_theta){
-//            min_theta = fabs(theta - theta0[i]);
-//            min_idx = i; // grab index corresponding to the closest axis of preferred crystal growth direction
-//          }
-//        }
-
-//        P4EST_ASSERT(min_idx<4);
-//        double sigma_ =
-//            //sigma*(1 + Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
-//            //sigma*(1. - 15.*Gibbs_eps4*cos(4.*(theta - theta0[min_idx])));
-//            sigma*(1. + Gibbs_eps4*cos(4.*theta));
-
-
-//        print_stuff = false;
-////        if(fabs(fabs(theta)-PI/4)<0.1 || fabs(fabs(theta)-PI/2)<0.1){
-////          print_stuff=true;
-////          printf("sigma : %0.4e, sigma new: %0.4e, x = %0.2f ,y = %0.2f ,theta = %0.2f, theta_min = %0.2f, theta_diff = %0.2f, kappa = %0.2f ---> ",sigma,sigma_,x,y,theta*180./PI,theta0[min_idx]*180./PI,(theta - theta0[min_idx])*180./PI,(*kappa_interp)(x,y));}
-
-//        //double sigma_ = sigma;
-//        return Gibbs_Thomson(sigma_, 0. , d_seed, DIM(x,y,z));
-//        return theta_interface;
-//
-      return 0.0;
-      }
+//      return (-l_char)*(1. - 15.*eps*cos(4.*theta))*((*kappa_interp)(x,y));
+      return theta_interface;
+      // expression taken from "Modelling dendritic solidification with
+      // melt convection using the extended finite element method" Zabaras 2006
+    }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
@@ -2552,8 +2477,8 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
       return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
      }
     case DENDRITE_TEST:{
-      // Dirichlet on both x walls, and y upper wall (where bulk flow is incoming)
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+      // Dirichlet on y upper wall (where bulk flow is incoming)
+      return (yupper_wall(DIM(x,y,z)));
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
@@ -2577,7 +2502,8 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
 bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   switch(example_){
     case DENDRITE_TEST:{
-      return (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
+    // Dirichlet on y upper wall (where bulk flow is incoming
+      return ( yupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:{
@@ -2799,7 +2725,23 @@ public:
       case FRANK_SPHERE:{
         throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
       }
-      case DENDRITE_TEST:
+      case DENDRITE_TEST:{
+        if(dirichlet_velocity_walls(DIM(x,y,z))){
+          switch(dir){
+            case dir::x:{
+              return u0;
+            }
+            case dir::y:{
+              return v0;
+            }
+            default:
+              throw std::runtime_error("unrecognized cartesian direction for bc wall value velocity \n");
+            }
+        }
+        else{
+          return 0.0; // homogeneous neumann
+        }
+      }
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:{
         if(dirichlet_velocity_walls(DIM(x,y,z))){
@@ -2964,9 +2906,10 @@ public:
         if(!solve_stefan) return 0.;
         else{
           // 9/23/21 -- currently evalulating effect of diff BC's on result
-          return (*v_interface_interp)(x,y); // no slip condition
-          //return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
+          // return (*v_interface_interp)(x,y); // no slip condition
 
+          return (*v_interface_interp)(x,y)*(1. - (rho_s/rho_l)); // cons of mass condition
+          // 12/15/21 -- changed back to cons of mass condition -- Rochi and Elyce -- if your results don't work check this
         }
       case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         if(!solve_stefan) return 0.;
@@ -3159,7 +3102,9 @@ public:
       case FRANK_SPHERE:
         throw std::invalid_argument("Navier Stokes solution is not "
                                     "compatible with this example, please choose another \n");
-      case DENDRITE_TEST:
+      case DENDRITE_TEST:{
+        return 0.0; // homogeneous dirichlet or neumann
+      }
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:{
         if(!dirichlet_velocity_walls(DIM(x,y,z))){
@@ -3320,7 +3265,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       ngbd->second_derivatives_central(T_s.vec,T_s_dd.vec[0],T_s_dd.vec[1]);
       T_s_dd.get_array();
     }
-    if(!do_advection) {
+    if(!solve_navier_stokes) {
         T_l_dd.create(p4est,nodes);
         ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1]);
         T_l_dd.get_array();
@@ -3328,7 +3273,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
     }
 
   // Prep coefficients if we are doing 2nd order advection:
-  if(do_advection && advection_sl_order==2){
+  if(solve_navier_stokes && advection_sl_order==2){
       advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
       advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
     }
@@ -3340,7 +3285,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
 
   // Get Tl arrays:
   rhs_Tl.get_array();
-  if(do_advection){
+  if(solve_navier_stokes){
       T_l_backtrace.get_array();
       if(advection_sl_order ==2) T_l_backtrace_nm1.get_array();
     }
@@ -3366,7 +3311,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
     }
 
     // Now for Tl depending on case:
-    if(do_advection){
+    if(solve_navier_stokes){
       if(advection_sl_order ==2){
         rhs_Tl.ptr[n] = T_l_backtrace.ptr[n]*((advection_alpha_coeff/dt) - (advection_beta_coeff/dt_nm1)) + T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1);
         }
@@ -3399,7 +3344,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   }
 
   rhs_Tl.restore_array();
-  if(do_advection){
+  if(solve_navier_stokes){
       T_l_backtrace.restore_array();
       if(advection_sl_order==2) T_l_backtrace_nm1.restore_array();
     }
@@ -3411,7 +3356,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_s_dd.restore_array();
       T_s_dd.destroy();
     }
-    if(!do_advection){
+    if(!solve_navier_stokes){
         T_l_dd.restore_array();
         T_l_dd.destroy();
       }
@@ -3592,7 +3537,6 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
 
   interp_nodes.interpolate(all_fields_new);
   interp_nodes.clear();
-
   // Destroy the old fields no longer in use:------------------------
   for(unsigned int k=0;k<num_fields_interp;k++){
     ierr = VecDestroy(all_fields_old[k]);CHKERRXX(ierr); // Destroy objects where the old vectors were
@@ -4296,7 +4240,7 @@ void poisson_step(Vec phi, Vec phi_solid,
     }
 
   // Set diagonal for Tl:
-  if(do_advection){ // Cases with advection use semi lagrangian advection discretization in time
+  if(solve_navier_stokes){ // Cases with advection use semi lagrangian advection discretization in time
       if(advection_sl_order ==2){ // 2nd order semi lagrangian (BDF2 coefficients)
           solver_Tl->set_diag(advection_alpha_coeff/dt);
         }
@@ -6327,18 +6271,15 @@ int main(int argc, char** argv) {
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
     simulation_time_info();
     PetscPrintf(mpi.comm(),"Example number %d \n",example_);
-    if(example_==DENDRITE_TEST){
-          PetscPrintf(mpi.comm(),"Sim time: %0.3e [sec] = %0.3e [nondim]\n",tfinal*time_nondim_to_dim,tfinal);
+
+    PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
+    bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
+    bool using_dim_startup = using_startup && (startup_dim_time>0.);
+    PetscPrintf(mpi.comm(),"Using startup time? %s \n",using_startup? "Yes": "No");
+    if(using_startup){
+      PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n",using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
     }
-    else{
-      PetscPrintf(mpi.comm(),"Sim time: %0.2f [min] = %0.2f [nondim]\n",tfinal*time_nondim_to_dim/60.,tfinal);
-      bool using_startup = (startup_dim_time>0.) || (startup_nondim_time >0.);
-      bool using_dim_startup = using_startup && (startup_dim_time>0.);
-      PetscPrintf(mpi.comm(),"Using startup time? %s \n",using_startup? "Yes": "No");
-      if(using_startup){
-        PetscPrintf(mpi.comm(),"Startup time: %s = %0.2f %s \n",using_dim_startup? "Dimensional" : "Nondimensional", using_dim_startup? startup_dim_time:startup_nondim_time,using_dim_startup? "[seconds]": "[nondim]");
-      }
-    }
+
 
     PetscPrintf(mpi.comm(),"Uniform band is %0.1f \n \n ",uniform_band);
     PetscPrintf(mpi.comm(),"Ramping bcs? %s \n t_ramp = %0.2f [nondim] = %0.2f [seconds]",ramp_bcs?"Yes":"No",t_ramp,t_ramp*time_nondim_to_dim);
@@ -6515,7 +6456,7 @@ int main(int argc, char** argv) {
           sample_cf_on_nodes(p4est,nodes,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
         }
 
-        if(do_advection && advection_sl_order ==2){
+        if(solve_navier_stokes && advection_sl_order ==2){
           T_l_nm1.create(p4est,nodes);
           sample_cf_on_nodes(p4est,nodes,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
         }
@@ -6884,34 +6825,22 @@ int main(int argc, char** argv) {
       // ------------------------------------------------------------
       // Print iteration information:
       // ------------------------------------------------------------
-      if(example_ == DENDRITE_TEST){
-        ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                      "Iteration %d , Time: %0.4e [nondim] "
-                                      "= Time: %0.4e [nondim] "
-                                      "= %0.4e [sec], "
-                                      " Timestep: %0.4e [nondim] = %0.4e [sec],"
-                                      " Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",
-                                      tstep,tn,tn,tn*time_nondim_to_dim,
-                                      dt, dt*(time_nondim_to_dim),
-                                      ((tn-t_original_start)/(tfinal-t_original_start))*100.0);
-      }
-      else{
-        int num_nodes = nodes->num_owned_indeps;
-        MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-        ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                      "Iteration %d , Time: %0.3f [nondim] "
-                                      "= Time: %0.3f [nondim] "
-                                      "= %0.3f [sec] "
-                                      "= %0.2f [min],"
-                                      " Timestep: %0.3e [nondim] = %0.3e [sec],"
-                                      " Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n"
-                                      "Number of nodes : %d \n \n",
-                           tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
-                           dt, dt*(time_nondim_to_dim),
-                           ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
-      }
+
+      int num_nodes = nodes->num_owned_indeps;
+      MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
+      ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
+                                    "Iteration %d , Time: %0.3f [nondim] "
+                                    "= Time: %0.3f [nondim] "
+                                    "= %0.3f [sec] "
+                                    "= %0.2f [min],"
+                                    " Timestep: %0.3e [nondim] = %0.3e [sec],"
+                                    " Percent Done : %0.2f %"
+                                    " \n ------------------------------------------- \n"
+                                    "Number of nodes : %d \n \n",
+                         tstep,tn,tn,tn*time_nondim_to_dim,tn*(time_nondim_to_dim)/60.,
+                         dt, dt*(time_nondim_to_dim),
+                         ((tn-t_original_start)/(tfinal-t_original_start))*100.0,num_nodes);
+
 
       if((timing_every_n>0) && (tstep%timing_every_n == 0)) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
@@ -6974,7 +6903,7 @@ int main(int argc, char** argv) {
           phi_cylinder.create(p4est_np1,nodes_np1);
           phi_cylinder_dd.create(p4est_np1,nodes_np1);
         }
-        if(do_advection){
+        if(solve_navier_stokes){
           T_l_backtrace.create(p4est_np1,nodes_np1);
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
@@ -7038,7 +6967,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Compute advection terms (if applicable):
         // -------------------------------
-        if (do_advection){
+        if (solve_navier_stokes){
             if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
             do_backtrace(T_l_n,T_l_nm1,
                          T_l_backtrace,T_l_backtrace_nm1,
@@ -7046,7 +6975,7 @@ int main(int argc, char** argv) {
                          p4est_np1,nodes_np1,ngbd_np1,
                          p4est,nodes,ngbd);
             // Do backtrace with v_n --> navier-stokes fluid velocity
-        } // end of do_advection if statement
+        } // end of solve_navier_stokes if statement
 
         // -------------------------------
         // Set up the RHS for Poisson step:
@@ -7062,7 +6991,7 @@ int main(int argc, char** argv) {
         // Execute the Poisson step:
         // -------------------------------
         // Slide Temp fields:
-        if(do_advection && advection_sl_order==2){
+        if(solve_navier_stokes && advection_sl_order==2){
           T_l_nm1.destroy();
           T_l_nm1.create(p4est_np1,nodes_np1);
           ierr = VecCopyGhost(T_l_n.vec,T_l_nm1.vec);CHKERRXX(ierr);
@@ -7102,7 +7031,7 @@ int main(int argc, char** argv) {
           phi_cylinder.destroy();
           phi_cylinder_dd.destroy();
         }
-        if(do_advection){
+        if(solve_navier_stokes){
           T_l_backtrace.destroy();
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.destroy();
@@ -7356,10 +7285,45 @@ int main(int argc, char** argv) {
             ns->set_external_forces(external_forces);
           }
         }
-        // For natural convection only:
-        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
-            ns->boussinesq_approx=true;
-            ns->set_external_forces_using_vector(T_l_n.vec);
+//        // For natural convection only:
+//        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+//            ns->boussinesq_approx=true;
+//            ns->set_external_forces_using_vector(T_l_n.vec);
+//        }
+        if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
+          switch(problem_dimensionalization_type){
+            case NONDIM_BY_FLUID_VELOCITY:{
+              ns->boussinesq_approx=true;
+              ns->set_external_forces_using_vector(T_l_n.vec);
+              break;
+            }
+            case NONDIM_BY_DIFFUSIVITY:{
+              ns->boussinesq_approx=true;
+              if(!is_dissolution_case){
+                ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
+                ns->set_external_forces_using_vector(T_l_n.vec);
+                ierr = VecScaleGhost(T_l_n.vec, -1./(RaT*Pr));
+              }
+              else{
+                // Elyce to-do: 12/15/21 - this is a work in process, havent nailed down nondim def yet
+                ierr = VecScaleGhost(T_l_n.vec, -1.*RaC*Sc);
+                ns->set_external_forces_using_vector(T_l_n.vec);
+                ierr = VecScaleGhost(T_l_n.vec, -1./(RaC*Sc));
+              }
+
+              break;
+            }
+            case DIMENSIONAL:{
+              throw std::invalid_argument("AHHHHH!!! this is not fully developed yet. don't use this setup with natural convection \n");
+
+              break;
+            }
+            default:{
+              throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
+            }
+
+          }
+
         }
 
         // -------------------------------
@@ -7742,7 +7706,8 @@ int main(int argc, char** argv) {
         }
 
         if(example_ == DENDRITE_TEST){
-          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
+          // 12/15/21 -- this may need to be turned on, we will see
+//          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
         }
 
         // --------------------------------------------------------------------------------------------------------------
@@ -7764,7 +7729,7 @@ int main(int argc, char** argv) {
           }
 
         } // end of "if tstep ==0"
-
+        PetscPrintf(mpi.comm(), "num fields interp = %d \n", num_fields_interp);
         interpolate_values_onto_new_grid(&T_l_n.vec,&T_s_n.vec,
                                          v_interface.vec,v_n.vec,
                                          nodes_np1,p4est_np1,ngbd,interp_bw_grids);
