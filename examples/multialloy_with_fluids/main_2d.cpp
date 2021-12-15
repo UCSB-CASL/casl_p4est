@@ -175,7 +175,7 @@ DEFINE_PARAMETER(pl, int, advection_sl_order, 2, "Integer for advection solution
 DEFINE_PARAMETER(pl, bool, force_interfacial_velocity_to_zero, false, "Force the interfacial velocity to zero? ");
 
 // Related to the Navier-Stokes problem:
-DEFINE_PARAMETER(pl, double, Re_overwrite, -100.0, "Overwrite the examples set Reynolds number (works if set to a positive number, default:-100.00");
+//DEFINE_PARAMETER(pl, double, Re_overwrite, -100.0, "Overwrite the examples set Reynolds number (works if set to a positive number, default:-100.00");
 DEFINE_PARAMETER(pl, int, NS_advection_sl_order, 2, "Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
 DEFINE_PARAMETER(pl, double, cfl_NS, 1.0, "CFL number for Navier-Stokes problem (default:1.0)");
 DEFINE_PARAMETER(pl, double, hodge_tolerance, 1.e-3, "Tolerance on hodge for error convergence (default:1.e-3)");
@@ -669,7 +669,7 @@ void set_geometry(){
 }
 
 
-  void make_LSF_for_porous_media(mpi_environment_t &mpi){
+void make_LSF_for_porous_media(mpi_environment_t &mpi){
     // initialize random number generator:
     srand(1);
     // Resize the vectors on all processes appropriately so we all have consistent sizing (for broadcast later)
@@ -829,8 +829,8 @@ DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coeffic
 
 DEFINE_PARAMETER(pl, double, molar_volume_diss, 3.69e-4, "The molar volume of the dissolving solid. Default is for gypsum, ");
 
-DEFINE_PARAMETER(pl, double , D, 1.0e-9, "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
-
+DEFINE_PARAMETER(pl, double , Dl, 1.0e-9, "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
+DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0");
 // Elyce commented out 12/14/21: the below parameter is now obselete
 //DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
 
@@ -1365,7 +1365,7 @@ void set_nondimensional_groups(){
 
   // Compute the stuff that doesn't depend on velocity nondim:
   Pr = mu_l/(alpha_l * rho_l);
-  Sc = mu_l/(D*rho_l);
+  Sc = mu_l/(Dl*rho_l);
 
   St = cp_s * fabs(deltaT)/L;
 
@@ -1378,13 +1378,20 @@ void set_nondimensional_groups(){
       // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
       u_inf = (Re*mu_l)/(rho_l * l_char);
 
+      if(!is_dissolution_case){
+        Pe = rho_l * l_char * u_inf/alpha_l;
+      }
+      else{
+        Pe = rho_l * l_char * u_inf/Dl;
+      }
+
       vel_nondim_to_dim = u_inf;
       time_nondim_to_dim = l_char/u_inf;
 
       break;
     }
     case NONDIM_BY_DIFFUSIVITY:{
-      double u_char = (is_dissolution_case? (D/l_char):(alpha_l/l_char));
+      double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
       vel_nondim_to_dim = u_char;
       time_nondim_to_dim = l_char/u_char;
 
@@ -2193,8 +2200,10 @@ public:
       }
       case COUPLED_PROBLEM_EXAMPLE:{
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
-      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
+      }
+      case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
         return r0 - sqrt(SQR(x - x0_lsf) + SQR(y - y0_lsf));
+      }
       case COUPLED_TEST_2:{
         double x0 = 0.;//1./6.;
         double y0 = -1./4.;
@@ -2217,10 +2226,10 @@ public:
           return 1.0;
         }
       }
-    default: throw std::invalid_argument("You must choose an example type\n");
-    }
-  }
-} level_set;
+      default: throw std::invalid_argument("You must choose an example type\n");
+    } // end of switch case
+  } // end of operator
+} level_set; // end of function
 
 
 // Inner level set function for relevant cases:
@@ -2244,6 +2253,8 @@ public:
       }
   }
 } mini_level_set;
+
+
 // Function for ramping the boundary conditions:
 double ramp_BC(double initial,double goal_value){
   if(tn<t_ramp){
@@ -2331,7 +2342,21 @@ public:
     }
   }
   double Gibbs_Thomson(double sigma_, DIM(double x, double y, double z)) const {
+    switch(problem_dimensionalization_type){
+      // Note slight difference in condition bw diff nondim types -- T0 vs Tinf
+      case NONDIM_BY_FLUID_VELOCITY:{
         return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + T0/deltaT));
+      }
+      case NONDIM_BY_DIFFUSIVITY:{
+        return (theta_interface - (sigma_/l_char)*((*kappa_interp)(x,y))*(theta_interface + Tinfty/deltaT));
+      }
+      case DIMENSIONAL:{
+        return (Tinterface*(1 - sigma_*((*kappa_interp)(x,y))));
+      }
+      default:{
+        throw std::runtime_error("Gibbs_thomson: unrecognized problem dimensionalization type \n");
+      }
+    }
   }
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -2400,8 +2425,7 @@ public:
       return temperature_[dom]->T(DIM(x,y,z));
     }
     case DISSOLVING_DISK_BENCHMARK:{
-//      printf("INTERFACE VAL CALLED \n");
-      //return 0.0; // RHS is zero for the robin condition
+      // RHS is zero for the robin condition
       return 0.0;
     }
     default:
@@ -3056,6 +3080,8 @@ struct INITIAL_VELOCITY : CF_DIM
           }
         }
       }
+      case ICE_AROUND_CYLINDER:
+      case FLOW_PAST_CYLINDER:
       case MELTING_ICE_SPHERE:{
         if(ramp_bcs) return 0.;
         else{
@@ -3610,10 +3636,8 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
         return (k_s*Ts_d -k_l*Tl_d)/(L*rho_s);
       }
       else{
-        return -1.*molar_volume_diss*(D/stoich_coeff_diss)*Tl_d;
-
+        return -1.*molar_volume_diss*(Dl/stoich_coeff_diss)*Tl_d;
       }
-
     }
 //    case NONDIM_DISSOLUTION:{
 //      return -1.*(gamma_diss/Pe)*Tl_d;
@@ -3633,7 +3657,6 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
                                   double extension_band){
 
   if(!force_interfacial_velocity_to_zero){
-
       // Get the first derivatives to compute the jump
       T_l_d.create(p4est,nodes);
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
@@ -3909,6 +3932,15 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi,
 
       }
   }
+  // Print the interface velocity info:
+  PetscPrintf(mpicomm,"\n"
+                       "Computed interfacial velocity: \n"
+                       " - %0.3e [nondim] "
+                       " - %0.3e [m/s] "
+                       " - %0.3e [mm/s] \n",
+              v_interface_max_norm,
+              v_interface_max_norm*vel_nondim_to_dim,
+              v_interface_max_norm*vel_nondim_to_dim*1000.);
 
   // Print the timestep info:
   PetscPrintf(mpicomm,"\n"
@@ -3917,11 +3949,9 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi,
                          " - dt_Stefan: %0.3e "
                          " - dt_NS : %0.3e  "
                          " - dxyz close to interface : %0.3e "
-                         "\n \n",
+                         "\n",
                         dt, dt_Stefan, dt_NS,
                         dxyz_close_to_interface);
-
-
 } // ends function
 
 
@@ -4098,31 +4128,32 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
   if(solve_stefan){
     // Create second derivatives for phi in the case that we are using update_p4est:
-    phi_dd.create(p4est,nodes);
-    ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
+    phi_dd.create(p4est, nodes);
+    ngbd->second_derivatives_central(phi.vec, phi_dd.vec);
 
     // Get inner cylinder LSF if needed
     if(example_uses_inner_LSF){
       phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
-      sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-      }
+      sample_cf_on_nodes(p4est, nodes, mini_level_set, phi_cylinder.vec);
+    }
 
     // Call advection and refinement
     sl.update_p4est(v_interface.vec, dt,
                   phi.vec, phi_dd.vec, example_uses_inner_LSF ? phi_cylinder.vec: NULL,
-                  num_fields ,use_block ,true,
+                  num_fields, use_block, true,
                   uniform_band,uniform_band*(1.5),
-                  fields_ ,NULL,
-                  criteria,compare_opn,diag_opn,custom_lmax,
+                  fields_, NULL,
+                  criteria, compare_opn, diag_opn, custom_lmax,
                   expand_ghost_layer);
 
-  if(print_checkpoints) PetscPrintf(mpi_comm,"Grid update completed \n");
+    if(print_checkpoints) PetscPrintf(mpi_comm,"Grid update completed \n");
 
-  // Destroy 2nd derivatives of LSF now that not needed
-  phi_dd.destroy();
+    // Destroy 2nd derivatives of LSF now that not needed
+    phi_dd.destroy();
 
-  // Destroy cylinder LSF if it was created, now that it is not needed:
-  if(example_uses_inner_LSF){ phi_cylinder.destroy();}
+    // Destroy cylinder LSF if it was created, now that it is not needed:
+    if(example_uses_inner_LSF){ phi_cylinder.destroy();
+    }
   } // case for stefan or coupled
   else {
       // NS only case --> no advection --> do grid update iteration manually:
@@ -4292,33 +4323,48 @@ void poisson_step(Vec phi, Vec phi_solid,
       }
     }
 
-  if(problem_dimensionalization_type == NONDIM_BY_FLUID_VELOCITY){
-    // Elyce to-do 12/14/21: make this whole thing a switch case instead
-    if(!is_dissolution_case){
-      solver_Tl->set_mu(1./Pe);
-      if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
-    }
-    else{
-      solver_Tl->set_mu(1./Pe);
-      if(do_we_solve_for_Ts){
-        solver_Ts->set_mu(1./Pe); // TO FIX -- ELyce to-do 12/14/21: why was this marked to fix?
+  switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      if(!is_dissolution_case){
+        solver_Tl->set_mu(1./Pe);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(alpha_s/alpha_l));
       }
+      else{
+        solver_Tl->set_mu(1./Pe);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu((1./Pe)*(Ds/Dl));
+      }
+      break;
+    }
+    case NONDIM_BY_DIFFUSIVITY:{
+      if(!is_dissolution_case){
+        solver_Tl->set_mu(1.);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu((alpha_s/alpha_l));
+      }
+      else{
+        solver_Tl->set_mu(1.);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu((Ds/Dl));
+      }
+      break;
+    }
+    case DIMENSIONAL:{
+      if(!is_dissolution_case){
+        solver_Tl->set_mu(alpha_l);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu(alpha_s);
+      }
+      else{
+        solver_Tl->set_mu(Dl);
+        if(do_we_solve_for_Ts) solver_Ts->set_mu(Ds);
+      }
+      break;
+    }
+    default:{
+      throw std::runtime_error("main_2d:poisson_step: unrecognized problem dimensionalization type when setting diffusion coefficients for poisson solver \n");
+      break;
     }
   }
-  else if(problem_dimensionalization_type== NONDIM_BY_DIFFUSIVITY){
-    solver_Tl->set_mu(alpha_l/alpha_s);
-    if(do_we_solve_for_Ts) solver_Ts->set_mu(1.);
 
-    // Elyce to-do 12/14/21: add dissolution case
-  }
-  else if(problem_dimensionalization_type == DIMENSIONAL){
-    solver_Tl->set_mu(alpha_l);
-    if(do_we_solve_for_Ts) solver_Ts->set_mu(alpha_s);
-  }
-  else{
-    throw std::invalid_argument("poisson_step: unrecognized problem dimensionalization type \n");
-  }
 
+  // Set RHS:
   solver_Tl->set_rhs(rhs_Tl);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
 
@@ -4355,6 +4401,27 @@ void poisson_step(Vec phi, Vec phi_solid,
 
 }
 
+void set_ns_parameters(my_p4est_navier_stokes_t* &ns){
+  switch(problem_dimensionalization_type){
+    case NONDIM_BY_FLUID_VELOCITY:{
+      ns->set_parameters((1./Re), 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+      break;
+    }
+    case NONDIM_BY_DIFFUSIVITY:{
+      if(!is_dissolution_case){
+        ns->set_parameters(Pr, 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+      }
+      else{
+        ns->set_parameters(Sc, 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+      }
+      break;
+    }
+    case DIMENSIONAL:{
+      ns->set_parameters(mu_l, rho_l, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
+    }
+  }// end switch case
+
+} // end function
 
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
@@ -4390,16 +4457,10 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   cell_solver = NULL;
 
   // Update the parameters: (this is only done to update the cfl potentially)
-  if(problem_dimensionalization_type == DIMENSIONAL){
-    ns->set_parameters(rho_l, mu_l, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
-  }
-  else{
-    ns->set_parameters((1./Re),1.0,NS_advection_sl_order,uniform_band,vorticity_threshold,cfl_NS);
-  }
+  // Use a function to set ns parameters to avoid code duplication
+  set_ns_parameters(ns);
 
-
-
-
+  // Enter the loop on the hodge variable and solve the NS equations
   while((hodge_iteration<hodge_max_it) && (convergence_check_on_dxyz_hodge>hodge_tolerance)){
     ns->copy_dxyz_hodge(dxyz_hodge_old);
     ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
@@ -4540,14 +4601,8 @@ void initialize_ns_solver(my_p4est_navier_stokes_t* &ns,
 
   PetscPrintf(p4est_np1->mpicomm,"CFL_NS: %0.2f, rho : %0.2f, mu : %0.3e \n",cfl_NS,rho_l,mu_l);
 
-  if(problem_dimensionalization_type == DIMENSIONAL){
-    ns->set_parameters(rho_l, mu_l, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
-  }
-  else{
-    ns->set_parameters((1./Re), 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
-  }
-
-
+  // Use a function to set ns parameters to avoid code duplication
+  set_ns_parameters(ns);
 
 }
 
@@ -7186,9 +7241,10 @@ int main(int argc, char** argv) {
         phi_solid.destroy();
 
 
-        // --------------------------------------------------------------------------------------------------------------
-        // Compute the interfacial velocity (Stefan): -- do now so it can be used for NS boundary condition
-        // --------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // Compute the interfacial velocity (Stefan): -- do now so it can be used for
+        // NS boundary condition
+        // -------------------------------------------------------------------------
 
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing interfacial velocity ... \n");
           v_interface.destroy();
@@ -7199,16 +7255,14 @@ int main(int argc, char** argv) {
                                        T_l_d,T_s_d,
                                        jump,v_interface,
                                        phi,
-                                       p4est_np1,nodes_np1,ngbd_np1,extension_band_extend_);
-
-
-
+                                       p4est_np1, nodes_np1, ngbd_np1,
+                                       extension_band_extend_);
       } // end of "if solve stefan"
 
 
-      // --------------------------------------------------------------------------------------------------------------
+      // ---------------------------------------------------------------------------
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
-      // --------------------------------------------------------------------------------------------------------------
+      // ---------------------------------------------------------------------------
       if ((tstep>0) && solve_navier_stokes){
         // -------------------------------
         // Update BC and RHS objects for navier-stokes problem:

@@ -179,11 +179,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), quadratic, P4EST_DIM);
   interp.interpolate(interp_output);
   interp.clear();
-
   const double *xyz_min   = get_xyz_min();
   const double *xyz_max   = get_xyz_max();
   const bool *periodicity = get_periodicity();
-
   /* now find v_star */
   for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
@@ -194,9 +192,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
       xyz_star[dir] -= 0.5*dt*v_tmp[dir][n];
     clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
 
-    interp.add_point(n, xyz_star);
-  }
+  interp.add_point(n, xyz_star);
 
+  }
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     interp_output[dir] = v_tmp[dir].data();
   interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), quadratic, P4EST_DIM);
@@ -539,6 +537,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_2nd_order_with_fields, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  int mpicomm = p4est->mpicomm;
+
   // Compute vx_xx, vx_yy
   Vec *vxx[P4EST_DIM];
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -586,6 +586,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
   Vec fields_np1[num_fields];
 //  std::vector<Vec> fields_np1;
   Vec fields_block_np1;
+
   if(num_fields!=0){
     if(use_block){
         ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);CHKERRXX(ierr);
@@ -607,9 +608,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
     // Advect from np1 to n to enable refinement
     double* phi_np1_p; // Get array for phi
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-
     advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p); // advect phi using pointer
-
     Vec phi_np1_eff;
     double *phi_np1_eff_p = phi_np1_p; // Create pointer for an effective phi, which might include an additional LSF if that is provided
     if (phi_add_refine != NULL)
@@ -667,27 +666,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
         interp_fields.clear();
         }
     }
-
-
-//    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-//    double* fields_p[num_fields];
-//    for(unsigned int n=0;n<num_fields;n++){
-//        ierr = VecGetArray(fields_np1[n],&fields_p[n]);
-//    }
-
-//    std::vector<std::string> point_names = {/*"phi",*/ "field1","field2","field3"};
-//    std::vector<double*> point_data = {/*phi_np1_p,*/fields_p[0],fields_p[1],fields_p[2]};
-//    std::vector<std::string> cell_names={};
-//    std::vector<double*> cell_data={};
-
-//    // Write out to see whats going on:
-//    char filename[1000];
-//    sprintf(filename,"/home/elyce/workspace/projects/multialloy_with_fluids/grid_issues/snapshot_%d",counter);
-//    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
-//    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
-//    for(unsigned int n=0;n<num_fields;n++){
-//        ierr = VecRestoreArray(fields_np1[n],&fields_p[n]);
-//    }
 
     if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
