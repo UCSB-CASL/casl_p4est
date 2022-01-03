@@ -1084,6 +1084,7 @@ void set_temp_conc_nondim_defns(){
     theta_infty = 1.0;
 
     theta_interface = (Tinterface - T0)/deltaT;
+
     break;
   }
   case MELTING_ICE_SPHERE_NAT_CONV:{
@@ -2245,18 +2246,23 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     switch(example_){
-      case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+      case ICE_AROUND_CYLINDER: {
+        return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+      }
+
+      case MELTING_POROUS_MEDIA:{
+        return return_LSF_porous_media(DIM(x, y, z), true);
+      }
       case FRANK_SPHERE:
       case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
-      case MELTING_POROUS_MEDIA:
-        return return_LSF_porous_media(DIM(x, y, z), true);
       case DISSOLVING_DISK_BENCHMARK:
       case COUPLED_TEST_2:
       case COUPLED_PROBLEM_EXAMPLE:
       case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case DENDRITE_TEST:
-      case NS_GIBOU_EXAMPLE: throw std::invalid_argument("This option may not be used for the particular example being called");
+      case NS_GIBOU_EXAMPLE:
+        throw std::invalid_argument("This option may not be used for the particular example being called");
       }
   }
 } mini_level_set;
@@ -2279,16 +2285,12 @@ BoundaryConditionType interface_bc_type_temp;
 void interface_bc_temp(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
   switch(example_){
     case FRANK_SPHERE:
-      interface_bc_type_temp = DIRICHLET;
-      break;
     case DENDRITE_TEST:
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:
-      interface_bc_type_temp = DIRICHLET; 
-      break;
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
     case COUPLED_PROBLEM_EXAMPLE:
@@ -2386,7 +2388,9 @@ public:
         if(ramp_bcs){
           return ramp_BC(theta_infty,interface_val);
         }
-        else return interface_val;
+        else {
+          return interface_val;
+        }
     }
     case COUPLED_TEST_2:
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
@@ -3617,7 +3621,7 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
     // Note: removed curvature from Stefan condition after discussing w frederic and looking at Daniil's thesis 11/24/2020
     case NONDIM_BY_FLUID_VELOCITY:{
       if(!is_dissolution_case){
-        return ( -1.*(St/Pe)*(alpha_s/alpha_l) * ((k_l/k_s)*Tl_d) - Ts_d );
+        return ( -1.*(St/Pe)*(alpha_s/alpha_l) * ((k_l/k_s)*Tl_d - Ts_d) );
       }
       else{
         return -1.*(gamma_diss/Pe)*Tl_d;
@@ -3660,6 +3664,7 @@ void compute_interfacial_velocity(vec_and_ptr_t T_l_n, vec_and_ptr_t T_s_n,
       // Get the first derivatives to compute the jump
       T_l_d.create(p4est,nodes);
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
+
       if(do_we_solve_for_Ts){
         T_s_d.create(T_l_d.vec);
         ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
@@ -4281,13 +4286,14 @@ void poisson_step(Vec phi, Vec phi_solid,
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
   if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
 
+
   // Add the appropriate interfaces and interfacial boundary conditions:
-  solver_Tl->add_boundary(MLS_INTERSECTION,phi,phi_dd[0],phi_dd[1],
-      interface_bc_type_temp,*bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
+  solver_Tl->add_boundary(MLS_INTERSECTION, phi, phi_dd[0], phi_dd[1],
+      interface_bc_type_temp, *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
 
   if(do_we_solve_for_Ts){
-    solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid,phi_solid_dd[0],phi_solid_dd[1],
-                            interface_bc_type_temp,*bc_interface_val_temp[SOLID_DOMAIN],bc_interface_coeff);
+    solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid, phi_solid_dd[0], phi_solid_dd[1],
+                            interface_bc_type_temp, *bc_interface_val_temp[SOLID_DOMAIN], bc_interface_coeff);
   }
 
   if(example_uses_inner_LSF && do_we_solve_for_Ts){
@@ -4313,15 +4319,15 @@ void poisson_step(Vec phi, Vec phi_solid,
         }
     }
 
-    if(do_we_solve_for_Ts){
-      // Set diagonal for Ts:
-      if(method_ == 2){ // Crank Nicholson
-        solver_Ts->set_diag(2./dt);
-      }
-      else{ // Backward Euler
-        solver_Ts->set_diag(1./dt);
-      }
+  if(do_we_solve_for_Ts){
+    // Set diagonal for Ts:
+    if(method_ == 2){ // Crank Nicholson
+      solver_Ts->set_diag(2./dt);
     }
+    else{ // Backward Euler
+      solver_Ts->set_diag(1./dt);
+    }
+  }
 
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
@@ -7835,13 +7841,13 @@ int main(int argc, char** argv) {
 
         if(tstep==0){
           ierr = PetscFOpen(mpi.comm(),name_mem,"w",&fich_mem); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_mem,"tstep mem vtk_bool\n"
-                                                  "%d %g %d \n",tstep,mem_safety_check,are_we_saving);CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(),fich_mem,"tstep mem num_nodes vtk_bool\n"
+                                                  "%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
         }
         else{
           ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
-          ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d \n",tstep,mem_safety_check,are_we_saving);CHKERRXX(ierr);
+          ierr = PetscFPrintf(mpi.comm(),fich_mem,"%d %g %d %d \n",tstep, mem_safety_check, no, are_we_saving);CHKERRXX(ierr);
           ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
 
         }
