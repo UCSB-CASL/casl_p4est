@@ -155,6 +155,7 @@ DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe wh
 DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
 
 
 
@@ -304,6 +305,8 @@ void select_solvers(){
                                         (example_  ==DISSOLVING_DISK_BENCHMARK);
 
     do_we_solve_for_Ts = (example_ != DISSOLVING_DISK_BENCHMARK);
+
+    is_dissolution_case = (example_ == DISSOLVING_DISK_BENCHMARK);
 
     example_has_known_max_vint = ((example_ == COUPLED_PROBLEM_EXAMPLE) || (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP)
                                   || (example_ == COUPLED_TEST_2) || (example_ == FRANK_SPHERE));
@@ -528,22 +531,22 @@ void set_geometry(){
     }
     case DISSOLVING_DISK_BENCHMARK:{
       // Domain size:
-      xmin = 0.0; xmax = 5.0; // should technically be 33.0, but that would yield weird cell aspect ratios
-      ymin = 0.0; ymax = 2.5;
+      xmin = 0.0; xmax = 10.0; // should technically be 33.0, but that would yield weird cell aspect ratios
+      ymin = 0.0; ymax = 5.0;
 
       // It is 1.9 because the char length scale is 20 mm, and the physical length is 38 mm, so
       // it takes 1.9 nondim length units to get the domain size
 
       // Number of trees:
-      nx = 4.0;
-      ny = 2.0;
+      nx = 2.0;
+      ny = 1.0;
 
       // Periodicity:
       px = 0;
       py = 0;
 
       // Problem geometry:
-      r0 = 0.5; // radius of the disk ( in comp domain)
+      r0 = 1.0; // radius of the disk ( in comp domain)
       break;
 
     }
@@ -825,18 +828,18 @@ DEFINE_PARAMETER(pl, double, beta_T, 1.0, "Thermal expansion coefficient for the
 DEFINE_PARAMETER(pl, double, beta_C, 1.0, "Concentration expansion coefficient for the boussinesq approx. default: 1 . This gets set inside specific examples. \n ");
 
 // For dissolution problem:
-DEFINE_PARAMETER(pl, double, gamma_diss, 3.69e-4, "The parameter dictates some dissolution behavior, default value is 0.00288 (corresponds to pure gypsum)");
+DEFINE_PARAMETER(pl, double, gamma_diss, 1.0, "The parameter dictates some dissolution behavior, default value is 1. This gets calculated internally. ");
 
 DEFINE_PARAMETER(pl, double, stoich_coeff_diss, 1.0, "The stoichiometric coefficient of the dissolution reaction. Default is 1.");
 
-DEFINE_PARAMETER(pl, double, molar_volume_diss, 3.69e-4, "The molar volume of the dissolving solid. Default is for gypsum, ");
+DEFINE_PARAMETER(pl, double, molar_volume_diss, 1.0, "The molar volume of the dissolving solid. Default is for gypsum, ");
 
-DEFINE_PARAMETER(pl, double , Dl, 1.0e-9, "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
+DEFINE_PARAMETER(pl, double , Dl, 1., "Liquid phase diffusion coefficient m^2/s, default is : 9e-4 mm2/s = 9e-10 m2/s ");
 DEFINE_PARAMETER(pl, double , Ds, 0., "Solid phase diffusion coefficient m^2/s, default is : 0");
 // Elyce commented out 12/14/21: the below parameter is now obselete
 //DEFINE_PARAMETER(pl, double, l_diss, 2.0e-4, "Dissolution length scale. The physical length (in m) that corresponds to a length of 1 in the computational domain. Default: 20e-3 m (20 mm), since the initial diameter of the disk is 20 mm \n");
 
-DEFINE_PARAMETER(pl, double, k_diss, 8.9125e-4/*4.5e-6*/, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
+DEFINE_PARAMETER(pl, double, k_diss, 1.0, "Dissolution rate constant per unit area of reactive surface (m/s). Default 4.5e-3 mm/s aka 4.5e-6 m/s \n");
 
 
 double n_times_d0; // multiplier on d0 we use to get dseed //(WIP) // TO-DO:clean up dendrite stuff!
@@ -956,6 +959,250 @@ void set_physical_properties(){
     } // end of switch cases
 }
 
+
+enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_DIFFUSIVITY, DIMENSIONAL};
+// NONDIM_BY_FLUID_VELOCITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
+//                             a characteristic fluid velocity, and Reynolds number is used to setup the Navier-Stokes equations
+
+// NONDIM_BY_DIFFUSIVITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
+//                          a characteristic velocity defined by the fluid's thermal or concentration diffisuvity and char. length scale,
+//                          and Prandtl/Schmidt number is used to setup the Navier-Stokes equations
+
+// DIMENSIONAL -- corresponds to solving the dimensional problem
+
+int problem_dimensionalization_type;
+
+void select_problem_nondim_or_dim_formulation(){
+  switch(example_){
+  case FRANK_SPHERE:{
+    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
+    break;
+  }
+  case NS_GIBOU_EXAMPLE:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case COUPLED_TEST_2:{
+    problem_dimensionalization_type = DIMENSIONAL;
+    break;
+  }
+  case COUPLED_PROBLEM_EXAMPLE:{
+    problem_dimensionalization_type = DIMENSIONAL;
+    break;
+  }
+  case ICE_AROUND_CYLINDER:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case FLOW_PAST_CYLINDER:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case DENDRITE_TEST:{
+    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
+    break;
+  }
+  case MELTING_ICE_SPHERE:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case MELTING_POROUS_MEDIA:{
+    break;
+  }
+  case PLANE_POIS_FLOW:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case DISSOLVING_DISK_BENCHMARK:{
+    problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY; // elyce to-do : will want to run this benchmark using the other formulation as well
+    break;
+  }
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+  case MELTING_ICE_SPHERE_NAT_CONV:{
+    problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
+    break;
+  }
+    // Elyce to-do: add a case for Rochi's example
+  default:{
+    throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
+  }
+  } // end of switch case
+  if(nondim_type_used>=0){
+    problem_dimensionalization_type = nondim_type_used;
+  }
+};
+
+// For defining appropriate nondimensional groups:
+double time_nondim_to_dim;
+double vel_nondim_to_dim;
+
+void set_temp_conc_nondim_defns(){
+  switch(example_){
+  case FRANK_SPHERE:{
+    break;
+  }
+  case NS_GIBOU_EXAMPLE:{
+    break;
+  }
+  case COUPLED_TEST_2:{
+    break;
+  }
+  case COUPLED_PROBLEM_EXAMPLE:{
+    break;
+  }
+  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
+    break;
+  }
+  case ICE_AROUND_CYLINDER:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case FLOW_PAST_CYLINDER:{
+    break;
+  }
+  case DENDRITE_TEST:{
+    deltaT = T0 - Tinfty;
+
+    theta0 = 1.0;
+    theta_infty = 0.0;
+
+    theta_interface = (Tinterface - Tinfty)/deltaT;
+    break;
+  }
+  case MELTING_ICE_SPHERE:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case MELTING_ICE_SPHERE_NAT_CONV:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+
+  case MELTING_POROUS_MEDIA:{
+    deltaT = fabs(Tinfty - T0);
+
+    theta0 = 0.0;
+    theta_infty = 1.0;
+
+    theta_interface = (Tinterface - T0)/deltaT;
+    break;
+  }
+  case PLANE_POIS_FLOW:{
+    break;
+  }
+  case DISSOLVING_DISK_BENCHMARK:{
+    deltaT = 0.; // setting deltaT to zero will default to the C/Cinf formulation of nondim conc.
+    // there is an if statement in the robin B.C. that will set it accordingly, if you use deltaT nonzero it will automatically change the B.C. to be compatible w that formulation
+    // same goes for gamma_diss --> we will define it accordingly in set_nondim_groups
+
+    // Using the nondim setup theta = C/Cinf
+    theta_infty=1.0; // wall undersaturation
+    theta0 = 0.0; // used for IC -- initial concentration of ions in solid is zero -- verified by Molins benchmark paper
+
+    // no need to set theta_interface --> we have a robin BC there
+    break;
+  }
+  // Elyce to-do: add a case for Rochi's example
+  default:{
+    throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
+  }
+  }
+}
+DEFINE_PARAMETER(pl, double, u_inf, 0., "Freestream velocity value (in m/s). Default is 0. This is usually overwritten bc it is computed by a provided Reynolds number. However, in dissolving disk benchmark example with diffusivity nondimensionalization, this can be used to pass in the freestream fluid boundary condition at the wall. \n"); // physical value of freestream velocity
+void set_nondimensional_groups(){
+  // Setup the temperature stuff properly first:
+  set_temp_conc_nondim_defns();
+
+  // Compute the stuff that doesn't depend on velocity nondim:
+  if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
+
+  if(Sc<0.) Sc = mu_l/(Dl*rho_l);
+
+  if(St<0.) St = cp_s * fabs(deltaT)/L;
+
+
+  if(is_dissolution_case){
+    // if deltaT is set to zero, we are using the C/Cinf nondim and set gamma_diss = Vm * Cinf/stoic_coeff. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set gamma_diss = Vm * deltaC/stoic_coeff
+    // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+    if(fabs(deltaT/Tinfty) < EPS){
+      gamma_diss = molar_volume_diss*Tinfty/stoich_coeff_diss;
+    }
+    else{
+      gamma_diss = molar_volume_diss*deltaT/stoich_coeff_diss;
+    }
+    if(Da<0.) Da = k_diss*l_char/Dl;
+  }
+
+  // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
+  switch(problem_dimensionalization_type){
+  case NONDIM_BY_FLUID_VELOCITY:{
+    // In this case, we assume a prescribed:
+    // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
+    // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
+    // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
+    u_inf = (Re*mu_l)/(rho_l * l_char);
+
+    if(!is_dissolution_case){
+      Pe = l_char * u_inf/alpha_l;
+    }
+    else{
+      Pe = l_char * u_inf/Dl;
+    }
+
+    vel_nondim_to_dim = u_inf;
+    time_nondim_to_dim = l_char/u_inf;
+
+    break;
+  }
+  case NONDIM_BY_DIFFUSIVITY:{
+    double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
+    vel_nondim_to_dim = u_char;
+    time_nondim_to_dim = l_char/u_char;
+
+    if(!is_dissolution_case){
+      // Elyce to-do: this is a work in progress
+      if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
+      // T variable in this code refers to either temp or conc
+    }
+    else{
+      if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
+    }
+    break;
+  }
+  case DIMENSIONAL:{
+    vel_nondim_to_dim = 1.0;
+    time_nondim_to_dim = 1.0;
+  }
+  break;
+  default:{
+    throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
+    break;
+  }
+  } // end of switch case
+} // end of function
+
+
+
+
+
 //-----------------------------------------
 // Properties to set if you are solving NS
 // ----------------------------------------
@@ -978,7 +1225,7 @@ double hodge_global_error;
 double NS_norm = 0.0; // To keep track of the NS norm
 double perturb_flow_noise =0.25;
 
-double u_inf; // physical value of freestream velocity
+
 
 double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
 void set_NS_info(){
@@ -1001,8 +1248,24 @@ void set_NS_info(){
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
-      u0 = 1.0;
-      v0 = 0.;
+      switch(problem_dimensionalization_type){
+        case NONDIM_BY_FLUID_VELOCITY:{
+          u0 = 1.0;
+          v0 = 0.;
+          break;
+        }
+        case NONDIM_BY_DIFFUSIVITY:{
+          u0 = (u_inf)/(Dl/l_char);
+
+          v0 = 0.;
+          break;
+        }
+        default:{
+          throw std::runtime_error("unrecognized problem dimensionalization type for set_NS_info() \n");
+        }
+      }
+
+
 
       hodge_percentage_of_max_u=1.e-3;
       break;
@@ -1011,7 +1274,7 @@ void set_NS_info(){
     case FLOW_PAST_CYLINDER:
     case MELTING_ICE_SPHERE:
     case ICE_AROUND_CYLINDER:{
-      Re = 201.;
+
       u0 = 1.0; // computational freestream velocity
       v0 = 0.0;
       hodge_percentage_of_max_u = 1.e-3;
@@ -1040,7 +1303,7 @@ void set_NS_info(){
       u0 = 1.0;
       v0 = 1.0;
 
-      u_inf=1.0; // u_inf usually corresponds to a physical value for velocity, but this example doesnt have that //to-do: is this actually used in this example?
+      u_inf = 1.0; // u_inf usually corresponds to a physical value for velocity, but this example doesnt have that //to-do: is this actually used in this example?
       hodge_percentage_of_max_u = 1.e-3;
       break;
     }
@@ -1084,79 +1347,6 @@ void set_NS_info(){
 //    return NONDIM_NO_FLUID;
 //  }
 //};
-
-enum:int{NONDIM_BY_FLUID_VELOCITY, NONDIM_BY_DIFFUSIVITY, DIMENSIONAL};
-// NONDIM_BY_FLUID_VELOCITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
-//                             a characteristic fluid velocity, and Reynolds number is used to setup the Navier-Stokes equations
-
-// NONDIM_BY_DIFFUSIVITY -- corresponds to nondimensionalization where the velocities in the problem are nondimensionalized by
-//                          a characteristic velocity defined by the fluid's thermal or concentration diffisuvity and char. length scale,
-//                          and Prandtl/Schmidt number is used to setup the Navier-Stokes equations
-
-// DIMENSIONAL -- corresponds to solving the dimensional problem
-
-int problem_dimensionalization_type;
-
-void select_problem_nondim_or_dim_formulation(){
-  switch(example_){
-    case FRANK_SPHERE:{
-      problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
-      break;
-    }
-    case NS_GIBOU_EXAMPLE:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case COUPLED_TEST_2:{
-      problem_dimensionalization_type = DIMENSIONAL;
-      break;
-    }
-    case COUPLED_PROBLEM_EXAMPLE:{
-      problem_dimensionalization_type = DIMENSIONAL;
-      break;
-    }
-    case ICE_AROUND_CYLINDER:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case FLOW_PAST_CYLINDER:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case DENDRITE_TEST:{
-      problem_dimensionalization_type = NONDIM_BY_DIFFUSIVITY;
-      break;
-    }
-    case MELTING_ICE_SPHERE:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case MELTING_POROUS_MEDIA:{
-      break;
-    }
-    case PLANE_POIS_FLOW:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case DISSOLVING_DISK_BENCHMARK:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY; // elyce to-do : will want to run this benchmark using the other formulation as well
-      break;
-    }
-    case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-    case MELTING_ICE_SPHERE_NAT_CONV:{
-      problem_dimensionalization_type = NONDIM_BY_FLUID_VELOCITY;
-      break;
-    }
-      // Elyce to-do: add a case for Rochi's example
-    default:{
-      throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
-    }
-  } // end of switch case
-};
-
 
 
 // Elyce to-do: delete all commented out once verified that it works correctly
@@ -1236,152 +1426,6 @@ void set_nondimensional_groups(){
 }
 */
 
-
-// For defining appropriate nondimensional groups:
-double time_nondim_to_dim;
-double vel_nondim_to_dim;
-
-void set_temp_conc_nondim_defns(){
-  switch(example_){
-  case FRANK_SPHERE:{
-    break;
-  }
-  case NS_GIBOU_EXAMPLE:{
-    break;
-  }
-  case COUPLED_TEST_2:{
-    break;
-  }
-  case COUPLED_PROBLEM_EXAMPLE:{
-    break;
-  }
-  case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
-      break;
-  }
-  case ICE_AROUND_CYLINDER:{
-    deltaT = fabs(Tinfty - T0);
-
-    theta0 = 0.0;
-    theta_infty = 1.0;
-
-    theta_interface = (Tinterface - T0)/deltaT;
-    break;
-  }
-  case FLOW_PAST_CYLINDER:{
-    break;
-  }
-  case DENDRITE_TEST:{
-    deltaT = T0 - Tinfty;
-
-    theta0 = 1.0;
-    theta_infty = 0.0;
-
-    theta_interface = (Tinterface - Tinfty)/deltaT;
-    break;
-  }
-  case MELTING_ICE_SPHERE:{
-    deltaT = fabs(Tinfty - T0);
-
-    theta0 = 0.0;
-    theta_infty = 1.0;
-
-    theta_interface = (Tinterface - T0)/deltaT;
-    break;
-  }
-  case MELTING_ICE_SPHERE_NAT_CONV:{
-      deltaT = fabs(Tinfty - T0);
-
-      theta0 = 0.0;
-      theta_infty = 1.0;
-
-      theta_interface = (Tinterface - T0)/deltaT;
-      break;
-  }
-
-  case MELTING_POROUS_MEDIA:{
-    deltaT = fabs(Tinfty - T0);
-
-    theta0 = 0.0;
-    theta_infty = 1.0;
-
-    theta_interface = (Tinterface - T0)/deltaT;
-    break;
-  }
-  case PLANE_POIS_FLOW:{
-    break;
-  }
-  case DISSOLVING_DISK_BENCHMARK:{
-    // To-do: will have to set this up with concentration stuff correctly since defn is diff
-
-    theta_infty=1.0; // wall undersaturation
-    theta0 = 0.0;
-    // no need to set theta_interface --> we have a robin BC there
-    break;
-  }
-  // Elyce to-do: add a case for Rochi's example
-  default:{
-    throw std::runtime_error("main_2d.cpp:select_problem_nondim_or_dim_formulation: example is unrecognized or has not been set up \n");
-  }
-  }
-}
-
-void set_nondimensional_groups(){
-  // Setup the temperature stuff properly first:
-  set_temp_conc_nondim_defns();
-
-  // Compute the stuff that doesn't depend on velocity nondim:
-  if(Pr<0.) Pr = mu_l/(alpha_l * rho_l);
-  if(Sc<0.) Sc = mu_l/(Dl*rho_l);
-
-  if(St<0.) St = cp_s * fabs(deltaT)/L;
-
-  // Elyce To-do 12/14/21: add Rayleigh number computations if you are solving boussinesq
-  switch(problem_dimensionalization_type){
-    case NONDIM_BY_FLUID_VELOCITY:{
-      // In this case, we assume a prescribed:
-      // (1) free-stream Reynolds number, (2) characteristic length scale, (3) characteristic temperature/concentrations
-      // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
-      // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
-      u_inf = (Re*mu_l)/(rho_l * l_char);
-
-      if(!is_dissolution_case){
-        Pe = rho_l * l_char * u_inf/alpha_l;
-      }
-      else{
-        Pe = rho_l * l_char * u_inf/Dl;
-      }
-
-      vel_nondim_to_dim = u_inf;
-      time_nondim_to_dim = l_char/u_inf;
-
-      break;
-    }
-    case NONDIM_BY_DIFFUSIVITY:{
-      double u_char = (is_dissolution_case? (Dl/l_char):(alpha_l/l_char));
-      vel_nondim_to_dim = u_char;
-      time_nondim_to_dim = l_char/u_char;
-
-      if(!is_dissolution_case){
-        // Elyce to-do: this is a work in progress
-        if(RaC<0.) RaC = beta_C * grav * deltaT * pow(l_char, 3.)/(Dl * (mu_l/rho_l)) ; // note that here deltaT actually corresponds to a change in concentration
-        // T variable in this code refers to either temp or conc
-      }
-      else{
-        if(RaT<0.) RaT = beta_T * grav * deltaT * pow(l_char, 3.)/(alpha_l * (mu_l/rho_l)) ;
-      }
-      break;
-    }
-    case DIMENSIONAL:{
-      vel_nondim_to_dim = 1.0;
-      time_nondim_to_dim = 1.0;
-    }
-      break;
-    default:{
-      throw std::runtime_error("set_nondimensional_groups: unrecognized nondim formulation in switch case \n");
-      break;
-    }
-  } // end of switch case
-} // end of function
 
 // ---------------------------------------
 // For setting up simulation timing information:
@@ -2350,8 +2394,14 @@ public:
       return temperature_[dom]->T(DIM(x,y,z));
     }
     case DISSOLVING_DISK_BENCHMARK:{
-      // RHS is zero for the robin condition
-      return 0.0;
+      // if deltaT is set to zero, we are using the C/Cinf nondim and set RHS=0. otherwise, we are using (C-Cinf)/(C0 - Cinf) = (C-Cinf)/(deltaC) nondim and set RHS to appropriate expression (see my derivation notes)
+      // -- use deltaT/Tinfty to make it of order 1 since concentrations can be quite small depending on units
+      if(fabs(deltaT/Tinfty) < EPS){
+        return 0.0;
+      }
+      else{
+        return -1.*(k_diss*l_char/Dl)*(Tinfty/deltaT);
+      }
     }
     default:
       throw std::runtime_error("BC INTERFACE VALUE TEMP: unrecognized example \n");
@@ -2402,7 +2452,9 @@ public:
       case DISSOLVING_DISK_BENCHMARK:
         // Elyce to-do 12/14/21: update this appropriately (may have to adjust depending on nondim type)
 //        double Da = k_diss*l_char/D;
-        return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
+        //return Da/Pe;//(k_diss*l_diss/D_diss);//(k_diss/u_inf); // Coefficient in front of C
+        // ^^^ 12/17/21 why on earth did i have an effing peclet number there ???? aahhhhhhh
+        return Da;
       }
   }
 }bc_interface_coeff;
@@ -3572,8 +3624,12 @@ double interfacial_velocity_expression(double Tl_d, double Ts_d){
       }
     }
     case NONDIM_BY_DIFFUSIVITY:{
-      return ( -1.*(St)*(alpha_s/alpha_l)*( (k_l/k_s)*Tl_d - Ts_d ) );
-      // Elyce to-do 12/14/21: (1) expression here was incorrect so I fixed it, and (2) add a dissolution case
+      if(!is_dissolution_case){
+        return ( -1.*(St)*(alpha_s/alpha_l)*( (k_l/k_s)*Tl_d - Ts_d ) );
+      }
+      else{
+        return -1.*gamma_diss*Tl_d;
+      }
     }
     case DIMENSIONAL:{
       if(!is_dissolution_case){
@@ -4509,7 +4565,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                          " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
 
   // Stop simulation if things are blowing up
-  if(NS_norm>100.0){
+  if(NS_norm>100.0*u0){ // Elyce to-do: this is not permanent, won't hold for all cases
       MPI_Barrier(mpi_comm);
       PetscPrintf(mpi_comm,"The simulation blew up ! ");
       did_crash=true;
@@ -6089,7 +6145,12 @@ int main(int argc, char** argv) {
 
   solve_coupled = solve_navier_stokes && solve_stefan;
   select_problem_nondim_or_dim_formulation();
-//  problem_dimensionalization_type = select_stefan_formulation(); // select the form of the stefan condition we will use
+
+
+  PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
+              (problem_dimensionalization_type == 0)? ("NONDIM BY FLUID VELOCITY"):
+                                      ((problem_dimensionalization_type == 1) ? ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
+  PetscPrintf(mpi.comm(), "nondim = %d \n", problem_dimensionalization_type);
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
   PetscPrintf(mpi.comm(),"Number of mpi tasks: %d \n",mpi.size());
   PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
@@ -6259,13 +6320,17 @@ int main(int argc, char** argv) {
     PetscPrintf(mpi.comm(),"\n\nNONDIM GROUPS ARE: \n"
                            "Re = %f \n"
                            "Pr = %f \n"
+                            "Sc = %f \n"
                            "Pe = %f \n"
                            "St = %f \n"
+                           "Da = %f \n"
+                           "gamma_diss = %f \n"
                            "With: \n"
                            "u_inf = %0.3e [m/s]\n"
                            "delta T = %0.2f [K]\n"
-                           "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n", Re, Pr, Pe, St,
-                                                                                     u_inf,deltaT,sigma,l_char,sigma/l_char);
+                           "sigma = %0.3e, l_char = %0.3e, sigma/l_char = %0.3e \n",
+                          Re, Pr, Sc, Pe, St, Da, gamma_diss,
+                          u_inf,deltaT,sigma,l_char,sigma/l_char);
 
 
     // Get the simulation time info (it is example dependent): -- Must be set after non dim groups
@@ -7729,7 +7794,6 @@ int main(int argc, char** argv) {
           }
 
         } // end of "if tstep ==0"
-        PetscPrintf(mpi.comm(), "num fields interp = %d \n", num_fields_interp);
         interpolate_values_onto_new_grid(&T_l_n.vec,&T_s_n.vec,
                                          v_interface.vec,v_n.vec,
                                          nodes_np1,p4est_np1,ngbd,interp_bw_grids);
