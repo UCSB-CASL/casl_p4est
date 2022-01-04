@@ -4571,7 +4571,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                          " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
 
   // Stop simulation if things are blowing up
-  if(NS_norm>100.0*u0){ // Elyce to-do: this is not permanent, won't hold for all cases
+  if(NS_norm>100.0*max(u0, 1.)){
       MPI_Barrier(mpi_comm);
       PetscPrintf(mpi_comm,"The simulation blew up ! ");
       did_crash=true;
@@ -6942,7 +6942,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Update BC objects for stefan problem:
         // -------------------------------
-        if((tstep>0) &&solve_stefan){
+        if((tstep>0) && solve_stefan){
           if(analytical_IC_BC_forcing_term){
             for(unsigned char d=0;d<2;d++){
               analytical_T[d]->t = tn;
@@ -6999,11 +6999,12 @@ int main(int argc, char** argv) {
         compute_normals(*ngbd_np1,phi_solid.vec,normal.vec); // normal here is outward normal of solid domain
 
         // Compute curvature on the interface:
-        my_p4est_level_set_t ls_new_new(ngbd_np1);
-
+//        my_p4est_level_set_t ls_new_new(ngbd_np1);
+        ls.update(ngbd_np1);
         // Feed the curvature computed to the interfacial boundary condition:
         if(interfacial_temp_bc_requires_curvature){
-          ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
+//          ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
+          ls.reinitialize_2nd_order(phi_solid.vec,30);
 
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
@@ -7013,6 +7014,7 @@ int main(int argc, char** argv) {
 
           }
         }
+
         // Feed the normals to the interfacial boundary condition if needed:
         if(interfacial_temp_bc_requires_normal){
           for(unsigned char d=0; d<2; d++){
@@ -7026,8 +7028,8 @@ int main(int argc, char** argv) {
 
         // Get derivatives of liquid and solid LSF's
         if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
-        ngbd_np1->second_derivatives_central(phi.vec,phi_dd.vec);
-        ngbd_np1->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
+        ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
+        ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
 
         // Get inner LSF and derivatives if required:
         if(example_uses_inner_LSF){
@@ -7083,6 +7085,19 @@ int main(int argc, char** argv) {
 
 
         // -------------------------------
+        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
+        // -------------------------------
+        if(interfacial_temp_bc_requires_curvature){
+          for(unsigned char d=0;d<2;++d){
+            bc_interface_val_temp[d]->clear();
+          }
+        }
+        if(interfacial_temp_bc_requires_normal){
+          for(unsigned char d=0;d<2;++d){
+            bc_interface_val_temp[d]->clear_normals();
+          }
+        }
+        // -------------------------------
         // Destroy all vectors
         // that were used strictly for the
         // stefan step (aka created and destroyed in stefan step)
@@ -7112,20 +7127,8 @@ int main(int argc, char** argv) {
         rhs_Tl.destroy();
         if(do_we_solve_for_Ts) rhs_Ts.destroy();
 
-        // -------------------------------
-        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
-        // -------------------------------
-        if(interfacial_temp_bc_requires_curvature){
-          for(unsigned char d=0;d<2;++d){
-            bc_interface_val_temp[d]->clear();
-          }
-        }
-        if(interfacial_temp_bc_requires_normal){
-          for(unsigned char d=0;d<2;++d){
-            bc_interface_val_temp[d]->clear_normals();
-          }
-        }
-      } // end of "if solve stefan"
+
+      } // end of "if solve stefan" AND tstep>0
 
       // -------------------------------
       // If first iteration, perturb the LSF(s):
