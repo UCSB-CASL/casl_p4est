@@ -150,6 +150,8 @@ int main ( int argc, char* argv[] )
 		sample_cf_on_nodes( p4est, nodes, star, phi );
 
 		// Reinitialize level-set function.
+		parStopWatch watch;
+		watch.start();
 		my_p4est_level_set_t ls( &nodeNeighbors );
 		ls.reinitialize_2nd_order( phi, (int)reinitNumIters() );
 
@@ -162,10 +164,9 @@ int main ( int argc, char* argv[] )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
 		compute_normals( nodeNeighbors, phi, normal );
+		double prepTime = watch.get_duration_current();
 
 		// Compute hybrid (dimensionless) curvature.
-		parStopWatch watch;
-		watch.start();
 		kml::Curvature mlCurvature( &nnet, H );
 		std::pair<double, double> durations = mlCurvature.compute( nodeNeighbors, phi, normal, numCurvature, hybHK, hybFlag, true, &watch );
 		watch.stop();
@@ -225,7 +226,7 @@ int main ( int argc, char* argv[] )
 		printf( "\n<< Rank %i: Done!  Matching nodes = %zu/%zu."
 				"\n   It took %f seconds to compute the numerical curvature."
 				"\n   And %f seconds for the hybrid one.",
-				mpi.rank(), matchingNodes, totalNodesEvaluated, durations.first, durations.second );
+				mpi.rank(), matchingNodes, totalNodesEvaluated, durations.first + prepTime, durations.second + prepTime );
 
 		// Write paraview file to visualize the star interface and nodes following it along -- mainly for debugging.
 		if( exportVTK() )
