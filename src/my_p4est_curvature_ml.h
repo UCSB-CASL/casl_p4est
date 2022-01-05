@@ -375,10 +375,15 @@ namespace kml
 		 * @param [out] hybCurvature Hybrid curvature computed at the normal interface-projection of nodes next to Gamma.
 		 * @param [out] hybFlag Indicator vector with 1s where we used the hybrid approach and 0s everywhere else.
 		 * @param [in] dimensionless Whether to scale curvature by h.
+		 * @param [in] watch Optional timer.  If given, we will time numerical and hybrid curvature computations.  Timer
+		 *        must be ready (i.e., called its start() method) before calling this function.
+		 * @return A pair with <numerical, hybrid> timings in seconds if watch parameter is not nullptr, otherwise, the
+		 *         values are set to -1.
 		 * @throws Runtime exception if any vector is nullptr.
 		 */
-		void compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
-					  Vec hybCurvature, Vec hybFlag, const bool& dimensionless=false ) const;
+		std::pair<double, double> compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
+										   Vec numCurvature, Vec hybCurvature, Vec hybFlag,
+										   const bool& dimensionless=false, parStopWatch *watch=nullptr ) const;
 	};
 }
 

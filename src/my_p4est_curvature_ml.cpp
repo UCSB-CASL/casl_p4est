@@ -556,8 +556,9 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 }
 
 
-void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
-							  Vec hybCurvature, Vec hybFlag, const bool& dimensionless ) const
+std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
+												   Vec numCurvature, Vec hybCurvature, Vec hybFlag,
+												   const bool& dimensionless, parStopWatch *watch ) const
 {
 	if( !phi || !normal || !numCurvature || !hybCurvature || !hybFlag )
 		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::compute: One of the provided vectors is null!" );
@@ -566,7 +567,9 @@ void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Ve
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
 
 	// We start by computing the numerical mean curvature (as a byproduct of calling this function).
+	double startTime = watch? watch->get_duration_current() : 0;
 	compute_mean_curvature( ngbd, phi, normal, numCurvature );
+	double totalNumericalTime = watch? watch->get_duration_current() - startTime : -1;
 
 	// Collect samples.
 	std::vector<std::vector<double>> samples;
@@ -603,4 +606,7 @@ void kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Ve
 	// Let's synchronize the curvature values among all processes.
 	CHKERRXX( VecGhostUpdateBegin( hybCurvature, INSERT_VALUES, SCATTER_FORWARD ) );
 	CHKERRXX( VecGhostUpdateEnd( hybCurvature, INSERT_VALUES, SCATTER_FORWARD ) );
+
+	double totalHybridTime = watch? watch->get_duration_current() - startTime : -1;
+	return std::make_pair( totalNumericalTime, totalHybridTime );
 }

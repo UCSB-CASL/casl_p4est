@@ -6,7 +6,7 @@
  * Tested on one and multiple processes.
  *
  * Developer: Luis Ángel.
- * Created: November 12, 2021.
+ * Created: January 4, 2021.
  */
 
 // System.
@@ -98,7 +98,7 @@ int main ( int argc, char* argv[] )
 		};
 		double outputs[N_SAMPLES];
 		kml::NeuralNetwork nnet( ROOT, H, false );
-		nnet.predict( samples, outputs, N_SAMPLES, false );		// If there's an error, it'll thrown here.
+		nnet.predict( samples, outputs, N_SAMPLES, false );		// If there's an error, it'll be thrown here.
 
 		//////////////////////////////////// Test the sample star-shaped interface /////////////////////////////////////
 
@@ -167,8 +167,7 @@ int main ( int argc, char* argv[] )
 		parStopWatch watch;
 		watch.start();
 		kml::Curvature mlCurvature( &nnet, H );
-		mlCurvature.compute( nodeNeighbors, phi, normal, numCurvature, hybHK, hybFlag, true );
-		double duration = watch.get_duration_current();
+		std::pair<double, double> durations = mlCurvature.compute( nodeNeighbors, phi, normal, numCurvature, hybHK, hybFlag, true, &watch );
 		watch.stop();
 
 		const double *hybHKReadPtr, *hybFlagReadPtr, *phiReadPtr, *normalReadPtr[P4EST_DIM];
@@ -223,8 +222,10 @@ int main ( int argc, char* argv[] )
 		if( mpi.size() == 1 && !validationMap.empty() )
 			std::cerr << "\nValidation map is not empty, it has " << validationMap.size() << " elements!" << std::endl;
 
-		printf( "\n<< Rank %i: Done!  Matching nodes = %zu/%zu.\n   It took %f seconds to compute the hybrid curvature.\n",
-				mpi.rank(), matchingNodes, totalNodesEvaluated, duration );
+		printf( "\n<< Rank %i: Done!  Matching nodes = %zu/%zu."
+				"\n   It took %f seconds to compute the numerical curvature."
+				"\n   And %f seconds for the hybrid one.",
+				mpi.rank(), matchingNodes, totalNodesEvaluated, durations.first, durations.second );
 
 		// Write paraview file to visualize the star interface and nodes following it along -- mainly for debugging.
 		if( exportVTK() )
