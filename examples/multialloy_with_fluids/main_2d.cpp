@@ -4103,24 +4103,28 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
       // Coarsening instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(DIVIDE_BY);
+      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold*0.1); // did 0.1* () for the coarsen if no sign change OR below threshold case
 
       // Refining instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-      diag_opn.push_back(DIVIDE_BY);
+      //      diag_opn.push_back(DIVIDE_BY);
+      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
 
       // Coarsening instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      diag_opn.push_back(DIVIDE_BY);
+      //      diag_opn.push_back(DIVIDE_BY);
+      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold*0.1);
 
       // Refining instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      diag_opn.push_back(DIVIDE_BY);
+      //      diag_opn.push_back(DIVIDE_BY);
+      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
@@ -4475,7 +4479,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
         ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell,
                              false,NULL,dxyz_hodge_old,uvw_components);
 
-    ierr= PetscPrintf(mpi_comm,"Hodge iteration : %d, hodge error: %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge);CHKERRXX(ierr);
+    ierr= PetscPrintf(mpi_comm,"Hodge iteration : %d, (hodge error)/(NS_max): %0.3e \n",hodge_iteration,convergence_check_on_dxyz_hodge/NS_norm);CHKERRXX(ierr);
     hodge_iteration++;
   }
 
@@ -5870,6 +5874,7 @@ void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, splitting_
     }
   P4EST_ASSERT(idx == num);
 };
+
 void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save_or_load flag, const mpi_environment_t* mpi=NULL){
   PetscErrorCode ierr;
 
@@ -5892,7 +5897,8 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
             // Save the integer parameters to a file
             sprintf(diskfilename,"%s_integers",filename);
-            fill_or_load_integer_parameters(flag,num_integers,sp,integer_parameters);
+
+            fill_or_load_integer_parameters(flag, num_integers, sp, integer_parameters);
             ierr = PetscBinaryOpen(diskfilename,FILE_MODE_WRITE,&fd); CHKERRXX(ierr);
             ierr = PetscBinaryWrite(fd, integer_parameters, num_integers, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
@@ -5905,8 +5911,6 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
             ierr = PetscBinaryWrite(fd, double_parameters, num_doubles, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-
-
           }
         break;
       }
@@ -5943,6 +5947,75 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
 
 
     }
+
+}
+
+void prepare_fields_for_save_or_load(vector<save_or_load_element_t> &fields_to_save,
+                                     Vec *phi, Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n,
+                                     Vec v_NS[P4EST_DIM], Vec v_NS_nm1[P4EST_DIM], Vec *vorticity){
+
+  save_or_load_element_t to_add;
+  // ----------------------
+  // Add relevant fields to the vector of fields to save:
+  // ----------------------
+  // Level set function
+  to_add.name = "phi";
+  to_add.DATA_SAMPLING = NODE_DATA;
+  to_add.nvecs = 1;
+  to_add.pointer_to_vecs = phi;
+  fields_to_save.push_back(to_add);
+
+
+
+  // Temperature fields
+  if(solve_stefan){
+    // Fluid temp
+    to_add.name = "T_l_n";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = T_l_n;
+    fields_to_save.push_back(to_add);
+
+    if(advection_sl_order==2 && solve_navier_stokes){
+      // Fluid temp at nm1
+      to_add.name = "T_l_nm1";
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = T_l_nm1;
+      fields_to_save.push_back(to_add);
+    }
+
+    if(do_we_solve_for_Ts){
+      // Solid temp if relevant
+      to_add.name = "T_s_n";
+      to_add.DATA_SAMPLING = NODE_DATA;
+      to_add.nvecs = 1;
+      to_add.pointer_to_vecs = T_s_n;
+      fields_to_save.push_back(to_add);
+    }
+  }
+
+  // Navier Stokes fields:
+  if(solve_navier_stokes){
+    to_add.name = "v_NS_n";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = P4EST_DIM;
+    to_add.pointer_to_vecs = v_NS;
+    fields_to_save.push_back(to_add);
+
+    to_add.name = "v_NS_nm1";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = P4EST_DIM;
+    to_add.pointer_to_vecs = v_NS_nm1;
+    fields_to_save.push_back(to_add);
+
+    to_add.name = "vorticity";
+    to_add.DATA_SAMPLING = NODE_DATA;
+    to_add.nvecs = 1;
+    to_add.pointer_to_vecs = vorticity;
+    fields_to_save.push_back(to_add);
+
+  }
 
 }
 
@@ -6003,7 +6076,6 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
           backup_idx++;
         }
       }
-
       // Slide the names of the backup folders in time:
       if ((n_saved > 1) && (n_backup_subfolders == n_saved))
       {
@@ -6035,40 +6107,22 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
 
     // save the solver parameters
     sprintf(filename, "%s/solver_parameters", path_to_folder);
-    save_or_load_parameters(filename,sp, SAVE,&mpi);
+    save_or_load_parameters(filename, sp, SAVE, &mpi);
 
     // Save the p4est and corresponding data:
-    if(solve_coupled){
-        if(advection_sl_order==2){
-            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                          "p4est",7,
-                                          "phi",1,&phi,
-                                          "T_l_n",1, &T_l_n,
-                                          "T_l_nm1",1, &T_l_nm1,
-                                          "T_s_n",1,&T_s_n,
-                                          "v_NS_n",P4EST_DIM,v_NS,
-                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1,
-                                          "vorticity",1,&vorticity);
-        }
-        else{
-          my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                        "p4est",6,
-                                        "phi",1,&phi,
-                                        "T_l_n",1, &T_l_n,
-                                        "T_s_n",1,&T_s_n,
-                                        "v_NS_n",P4EST_DIM,v_NS,
-                                        "v_NS_nm1",P4EST_DIM,v_NS_nm1,
-                                        "vorticity",1,&vorticity);
-        }
-    }
-    else if (solve_navier_stokes && !solve_stefan){
-            my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
-                                          "p4est",4,
-                                          "phi",1,&phi,
-                                          "v_NS_n",P4EST_DIM,v_NS,
-                                          "v_NS_nm1",P4EST_DIM,v_NS_nm1,
-                                          "vorticity",1,&vorticity);
-    }
+
+    vector<save_or_load_element_t> fields_to_save;
+
+
+    prepare_fields_for_save_or_load(fields_to_save,
+                                    &phi, &T_l_n, &T_l_nm1, &T_s_n,
+                                    v_NS, v_NS_nm1, &vorticity);
+
+    // Save the state:
+    // choosing not to save the faces because we don't need them saved ? Elyce to-do double check this, 1/6/21
+    my_p4est_save_forest_and_data(path_to_folder, p4est, nodes, NULL,
+                                                  "p4est", fields_to_save);
+
     ierr = PetscPrintf(p4est->mpicomm,"Saved solver state in ... %s \n",path_to_folder);CHKERRXX(ierr);
 }
 
@@ -6086,38 +6140,18 @@ void load_state(const mpi_environment_t& mpi, const char* path_to_folder,
   save_or_load_parameters(filename,sp,LOAD,&mpi);
 
   // Load p4est_n and corresponding objections
-  PetscPrintf(mpi.comm(),"About to try and load forest and data , adv order = %d \n",advection_sl_order);
-  if(solve_coupled){
-      if(advection_sl_order==2){
-          my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",7,
-                                        "phi",NODE_DATA,1,phi,
-                                        "T_l_n",NODE_DATA,1,T_l_n,
-                                        "T_l_nm1",NODE_DATA,1,T_l_nm1,
-                                        "T_s_n",NODE_DATA,1,T_s_n,
-                                        "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,1,vorticity);
-      }
-      else{
-          my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",6,
-                                        "phi",NODE_DATA,1,phi,
-                                        "T_l_n",NODE_DATA,1,T_l_n,
-                                        "T_s_n",NODE_DATA,1,T_s_n,
-                                        "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,1,vorticity);
-      }
-  }
-  else if (solve_navier_stokes && !solve_stefan){
-          my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
-                                        "p4est",4,
-                                        "phi",NODE_DATA,1,phi,
-                                        "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
-                                        "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
-                                        "vorticity",NODE_DATA,P4EST_DIM,vorticity);
-  }
+
+
+  vector<save_or_load_element_t> fields_to_load;
+
+
+  prepare_fields_for_save_or_load(fields_to_load,
+                                  phi, T_l_n, T_l_nm1, T_s_n,
+                                  v_NS, v_NS_nm1, vorticity);
+
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                p4est, conn, P4EST_TRUE, ghost, nodes,
+                                "p4est", fields_to_load);
 
   P4EST_ASSERT(find_max_level(p4est) == sp->max_lvl);
 
