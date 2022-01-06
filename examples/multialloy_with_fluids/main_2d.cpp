@@ -1499,7 +1499,8 @@ void simulation_time_info(){
     }
 
     case NS_GIBOU_EXAMPLE:{
-      tfinal = PI/3.;
+      tfinal = 0.05;
+    //tfinal = PI/3.;
       dt_max_allowed = 1.e-2;
       tstart = 0.0;
       break;
@@ -7750,7 +7751,7 @@ int main(int argc, char** argv) {
 
         if(solve_navier_stokes){
           phi_nm1.create(p4est,nodes);
-          ierr = VecCopyGhost(phi.vec,phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
+          ierr = VecCopyGhost(phi.vec, phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
           // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
           // for NS update procedure
           if(print_checkpoints) ierr= PetscPrintf(mpi.comm(),"Phi nm1 copy is created ... \n");
