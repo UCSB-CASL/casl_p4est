@@ -68,7 +68,7 @@ private:
 	 * @return True if quad is crossed by the interface (i.e., at least one node has different sign), false otherwise.
 	 */
 #ifdef P4_TO_P8
-  bool _organizeNodalInfo( p4est_locidx_t quadIdx, OctValueExtended& phiAndIdxValues ) const;
+	bool _organizeNodalInfo( p4est_locidx_t quadIdx, OctValueExtended& phiAndIdxValues ) const;
 #else
 	bool _organizeNodalInfo( p4est_locidx_t quadIdx, QuadValueExtended& phiAndIdxValues ) const;
 #endif

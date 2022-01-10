@@ -15,7 +15,7 @@
 #include <random>
 
 
-class DistThetaFunctorDerivative
+class DistThetaFunctorDerivative_Star
 {
 private:
 	double _x, _y;					// Cartesian coordinates of query point.
@@ -28,7 +28,7 @@ public:
 	 * @param [in] y Reference point's y-coordinate.
 	 * @param [in] star Star object.
 	 */
-	DistThetaFunctorDerivative( const double& x, const double& y, const geom::Star& star )
+	DistThetaFunctorDerivative_Star( const double& x, const double& y, const geom::Star& star )
 		: _x( x ), _y( y ), _star( star )
 	{}
 
@@ -66,16 +66,16 @@ public:
  * Class to find the angular value for the projection of a node onto a star-shaped level-set function using Boost's
  * Newton-Raphson root finder.
  */
-class DistThetaFunctorDerivativeNR
+class DistThetaFunctorDerivativeNR_Star
 {
 private:
-	DistThetaFunctorDerivative _distThetaFunctorDerivative;
+	DistThetaFunctorDerivative_Star _distThetaFunctorDerivative;
 public:
 	/**
 	 * Constructor.
 	 * @param distThetaFunctorDerivative The functor used for bisection.
 	 */
-	explicit DistThetaFunctorDerivativeNR( DistThetaFunctorDerivative distThetaFunctorDerivative )
+	explicit DistThetaFunctorDerivativeNR_Star( DistThetaFunctorDerivative_Star distThetaFunctorDerivative )
 		: _distThetaFunctorDerivative( distThetaFunctorDerivative )
 	{}
 
@@ -111,10 +111,10 @@ public:
  * @param [in] verbose Whether to show debugging message or not.
  * @return Angle value that minimizes the distance from query point (u,v) to star-shaped interface.
  */
-double distThetaDerivative( p4est_locidx_t n, double u, double v, const geom::Star& star,
+double distThetaDerivative_Star( p4est_locidx_t n, double u, double v, const geom::Star& star,
 							const double INITIAL_THETA, const double H,
 							std::mt19937& gen, std::normal_distribution<double>& normalDistribution,
-							double& valOfDerivative, double& minDistance, bool verbose = true )
+							double& valOfDerivative, double& minDistance, bool verbose=true )
 {
 	using namespace boost::math::tools;						// For bisect and newton_raphson_iterate.
 
@@ -123,8 +123,8 @@ double distThetaDerivative( p4est_locidx_t n, double u, double v, const geom::St
 															// just over half the digits correct.
 	const boost::uintmax_t MAX_IT = 30;						// Maximum number of iterations for bracketing and root finding.
 	boost::uintmax_t it = MAX_IT;
-	DistThetaFunctorDerivative distThetaFunctorDerivative( u, v, star );    // Used for bisection (narrowing intervals).
-	DistThetaFunctorDerivativeNR distThetaFunctorDerivativeNR( distThetaFunctorDerivative );	// Used for Newton-Raphson's method.
+	DistThetaFunctorDerivative_Star distThetaFunctorDerivative( u, v, star );    // Used for bisection (narrowing intervals).
+	DistThetaFunctorDerivativeNR_Star distThetaFunctorDerivativeNR( distThetaFunctorDerivative );	// Used for Newton-Raphson's method.
 	eps_tolerance<double> epsToleranceFunctor( 10 );		// Used in bisection process (x bits).
 
 	// Algorithm to find the parameter that minimizes the distance.  Based on the post made on Math Stack Exchange:
