@@ -7716,6 +7716,10 @@ int main(int argc, char** argv) {
         // interpolate hodge variable to new grid
 
         if(solve_navier_stokes){
+          // Rochi addition 10/1/22 solved memory leak
+          if (phi_nm1.vec!= NULL){
+            phi_nm1.destroy();
+          }
           phi_nm1.create(p4est,nodes);
           ierr = VecCopyGhost(phi.vec, phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
           // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
@@ -7914,7 +7918,6 @@ int main(int argc, char** argv) {
   if(solve_navier_stokes){
     v_n.destroy();
     v_nm1.destroy();
-
     phi_nm1.destroy();
 
     // NS takes care of destroying v_NS_n and v_NS_nm1
