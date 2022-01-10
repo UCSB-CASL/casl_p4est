@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: February 18, 2021.
- * Updated: October 12, 2021.
+ * Updated: January 10, 2022.
  */
 namespace slml
 {
@@ -558,8 +558,10 @@ namespace slml
 		 * @note Not implemented yet!  Added just to meet the requirement from the base class.
 		 * @param [in] xyz Query point global Cartesian coordinates.
 		 * @param [out] results Pointer to an array of results.
+		 * @param [in] comp component of the (possibly block-structured) PETSc parallel vector(s) to be interpolated
+		 *        (all components are considered if set to ALL_COMPONENTS).
 		 */
-		void operator()( const double *xyz, double *results ) const override;
+		void operator()( const double *xyz, double *results, const unsigned int& comp ) const override;
 	};
 
 
@@ -624,8 +626,10 @@ namespace slml
 		 * @note Not implemented yet!  Added just to meet the requirement from the base class.
 		 * @param [in] xyz Query point global Cartesian coordinates.
 		 * @param [out] results Pointer to an array of results.
+		 * @param [in] comp component of the (possibly block-structured) PETSc parallel vector(s) to be interpolated
+		 *        (all components are considered if set to ALL_COMPONENTS).
 		 */
-		void operator()( const double *xyz, double *results ) const override;
+		void operator()( const double *xyz, double *results, const unsigned int& comp ) const override;
 	};
 
 

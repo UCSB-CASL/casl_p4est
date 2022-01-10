@@ -465,7 +465,7 @@ void slml::DataFetcher::_getNormalizedCoords( const p4est_t *p4est, const p4est_
 }
 
 
-void slml::DataFetcher::operator()( const double *xyz, double *results ) const
+void slml::DataFetcher::operator()( const double *xyz, double *results, const unsigned int& comp ) const
 {
 	throw std::runtime_error( "[CASL_ERROR] slml::DataFetcher::operator(): Not implemented yet!" );
 }
@@ -533,7 +533,7 @@ void slml::Cache::interpolate( const p4est_quadrant_t &quad, const double *xyz, 
 }
 
 
-void slml::Cache::operator()( const double *xyz, double *results ) const
+void slml::Cache::operator()( const double *xyz, double *results, const unsigned int& comp ) const
 {
 	throw std::runtime_error( "[CASL_ERROR] sml::CacheFetcher::operator(): Not implemented yet!" );
 }
@@ -553,7 +553,7 @@ slml::SemiLagrangian::SemiLagrangian( p4est_t **p4estNp1, p4est_nodes_t **nodesN
 	// Retrieve grid size data and validate we are working on a domain with square cells.
 	p4est_t const *p4est_n = ngbdN->get_p4est();
 	double dxyz[P4EST_DIM], dxyz_min;
-	get_dxyz_min( p4est_n, dxyz, dxyz_min );
+	get_dxyz_min( p4est_n, dxyz, &dxyz_min );
 	if( ABS( dxyz[0] - dxyz[1] ) > PETSC_MACHINE_EPSILON ONLY3D( || ABS( dxyz[1] - dxyz[2] ) > PETSC_MACHINE_EPSILON ) )
 		throw std::runtime_error( "[CASL_ERROR] slml::SemiLagrangian::updateP4EST: Cells must be square!" );
 
@@ -637,7 +637,7 @@ bool slml::SemiLagrangian::collectSamples( Vec vel[P4EST_DIM], Vec *vel_xx[P4EST
 	// Retrieve grid size data.
 	double dxyz[P4EST_DIM];
 	double dxyz_min;			// Minimum cell width for current macromesh.  Use this to normalize distances below.
-	get_dxyz_min( p4est_n, dxyz, dxyz_min );
+	get_dxyz_min( p4est_n, dxyz, &dxyz_min );
 
 	// Getting read access to phi and velocity parallel PETSc vectors.  These will be our input fields.
 	const double *phiReadPtr;
