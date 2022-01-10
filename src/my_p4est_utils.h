@@ -2936,6 +2936,11 @@ public:
         switch (action[i]) {
           case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
           case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+		  default:		// TODO: Missing default case, please check if this is the desired behavior.
+#ifdef CASL_THROWS
+            throw std::runtime_error("get_idx: unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+            break;
         }
       }
       return idx;
