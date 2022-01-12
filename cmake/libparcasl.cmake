@@ -67,12 +67,24 @@ list( APPEND SOURCES
 # For dimension based compilation, we must create a Run Configuration.  Go to CLion -> Preferences
 # -> Build, Execution, Deployment -> CMake.  Create a profile (debug or release) and add to "CMake options:" the
 # following: -DDIMENSION=2d, for 2D, or -DDIMENSION=3d for 3D.
+# To enable machine learning, provide the key-value pair -DENABLE_ML=1
 
 # 2D case.
 if( DIMENSION MATCHES 2d )
 	# Epitaxy.
 	list( APPEND HEADERS ${PARCASL}src/my_p4est_epitaxy.h )
 	list( APPEND SOURCES ${PARCASL}src/my_p4est_epitaxy.cpp )
+
+	# Machine learning.
+	if( ENABLE_ML MATCHES 1 )
+		list( APPEND HEADERS
+				${PARCASL}src/my_p4est_semi_lagrangian_ml.h
+				${PARCASL}src/my_p4est_curvature_ml.h )
+
+		list( APPEND SOURCES
+				${PARCASL}src/my_p4est_semi_lagrangian_ml.cpp
+				${PARCASL}src/my_p4est_curvature_ml.cpp )
+	endif()
 
 	# Others.
 	list( APPEND HEADERS
@@ -115,8 +127,6 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_save_load.h
 			${PARCASL}src/my_p4est_scft.h
 			${PARCASL}src/my_p4est_semi_lagrangian.h
-			${PARCASL}src/my_p4est_semi_lagrangian_ml.h
-			${PARCASL}src/my_p4est_curvature_ml.h
 			${PARCASL}src/my_p4est_shs_channel.h
 			${PARCASL}src/my_p4est_solve_lsqr.h
 			${PARCASL}src/my_p4est_surfactant.h
@@ -172,8 +182,6 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_save_load.cpp
 			${PARCASL}src/my_p4est_scft.cpp
 			${PARCASL}src/my_p4est_semi_lagrangian.cpp
-			${PARCASL}src/my_p4est_semi_lagrangian_ml.cpp
-			${PARCASL}src/my_p4est_curvature_ml.cpp
 			${PARCASL}src/my_p4est_solve_lsqr.cpp
 			${PARCASL}src/my_p4est_surfactant.cpp
 			${PARCASL}src/my_p4est_trajectory_of_point.cpp
@@ -196,6 +204,17 @@ endif()
 
 # 3D case.
 if( DIMENSION MATCHES 3d )
+
+	# Machine learning.
+	if( ENABLE_ML MATCHES 1 )
+		list( APPEND HEADERS
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.h )
+
+		list( APPEND SOURCES
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp )
+	endif()
+
+	# Others.
 	list( APPEND HEADERS
 			${PARCASL}src/my_p8est_biofilm.h
 			${PARCASL}src/my_p8est_biomolecules.h
@@ -235,7 +254,6 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_save_load.h
 			#  ${PARCASL}src/my_p8est_scft.h
 			${PARCASL}src/my_p8est_semi_lagrangian.h
-			${PARCASL}src/my_p8est_semi_lagrangian_ml.h
 			${PARCASL}src/my_p8est_solve_lsqr.h
 			${PARCASL}src/my_p8est_surfactant.h
 			${PARCASL}src/my_p8est_shs_channel.h
@@ -290,7 +308,6 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_save_load.cpp
 			#  ${PARCASL}src/my_p8est_scft.cpp
 			${PARCASL}src/my_p8est_semi_lagrangian.cpp
-			${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp
 			${PARCASL}src/my_p8est_solve_lsqr.cpp
 			${PARCASL}src/my_p8est_surfactant.cpp
 			${PARCASL}src/my_p8est_trajectory_of_point.cpp

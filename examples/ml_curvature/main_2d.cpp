@@ -9,6 +9,12 @@
  * Created: January 4, 2021.
  */
 
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#endif
+
 // System.
 #include <stdexcept>
 #include <iostream>
@@ -30,6 +36,13 @@
 int main ( int argc, char* argv[] )
 {
 	using json = nlohmann::json;
+
+	////////////////////////////////////////////////// Testing OpenMP //////////////////////////////////////////////////
+
+	int nThreads = 0;
+#pragma omp parallel reduction( + : nThreads ) default( none )
+		nThreads += 1;
+	std::cout << "Process can spawn " << nThreads << " thread(s)\n\n";
 
 	// Setting up parameters from command line.
 	param_list_t pl;
