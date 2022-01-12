@@ -152,7 +152,7 @@ DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 
 DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
-DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+DEFINE_PARAMETER(pl, bool, use_boussinesq, true, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
@@ -224,7 +224,6 @@ void select_solvers(){
       break;
 
     case MELTING_ICE_SPHERE:
-    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:
       if(!no_flow){
         solve_stefan = true;
@@ -235,6 +234,10 @@ void select_solvers(){
         solve_navier_stokes=false;
       }
       break;
+    case MELTING_ICE_SPHERE_NAT_CONV:
+      solve_stefan=true;
+      solve_navier_stokes=true;
+    break;
     case NS_GIBOU_EXAMPLE:
       solve_stefan = false;
       solve_navier_stokes = true;
@@ -481,7 +484,7 @@ void set_geometry(){
       py = 0;
 
       // Problem geometry:
-      r0 = 1.0;     // Computational radius of the sphere
+      r0 = 0.5;     // Computational radius of the sphere
       break;
     }
     case MELTING_ICE_SPHERE:{
@@ -882,7 +885,6 @@ void set_physical_properties(){
       break;
       }
     case MELTING_POROUS_MEDIA: // TO-DO: intentionally waterfalling for now, will change once i fine tune the example more
-    case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:{
 
       // Using properties of water at 20 C: (engineering toolbox)
@@ -923,6 +925,25 @@ void set_physical_properties(){
 //      // In this example, T_cyl corresponds to the initial temperature of the ice
 //      // T_cyl is used to define the nondimensionalization, and applied as an initial condition.
 //      // However, this is the only time it is used for this example.
+      break;
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      // Using properties of water at 20 C: (engineering toolbox)
+      alpha_l = 1.00160e-6; // m2/s
+      k_l = 598.03e-3; // W/mK
+      rho_l = 1000; // kg/m^3
+      mu_l = 1.00160e-3; // Pa s
+
+      // Using properties of ice at -10 C:
+      k_s = 2.30; // W/mK
+      cp_s = 2.00e3; // J/kgK
+      rho_s = 918.9; // kg/m^3
+
+      alpha_s = k_s/cp_s/rho_s; // m^2/s
+
+      L = 334.e3;  // J/kg
+      sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
+
       break;
     }
     case DISSOLVING_DISK_BENCHMARK:{
@@ -2539,9 +2560,11 @@ bool dirichlet_temperature_walls(DIM(double x, double y, double z)){
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE:
-    case MELTING_ICE_SPHERE_NAT_CONV:
     case ICE_AROUND_CYLINDER:{
       return (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)));
+    }
+    case MELTING_ICE_SPHERE_NAT_CONV:{
+      return (ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)));
     }
     case DISSOLVING_DISK_BENCHMARK:{
       return xlower_wall(DIM(x,y,z));
@@ -2810,10 +2833,10 @@ public:
       }
       case MELTING_ICE_SPHERE_NAT_CONV:{
         if (dirichlet_velocity_walls(DIM(x,y,z))){
-            if(xlower_wall(DIM(x,y,z))){
+            if(ylower_wall(DIM(x,y,z))){
                 return 0.0;
             }
-            if(xupper_wall(DIM(x,y,z))){
+            if(yupper_wall(DIM(x,y,z))){
                 return 0.0;
             }
         }
@@ -3806,6 +3829,9 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi,
     // Initialize timesteps to use:
     if(solve_stefan){
         dt_Stefan = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/global_max_vnorm;
+        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
+            dt_Stefan=cfl*min(dxyz_smallest[0],dxyz_smallest[1])/1.0;
+        }
     }
 
     if(solve_navier_stokes){
@@ -6187,7 +6213,6 @@ int main(int argc, char** argv) {
   solve_coupled = solve_navier_stokes && solve_stefan;
   select_problem_nondim_or_dim_formulation();
 
-
   PetscPrintf(mpi.comm(), "The nondimensionalizaton formulation being used is %s \n \n",
               (problem_dimensionalization_type == 0)? ("NONDIM BY FLUID VELOCITY"):
                                       ((problem_dimensionalization_type == 1) ? ("NONDIM BY DIFFUSIVITY") : ("DIMENSIONAL")));
@@ -7403,11 +7428,13 @@ int main(int argc, char** argv) {
           switch(problem_dimensionalization_type){
             case NONDIM_BY_FLUID_VELOCITY:{
               ns->boussinesq_approx=true;
+              ierr = VecScaleGhost(T_l_n.vec, -1.);
               ns->set_external_forces_using_vector(T_l_n.vec);
+              ierr = VecScaleGhost(T_l_n.vec, -1.);
               break;
             }
             case NONDIM_BY_DIFFUSIVITY:{
-              ns->boussinesq_approx=true;
+              ns->boussinesq_approx=true;             
               if(!is_dissolution_case){
                 ierr = VecScaleGhost(T_l_n.vec, -1.*RaT*Pr);
                 ns->set_external_forces_using_vector(T_l_n.vec);
