@@ -163,8 +163,16 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status &status, 
       /* this cannot happen as it means the source processor made a mistake in
        * calculating its remote matches.
        */
-      throw std::runtime_error("[ERROR] A remote processor could not find a local or ghost quadrant "
-                               "for a query point sent by the source processor.");
+      PetscPrintf(p4est->mpicomm, "Relevant info: \n"
+                       "rank found = %d \n"
+                        "(x, y) = (%0.4f, %0.4f) \n"
+                                  "tree index = %d \n"
+                                  "quad index = %d \n", rank_found, xyz[i], xyz[i+1],
+                                  best_match.p.piggy3.which_tree,
+                                  best_match.p.piggy3.local_num);
+
+      throw std::runtime_error("[ERROR] process_incoming_query: A remote processor could not find a local or ghost quadrant "
+                               "for a query point sent by the source processor. \n");
     }
   }
   // we are done, let's send the buffer back
@@ -224,7 +232,14 @@ void my_p4est_interpolation_t::process_incoming_query_interface_bc(const Boundar
       /* this cannot happen as it means the source processor made a mistake in
        * calculating its remote matches.
        */
-      throw std::runtime_error("[ERROR] A remote processor could not find a local or ghost quadrant "
+      PetscPrintf(p4est->mpicomm, "Relevant info: \n"
+                                  "rank found = %d \n"
+                                  "(x, y) = (%0.4f, %0.4f) \n"
+                                  "tree index = %d \n"
+                                  "quad index = %d \n", rank_found, xyz[i], xyz[i+1],
+                  best_match.p.piggy3.which_tree,
+                  best_match.p.piggy3.local_num);
+      throw std::runtime_error("[ERROR] process_incoming_query_interface_bc: A remote processor could not find a local or ghost quadrant "
                                "for a query point sent by the source processor.");
     }
   }
