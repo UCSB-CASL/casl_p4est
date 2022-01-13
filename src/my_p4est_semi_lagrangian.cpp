@@ -52,8 +52,8 @@ my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4es
     ngbd_n(ngbd_n),
     ngbd_nm1(ngbd_nm1)
 {
-  velo_interpolation = quadratic;
-  phi_interpolation  = quadratic_non_oscillatory;
+  velo_interpolation = quadratic_non_oscillatory_continuous_v2;
+  phi_interpolation  = quadratic_non_oscillatory_continuous_v2;
 
   ngbd_phi = ngbd_n;
 }
@@ -138,7 +138,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, const CF_DIM **
     interp.add_point(n, xyz_d);
   }
 
-  interp.set_input(phi_n, DIM(phi_xx_n[0], phi_xx_n[1], phi_xx_n[2]), quadratic_non_oscillatory);
+  interp.set_input(phi_n, DIM(phi_xx_n[0], phi_xx_n[1], phi_xx_n[2]), phi_interpolation);
   interp.interpolate(phi_np1);
 
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_CF2, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -176,7 +176,9 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
     v_tmp[dir].resize(nodes->indep_nodes.elem_count);
     interp_output[dir] = v_tmp[dir].data();
   }
-  interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), quadratic, P4EST_DIM);
+  interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), velo_interpolation, P4EST_DIM);
+
+  //1/12/22 -- Elyce to-do: debugging comment : shouldn't the above have the interpolation method "vel_interpolation", so that the user can select it themselves?Was set to "quadratic"
   interp.interpolate(interp_output);
   interp.clear();
   const double *xyz_min   = get_xyz_min();
@@ -197,7 +199,8 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   }
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     interp_output[dir] = v_tmp[dir].data();
-  interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), quadratic, P4EST_DIM);
+  interp.set_input(v, DIM(xx_v_derivatives, yy_v_derivatives, zz_v_derivatives), velo_interpolation, P4EST_DIM);
+  //1/12/22 -- Elyce to-do: debugging comment : shouldn't the above have the interpolation method "vel_interpolation", so that the user can select it themselves? Was set to "quadratic"
   interp.interpolate(interp_output);
   interp.clear();
 
@@ -284,12 +287,12 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     v_tmp_nm1[dir].resize(nodes->indep_nodes.elem_count);
     interp_output[dir] = v_tmp_nm1[dir].data();
   }
-  interp_nm1.set_input(vnm1, DIM(xx_vnm1_derivatives, yy_vnm1_derivatives, zz_vnm1_derivatives), quadratic, P4EST_DIM);
+  interp_nm1.set_input(vnm1, DIM(xx_vnm1_derivatives, yy_vnm1_derivatives, zz_vnm1_derivatives), velo_interpolation, P4EST_DIM);
   interp_nm1.interpolate(interp_output);
   interp_nm1.clear();
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     interp_output[dir] = v_tmp_n[dir].data();
-  interp_n.set_input(vn, DIM(xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives), quadratic, P4EST_DIM);
+  interp_n.set_input(vn, DIM(xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives), velo_interpolation, P4EST_DIM);
   interp_n.interpolate(interp_output);
   interp_n.clear();
 
@@ -592,7 +595,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
         ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);CHKERRXX(ierr);
       }
     else{
-        for(unsigned long k=0; k<num_fields; k++){
+        for(int k=0; k<num_fields; k++){
             ierr = VecCreateGhostNodes(p4est,nodes,&fields_np1[k]); CHKERRXX(ierr);
           }
       }
@@ -609,8 +612,10 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt,
     double* phi_np1_p; // Get array for phi
     ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
     advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p); // advect phi using pointer
+
+    // Create vec and pointer for an effective phi, which might include an additional LSF if that is provided
     Vec phi_np1_eff;
-    double *phi_np1_eff_p = phi_np1_p; // Create pointer for an effective phi, which might include an additional LSF if that is provided
+    double *phi_np1_eff_p = phi_np1_p;
     if (phi_add_refine != NULL)
     {
       additional_phi_is_used = true;

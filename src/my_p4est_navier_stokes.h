@@ -725,6 +725,19 @@ public:
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
+  /*!
+   * \brief update_from_tn_to_tnp1_grid_external
+   * This function performs the sliding of all necessary fields internal to the navier_stokes solver from the grid at time n to a user-provided grid and level-set function at time np1.
+   * \param phi_np1 [in] The level set function at time np1
+   * \param phi_n [in] The level set function at time n (required for interpolation of the hodge variable)
+   * \param p4est_np1 [in] The new grid at time np1
+   * \param nodes_np1 [in] The nodes at time np1
+   * \param ghost_np1 [in] The ghost at time np1
+   * \param ngbd_np1 [in] The node neighbors at time np1
+   * \param faces_np1 [inout] The faces at time np1
+   * \param ngbd_c_np1 [inout] The cell neighbors at time np1
+   * \param hierarchy_np1 [in] The grid hierarchy at time np1
+   */
 
   void update_from_tn_to_tnp1_grid_external(Vec phi_np1, Vec phi_n,
                                             p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1,

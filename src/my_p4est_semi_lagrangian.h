@@ -117,6 +117,7 @@ public:
    *   Such fields may be provided either as an array of PETSc vectors with blocksize 1, or as a single PETSc block vector. The user must
    *   specify which type of input they are providing.
    *   Additionally, refine and coarsen criteria must be provided for each additional scalar field being provided, in a format that is described below.
+   * \note Please see the documentation for the function refine_and_coarsen with similar inputs for a full description of how to properly order the user-defined fields, criteria, and comparision options
    * \param v              [in]     the velocity field. This is a pointer to an array of dimension P4EST_DIM.
    * \param dt             [in]     the time step
    * \param phi            [inout]  the level set function
@@ -124,12 +125,13 @@ public:
    * \param phi_add_refine [in]     an additional level set function you may provide to refine around, but not advect
    * \param num_fields     [in]     number of scalar fields are being provided to refine/coarsen around, not including LSF(s)
    * \param use_block      [in]     a boolean specifying whether the provided scalar fields are in block vector format or an array of vectors. True --> block vector, false --> array of vectors
-   * \param fields         [in]
-   * \param fields_block   [in]
-   * \param criteria       [in]
-   * \param compare_opn    [in]
-   * \param diag_opn       [in]
+   * \param fields         [in] an array of PETSC vectors which should be considered in refine/coarsen decisions
+   * \param fields_block   [in] a PETSC block vector holding the fields which should be considered in refine/coarsen decisions
+   * \param criteria       [in] a standard vector of doubles that serve as user-defined criteria for corresponding PETSC vector fields to be considered in refine/coarsen decisions
+   * \param compare_opn    [in] a standard vector of comparison options that correspond to the PETSC vector fields to be considered in refine/coarsen decisions
+   * \param diag_opn       [in] a standard vector of diagonal comparision options that correspond to the PETSC vector fields to be considered in refine/coarsen decisions. This corresponds to whether to compare user-provided fields with the user-provided criteria either divided by the current quad diagonal, multiplied by the current quad diagonal, or neither.
    * \param expand_ghost_layer [in]   a boolean specifying whether you want the new grid to have an expanded ghost layer
+
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *v, double dt,

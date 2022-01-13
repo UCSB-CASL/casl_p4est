@@ -1219,7 +1219,7 @@ double hodge_percentage_of_max_u;
 int hodge_max_it = 100;
 double T_l_IC_band = 2.0;
 bool ramp_T_l_IC_space = false;
-double dt_NS;
+double dt_NS =0.;
 
 double hodge_global_error;
 
@@ -1442,7 +1442,7 @@ double dt_nm1 = 1.e-5;
 int tstep;
 double dt_min_allowed = 1.e-5;
 
-double dt_Stefan;
+double dt_Stefan =0.;
 
 DEFINE_PARAMETER(pl,double,t_ramp,0.1,"Time at which boundary conditions are ramped up to their desired value [input should be dimensional time, in seconds] (default: 3 seconds) \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,false,"Boolean option to ramp the BCs over a specified ramp time (default: false) \n");
@@ -1456,7 +1456,7 @@ void simulation_time_info(){
   save_every_dt/=time_nondim_to_dim; // convert save_every_dt input (in seconds) to nondimensional time
   switch(example_){
     case FRANK_SPHERE:{
-      tfinal = 1.10;
+      tfinal = 1.01;
       dt_max_allowed = 0.05;
       tstart = 1.0;
       break;
@@ -1499,7 +1499,7 @@ void simulation_time_info(){
     }
 
     case NS_GIBOU_EXAMPLE:{
-      tfinal = 0.05;
+      tfinal = 0.025;
     //tfinal = PI/3.;
       dt_max_allowed = 1.e-2;
       tstart = 0.0;
@@ -4412,7 +4412,7 @@ void poisson_step(Vec phi, Vec phi_solid,
 
 }
 
-void set_ns_parameters(my_p4est_navier_stokes_t* &ns){
+void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
       ns->set_parameters((1./Re), 1.0, NS_advection_sl_order, uniform_band, vorticity_threshold, cfl_NS);
@@ -4456,8 +4456,6 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
     ierr = VecCreateNoGhostFaces(p4est_np1,faces_np1,&dxyz_hodge_old[d],d); CHKERRXX(ierr);
   }
 
-  //if ((ramp_bcs && (tn<t_ramp))) hodge_tolerance = u0*hodge_percentage_of_max_u;
-  //else
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
   PetscPrintf(mpi_comm,"Hodge tolerance is %e \n",hodge_tolerance);
 
@@ -5506,6 +5504,10 @@ void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_gh
   }
 
 
+  // Delete the analytical solution now that it is done being used:
+  for(unsigned char d=0;d<P4EST_DIM;++d){
+    delete analytical_soln_comp[d];
+  }
   v_NS.restore_array();press.restore_array();
   vn_analytical.restore_array(); pn_analytical.restore_array();
   vn_error.restore_array(); press_error.restore_array(); phi.restore_array();
@@ -6258,8 +6260,6 @@ int main(int argc, char** argv) {
 
   // Navier-Stokes problem:-----------------------------
   my_p4est_navier_stokes_t* ns = NULL;
-  my_p4est_poisson_cells_t* cell_solver; // TO-DO: These may be unnecessary now -- TO-DO: check these unused things, remove if we can
-  my_p4est_poisson_faces_t* face_solver;
 
   PCType pc_face = PCSOR;
   KSPType face_solver_type = KSPBCGS;
@@ -6572,11 +6572,9 @@ int main(int argc, char** argv) {
           sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[d]);
         }
 
-        if(analytical_IC_BC_forcing_term){
-          for(unsigned char d=0;d<2;++d){
-            delete analytical_temp[d];
-            delete T_init_cf[d];
-          }
+        for(unsigned char d=0;d<2;++d){
+          if(analytical_IC_BC_forcing_term) delete analytical_temp[d];
+          delete T_init_cf[d];
         }
       }
 
@@ -6871,6 +6869,9 @@ int main(int argc, char** argv) {
         }
       }
       if(tstep ==0){
+        dxyz_min(p4est,dxyz_smallest);
+
+        dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
           compute_timestep(v_interface, phi,
                            dxyz_close_to_interface, dxyz_smallest,
                            nodes_np1, p4est_np1, ns,
