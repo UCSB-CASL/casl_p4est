@@ -180,8 +180,7 @@ public:
 		return desired_bulk_velocity;
 	}
 
-	~mass_flow_controller_t()
-	{}
+	~mass_flow_controller_t() = default;
 };
 
 struct simulation_setup
@@ -445,7 +444,7 @@ void truncate_exportation_file_up_to_tstart( const double &tstart, const std::st
 											 const bool &two_header_lines = false )
 {
 	FILE *fp = fopen( filename.c_str(), "r+" );
-	char *read_line = NULL;
+	char *read_line = nullptr;
 	size_t len = 0;
 	ssize_t len_read;
 	long size_to_keep = 0;
@@ -490,9 +489,8 @@ void initialize_velocity_profile_file( const std::string &filename, const my_p4e
 		if( !file_exists( filename ))
 		{
 			FILE *fp_avg_profile = fopen( filename.c_str(), "w" );
-			if( fp_avg_profile == NULL )
-				throw std::invalid_argument(
-					"initialize_velocity_profile_file: could not open file " + filename + "." );
+			if( fp_avg_profile == nullptr )
+				throw std::invalid_argument( "initialize_velocity_profile_file: could not open file " + filename + "." );
 			fprintf( fp_avg_profile, "%% __ | coordinates along y axis \n" );
 			fprintf( fp_avg_profile, "%% tn" );
 			for( int k = 0; k < ns->get_brick()->nxyztrees[1] * (1 << ns->get_lmax()); ++k )
@@ -579,9 +577,9 @@ class velocity_profiler_t
 			channel.length() / (ns->get_brick()->nxyztrees[0] * (1 << ns->get_lmax()));
 #endif
 
-		const unsigned int nb_cells_in_groove = ( unsigned int ) (channel.get_pitch() * channel.GF() /
+		const auto nb_cells_in_groove = ( unsigned int ) (channel.get_pitch() * channel.GF() /
 																  smallest_traverse_length_scale);
-		const unsigned int nb_cells_in_ridge = ( unsigned int ) (channel.get_pitch() * (1.0 - channel.GF()) /
+		const auto nb_cells_in_ridge = ( unsigned int ) (channel.get_pitch() * (1.0 - channel.GF()) /
 																 smallest_traverse_length_scale);
 		const unsigned int nb_cells_to_map = nb_cells_in_groove + nb_cells_in_ridge;
 		P4EST_ASSERT( nb_cells_to_map == ( unsigned int ) (channel.get_pitch() / smallest_traverse_length_scale));
@@ -1890,18 +1888,15 @@ int main( int argc, char *argv[] )
 	if( setup.save_timing )
 		setup.print_averaged_timings( mpi );
 
-	if( cell_solver != NULL )
-		delete cell_solver;
-	if( face_solver != NULL )
-		delete face_solver;
+	delete cell_solver;
+	delete face_solver;
 
-	delete ns;        // deletes the navier-stokes solver
-	// the brick and the connectivity are deleted within the above destructor...
-	delete data;      // deletes the splitting criterion object
-	if( flow_controller != NULL )
-		delete flow_controller;
+	delete ns;			// deletes the navier-stokes solver
+						// the brick and the connectivity are deleted within the above destructor...
+	delete data;		// deletes the splitting criterion object
+	delete flow_controller;
 	for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
-		if( external_acceleration[dir] != NULL )
+		if( external_acceleration[dir] != nullptr )
 			delete external_acceleration[dir];
 
 	return 0;
