@@ -395,7 +395,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
     if (s.xyz(dir) < 0 || s.xyz(dir)  > (double) P4EST_ROOT_LEN){
-      const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
+
       // Elyce attempted fix, seems to work:
       const int ntree_to_slide = (int) floor(s.xyz(dir)/((double) P4EST_ROOT_LEN));
 
