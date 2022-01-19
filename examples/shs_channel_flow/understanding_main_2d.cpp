@@ -443,42 +443,36 @@ struct simulation_setup
 void truncate_exportation_file_up_to_tstart( const double &tstart, const std::string &filename,
 											 const bool &two_header_lines = false )
 {
-	FILE *fp = fopen( filename.c_str(), "r+" );
+	FILE *fp1 = fopen( filename.c_str(), "r+" );
 	char *read_line = nullptr;
 	size_t len = 0;
 	ssize_t len_read;
 	long size_to_keep = 0;
-	if(((len_read = getline( &read_line, &len, fp )) != -1))
-		size_to_keep += ( long ) len_read;
+	if( ((len_read = getline( &read_line, &len, fp1 )) != -1) )
+		size_to_keep += (long)len_read;
 	else
-		throw std::runtime_error(
-			"simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the first header line of " +
-			filename );
+		throw std::runtime_error( "simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the first header line of " + filename );
 	if( two_header_lines )
 	{
-		if(((len_read = getline( &read_line, &len, fp )) != -1))
-			size_to_keep += ( long ) len_read;
+		if( ((len_read = getline( &read_line, &len, fp1 )) != -1) )
+			size_to_keep += (long) len_read;
 		else
-			throw std::runtime_error(
-				"simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the second header line of " +
-				filename );
+			throw std::runtime_error( "simulation_setup::truncate_exportation_file_up_to_tstart: couldn't read the second header line of " + filename );
 	}
 	double time;
-	while((len_read = getline( &read_line, &len, fp )) != -1 )
+	while( (len_read = getline( &read_line, &len, fp1 )) != -1 )
 	{
-		sscanf( read_line, "%lg %*[^\n]", &time );
-		if( time <= tstart - (1.0e-12) * pow( 10.0, ceil(
-			log10( tstart )))) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
-			size_to_keep += ( long ) len_read;
+		sscanf( read_line, "%lg %*[^\n]", &time );		// NOLINT.
+		if( time <= tstart - (1.0e-12) * pow( 10.0, ceil( log10( tstart ) ) ) ) // (1.0e-12)*pow(10.0, ceil(log10(tstart))) == given precision when exporting
+			size_to_keep += (long) len_read;
 		else
 			break;
 	}
-	fclose( fp );
+	fclose( fp1 );
 	if( read_line )
 		free( read_line );
-	if( truncate( filename.c_str(), size_to_keep ))
-		throw std::runtime_error(
-			"simulation_setup::truncate_exportation_file_up_to_tstart: couldn't truncate " + filename );
+	if( truncate( filename.c_str(), size_to_keep ) )
+		throw std::runtime_error( "simulation_setup::truncate_exportation_file_up_to_tstart: couldn't truncate " + filename );
 }
 
 void initialize_velocity_profile_file( const std::string &filename, const my_p4est_navier_stokes_t *ns,
@@ -843,14 +837,14 @@ void initialize_monitoring( simulation_setup &setup, const my_p4est_navier_stoke
 {
 	setup.file_monitoring = setup.export_dir + "/flow_monitoring.dat";
 
-	PetscErrorCode ierr = PetscPrintf( ns->get_mpicomm(), "Monitoring flow in ... %s\n", setup.file_monitoring.c_str());
+	PetscErrorCode ierr = PetscPrintf( ns->get_mpicomm(), "Monitoring flow in ... %s\n", setup.file_monitoring.c_str() );
 	CHKERRXX( ierr );
 	if( ns->get_mpirank() == 0 )
 	{
 		if( !file_exists( setup.file_monitoring ))
 		{
 			FILE *fp_monitor = fopen( setup.file_monitoring.c_str(), "w" );
-			if( fp_monitor == NULL )
+			if( fp_monitor == nullptr )
 				throw std::runtime_error( "initialize_monitoring: could not open file for flow monitoring." );
 			fprintf( fp_monitor, "%% tn | Re_tau | Re_b \n" );
 			fclose( fp_monitor );
@@ -862,7 +856,7 @@ void initialize_monitoring( simulation_setup &setup, const my_p4est_navier_stoke
 		if( !file_exists( liveplot_Re ))
 		{
 			FILE *fp_liveplot_Re = fopen( liveplot_Re.c_str(), "w" );
-			if( fp_liveplot_Re == NULL )
+			if( fp_liveplot_Re == nullptr )
 				throw std::runtime_error( "initialize_monitoring: could not open file for Re liveplot." );
 			fprintf( fp_liveplot_Re, "set term wxt noraise\n" );
 			fprintf( fp_liveplot_Re, "set key bottom right Left font \"Arial,14\"\n" );
@@ -877,10 +871,10 @@ void initialize_monitoring( simulation_setup &setup, const my_p4est_navier_stoke
 		}
 
 		const std::string tex_plot_Re = setup.export_dir + "/tex_monitor.gnu";
-		if( !file_exists( tex_plot_Re ))
+		if( !file_exists( tex_plot_Re ) )
 		{
 			FILE *fp_tex_plot_Re = fopen( tex_plot_Re.c_str(), "w" );
-			if( fp_tex_plot_Re == NULL )
+			if( fp_tex_plot_Re == nullptr )
 				throw std::runtime_error( "initialize_monitoring: could not open file for Re monitoring figure." );
 			fprintf( fp_tex_plot_Re, "set term epslatex color standalone\n" );
 			fprintf( fp_tex_plot_Re, "set output 'monitor_history.tex'\n" );
@@ -888,20 +882,17 @@ void initialize_monitoring( simulation_setup &setup, const my_p4est_navier_stoke
 			fprintf( fp_tex_plot_Re, "set xlabel \"$t$\"\n" );
 			fprintf( fp_tex_plot_Re, "set ylabel \"$\\\\mathrm{Re}$\" \n" );
 			fprintf( fp_tex_plot_Re, "plot" );
-			fprintf( fp_tex_plot_Re,
-					 "\t \"flow_monitoring.dat\" using 1:2 title '$\\mathrm{Re}_{\\tau}$' with lines lw 3,\\\n" );
-			fprintf( fp_tex_plot_Re,
-					 "\t \"flow_monitoring.dat\" using 1:3 title '$\\mathrm{Re}_{\\mathrm{b}}$' with lines lw 3" );
+			fprintf( fp_tex_plot_Re, "\t \"flow_monitoring.dat\" using 1:2 title '$\\mathrm{Re}_{\\tau}$' with lines lw 3,\\\n" );
+			fprintf( fp_tex_plot_Re, "\t \"flow_monitoring.dat\" using 1:3 title '$\\mathrm{Re}_{\\mathrm{b}}$' with lines lw 3" );
 			fclose( fp_tex_plot_Re );
 		}
 
 		const std::string tex_Re_script = setup.export_dir + "/plot_tex_monitor.sh";
-		if( !file_exists( tex_Re_script ))
+		if( !file_exists( tex_Re_script ) )
 		{
 			FILE *fp_tex_monitor_script = fopen( tex_Re_script.c_str(), "w" );
-			if( fp_tex_monitor_script == NULL )
-				throw std::runtime_error(
-					"initialize_monitoring: could not open file for bash script plotting monitoring tex figure." );
+			if( fp_tex_monitor_script == nullptr )
+				throw std::runtime_error( "initialize_monitoring: could not open file for bash script plotting monitoring tex figure." );
 			fprintf( fp_tex_monitor_script, "#!/bin/sh\n" );
 			fprintf( fp_tex_monitor_script, "gnuplot ./tex_monitor.gnu\n" );
 			fprintf( fp_tex_monitor_script, "latex ./monitor_history.tex\n" );
@@ -910,9 +901,8 @@ void initialize_monitoring( simulation_setup &setup, const my_p4est_navier_stoke
 
 			std::ostringstream chmod_command;
 			chmod_command << "chmod +x " << tex_Re_script;
-			if( system( chmod_command.str().c_str()))
-				throw std::runtime_error(
-					"initialize_monitoring: could not make the plot_tex_monitor.sh script executable" );
+			if( system( chmod_command.str().c_str() ) )
+				throw std::runtime_error( "initialize_monitoring: could not make the plot_tex_monitor.sh script executable" );
 		}
 	}
 }
@@ -929,7 +919,7 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 		if( !file_exists( setup.file_drag ))
 		{
 			FILE *fp_drag = fopen( setup.file_drag.c_str(), "w" );
-			if( fp_drag == NULL )
+			if( fp_drag == nullptr )
 				throw std::runtime_error( "initialize_drag_force_output: could not open file for drag output." );
 			fprintf( fp_drag, "%% __ | Normalized drag \n" );
 			fprintf( fp_drag, "%s",
@@ -944,9 +934,8 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 		if( !file_exists( liveplot_drag ))
 		{
 			FILE *fp_liveplot_drag = fopen( liveplot_drag.c_str(), "w" );
-			if( fp_liveplot_drag == NULL )
-				throw std::runtime_error(
-					"initialize_drag_force_output: could not open file for drage force liveplot." );
+			if( fp_liveplot_drag == nullptr )
+				throw std::runtime_error( "initialize_drag_force_output: could not open file for drage force liveplot." );
 			fprintf( fp_liveplot_drag, "set term wxt noraise\n" );
 			fprintf( fp_liveplot_drag, "set key center right Left font \"Arial,14\"\n" );
 			fprintf( fp_liveplot_drag, "set xlabel \"Time\" font \"Arial,14\"\n" );
@@ -955,8 +944,7 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 			for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
 			{
 				fprintf( fp_liveplot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '%c-component' with lines lw 3",
-						 ( int ) dd + 2, (dd == dir::x? 'x' : ONLY3D( OPEN_PARENTHESIS dd == dir::y? ) 'y' ONLY3D(
-						: 'z' CLOSE_PARENTHESIS )));
+						 (int)dd + 2, (dd == dir::x? 'x' : ONLY3D( OPEN_PARENTHESIS dd == dir::y? ) 'y' ONLY3D(: 'z' CLOSE_PARENTHESIS )) );
 				if( dd < P4EST_DIM - 1 )
 					fprintf( fp_liveplot_drag, ",\\" );
 				fprintf( fp_liveplot_drag, "\n" );
@@ -967,26 +955,22 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 		}
 
 		const std::string tex_plot_drag = setup.export_dir + "/tex_drag.gnu";
-		if( !file_exists( tex_plot_drag ))
+		if( !file_exists( tex_plot_drag ) )
 		{
 			FILE *fp_tex_plot_drag = fopen( tex_plot_drag.c_str(), "w" );
-			if( fp_tex_plot_drag == NULL )
-				throw std::runtime_error(
-					"initialize_drag_foce_output: could not open file for drag force tex figure." );
+			if( fp_tex_plot_drag == nullptr )
+				throw std::runtime_error( "initialize_drag_foce_output: could not open file for drag force tex figure." );
 			fprintf( fp_tex_plot_drag, "set term epslatex color standalone\n" );
 			fprintf( fp_tex_plot_drag, "set output 'drag_history.tex'\n" );
 			fprintf( fp_tex_plot_drag, "set key center right Left \n" );
 			fprintf( fp_tex_plot_drag, "set xlabel \"$t$\"\n" );
-			fprintf( fp_tex_plot_drag, "%s", (std::string(
-				"set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{-\\\\hat{\\\\mathbf{D}}}{2\\\\rho U_{\\\\mathrm{b}}^2 L" ) ONLY3D(
-												  +std::string( " W" )) + std::string( "}$ \" \n" )).c_str());
+			fprintf( fp_tex_plot_drag, "%s", (std::string( "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{-\\\\hat{\\\\mathbf{D}}}{2\\\\rho U_{\\\\mathrm{b}}^2 L" ) // NOLINT.
+											 ONLY3D(+std::string(" W")) + std::string( "}$ \" \n" )).c_str() );
 			fprintf( fp_tex_plot_drag, "plot" );
 			for( unsigned char dd = 0; dd < P4EST_DIM; ++dd )
 			{
-				fprintf( fp_tex_plot_drag,
-						 "\t \"drag_monitoring.dat\" using 1:%d title '$D_{\\mathrm{%c}}$' with lines lw 3",
-						 ( int ) dd + 2, (dd == dir::x? 'x' : ONLY3D( OPEN_PARENTHESIS dd == dir::y? ) 'y' ONLY3D(
-						: 'z' CLOSE_PARENTHESIS )));
+				fprintf( fp_tex_plot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '$D_{\\mathrm{%c}}$' with lines lw 3",
+						 (int) dd + 2, (dd == dir::x? 'x' : ONLY3D( OPEN_PARENTHESIS dd == dir::y? ) 'y' ONLY3D( : 'z' CLOSE_PARENTHESIS )) );
 				if( dd < P4EST_DIM - 1 )
 					fprintf( fp_tex_plot_drag, ",\\\n" );
 			}
@@ -994,12 +978,11 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 		}
 
 		const std::string tex_drag_script = setup.export_dir + "/plot_tex_drag.sh";
-		if( !file_exists( tex_drag_script ))
+		if( !file_exists( tex_drag_script ) )
 		{
 			FILE *fp_tex_drag_script = fopen( tex_drag_script.c_str(), "w" );
-			if( fp_tex_drag_script == NULL )
-				throw std::runtime_error(
-					"initialize_drag_force_output: could not open file for bash script plotting drag tex figure." );
+			if( fp_tex_drag_script == nullptr )
+				throw std::runtime_error( "initialize_drag_force_output: could not open file for bash script plotting drag tex figure." );
 			fprintf( fp_tex_drag_script, "#!/bin/sh\n" );
 			fprintf( fp_tex_drag_script, "gnuplot ./tex_drag.gnu\n" );
 			fprintf( fp_tex_drag_script, "latex ./drag_history.tex\n" );
@@ -1008,8 +991,8 @@ void initialize_drag_force_output( simulation_setup &setup, const my_p4est_navie
 
 			std::ostringstream chmod_command;
 			chmod_command << "chmod +x " << tex_drag_script;
-			int sys_return = system( chmod_command.str().c_str());
-			( void ) sys_return;
+			int sys_return = system( chmod_command.str().c_str() );
+			(void) sys_return;
 		}
 	}
 }
@@ -1018,8 +1001,7 @@ void initialize_timing_output( simulation_setup &setup, const my_p4est_navier_st
 {
 	const std::string filename = "timing_monitoring.dat";
 	setup.file_timings = setup.export_dir + "/" + filename;
-	PetscErrorCode ierr = PetscPrintf( ns->get_mpicomm(), "Saving timings per time step in ... %s\n",
-									   setup.file_timings.c_str());
+	PetscErrorCode ierr = PetscPrintf( ns->get_mpicomm(), "Saving timings per time step in ... %s\n", setup.file_timings.c_str() );
 	CHKERRXX( ierr );
 
 	if( ns->get_mpirank() == 0 )
@@ -1027,10 +1009,10 @@ void initialize_timing_output( simulation_setup &setup, const my_p4est_navier_st
 		if( !file_exists( setup.file_timings ))
 		{
 			FILE *fp_timing = fopen( setup.file_timings.c_str(), "w" );
-			if( fp_timing == NULL )
+			if( fp_timing == nullptr )
 				throw std::runtime_error( "initialize_timing_output: could not open file for timing output." );
 			fprintf( fp_timing, "%s", (std::string(
-				"%% tn | grid update | viscosity step | projection setp | interpolate velocities || number of fixed-point iterations | extra work on projection | extra work on viscous step \n" )).c_str());
+				"%% tn | grid update | viscosity step | projection setp | interpolate velocities || number of fixed-point iterations | extra work on projection | extra work on viscous step \n" )).c_str() );
 			fclose( fp_timing );
 		}
 		else
@@ -1038,80 +1020,64 @@ void initialize_timing_output( simulation_setup &setup, const my_p4est_navier_st
 
 		char liveplot_timings[PATH_MAX];
 		sprintf( liveplot_timings, "%s/live_timings.gnu", setup.export_dir.c_str());
-		if( !file_exists( liveplot_timings ))
+		if( !file_exists( liveplot_timings ) )
 		{
 			FILE *fp_liveplot_timings = fopen( liveplot_timings, "w" );
-			if( fp_liveplot_timings == NULL )
+			if( fp_liveplot_timings == nullptr )
 				throw std::runtime_error( "initialize_timing_output: could not open file for timing liveplot." );
 			fprintf( fp_liveplot_timings, "set term wxt noraise\n" );
 			fprintf( fp_liveplot_timings, "set key top right Left font \"Arial,14\"\n" );
 			fprintf( fp_liveplot_timings, "set xlabel \"Simulation time\" font \"Arial,14\"\n" );
-			fprintf( fp_liveplot_timings,
-					 "set ylabel \"Computational effort per time step (in %%) \" font \"Arial,14\"\n" );
-			fprintf( fp_liveplot_timings,
-					 "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n",
-					 filename.c_str());
-			fprintf( fp_liveplot_timings,
-					 "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Viscous step (approximate projection)',\\\n",
-					 filename.c_str());
-			fprintf( fp_liveplot_timings,
-					 "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Projection step (approximate projection)',\\\n",
-					 filename.c_str());
-			fprintf( fp_liveplot_timings,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 title 'Interpolating velocities from faces to nodes',\\\n",
-					 filename.c_str());
-			fprintf( fp_liveplot_timings,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 title 'Extra viscous steps (fixed-point iteration(s))', \\\n",
-					 filename.c_str());
-			fprintf( fp_liveplot_timings,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Extra projection steps (fixed-point iteration(s))' \n",
-					 filename.c_str());
+			fprintf( fp_liveplot_timings, "set ylabel \"Computational effort per time step (in %%) \" font \"Arial,14\"\n" );
+			fprintf( fp_liveplot_timings, "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n", filename.c_str() );
+			fprintf( fp_liveplot_timings, "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										  "title 'Viscous step (approximate projection)',\\\n", filename.c_str() );
+			fprintf( fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										  "title 'Projection step (approximate projection)',\\\n", filename.c_str() );
+			fprintf( fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 "
+										  "title 'Interpolating velocities from faces to nodes',\\\n", filename.c_str() );
+			fprintf( fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 "
+										  "title 'Extra viscous steps (fixed-point iteration(s))', \\\n", filename.c_str() );
+			fprintf( fp_liveplot_timings, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										  "title 'Extra projection steps (fixed-point iteration(s))' \n", filename.c_str() );
 			fprintf( fp_liveplot_timings, "pause 4\n" );
 			fprintf( fp_liveplot_timings, "reread" );
 			fclose( fp_liveplot_timings );
 		}
 
 		char tex_plot_timing[PATH_MAX];
-		sprintf( tex_plot_timing, "%s/tex_timing.gnu", setup.export_dir.c_str());
-		if( !file_exists( tex_plot_timing ))
+		sprintf( tex_plot_timing, "%s/tex_timing.gnu", setup.export_dir.c_str() );
+		if( !file_exists( tex_plot_timing ) )
 		{
 			FILE *fp_tex_plot_timing = fopen( tex_plot_timing, "w" );
-			if( fp_tex_plot_timing == NULL )
+			if( fp_tex_plot_timing == nullptr )
 				throw std::runtime_error( "initialize_timing_output: could not open file for timing tex figure." );
 			fprintf( fp_tex_plot_timing, "set term epslatex color standalone\n" );
 			fprintf( fp_tex_plot_timing, "set output 'timing_history.tex'\n" );
 			fprintf( fp_tex_plot_timing, "set key top right Right \n" );
 			fprintf( fp_tex_plot_timing, "set xlabel \"Simulation time $t$\"\n" );
 			fprintf( fp_tex_plot_timing, "set ylabel \"Computational effort per time step (in \\\\%%) \" \n" );
-			fprintf( fp_tex_plot_timing,
-					 "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n",
-					 filename.c_str());
-			fprintf( fp_tex_plot_timing,
-					 "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Viscous step (approximate projection)',\\\n",
-					 filename.c_str());
-			fprintf( fp_tex_plot_timing,
-					 "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Projection step (approximate projection)',\\\n",
-					 filename.c_str());
-			fprintf( fp_tex_plot_timing,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 title 'Interpolating velocities from faces to nodes',\\\n",
-					 filename.c_str());
-			fprintf( fp_tex_plot_timing,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 title 'Extra viscous steps (fixed-point iteration(s))', \\\n",
-					 filename.c_str());
-			fprintf( fp_tex_plot_timing,
-					 "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves title 'Extra projection steps (fixed-point iteration(s))' \n",
-					 filename.c_str());
+			fprintf( fp_tex_plot_timing, "plot \t \"%s\" using 1:(100*$2/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=0 title 'Grid update',\\\n", filename.c_str());
+			fprintf( fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										 "title 'Viscous step (approximate projection)',\\\n", filename.c_str() );
+			fprintf( fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 - $7)/($2 + $3 + $4 + $5 - $7 - $8)):(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										 "title 'Projection step (approximate projection)',\\\n", filename.c_str() );
+			fprintf( fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 - $7 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves below y2=100 "
+										 "title 'Interpolating velocities from faces to nodes',\\\n", filename.c_str() );
+			fprintf( fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves above y1=100 "
+										 "title 'Extra viscous steps (fixed-point iteration(s))', \\\n", filename.c_str() );
+			fprintf( fp_tex_plot_timing, "\t \"%s\" using 1:(100*($2 + $3 + $4 + $5 - $8)/($2 + $3 + $4 + $5 - $7 - $8)) : (100*($2 + $3 + $4 + $5)/($2 + $3 + $4 + $5 - $7 - $8)) with filledcurves "
+										 "title 'Extra projection steps (fixed-point iteration(s))' \n", filename.c_str() );
 			fclose( fp_tex_plot_timing );
 		}
 
 		char tex_timing_script[PATH_MAX];
-		sprintf( tex_timing_script, "%s/plot_tex_timing.sh", setup.export_dir.c_str());
-		if( !file_exists( tex_timing_script ))
+		sprintf( tex_timing_script, "%s/plot_tex_timing.sh", setup.export_dir.c_str() );
+		if( !file_exists( tex_timing_script ) )
 		{
 			FILE *fp_tex_timing_script = fopen( tex_timing_script, "w" );
-			if( fp_tex_timing_script == NULL )
-				throw std::runtime_error(
-					"initialize_timing_output: could not open file for bash script plotting timing tex figure." );
+			if( fp_tex_timing_script == nullptr )
+				throw std::runtime_error( "initialize_timing_output: could not open file for bash script plotting timing tex figure." );
 			fprintf( fp_tex_timing_script, "#!/bin/sh\n" );
 			fprintf( fp_tex_timing_script, "gnuplot ./tex_timing.gnu\n" );
 			fprintf( fp_tex_timing_script, "latex ./timing_history.tex\n" );
@@ -1120,8 +1086,8 @@ void initialize_timing_output( simulation_setup &setup, const my_p4est_navier_st
 
 			std::ostringstream chmod_command;
 			chmod_command << "chmod +x " << tex_timing_script;
-			int sys_return = system( chmod_command.str().c_str());
-			( void ) sys_return;
+			int sys_return = system( chmod_command.str().c_str() );
+			(void) sys_return;
 		}
 	}
 }
