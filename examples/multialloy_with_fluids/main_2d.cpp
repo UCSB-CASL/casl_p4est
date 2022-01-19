@@ -15,7 +15,7 @@
 #include <set>
 #include <time.h>
 #include <stdio.h>
-
+#include <linux/limits.h>
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
@@ -385,14 +385,11 @@ DEFINE_PARAMETER(pl, double, Twall, 275.5, "The freestream fluid temperature T_i
 */
 
 //to-do: decide whether to keep this pressure drop option. will need to add logic to either select pressure drop OR overwrite Reynolds, but not both
-//DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media)");
+DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media). Default: 1.0.");
 
 double r_cyl; // non dim variable used to set up LSF: set in set_geometry()
 
-// For solution of temperature fields: set in set_physical_properties() TO-DO: maybe make these actual things the user can specify
-// TO-DO: ideal scenario -- the user *could* change all these things via inputs. Might need to make an overwrite boolean. aka bool_overwrite_default_temp_settings
-//double Twall;
-//double Tinterface;
+// For solution of temperature fields:
 DEFINE_PARAMETER(pl, double, back_wall_temp_flux, 0.0, "Temperature flux at back wall. Default: 0.0 \n");
 double deltaT;
 
@@ -506,16 +503,6 @@ void set_geometry(){
       break;
     }
     case MELTING_POROUS_MEDIA:{
-      // (WIP)
-      // MORE COMPLEX:
-//      // Domain size:
-//      xmin = 0.0; xmax = 20.0;
-//      ymin = 0.0; ymax = 10.0;
-
-//      // Number of trees:
-//      nx =10.0;
-//      ny =5.0;
-
       // EASIER TO DO LOCALLY:
       xmin = 0.0; xmax = 2.0;
       ymin = 0.0; ymax = 2.0;
@@ -526,7 +513,7 @@ void set_geometry(){
 
       // Periodicity:
       px = 0;
-      py = 0;
+      py = 1;
 
       // Problem geometry:
       r0 = 0.1;     // Computational radius of the sphere // to-do: check this, p sure it gets ignored
@@ -788,9 +775,6 @@ DEFINE_PARAMETER(pl, double, Tinterface, 0.5, "The interface temperature (or con
 
 DEFINE_PARAMETER(pl, double, Tinfty, 1., "The freestream fluid temperature T_infty in K. (default: 1. This needs to be set by the user to run a meaningful example).");
 
-// Elyce to-do 12/14/21: make this pressure_drop variable actually be used
-DEFINE_PARAMETER(pl, double, pressure_drop, 1.0, "The dimensional pressure drop value you are using, in Pa. This value will be used in conjunction with the nondim length scale to compute wall Reynolds number for relevant examples using a channel flow-type setup(i.e. melting porous media)");
-
 
 // ---------------------------------------
 // Physical properties:
@@ -903,28 +887,6 @@ void set_physical_properties(){
       L = 334.e3;  // J/kg
       sigma = (4.20e-10); // [m] // changed from original 2.10e-10 by alban
 
-      // Elyce to-do 12/14/21: commented out below bc no longer necessary. Delete once verified it's working
-//      // Temperature settings:
-////      Tinterface = 273.15;
-
-//      back_wall_temp_flux = 0.0; // Flux in temp on back wall
-
-//      deltaT = Tinfty - T0; // Characteristic Delta T [K] -- used for some non dimensionalization
-
-//      if(deltaT>0.){
-//        theta_infty = 1.0;
-//      }
-//      else{
-//        theta_infty = -1.0;
-//      }
-//      //ttheta_infty = 1.0; // Non dim temp at wall
-//      theta0 = 0.0; // Non dim temp at cylinder
-
-//      theta_interface = (Tinterface - T_cyl)/(deltaT); // Non dim temp at interface
-
-//      // In this example, T_cyl corresponds to the initial temperature of the ice
-//      // T_cyl is used to define the nondimensionalization, and applied as an initial condition.
-//      // However, this is the only time it is used for this example.
       break;
     }
     case MELTING_ICE_SPHERE_NAT_CONV:{
@@ -1249,7 +1211,7 @@ double perturb_flow_noise =0.25;
 
 
 
-double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
+//double G_press; // corresponds to porous media example, it is the prescribed pressure gradient across the channel, applied as a pressure drop, aka (P1 - P2)/L = G --> specified
 void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
@@ -1260,10 +1222,10 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case MELTING_POROUS_MEDIA:{
-      u0 = 0.0;
+      u0 = 1.0;
       v0 = 0.;
 
-      G_press = 1.0; // Pressure drop of order 1
+//      G_press = 1.0; // Pressure drop of order 1
 
       hodge_percentage_of_max_u = 1.e-3;
 
@@ -1312,8 +1274,8 @@ void set_NS_info(){
     case PLANE_POIS_FLOW:{
       Re = 1.0; // this will get overwritten
       u0 = 1.0;//5.0625;
-
-      G_press = 16.*Re/SQR(ymax-(r0 + ymin)); // selecting to yield uavg = 1, r0 = height of interface (y-wise)
+      throw std::invalid_argument("The pressure drop condition has not been correctly set for this plane pois flow example. Please update this before using. \n");
+      //G_press = 16.*Re/SQR(ymax-(r0 + ymin)); // selecting to yield uavg = 1, r0 = height of interface (y-wise)
       // to-do : fix this pois example now that we are using wall reynolds for channel flow type problems ...
       v0 = 0.;
       hodge_percentage_of_max_u=1.0e-3;
@@ -2587,7 +2549,8 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
     }
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:{
-      return (ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))));
+      // no dirichlet wall velocity conditions
+      return 0.;/*(ylower_wall(DIM(x,y,z)) || (yupper_wall(DIM(x,y,z))))*/;
     }
     case MELTING_ICE_SPHERE_NAT_CONV:
     case MELTING_ICE_SPHERE:
@@ -3164,12 +3127,22 @@ class BC_WALL_TYPE_PRESSURE: public WallBCDIM
 public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
-    if(!dirichlet_velocity_walls(DIM(x,y,z))){ // pressure is dirichlet where vel is neumann
+    if(example_ == MELTING_POROUS_MEDIA){ // in this case we have overlap of neumann pressure and velocity ... will clean up this implementation later, isn't as clean as I'd like
+      if(xlower_wall(DIM(x,y,z)) || (xupper_wall(DIM(x,y,z)))){
         return DIRICHLET;
       }
-    else{
+      else{
         return NEUMANN;
       }
+    }
+    else{
+      if(!dirichlet_velocity_walls(DIM(x,y,z))){ // pressure is dirichlet where vel is neumann
+        return DIRICHLET;
+      }
+      else{
+        return NEUMANN;
+      }
+    }
   }
 };
 
@@ -3187,25 +3160,33 @@ public:
       }
       case FLOW_PAST_CYLINDER:
       case MELTING_POROUS_MEDIA:{
-        if(!dirichlet_velocity_walls(DIM(x,y,z))){
-          // Specifying a pressure drop!
-          if(xupper_wall(DIM(x,y,z))){
-            return 0.0;
+        // Dirichlet prescribed pressure on xlower wall, all other walls are either dirichlet zero or neumann zero
+        if(xlower_wall(DIM(x,y,z))){
+          double pressure_drop_nondim;
+          switch(problem_dimensionalization_type){
+          case NONDIM_BY_FLUID_VELOCITY:{
+            pressure_drop_nondim = pressure_drop/(rho_l * u_inf * u_inf);
+            break;
           }
-          else if (xlower_wall(DIM(x,y,z))) {
-            double L_ = xmax - xmin; // domain length
+          case NONDIM_BY_DIFFUSIVITY:{
+            pressure_drop_nondim = is_dissolution_case?
+                                                       (pressure_drop*l_char*l_char/rho_l/Dl/Dl):
+                                                       (pressure_drop*l_char*l_char/rho_l/alpha_l/alpha_l);
 
-            double P1 = G_press * L_;
-            return P1;
-
+            break;
           }
-          else{
-            throw std::runtime_error("You are trying to specify a dirichlet pressure BC on a wall not set up properly, example: porous media melting \n");
+          case DIMENSIONAL:{
+            pressure_drop_nondim = pressure_drop;
+            break;
           }
-
-        } // end of Dirichlet pressure case
+          default:{
+            throw std::runtime_error("Unrecognized dimensionalization type \n");
+          }
+          }
+          return pressure_drop_nondim;
+        }
         else{
-          return 0.0; // homogeneous Neumann for other walls
+          return 0.0;
         }
       }
       case DISSOLVING_DISK_BENCHMARK:
@@ -3236,7 +3217,7 @@ public:
       case PLANE_POIS_FLOW:{
         if(!dirichlet_velocity_walls(DIM(x,y,z))){
           if(xlower_wall(DIM(x,y,z))){
-            return G_press*(xmax-xmin); // updated: select Gpress in set_NS_info()OLD COMMENT: start with delta P/L = 1 -- where L is length of domain
+            return pressure_drop;
           }
           else{
             return 0.0;
@@ -4130,28 +4111,28 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
       // Coarsening instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-//      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold*0.1); // did 0.1* () for the coarsen if no sign change OR below threshold case
 
       // Refining instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
 
       // Coarsening instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold*0.1);
 
       // Refining instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}

@@ -394,11 +394,10 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   int tr_xyz[P4EST_DIM] = {DIM(tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2])};
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    if (s.xyz(dir) < 0 || s.xyz(dir)  > (double) P4EST_ROOT_LEN){
+    if (s.xyz(dir) < 0 || s.xyz(dir)  >= (double) P4EST_ROOT_LEN){
 
       // Elyce attempted fix, seems to work:
       const int ntree_to_slide = (int) floor(s.xyz(dir)/((double) P4EST_ROOT_LEN));
-
       // Old way: this caused a bug that Elyce discovered, it is resolved as of 1/18/21
       //const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
 //      if(ntree_to_slide == 0) ntree_to_slide =1; // Elyce temp bug fix 1/14/21
