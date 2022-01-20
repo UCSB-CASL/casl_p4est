@@ -164,6 +164,15 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
                                    const char* forest_filename, const vector<save_or_load_element_t>& elements);
 
 /*!
+ * Function to create a list of elements to be saved.  Basically, you can't forward variadic parameters from one function
+ * to another.  You must have a function that takes in a va_list.  This is such function.
+ * https://stackoverflow.com/questions/3530771/passing-variable-arguments-to-another-function-that-accepts-a-variable-argument
+ * @see any of my_p4est_save_forest_and_data functions for a parameter description.
+ */
+void my_p4est_save_forest_and_data_v(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
+									 const char* forest_filename, u_int num_exports, va_list args);
+
+/*!
  * \brief my_p4est_save_forest_and_data saves a p4est object (in augmented format, i.e. with cell-associated data as described in
  *        my_p4est_save_forest) AND relevant (groups of) PETSc vectors
  * \param absolute_path_to_folder [in]  path to the folder where the relevant exportation files (for the p4est and the PETSc vectors)

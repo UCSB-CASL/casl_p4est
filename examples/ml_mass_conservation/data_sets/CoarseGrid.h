@@ -16,7 +16,7 @@
  * Auxiliary class to handle all procedures involving the coarse grid, which is to be sampled and then updated by using
  * a reference finer grid from where its values are drawn by interpolation.
  *
- * Updated: October 10, 2021.
+ * Updated: January 10, 2022.
  */
 class CoarseGrid
 {
@@ -96,7 +96,7 @@ public:
 
 		// Retrieve grid size data.
 		double dxyz[P4EST_DIM];
-		get_dxyz_min( p4est, dxyz, minCellWidth, minCellDiag );
+		get_dxyz_min( p4est, dxyz, &minCellWidth, &minCellDiag );
 
 		// Minimum coordinates of computational domain.
 		minCoords[0] = xyzMin[0];

@@ -72,6 +72,7 @@ private:
 	double _theta;			// Rotation angle around the z-axis with respect to horizontal x-axis.
 	double _uBegin;			// Lower and upper bound for parameter u.
 	double _uEnd;
+	bool _verbose;
 	std::uniform_real_distribution<double>& _uniformDistribution;
 	std::mt19937& _gen;
 
@@ -87,12 +88,14 @@ public:
 	 * @param [in] halfAxisLen Half of horizontal axis length.  Parameter u will go from -halfAxisLen to +halfAxisLen.
 	 * @param [in] gen Mersenne twister engine to generate random numbers used when finding closest point.
 	 * @param [in] uniformDistribution A uniform distribution sampler used when finding the closest point.
+	 * @param [in] verbose Enabling debug messages.
 	 * @throws Runtime exception if beginning and end values for parameter u overlap.
 	 */
 	explicit ArcLengthParameterizedSine( double a, double omega, double tx, double ty, double theta, double halfAxisLen,
-									     std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution )
+									     std::mt19937& gen, std::uniform_real_distribution<double>& uniformDistribution,
+										 const bool& verbose=true )
 		: _a( a ), _omega( omega ), _theta( theta ), _uBegin( -halfAxisLen ), _uEnd( +halfAxisLen ),
-		_gen( gen ), _uniformDistribution( uniformDistribution )
+		_gen( gen ), _uniformDistribution( uniformDistribution ), _verbose( verbose )
 	{
 #ifdef CASL_THROWS
 		if( _uBegin >= _uEnd )
@@ -116,7 +119,7 @@ public:
 
 		// Retrieve the exact distance to the zero level set.
 		double valOfDerivative = 1, distance;
-		distThetaDerivative( -1, x, y, *this, _gen, _uniformDistribution, valOfDerivative, distance );
+		distThetaDerivative( -1, x, y, *this, _gen, _uniformDistribution, valOfDerivative, distance, _verbose );
 		double comparativeY = _a * sin( _omega * x );
 
 		// Fix sign: points above sine wave are negative, points below are positive.

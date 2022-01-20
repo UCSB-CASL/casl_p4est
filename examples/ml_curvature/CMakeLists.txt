@@ -5,75 +5,65 @@ project( ml_curvature )
 
 set( CMAKE_CXX_STANDARD 14 )
 
-######################## Source code ########################
+###################################### Compiler custom macros for current project ######################################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC frugally_deep_test.cpp )
+	list( APPEND SRC main_2d.cpp )
+elseif( DIMENSION MATCHES 3d )
+	list( APPEND SRC data_sets/paraboloid_test_3d.cpp )
+else()
+	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
 endif()
 
-#if( DIMENSION MATCHES 3d )
-#	list( APPEND SRC sphere_datasets_3d.cpp )
-#endif()
-#add_compile_definitions( PRIVATE P4_TO_P8 )
 add_compile_definitions( PRIVATE CASL_THROWS )
+add_compile_definitions( PRIVATE FDEEP_FLOAT_TYPE=float )		# Frugally deep floating-point precision.
+add_compile_definitions( PRIVATE EIGEN_DONT_PARALLELIZE )		# Prevents parallelization in Eigen library.
 
-######################## Settings ########################
+############################# Load paths to libraries and set compiler for current system ##############################
 
-# CASL library root directory.
-set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
+set( PARCASL ${CMAKE_CURRENT_SOURCE_DIR}/../../ )				# CASL library root directory.
+include( ${PARCASL}/cmake/zea.cmake )							# Set paths for this machine and populate LIBS, INC_DIRS, and LIB_DIRS lists.
 
-# Compilers.
-set( CMAKE_C_COMPILER mpicc )
-set( CMAKE_CXX_COMPILER mpicxx )
+if( CMAKE_BUILD_TYPE MATCHES Debug )
+	add_compile_definitions( PRIVATE DEBUG )					# Enable debug macro.
+endif()
 
-# Optimization flags.  Comment these out when using debugger.
-set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
-set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+############################################# Compiler optimization flags ##############################################
+# Comment these out when using debugger.
 
-# OpenMP flags.
-# See http://blog.llvm.org/2015/05/openmp-support_22.html
+#set( GCC_COVERAGE_COMPILE_FLAGS "-O2 -O3 -march=native" )
+#set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+
+################################################## Loading libraries ###################################################
+# These commands must be given prior to defining any target.
+
+# Library just used for this project (i.e., not included in cmake/<machine>.cmake)
+# Let's load OpenMP and its flags.  See http://blog.llvm.org/2015/05/openmp-support_22.html for more details.
 find_package( OpenMP )
 if( OPENMP_FOUND )
 	set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}" )
 	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}" )
 endif()
 
-######################## Libraries ########################
-# These commands must be given prior to defining any target.
-
-# find_package( MPI REQUIRED )		# Not needed if using mpich rather than openmpi.
-find_package( Boost COMPONENTS filesystem REQUIRED )
-
-# Library linking directories.
+# Libraries and their linking/include directories (see cmake/<machine>.cmake).  Also adding OpenMP.
 link_directories(
-		/usr/local/lib
-		/usr/local/petsc/lib
-		/usr/local/p4est-2.2/lib
+		${LIB_DIRS}
 		/usr/local/opt/libomp/lib )
 
 link_libraries(
-		mpi
-		petsc
-		p4est
-		sc
-		voro++
-		omp
-		${Boost_FILESYSTEM_LIBRARY} )
+		${LIBS}
+		omp )
 
 include_directories(
 		.
 		${PARCASL}
-		/usr/local/include
-		/usr/local/petsc/include
-		/usr/local/p4est-2.2/include
-		/usr/local/include/voro++
-		/usr/local/opt/libomp/include
-		${Boost_INCLUDE_DIR} )
+		${INC_DIRS}
+		/usr/local/opt/libomp/include )
 
-######################## Creating the executable ########################
+############################################### Creating the executable ################################################
 
-include( ${PARCASL}/libparcasl.cmake )
+include( ${PARCASL}/cmake/libparcasl.cmake )
 
 add_executable( ml_curvature
 		${SRC} ${HEADERS} ${SOURCES} )

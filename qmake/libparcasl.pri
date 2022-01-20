@@ -119,7 +119,8 @@ HEADERS += \
   $$PARCASL/src/my_p4est_save_load.h \
   $$PARCASL/src/my_p4est_scft.h \
   $$PARCASL/src/my_p4est_semi_lagrangian.h \
-#  $$PARCASL/src/my_p4est_semi_lagrangian_ml.h \
+# $$PARCASL/src/my_p4est_semi_lagrangian_ml.h \
+# $$PARCASL/src/my_p4est_curvature_ml.h \
   $$PARCASL/src/my_p4est_shs_channel.h \
   $$PARCASL/src/my_p4est_solve_lsqr.h \
   $$PARCASL/src/my_p4est_surfactant.h \
@@ -130,7 +131,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_nodes.h \
   $$PARCASL/src/my_p4est_tools.h \
   $$PARCASL/src/my_p4est_two_phase_flows.h \
-#  $$PARCASL/src/my_p4est_xgfm_cells.h \
+# $$PARCASL/src/my_p4est_xgfm_cells.h \
   $$PARCASL/src/voronoi2D.h \
   $$PARCASL/src/my_p4est_fast_sweeping.h \
   $$PARCASL/src/my_p4est_nodes_along_interface.h
@@ -175,7 +176,8 @@ SOURCES += \
   $$PARCASL/src/my_p4est_save_load.cpp \
   $$PARCASL/src/my_p4est_scft.cpp \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
-#  $$PARCASL/src/my_p4est_semi_lagrangian_ml.cpp \
+# $$PARCASL/src/my_p4est_semi_lagrangian_ml.cpp \
+# $$PARCASL/src/my_p4est_curvature_ml.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_surfactant.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
@@ -185,7 +187,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_two_phase_flows.cpp \
-#  $$PARCASL/src/my_p4est_xgfm_cells.cpp \
+# $$PARCASL/src/my_p4est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi2D.cpp \
   $$PARCASL/src/my_p4est_fast_sweeping.cpp \
   $$PARCASL/src/my_p4est_nodes_along_interface.cpp
@@ -214,7 +216,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_level_set.h \
   $$PARCASL/src/my_p8est_level_set_cells.h \
   $$PARCASL/src/my_p8est_level_set_faces.h \
-#  $$PARCASL/src/my_p8est_multialloy.h \
+# $$PARCASL/src/my_p8est_multialloy.h \
   $$PARCASL/src/my_p8est_navier_stokes.h \
   $$PARCASL/src/my_p8est_node_neighbors.h \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.h \
@@ -234,9 +236,9 @@ HEADERS += \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p8est_refine_coarsen.h \
   $$PARCASL/src/my_p8est_save_load.h \
-#  $$PARCASL/src/my_p8est_scft.h \
+# $$PARCASL/src/my_p8est_scft.h \
   $$PARCASL/src/my_p8est_semi_lagrangian.h \
-#  $$PARCASL/src/my_p8est_semi_lagrangian_ml.h \
+# $$PARCASL/src/my_p8est_semi_lagrangian_ml.h \
   $$PARCASL/src/my_p8est_solve_lsqr.h \
   $$PARCASL/src/my_p8est_surfactant.h \
   $$PARCASL/src/my_p8est_shs_channel.h \
@@ -247,9 +249,9 @@ HEADERS += \
   $$PARCASL/src/my_p8est_nodes.h \
   $$PARCASL/src/my_p8est_tools.h \
   $$PARCASL/src/my_p8est_two_phase_flows.h \
-#  $$PARCASL/src/my_p8est_xgfm_cells.h \
+# $$PARCASL/src/my_p8est_xgfm_cells.h \
   $$PARCASL/src/voronoi3D.h \
-#  $$PARCASL/src/my_p8est_fast_sweeping.h \
+# $$PARCASL/src/my_p8est_fast_sweeping.h \
   $$PARCASL/src/my_p8est_nodes_along_interface.h
 
 SOURCES += \
@@ -269,7 +271,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_level_set.cpp \
   $$PARCASL/src/my_p8est_level_set_cells.cpp \
   $$PARCASL/src/my_p8est_level_set_faces.cpp \
-#  $$PARCASL/src/my_p8est_multialloy.cpp \
+# $$PARCASL/src/my_p8est_multialloy.cpp \
   $$PARCASL/src/my_p8est_navier_stokes.cpp \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.cpp \
@@ -289,9 +291,9 @@ SOURCES += \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \
   $$PARCASL/src/my_p8est_save_load.cpp \
-#  $$PARCASL/src/my_p8est_scft.cpp \
+# $$PARCASL/src/my_p8est_scft.cpp \
   $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
-#  $$PARCASL/src/my_p8est_semi_lagrangian_ml.cpp \
+# $$PARCASL/src/my_p8est_semi_lagrangian_ml.cpp \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
   $$PARCASL/src/my_p8est_surfactant.cpp \
   $$PARCASL/src/my_p8est_trajectory_of_point.cpp \
@@ -301,9 +303,9 @@ SOURCES += \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_two_phase_flows.cpp \
-#  $$PARCASL/src/my_p8est_xgfm_cells.cpp \
+# $$PARCASL/src/my_p8est_xgfm_cells.cpp \
   $$PARCASL/src/voronoi3D.cpp \
-#  $$PARCASL/src/my_p8est_fast_sweeping.cpp \
+# $$PARCASL/src/my_p8est_fast_sweeping.cpp \
   $$PARCASL/src/my_p8est_nodes_along_interface.cpp
 
 # headers-only stuff
