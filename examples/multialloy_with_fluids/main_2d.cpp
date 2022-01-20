@@ -2975,6 +2975,7 @@ public:
   }
   void clear(){
     v_interface_interp->clear();
+    delete v_interface_interp;
   }
   void set(my_p4est_node_neighbors_t* ngbd_, Vec v_interface){
     if((ngbd_!=NULL) && (v_interface!=NULL)){
