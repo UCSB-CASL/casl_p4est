@@ -1870,6 +1870,8 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
            ierr = VecGetArray(qy, &qy_p); CHKERRXX(ierr),
            ierr = VecGetArray(qz, &qz_p); CHKERRXX(ierr); );
 
+    // 1/5/21 -- Commented out by Elyce and Rochi -- the below code is not actually used and we have verified that this is a source of a memory leak
+    /*
     // second-order derivatives
     if (order == 2)
     {
@@ -1894,7 +1896,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
       ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
 #endif
     }
-
+    */
     ierr = VecCreateGhostNodes(p4est, nodes, &b_qn_well_defined); CHKERRXX(ierr);
     ierr = VecGetArray(b_qn_well_defined, &b_qn_well_defined_p); CHKERRXX(ierr);
 
@@ -2760,7 +2762,10 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
            delete[] ny,
            delete[] nz );
   }
-
+  // Rochi fixing memory leak 01/04/2022
+  ierr = VecDestroy(b_qn_well_defined); CHKERRXX(ierr);
+  ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr);
+  // end of addition of Rochi
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
