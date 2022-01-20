@@ -371,23 +371,28 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
   }
 }
 
+void my_p4est_save_forest_and_data_v(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
+									 const char* forest_filename, u_int num_exports, va_list args)
+{
+  vector<save_or_load_element_t> elements;
+  for (u_int i = 0; i < num_exports; ++i) {
+	save_or_load_element_t to_add;
+	to_add.name            = std::string(va_arg(args, const char*));
+	to_add.nvecs           = va_arg(args, u_int);
+	to_add.pointer_to_vecs = va_arg(args, Vec*);
+	elements.push_back(to_add);
+  }
+
+  my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, faces, forest_filename, elements);
+}
+
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces,
                                    const char* forest_filename, u_int num_exports, ...)
 {
   va_list args;
   va_start(args, num_exports);
-
-  vector<save_or_load_element_t> elements;
-  for (u_int i = 0; i < num_exports; ++i) {
-    save_or_load_element_t to_add;
-    to_add.name     = std::string(va_arg(args, const char*));
-    to_add.nvecs  = va_arg(args, u_int);
-    to_add.pointer_to_vecs = va_arg(args, Vec*);
-    elements.push_back(to_add);
-  }
+  my_p4est_save_forest_and_data_v(absolute_path_to_folder, forest, nodes, faces, forest_filename, num_exports, args);
   va_end(args);
-
-  my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, faces, forest_filename, elements);
 }
 
 void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t* forest, p4est_nodes_t* nodes,
@@ -395,8 +400,7 @@ void my_p4est_save_forest_and_data(const char* absolute_path_to_folder, p4est_t*
 {
   va_list args;
   va_start(args, num_exports);
-  my_p4est_save_forest_and_data(absolute_path_to_folder, forest, nodes, NULL,
-                                forest_filename, num_exports, args);
+  my_p4est_save_forest_and_data_v(absolute_path_to_folder, forest, nodes, nullptr, forest_filename, num_exports, args);
   va_end(args);
 }
 
