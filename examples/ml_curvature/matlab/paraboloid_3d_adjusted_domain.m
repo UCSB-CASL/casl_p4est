@@ -43,7 +43,7 @@ else
 	qulim = Q(ulim, 0);		% Must yield qvlim too --now we have (-ulim, qvlim) and (ulim, qvlim).
 end
 
-qlim = qvlim;				% Level curve where we achieve the minimum curvature (=qulim works too).
+qlim = qvlim;				% Level set where we achieve the minimum curvature (=qulim works too).
 
 %%%%%%%%%%%%%%%%%%% 3) Transform Q(u,v) and its axes to find enclosing cylinder %%%%%%%%%%%%%%%%%%%%
 
@@ -58,7 +58,7 @@ R = [    c+(1-c)*ux^2, (1-c)*uy*ux-s*uz, (1-c)*uz*ux+s*uy;...	% Rotation matrix.
 	 (1-c)*ux*uz-s*uy, (1-c)*uy*uz+s*ux,     c+(1-c)*uz^2];
 T = [-0.125, 0.125, -0.125]';				% Translation vector.
 
-% Finding the coords of cylinder containing Q(u,v).
+% Finding the world coords of cylinder containing Q(u,v).
 % Top coords (the four points lying on the same qlim found above).
 Qt = zeros(3,4);	% 3 dimensions (x,y,z) and 4 points (-ulim,ulim,-vlim,vlim), one per column.
 Qt(:,1) = R * [-ulim, 0, qlim]' + T;			% (-ulim, 0, qlim).
@@ -80,61 +80,37 @@ minA = min(A, [], 2);
 maxA = max(A, [], 2);
 rangeA = maxA - minA;
 
-%%%%%%%%%%%%%%%% 5) Use the x,y,z ranges to find the cube width and define its faces %%%%%%%%%%%%%%%
+%%%%%%%%%% 5) Use the x,y,z ranges to find the cube side length and circumscribing sphere %%%%%%%%%%
 
 cubeSideLen = max(rangeA);
 centroid = mean(A, 2);
 dp = cubeSideLen/2;			% Each axis begins at the centroid and extends to -dp and +dp.
 dp = dp + 2*h;				% Padding each direction (we won't sample points beyond dp, but need info from there).
+r = dp * sqrt(3);			% Radius of circumscribing sphere.
 
-% Cube faces: six planes defined by a point and an outward-pointing normal vector.
-% Assume the z axis points up and y axis towards the screen.
-Bp = zeros(3,3);			% Points on positive faces (a column per dim).
-np = zeros(3,3);			% Outward normals on positive faces (a column per dim).
-Bm = zeros(3,3);			% Points on negative faces.
-nm = zeros(3,3);			% Outward normals on negative faces.
-Bp(:,1) = centroid + [dp,0,0]'; np(:,1) = [ 1, 0, 0]';		% Right.
-Bm(:,1) = centroid - [dp,0,0]'; nm(:,1) = [-1, 0, 0]';		% Left.
-Bp(:,2) = centroid + [0,dp,0]'; np(:,2) = [ 0, 1, 0]';		% Back.
-Bm(:,2) = centroid - [0,dp,0]'; nm(:,2) = [ 0,-1, 0]';		% Front.
-Bp(:,3) = centroid + [0,0,dp]'; np(:,3) = [ 0, 0, 1]';		% Top.
-Bm(:,3) = centroid - [0,0,dp]'; nm(:,3) = [ 0, 0,-1]';		% Bottom.
+%%%%%%%%%%% 6) Redefining the canonical domain by using the cube's circumscribing sphere %%%%%%%%%%%
 
-%%%%%%%%% 6) Fill the gaps by redefining the canonical domain and shooting rays to the cube %%%%%%%%
+% Transform the centroid from world to paraboloid canonical coords: only the q(=z) component != 0.
+centroidQ = R' * (centroid - T);
+z = centroidQ(end);
 
-% Let's find the min hit with any face for each of the four rays.
-tHits = nan(4,1);
-for ray = 1:4				% Four rays.
-	c = Qt(:,ray) - Q0(:,ray);
-	c = c / norm(c);		% Unit direction vector --that way, tHit indicates the target height Q.
-	P = Qt(:,ray);			% Ray origin: must be the top because we don't want the base to interfere.
-	for i = 1:3				% Three groups of faces: two on x, two on y, and two on z.
-		
-		% First, check positive face in the ith direction.
-		[isHit, tHit, ~] = rayPlaneIntersection( P, c, Bp(:,i), np(:,i) );
-		if isHit && tHit >= 0	% Is face in front of ray and ray aims along its face's normal?
-			if isnan(tHits(ray)) || tHit < tHits(ray)
-				tHits(ray) = tHit;
-			end
-		end
-		
-		% Then, check negative face in the ith direction.
-		[isHit, tHit, ~] = rayPlaneIntersection( P, c, Bm(:,i), nm(:,i) );
-		if isHit && tHit >= 0	% Is face in front of ray and ray aims along its face's normal?
-			if isnan(tHits(ray)) || tHit < tHits(ray)
-				tHits(ray) = tHit;
-			end
-		end
-	end
-end
+% Set v=0 and find the intersection of circle with radius r centered at (0,0,z) and parabola q=au^2.
+alpha = 1;  beta = 1/a - 2*z;  gamma = z^2 - r^2;
+q1 = (-beta + sqrt(beta^2 - 4*alpha*gamma)) / (2*alpha);
+q2 = (-beta - sqrt(beta^2 - 4*alpha*gamma)) / (2*alpha);
+qu = max(q1, q2);
+assert(qu >= qlim);			% New Q value due to u must be at least previous estimation.
 
-% For each paraboloid main direction select the max tHit. That's the additional Q value we need.
-tHits( isnan(tHits) ) = 0;			% If q stayed as nan, we set its height to zero for consistency.
-qu = qlim + max(tHits(1:2));		% u=[-ulim,+ulim], v=0.
-qv = qlim + max(tHits(3:4));		% u=0, v=[-vlim,+vlim].
-q = max(qu, qv);					% Definite height.
+% Set u=0 and find the intersectino of circle with radius r centered at (0,0,z) and parabola q=bv^2.
+alpha = 1;  beta = 1/b - 2*z;  gamma = z^2 - r^2;
+q1 = (-beta + sqrt(beta^2 - 4*alpha*gamma)) / (2*alpha);
+q2 = (-beta - sqrt(beta^2 - 4*alpha*gamma)) / (2*alpha);
+qv = max(q1, q2);
+assert(qv >= qlim);
 
-mu = ceil(sqrt(q / a)/h)*h;	% New canonical domain boundaries in u and v directions.
+% Adjust the canonical domain for new height.
+q = max(qu, qv);					% New height.
+mu = ceil(sqrt(q / a)/h)*h;			% New canonical domain boundaries in u and v directions.
 mv = ceil(sqrt(q / b)/h)*h;
 
 [U,V] = meshgrid( linspace( -mu, mu, 2*mu/h + 1 ), linspace( -mv, mv, 2*mv/h + 1 ) );

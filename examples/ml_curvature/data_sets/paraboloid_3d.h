@@ -204,20 +204,24 @@ public:
 
 	/**
 	 * Constructor.
+	 * @note If a limiting ellipse is desired, both sau and sav must be positive and less than DBL_MAX.
 	 * @param [in] trans Translation vector.
 	 * @param [in] rotAxis Rotation axis (must be nonzero).
 	 * @param [in] rotAngle Rotation angle about rotAxis.
 	 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
 	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
-	 * @param [in] L Number of refinement levels per unit length.
+	 * @param [in] L Number of refinement levels per unit length (so that h is a power of two).
 	 * @param [in] paraboloid Paraboloid object in canonical coordinates.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 	 */
 	ParaboloidLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle,
-						const size_t& ku, const size_t& kv, const size_t& L, const Paraboloid *paraboloid, const size_t& btKLeaf=40 )
+						const size_t& ku, const size_t& kv, const size_t& L, const Paraboloid *paraboloid,
+						const size_t& btKLeaf=40, const double& ru2=DBL_MAX, const double& rv2=DBL_MAX )
 						: _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _paraboloid( paraboloid ),
 						_c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
-						DiscretizedMongePatch( ku, kv, L, paraboloid, btKLeaf )
+						DiscretizedMongePatch( ku, kv, L, paraboloid, btKLeaf, ru2, rv2 )
 	{
 		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
 			throw std::runtime_error( "[CASL_ERROR] ParaboloidLevelSet::constructor: Rotation axis shouldn't be 0!" );

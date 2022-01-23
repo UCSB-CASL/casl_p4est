@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: November 23, 2021.
+ * Updated: January 22, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -78,12 +78,15 @@ int main ( int argc, char* argv[] )
 		const double R = (MAX_D + H/2) * sqrt( 3 );			// Radius of circumscribing circle (i.e., containing the
 															// domain cube and accounting for shifted paraboloid origin).
 		const double hiQU = 0.5 * (-1/A + sqrt(1./SQR(A) + 4*SQR(R)));	// Lower bound for Q along u axis (for v=0).
-		const size_t halfU = ceil(sqrt( hiQU / A ) / H);				// Half u axis in terms of H.
 		const double hiQV = 0.5 * (-1/B + sqrt(1./SQR(B) + 4*SQR(R)));	// Lower bound for Q along v axis (for u=0).
-		const size_t halfV = ceil(sqrt( hiQV / B ) / H);				// Half v axis in terms of H.
+		const double hiQ = MAX( hiQU, hiQV );							// Choose a common value so that we have an ellipse up there.
+		const double rU2 = hiQ / A;							// Squared ellipse semiaxis lengths.
+		const double rV2 = hiQ / B;
+		const size_t halfU = ceil(sqrt(rU2) / H);			// Half u axis in H units.
+		const size_t halfV = ceil(sqrt(rV2) / H);			// Half v axis in H units.
 
 		double timeCreate = watch.get_duration_current();
-		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid, 5 );
+		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid, 5, rU2, rV2 );
 		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
 		paraboloidLevelSet.dumpTriangles( "paraboloid_triangles.csv" );
 		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &paraboloidLevelSet, 2.0 );
