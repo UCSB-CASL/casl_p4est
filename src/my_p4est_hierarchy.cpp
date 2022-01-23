@@ -394,15 +394,21 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   int tr_xyz[P4EST_DIM] = {DIM(tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2])};
 
   for (u_char dir = 0; dir < P4EST_DIM; ++dir) {
-    if (s.xyz(dir) < 0 || s.xyz(dir)  > (double) P4EST_ROOT_LEN){
-      const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
-      P4EST_ASSERT((s.xyz(dir) < 0 && ntree_to_slide < 0) || (s.xyz(dir) > (double) P4EST_ROOT_LEN && ntree_to_slide > 0));
+    if (s.xyz(dir) < 0 || s.xyz(dir)  >= (double) P4EST_ROOT_LEN){
+
+      // Elyce attempted fix, seems to work:
+      const int ntree_to_slide = (int) floor(s.xyz(dir)/((double) P4EST_ROOT_LEN));
+      // Old way: this caused a bug that Elyce discovered, it is resolved as of 1/18/21
+      //const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
+//      if(ntree_to_slide == 0) ntree_to_slide =1; // Elyce temp bug fix 1/14/21
+
+      P4EST_ASSERT((s.xyz(dir) < 0 && ntree_to_slide < 0) || (s.xyz(dir) >= (double) P4EST_ROOT_LEN && ntree_to_slide > 0));
       s.xyz(dir) -= ((double) ntree_to_slide)*((double) P4EST_ROOT_LEN); // convert both terms to double BEFORE multiplying to avoid overflow in integer representation!
       tr_xyz[dir] = tr_xyz_orig[dir] + ntree_to_slide;
       if(periodic[dir])
         tr_xyz[dir] = mod(tr_xyz[dir], myb->nxyztrees[dir]);
     }
-    P4EST_ASSERT(0 <= tr_xyz[dir] && tr_xyz[dir] < myb->nxyztrees[dir] && 0.0 <= s.xyz(dir) && s.xyz(dir) <= (double) P4EST_ROOT_LEN);
+    P4EST_ASSERT(0 <= tr_xyz[dir] && tr_xyz[dir] < myb->nxyztrees[dir] && 0.0 <= s.xyz(dir) && s.xyz(dir) < (double) P4EST_ROOT_LEN);
   }
 
   p4est_topidx_t tt = myb->nxyz_to_treeid[SUMD(tr_xyz[0], tr_xyz[1]*myb->nxyztrees[0], tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1])];

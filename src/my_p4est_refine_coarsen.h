@@ -193,7 +193,6 @@ protected:
    * \param diag_opn [in] *please see refine_and_coarsen documentation
    * Developer: Elyce Bayat, ebayat@ucsb.edu
    * Last modified: 3/30/2020
-   * WARNING: This function has not yet been fully validated in 2d
    * WARNING: This function has not been implemented or validated in 3d
    */
 
@@ -233,18 +232,16 @@ public:
   }
 
   // ELYCE TRYING SOMETHING:
-
-  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
-                          const unsigned int num_fields, bool use_block,bool enforce_uniform_band,
-                          double refine_band, double coarsen_band,
-                          Vec* fields,Vec fields_block,
-                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
-                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
   /*!
    * \brief refine_and_coarsen
+   * This function evaluates whether quadrants in the grid are eligible for refinement/coarsening based on a variable number of fields with user-selected refinement and coarsen criteria for each field. This function returns a boolean which is true if the grid has changed and false if the grid has not changed.
+   * Note: This particular function is a wrapper for the refine_coarsen function below whose arguments are identical except for the fields to refine/coarsen around, which are constant double pointers instead of provided PETSC Vec.
+   * This particular function:
+   *      (a) Gets the associated double pointer with the given PETSC Vec field being considered for refinement/coarsening criteria
+   *      (b) Passes that field and criteria to the refine_and_coarsen function listed below, which will then check the refine/coarsen condition for all quadrants in the forest.
    * \param p4est           [inout] the grid you want to refine and coarsen
-   * \param nodes           [inout] nodes of the grid you want to refine and coarsen
-   * \param phi_p           [inout] a PETSC Vector pointer (object Vec) to the LSF (or effective LSF) that we want to refine and coarsen around
+   * \param nodes           [in] nodes of the grid you want to refine and coarsen
+   * \param phi             [in] a PETSC Vec for the LSF (or effective LSF) that we want to refine and coarsen around
    * \param num_fields      [in] int, number of fields to refine and coarsen by
    * \param use_block       [in] boolean, describing whether to use a PETSc block vector to access fields to refine by, or not.
    *                                True = use user provided double pointer to PETSc block vector with block size = num_fields.
@@ -293,6 +290,37 @@ public:
    * Last modified: 3/30/2020
    * WARNING: This function has not yet been fully validated in 2d
    * WARNING: This function has not been implemented or validated in 3d
+   * \return
+   */
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi,
+                          const unsigned int num_fields, bool use_block,bool enforce_uniform_band,
+                          double refine_band, double coarsen_band,
+                          Vec* fields,Vec fields_block,
+                          std::vector<double> criteria, std::vector<compare_option_t> compare_opn,
+                          std::vector<compare_diagonal_option_t> diag_opn,std::vector<int> lmax_custom);
+
+  /*!
+   * \brief refine_and_coarsen
+   * This function loops through each quadrant in the grid and evaluates whether the quadrant is eligible for refinement or coarsening depending on the provided user criteria. It then returns a boolean which is true if the grid has changed and false if the grid has not changed.
+   * The complete information from the developer is described in the function listed above.
+   * The refine_and_coarsen function listed above wraps around this function, and serves to get PETSC Vec fields as pointers to then pass to this function. This function then:
+   *      (a) Loops through each quadrant in the grid
+   *      (b) Evaluates whether or not refinement/coarsening can be applied to that grid, and calls the function to tag the quadrants appropriately
+   *      (c) Returns whether or not the grid has been changed
+   * \param p4est [inout] See above description
+   * \param nodes [in] " "
+   * \param phi_p [in] a double pointer for the LSF (or effective LSF) that we want to refine and coarsen around
+   * \param num_fields [in] See above description
+   * \param use_block [in] " "
+   * \param enforce_uniform_band [in] " "
+   * \param refine_band [in] " "
+   * \param coarsen_band [in] " "
+   * \param fields [in] a double pointer to the fields for which we want to evaluate refinement/coarsening criteria
+   * \param fields_block [in] a double pointer to the fields (provided in block vector format) for which we want to evaluate refinement/coarsening criteria
+   * \param criteria [in] See above function description
+   * \param compare_opn [in] See above function description
+   * \param diag_opn [in] See above function description
+   * \param lmax_custom [in] See above function description
    * \return
    */
   bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p,
