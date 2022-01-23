@@ -38,7 +38,15 @@ MATLAB_INCLUDES = $$MATLAB_DIR/extern/include/
 MATLAB_LIBS = -Wl,-rpath,$$MATLAB_DIR/bin/glnxa64/ -L$$MATLAB_DIR/bin/glnxa64/ -leng -lmx
 
 # mpi
-MPI_DIR = /usr/lib/mpich
+# use the mpich versions that were downloaded with petsc
+CONFIG(debug, debug|release):{
+  MPI_DIR = $$PETSC_DIR_DBG
+}
+CONFIG(release, debug|release):{
+  MPI_DIR = $$PETSC_DIR_RLS
+}
+
+#MPI_DIR=/usr/lib/mpich
 
 MPI_INCLUDES = $$MPI_DIR/include
 MPI_LIBS = -Wl,-rpath,$$MPI_DIR/lib -L$$MPI_DIR/lib -lmpi -lmpicxx
