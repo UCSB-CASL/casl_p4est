@@ -1326,8 +1326,7 @@ void create_solver_from_scratch( const mpi_environment_t& mpi, const cmdParser& 
 	ns->set_external_forces_per_unit_mass( tmp );
 }
 
-void
-check_accuracy_of_solution( my_p4est_navier_stokes_t *ns, my_p4est_shs_channel_t &channel, simulation_setup &setup )
+void check_accuracy_of_solution( my_p4est_navier_stokes_t *ns, my_p4est_shs_channel_t &channel, simulation_setup &setup )
 {
 	double my_errors[2 * P4EST_DIM];
 	for( unsigned char dir = 0; dir < 2 * P4EST_DIM; ++dir )
@@ -1534,12 +1533,12 @@ bool monitor_simulation( const simulation_setup &setup, const mass_flow_controll
 	if( ns->get_mpirank() == 0 )
 	{
 		FILE *fp_monitor = fopen( setup.file_monitoring.c_str(), "a" );
-		if( fp_monitor == NULL )
+		if( fp_monitor == nullptr )
 			throw std::runtime_error( "monitor_simulation: could not open monitoring file." );
-		fprintf( fp_monitor, "%g %g %g\n", setup.tn,
-				 (external_acceleration[0]->get_value() > 0.0? channel.canonical_Re_tau(
-					 external_acceleration[0]->get_value(), ns->get_nu()) : -1.0),
-				 channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()));
+		fprintf( fp_monitor, "%g %g %g\n",
+				 setup.tn,
+				 (external_acceleration[0]->get_value() > 0.0? channel.canonical_Re_tau( external_acceleration[0]->get_value(), ns->get_nu() ) : -1.0),
+				 channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu() ) );
 		fclose( fp_monitor );
 	}
 
@@ -1547,11 +1546,11 @@ bool monitor_simulation( const simulation_setup &setup, const mass_flow_controll
 	if( external_acceleration[0]->get_value() > 0.0 )
 	{
 		ierr = PetscPrintf( ns->get_mpicomm(),
-							"Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
+							"Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f, \t Q = %.4f\n",
 							setup.iter, setup.tn, 100 * (setup.tn - setup.tstart) / setup.duration,
 							ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
-							channel.canonical_Re_tau( external_acceleration[0]->get_value(), ns->get_nu()),
-							channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()));
+							channel.canonical_Re_tau( external_acceleration[0]->get_value(), ns->get_nu() ),
+							channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu() ), controller->read_latest_mass_flow() );
 		CHKERRXX( ierr );
 	}
 	else
@@ -1560,11 +1559,11 @@ bool monitor_simulation( const simulation_setup &setup, const mass_flow_controll
 							setup.iter );
 		CHKERRXX( ierr );
 		ierr = PetscPrintf( ns->get_mpicomm(),
-							"Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
+							"Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t f_x = %.2f, \t Re_b = %.2f, \t Q = %.4f\n",
 							setup.iter, setup.tn, 100 * (setup.tn - setup.tstart) / setup.duration,
 							ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
 							external_acceleration[0]->get_value(),
-							channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()));
+							channel.Re_b( controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu() ), controller->read_latest_mass_flow() );
 		CHKERRXX( ierr );
 	}
 
@@ -1581,19 +1580,18 @@ bool monitor_simulation( const simulation_setup &setup, const mass_flow_controll
 	return false;
 }
 
-void
-export_drag( const simulation_setup &setup, const my_p4est_navier_stokes_t *ns, const my_p4est_shs_channel_t &channel,
-			 const mass_flow_controller_t *controller )
+void export_drag( const simulation_setup& setup, const my_p4est_navier_stokes_t *ns, const my_p4est_shs_channel_t& channel,
+				  const mass_flow_controller_t *controller )
 {
 	double drag[P4EST_DIM];
 	ns->get_noslip_wall_forces( drag );
 	if( ns->get_mpirank() == 0 )
 	{
-		const double U_b = channel.mean_u( controller->read_latest_mass_flow(), ns->get_rho());
-		for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
-			drag[dir] /= (-2.0 * SQR( U_b ) * MULTD( ns->get_rho(), channel.length(), channel.width()));
+		const double U_b = channel.mean_u( controller->read_latest_mass_flow(), ns->get_rho() );
+		for( double& dir : drag )
+			dir /= (-2.0 * SQR( U_b ) * MULTD( ns->get_rho(), channel.length(), channel.width() ));
 		FILE *fp_drag = fopen( setup.file_drag.c_str(), "a" );
-		if( fp_drag == NULL )
+		if( fp_drag == nullptr )
 			throw std::runtime_error( "export_drag: could not open file for drag output." );
 		fprintf( fp_drag, drag_output_format.c_str(), setup.tn, DIM( drag[0], drag[1], drag[2] ) );
 		fclose( fp_drag );
@@ -1602,15 +1600,14 @@ export_drag( const simulation_setup &setup, const my_p4est_navier_stokes_t *ns, 
 
 #ifdef P4EST_DEBUG
 
-void check_voronoi_tesselation_and_print_warnings_if_wrong( const my_p4est_navier_stokes_t *ns,
-															const my_p4est_poisson_faces_t *face_solver )
+void check_voronoi_tesselation_and_print_warnings_if_wrong( const my_p4est_navier_stokes_t *ns, const my_p4est_poisson_faces_t *face_solver )
 {
 	double voro_global_volume[P4EST_DIM];
 	face_solver->global_volume_of_voronoi_tesselation( voro_global_volume );
 	// one should have EXACTLY the volume of the computational box for u and w components
-	// and strictly less than the computational domain for v (because of face-wall alignment of Dirichlet boundary conditions --> the Voronoi cell is not even calculated there)
-	const double expected_volume = MULTD( ns->get_length_of_domain(), ns->get_height_of_domain(),
-										  ns->get_width_of_domain());
+	// and strictly less than the computational domain for v (because of face-wall alignment of Dirichlet boundary
+	// conditions --> the Voronoi cell is not even calculated there)
+	const double expected_volume = MULTD( ns->get_length_of_domain(), ns->get_height_of_domain(), ns->get_width_of_domain() );
 	if( ns->get_mpirank() == 0 && fabs( voro_global_volume[0] - expected_volume ) > 10.0 * EPS * expected_volume )
 		std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction x is "
 				  << voro_global_volume[0] << " whereas it is expected to be " << expected_volume
@@ -1620,8 +1617,10 @@ void check_voronoi_tesselation_and_print_warnings_if_wrong( const my_p4est_navie
 				  << voro_global_volume[1] << " which is greater than the volume of the computational box ("
 				  << expected_volume << "): this is NOT NORMAL --> check the Voronoi tesselation!" << std::endl;
 #ifdef P4_TO_P8
-																															if(ns->get_mpirank() == 0 && fabs(voro_global_volume[2] - expected_volume) > 10.0*EPS*expected_volume)
-    std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction z is " << voro_global_volume[2] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation!" << std::endl;
+	if( ns->get_mpirank() == 0 && fabs( voro_global_volume[2] - expected_volume ) > 10.0 * EPS * expected_volume )
+    	std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction z is "
+				  << voro_global_volume[2] << " whereas it is expected to be " << expected_volume
+				  << " --> check the Voronoi tesselation!" << std::endl;
 #endif
 }
 
@@ -1766,40 +1765,37 @@ int main( int argc, char *argv[] )
 			check_voronoi_tesselation_and_print_warnings_if_wrong( ns, face_solver );
 #endif
 
-			convergence_check_on_dxyz_hodge = ns->solve_projection( cell_solver, (cell_solver != NULL),
-																	setup.cell_solver_type, setup.pc_cell, false, NULL,
+			convergence_check_on_dxyz_hodge = ns->solve_projection( cell_solver, (cell_solver != nullptr),
+																	setup.cell_solver_type, setup.pc_cell, false, nullptr,
 																	dxyz_hodge_old, setup.control_hodge );
 
 			flow_controller->evaluate_current_mass_flow( ns );
 			if( setup.flow_condition == constant_mass_flow )
 			{
-				const double required_mean_correction_to_hodge_derivative = flow_controller->update_forcing_and_get_mean_streamwise_velocity_correction(
-					ns, external_acceleration );
+				const double required_mean_correction_to_hodge_derivative = flow_controller->update_forcing_and_get_mean_streamwise_velocity_correction( ns, external_acceleration );
 				if( setup.control_hodge == uvw_components || setup.control_hodge == u_component )
-					convergence_check_on_dxyz_hodge = convergence_check_on_dxyz_hodge + fabs(
-						required_mean_correction_to_hodge_derivative ); // Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous time-step only but if the required correction is too big, you may have to do it again...
+					convergence_check_on_dxyz_hodge = convergence_check_on_dxyz_hodge + 					// Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous
+													  fabs( required_mean_correction_to_hodge_derivative ); // time-step only but if the required correction is too big, you may have to do it again...
 			}
 
 			if( setup.control_hodge == uvw_components )
 			{
-				ierr = PetscPrintf( ns->get_mpicomm(), "hodge iteration #%d, max correction in \\nabla Hodge = %e\n",
-									iter_hodge, convergence_check_on_dxyz_hodge );
+				ierr = PetscPrintf( ns->get_mpicomm(), "hodge iteration #%d, max correction in \\nabla Hodge = %e\n", iter_hodge, convergence_check_on_dxyz_hodge );
 				CHKERRXX( ierr );
 			}
 			else
 			{
 				ierr = PetscPrintf( ns->get_mpicomm(), "hodge iteration #%d, max correction in d(Hodge)/d%s = %e\n",
 									iter_hodge,
-									(setup.control_hodge == u_component? 'x' : (setup.control_hodge == v_component? 'y'
-																												  : 'z')),
+									(setup.control_hodge == u_component? 'x' : (setup.control_hodge == v_component? 'y' : 'z')),
 									convergence_check_on_dxyz_hodge );
 				CHKERRXX( ierr );
 			}
 			iter_hodge++;
 		}
-		for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
+		for( auto& dir : dxyz_hodge_old )
 		{
-			ierr = VecDestroy( dxyz_hodge_old[dir] );
+			ierr = VecDestroy( dir );
 			CHKERRXX( ierr );
 		}
 
@@ -1809,16 +1805,16 @@ int main( int argc, char *argv[] )
 
 		setup.tn += setup.dt;
 
-		// monitoring Re_tau and Re_b
-		if( monitor_simulation( setup, flow_controller, ns, external_acceleration, channel ))
+		// monitoring Re_tau, Re_b, and Q (the mass flow rate).
+		if( monitor_simulation( setup, flow_controller, ns, external_acceleration, channel ) )
 			break;
 
 		// DEBUG check that we correctly enforce de mass flow if that's what we want
 		P4EST_ASSERT( setup.flow_condition != constant_mass_flow ||
 					  iter_hodge == setup.niter_hodge_max ||
-					  fabs( channel.Re_b( flow_controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()) -
-							flow_controller->targeted_bulk_velocity() * channel.delta() / ns->get_nu()) <
-					  setup.u_tol * flow_controller->targeted_bulk_velocity() * channel.delta() / ns->get_nu());
+					  fabs( channel.Re_b( flow_controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu() ) -
+							flow_controller->targeted_bulk_velocity() * channel.delta() / ns->get_nu() ) <
+					  setup.u_tol * flow_controller->targeted_bulk_velocity() * channel.delta() / ns->get_nu() );
 
 		// exporting drag if desired
 		if( setup.save_drag )
@@ -1839,9 +1835,7 @@ int main( int argc, char *argv[] )
 		{
 			setup.update_export_vtk();
 			const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string( setup.export_vtk );
-			ns->save_vtk( vtk_name.c_str(), true,
-						  channel.mean_u( flow_controller->read_latest_mass_flow(), ns->get_rho()),
-						  channel.height() * 0.5 );
+			ns->save_vtk( vtk_name.c_str(), true, channel.mean_u( flow_controller->read_latest_mass_flow(), ns->get_rho() ), channel.height() * 0.5 );
 		}
 
 		if( setup.do_accuracy_check )
@@ -1861,9 +1855,8 @@ int main( int argc, char *argv[] )
 						// the brick and the connectivity are deleted within the above destructor...
 	delete data;		// deletes the splitting criterion object
 	delete flow_controller;
-	for( unsigned char dir = 0; dir < P4EST_DIM; ++dir )
-		if( external_acceleration[dir] != nullptr )
-			delete external_acceleration[dir];
+	for( auto& dir : external_acceleration )
+		delete dir;
 
 	return 0;
 }
