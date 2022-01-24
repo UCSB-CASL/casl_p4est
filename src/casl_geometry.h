@@ -797,8 +797,6 @@ namespace geom
 	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
 	 * The domain R is rectangular, with h = 2^{-L}, where L > 0.  This is similar to how we handle quadtrees, but here
 	 * there are no intermediate cells.
-	 *
-	 * @warning Not a thread-safe class!
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
@@ -997,6 +995,8 @@ namespace geom
 		 * Upon exiting, the function sets the variable _lastNearestUVQ with the coordinates of nearest point to query.
 		 * @note A child class should re-implement this function accounting for the signed distance to the discretized
 		 * interface.
+		 * @warning Not a thread-safe method if you need to access to _lastNearestUVQ or _lastNearestTriangle; use the
+		 * findNearestPoint() function instead.
 		 * @param [in] x Coordinate in x.
 		 * @param [in] y Coordinate in y.
 		 * @param [in] z Coordinate in z.

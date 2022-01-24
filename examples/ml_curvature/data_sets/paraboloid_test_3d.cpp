@@ -4,9 +4,15 @@
  *
  * Developer: Luis Ángel.
  * Created: November 14, 2021.
- * Updated: January 22, 2022.
+ * Updated: January 23, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
+
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#endif
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
@@ -38,6 +44,12 @@ int main ( int argc, char* argv[] )
 
 		if( mpi.size() > 1 )					// To test we don't admit more than a single process.
 			throw std::runtime_error( "Only a single process is allowed!" );
+
+		// Initializing OpenMP.
+		int nThreads = 0;
+#pragma omp parallel reduction( + : nThreads ) default( none )
+			nThreads += 1;
+		std::cout << "\n:: OpenMP :: Process can spawn " << nThreads << " thread(s)" << std::endl << std::endl;
 
 		// Loading parameters from command line.
 		cmdParser cmd;
@@ -96,7 +108,7 @@ int main ( int argc, char* argv[] )
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
-		double timeProcessingQueries = watch.get_duration_current();
+		double startTimePartitioningGrid = watch.get_duration_current();
 		paraboloidLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
 		paraboloidLevelSet.reserveCache( (size_t)pow( 0.75 * MAX_D / H, 3 ) );	// Reserve space in cache to improve hashing.
 		for( int i = 0; i < maxRL(); i++ )					// queries for grid points.
@@ -104,6 +116,7 @@ int main ( int argc, char* argv[] )
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
+		std::cout << "Partitioning processing duration: " << watch.get_duration_current() - startTimePartitioningGrid << std::endl;
 
 		// Create the ghost (cell) and node structures.
 		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -128,7 +141,11 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArray( phi, &phiPtr ) );
 		CHKERRXX( VecGetArray( exactFlag, &exactFlagPtr ) );
 
-		// Compute the exact distance for vertices within a (rough) shell around Gamma.
+		// Populate phi values and compute the exact distance for vertices within a (rough) shell around Gamma.
+		double startTimeProcessingQueries = watch.get_duration_current();
+		std::vector<p4est_locidx_t> nodesForExactDist;
+		nodesForExactDist.reserve( nodes->num_owned_indeps );
+#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, paraboloidLevelSet, H, nodesForExactDist )
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
 			double xyz[P4EST_DIM];
@@ -138,27 +155,42 @@ int main ( int argc, char* argv[] )
 			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
 			if( ABS( phiPtr[n] ) <= 3 * H )
 			{
-				try
-				{
-					phiPtr[n] = paraboloidLevelSet.computeExactSignedDistance( xyz );	// Also modifies the cache.
-					exactFlagPtr[n] = 1;
-				}
-				catch( const std::exception &e )
-				{
-					std::cerr << e.what() << std::endl;
-				}
+#pragma omp critical
+				nodesForExactDist.emplace_back( n );
 			}
 		}
+
+#pragma omp parallel for default( none ) \
+		shared( nodes, p4est, nodesForExactDist, phiPtr, paraboloidLevelSet, exactFlagPtr, std::cerr )
+		for( int i = 0; i < nodesForExactDist.size(); i++ )				// NOLINT.  It can't be a range-based loop.
+		{
+			p4est_locidx_t n = nodesForExactDist[i];
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			try
+			{
+				phiPtr[n] = paraboloidLevelSet.computeExactSignedDistance( xyz );	// Also modifies the cache.
+				exactFlagPtr[n] = 1;
+			}
+			catch( const std::exception &e )
+			{
+				std::cerr << e.what() << std::endl;
+			}
+		}
+		std::cout << "Query processing duration: " << watch.get_duration_current() - startTimeProcessingQueries << std::endl;
 
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
 		paraboloidLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
 		paraboloidLevelSet.clearCache();
 
 		// Reinitialize level-set function.
+		double startTimeReinitialization = watch.get_duration_current();
 		my_p4est_level_set_t ls( &ngbd );
 		ls.reinitialize_2nd_order( phi, reinitNumIters() );
+		std::cout << "Reinitialization duration: " << watch.get_duration_current() - startTimeReinitialization << std::endl;
 
 		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface.
+		double startTimeCollecting = watch.get_duration_current();
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL() );
 
 		// An interface flag vector to distinguish nodes along the interface with full uniform neighborhoods.
@@ -199,7 +231,7 @@ int main ( int argc, char* argv[] )
 			}
 		}
 
-		std::cout << "Query processing duration: " << watch.get_duration_current() - timeProcessingQueries << std::endl;
+		std::cout << "Collecting nodes duration: " << watch.get_duration_current() - startTimeCollecting << std::endl;
 		watch.stop();
 
 		std::ostringstream oss;

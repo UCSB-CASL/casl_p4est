@@ -293,24 +293,25 @@ public:
 			auto record = _cache.find( coords );
 			if( record != _cache.end() )
 			{
-//				std::cout << "From cache [" << record->first << "] (" << x << ", " << y << ", " << z << "): " << record->second << std::endl;
 				return (record->second).first;
 			}
 		}
 
-		Point3 p = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coordinates.
-		double d = geom::DiscretizedMongePatch::operator()( p.x, p.y, p.z );	// Compute shortest distance and set nearest point/triangle vars.
+		Point3 p = toCanonicalCoordinates( x, y, z );		// Transform query point to canonical coordinates.
+		double d = DBL_MAX;
+		const geom::Triangle *nearestTriangle;
+		Point3 nearestPoint = findNearestPoint( p, d, nearestTriangle ); // Compute shortest distance.
 
 		// Fix sign: points inside paraboloid are negative and outside are positive.  Because of the way we created the
 		// triangles, their normal vector points up in the canonical coord. system (into the negative region Omega-).
-		Point3 w = p - *(getLastNearestTriangle()->getVertex(0));
-		if( w.dot( *(getLastNearestTriangle()->getNormal()) ) >= 0 )			// In the direction of the normal?
+		Point3 w = p - *(nearestTriangle->getVertex(0));
+		if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
 			d *= -1;
 
 		if( _useCache )
 		{
-			_cache[coords] = std::make_pair( d, getLastNearestUVQ() );
-//			std::cout << "Cached [" << coords << "] (" << x << ", " << y << ", " << z << "): " << d << std::endl;
+#pragma omp critical (update_paraboloid_cache)
+			_cache[coords] = std::make_pair( d, nearestPoint );
 		}
 		return d;
 	}
