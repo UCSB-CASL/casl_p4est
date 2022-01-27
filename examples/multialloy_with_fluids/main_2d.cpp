@@ -152,7 +152,7 @@ DEFINE_PARAMETER(pl, bool, solve_navier_stokes, false, "Solve navier stokes?");
 DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 
 DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
-DEFINE_PARAMETER(pl, bool, use_boussinesq, true, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
+DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
@@ -624,12 +624,11 @@ void set_geometry(){
       ymin = 0.; ymax = 400.;
 
       // Number of trees and periodicity:
-      nx = 1; ny = 1;
+      nx = 2; ny = 2;
       px = 1; py = 0;
 
       // level set size (initial seed size)
-      r0 = 30.; // This needs to be set to 0.5 in order for it to properly correspond to our dimensional diameter. (aka nondim diameter should always equal 1)
-
+      r0 = 30.; // to match the paper we are comparing with
 
       // capillary length scale and etc is set in set_physical_properties() 5/3/21
       break;
@@ -1158,7 +1157,7 @@ void set_nondimensional_groups(){
 
   if(Sc<0.) Sc = mu_l/(Dl*rho_l);
 
-  if(St<0.) St = cp_s * fabs(deltaT)/L;
+  if(St<0.) St = cp_s * deltaT/L;
 
 
   if(is_dissolution_case){
@@ -1546,7 +1545,7 @@ void simulation_time_info(){
       break;
     }
     case DENDRITE_TEST:{
-      tfinal = 1000./time_nondim_to_dim;
+      tfinal = 10000./time_nondim_to_dim;
       tstart=0.;
       dt_max_allowed = 10.; // unrestricted for now
       break;
@@ -2392,13 +2391,33 @@ public:
         return Tinterface; // TO-DO : CHANGE THIS TO ANALYTICAL SOLN
       }
     case DENDRITE_TEST:{
-//      double eps = 0.05;
-//      double theta = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
+      double eps = 0.05;
+      double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
 
-//      return (-l_char)*(1. - 15.*eps*cos(4.*theta))*((*kappa_interp)(x,y));
-      return theta_interface;
+//      printf("(x,y) = (%f, %f), nx = %f, ny = %f \n", x, y, (*nx_interp)(x,y), (*ny_interp)(x,y) );
+
+//      printf("Our angle is %f \n", theta*180./PI);
+//      printf(" The interface value it sets is %f \n"
+//             "-lchar = %f \n"
+//             "1. -15*eps*cos = %f \n"
+//             "kappa = %f \n",(-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y)), -l_char, (1. -15.*eps*cos(4.*theta_)), (*kappa_interp)(x,y));
+      //printf("interface BC being used = %F \n",((-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))) );
+      return theta0 +(-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/deltaT;
+
+      // return theta_interface;// --> this is to be used if Gibbs Thomson is not
       // expression taken from "Modelling dendritic solidification with
       // melt convection using the extended finite element method" Zabaras 2006
+      // Rochi trying Gibbs Thomson on dendrite test 1/18/22
+      /*double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
+
+      // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+      if(ramp_bcs){
+        return ramp_BC(theta_infty,interface_val);
+      }
+      else {
+        return interface_val;
+      }*/
+
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
