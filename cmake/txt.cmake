@@ -12,8 +12,8 @@ message( "" )
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
 
-	set( PETSC_DIR /usr/local/petsc-3.16.3 )	# PETSc.
-	set( P4EST_DIR /usr/local/p4est-2.8 )		# p4est.
+	set( PETSC_DIR /usr/local/petsc-3.16.3-debug )	# PETSc.
+	set( P4EST_DIR /usr/local/p4est-2.8-debug )	# p4est.
 	set( VORO_DIR  /usr/local )						# Voro++.
 
 elseif( CMAKE_BUILD_TYPE MATCHES Release )
@@ -28,7 +28,7 @@ else()
 endif()
 
 # MPI.
-set( MPI_DIR /usr )
+set( MPI_DIR /usr/local/mpich-3.4.3 )
 
 # Boost.  For header-only functions, you don't need to specify a particular component in
 # `link_libraries`-- just add the path to boost headers in `include_directories`.  If you need
@@ -42,14 +42,14 @@ list( APPEND INC_DIRS					# Include directories.
 		${PETSC_DIR}/include
 		${P4EST_DIR}/include
 		${VORO_DIR}/include/voro++
-		${MPI_DIR}/include/mpich
+		${MPI_DIR}/include
 		${BOOST_DIR}/include )
 
 list( APPEND LIB_DIRS					# Library directories.
 		${PETSC_DIR}/lib
 		${P4EST_DIR}/lib
 		${VORO_DIR}/lib
-		${MPI_DIR}/lib/mpich
+		${MPI_DIR}/lib
 		${BOOST_DIR}/lib )
 
 list( APPEND LIBS						# Libraries: Note we don't include Boost --we need header-only functions.
