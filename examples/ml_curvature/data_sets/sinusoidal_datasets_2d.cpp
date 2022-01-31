@@ -453,13 +453,6 @@ int main ( int argc, char* argv[] )
 									data.push_back( H * interpolation( pOnGamma[0], pOnGamma[1] ) );	// Attach interpolated ihk.
 									distances.push_back( tgtHK );										// And exact hk for sdf.
 
-									double rlsGrad[P4EST_DIM], sdfGrad[P4EST_DIM];
-									for( int dim = 0; dim < P4EST_DIM; dim++ )		// Let's pick a numerically good gradient.
-									{
-										rlsGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? EPS : rlsNormalReadPtr[dim][n];
-										sdfGrad[dim] = (sdfNormalReadPtr[dim][n] == 0)? EPS : sdfNormalReadPtr[dim][n];
-									}
-
 									// Error metric for validation.  Before negative-curvature normalization and
 									// reorientation because the signs might be opposite or the sdf gradient might
 									// rotate or not the sdf stencil in comparison to the rls stencil.
@@ -475,23 +468,17 @@ int main ( int argc, char* argv[] )
 									{
 										for( int i = 0; i < NUM_COLUMNS; i++ )
 											data[i] *= -1.0;
-
-										for( double& dim : rlsGrad )	// Flip sign of gradient too.
-											dim *= -1.0;
 									}
 
 									if( distances.back() > 0 )
 									{
 										for( int i = 0; i < NUM_COLUMNS; i++ )
 											distances[i] *= -1.0;
-
-										for( double& dim : sdfGrad )	// Flip sign of gradient too.
-											dim *= -1.0;
 									}
 
 									// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
-									kml::utils::rotateStencilToFirstQuadrant( data, rlsGrad );
-									kml::utils::rotateStencilToFirstQuadrant( distances, sdfGrad );
+									kml::utils::rotateStencilToFirstQuadrant( data );
+									kml::utils::rotateStencilToFirstQuadrant( distances );
 
 									rlsSamples.push_back( data );			// Store original sample.
 									if( writeSDF() )

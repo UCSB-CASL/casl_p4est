@@ -316,54 +316,122 @@ void kml::utils::generateColumnHeaders( std::string header[], const bool& includ
 
 			header[i+1*num_neighbors_cube] = "nx_" + header[i];
 			header[i+2*num_neighbors_cube] = "ny_" + header[i];
+#ifdef P4_TO_P8
+			header[i+3*num_neighbors_cube] = "nz_" + header[i];
+#endif
 		}
-	i += 2*num_neighbors_cube;
+	i += P4EST_DIM * num_neighbors_cube;
 	if( includeTargetHK )
 		header[++i] = "hk";							// Don't forget the target hk column if requested!
 	header[++i] = "ihk";
 }
 
 
-void kml::utils::rotateStencil90( double stencil[], const int& dir )
+void kml::utils::rotateStencil90z( double stencil[], const int& dir )
 {
-	// Lambda function to perform rotation of a 2D vector.
-	auto _rotate90 = (dir >= 1)? []( double& x, double& y ){
+	// Lambda function to perform vector rotation about z axis (this works for 2 and 3D).
+	auto _rotate90 = (dir > 0)? []( double& x, double& y ){
 		std::swap( x, (y *= -1) );			// Rotate by positive 90 degrees (counterclockwise).
 	} : []( double& x, double& y ){
 		std::swap( (x *= -1), y );			// Rotate by negative 90 degrees (clockwise).
 	};
 
 	// Lambda function to rotate features.
-	auto _rotateFeatures = (dir >= 1)? []( double f[] ){
+	auto _rotateFeatures = (dir > 0)? []( double f[] ){
+#ifdef P4_TO_P8
+		double c[] = {f[6], f[7], f[8], f[15], f[16], f[17], f[24], f[25], f[26],
+					  f[3], f[4], f[5], f[12], f[13], f[14], f[21], f[22], f[23],
+					  f[0], f[1], f[2],  f[9], f[10], f[11], f[18], f[19], f[20]};
+#else
 		double c[] = {f[2], f[5], f[8], f[1], f[4], f[7], f[0], f[3], f[6]};
-		for( int i = 0; i < num_neighbors_cube; i++ )	// Rotate by positive 90 degrees (counterclokwise).
+#endif
+		for( int i = 0; i < num_neighbors_cube; i++ )	// Rotate by +90 degrees (counterclokwise).
 			f[i] = c[i];
 	} : []( double f[] ){
+#ifdef P4_TO_P8
+		double c[] = {f[18], f[19], f[20],  f[9], f[10], f[11], f[0], f[1], f[2],
+					  f[21], f[22], f[23], f[12], f[13], f[14], f[3], f[4], f[5],
+					  f[24], f[25], f[26], f[15], f[16], f[17], f[6], f[7], f[8]};
+#else
 		double c[] = {f[6], f[3], f[0], f[7], f[4], f[1], f[8], f[5], f[2]};
-		for( int i = 0; i < num_neighbors_cube; i++ )		// Rotate by negative 90 degrees.
+#endif
+		for( int i = 0; i < num_neighbors_cube; i++ )	// Rotate by -90 degrees (clockwise).
 			f[i] = c[i];
 	};
 
 	// Rotate features.
 	_rotateFeatures( &stencil[0] );						// Level-set values.
-	_rotateFeatures( &stencil[num_neighbors_cube] );	// Normal x-components.
-	_rotateFeatures( &stencil[2*num_neighbors_cube] );	// Normal y-components.
+	_rotateFeatures( &stencil[num_neighbors_cube] );	// Normal x components.
+	_rotateFeatures( &stencil[2*num_neighbors_cube] );	// Normal y components.
+#ifdef P4_TO_P8
+	_rotateFeatures( &stencil[3*num_neighbors_cube] );	// Normal z components.
+#endif
 
-	// Rotate actual vectors.
+	// Rotate actual vectors (z component is left unchanged in 3D).
 	for( int i = num_neighbors_cube; i < 2 * num_neighbors_cube; i++ )
 		_rotate90( stencil[i], stencil[i + num_neighbors_cube] );
 }
 
 
+#ifdef P4_TO_P8
+void kml::utils::rotateStencil90y( double *stencil, const int& dir )
+{
+	// Lambda function to perform vector rotation about y axis (this works only on 3D).
+	auto _rotate90 = (dir > 0)? []( double& x, double& z ){
+		std::swap( (x *= -1), z );			// Rotate by positive 90 degrees (counterclockwise) w.r.t. +z axis.
+	} : []( double& x, double& z ){
+		std::swap( x, (z *= -1) );			// Rotate by negative 90 degrees (clockwise).
+	};
+
+	// Lambda function to rotate features.
+	auto _rotateFeatures = (dir > 0)? []( double f[] ){
+		double c[] = {f[18],  f[9], f[0], f[21], f[12], f[3], f[24], f[15], f[6],
+					  f[19], f[10], f[1], f[22], f[13], f[4], f[25], f[16], f[7],
+					  f[20], f[11], f[2], f[23], f[14], f[5], f[26], f[17], f[8]};
+		for( int i = 0; i < num_neighbors_cube; i++ )	// Rotate by +90 degrees (counterclokwise).
+			f[i] = c[i];
+	} : []( double f[] ){
+		double c[] = {f[2], f[11], f[20], f[5], f[14], f[23], f[8], f[17], f[26],
+					  f[1], f[10], f[19], f[4], f[13], f[22], f[7], f[16], f[25],
+					  f[0],  f[9], f[18], f[3], f[12], f[21], f[6], f[15], f[24]};
+		for( int i = 0; i < num_neighbors_cube; i++ )	// Rotate by -90 degrees (clockwise).
+			f[i] = c[i];
+	};
+
+	// Rotate features.
+	_rotateFeatures( &stencil[0] );						// Level-set values.
+	_rotateFeatures( &stencil[num_neighbors_cube] );	// Normal x components.
+	_rotateFeatures( &stencil[2*num_neighbors_cube] );	// Normal y components.
+	_rotateFeatures( &stencil[3*num_neighbors_cube] );	// Normal z components.
+
+	// Rotate actual vectors (y component is left unchaged).
+	for( int i = num_neighbors_cube; i < 2 * num_neighbors_cube; i++ )
+		_rotate90( stencil[i], stencil[i + 2*num_neighbors_cube] );
+}
+#endif
+
+
 void kml::utils::reflectStencil_yEqx( double stencil[] )
 {
 	// First the swap all features from one vertex to another.
-	for( int i = 0; i < 3; i++ )
+	for( int i = 0; i < 1 + P4EST_DIM; i++ )
 	{
-		int offset = num_neighbors_cube*i;
+		int offset = num_neighbors_cube * i;
+#ifdef P4_TO_P8
+		std::swap( stencil[ 3 + offset], stencil[ 9 + offset] );
+		std::swap( stencil[ 4 + offset], stencil[10 + offset] );
+		std::swap( stencil[ 5 + offset], stencil[11 + offset] );
+		std::swap( stencil[ 6 + offset], stencil[18 + offset] );
+		std::swap( stencil[ 7 + offset], stencil[19 + offset] );
+		std::swap( stencil[ 8 + offset], stencil[20 + offset] );
+		std::swap( stencil[15 + offset], stencil[21 + offset] );
+		std::swap( stencil[16 + offset], stencil[22 + offset] );
+		std::swap( stencil[17 + offset], stencil[23 + offset] );
+#else
 		std::swap( stencil[1 + offset], stencil[3 + offset] );
 		std::swap( stencil[2 + offset], stencil[6 + offset] );
 		std::swap( stencil[5 + offset], stencil[7 + offset] );
+#endif
 	}
 
 	// Then, swap normal components: x<->y.
@@ -372,29 +440,60 @@ void kml::utils::reflectStencil_yEqx( double stencil[] )
 }
 
 
-void kml::utils::rotateStencilToFirstQuadrant( double stencil[], const double gradient[P4EST_DIM] )
+#ifdef P4_TO_P8
+void kml::utils::rotateStencilToFirstOctant( double stencil[] )
+#else
+void kml::utils::rotateStencilToFirstQuadrant( double stencil[] )
+#endif
 {
-	double theta = atan2( gradient[1], gradient[0] );
+	const int CENTER_IDX = floor(num_neighbors_cube / 2);	// Must be 4 in 2D and 13 in 3D.
+	const double grad1[P4EST_DIM] = {DIM( stencil[num_neighbors_cube*1 + CENTER_IDX],
+									 	  stencil[num_neighbors_cube*2 + CENTER_IDX],
+										  stencil[num_neighbors_cube*3 + CENTER_IDX] )};
+	double theta = atan2( grad1[dir::y], grad1[dir::x] );
 	const double TWO_PI = 2. * M_PI;
 	theta = (theta < 0)? TWO_PI + theta : theta;		// Make sure current angle lies in [0, 2pi].
 
 	// Rotate only if theta not in [0, pi/2].
 	if( theta > M_PI_2 )
 	{
-		if( theta <= M_PI )								// Quadrant II?
+		if( theta <= M_PI )								// Quadrant/octant II?
 		{
-			rotateStencil90( stencil, -1 );				// Rotate by -pi/2.
+			rotateStencil90z( stencil, -1 );			// Rotate by -pi/2.
 		}
-		else if( theta < M_PI_2 * 3 )					// Quadrant III?
+		else if( theta < M_PI_2 * 3 )					// Quadrant/octant III?
 		{
-			rotateStencil90( stencil );					// Rotate by pi.
-			rotateStencil90( stencil );
+			rotateStencil90z( stencil );				// Rotate by pi.
+			rotateStencil90z( stencil );
 		}
-		else											// Quadrant IV?
+		else											// Quadrant/octant IV?
 		{
-			rotateStencil90( stencil );					// Rotate by pi/2.
+			rotateStencil90z( stencil );				// Rotate by pi/2.
 		}
 	}
+
+#ifdef P4_TO_P8
+	// Now rotate with respect to y, assuming that the previous step put the gradient's projection onto xy plane's first
+	// quadrant.
+	const double grad2[P4EST_DIM] = {stencil[num_neighbors_cube*1 + CENTER_IDX],
+									 stencil[num_neighbors_cube*2 + CENTER_IDX],
+									 stencil[num_neighbors_cube*3 + CENTER_IDX]};
+	theta = atan2( grad2[dir::x], grad2[dir::z] );		// To rotate about y, the angle begins at +z axis.
+	theta = (theta < 0)? TWO_PI + theta : theta;		// Make sure current angle lies in [0, 2pi].
+
+	// Rotate only if theta not in [0, pi/2].
+	if( theta > M_PI_2 )
+	{
+		if( theta <= M_PI )								// Quadrant/octant V?
+		{
+			rotateStencil90y( stencil, -1 );			// Rotate by -pi/2.
+		}
+		else											// Because of the first transformation, we should not have an
+		{												// angle w.r.t. +z greater than pi.
+			throw std::runtime_error( "[CASL_ERROR] kml::utils::rotateStencilToFirstOctant: Wrong angle configuration!" );
+		}
+	}
+#endif
 }
 
 
@@ -491,7 +590,6 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 	outIdxToSampleIdx.reserve( samples.size() );
 	std::vector<std::vector<double>> negSamples;
 	negSamples.reserve( samples.size() );
-	double grad[P4EST_DIM];
 	int gradIdx = num_neighbors_cube / 2 + num_neighbors_cube;
 	for( int i = 0; i < samples.size(); i++ )
 	{
@@ -505,10 +603,12 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 		for( int j = 0; j < K_INPUT_SIZE; j++ )
 			negSamples.back()[j] = (samples[i][K_INPUT_SIZE-1] > 0)? -samples[i][j] : samples[i][j];
 
-		for( int dim = 0; dim < P4EST_DIM; dim++ )	// Let's pick a numerically good gradient for sample reorientation.
-			grad[dim] = (negSamples.back()[gradIdx + dim * num_neighbors_cube] == 0)? EPS : negSamples.back()[gradIdx + dim * num_neighbors_cube];
-
-		utils::rotateStencilToFirstQuadrant( negSamples.back(), grad );
+#ifdef P4_TO_P8
+		// TODO: Check this in 3D.
+		utils::rotateStencilToFirstOctant( negSamples.back() );
+#else
+		utils::rotateStencilToFirstQuadrant( negSamples.back() );
+#endif
 		outIdxToSampleIdx.push_back( i );
 		outIdx++;
 	}

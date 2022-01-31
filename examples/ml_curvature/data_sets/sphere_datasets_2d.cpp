@@ -229,7 +229,7 @@ int main ( int argc, char* argv[] )
 				double dxyz[P4EST_DIM]; 			// Dimensions of the smallest quadrants.
 				double dxyz_min;        			// Minimum side length of the smallest quadrants.
 				double diag_min;        			// Diagonal length of the smallest quadrants.
-				get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+				get_dxyz_min( p4est, dxyz, &dxyz_min, &diag_min );
 				assert( ABS( dxyz_min - H ) <= EPS );
 
 				// Ghosted parallel PETSc vectors to store level-set function values.
@@ -326,12 +326,9 @@ int main ( int argc, char* argv[] )
 							// Appending the interpolated hk.
 							double xyz[P4EST_DIM];							// Position of node at the center of the stencil.
 							node_xyz_fr_n( n, p4est, nodes, xyz );
-							double rlsGrad[P4EST_DIM], sdfGrad[P4EST_DIM];
-							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient and make sure no component is exactly zero.
-							{
-								rlsGrad[dim] = (rlsNormalReadPtr[dim][n] == 0)? -EPS : -rlsNormalReadPtr[dim][n];
-								sdfGrad[dim] = (sdfNormalReadPtr[dim][n] == 0)? -EPS : -sdfNormalReadPtr[dim][n];
-							}
+							double rlsGrad[P4EST_DIM];
+							for( int dim = 0; dim < P4EST_DIM; dim++ )		// Get negative gradient.
+								rlsGrad[dim] = -rlsNormalReadPtr[dim][n];
 
 							for( int i = 0; i < P4EST_DIM; i++ )			// Translation: this is where we need to
 								xyz[i] += rlsGrad[i] * rlsPhiReadPtr[n];	// interpolate the numerical curvature.
@@ -341,8 +338,8 @@ int main ( int argc, char* argv[] )
 							sdfDataNve.push_back( -H_KAPPA );		// For signed distance function data, the exact hk.
 
 							// Reorienting stencil so that (negated) gradient at node 00 has an angle in first quadrant.
-							kml::utils::rotateStencilToFirstQuadrant( rlsDataNve, rlsGrad );
-							kml::utils::rotateStencilToFirstQuadrant( sdfDataNve, sdfGrad );
+							kml::utils::rotateStencilToFirstQuadrant( rlsDataNve );
+							kml::utils::rotateStencilToFirstQuadrant( sdfDataNve );
 
 							// Accumulating samples.
 							if( writeSDF() )
