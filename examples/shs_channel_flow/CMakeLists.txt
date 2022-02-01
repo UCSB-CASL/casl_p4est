@@ -8,9 +8,9 @@ set( CMAKE_CXX_STANDARD 14 )
 ###################################### Compiler custom macros for current project ######################################
 
 if( DIMENSION MATCHES 2d )
-	list( APPEND SRC understanding_main_2d.cpp )
+	list( APPEND SRC main_2d.cpp )
 elseif( DIMENSION MATCHES 3d )
-	list( APPEND SRC understanding_main_3d.cpp )
+	list( APPEND SRC main_3d.cpp )
 else()
 	message( FATAL_ERROR "Invalid or missing DIMENSION macro --it should be '2d' or '3d'." )
 endif()
