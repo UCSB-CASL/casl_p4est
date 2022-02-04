@@ -3690,6 +3690,7 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_residu
           return (*mag)*cos(x)*exp(y);
   #endif
       }
+	  return 0;		// TODO: Dummy return -- please check.
     }
   };
 
@@ -4008,6 +4009,7 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear_first_approach(double upper_
           return (*mag)*cos(x)*exp(y);
   #endif
       }
+	  return 0;		// TODO: Dummy return -- please check.
     }
   };
 

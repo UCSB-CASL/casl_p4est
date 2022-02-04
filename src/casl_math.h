@@ -64,6 +64,19 @@ inline double SIGN(double a)
   return (a>0) ? 1:-1;
 }
 
+/**
+ * Signum function that considers 0 as a third value.
+ * @cite https://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c/10133700
+ * @tparam T Data type.
+ * @param [in] val Value to check.
+ * @return -1 for negative, zero for 0, and +1 for positive value.
+ */
+template<typename T>
+inline int SIGN0( T val )
+{
+	return (T(0) < val) - (val < T(0));
+}
+
 inline double MINMOD( double a, double b )
 {
   if(a*b<=0) return 0;
@@ -444,6 +457,24 @@ inline void linspace( const double& start, const double& end, const unsigned int
 	for( unsigned int i = 1; i < n - 1; i++ )
 		values.push_back( start + i * dx );			// Intermediate values in open range (start, end).
 	values.push_back( end );
+}
+
+/**
+ * Compute the mean of a list of (pointers to) numerical entities.
+ * @tparam T Data type - must overload the =, +, and / operators.  The / must work for scalar operand.
+ * @param [in] data Vector of (pointers to) numerical entities.
+ * @return mean numerical entity.
+ */
+template<typename T>
+inline T mean( const std::vector<const T*>& data )
+{
+	if( data.empty() )
+		throw std::runtime_error( "CASL_MATH::mean - Empty container!" );
+
+	T m = *(data[0]);
+	for( size_t i = 1; i < data.size(); i++ )
+		m = m + *(data[i]);
+	return m / data.size();
 }
 
 

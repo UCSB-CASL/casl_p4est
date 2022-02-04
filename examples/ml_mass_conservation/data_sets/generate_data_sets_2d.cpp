@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민).
  * Created: January 20, 2021.
- * Updated: October 11, 2021.
+ * Updated: January 10, 2022.
  */
 
 #ifndef P4_TO_P8
@@ -266,7 +266,7 @@ int main( int argc, char** argv )
 					double dxyz_f[P4EST_DIM];
 					double dxyz_min_f;
 					double diag_min_f;
-					get_dxyz_min( p4est_f, dxyz_f, dxyz_min_f, diag_min_f );
+					get_dxyz_min( p4est_f, dxyz_f, &dxyz_min_f, &diag_min_f );
 
 					// Declare data vectors for FINE grid.
 					Vec phi_f;

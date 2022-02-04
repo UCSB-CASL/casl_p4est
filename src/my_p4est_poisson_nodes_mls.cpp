@@ -919,9 +919,9 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           }
         }
 
-        if (is_ngbd_crossed_neumann  && is_ngbd_crossed_dirichlet ||
-            is_ngbd_crossed_neumann  && is_ngbd_crossed_immersed  ||
-            is_ngbd_crossed_immersed && is_ngbd_crossed_dirichlet ) {
+        if ((is_ngbd_crossed_neumann  && is_ngbd_crossed_dirichlet) ||		// TODO: Parentheses to clear warning.
+            (is_ngbd_crossed_neumann  && is_ngbd_crossed_immersed)  ||
+            (is_ngbd_crossed_immersed && is_ngbd_crossed_dirichlet) ) {
           throw std::domain_error("[CASL_ERROR]: No crossing of Dirichlet, Neumann and/or jump at the moment");
         }
         else if (is_ngbd_crossed_dirichlet) { scheme = BOUNDARY_DIRICHLET; }

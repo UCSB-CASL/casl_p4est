@@ -1441,6 +1441,19 @@ inline double p4est_diag_max(const p4est_t* p4est) {
   return sqrt(SUMD(SQR(dx[0]), SQR(dx[1]), SQR(dx[2])));
 }
 
+/**
+ * Get the xyz-coordinate of the bottom left corner of a quadrant in the local tree coordinate system.
+ * Note: Added back after long_overdue_merge -- it disappeared from previous version.
+ */
+inline void quad_xyz_fr_ijk(const p4est_quadrant_t *qi, double xyz[P4EST_DIM]){
+	xyz[0] = static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
+	xyz[1] = static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
+#ifdef P4_TO_P8
+	xyz[2] = static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
+#endif
+	return;
+}
+
 inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
 {
 #ifdef CASL_THROWS
@@ -2949,6 +2962,11 @@ public:
         switch (action[i]) {
           case MLS_INTERSECTION: if (phi_cur > phi_eff) { phi_eff = phi_cur; idx = i; } break;
           case MLS_ADDITION:     if (phi_cur < phi_eff) { phi_eff = phi_cur; idx = i; } break;
+		  default:		// TODO: Missing default case, please check if this is the desired behavior.
+#ifdef CASL_THROWS
+            throw std::runtime_error("get_idx: unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+            break;
         }
       }
       return idx;

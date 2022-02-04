@@ -1032,13 +1032,14 @@ void Cube3::_computeDistanceToTriangle( const Point3 allPoints[], const OctValue
 										const Point3 *v0, const Point3 *v1, const Point3 *v2,
 										std::unordered_map<p4est_locidx_t, double>& distanceMap, double TOL )
 {
+	geom::Triangle triangle( v0, v1, v2, TOL );
 	for( short i = 0; i < 8; i++ )
 	{
 		if( ABS( phiAndIdxOctValues.val[i] ) <= TOL )		// Double check for zero distances.
 			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], 0 );
 		else
 		{
-			Point3 P = geom::findClosestPointOnTriangleToPoint( &allPoints[i], v0, v1, v2, TOL );
+			Point3 P = triangle.findClosestPointToQuery( &allPoints[i], TOL );
 			double d = (allPoints[i] - P).norm_L2();
 			_updateMinimumDistanceMap( distanceMap, phiAndIdxOctValues.indices[i], d );
 		}

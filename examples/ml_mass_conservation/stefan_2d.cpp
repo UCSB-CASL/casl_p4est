@@ -11,7 +11,7 @@
  *
  * Author: Luis Ángel (임 영민)
  * Created: September 16, 2021.
- * Updated: October 15, 2021.
+ * Updated: January 10, 2022.
  */
 
 #include <stdexcept>
@@ -709,7 +709,7 @@ void check_error_frank_sphere( p4est_t *p4est, p4est_nodes_t *nodes, Vec phi, Ve
 	double dxyz[P4EST_DIM];
 	double dxyz_min;
 	double diag_min;
-	get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+	get_dxyz_min( p4est, dxyz, &dxyz_min, &diag_min );
 
 	const double *t_l_p, *phi_p;
 	ierr = VecGetArrayRead( phi, &phi_p );
@@ -863,7 +863,7 @@ int main (int argc, char* argv[])
 	double dxyz[P4EST_DIM];
 	double dxyz_min;
 	double diag_min;
-	get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+	get_dxyz_min( p4est, dxyz, &dxyz_min, &diag_min );
 
 	// Initialize the level-set function.
 	Vec phi_s;

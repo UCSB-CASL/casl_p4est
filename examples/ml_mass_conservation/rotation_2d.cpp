@@ -297,7 +297,7 @@ int main( int argc, char** argv )
 		double dxyz[P4EST_DIM];
 		double dxyz_min;
 		double diag_min;
-		get_dxyz_min( p4est, dxyz, dxyz_min, diag_min );
+		get_dxyz_min( p4est, dxyz, &dxyz_min, &diag_min );
 
 		// Declare data vectors and pointers for read/write.
 		Vec phi;							// Level-set function values (subject to reinitialization).

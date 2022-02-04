@@ -67,12 +67,24 @@ list( APPEND SOURCES
 # For dimension based compilation, we must create a Run Configuration.  Go to CLion -> Preferences
 # -> Build, Execution, Deployment -> CMake.  Create a profile (debug or release) and add to "CMake options:" the
 # following: -DDIMENSION=2d, for 2D, or -DDIMENSION=3d for 3D.
+# To enable machine learning, provide the key-value pair -DENABLE_ML=1
 
 # 2D case.
 if( DIMENSION MATCHES 2d )
 	# Epitaxy.
 	list( APPEND HEADERS ${PARCASL}src/my_p4est_epitaxy.h )
 	list( APPEND SOURCES ${PARCASL}src/my_p4est_epitaxy.cpp )
+
+	# Machine learning.
+	if( ENABLE_ML MATCHES 1 )
+		list( APPEND HEADERS
+				${PARCASL}src/my_p4est_semi_lagrangian_ml.h
+				${PARCASL}src/my_p4est_curvature_ml.h )
+
+		list( APPEND SOURCES
+				${PARCASL}src/my_p4est_semi_lagrangian_ml.cpp
+				${PARCASL}src/my_p4est_curvature_ml.cpp )
+	endif()
 
 	# Others.
 	list( APPEND HEADERS
@@ -81,8 +93,10 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_cell_neighbors.h
 			${PARCASL}src/my_p4est_faces.h
 			${PARCASL}src/my_p4est_general_poisson_nodes_mls_solver.h
+			${PARCASL}src/my_p4est_grid_aligned_extension.h
 			${PARCASL}src/my_p4est_hierarchy.h
 			${PARCASL}src/my_p4est_integration_mls.h
+			${PARCASL}src/my_p4est_interface_manager.h
 			${PARCASL}src/my_p4est_interpolation.h
 			${PARCASL}src/my_p4est_interpolation_cells.h
 			${PARCASL}src/my_p4est_interpolation_faces.h
@@ -97,6 +111,11 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_poisson_boltzmann_nodes.h
 			${PARCASL}src/my_p4est_poisson_cells.h
 			${PARCASL}src/my_p4est_poisson_faces.h
+			${PARCASL}src/my_p4est_poisson_jump_cells.h
+			${PARCASL}src/my_p4est_poisson_jump_cells_fv.h
+			${PARCASL}src/my_p4est_poisson_jump_cells_xgfm.h
+			${PARCASL}src/my_p4est_poisson_jump_faces.h
+			${PARCASL}src/my_p4est_poisson_jump_faces_xgfm.h
 			${PARCASL}src/my_p4est_poisson_jump_nodes_extended.h
 			${PARCASL}src/my_p4est_poisson_jump_nodes_voronoi.h
 			${PARCASL}src/my_p4est_poisson_jump_voronoi_block.h
@@ -108,7 +127,6 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_save_load.h
 			${PARCASL}src/my_p4est_scft.h
 			${PARCASL}src/my_p4est_semi_lagrangian.h
-			${PARCASL}src/my_p4est_semi_lagrangian_ml.h
 			${PARCASL}src/my_p4est_shs_channel.h
 			${PARCASL}src/my_p4est_solve_lsqr.h
 			${PARCASL}src/my_p4est_surfactant.h
@@ -119,7 +137,7 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_nodes.h
 			${PARCASL}src/my_p4est_tools.h
 			${PARCASL}src/my_p4est_two_phase_flows.h
-			${PARCASL}src/my_p4est_xgfm_cells.h
+#			${PARCASL}src/my_p4est_xgfm_cells.h
 			${PARCASL}src/voronoi2D.h
 			${PARCASL}src/my_p4est_fast_sweeping.h
 			${PARCASL}src/my_p4est_nodes_along_interface.h )
@@ -130,8 +148,10 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_cell_neighbors.cpp
 			${PARCASL}src/my_p4est_faces.cpp
 			${PARCASL}src/my_p4est_general_poisson_nodes_mls_solver.cpp
+			${PARCASL}src/my_p4est_grid_aligned_extension.cpp
 			${PARCASL}src/my_p4est_hierarchy.cpp
 			${PARCASL}src/my_p4est_integration_mls.cpp
+			${PARCASL}src/my_p4est_interface_manager.cpp
 			${PARCASL}src/my_p4est_interpolation.cpp
 			${PARCASL}src/my_p4est_interpolation_cells.cpp
 			${PARCASL}src/my_p4est_interpolation_faces.cpp
@@ -146,6 +166,11 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_poisson_boltzmann_nodes.cpp
 			${PARCASL}src/my_p4est_poisson_cells.cpp
 			${PARCASL}src/my_p4est_poisson_faces.cpp
+			${PARCASL}src/my_p4est_poisson_jump_cells.cpp
+			${PARCASL}src/my_p4est_poisson_jump_cells_fv.cpp
+			${PARCASL}src/my_p4est_poisson_jump_cells_xgfm.cpp
+			${PARCASL}src/my_p4est_poisson_jump_faces.cpp
+			${PARCASL}src/my_p4est_poisson_jump_faces_xgfm.cpp
 			${PARCASL}src/my_p4est_poisson_jump_nodes_extended.cpp
 			${PARCASL}src/my_p4est_poisson_jump_nodes_voronoi.cpp
 			${PARCASL}src/my_p4est_poisson_jump_voronoi_block.cpp
@@ -157,7 +182,6 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_save_load.cpp
 			${PARCASL}src/my_p4est_scft.cpp
 			${PARCASL}src/my_p4est_semi_lagrangian.cpp
-			${PARCASL}src/my_p4est_semi_lagrangian_ml.cpp
 			${PARCASL}src/my_p4est_solve_lsqr.cpp
 			${PARCASL}src/my_p4est_surfactant.cpp
 			${PARCASL}src/my_p4est_trajectory_of_point.cpp
@@ -167,7 +191,7 @@ if( DIMENSION MATCHES 2d )
 			${PARCASL}src/my_p4est_nodes.c
 			${PARCASL}src/my_p4est_tools.c
 			${PARCASL}src/my_p4est_two_phase_flows.cpp
-			${PARCASL}src/my_p4est_xgfm_cells.cpp
+#			${PARCASL}src/my_p4est_xgfm_cells.cpp
 			${PARCASL}src/voronoi2D.cpp
 			${PARCASL}src/my_p4est_fast_sweeping.cpp
 			${PARCASL}src/my_p4est_nodes_along_interface.cpp )
@@ -180,6 +204,17 @@ endif()
 
 # 3D case.
 if( DIMENSION MATCHES 3d )
+
+	# Machine learning.
+	if( ENABLE_ML MATCHES 1 )
+		list( APPEND HEADERS
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.h )
+
+		list( APPEND SOURCES
+				${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp )
+	endif()
+
+	# Others.
 	list( APPEND HEADERS
 			${PARCASL}src/my_p8est_biofilm.h
 			${PARCASL}src/my_p8est_biomolecules.h
@@ -188,6 +223,7 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_general_poisson_nodes_mls_solver.h
 			${PARCASL}src/my_p8est_hierarchy.h
 			${PARCASL}src/my_p8est_integration_mls.h
+			${PARCASL}src/my_p8est_interface_manager.h
 			${PARCASL}src/my_p8est_interpolation.h
 			${PARCASL}src/my_p8est_interpolation_cells.h
 			${PARCASL}src/my_p8est_interpolation_faces.h
@@ -202,6 +238,11 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_poisson_boltzmann_nodes.h
 			${PARCASL}src/my_p8est_poisson_cells.h
 			${PARCASL}src/my_p8est_poisson_faces.h
+			${PARCASL}src/my_p8est_poisson_jump_cells.h
+			${PARCASL}src/my_p8est_poisson_jump_cells_fv.h
+			${PARCASL}src/my_p8est_poisson_jump_cells_xgfm.h
+			${PARCASL}src/my_p8est_poisson_jump_faces.h
+			${PARCASL}src/my_p8est_poisson_jump_faces_xgfm.h
 			${PARCASL}src/my_p8est_poisson_jump_nodes_extended.h
 			${PARCASL}src/my_p8est_poisson_jump_nodes_voronoi.h
 			${PARCASL}src/my_p8est_poisson_jump_voronoi_block.h
@@ -213,7 +254,6 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_save_load.h
 			#  ${PARCASL}src/my_p8est_scft.h
 			${PARCASL}src/my_p8est_semi_lagrangian.h
-			${PARCASL}src/my_p8est_semi_lagrangian_ml.h
 			${PARCASL}src/my_p8est_solve_lsqr.h
 			${PARCASL}src/my_p8est_surfactant.h
 			${PARCASL}src/my_p8est_shs_channel.h
@@ -224,7 +264,7 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_nodes.h
 			${PARCASL}src/my_p8est_tools.h
 			${PARCASL}src/my_p8est_two_phase_flows.h
-			${PARCASL}src/my_p8est_xgfm_cells.h
+#			${PARCASL}src/my_p8est_xgfm_cells.h
 			${PARCASL}src/voronoi3D.h
 			${PARCASL}src/my_p8est_fast_sweeping.h
 			${PARCASL}src/my_p8est_nodes_along_interface.h )
@@ -237,6 +277,7 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_general_poisson_nodes_mls_solver.cpp
 			${PARCASL}src/my_p8est_hierarchy.cpp
 			${PARCASL}src/my_p8est_integration_mls.cpp
+			${PARCASL}src/my_p8est_interface_manager.cpp
 			${PARCASL}src/my_p8est_interpolation.cpp
 			${PARCASL}src/my_p8est_interpolation_cells.cpp
 			${PARCASL}src/my_p8est_interpolation_faces.cpp
@@ -251,6 +292,11 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_poisson_boltzmann_nodes.cpp
 			${PARCASL}src/my_p8est_poisson_cells.cpp
 			${PARCASL}src/my_p8est_poisson_faces.cpp
+			${PARCASL}src/my_p8est_poisson_jump_cells.cpp
+			${PARCASL}src/my_p8est_poisson_jump_cells_fv.cpp
+			${PARCASL}src/my_p8est_poisson_jump_cells_xgfm.cpp
+			${PARCASL}src/my_p8est_poisson_jump_faces.cpp
+			${PARCASL}src/my_p8est_poisson_jump_faces_xgfm.cpp
 			${PARCASL}src/my_p8est_poisson_jump_nodes_extended.cpp
 			${PARCASL}src/my_p8est_poisson_jump_nodes_voronoi.cpp
 			${PARCASL}src/my_p8est_poisson_jump_voronoi_block.cpp
@@ -262,7 +308,6 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_save_load.cpp
 			#  ${PARCASL}src/my_p8est_scft.cpp
 			${PARCASL}src/my_p8est_semi_lagrangian.cpp
-			${PARCASL}src/my_p8est_semi_lagrangian_ml.cpp
 			${PARCASL}src/my_p8est_solve_lsqr.cpp
 			${PARCASL}src/my_p8est_surfactant.cpp
 			${PARCASL}src/my_p8est_trajectory_of_point.cpp
@@ -272,7 +317,7 @@ if( DIMENSION MATCHES 3d )
 			${PARCASL}src/my_p8est_nodes.c
 			${PARCASL}src/my_p8est_tools.c
 			${PARCASL}src/my_p8est_two_phase_flows.cpp
-			${PARCASL}src/my_p8est_xgfm_cells.cpp
+#			${PARCASL}src/my_p8est_xgfm_cells.cpp
 			${PARCASL}src/voronoi3D.cpp
 			${PARCASL}src/my_p8est_fast_sweeping.cpp
 			${PARCASL}src/my_p8est_nodes_along_interface.cpp )
