@@ -5,7 +5,7 @@
  *
  * @note Comparison with the above paper suggested in first revision of the paper.
  *
- * Only reinitialized samples are collected for radius = 1.5/128, for all levels: 7, 8, 9, 10.
+ * Only reinitialized samples are collected for radius = 2/128, for all levels: 7, 8, 9, 10.
  *
  * Developer: Luis Ángel.
  * Created: February 3, 2022.
@@ -36,7 +36,7 @@
 
 int main ( int argc, char* argv[] )
 {
-	const double RADIUS = 1.5 / 128;					// Smallest radius for level 7.
+	const double RADIUS = 2.0 / 128;					// Close to smallest radius for level 7 (which is 1.5/128).
 	const int MAX_REFINEMENT_LEVEL[] = {7, 8, 9, 10};
 	const int NUM_REINIT_ITERS = 10;					// Number of iterations for PDE reintialization.
 
