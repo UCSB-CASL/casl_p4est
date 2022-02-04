@@ -154,6 +154,10 @@ DEFINE_PARAMETER(pl, bool, solve_coupled, true, "Solve the coupled problem?");
 DEFINE_PARAMETER(pl, bool, do_we_solve_for_Ts, false, "True/false to describe whether or not we solve for the solid temperature (or concentration). Default: false. This is set to true for select examples in select_solvers()\n");
 DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whether or not we are solving the problem considering natural convection effects using the boussinesq approx. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 
+DEFINE_PARAMETER(pl, bool, use_regularize_front, false, "True/false to describe whether or not we use Daniil's algorithm for smoothing problem geometries and bridging gaps of a certain proximity. Default:false \n");
+
+DEFINE_PARAMETER(pl, double, proximity_smoothing, 1.1, "Parameter for front regularization. default: 1.1 \n");
+
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
 
@@ -257,8 +261,9 @@ void select_solvers(){
     case DENDRITE_TEST: // will need to select solvers manually
       break;
     case MELTING_POROUS_MEDIA:
-      solve_stefan=true;
-      solve_navier_stokes=true;
+//      solve_stefan=true;
+//      solve_navier_stokes=true;
+        // 1/31/22 -- changed to select solvers manually
       break;
     case PLANE_POIS_FLOW:
       solve_stefan=false;
@@ -668,7 +673,18 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
 
     if(mpi.rank() == 0){
 
-      std::ifstream infile_x("geometry_files/xshifts.txt");
+      const char* geom_dir = getenv("GEOMETRY_DIR");
+
+      if(geom_dir == nullptr){
+        throw std::invalid_argument("You need to set the environment variable for the geometry: GEOMETRY_DIR \n");
+      }
+//      char geom_x[]= ;
+//      geom_x=
+      char geom_x[PATH_MAX]; char geom_y[PATH_MAX]; char geom_r[PATH_MAX];
+      sprintf(geom_x, "%s/xshifts.txt", geom_dir);
+      sprintf(geom_y, "%s/yshifts.txt", geom_dir);
+      sprintf(geom_r, "%s/rvals.txt", geom_dir);
+      std::ifstream infile_x(geom_x);
       // Read x data:
       if(infile_x){
         double curr_val;
@@ -679,7 +695,7 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
           count+=1;
         }
       }
-      std::ifstream infile_y("geometry_files/yshifts.txt");
+      std::ifstream infile_y(geom_y);
 
       // Read y data:
       if(infile_y){
@@ -690,7 +706,7 @@ void make_LSF_for_porous_media(mpi_environment_t &mpi){
           count+=1;
         }
       }
-      std::ifstream infile_r("geometry_files/rvals.txt");
+      std::ifstream infile_r(geom_r);
 
       // Read r data:
       if(infile_r){
@@ -1207,6 +1223,7 @@ double dt_NS =0.;
 double hodge_global_error;
 
 double NS_norm = 0.0; // To keep track of the NS norm
+DEFINE_PARAMETER(pl, double, NS_max_allowed, 100., "Max allowed NS norm before throwing a blow up error. Default: 100. \n");
 double perturb_flow_noise =0.25;
 
 
@@ -3981,9 +3998,11 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi,
                          " - dt used: %0.3e "
                          " - dt_Stefan: %0.3e "
                          " - dt_NS : %0.3e  "
+                         " - dt_max_allowed : %0.3e \n"
+                         " - save_every_dt : %0.3e \n"
                          " - dxyz close to interface : %0.3e "
                          "\n",
-                        dt, dt_Stefan, dt_NS,
+                        dt, dt_Stefan, dt_NS, dt_max_allowed, save_every_dt,
                         dxyz_close_to_interface);
 } // ends function
 
@@ -4602,7 +4621,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                          " - Physical value: %0.3f [mm/s] \n",NS_norm,NS_norm*vel_nondim_to_dim,NS_norm*vel_nondim_to_dim*1000.);
 
   // Stop simulation if things are blowing up
-  if(NS_norm>100.0*max(u0, 1.)){
+  if(NS_norm>max(NS_max_allowed, 100.*u0)){
       MPI_Barrier(mpi_comm);
       PetscPrintf(mpi_comm,"The simulation blew up ! ");
       did_crash=true;
@@ -4682,7 +4701,7 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
 
   // TO-DO: can make these settings variable
   int front_smoothing_ = 0;
-  double proximity_smoothing_ = 1.1;
+  double proximity_smoothing_ = proximity_smoothing;
 
   double dxyz_[P4EST_DIM];
   dxyz_min(p4est,dxyz_);
@@ -6854,7 +6873,8 @@ int main(int argc, char** argv) {
     int last_tstep=-1;
 
     double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
-    double dt_max_allowed_steady = dt_max_allowed;
+    // Elyce 2/2/22 -- removing dt_max_allowed_steady --> I think this was causing some bugginess bc sometimes the dt_max_allowed computed for the first 10 timesteps was actually larger than the usual dt_max_allowed and so the vtk out idx was skipping indices. also, i assume this will get handled by itself by imposing the cfl_NS for the initial timesteps and we dont need to also impose the dt
+//    double dt_max_allowed_steady = dt_max_allowed;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
     while(tn<=tfinal){ // trying something
@@ -6877,7 +6897,7 @@ int main(int argc, char** argv) {
           cfl_NS=0.5;
           double dxyz_s[P4EST_DIM];
           dxyz_min(p4est, dxyz_s);
-          dt_max_allowed = cfl_NS*min(dxyz_s[0], dxyz_s[1]); // assuming velocity of order 1 for this. avoids any divide by zero potential
+//          dt_max_allowed = cfl_NS*min(dxyz_s[0], dxyz_s[1]); // assuming velocity of order 1 for this. avoids any divide by zero potential
 
           // loosen hodge criteria for initialization for porous media case:
           if(example_ == MELTING_POROUS_MEDIA){
@@ -6887,7 +6907,7 @@ int main(int argc, char** argv) {
         }
         else{
           cfl_NS = cfl_NS_steady;
-          dt_max_allowed = dt_max_allowed_steady;
+//          dt_max_allowed = dt_max_allowed_steady;
 
           if(example_ == MELTING_POROUS_MEDIA){
             hodge_percentage_of_max_u = hodge_percentage_steady; // to-do : clean up, num startup iterations should be a user intput, instead of just being set to 10
@@ -7067,7 +7087,8 @@ int main(int argc, char** argv) {
         // Feed the curvature computed to the interfacial boundary condition:
         if(interfacial_temp_bc_requires_curvature){
 //          ls_new_new.reinitialize_2nd_order(phi_solid.vec,30);
-          ls.reinitialize_2nd_order(phi_solid.vec,30);
+            // Elyce 1/26/22 -- commented out the below -- we do not need to reinitialize a second time when the LSF has already been reinitialized
+//          ls.reinitialize_2nd_order(phi_solid.vec,30);
 
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
@@ -7848,11 +7869,15 @@ int main(int argc, char** argv) {
           if(tstep==0)ls.reinitialize_2nd_order(phi.vec,30);
         }
 
-        if(example_ == DENDRITE_TEST){
-          // 12/15/21 -- this may need to be turned on, we will see
-//          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
-        }
+//        if(example_ == DENDRITE_TEST){
+//          // 12/15/21 -- this may need to be turned on, we will see
+////          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
+//        }
 
+        if(use_regularize_front){
+          PetscPrintf(mpi.comm(), "Calling regularlize front: \n");
+          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi);
+        }
         // --------------------------------------------------------------------------------------------------------------
         // Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
