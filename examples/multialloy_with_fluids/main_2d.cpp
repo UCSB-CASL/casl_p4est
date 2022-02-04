@@ -620,8 +620,8 @@ void set_geometry(){
       // TO-DO: clean this out
       // (WIP) : was added to further verify coupled solver by demonstrating dendritic solidification of a pure substance, but never fully fledged this out.
       // Domain size:
-      xmin = 0.; xmax = 400.;
-      ymin = 0.; ymax = 400.;
+      xmin = 0.; xmax = 1600.;
+      ymin = 0.; ymax = 1600.;
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
@@ -1095,6 +1095,7 @@ void set_temp_conc_nondim_defns(){
     theta_infty = 0.0;
 
     theta_interface = (Tinterface - Tinfty)/deltaT;
+
     break;
   }
   case MELTING_ICE_SPHERE:{
@@ -1545,7 +1546,7 @@ void simulation_time_info(){
       break;
     }
     case DENDRITE_TEST:{
-      tfinal = 10000./time_nondim_to_dim;
+      tfinal = 10000000./time_nondim_to_dim;
       tstart=0.;
       dt_max_allowed = 10.; // unrestricted for now
       break;
@@ -2350,6 +2351,7 @@ class BC_INTERFACE_VALUE_TEMP: public CF_DIM{ // TO CHECK -- changed how interp 
 private:
   // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
   my_p4est_node_neighbors_t* ngbd;
+
   my_p4est_interpolation_nodes_t* kappa_interp;
   temperature_field** temperature_;
   unsigned const char dom;
@@ -2392,32 +2394,26 @@ public:
       }
     case DENDRITE_TEST:{
       double eps = 0.05;
-      double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
+      // double theta_ = atan2((*ny_interp)(x,y),(*nx_interp)(x,y));
 
-//      printf("(x,y) = (%f, %f), nx = %f, ny = %f \n", x, y, (*nx_interp)(x,y), (*ny_interp)(x,y) );
+      double cos_theta_ = (*nx_interp)(x,y);
+      double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
+      double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
+//        double int_val =1. + (-l_char)*(1. - 15.*eps*1.)*((*kappa_interp)(x,y))/St;
+//        printf("the term: %f \n"
+//               "15epscos = %f \n"
+//               "kappa = %f \n", (-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/St,
+//               15.*eps*cos(4.*theta_),
+//               (*kappa_interp)(x,y));
+//        if(fabs(int_val - 1.0)>0.5){
+//          printf("Interface value = %f \n"
+//                 "Theta = %f \n"
+//                 "Kappa = %f \n"
+//                 "(x,y) = (%f, %f) \n \n", int_val, theta_*180./PI, (*kappa_interp)(x,y), x, y );
+//        }
 
-//      printf("Our angle is %f \n", theta*180./PI);
-//      printf(" The interface value it sets is %f \n"
-//             "-lchar = %f \n"
-//             "1. -15*eps*cos = %f \n"
-//             "kappa = %f \n",(-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y)), -l_char, (1. -15.*eps*cos(4.*theta_)), (*kappa_interp)(x,y));
-      //printf("interface BC being used = %F \n",((-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))) );
-      return theta0 +(-l_char)*(1. - 15.*eps*cos(4.*theta_))*((*kappa_interp)(x,y))/deltaT;
 
-      // return theta_interface;// --> this is to be used if Gibbs Thomson is not
-      // expression taken from "Modelling dendritic solidification with
-      // melt convection using the extended finite element method" Zabaras 2006
-      // Rochi trying Gibbs Thomson on dendrite test 1/18/22
-      /*double interface_val = Gibbs_Thomson(sigma, DIM(x,y,z));
-
-      // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
-      if(ramp_bcs){
-        return ramp_BC(theta_infty,interface_val);
-      }
-      else {
-        return interface_val;
-      }*/
-
+        return int_val; // theta_interface;
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
@@ -2453,23 +2449,27 @@ public:
       }
   }
   void clear(){
+
     kappa_interp->clear();
+
   };
   void set(my_p4est_node_neighbors_t *ngbd_,Vec kappa){
     if(ngbd_!=NULL){
       ngbd = ngbd_;
+
       kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      kappa_interp->set_input(kappa,linear);
+      kappa_interp->set_input(kappa, linear);
     }
   }
   void set_normals(my_p4est_node_neighbors_t *ngbd_,Vec nx, Vec ny){
     if(ngbd_!=NULL){
       ngbd = ngbd_;
+
       nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      nx_interp->set_input(nx,linear);
+      nx_interp->set_input(nx, linear);
 
       ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      ny_interp->set_input(ny,linear);
+      ny_interp->set_input(ny, linear);
     }
   }
   void clear_normals(){
@@ -4145,32 +4145,34 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     if(refine_by_d2T){
       double dxyz_smallest[P4EST_DIM];
       dxyz_min(p4est,dxyz_smallest);
-      double dTheta = fabs(theta_infty - theta_interface)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
+
+      double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
+      dTheta/=SQR(min(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
 
       // Coarsening instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-//      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold*0.1); // did 0.1* () for the coarsen if no sign change OR below threshold case
+      diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
+      criteria.push_back(dTheta*gradT_threshold*0.9); // did 0.1* () for the coarsen if no sign change OR below threshold case
 
       // Refining instructions: (for dT/dx)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+            diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
 
       // Coarsening instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold*0.1);
+            diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
+      criteria.push_back(dTheta*gradT_threshold*0.9);
 
       // Refining instructions: (for dT/dy)
       compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
+            diag_opn.push_back(DIVIDE_BY);
+//      diag_opn.push_back(MULTIPLY_BY);
       criteria.push_back(dTheta*gradT_threshold);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
@@ -4191,12 +4193,11 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
       sample_cf_on_nodes(p4est, nodes, mini_level_set, phi_cylinder.vec);
     }
-
     // Call advection and refinement
     sl.update_p4est(v_interface.vec, dt,
                   phi.vec, phi_dd.vec, example_uses_inner_LSF ? phi_cylinder.vec: NULL,
                   num_fields, use_block, true,
-                  uniform_band,uniform_band*(1.5),
+                  uniform_band, uniform_band/**(1.5)*/,
                   fields_, NULL,
                   criteria, compare_opn, diag_opn, custom_lmax,
                   expand_ghost_layer);

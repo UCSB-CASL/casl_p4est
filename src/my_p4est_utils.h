@@ -2533,12 +2533,20 @@ struct vec_and_ptr_t
 
   vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL) { create(p4est, nodes); }
 
+  // Elyce -- added below for flexibility 1/27/22
+  vec_and_ptr_t(const p4est_t *p4est, const p4est_nodes_t *nodes) : vec(NULL), ptr(NULL) { create(p4est, nodes); }
   inline void create(Vec parent)
   {
     ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
   }
 
   inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
+  }
+
+  // Elyce -- added below for flexiblity 1/27/22
+  inline void create(const p4est_t *p4est, const p4est_nodes_t *nodes)
   {
     ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
   }
@@ -2644,6 +2652,16 @@ struct vec_and_ptr_dim_t
     }
     create(p4est, nodes);
   }
+  // Elyce -- added below for flexibility 1/27/22
+  vec_and_ptr_dim_t(const p4est_t *p4est, const p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+    create(p4est, nodes);
+  }
 
   inline void create(Vec parent[])
   {
@@ -2654,6 +2672,14 @@ struct vec_and_ptr_dim_t
   }
 
   inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &vec[dim]); CHKERRXX(ierr);
+    }
+  }
+  // Elyce -- added below for flexiblity
+  inline void create(const p4est_t *p4est, const p4est_nodes_t *nodes)
   {
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {

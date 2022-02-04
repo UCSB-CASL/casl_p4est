@@ -124,7 +124,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   rtol_   = 1.0e-16;
   dtol_   = PETSC_DEFAULT;
 //  dtol_   = 1.0e14;
-  itmax_  = 100;
+  itmax_  = 1000;// Rochi changing itmax_ to see if the KSP solver converges 2/3/22
 
   // Tolerances for solving nonlinear equations
   nonlinear_change_tol_ = 1.0e-12,

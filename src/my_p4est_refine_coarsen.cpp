@@ -683,6 +683,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                               break;
                           }
                           case SIGN_CHANGE:{
+
                               checking_sign_change = true;
 
                               field_all_pos[n] = field_all_pos[n] && (field_val>0.);
@@ -773,10 +774,31 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
           // If we had a sign change, check if that happened:
           if(checking_sign_change){
   //            PetscPrintf(p4est->mpicomm,"CHECKING FOR A SIGN CHANGE COARSEN CASE: \n");
-              for(int n=0;n<num_fields;n++){
-                  bool sign_change = !field_all_pos[n] && !field_all_neg[n];
+              for(int n=0; n < num_fields;n++){
+                  bool sign_change = (!field_all_pos[n]) && (!field_all_neg[n]);
+                  // Elyce and Rochi: 2/2/22 -- leaving this here for future possible debugging:
 
-                  coarsen = coarsen && (!sign_change && below_threshold[n]);
+                  bool print_stuff = false /* && below_threshold[n]*/;
+
+
+                  double field_val = fields[n][node_idx];
+                  double criteria_coarsen = criteria[2*n];
+
+                  bool below_thresh_check = (fabs(field_val)<criteria_coarsen/max_quad_size);
+
+
+                  if(print_stuff){
+                      printf( "Inside sign change: \n coarsen = %s \n ", coarsen? "true":"false");
+                      printf( "Sign change = %s, below_threshold[%d] = %s \n", sign_change?"true":"false", n, below_threshold[n]?"true":"false");
+                      printf( "field value = %f, criteria_coarsen = %f, quad_size = %f, criteria_coarsen/quad_size = %f, below_thresh_check = %s \n",
+                                  field_val, criteria_coarsen, max_quad_size, criteria_coarsen/max_quad_size, below_thresh_check? "true":"false");
+                    }
+
+                  // If there IS a sign change, you can only coarsen if the abs value of the field is below the threshold.
+                  // If there is no sign change, you can coarsen
+                  coarsen = coarsen && (sign_change? below_threshold[n]:true);
+                  if(print_stuff) printf( "After: \n coarsen = %s \n \n \n", coarsen? "true":"false");
+
               }
 
           }
