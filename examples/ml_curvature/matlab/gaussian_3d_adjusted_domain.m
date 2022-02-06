@@ -4,7 +4,7 @@
 clc; clear;
 
 % Paraboloid parameters.
-h = 1/128;				% Mesh size.
+h = 1/64;				% Mesh size.
 start_k_max = 2/(3*h);	% Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
 A = 200*h;				% Equivalent to the sphere of max radius: hk_min = 0.01 (0.005 in 2D), and 4*r_min = 6h.
 su = sqrt(2*A / start_k_max);

@@ -318,6 +318,11 @@ namespace geom
 		}
 	}
 
+	/**
+	 * Determines if a geometric shape (or point) lies inside or on the boundary of a relative area (like a limiting ellipse).
+	 */
+	enum RelPosType : unsigned char {UNDEFINED = 0, INTERIOR, BOUNDARY};
+
 	///////////////////////////// A triangle class useful for triangulating Monge patches //////////////////////////////
 
 	class Triangle
@@ -327,6 +332,7 @@ namespace geom
 		Point3 _n;						// (Non-normalized) normal vector to triangle's underlying plane.
 		double _nNorm2;					// Norm^2 of normal vector.
 		Point3 _edge0, _edge1, _edge2;	// The three sides of the triangle, being careful about the ordering.
+		const RelPosType _relPosType;	// Determines relative location of traingle w.r.t. other enclosing shape (like a limiting ellipse).
 
 		/**
 		 * Project a 3D point on the plane subtended by the triangle.  If the projected point P falls within the
@@ -411,9 +417,11 @@ namespace geom
 		 * @param [in] v1 Pointer to triangle's second vertex.
 		 * @param [in] v2 Pointer to triangle's third vertex.
 		 * @param [in] TOL Optional tolerance to detect degenerate triangles by measuring collinearity.
+		 * @param [in] relPosType Optional triangle type relative to some enclosing boundary.
 		 */
-		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2, const double& TOL=EPS )
-				: _v0( v0 ), _v1( v1 ), _v2( v2 )
+		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2,
+				  const double& TOL=EPS, const RelPosType& relPosType=RelPosType::UNDEFINED )
+				  : _v0( v0 ), _v1( v1 ), _v2( v2 ), _relPosType( relPosType )
 		{
 			// Compute triangle's subtended plane's normal vector.
 			Point3 v0v1 = *v1 - *v0;
@@ -472,6 +480,15 @@ namespace geom
 		const Point3 *getNormal() const
 		{
 			return &_n;
+		}
+
+		/**
+		 * Retrieve relative position state.
+		 * @return Relative position state (any of the RelPosType enumeration).
+		 */
+		RelPosType getRelPosType() const
+		{
+			return _relPosType;
 		}
 	};
 
@@ -783,12 +800,12 @@ namespace geom
 	};
 
 	/**
-	 * Abstract Monge patch function f(x,y).
+	 * Abstract Monge patch function Q(u,v).
 	 */
 	class MongeFunction : public CF_2
 	{
 	public:
-		virtual double meanCurvature( const double& x, const double& y ) const = 0;
+		__attribute__((unused)) virtual double meanCurvature( const double& u, const double& v ) const = 0;
 	};
 
 	/**
@@ -807,7 +824,8 @@ namespace geom
 		Balltree *_balltree;					// Underlying balltree organization of points in space.
 		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
-		std::vector<const Point3 *> _points;			// Points defining the grid (or nullptr if they lie outside a limiting ellipse).
+		std::vector<const Point3 *> _points;	// Points defining the grid (or nullptr if they lie outside a limiting ellipse).
+		std::vector<RelPosType> _pointTypes;	// Determines whether created points are interior or boundary.
 		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
 		mutable Point3 _lastNearestUVQ;					// Stores the u-v-q coords and the triangle of last
 		mutable const Triangle *_lastNearestTriangle;	// nearest-point query
@@ -821,8 +839,8 @@ namespace geom
 		 * @param [in] L Number of refinement levels per unit length to define the cell width as H = 2^{-L}.
 		 * @param [in] mongeFunction A function of the form f(u,v) --parametrized as [u,v,f(u,v)].
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
-		 * @param [in] sau Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
-		 * @param [in] sav Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
+		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 */
 		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
 							   const size_t& btKLeaf=40, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX )
@@ -849,6 +867,7 @@ namespace geom
 			_nPointsAlongU = 2 * ku + 1;					// This is equivalent to (2|_dMin|/h + 1).
 			_nPointsAlongV = 2 * kv + 1;
 			_points.resize( _nPointsAlongU * _nPointsAlongV, nullptr );
+			_pointTypes.resize( _nPointsAlongU * _nPointsAlongV, RelPosType::UNDEFINED );
 
 			std::vector<const Point3*> balltreePoints;		// Array of (valid) point pointers to build the balltree.
 			balltreePoints.reserve( _nPointsAlongU * _nPointsAlongV );
@@ -868,12 +887,13 @@ namespace geom
 					double z = _mongeFunction->operator()( x, y );
 					size_t idx = _nPointsAlongU * j + i;
 
-					if( sau2 == DBL_MAX || sav2 == DBL_MAX || _inOutTest( x, y ) )	// No limit or inside ellipse?
+					if( sau2 == DBL_MAX || sav2 == DBL_MAX || _inOutTest( x, y ) )	// No limit or inside ellipse? Interior point.
 					{
 						_points[idx] = new Point3( x, y, z );
+						_pointTypes[idx] = RelPosType::INTERIOR;
 						balltreePoints.emplace_back( _points[idx] );
 					}
-					else	// Bring in any point outside ellipse if it has a neighbor inside.
+					else	// Bring in any point outside ellipse if it has a neighbor inside.  If so, new point is a boundary point.
 					{
 						int neighbors[8][2] = {
 							{i-1, j-1}, {i, j-1}, {i+1, j-1},	// Bottom neighbors.
@@ -891,6 +911,7 @@ namespace geom
 								if( _inOutTest( xn, yn ) )
 								{
 									_points[idx] = new Point3( x, y, z );
+									_pointTypes[idx] = RelPosType::BOUNDARY;
 									balltreePoints.emplace_back( _points[idx] );
 									break;						// Found seed neighbor -- halt loop.
 								}
@@ -938,17 +959,29 @@ namespace geom
 					size_t idx3 = idx0 + _nPointsAlongU;
 					if( _points[idx0] && _points[idx1] && _points[idx2] )	// Can we create lower triangle?
 					{
-						_triangles.emplace_back( _points[idx0], _points[idx1], _points[idx2] );			// Build it and
-						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );	// add pointers
-						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );	// to it for
-						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );	// defined quad
-						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );	// points.
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx1] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx2] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx1], _points[idx2], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );		// to it for
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// defined quad
+						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );		// points.
 					}
 					if( _points[idx0] && _points[idx2] && _points[idx3] )	// Can we create upper triangle?
 					{
-						_triangles.emplace_back( _points[idx0], _points[idx2], _points[idx3] );			// Build it and
-						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );	// add pointers
-						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );	// to it.
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx2] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx3] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx2], _points[idx3], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// to it.
 						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );
 						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );
 					}
