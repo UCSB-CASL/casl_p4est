@@ -2343,7 +2343,7 @@ public:
 
   BC_INTERFACE_VALUE_TEMP(my_p4est_node_neighbors_t *ngbd_=NULL,Vec kappa = NULL, temperature_field** analytical_T=NULL, unsigned const char& dom_=NULL): ngbd(ngbd_),temperature_(analytical_T),dom(dom_)
   {
-    if(ngbd!=NULL){
+    if((ngbd!=NULL) && (kappa!=NULL) ){
       kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
       kappa_interp->set_input(kappa,linear);
     }
@@ -2378,6 +2378,8 @@ public:
       double cos_theta_ = (*nx_interp)(x,y);
       double cos_4_theta = 8.0*pow(cos_theta_,4.)-8.0*pow(cos_theta_,2.)+1;
       double int_val =1. + (-l_char)*(1. - 15.*eps*cos_4_theta)*((*kappa_interp)(x,y))/St;
+
+
 //        double int_val =1. + (-l_char)*(1. - 15.*eps*1.)*((*kappa_interp)(x,y))/St;
 //        printf("the term: %f \n"
 //               "15epscos = %f \n"
@@ -2392,7 +2394,7 @@ public:
 //        }
 
 
-        return int_val; // theta_interface;
+        return theta_interface; //int_val; // theta_interface;
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
@@ -2429,24 +2431,42 @@ public:
   }
   void clear(){
 
+
     kappa_interp->clear();
-
+    delete kappa_interp;
   };
-  void set(my_p4est_node_neighbors_t *ngbd_,Vec kappa){
+  void set(my_p4est_node_neighbors_t *ngbd_, Vec kappa){
     if(ngbd_!=NULL){
+      printf("aaa\n");
       ngbd = ngbd_;
+      printf("bbb\n");
 
+
+//      if(kappa_interp!=NULL){
+//        printf("ccc\n");
+//        delete kappa_interp;
+//        printf("ddd\n");
+//      }
+      printf("eee\n");
       kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
+      printf("fff\n");
       kappa_interp->set_input(kappa, linear);
+      printf("ggg\n");
     }
   }
-  void set_normals(my_p4est_node_neighbors_t *ngbd_,Vec nx, Vec ny){
-    if(ngbd_!=NULL){
+  void set_normals(my_p4est_node_neighbors_t *ngbd_, Vec nx, Vec ny){
+    if((ngbd_!=NULL) && (nx !=NULL) && (ny!=NULL)){
       ngbd = ngbd_;
 
+//      if(nx_interp!=NULL){
+//        delete nx_interp;
+//      }
       nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
       nx_interp->set_input(nx, linear);
 
+//      if(ny_interp!=NULL){
+//        delete ny_interp;
+//      }
       ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
       ny_interp->set_input(ny, linear);
     }
@@ -2454,6 +2474,9 @@ public:
   void clear_normals(){
     nx_interp->clear();
     ny_interp->clear();
+
+    delete nx_interp;
+    delete ny_interp;
   }
 };
 
@@ -4311,8 +4334,8 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   // -------------------------------
   if(solve_navier_stokes){
       vorticity_refine.destroy();
-      if(refine_by_d2T){T_l_dd.destroy();}
     }
+  if(refine_by_d2T){T_l_dd.destroy();}
   // -------------------------------
   // Clear up the memory from the std vectors holding refinement info:
   // -------------------------------
@@ -4334,23 +4357,28 @@ void poisson_step(Vec phi, Vec phi_solid,
                   int cube_refinement,
                   Vec phi_cylinder=NULL, Vec phi_cylinder_dd[P4EST_DIM]=NULL ){
 
+  printf("aaa\n");
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
+  printf("bbb\n");
   if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
-
+  printf("ccc\n");
 
   // Add the appropriate interfaces and interfacial boundary conditions:
   solver_Tl->add_boundary(MLS_INTERSECTION, phi, phi_dd[0], phi_dd[1],
       interface_bc_type_temp, *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
+  printf("ddd\n");
 
   if(do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid, phi_solid_dd[0], phi_solid_dd[1],
                             interface_bc_type_temp, *bc_interface_val_temp[SOLID_DOMAIN], bc_interface_coeff);
   }
+  printf("eee\n");
 
   if(example_uses_inner_LSF && do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder,phi_cylinder_dd[0],phi_cylinder_dd[1],
         inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
+    printf("fff\n");
     }
 
   // Set diagonal for Tl:
@@ -4370,6 +4398,7 @@ void poisson_step(Vec phi, Vec phi_solid,
          solver_Tl->set_diag(1./dt);
         }
     }
+  printf("ggg\n");
 
   if(do_we_solve_for_Ts){
     // Set diagonal for Ts:
@@ -4380,7 +4409,7 @@ void poisson_step(Vec phi, Vec phi_solid,
       solver_Ts->set_diag(1./dt);
     }
   }
-
+  printf("hhh\n");
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
       if(!is_dissolution_case){
@@ -4421,7 +4450,7 @@ void poisson_step(Vec phi, Vec phi_solid,
     }
   }
 
-
+  printf("iii\n");
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
@@ -4431,32 +4460,33 @@ void poisson_step(Vec phi, Vec phi_solid,
   solver_Tl->set_use_sc_scheme(0);
   solver_Tl->set_cube_refinement(cube_refinement);
   solver_Tl->set_store_finite_volumes(0);
-
+  printf("jjj\n");
   if(do_we_solve_for_Ts){
     solver_Ts->set_integration_order(1);
     solver_Ts->set_use_sc_scheme(0);
     solver_Ts->set_cube_refinement(cube_refinement);
     solver_Ts->set_store_finite_volumes(0);
   }
-
+  printf("kkk\n");
   // Set the wall BC and RHS:
   solver_Tl->set_wc(bc_wall_type_temp,*bc_wall_value_temp[LIQUID_DOMAIN]);
   if(do_we_solve_for_Ts) solver_Ts->set_wc(bc_wall_type_temp,*bc_wall_value_temp[SOLID_DOMAIN]);
 
-
+  printf("lll\n");
   // Preassemble the linear system
   solver_Tl->preassemble_linear_system();
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
+  printf("mmm\n");
 
   // Solve the system:
   solver_Tl->solve(*T_l,false,true,KSPBCGS,PCHYPRE);
   if(do_we_solve_for_Ts) solver_Ts->solve(*T_s,false,true,KSPBCGS,PCHYPRE);
-
+  printf("nnn\n");
 
   // Delete solvers:
   delete solver_Tl;
   if(do_we_solve_for_Ts) delete solver_Ts;
-
+  printf("ooo\n");
 }
 
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
@@ -5226,24 +5256,8 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   point_fields.clear();
   cell_fields.clear();
 
-//  // Restore arrays:
-//  phi.restore_array();
-//  if(example_uses_inner_LSF) phi_2.restore_array();
-
-//  if(solve_stefan){
-//    Tl.restore_array();
-//    if(do_we_solve_for_Ts) Ts.restore_array();
-//    v_int.restore_array();
-//  }
-//  if(solve_navier_stokes && !no_flow){
-//    v_NS.restore_array();
-//    press.restore_array();
-//    vorticity.restore_array();
-//  }
-
-//  kappa.restore_array();
-//  kappa.destroy();
-//  normal.destroy();
+  kappa.destroy();
+  normal.destroy();
 
 }
 
@@ -7093,10 +7107,13 @@ int main(int argc, char** argv) {
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
 
+          printf("1111\n");
           for(unsigned char d=0;d<2;d++){
-            bc_interface_val_temp[d]->set(ngbd_np1,curvature.vec);
+            printf("d = %d \n", d);
+            bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
 
           }
+          printf("2222\n");
         }
 
         // Feed the normals to the interfacial boundary condition if needed:
@@ -7112,15 +7129,16 @@ int main(int argc, char** argv) {
 
         // Get derivatives of liquid and solid LSF's
         if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
+        printf("3333\n");
         ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
         ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
-
+        printf("4444\n");
         // Get inner LSF and derivatives if required:
         if(example_uses_inner_LSF){
             sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
             ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
           }
-
+        printf("5555\n");
         // -------------------------------
         // Compute advection terms (if applicable):
         // -------------------------------
@@ -7133,7 +7151,7 @@ int main(int argc, char** argv) {
                          p4est,nodes,ngbd);
             // Do backtrace with v_n --> navier-stokes fluid velocity
         } // end of solve_navier_stokes if statement
-
+        printf("6666\n");
         // -------------------------------
         // Set up the RHS for Poisson step:
         // -------------------------------
@@ -7171,46 +7189,65 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed (curvature, normals, or both depending on example)
         // -------------------------------
+        PetscPrintf(mpi.comm(), "AAA \n");
         if(interfacial_temp_bc_requires_curvature){
           for(unsigned char d=0;d<2;++d){
-            bc_interface_val_temp[d]->clear();
+            if (bc_interface_val_temp[d]!=NULL){
+              bc_interface_val_temp[d]->clear();
+            }
+//            MPI_Barrier(mpi.comm());
+//            bc_interface_val_temp[d]->delete_kappa();
           }
         }
+        PetscPrintf(mpi.comm(), "BBB \n");
         if(interfacial_temp_bc_requires_normal){
           for(unsigned char d=0;d<2;++d){
-            bc_interface_val_temp[d]->clear_normals();
+            if (bc_interface_val_temp[d]!=NULL){
+              bc_interface_val_temp[d]->clear_normals();
+            }
+//            MPI_Barrier(mpi.comm());
+//            bc_interface_val_temp[d]->delete_normals();
           }
         }
+        PetscPrintf(mpi.comm(), "CCC \n");
         // -------------------------------
         // Destroy all vectors
         // that were used strictly for the
         // stefan step (aka created and destroyed in stefan step)
         // -------------------------------
         // Solid LSF:
-        phi_solid.destroy();
+        if (phi_solid.vec!=NULL){phi_solid.destroy();}
+        PetscPrintf(mpi.comm(), "DDD \n");
 
         // Curvature and normal for BC's and setting up solver:
-        normal.destroy();
-        curvature.destroy();
+        if (normal.vec!=NULL){normal.destroy();}
+        PetscPrintf(mpi.comm(), "EEE \n");
+        if(curvature.vec!=NULL){curvature.destroy();}
+        PetscPrintf(mpi.comm(), "FFF \n");
 
         // Second derivatives of LSF's (for solver):
-        phi_solid_dd.destroy();
-        phi_dd.destroy();
+        if(phi_solid_dd.vec!=NULL){phi_solid_dd.destroy();}
+        PetscPrintf(mpi.comm(), "GGG \n");
+        if(phi_dd.vec!=NULL){phi_dd.destroy();}
+        PetscPrintf(mpi.comm(), "HHH \n");
 
         if(example_uses_inner_LSF){
           phi_cylinder.destroy();
           phi_cylinder_dd.destroy();
         }
+        PetscPrintf(mpi.comm(), "III \n");
         if(solve_navier_stokes){
           T_l_backtrace.destroy();
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.destroy();
             }
         }
+        PetscPrintf(mpi.comm(), "JJJ \n");
         // Destroy arrays to hold the RHS:
         rhs_Tl.destroy();
+        PetscPrintf(mpi.comm(), "KKK \n");
         if(do_we_solve_for_Ts) rhs_Ts.destroy();
-
+        PetscPrintf(mpi.comm(), "LLL \n");
 
       } // end of "if solve stefan" AND tstep>0
 
