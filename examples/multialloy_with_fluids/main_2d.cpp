@@ -2437,36 +2437,19 @@ public:
   };
   void set(my_p4est_node_neighbors_t *ngbd_, Vec kappa){
     if(ngbd_!=NULL){
-      printf("aaa\n");
       ngbd = ngbd_;
-      printf("bbb\n");
 
-
-//      if(kappa_interp!=NULL){
-//        printf("ccc\n");
-//        delete kappa_interp;
-//        printf("ddd\n");
-//      }
-      printf("eee\n");
       kappa_interp = new my_p4est_interpolation_nodes_t(ngbd);
-      printf("fff\n");
       kappa_interp->set_input(kappa, linear);
-      printf("ggg\n");
     }
   }
   void set_normals(my_p4est_node_neighbors_t *ngbd_, Vec nx, Vec ny){
     if((ngbd_!=NULL) && (nx !=NULL) && (ny!=NULL)){
       ngbd = ngbd_;
 
-//      if(nx_interp!=NULL){
-//        delete nx_interp;
-//      }
       nx_interp = new my_p4est_interpolation_nodes_t(ngbd);
       nx_interp->set_input(nx, linear);
 
-//      if(ny_interp!=NULL){
-//        delete ny_interp;
-//      }
       ny_interp = new my_p4est_interpolation_nodes_t(ngbd);
       ny_interp->set_input(ny, linear);
     }
@@ -4173,36 +4156,37 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       double dTheta= fabs(theta_infty - theta_interface)>0 ? fabs(theta_infty - theta_interface): 1.0;
       dTheta/=SQR(min(dxyz_smallest[0],dxyz_smallest[1])); // max d2Theta in liquid subdomain
 
-      // Coarsening instructions: (for dT/dx)
-      compare_opn.push_back(SIGN_CHANGE);
-      diag_opn.push_back(DIVIDE_BY);
-//      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold*0.9); // did 0.1* () for the coarsen if no sign change OR below threshold case
+      // Define variables for the refine/coarsen instructions for d2T fields:
+      compare_diagonal_option_t diag_opn_d2T = DIVIDE_BY;
+      compare_option_t compare_opn_d2T = SIGN_CHANGE;
+      double refine_criteria_d2T = dTheta*gradT_threshold;
+      double coarsen_criteria_d2T = dTheta*gradT_threshold*0.1;
 
-      // Refining instructions: (for dT/dx)
-      compare_opn.push_back(SIGN_CHANGE);
-            diag_opn.push_back(DIVIDE_BY);
-//      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold);
+      // Coarsening instructions: (for d2T/dx2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(coarsen_criteria_d2T); // did 0.1* () for the coarsen if no sign change OR below threshold case
+
+      // Refining instructions: (for d2T/dx2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(refine_criteria_d2T);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
 
-      // Coarsening instructions: (for dT/dy)
-      compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold*0.1);
+      // Coarsening instructions: (for d2T/dy2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(coarsen_criteria_d2T);
 
-      // Refining instructions: (for dT/dy)
-      compare_opn.push_back(SIGN_CHANGE);
-      //      diag_opn.push_back(DIVIDE_BY);
-      diag_opn.push_back(MULTIPLY_BY);
-      criteria.push_back(dTheta*gradT_threshold);
+      // Refining instructions: (for d2T/dy2)
+      compare_opn.push_back(compare_opn_d2T);
+      diag_opn.push_back(diag_opn_d2T);
+      criteria.push_back(refine_criteria_d2T);
       if(lint>0){custom_lmax.push_back(lint);}
       else{custom_lmax.push_back(sp.max_lvl);}
       }
     } // end of "if num_fields!=0"
-
   // -------------------------------
   // Call grid advection and update:
   // -------------------------------
@@ -4221,7 +4205,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     sl.update_p4est(v_interface.vec, dt,
                   phi.vec, phi_dd.vec, example_uses_inner_LSF ? phi_cylinder.vec: NULL,
                   num_fields, use_block, true,
-                  uniform_band, uniform_band/**(1.5)*/,
+                  uniform_band, uniform_band*(1.5),
                   fields_, NULL,
                   criteria, compare_opn, diag_opn, custom_lmax,
                   expand_ghost_layer);
@@ -4357,28 +4341,22 @@ void poisson_step(Vec phi, Vec phi_solid,
                   int cube_refinement,
                   Vec phi_cylinder=NULL, Vec phi_cylinder_dd[P4EST_DIM]=NULL ){
 
-  printf("aaa\n");
   // Create solvers:
   solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
-  printf("bbb\n");
   if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
-  printf("ccc\n");
 
   // Add the appropriate interfaces and interfacial boundary conditions:
   solver_Tl->add_boundary(MLS_INTERSECTION, phi, phi_dd[0], phi_dd[1],
       interface_bc_type_temp, *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
-  printf("ddd\n");
 
   if(do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid, phi_solid_dd[0], phi_solid_dd[1],
                             interface_bc_type_temp, *bc_interface_val_temp[SOLID_DOMAIN], bc_interface_coeff);
   }
-  printf("eee\n");
 
   if(example_uses_inner_LSF && do_we_solve_for_Ts){
     solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder,phi_cylinder_dd[0],phi_cylinder_dd[1],
         inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
-    printf("fff\n");
     }
 
   // Set diagonal for Tl:
@@ -4398,7 +4376,6 @@ void poisson_step(Vec phi, Vec phi_solid,
          solver_Tl->set_diag(1./dt);
         }
     }
-  printf("ggg\n");
 
   if(do_we_solve_for_Ts){
     // Set diagonal for Ts:
@@ -4409,7 +4386,6 @@ void poisson_step(Vec phi, Vec phi_solid,
       solver_Ts->set_diag(1./dt);
     }
   }
-  printf("hhh\n");
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
       if(!is_dissolution_case){
@@ -4450,7 +4426,6 @@ void poisson_step(Vec phi, Vec phi_solid,
     }
   }
 
-  printf("iii\n");
   // Set RHS:
   solver_Tl->set_rhs(rhs_Tl);
   if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
@@ -4460,33 +4435,27 @@ void poisson_step(Vec phi, Vec phi_solid,
   solver_Tl->set_use_sc_scheme(0);
   solver_Tl->set_cube_refinement(cube_refinement);
   solver_Tl->set_store_finite_volumes(0);
-  printf("jjj\n");
   if(do_we_solve_for_Ts){
     solver_Ts->set_integration_order(1);
     solver_Ts->set_use_sc_scheme(0);
     solver_Ts->set_cube_refinement(cube_refinement);
     solver_Ts->set_store_finite_volumes(0);
   }
-  printf("kkk\n");
   // Set the wall BC and RHS:
   solver_Tl->set_wc(bc_wall_type_temp,*bc_wall_value_temp[LIQUID_DOMAIN]);
   if(do_we_solve_for_Ts) solver_Ts->set_wc(bc_wall_type_temp,*bc_wall_value_temp[SOLID_DOMAIN]);
 
-  printf("lll\n");
   // Preassemble the linear system
   solver_Tl->preassemble_linear_system();
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
-  printf("mmm\n");
 
   // Solve the system:
   solver_Tl->solve(*T_l,false,true,KSPBCGS,PCHYPRE);
   if(do_we_solve_for_Ts) solver_Ts->solve(*T_s,false,true,KSPBCGS,PCHYPRE);
-  printf("nnn\n");
 
   // Delete solvers:
   delete solver_Tl;
   if(do_we_solve_for_Ts) delete solver_Ts;
-  printf("ooo\n");
 }
 
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
@@ -7107,13 +7076,9 @@ int main(int argc, char** argv) {
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
           compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
 
-          printf("1111\n");
           for(unsigned char d=0;d<2;d++){
-            printf("d = %d \n", d);
             bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
-
           }
-          printf("2222\n");
         }
 
         // Feed the normals to the interfacial boundary condition if needed:
@@ -7129,16 +7094,13 @@ int main(int argc, char** argv) {
 
         // Get derivatives of liquid and solid LSF's
         if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
-        printf("3333\n");
         ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
         ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
-        printf("4444\n");
         // Get inner LSF and derivatives if required:
         if(example_uses_inner_LSF){
             sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
             ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
           }
-        printf("5555\n");
         // -------------------------------
         // Compute advection terms (if applicable):
         // -------------------------------
@@ -7151,7 +7113,6 @@ int main(int argc, char** argv) {
                          p4est,nodes,ngbd);
             // Do backtrace with v_n --> navier-stokes fluid velocity
         } // end of solve_navier_stokes if statement
-        printf("6666\n");
         // -------------------------------
         // Set up the RHS for Poisson step:
         // -------------------------------
@@ -7189,27 +7150,20 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed (curvature, normals, or both depending on example)
         // -------------------------------
-        PetscPrintf(mpi.comm(), "AAA \n");
         if(interfacial_temp_bc_requires_curvature){
           for(unsigned char d=0;d<2;++d){
             if (bc_interface_val_temp[d]!=NULL){
               bc_interface_val_temp[d]->clear();
             }
-//            MPI_Barrier(mpi.comm());
-//            bc_interface_val_temp[d]->delete_kappa();
           }
         }
-        PetscPrintf(mpi.comm(), "BBB \n");
         if(interfacial_temp_bc_requires_normal){
           for(unsigned char d=0;d<2;++d){
             if (bc_interface_val_temp[d]!=NULL){
               bc_interface_val_temp[d]->clear_normals();
             }
-//            MPI_Barrier(mpi.comm());
-//            bc_interface_val_temp[d]->delete_normals();
           }
         }
-        PetscPrintf(mpi.comm(), "CCC \n");
         // -------------------------------
         // Destroy all vectors
         // that were used strictly for the
@@ -7217,37 +7171,28 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Solid LSF:
         if (phi_solid.vec!=NULL){phi_solid.destroy();}
-        PetscPrintf(mpi.comm(), "DDD \n");
 
         // Curvature and normal for BC's and setting up solver:
         if (normal.vec!=NULL){normal.destroy();}
-        PetscPrintf(mpi.comm(), "EEE \n");
         if(curvature.vec!=NULL){curvature.destroy();}
-        PetscPrintf(mpi.comm(), "FFF \n");
 
         // Second derivatives of LSF's (for solver):
         if(phi_solid_dd.vec!=NULL){phi_solid_dd.destroy();}
-        PetscPrintf(mpi.comm(), "GGG \n");
         if(phi_dd.vec!=NULL){phi_dd.destroy();}
-        PetscPrintf(mpi.comm(), "HHH \n");
 
         if(example_uses_inner_LSF){
           phi_cylinder.destroy();
           phi_cylinder_dd.destroy();
         }
-        PetscPrintf(mpi.comm(), "III \n");
         if(solve_navier_stokes){
           T_l_backtrace.destroy();
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.destroy();
             }
         }
-        PetscPrintf(mpi.comm(), "JJJ \n");
         // Destroy arrays to hold the RHS:
         rhs_Tl.destroy();
-        PetscPrintf(mpi.comm(), "KKK \n");
         if(do_we_solve_for_Ts) rhs_Ts.destroy();
-        PetscPrintf(mpi.comm(), "LLL \n");
 
       } // end of "if solve stefan" AND tstep>0
 

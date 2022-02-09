@@ -627,36 +627,33 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
 void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 {
-  printf("ls 111\n");
 #ifdef CASL_THROWS
   if (wc_type_ == NULL || wc_value_ == NULL)
     throw std::domain_error("[CASL_ERROR]: the boundary conditions on walls have not been set.");
 #endif
-  printf("ls 222\n");
   // finalize geometry
   set_boundary_phi_eff (bdry_.phi_eff);
   set_interface_phi_eff(infc_.phi_eff);
-  printf("ls 333\n");
   bool assembling_main       = new_submat_main_;
   bool assembling_jump       = new_submat_main_  && there_is_jump_;
   bool assembling_jump_ghost = new_submat_main_  && there_is_jump_  && there_is_jump_mu_;
   bool assembling_robin_sc   = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
   bool assembling_gf         = new_submat_main_  && there_is_dirichlet_ && dirichlet_scheme_ == 1;
-  printf("ls 444\n");
+
   // arrays to store matrices
   int nm = assembling_main       ? nodes_->num_owned_indeps : 0;
   int nj = assembling_jump       ? nodes_->num_owned_indeps : 0;
   int na = assembling_jump_ghost ? nodes_->num_owned_indeps : 0;
   int nr = assembling_robin_sc   ? nodes_->num_owned_indeps : 0;
   int nd = assembling_gf         ? nodes_->num_owned_indeps : 0;
-  printf("ls 555\n");
+
   std::vector< std::vector<mat_entry_t> > entries_main      (nm);
   std::vector< std::vector<mat_entry_t> > entries_jump      (nj);
   std::vector< std::vector<mat_entry_t> > entries_jump_ghost(na);
   std::vector< std::vector<mat_entry_t> > entries_gf        (nd);
   std::vector< std::vector<mat_entry_t> > entries_gf_ghost  (nd);
   if (assembling_robin_sc) entries_robin_sc.assign(nr, std::vector<mat_entry_t>(0));
-  printf("ls 666\n");
+
   std::vector<PetscInt> d_nnz_main      (nm, 1);
   std::vector<PetscInt> o_nnz_main      (nm, 0);
   std::vector<PetscInt> d_nnz_jump      (nj, 1);
@@ -669,7 +666,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector<PetscInt> o_nnz_gf        (nd, 0);
   std::vector<PetscInt> d_nnz_gf_ghost  (nd, 1);
   std::vector<PetscInt> o_nnz_gf_ghost  (nd, 0);
-  printf("ls 777\n");
+
   if (assembling_main)
   {
     if (mask_m_ != NULL) { ierr = VecDestroy(mask_m_); CHKERRXX(ierr); }
@@ -684,7 +681,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
   }
-  printf("ls 888\n");
   if (new_submat_diag_ && there_is_diag_)
   {
     if (submat_diag_ != NULL) { ierr = VecDestroy(submat_diag_); CHKERRXX(ierr); }
@@ -700,13 +696,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       ierr = VecGetArray(submat_diag_ghost_, &submat_diag_ghost_ptr); CHKERRXX(ierr);
     }
   }
-  printf("ls 999\n");
   if (var_diag_)
   {
     ierr = VecGetArray(diag_m_, &diag_m_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
-  printf("ls 1000\n");
   if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
   {
     if (submat_robin_sym_ != NULL) { ierr = VecDestroy(submat_robin_sym_); CHKERRXX(ierr); }
@@ -714,27 +708,16 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecSetGhost(submat_robin_sym_, 0.); CHKERRXX(ierr);
     ierr = VecGetArray(submat_robin_sym_, &submat_robin_sym_ptr); CHKERRXX(ierr);
   }
-  printf("ls 1111\n");
   // structures for quick reassembling
   if (new_submat_main_)
   {
-    printf("ls 1222\n");
     for (size_t i = 0; i < bc_.size(); ++i) bc_[i].reset(nodes_->num_owned_indeps);
-    printf("ls 1333\n");
     for (size_t i = 0; i < jc_.size(); ++i) jc_[i].reset(nodes_->num_owned_indeps);
-    printf("ls 1444\n");
     wall_pieces_map.reinitialize(nodes_->num_owned_indeps);
-    printf("ls 1555\n");
     wall_pieces_id.clear();
-    printf("ls 1666\n");
     wall_pieces_area.clear();
-    printf("ls 1777\n");
     wall_pieces_centroid.clear();
-    printf("ls 1888\n");
-    printf("size of jump_scaling_ vector : %d \n", jump_scaling_.size() );
     jump_scaling_.resize(nodes_->num_owned_indeps, 1.);
-    printf("size of jump_scaling_ vector after resizing : %d \n", jump_scaling_.size() );
-    printf("ls 1999\n");
   }
 
   // get access to vectors
