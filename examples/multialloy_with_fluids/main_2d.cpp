@@ -1527,7 +1527,13 @@ void simulation_time_info(){
     case DENDRITE_TEST:{
       tfinal = 10000000./time_nondim_to_dim;
       tstart=0.;
-      dt_max_allowed = 10.; // unrestricted for now
+      printf("dt max allowed = %f \n", dt_max_allowed);
+      if(save_every_dt>0.){
+        dt_max_allowed = save_every_dt - EPS;;
+      }
+      else{
+        dt_max_allowed = 10.; // unrestricted for now
+      }
       break;
     }
     case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:{
@@ -1537,6 +1543,7 @@ void simulation_time_info(){
       break;
     }
     }
+
   if((duration_overwrite>0.) || (duration_overwrite_nondim>0.)){
     if((duration_overwrite>0.) && (duration_overwrite_nondim>0.)){
       throw std::invalid_argument("You have selected BOTH a dimensional and nondimensional duration overwrite. Please only select one \n");
@@ -2394,7 +2401,7 @@ public:
 //        }
 
 
-        return theta_interface; //int_val; // theta_interface;
+        return int_val; // theta_interface;
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
@@ -7956,10 +7963,6 @@ int main(int argc, char** argv) {
       if(analytical_IC_BC_forcing_term){
         delete analytical_T[d];
         delete external_heat_source_T[d];
-      }
-      if(interfacial_temp_bc_requires_curvature){
-        // cases where we used curvature, want to clear interpolator before destroying
-        bc_interface_val_temp[d]->clear();
       }
       delete bc_interface_val_temp[d];
       delete bc_wall_value_temp[d];
