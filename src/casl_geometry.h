@@ -318,6 +318,11 @@ namespace geom
 		}
 	}
 
+	/**
+	 * Determines if a geometric shape (or point) lies inside or on the boundary of a relative area (like a limiting ellipse).
+	 */
+	enum RelPosType : unsigned char {UNDEFINED = 0, INTERIOR, BOUNDARY};
+
 	///////////////////////////// A triangle class useful for triangulating Monge patches //////////////////////////////
 
 	class Triangle
@@ -327,6 +332,7 @@ namespace geom
 		Point3 _n;						// (Non-normalized) normal vector to triangle's underlying plane.
 		double _nNorm2;					// Norm^2 of normal vector.
 		Point3 _edge0, _edge1, _edge2;	// The three sides of the triangle, being careful about the ordering.
+		const RelPosType _relPosType;	// Determines relative location of traingle w.r.t. other enclosing shape (like a limiting ellipse).
 
 		/**
 		 * Project a 3D point on the plane subtended by the triangle.  If the projected point P falls within the
@@ -411,9 +417,11 @@ namespace geom
 		 * @param [in] v1 Pointer to triangle's second vertex.
 		 * @param [in] v2 Pointer to triangle's third vertex.
 		 * @param [in] TOL Optional tolerance to detect degenerate triangles by measuring collinearity.
+		 * @param [in] relPosType Optional triangle type relative to some enclosing boundary.
 		 */
-		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2, const double& TOL=EPS )
-				: _v0( v0 ), _v1( v1 ), _v2( v2 )
+		Triangle( const Point3 *v0, const Point3 *v1, const Point3 *v2,
+				  const double& TOL=EPS, const RelPosType& relPosType=RelPosType::UNDEFINED )
+				  : _v0( v0 ), _v1( v1 ), _v2( v2 ), _relPosType( relPosType )
 		{
 			// Compute triangle's subtended plane's normal vector.
 			Point3 v0v1 = *v1 - *v0;
@@ -472,6 +480,15 @@ namespace geom
 		const Point3 *getNormal() const
 		{
 			return &_n;
+		}
+
+		/**
+		 * Retrieve relative position state.
+		 * @return Relative position state (any of the RelPosType enumeration).
+		 */
+		RelPosType getRelPosType() const
+		{
+			return _relPosType;
 		}
 	};
 
@@ -650,7 +667,7 @@ namespace geom
 		 * @param [out] d Distance from q to closest point x.
 		 * @param [in] n (Sub)tree root or node to explore (if a leaf).
 		 */
-		void _findNearestNeighbor( const Point3& q, const Point3 *& x, double& d, const BalltreeNode *n ) const
+		void _findNearestNeighbor( const Point3& q, const Point3*& x, double& d, const BalltreeNode *n ) const
 		{
 			if( _trace )
 				std::cout << n->id << " ";
@@ -708,8 +725,8 @@ namespace geom
 						   : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )	// NOLINT.
 		{
 			// First, copy all points into local storage if user wants that.
-			// At the same time, populate the list to pass to buid function.
-			std::vector<const Point3 *> S;
+			// At the same time, populate the list to pass to build function.
+			std::vector<const Point3*> S;
 			S.reserve( points.size() );
 			if( copyPoints )
 			{
@@ -728,6 +745,22 @@ namespace geom
 
 			// Next, build the tree.
 			_root = _buildTree( S );
+		}
+
+		/**
+		 * Constructor.
+		 * Default leaf size k based on value used in Python's scikit-learn module.
+		 * @note The user is responsible for providing a list of existing points.
+		 * @param [in] points List of pointers to point objects.
+		 * @param [in] k Maximum number of points in a leaf node.
+		 * @param [in] trace Whether to trace nodes visited during a knn query.
+		 */
+		explicit Balltree( const std::vector<const Point3 *>& points, const size_t& k=40, const bool& trace=false )
+						   : _k( k ), _rng( 0 ), _nodeCount( 0 ), _trace( trace )
+		{
+			if( k <= 0 || points.empty() )
+				throw std::runtime_error( "[CASL_ERROR] Balltree:constructor: k must be positive and points non empty!" );
+			_root = _buildTree( points );
 		}
 
 		/**
@@ -767,12 +800,12 @@ namespace geom
 	};
 
 	/**
-	 * Abstract Monge patch function f(x,y).
+	 * Abstract Monge patch function Q(u,v).
 	 */
 	class MongeFunction : public CF_2
 	{
 	public:
-		virtual double meanCurvature( const double& x, const double& y ) const = 0;
+		__attribute__((unused)) virtual double meanCurvature( const double& u, const double& v ) const = 0;
 	};
 
 	/**
@@ -781,8 +814,6 @@ namespace geom
 	 * The class describes a Monge patch (x, y, f(x,y)) for (x,y) in a region R that is symmetric in every direction.
 	 * The domain R is rectangular, with h = 2^{-L}, where L > 0.  This is similar to how we handle quadtrees, but here
 	 * there are no intermediate cells.
-	 *
-	 * @warning Not a thread-safe class!
 	 */
 	class DiscretizedMongePatch : public CF_3
 	{
@@ -793,7 +824,8 @@ namespace geom
 		Balltree *_balltree;					// Underlying balltree organization of points in space.
 		std::vector<Triangle> _triangles;		// List of triangles discretizing the Monge patch.
 		const MongeFunction *_mongeFunction;	// Monge function to compute the "height" and curvature at any (x,y).
-		std::vector<Point3> _points;			// Points defining the grid.
+		std::vector<const Point3 *> _points;	// Points defining the grid (or nullptr if they lie outside a limiting ellipse).
+		std::vector<RelPosType> _pointTypes;	// Determines whether created points are interior or boundary.
 		std::vector<std::vector<const Triangle *>> _pointsToTriangles;	// Tracks which triangles each point is part of.
 		mutable Point3 _lastNearestUVQ;					// Stores the u-v-q coords and the triangle of last
 		mutable const Triangle *_lastNearestTriangle;	// nearest-point query
@@ -801,14 +833,17 @@ namespace geom
 	public:
 		/**
 		 * Constructor.
+		 * @note If a limiting ellipse is desired, both sau and sav must be positive and less than DBL_MAX.
 		 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
 		 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
 		 * @param [in] L Number of refinement levels per unit length to define the cell width as H = 2^{-L}.
 		 * @param [in] mongeFunction A function of the form f(u,v) --parametrized as [u,v,f(u,v)].
 		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
 		 */
 		DiscretizedMongePatch( const size_t& ku, const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
-							   const size_t& btKLeaf=40 )
+							   const size_t& btKLeaf=40, const double& sau2=DBL_MAX, const double& sav2=DBL_MAX )
 							   : _mongeFunction( mongeFunction ), _lastNearestTriangle( nullptr )
 		{
 			// Validate inputs.
@@ -822,28 +857,72 @@ namespace geom
 			if( ku == 0 || kv == 0 )
 				throw std::runtime_error( errorPrefix + "Number of cells can't be zero!" );
 
+			if( sau2 <= 0 || sav2 <= 0 )
+				throw std::runtime_error( errorPrefix + "Limiting ellipse squared half-axis lengths must be positive!" );
+
 			// Initializing space variables and domain.
 			_h = 1. / (1 << L);								// Spacing.
 			_uMin = -(double)ku * _h;						// Lower-left coordinate is at (_uMin, _vMin).
 			_vMin = -(double)kv * _h;
 			_nPointsAlongU = 2 * ku + 1;					// This is equivalent to (2|_dMin|/h + 1).
 			_nPointsAlongV = 2 * kv + 1;
+			_points.resize( _nPointsAlongU * _nPointsAlongV, nullptr );
+			_pointTypes.resize( _nPointsAlongU * _nPointsAlongV, RelPosType::UNDEFINED );
 
-			// Let's create the grid.
-			for( size_t j = 0; j < _nPointsAlongV; j++ )		// Rows, starting from the bottom-left corner.
+			std::vector<const Point3*> balltreePoints;		// Array of (valid) point pointers to build the balltree.
+			balltreePoints.reserve( _nPointsAlongU * _nPointsAlongV );
+
+			// Lambda function for in/out test of bounding ellipse.
+			auto _inOutTest = [&sau2, &sav2]( double& u, double& v ){
+				return SQR( u ) / sau2 + SQR( v ) / sav2 <= 1;
+			};
+
+			// Let's create the points within ellipse and populate the list to pass on to the balltree.
+			for( int j = 0; j < _nPointsAlongV; j++ )		// Rows, starting from the bottom-left corner.
 			{
-				for( size_t i = 0; i < _nPointsAlongU; i++ )	// Columns.
+				for( int i = 0; i < _nPointsAlongU; i++ )	// Columns.
 				{
 					double x = _uMin + (double)i * _h;
 					double y = _vMin + (double)j * _h;
 					double z = _mongeFunction->operator()( x, y );
-					_points.emplace_back( x, y, z );
+					size_t idx = _nPointsAlongU * j + i;
+
+					if( sau2 == DBL_MAX || sav2 == DBL_MAX || _inOutTest( x, y ) )	// No limit or inside ellipse? Interior point.
+					{
+						_points[idx] = new Point3( x, y, z );
+						_pointTypes[idx] = RelPosType::INTERIOR;
+						balltreePoints.emplace_back( _points[idx] );
+					}
+					else	// Bring in any point outside ellipse if it has a neighbor inside.  If so, new point is a boundary point.
+					{
+						int neighbors[8][2] = {
+							{i-1, j-1}, {i, j-1}, {i+1, j-1},	// Bottom neighbors.
+							{i-1,   j}, {i+1, j}, 				// Same row neighbors.
+							{i-1, j+1}, {i, j+1}, {i+1, j+1}	// Top neighbors.
+						};
+
+						for( const auto& neighbor : neighbors )	// See if there's at least one seed neighbor.
+						{
+							if( (neighbor[0] >= 0 && neighbor[0] < _nPointsAlongU) &&
+								(neighbor[1] >= 0 && neighbor[1] < _nPointsAlongV) )
+							{
+								double xn = _uMin + (double)neighbor[0] * _h;
+								double yn = _vMin + (double)neighbor[1] * _h;
+								if( _inOutTest( xn, yn ) )
+								{
+									_points[idx] = new Point3( x, y, z );
+									_pointTypes[idx] = RelPosType::BOUNDARY;
+									balltreePoints.emplace_back( _points[idx] );
+									break;						// Found seed neighbor -- halt loop.
+								}
+							}
+						}
+					}
 				}
 			}
 
-			// Organize the points into a balltree for fast knn search: don't make copies of points.  We'll keep them in
-			// this object to link them to triangles.
-			_balltree = new Balltree( _points, false, btKLeaf );
+			// Organize the points into a balltree for fast knn search.
+			_balltree = new Balltree( balltreePoints );
 
 			// Triangulation.  The pattern is the following, starting from the bottom-left corner of the domain.
 			//     :    :    :    :
@@ -857,11 +936,12 @@ namespace geom
 			//   0      1    2    3
 			_triangles.reserve( (_nPointsAlongU - 1) * (_nPointsAlongV - 1) * 2 );	// Here, we save the real triangles; then we use pointers to them.
 
-			for( size_t p = 0; p < _points.size(); p++ )			// Let's make space for the map of points to triangles.
+			for( const auto& point : _points )				// Let's make space for the map of points to triangles.
 			{
 				_pointsToTriangles.emplace_back( std::vector<const Triangle *>() );
-				_pointsToTriangles.back().reserve( 8 );				// Each point is part of at most 6 triangles under the above scheme plus 2 to
-			}														// complete the quads.  Edge points belong to 3+1, and corners belong to 1+1.
+				if( point ) 								// Each valid point is part of at most 6 triangles under the above scheme plus 2 to
+					_pointsToTriangles.back().reserve( 8 );	// complete the quads.  Edge points belong to 3+1, and corners belong to 1+1.
+			}
 
 			for( size_t j = 0; j < _nPointsAlongV - 1; j++ )		// Rows first (without getting to the very last).
 			{
@@ -877,16 +957,34 @@ namespace geom
 					size_t idx1 = idx0 + 1;
 					size_t idx2 = idx1 + _nPointsAlongU;
 					size_t idx3 = idx0 + _nPointsAlongU;
-					_triangles.emplace_back( &_points[idx0], &_points[idx1], &_points[idx2] );	// Lower triangle...
-					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
-					_pointsToTriangles[idx1].push_back( &_triangles.back() );
-					_pointsToTriangles[idx2].push_back( &_triangles.back() );
-					_pointsToTriangles[idx3].push_back( &_triangles.back() );
-					_triangles.emplace_back( &_points[idx0], &_points[idx2], &_points[idx3] );	// Upper triangle...
-					_pointsToTriangles[idx0].push_back( &_triangles.back() );					// and pointers to it.
-					_pointsToTriangles[idx2].push_back( &_triangles.back() );
-					_pointsToTriangles[idx3].push_back( &_triangles.back() );
-					_pointsToTriangles[idx1].push_back( &_triangles.back() );
+					if( _points[idx0] && _points[idx1] && _points[idx2] )	// Can we create lower triangle?
+					{
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx1] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx2] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx1], _points[idx2], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );		// to it for
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// defined quad
+						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );		// points.
+					}
+					if( _points[idx0] && _points[idx2] && _points[idx3] )	// Can we create upper triangle?
+					{
+						RelPosType rpt = RelPosType::INTERIOR;
+						if( _pointTypes[idx0] == RelPosType::BOUNDARY || 	// If at least one point is a boundary type,
+							_pointTypes[idx2] == RelPosType::BOUNDARY || 	// triangle will be marked as boundary tye too.
+							_pointTypes[idx3] == RelPosType::BOUNDARY )
+							rpt = RelPosType::BOUNDARY;
+
+						_triangles.emplace_back( _points[idx0], _points[idx2], _points[idx3], EPS, rpt );	// Build it and
+						if( _points[idx0] ) _pointsToTriangles[idx0].push_back( &_triangles.back() );		// add pointers
+						if( _points[idx2] ) _pointsToTriangles[idx2].push_back( &_triangles.back() );		// to it.
+						if( _points[idx3] ) _pointsToTriangles[idx3].push_back( &_triangles.back() );
+						if( _points[idx1] ) _pointsToTriangles[idx1].push_back( &_triangles.back() );
+					}
 				}
 			}
 		}
@@ -930,6 +1028,8 @@ namespace geom
 		 * Upon exiting, the function sets the variable _lastNearestUVQ with the coordinates of nearest point to query.
 		 * @note A child class should re-implement this function accounting for the signed distance to the discretized
 		 * interface.
+		 * @warning Not a thread-safe method if you need to access to _lastNearestUVQ or _lastNearestTriangle; use the
+		 * findNearestPoint() function instead.
 		 * @param [in] x Coordinate in x.
 		 * @param [in] y Coordinate in y.
 		 * @param [in] z Coordinate in z.
@@ -970,6 +1070,9 @@ namespace geom
 		{
 			delete _balltree;
 			_lastNearestTriangle = nullptr;
+
+			for( const auto &point : _points )	// Release points created dynamically.
+				delete point;
 		}
 
 		/**

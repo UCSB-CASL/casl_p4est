@@ -1,10 +1,9 @@
 /**
- * Testing distance computation from a point to a paraboloid two-dimensional manifolds immersed in 3D and discretized
- * by points and triangles organized into a balltree for fast querying.
+ * Testing distance computation from a point to 2D Gaussian manifold immersed in 3D and triangulated into a cloud of
+ * points organized into a balltree for fast querying.
  *
  * Developer: Luis Ángel.
- * Created: November 14, 2021.
- * Updated: January 23, 2022.
+ * Created: February 5, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -25,7 +24,7 @@
 #include <src/my_p8est_level_set.h>
 #endif
 
-#include "paraboloid_3d.h"
+#include "gaussian_3d.h"
 #include <src/parameter_list.h>
 
 int main ( int argc, char* argv[] )
@@ -42,7 +41,7 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 		PetscErrorCode ierr;
 
-		if( mpi.size() > 1 )					// To test we don't admit more than a single process.
+		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
 
 		// Initializing OpenMP.
@@ -54,19 +53,22 @@ int main ( int argc, char* argv[] )
 		// Loading parameters from command line.
 		cmdParser cmd;
 		pl.initialize_parser( cmd );
-		if( cmd.parse( argc, argv, "Paraboloid data set test" ) )
+		if( cmd.parse( argc, argv, "Gaussian data set test" ) )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
-		std::cout << "Testing paraboloid level-set function in 3D" << std::endl;
+		std::cout << "Testing Gaussian level-set function in 3D" << std::endl;
 
 		parStopWatch watch;
 		watch.start();
 
-		// Domain information.
-		const double MIN_D = -0.5, MAX_D = -MIN_D;			// The canonical space is [-0.5, +0.5]^3.
+		// Defining the domain and the Gaussian patch.
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
-		int n_xyz[] = {1, 1, 1};							// One tree per dimension.
+		const double A = 200 *  H;							// Gaussian height.
+		const double SU2 = 0.1465;							// Variances along u and v directions.
+		const double SV2 = 0.0488;
+		const double MIN_D = -2, MAX_D = -MIN_D;			// Cubic canonical space [MIN_D, MAX_D]^3.
+		int n_xyz[] = {4, 4, 4};							// One tree per dimension.
 		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
 		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
 		int periodic[] = {0, 0, 0};							// Non-periodic domain.
@@ -79,29 +81,22 @@ int main ( int argc, char* argv[] )
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
 		// Definining the level-set function to be reinitialized.
-		const double A = 4;									// Paraboloid params: Q(u,v) = A*u^2 + B*v^2.
-		const double B = 1;
-		Paraboloid paraboloid( A, B );
-		const Point3 translation = {H/2, -H/2, H/2};		// Translation of canonical coordinate system.
-		const Point3 rotationAxis = {-1, 1, -1};			// Axis of rotation.
-		const double beta = M_PI_4;							// Rotation angle about RotAxis.
+		Gaussian gaussian( A, SU2, SV2 );					// Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
+		const Point3 trans = {0, 0, -A/2};					// Translation of canonical coordinate system.
+		const Point3 rotAxis = {1, 1, 1};					// Axis of rotation.
+		const double rotAngle = 0;							// Rotation angle about rotAxis.
 
-		// Finding how far to go in the half-axes to get a lower bound on the maximum height in Q(u,v) = A*u^2 + B*v^2.
-		const double R = (MAX_D + H/2) * sqrt( 3 );			// Radius of circumscribing circle (i.e., containing the
-															// domain cube and accounting for shifted paraboloid origin).
-		const double hiQU = 0.5 * (-1/A + sqrt(1./SQR(A) + 4*SQR(R)));	// Lower bound for Q along u axis (for v=0).
-		const double hiQV = 0.5 * (-1/B + sqrt(1./SQR(B) + 4*SQR(R)));	// Lower bound for Q along v axis (for u=0).
-		const double hiQ = MAX( hiQU, hiQV );							// Choose a common value so that we have an ellipse up there.
-		const double rU2 = hiQ / A;							// Squared ellipse semiaxis lengths.
-		const double rV2 = hiQ / B;
-		const size_t halfU = ceil(sqrt(rU2) / H);			// Half u axis in H units.
-		const size_t halfV = ceil(sqrt(rV2) / H);			// Half v axis in H units.
+		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only on this region.
+		const double ULIM = 1.3437;							// Limiting ellipse semi-axes.
+		const double VLIM = 0.6922;
+		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
+		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
 
 		double timeCreate = watch.get_duration_current();
-		ParaboloidLevelSet paraboloidLevelSet( translation, rotationAxis, beta, halfU, halfV, maxRL(), &paraboloid, 5, rU2, rV2 );
+		GaussianLevelSet gaussianLevelSet( trans, rotAxis, rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
 		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
-		paraboloidLevelSet.dumpTriangles( "paraboloid_triangles.csv" );
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &paraboloidLevelSet, 2.0 );
+		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &gaussianLevelSet, 2.0 );
 
 		// Create the forest using a level-set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
@@ -109,9 +104,9 @@ int main ( int argc, char* argv[] )
 
 		// Refine and partition forest.
 		double startTimePartitioningGrid = watch.get_duration_current();
-		paraboloidLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
-		paraboloidLevelSet.reserveCache( (size_t)pow( 0.75 * MAX_D / H, 3 ) );	// Reserve space in cache to improve hashing.
-		for( int i = 0; i < maxRL(); i++ )					// queries for grid points.
+		gaussianLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
+		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * MAX_D / H, 3 ) );	// Reserve space in cache to improve hashing.
+		for( int i = 0; i < maxRL(); i++ )										// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
@@ -125,8 +120,7 @@ int main ( int argc, char* argv[] )
 		// Initialize the neighbor nodes structure.
 		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
 		my_p4est_node_neighbors_t ngbd( &hierarchy, nodes );
-		ngbd.init_neighbors(); 				// This is not mandatory, but it can only help performance given
-											// how much we'll neeed the node neighbors.
+		ngbd.init_neighbors();
 
 		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
@@ -141,16 +135,16 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArray( phi, &phiPtr ) );
 		CHKERRXX( VecGetArray( exactFlag, &exactFlagPtr ) );
 
-		// Populate phi values and compute the exact distance for vertices within a (rough) shell around Gamma.
+		// Populate phi values and compute the exact distance for vertices within a (linearly estimated) shell around Gamma.
 		double startTimeProcessingQueries = watch.get_duration_current();
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
-#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, paraboloidLevelSet, H, nodesForExactDist )
+//#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, gaussianLevelSet, H, nodesForExactDist )
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
-			phiPtr[n] = paraboloidLevelSet( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
+			phiPtr[n] = gaussianLevelSet( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
 
 			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
 			if( ABS( phiPtr[n] ) <= 3 * H )
@@ -160,17 +154,18 @@ int main ( int argc, char* argv[] )
 			}
 		}
 
-#pragma omp parallel for default( none ) \
-		shared( nodes, p4est, nodesForExactDist, phiPtr, paraboloidLevelSet, exactFlagPtr, std::cerr )
-		for( int i = 0; i < nodesForExactDist.size(); i++ )				// NOLINT.  It can't be a range-based loop.
+//#pragma omp parallel for default( none ) \
+//		shared( nodes, p4est, nodesForExactDist, phiPtr, gaussianLevelSet, exactFlagPtr, std::cerr )
+		for( int i = 0; i < nodesForExactDist.size(); i++ )			// NOLINT.  It can't be a range-based loop.
 		{
 			p4est_locidx_t n = nodesForExactDist[i];
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 			try
 			{
-				phiPtr[n] = paraboloidLevelSet.computeExactSignedDistance( xyz );	// Also modifies the cache.
-				exactFlagPtr[n] = 1;
+				bool updated;
+				phiPtr[n] = gaussianLevelSet.computeExactSignedDistance( xyz, updated );	// Also modifies the cache.
+				exactFlagPtr[n] = updated;
 			}
 			catch( const std::exception &e )
 			{
@@ -180,8 +175,8 @@ int main ( int argc, char* argv[] )
 		std::cout << "Query processing duration: " << watch.get_duration_current() - startTimeProcessingQueries << std::endl;
 
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
-		paraboloidLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
-		paraboloidLevelSet.clearCache();
+		gaussianLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
+		gaussianLevelSet.clearCache();
 
 		// Reinitialize level-set function.
 		double startTimeReinitialization = watch.get_duration_current();
@@ -219,7 +214,7 @@ int main ( int argc, char* argv[] )
 				ABS( xyz[2] - MIN_D ) <= 4 * H || ABS( xyz[2] - MAX_D ) <= 4 * H )
 				continue;
 
-			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D.
+/*			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D. // TODO: Get full stencils on demand for select vertices.
 			try
 			{
 				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
@@ -228,14 +223,14 @@ int main ( int argc, char* argv[] )
 			catch( std::exception &e )
 			{
 				std::cerr << "Node (" << n << "): " << e.what() << std::endl;
-			}
+			}*/
 		}
 
 		std::cout << "Collecting nodes duration: " << watch.get_duration_current() - startTimeCollecting << std::endl;
 		watch.stop();
 
 		std::ostringstream oss;
-		oss << "paraboloid_test";
+		oss << "gaussian_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								3, 0, oss.str().c_str(),

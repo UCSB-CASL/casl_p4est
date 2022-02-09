@@ -292,7 +292,7 @@ int main ( int argc, char* argv[] )
 		// Now, collect samples.
 		int nSamples = 0;
 		std::vector<std::vector<double>> samples;
-		double gradient[P4EST_DIM], pOnGamma[P4EST_DIM];
+		double pOnGamma[P4EST_DIM];
 		std::unordered_map<p4est_locidx_t, Point2> visitedNodes( nodes->num_owned_indeps );	// Memoization.
 
 		for( auto n : indices )
@@ -321,9 +321,6 @@ int main ( int argc, char* argv[] )
 					sample.push_back( tgtHK );
 					sample.push_back( interpolation( DIM(pOnGamma[0], pOnGamma[1], pOnGamma[2]) ) );	// Attach numerical ihk.
 
-					for( int dim = 0; dim < P4EST_DIM; dim++ )		// Let's pick a numerically good gradient.
-						gradient[dim] = (normalReadPtr[dim][n] == 0)? EPS : normalReadPtr[dim][n];
-
 					// Flip sign of stencil if interpolated curvature at the interface is positive.
 					if( sample[NUM_COLUMNS - 1] > 0 )
 					{
@@ -332,9 +329,6 @@ int main ( int argc, char* argv[] )
 							sample[i] *= -1.0;
 							distances[i] *= -1.0;
 						}
-
-						for( auto& component : gradient )			// Flip sign of gradient too.
-							component *= -1.0;
 					}
 
 					// Error metric for validation.
@@ -345,7 +339,7 @@ int main ( int argc, char* argv[] )
 					}
 
 					// Rotate stencil so that gradient at node 00 has an angle in first quadrant.
-					kml::utils::rotateStencilToFirstQuadrant( sample, gradient );
+					kml::utils::rotateStencilToFirstQuadrant( sample );
 
 					samples.push_back( sample );
 					nSamples++;

@@ -2,6 +2,13 @@
 #define MY_P4EST_CURVATURE_ML_H
 
 #ifdef P4_TO_P8
+#define K_INPUT_SIZE			109	// Includes h-normalized phi values, unit normal vector components, and numerical hk.
+#define K_INPUT_PHI_SIZE		 27
+#define K_INPUT_NORMAL_SIZE		 81
+#define K_INPUT_HK_SIZE			  1
+
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #else
 #define K_INPUT_SIZE			28	// Includes h-normalized phi values, unit normal vector components, and numerical hk.
@@ -33,7 +40,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: November 12, 2021.
+ * Updated: January 30, 2022.
  */
 namespace kml
 {
@@ -42,16 +49,23 @@ namespace kml
 	/**
 	 * Abstract class to transform data into an input form that the neural network understands.
 	 * Input data in 2D comes in the following order (with K_INPUT_SIZE entries) (x is slowest changing and then y):
-	 *		"mm", "m0", "mp"           =>  phi(i-1, j-1), phi(i-1, j), phi(i-1, j+1) |
-	 *		"0m", "00", "0p"           =>  phi(  i, j-1), phi(  i, j), phi(  i, j+1) |  First 9 entries are level-set values.
-	 *		"pm", "p0", "pp"           =>  phi(i+1, j-1), phi(i+1, j), phi(i+1, j+1) |
-	 *		"nx_mm", "nx_m0", "nx_mp"  =>   nx(i-1, j-1),  nx(i-1, j),  nx(i-1, j+1) +
-	 *		"nx_0m", "nx_00", "nx_0p"  =>   nx(  i, j-1),  nx(  i, j),  nx(  i, j+1) +  Second 9 entries are x-components of normal unit vectors.
-	 *		"nx_pm", "nx_p0", "nx_pp"  =>   nx(i+1, j-1),  nx(i+1, j),  nx(i+1, j+1) +
-	 *		"ny_mm", "ny_m0", "ny_mp"  =>   ny(i-1, j-1),  ny(i-1, j),  ny(i-1, j+1) -
-	 *		"ny_0m", "ny_00", "ny_0p"  =>   ny(  i, j-1),  ny(  i, j),  ny(  i, j+1) -  Third 9 entries are y-components of normal unit vectors.
-	 *		"ny_pm", "ny_p0", "ny_pp"  =>   ny(i+1, j-1),  ny(i+1, j),  ny(i+1, j+1) -
-	 *		"ihk" =>  Interpolated h * kappa
+	 *		mm, m0, mp           =>  phi(i-1, j-1), phi(i-1, j), phi(i-1, j+1) |
+	 *		0m, 00, 0p           =>  phi(  i, j-1), phi(  i, j), phi(  i, j+1) |  First 9 entries are level-set values.
+	 *		pm, p0, pp           =>  phi(i+1, j-1), phi(i+1, j), phi(i+1, j+1) |
+	 *		nx_mm, nx_m0, nx_mp  =>   nx(i-1, j-1),  nx(i-1, j),  nx(i-1, j+1) +
+	 *		nx_0m, nx_00, nx_0p  =>   nx(  i, j-1),  nx(  i, j),  nx(  i, j+1) +  Second 9 entries are x-components of normal unit vectors.
+	 *		nx_pm, nx_p0, nx_pp  =>   nx(i+1, j-1),  nx(i+1, j),  nx(i+1, j+1) +
+	 *		ny_mm, ny_m0, ny_mp  =>   ny(i-1, j-1),  ny(i-1, j),  ny(i-1, j+1) -
+	 *		ny_0m, ny_00, ny_0p  =>   ny(  i, j-1),  ny(  i, j),  ny(  i, j+1) -  Third 9 entries are y-components of normal unit vectors.
+	 *		ny_pm, ny_p0, ny_pp  =>   ny(i+1, j-1),  ny(i+1, j),  ny(i+1, j+1) -
+	 *		ihk                  =>  Interpolated h * kappa
+	 *
+	 * Input data in 3D comes in the following order (with K_INPUT_SIZE entries (x slowest, then y, and z is the fastest changing variable):
+	 *      mmm, mm0, mmp, m0m, m00, m0p, mpm, mp0, mpp  =>  Face for x = m
+	 *      0mm, 0m0, 0mp, 00m, 000, 00p, 0pm, 0p0, 0pp  =>  Face for x = 0
+	 *      pmm, pm0, pmp, p0m, p00, p0p, ppm, pp0, ppp  =>  Face for x = p
+	 * We have three such groups: phi, nx, ny, and nz, in that order.  At the end, we have ihk, the numerical dimension-
+	 * less curvature bilinearly interpolated at the interface.
 	 */
 	class Scaler
 	{
@@ -61,10 +75,17 @@ namespace kml
 		static void _printParams( const json& params, const std::string& paramsFileName );
 
 	public:
+#ifndef P4_TO_P8
 		const int                            PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
 		__attribute__((unused)) const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
 																			  18,19,20,21,22,23,24,25,26};	// then y.
 		__attribute__((unused)) const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
+#else
+		const int PHI_COLS[K_INPUT_PHI_SIZE] = { 0,  1,  2,  3,  4,  5,  6,  7,  8,		// Phi column indices.
+												 9, 10, 11, 12, 13, 14, 15, 16, 17, 	// Not defining the indices for
+												18, 19, 20, 21, 22, 23, 24, 25, 26};	// normals and ihk since they're
+																						// not needed.
+#endif
 
 		/**
 		 * Transform input data in place.
@@ -247,69 +268,66 @@ namespace kml
 		 *		"ny_pm", "ny_p0", "ny_pp"  =>   ny(i+1, j-1),  ny(i+1, j),  ny(i+1, j+1) -
 		 *		"hk"  =>  Exact target h * kappa (optional)
 		 *		"ihk" =>  Interpolated h * kappa
+		 * In 3D, we have four groups:
+		 * 		phi values 			- first 27 strings:              "mmm",    "mm0",    "mmp", ... ,   "ppm",    "pp0",    "ppp".
+		 * 		normal x components	- second group of 27 strings: "nx_mmm", "nx_mm0", "nx_mmp", ..., "nx_ppm", "nx_pp0", "nx_ppp".
+		 * 		normal y components - third group of 27 strings:  "ny_mmm", "ny_mm0", "ny_mmp", ..., "ny_ppm", "ny_pp0", "ny_ppp".
+		 * 		normal z components - fourth group of 27 strings: "nz_mmm", "nz_mm0", "nz_mmp", ..., "nz_ppm", "nz_pp0", "nz_ppp".
+		 * At the end, we append true "hk" (optional) and numerical "ihk".
  		 * @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
 		 * @param [in] includeTargetHK Whether to include or not the "hk" column.
 		 */
 		void generateColumnHeaders( std::string header[], const bool& includeTargetHK=true );
 
 		/**
-		 * Rotate stencil of level-set function values in a sample vector by 90 degrees counter or clockwise.
-		 * @param [in,out] stencil Array of level-set function values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+		 * Rotate stencil in a sample vector by 90 degrees about the z axis.
+		 * @param [in,out] stencil Sampled data in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 * @param [in] dir Rotation direction: > 0 for counterclockwise, <= 0 for clockwise.
 		 */
-		void rotateStencil90( double stencil[], const int& dir=1 );
+		void rotateStencil90z( double stencil[], const int& dir=1 );
 
+#ifdef P4_TO_P8
 		/**
-		 * Rotate stencil of level-set function values in a sample vector by 90 degrees counter or clockwise.
-		 * @param [in,out] stencil Vector of feature values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+		 * Rotate stencil in a sample vector by 90 degrees about the y axis.
+		 * @note In y-rotations, the angle is measured from the +z axis.
+		 * @param [in,out] stencil Sampled data in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 * @param [in] dir Rotation direction: > 0 for counterclockwise, <= 0 for clockwise.
 		 */
-		inline void rotateStencil90( std::vector<double>& stencil, const int& dir=1 )
-		{
-			rotateStencil90( stencil.data(), dir );
-		}
+		void rotateStencil90y( double stencil[], const int& dir=1 );
+#endif
 
 		/**
-		 * Reflect stencil of level-set values along line y = x.
-		 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
-		 * coordinate system whose origin is at the center of the stencil.  Exploits fact that curvature is invariant to
-		 * reflections and rotations.
-		 * @param [in,out] stencil Array of feature values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
+		 * Reflect feature stencil about y = x (or, in 3D, the plane x - y = 0, whose normal is [1, -1, 0]).
+		 * @note Useful for data augmentation assuming that we are using reorientation to first quadrant (octant) of the
+		 * local coordinate system with origin at the center of its stencil.  Exploits curvature reflection invariance.
+		 * @param [in,out] stencil Feature array in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 */
 		void reflectStencil_yEqx( double stencil[] );
-
-		/**
-		 * Reflect stencil of level-set values along line y = x.
-		 * @note Useful for data augmentation assuming that we are using normalization to first quadrant of a local
-		 * coordinate system whose origin is at the center of the stencil.  Exploits fact that curvature is invariant to
-		 * reflections and rotations.
-		 * @param [in,out] stencil Vector of feature values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
-		 */
 		inline void reflectStencil_yEqx( std::vector<double>& stencil )
 		{
 			reflectStencil_yEqx( stencil.data() );
 		}
 
 		/**
-		 * Rotate stencil in such a way that the gradient computed at center node 00 has an with respect to the horizontal
-		 * in the range of [0, pi/2].
-		 * @note Exploits the fact that curvature is invariant to rotation.  Prior to calling this function you must have
+		 * Rotate stencil in such a way that the gradient computed at the stencil's center node has all its Cartesian
+		 * components positive.
+		 * @note Exploits the fact that curvature is invariant to rotation.  Before calling this function you must have
 		 * flipped the sign of the stencil (and gradient) so that the curvature is negative.
-		 * @param [in,out] stencil Array of feature values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
-		 * @param [in] gradient Gradient at the center node.
+		 * @param [in,out] stencil Feature array in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 */
-		void rotateStencilToFirstQuadrant( double stencil[], const double gradient[P4EST_DIM] );
-
-		/**
-		 * Rotate stencil in such a way that the gradient computed at center node 00 has an angle with respect to the
-		 * horizontal in the range of [0, pi/2].
-		 * @param [in,out] stencil Vector of feature values in standard order (e.g., mm, m0, mp, 0m,..., p0, pp).
-		 * @param [in] gradient Gradient at the center node.
-		 */
-		inline void rotateStencilToFirstQuadrant( std::vector<double>& stencil, const double gradient[P4EST_DIM] )
+#ifdef P4_TO_P8
+		void rotateStencilToFirstOctant( double stencil[] );
+		inline void rotateStencilToFirstOctant( std::vector<double>& stencil )
 		{
-			rotateStencilToFirstQuadrant( stencil.data(), gradient );
+			rotateStencilToFirstOctant( stencil.data() );
 		}
+#else
+		void rotateStencilToFirstQuadrant( double stencil[] );
+		inline void rotateStencilToFirstQuadrant( std::vector<double>& stencil )
+		{
+			rotateStencilToFirstQuadrant( stencil.data() );
+		}
+#endif
 	}
 
 
