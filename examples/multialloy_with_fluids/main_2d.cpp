@@ -1532,7 +1532,7 @@ void simulation_time_info(){
         dt_max_allowed = save_every_dt - EPS;;
       }
       else{
-        dt_max_allowed = 10.; // unrestricted for now
+        dt_max_allowed = 1000.; // unrestricted for now
       }
       break;
     }
@@ -2401,7 +2401,7 @@ public:
 //        }
 
 
-        return int_val; // theta_interface;
+        return int_val;
     }
     case MELTING_POROUS_MEDIA:
     case MELTING_ICE_SPHERE_NAT_CONV:
@@ -2437,11 +2437,9 @@ public:
       }
   }
   void clear(){
-
-
     kappa_interp->clear();
     delete kappa_interp;
-  };
+  }
   void set(my_p4est_node_neighbors_t *ngbd_, Vec kappa){
     if(ngbd_!=NULL){
       ngbd = ngbd_;
@@ -7081,7 +7079,7 @@ int main(int argc, char** argv) {
 //          ls.reinitialize_2nd_order(phi_solid.vec,30);
 
           // We need curvature of the solid domain, so we use phi_solid and negative of normals
-          compute_mean_curvature(*ngbd, normal.vec, curvature.vec);
+          compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
 
           for(unsigned char d=0;d<2;d++){
             bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
@@ -7157,6 +7155,7 @@ int main(int argc, char** argv) {
         // -------------------------------
         // Clear interfacial BC if needed (curvature, normals, or both depending on example)
         // -------------------------------
+//        printf("before clearing bc_interface_val_temp-> kappa");
         if(interfacial_temp_bc_requires_curvature){
           for(unsigned char d=0;d<2;++d){
             if (bc_interface_val_temp[d]!=NULL){
@@ -7164,6 +7163,7 @@ int main(int argc, char** argv) {
             }
           }
         }
+//        printf("before clearing bc_interface_val_temp-> normals");
         if(interfacial_temp_bc_requires_normal){
           for(unsigned char d=0;d<2;++d){
             if (bc_interface_val_temp[d]!=NULL){
@@ -7171,36 +7171,42 @@ int main(int argc, char** argv) {
             }
           }
         }
+//        printf("before clearing bc_interface_val_temp fully cleared");
         // -------------------------------
         // Destroy all vectors
         // that were used strictly for the
         // stefan step (aka created and destroyed in stefan step)
         // -------------------------------
         // Solid LSF:
-        if (phi_solid.vec!=NULL){phi_solid.destroy();}
-
+        phi_solid.destroy();
+//        printf("phi_solid destroyed\n");
         // Curvature and normal for BC's and setting up solver:
-        if (normal.vec!=NULL){normal.destroy();}
-        if(curvature.vec!=NULL){curvature.destroy();}
-
+        normal.destroy();
+//        printf("normal destroyed\n");
+        curvature.destroy();
+//        printf("curvature destroyed\n");
         // Second derivatives of LSF's (for solver):
-        if(phi_solid_dd.vec!=NULL){phi_solid_dd.destroy();}
-        if(phi_dd.vec!=NULL){phi_dd.destroy();}
-
+        phi_solid_dd.destroy();
+//        printf("phi_solid_dd destroyed\n");
+        phi_dd.destroy();
+//        printf("phi_dd destroyed\n");
         if(example_uses_inner_LSF){
           phi_cylinder.destroy();
           phi_cylinder_dd.destroy();
         }
+//        printf("phi_cylinder destroyed\n");
+//        printf("phi_cylinder_dd destroyed\n");
         if(solve_navier_stokes){
           T_l_backtrace.destroy();
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.destroy();
             }
         }
+//        printf("T_l_backtrace destroyed\n");
         // Destroy arrays to hold the RHS:
         rhs_Tl.destroy();
         if(do_we_solve_for_Ts) rhs_Ts.destroy();
-
+//        printf("rhs_Tl destroyed\n");
       } // end of "if solve stefan" AND tstep>0
 
       // -------------------------------
