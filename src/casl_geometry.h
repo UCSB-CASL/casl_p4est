@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: November 24, 2021.
+ * Updated: February 8, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
