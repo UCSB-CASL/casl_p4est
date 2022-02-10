@@ -2,8 +2,11 @@
  * Testing distance computation from a point to 2D Gaussian manifold immersed in 3D and triangulated into a cloud of
  * points organized into a balltree for fast querying.
  *
+ * Based on matlab/gaussian_3d_adjusted_domain.m
+ *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
+ * Updated: February 9, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -25,7 +28,9 @@
 #endif
 
 #include "gaussian_3d.h"
+#include "local_utils.h"
 #include <src/parameter_list.h>
+
 
 int main ( int argc, char* argv[] )
 {
@@ -62,11 +67,36 @@ int main ( int argc, char* argv[] )
 		parStopWatch watch;
 		watch.start();
 
-		// Defining the domain and the Gaussian patch.
+		// Defining the Gaussian shape and transformation parameters.
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		const double A = 200 *  H;							// Gaussian height.
-		const double SU2 = 0.1465;							// Variances along u and v directions.
-		const double SV2 = 0.0488;
+		const double start_k_max = 2 / (3 * H);				// Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
+		const double K_MAX = 2 * start_k_max;				// Max curvature at the peak.
+		const double SU2 = 2 * A / start_k_max;				// Variances along u and v directions that yield this curvature.
+		const double denom = K_MAX / A * SU2 - 1;
+		assert( denom > 0 );
+		const double SV2 = SU2 / denom;
+
+		Gaussian gaussian( A, SU2, SV2 );					// Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
+		const Point3 trans = {-0.125, 0.125, -0.125};		// Translation of canonical coordinate system.
+		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
+		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
+
+		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
+		const double U_ZERO = kutils::findKappaZero( gaussian, H, dir::x );
+		const double V_ZERO = kutils::findKappaZero( gaussian, H, dir::y );
+		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes.
+		const double VLIM = V_ZERO + gaussian.sv();
+		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
+		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
+
+		double timeCreate = watch.get_duration_current();
+		GaussianLevelSet gaussianLevelSet( trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
+		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
+		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &gaussianLevelSet, 2.0 );
+
+		// Defining a cubic domain that contains at least the Gaussian and its limiting ellipse.
 		const double MIN_D = -2, MAX_D = -MIN_D;			// Cubic canonical space [MIN_D, MAX_D]^3.
 		int n_xyz[] = {4, 4, 4};							// One tree per dimension.
 		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
@@ -79,24 +109,6 @@ int main ( int argc, char* argv[] )
 		my_p4est_brick_t brick;
 		p4est_ghost_t *ghost;
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
-
-		// Definining the level-set function to be reinitialized.
-		Gaussian gaussian( A, SU2, SV2 );					// Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
-		const Point3 trans = {0, 0, -A/2};					// Translation of canonical coordinate system.
-		const Point3 rotAxis = {1, 1, 1};					// Axis of rotation.
-		const double rotAngle = 0;							// Rotation angle about rotAxis.
-
-		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only on this region.
-		const double ULIM = 1.3437;							// Limiting ellipse semi-axes.
-		const double VLIM = 0.6922;
-		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
-		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
-
-		double timeCreate = watch.get_duration_current();
-		GaussianLevelSet gaussianLevelSet( trans, rotAxis, rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
-		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
-		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &gaussianLevelSet, 2.0 );
 
 		// Create the forest using a level-set as refinement criterion.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );

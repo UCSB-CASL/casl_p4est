@@ -1,3 +1,10 @@
+/**
+ * A collection of classes and functions related to a Gaussian surface embedded in 3D.
+ * Developer: Luis Ángel.
+ * Created: February 5, 2022.
+ * Updated: February 9, 2022.
+ */
+
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
 #define ML_CURVATURE_GAUSSIAN_3D_H
 
@@ -19,6 +26,7 @@ class Gaussian : public geom::MongeFunction
 private:
 	const double _a;			// Height.
 	const double _su2, _sv2;	// Variances (i.e., squared values).
+	const double _su, _sv;		// Standard deviations.
 
 public:
 	/**
@@ -28,7 +36,8 @@ public:
 	 * @param [in] sv2 Variance along the v direction.
 	 * @throws Runtime error if any of the shape parameters are zero.
 	 */
-	Gaussian( const double& a, const double& su2, const double& sv2 ) : _a( ABS(a) ), _su2( ABS( su2 ) ), _sv2( ABS( sv2 ) )
+	Gaussian( const double& a, const double& su2, const double& sv2 )
+			: _a( ABS(a) ), _su2( ABS( su2 ) ), _sv2( ABS( sv2 ) ), _su( sqrt( _su2 ) ), _sv( sqrt( _sv2 ) )
 	{
 		if( _a == 0 || _su2 == 0 || _sv2 == 0 )
 			throw std::runtime_error( "[CASL_ERROR] Gaussian::constructor: a, su, and sv must be nonzero!" );
@@ -131,6 +140,42 @@ public:
 		double kappa = ((1 + SQR( Qv )) * Quu - 2 * Qu * Qv * Quv + (1 + SQR( Qu )) * Qvv)	// Numerator.
 					   / pow( 1 + SQR( Qu ) + SQR( Qv ), 1.5 );								// Denominator.
 		return kappa;
+	}
+
+	/**
+	 * Retrieve the variance along the u direction.
+	 * @return _su^2.
+	 */
+	double su2() const
+	{
+		return _su2;
+	}
+
+	/**
+	 * Retrieve the variance along the v direction.
+	 * @return _sv^2.
+	 */
+	double sv2() const
+	{
+		return _sv2;
+	}
+
+	/**
+	 * Retrieve the standard deviation along the u direction.
+	 * @return _su.
+	 */
+	double su() const
+	{
+		return _su;
+	}
+
+	/**
+	 * Retrieve the standard deviation along the v direction.
+	 * @return _sv.
+	 */
+	double sv() const
+	{
+		return _sv;
 	}
 };
 
