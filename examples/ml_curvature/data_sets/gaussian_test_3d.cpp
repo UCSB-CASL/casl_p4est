@@ -2,11 +2,11 @@
  * Testing distance computation from a point to 2D Gaussian manifold immersed in 3D and triangulated into a cloud of
  * points organized into a balltree for fast querying.
  *
- * Based on matlab/gaussian_3d_adjusted_domain.m
+ * Based on matlab/gaussian_3d_adjusted_domain.m, steps 1 through 4.
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 9, 2022.
+ * Updated: February 10, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -67,7 +67,8 @@ int main ( int argc, char* argv[] )
 		parStopWatch watch;
 		watch.start();
 
-		// Defining the Gaussian shape and transformation parameters.
+		/////////////////////////// 1) Defining the Gaussian surface and its shape parameters //////////////////////////
+
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		const double A = 200 *  H;							// Gaussian height.
 		const double start_k_max = 2 / (3 * H);				// Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
@@ -77,31 +78,71 @@ int main ( int argc, char* argv[] )
 		assert( denom > 0 );
 		const double SV2 = SU2 / denom;
 
-		Gaussian gaussian( A, SU2, SV2 );					// Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
-		const Point3 trans = {-0.125, 0.125, -0.125};		// Translation of canonical coordinate system.
-		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
-		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
+		Gaussian gaussian( A, SU2, SV2 );					// Gaussian surface: Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
 
 		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
 		const double U_ZERO = kutils::findKappaZero( gaussian, H, dir::x );
 		const double V_ZERO = kutils::findKappaZero( gaussian, H, dir::y );
 		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes.
 		const double VLIM = V_ZERO + gaussian.sv();
+		const double QLIM = A + 6 * H;						// Adding some padding so that we can sample points correctly at the tip.
 		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
 		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
+
+		//////////////////////////// 2) Defining the transformed Gaussian level-set function ///////////////////////////
+
+		const Point3 trans = {-0.125, 0.125, -0.125};		// Translation of canonical coordinate system.
+		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
+		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
 
 		double timeCreate = watch.get_duration_current();
 		GaussianLevelSet gaussianLevelSet( trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
 		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
 		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( MAX( 1, maxRL() - 5 ), maxRL(), &gaussianLevelSet, 2.0 );
+
+		//////////////////// 3) Finding the world coords of (canonical) cylinder containing Q(u,v) /////////////////////
+
+		const double QCylCCoords[8][P4EST_DIM] = {
+			{-ULIM, 0, QLIM}, {+ULIM, 0, QLIM}, {0, -VLIM, QLIM}, {0, +VLIM, QLIM},	// Top coords (the four points lying on the same QLIM found above).
+			{-ULIM, 0,    0}, {+ULIM, 0,    0}, {0, -VLIM,    0}, {0, +VLIM,    0}	// Base coords (the four points lying on the uv-plane).
+		};
+
+		double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};		// Hold the minimum and maximum cylinder
+		double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};		// world coordinates.
+		for( const auto& cylCPoint : QCylCCoords )
+		{
+			Point3 cylWPoint = gaussianLevelSet.toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
+			for( int i = 0; i < P4EST_DIM; i++ )
+			{
+				minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
+				maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
+			}
+		}
+
+		//////////////////// 4) Use the x,y,z ranges to find the domain's length in each direction /////////////////////
+
+		double QCylWRange[P4EST_DIM];
+		double WCentroid[P4EST_DIM];
+		for( int i = 0; i < P4EST_DIM; i++ )
+		{
+			QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
+			WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;		// Raw centroid.
+			WCentroid[i] = round( WCentroid[i] / H ) * H;					// A numerically good centroid as a multiple of H.
+		}
+
+		const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
+		const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL() - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
+		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
+		const unsigned char OCTREE_MAX_RL = maxRL() - OCTREE_RL_FOR_LEN;	// Effective max refinement level to achieve desired H.
+		const int N_TREES = ceil( CUBE_SIDE_LEN / OCTREE_LEN );				// Number of trees in each dimension.
+		const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;				// Adjusted domain cube len as a multiple of H and octree len.
+		const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
 
 		// Defining a cubic domain that contains at least the Gaussian and its limiting ellipse.
-		const double MIN_D = -2, MAX_D = -MIN_D;			// Cubic canonical space [MIN_D, MAX_D]^3.
-		int n_xyz[] = {4, 4, 4};							// One tree per dimension.
-		double xyz_min[] = {MIN_D, MIN_D, MIN_D};			// Square domain.
-		double xyz_max[] = {MAX_D, MAX_D, MAX_D};
-		int periodic[] = {0, 0, 0};							// Non-periodic domain.
+		int n_xyz[] = {N_TREES, N_TREES, N_TREES};
+		double xyz_min[] = {WCentroid[0] - HALF_D_CUBE_SIDE_LEN, WCentroid[1] - HALF_D_CUBE_SIDE_LEN, WCentroid[2] - HALF_D_CUBE_SIDE_LEN};
+		double xyz_max[] = {  xyz_min[0] + D_CUBE_SIDE_LEN     ,   xyz_min[1] + D_CUBE_SIDE_LEN     ,   xyz_min[2] + D_CUBE_SIDE_LEN     };
+		int periodic[] = {0, 0, 0};											// Non-periodic domain.
 
 		// p4est variables and data structures.
 		p4est_t *p4est;
@@ -110,20 +151,23 @@ int main ( int argc, char* argv[] )
 		p4est_ghost_t *ghost;
 		p4est_connectivity_t *connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-		// Create the forest using a level-set as refinement criterion.
+		////////////////////////////////// 5) Proceed with discretization and sampling /////////////////////////////////
+
+		// Create the forest using the Gaussian level-set as a refinement criterion.
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, OCTREE_MAX_RL, &gaussianLevelSet, 2.0 );
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
 		double startTimePartitioningGrid = watch.get_duration_current();
 		gaussianLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
-		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * MAX_D / H, 3 ) );	// Reserve space in cache to improve hashing.
-		for( int i = 0; i < maxRL(); i++ )										// queries for grid points.
+		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
+		for( int i = 0; i < OCTREE_MAX_RL; i++ )											// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
-		std::cout << "Partitioning processing duration: " << watch.get_duration_current() - startTimePartitioningGrid << std::endl;
+		std::cout << "Refining/coarsening and partitioning duration: " << watch.get_duration_current() - startTimePartitioningGrid << std::endl;
 
 		// Create the ghost (cell) and node structures.
 		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -133,6 +177,11 @@ int main ( int argc, char* argv[] )
 		my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
 		my_p4est_node_neighbors_t ngbd( &hierarchy, nodes );
 		ngbd.init_neighbors();
+
+		// Verify mesh size.
+		double dxyz[P4EST_DIM];
+		get_dxyz_min( p4est, dxyz );
+		assert( dxyz[0] == dxyz[1] && dxyz[1] == dxyz[2] && dxyz[2] == H );
 
 		// A ghosted parallel PETSc vector to store level-set function values.
 		Vec phi;
@@ -175,7 +224,7 @@ int main ( int argc, char* argv[] )
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 			try
 			{
-				bool updated;
+				bool updated;	// Becomes true if exact distance was computed for point within limiting ellipse (enlarge by 3h in each dir).
 				phiPtr[n] = gaussianLevelSet.computeExactSignedDistance( xyz, updated );	// Also modifies the cache.
 				exactFlagPtr[n] = updated;
 			}
@@ -198,7 +247,7 @@ int main ( int argc, char* argv[] )
 
 		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface.
 		double startTimeCollecting = watch.get_duration_current();
-		NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL() );
+		NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)OCTREE_MAX_RL );
 
 		// An interface flag vector to distinguish nodes along the interface with full uniform neighborhoods.
 		// By default, its values are set to 0.
@@ -221,12 +270,12 @@ int main ( int argc, char* argv[] )
 		{
 			double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
 			node_xyz_fr_n( n, p4est, nodes, xyz );	// Skip nodes very close to the boundary.
-			if( ABS( xyz[0] - MIN_D ) <= 4 * H || ABS( xyz[0] - MAX_D ) <= 4 * H ||
-				ABS( xyz[1] - MIN_D ) <= 4 * H || ABS( xyz[1] - MAX_D ) <= 4 * H ||
-				ABS( xyz[2] - MIN_D ) <= 4 * H || ABS( xyz[2] - MAX_D ) <= 4 * H )
+			if( ABS( xyz[0] - xyz_min[0] ) <= 4 * H || ABS( xyz[0] - xyz_max[0] ) <= 4 * H ||
+				ABS( xyz[1] - xyz_min[1] ) <= 4 * H || ABS( xyz[1] - xyz_max[1] ) <= 4 * H ||
+				ABS( xyz[2] - xyz_min[2] ) <= 4 * H || ABS( xyz[2] - xyz_max[2] ) <= 4 * H )
 				continue;
 
-/*			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D. // TODO: Get full stencils on demand for select vertices.
+			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D. // TODO: Get full stencils on demand for select vertices.
 			try
 			{
 				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
@@ -235,7 +284,7 @@ int main ( int argc, char* argv[] )
 			catch( std::exception &e )
 			{
 				std::cerr << "Node (" << n << "): " << e.what() << std::endl;
-			}*/
+			}
 		}
 
 		std::cout << "Collecting nodes duration: " << watch.get_duration_current() - startTimeCollecting << std::endl;

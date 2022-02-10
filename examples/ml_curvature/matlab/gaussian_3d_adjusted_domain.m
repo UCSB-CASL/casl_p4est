@@ -74,7 +74,7 @@ minR = min(B, [], 2);
 maxR = max(B, [], 2);
 rangeB = maxR - minR;
 
-%%%%%%%%%% 5) Use the x,y,z ranges to find the cube side length and circumscribing sphere %%%%%%%%%%
+%%%%%%%%%% 4) Use the x,y,z ranges to find the cube side length and circumscribing sphere %%%%%%%%%%
 
 cubeSideLen = max(rangeB);
 centroid = mean(B, 2);
@@ -82,7 +82,7 @@ dp = cubeSideLen/2;			% Each axis begins at the centroid and extends to -dp and 
 dp = dp + 2*h;				% Padding each direction (we won't sample points beyond dp, but need info from there).
 r = dp * sqrt(3);			% Radius of circumscribing sphere.
 
-%%%%%%%%%%% 6) Redefining the canonical domain by using the cube's circumscribing sphere %%%%%%%%%%%
+%%%%%%%%%%% 5) Redefining the canonical domain by using the cube's circumscribing sphere %%%%%%%%%%%
 
 % Transform the centroid from world to paraboloid canonical coords: only the q(=z) component != 0.
 centroidQ = R' * (centroid - T);

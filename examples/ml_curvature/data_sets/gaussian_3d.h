@@ -388,7 +388,6 @@ public:
 	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
 	 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
 	 */
-	__attribute__((unused))
 	Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
 	{
 		Point3 r;
@@ -477,13 +476,14 @@ public:
 	}
 
 	/**
-	 * Compute exact signed distance to Gaussian using Newton's method and trust region in dlib.
+	 * Compute exact signed distance to Gaussian using Newton's method and trust region in dlib for points whose projec-
+	 * tions fall within the limiting ellipse enlarged by 3h in the u and v directions.
 	 * @param [in] x Query x-coordinate.
 	 * @param [in] y Query y-coordinate.
 	 * @param [in] z Query z-coordinate.
 	 * @param [out] updated Set to true if exact distance was computed, false otherwise.
 	 * @return Shortest distance.
-	 * @throws runtime error if not using cache, if point wan't located in cache, or if exact distance deviates by more
+	 * @throws runtime error if not using cache, if point wasn't located in cache, or if exact distance deviates by more
 	 * 		   than 0.15h from linear estimation.
 	 */
 	double computeExactSignedDistance( double x, double y, double z, bool& updated ) const
