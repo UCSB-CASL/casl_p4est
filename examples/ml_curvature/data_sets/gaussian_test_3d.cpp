@@ -40,18 +40,15 @@ int main ( int argc, char* argv[] )
 
 	try
 	{
-		// Initializing parallel environment (although in reality we're working on a single process).
+		// Initializing parallel environment.
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
-
-		if( mpi.size() > 1 )
-			throw std::runtime_error( "Only a single process is allowed!" );
 
 		// Initializing OpenMP.
 		int nThreads = 0;
 #pragma omp parallel reduction( + : nThreads ) default( none )
 			nThreads += 1;
-		std::cout << "\n:: OpenMP :: Process can spawn " << nThreads << " thread(s)" << std::endl << std::endl;
+		std::cout << "\n:: OpenMP :: Process " << mpi.rank() << " can spawn " << nThreads << " thread(s)" << std::endl << std::endl;
 
 		// Loading parameters from command line.
 		cmdParser cmd;
@@ -62,8 +59,7 @@ int main ( int argc, char* argv[] )
 
 		std::cout << "Testing Gaussian level-set function in 3D" << std::endl;
 
-		parStopWatch watch;
-		watch.start();
+		parStopWatch watch( parStopWatch::all_timings );
 
 		/////////////////////////// 1) Defining the Gaussian surface and its shape parameters //////////////////////////
 
@@ -93,9 +89,10 @@ int main ( int argc, char* argv[] )
 		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
 		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
 
-		double timeCreate = watch.get_duration_current();
+		watch.start();
 		GaussianLevelSet gaussianLevelSet( trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
-		std::cout << "Created balltree in " << watch.get_duration_current() - timeCreate << " secs." << std::endl;
+		PetscPrintf( mpi.comm(), "Creating balltree:\n" );
+		watch.read_duration_current( true );
 		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
 
 		//////////////////// 3) Finding the world coords of (canonical) cylinder containing Q(u,v) /////////////////////
@@ -157,7 +154,7 @@ int main ( int argc, char* argv[] )
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
-		double startTimePartitioningGrid = watch.get_duration_current();
+		watch.start();
 		gaussianLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
 		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
 		for( int i = 0; i < OCTREE_MAX_RL; i++ )											// queries for grid points.
@@ -165,7 +162,8 @@ int main ( int argc, char* argv[] )
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
-		std::cout << "Refining/coarsening and partitioning duration: " << watch.get_duration_current() - startTimePartitioningGrid << std::endl;
+		PetscPrintf( mpi.comm(), "Refining/coarsening and partitioning:\n" );
+		watch.read_duration_current( true );
 
 		// Create the ghost (cell) and node structures.
 		ghost = my_p4est_ghost_new( p4est, P4EST_CONNECT_FULL );
@@ -190,21 +188,23 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
 
 		// Populate phi values and compute the exact distance for vertices within a (linearly estimated) shell around Gamma.
-		double startTimeProcessingQueries = watch.get_duration_current();
+		watch.start();
 		gaussianLevelSet.evaluate( p4est, nodes, phi, exactFlag );
-		std::cout << "Query processing duration: " << watch.get_duration_current() - startTimeProcessingQueries << std::endl;
+		PetscPrintf( mpi.comm(), "Query processing:\n" );
+		watch.read_duration_current( true );
 
 		gaussianLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
 		gaussianLevelSet.clearCache();
 
 		// Reinitialize level-set function.
-		double startTimeReinitialization = watch.get_duration_current();
+		watch.start();
 		my_p4est_level_set_t ls( &ngbd );
 		ls.reinitialize_2nd_order( phi, reinitNumIters() );
-		std::cout << "Reinitialization duration: " << watch.get_duration_current() - startTimeReinitialization << std::endl;
+		PetscPrintf( mpi.comm(), "Reinitialization:\n" );
+		watch.read_duration_current( true );
 
 		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface.
-		double startTimeCollecting = watch.get_duration_current();
+		watch.start();
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)OCTREE_MAX_RL );
 
 		// An interface flag vector to distinguish nodes along the interface with full uniform neighborhoods.
@@ -245,7 +245,11 @@ int main ( int argc, char* argv[] )
 			}
 		}
 
-		std::cout << "Collecting nodes duration: " << watch.get_duration_current() - startTimeCollecting << std::endl;
+		CHKERRXX( VecGhostUpdateBegin( interfaceFlag, INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateEnd( interfaceFlag, INSERT_VALUES, SCATTER_FORWARD ) );
+
+		PetscPrintf( mpi.comm(), "Collecting nodes:\n" );
+		watch.read_duration_current( true );
 		watch.stop();
 
 		std::ostringstream oss;

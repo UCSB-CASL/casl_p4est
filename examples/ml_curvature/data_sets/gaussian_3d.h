@@ -667,8 +667,8 @@ public:
 			}
 		}
 
-//#pragma omp parallel for default( none ) \
-//		shared( nodes, p4est, nodesForExactDist, phiPtr, exactFlagPtr, std::cerr, gdist )
+#pragma omp parallel for default( none ) num_threads( 4 ) \
+		shared( nodes, p4est, nodesForExactDist, phiPtr, exactFlagPtr, std::cerr, gdist )
 		for( int i = 0; i < nodesForExactDist.size(); i++ )		// NOLINT.  It can't be a range-based loop.
 		{
 			p4est_locidx_t n = nodesForExactDist[i];
@@ -688,6 +688,13 @@ public:
 
 		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
 		CHKERRXX( VecRestoreArray( exactFlag, &exactFlagPtr ) );
+
+		// Synchronize exact distances to other ranks.
+		CHKERRXX( VecGhostUpdateBegin( phi, INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateEnd( phi, INSERT_VALUES, SCATTER_FORWARD ) );
+
+		CHKERRXX( VecGhostUpdateBegin( exactFlag, INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGhostUpdateEnd( exactFlag, INSERT_VALUES, SCATTER_FORWARD ) );
 	}
 
 	void generateSamples( const unsigned char& NumSamPerH2 )
