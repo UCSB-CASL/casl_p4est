@@ -13,9 +13,7 @@
 #include <string>
 #include <src/my_p4est_utils.h>
 #include <unordered_map>
-#include <boost/math/tools/roots.hpp>
 #include "data_sets/star_theta_root_finding.h"
-#include "data_sets/gaussian_3d.h"
 
 namespace kutils
 {
@@ -164,68 +162,6 @@ namespace kutils
 		}
 
 		return sample;
-	}
-
-	/**
-	 * Find the axis value in the Gaussian's canonical coordinate system where curvature becomes 0 using Newton-Raphson.
-	 * @param [in] Q The Gaussian Monge patch Q(u,v).
-	 * @param [in] h Mesh size.
-	 * @param [in] dir Either 0 for u or 1 for v.
-	 * @return The p value where kappa(p,0) or kappa(0,p) is zero (depending on the chosen direction).
-	 * @throws runtime exception if dir is not 0 or 1, or if bracketing or Newton-Raphson's method fails to find the root.
-	 */
-	double findKappaZero( const Gaussian& Q, const double& h, const unsigned char& dir )
-	{
-		using namespace boost::math::tools;
-
-		if( dir != 0 && dir != 1 )
-			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Wrong direction!  Choose either 0 for u or 1 for v." );
-
-		// Define parameters depending on direction: 0 for u, 1 for v.
-		double s2 = (dir == 0? Q.su2() : Q.sv2());
-		double t2 = (dir == 0? Q.sv2() : Q.su2());
-
-		// Curvature with one of the directions set to zero.
-		auto kappa = [&Q, &dir, &s2, &t2]( const double& p ){
-			double q = (dir == 0? Q(p, 0) : Q(0, p));
-			return SQR( q * p ) + SQR( s2 ) + s2 * t2 - SQR( p ) * t2;
-		};
-
-		// And this is the simplified expression to compute both kappa and its derivative kappa' with one of the dirs set to zero.
-		auto kappaAndDKappa = [&Q, &kappa, &dir, &s2, &t2]( const double& p ){
-			double k =  kappa( p );
-			double q = (dir == 0? Q(p, 0) : Q(0, p));
-			double dk = 2 * p * (SQR( q ) * (1 - SQR( p ) / s2) - t2);
-			return std::make_pair( k, dk );
-		};
-
-		const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
-		int getDigits = static_cast<int>( digits * 0.75 );		// Accuracy doubles with each step in Newton-Raphson's, so
-																// stop when we have just over half the digits correct.
-		boost::uintmax_t it = 0;
-		const boost::uintmax_t MAX_IT = 10;						// Maximum number of iterations for bracketing and Newton-Raphson's.
-
-		double s = (dir == 0? Q.su() : Q.sv());
-		double start = h;										// Determine the initial bracket with a sliding a window.
-		double end = 2 * s;										// We need to find an interval with different kappa signs in its endpoints.
-		while( it < MAX_IT && kappa( start ) * kappa( end ) > 0 )
-		{
-			end += 0.5 * s;
-			start += 0.5 * s;
-			it++;
-		}
-
-		if( kappa( start ) * kappa( end ) > 0 )
-			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Failed to find a reliable bracket for " + std::to_string( dir ) + " direction!" );
-
-		double root = (start + end) / 2;	// Initial guess.
-		it = MAX_IT;						// Find zero with Newton-Raphson's.
-		root = newton_raphson_iterate( kappaAndDKappa, root, start, end, getDigits, it );
-
-		if( it >= MAX_IT )
-			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Couldn't find zero with Newton-Raphson's method for " + std::to_string( dir ) + " direction!" );
-
-		return root;
 	}
 }
 

@@ -28,7 +28,6 @@
 #endif
 
 #include "gaussian_3d.h"
-#include "local_utils.h"
 #include <src/parameter_list.h>
 
 
@@ -44,7 +43,6 @@ int main ( int argc, char* argv[] )
 		// Initializing parallel environment (although in reality we're working on a single process).
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
-		PetscErrorCode ierr;
 
 		if( mpi.size() > 1 )
 			throw std::runtime_error( "Only a single process is allowed!" );
@@ -81,8 +79,8 @@ int main ( int argc, char* argv[] )
 		Gaussian gaussian( A, SU2, SV2 );					// Gaussian surface: Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
 
 		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
-		const double U_ZERO = kutils::findKappaZero( gaussian, H, dir::x );
-		const double V_ZERO = kutils::findKappaZero( gaussian, H, dir::y );
+		const double U_ZERO = gaussian.findKappaZero( H, dir::x );
+		const double V_ZERO = gaussian.findKappaZero( H, dir::y );
 		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes.
 		const double VLIM = V_ZERO + gaussian.sv();
 		const double QLIM = A + 6 * H;						// Adding some padding so that we can sample points correctly at the tip.
@@ -191,51 +189,11 @@ int main ( int argc, char* argv[] )
 		Vec exactFlag;
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
 
-		// Calculate the level-set function values for each independent node and compute exact distances within a shell.
-		double *phiPtr, *exactFlagPtr;
-		CHKERRXX( VecGetArray( phi, &phiPtr ) );
-		CHKERRXX( VecGetArray( exactFlag, &exactFlagPtr ) );
-
 		// Populate phi values and compute the exact distance for vertices within a (linearly estimated) shell around Gamma.
 		double startTimeProcessingQueries = watch.get_duration_current();
-		std::vector<p4est_locidx_t> nodesForExactDist;
-		nodesForExactDist.reserve( nodes->num_owned_indeps );
-//#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, gaussianLevelSet, H, nodesForExactDist )
-		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
-		{
-			double xyz[P4EST_DIM];
-			node_xyz_fr_n( n, p4est, nodes, xyz );
-			phiPtr[n] = gaussianLevelSet( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
-
-			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
-			if( ABS( phiPtr[n] ) <= 3 * H )
-			{
-#pragma omp critical
-				nodesForExactDist.emplace_back( n );
-			}
-		}
-
-//#pragma omp parallel for default( none ) \
-//		shared( nodes, p4est, nodesForExactDist, phiPtr, gaussianLevelSet, exactFlagPtr, std::cerr )
-		for( int i = 0; i < nodesForExactDist.size(); i++ )			// NOLINT.  It can't be a range-based loop.
-		{
-			p4est_locidx_t n = nodesForExactDist[i];
-			double xyz[P4EST_DIM];
-			node_xyz_fr_n( n, p4est, nodes, xyz );
-			try
-			{
-				bool updated;	// Becomes true if exact distance was computed for point within limiting ellipse (enlarge by 3h in each dir).
-				phiPtr[n] = gaussianLevelSet.computeExactSignedDistance( xyz, updated );	// Also modifies the cache.
-				exactFlagPtr[n] = updated;
-			}
-			catch( const std::exception &e )
-			{
-				std::cerr << e.what() << std::endl;
-			}
-		}
+		gaussianLevelSet.evaluate( p4est, nodes, phi, exactFlag );
 		std::cout << "Query processing duration: " << watch.get_duration_current() - startTimeProcessingQueries << std::endl;
 
-		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
 		gaussianLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
 		gaussianLevelSet.clearCache();
 
@@ -261,9 +219,9 @@ int main ( int argc, char* argv[] )
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
 
-		const double *phiReadPtr;
-		ierr = VecGetArrayRead( phi, &phiReadPtr );
-		CHKERRXX( ierr );
+		const double *phiReadPtr, *exactFlagReadPtr;
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
 
 		// Now, check nodes next to Gamma.
 		for( auto n : indices )
@@ -297,11 +255,11 @@ int main ( int argc, char* argv[] )
 								3, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
 								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
-								VTK_POINT_DATA, "exactFlag", exactFlagPtr );
+								VTK_POINT_DATA, "exactFlag", exactFlagReadPtr );
 
 		// Clean up.
-		CHKERRXX( VecRestoreArray( exactFlag, &exactFlagPtr ) );
 		CHKERRXX( VecRestoreArray( interfaceFlag, &interfaceFlagPtr ) );
+		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
 		CHKERRXX( VecDestroy( exactFlag ) );

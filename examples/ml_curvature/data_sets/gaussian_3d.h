@@ -2,18 +2,28 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3D.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 9, 2022.
+ * Updated: February 10, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
 #define ML_CURVATURE_GAUSSIAN_3D_H
 
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#endif
+
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_nodes.h>
 #include <src/casl_geometry.h>
 #include <dlib/optimization.h>
 #include <unordered_map>
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <vector>
+#include <boost/math/tools/roots.hpp>
 
 ///////////////////////////////////////// Gaussian surface in canonical space //////////////////////////////////////////
 
@@ -176,6 +186,68 @@ public:
 	double sv() const
 	{
 		return _sv;
+	}
+
+	/**
+	 * Find the axis value in the Gaussian's canonical coordinate system where curvature becomes 0 using
+	 * Newton-Raphson's method.
+	 * @param [in] h Mesh size.
+	 * @param [in] dir Either 0 for u or 1 for v.
+	 * @return The p value where kappa(p,0) or kappa(0,p) is zero (depending on the chosen direction).
+	 * @throws runtime_error if dir is not 0 or 1, or if bracketing or Newton-Raphson's method fails to find the root.
+	 */
+	double findKappaZero( const double& h, const unsigned char& dir ) const
+	{
+		using namespace boost::math::tools;
+
+		if( dir != 0 && dir != 1 )
+			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Wrong direction!  Choose either 0 for u or 1 for v." );
+
+		// Define parameters depending on direction: 0 for u, 1 for v.
+		double s2 = (dir == 0? _su2 : _sv2);
+		double t2 = (dir == 0? _sv2 : _su2);
+
+		// Curvature with one of the directions set to zero.
+		auto kappa = [this, &dir, &s2, &t2]( const double& p ){
+			double q = (dir == 0? (*this)(p, 0) : (*this)(0, p));
+			return SQR( q * p ) + SQR( s2 ) + s2 * t2 - SQR( p ) * t2;
+		};
+
+		// And this is the simplified expression to compute both kappa and its derivative kappa' with one of the dirs set to zero.
+		auto kappaAndDKappa = [this, &kappa, &dir, &s2, &t2]( const double& p ){
+			double k =  kappa( p );
+			double q = (dir == 0? (*this)(p, 0) : (*this)(0, p));
+			double dk = 2 * p * (SQR( q ) * (1 - SQR( p ) / s2) - t2);
+			return std::make_pair( k, dk );
+		};
+
+		const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
+		int getDigits = static_cast<int>( digits * 0.75 );		// Accuracy doubles with each step in Newton-Raphson's, so
+		// stop when we have just over half the digits correct.
+		boost::uintmax_t it = 0;
+		const boost::uintmax_t MAX_IT = 10;						// Maximum number of iterations for bracketing and Newton-Raphson's.
+
+		double s = (dir == 0? _su : _sv);
+		double start = h;										// Determine the initial bracket with a sliding a window.
+		double end = 2 * s;										// We need to find an interval with different kappa signs in its endpoints.
+		while( it < MAX_IT && kappa( start ) * kappa( end ) > 0 )
+		{
+			end += 0.5 * s;
+			start += 0.5 * s;
+			it++;
+		}
+
+		if( kappa( start ) * kappa( end ) > 0 )
+			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Failed to find a reliable bracket for " + std::to_string( dir ) + " direction!" );
+
+		double root = (start + end) / 2;	// Initial guess.
+		it = MAX_IT;						// Find zero with Newton-Raphson's.
+		root = newton_raphson_iterate( kappaAndDKappa, root, start, end, getDigits, it );
+
+		if( it >= MAX_IT )
+			throw std::runtime_error( "[CASL_ERROR] findKappaZero: Couldn't find zero with Newton-Raphson's method for " + std::to_string( dir ) + " direction!" );
+
+		return root;
 	}
 };
 
@@ -548,6 +620,74 @@ public:
 	double computeExactSignedDistance( const double xyz[P4EST_DIM], bool& updated ) const
 	{
 		return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
+	}
+
+	/**
+	 * Evaluate Gaussian level-set function and compute "exact" signed distances for points whose projections lie within
+	 * a 3h-enlarged limiting ellipse in the canonical coordinate system.
+	 * @param [in] p4est Pointer to p4est data structure.
+	 * @param [in] nodes Pointer to nodes structure.
+	 * @param [out] phi Parallel PETSc vector where to place (linearly approximated) level-set values and exact distances.
+	 * @param [out] exactFlag Parallel PETSc vector to indicate if exact distance was computed (1) or not (0).
+	 * @throws runtime_error if phi vector is null.
+	 */
+	void evaluate( const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec exactFlag )
+	{
+		if( !phi )
+			throw std::runtime_error( "[CASL_ERROR] GaussianLevelSet::evaluate: Phi vector can't be null!" );
+
+		double *phiPtr, *exactFlagPtr;
+		CHKERRXX( VecGetArray( phi, &phiPtr ) );
+		CHKERRXX( VecGetArray( exactFlag, &exactFlagPtr ) );
+
+		std::vector<p4est_locidx_t> nodesForExactDist;
+		nodesForExactDist.reserve( nodes->num_owned_indeps );
+
+		const double H = _h;
+		auto gls = [this](const double& x, const double& y, const double& z){
+			return (*this)( x, y, z );
+		};
+
+		auto gdist = [this]( const double xyz[P4EST_DIM], bool& updated ){
+			return (*this).computeExactSignedDistance( xyz, updated );
+		};
+
+//#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, gls, H, nodesForExactDist )
+		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+		{
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			phiPtr[n] = gls( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
+
+			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
+			if( ABS( phiPtr[n] ) <= 3 * H )
+			{
+#pragma omp critical
+				nodesForExactDist.emplace_back( n );
+			}
+		}
+
+//#pragma omp parallel for default( none ) \
+//		shared( nodes, p4est, nodesForExactDist, phiPtr, exactFlagPtr, std::cerr, gdist )
+		for( int i = 0; i < nodesForExactDist.size(); i++ )		// NOLINT.  It can't be a range-based loop.
+		{
+			p4est_locidx_t n = nodesForExactDist[i];
+			double xyz[P4EST_DIM];
+			node_xyz_fr_n( n, p4est, nodes, xyz );
+			try
+			{
+				bool updated;	// True if exact dist was computed for node within limit ellipse (enlarged by 3h in each dir).
+				phiPtr[n] = gdist( xyz, updated );				// Also modifies the cache.
+				exactFlagPtr[n] = updated;
+			}
+			catch( const std::exception &e )
+			{
+				std::cerr << e.what() << std::endl;
+			}
+		}
+
+		CHKERRXX( VecRestoreArray( phi, &phiPtr ) );
+		CHKERRXX( VecRestoreArray( exactFlag, &exactFlagPtr ) );
 	}
 
 	void generateSamples( const unsigned char& NumSamPerH2 )
