@@ -218,6 +218,15 @@ public:
 	 * @throws Runtime exception if stencil cannot be defined for input node index and if CASL_THROWS macro is defined.
 	 */
 	bool getFullStencilOfNode( p4est_locidx_t nodeIdx, std::vector<p4est_locidx_t>& stencil );
+
+	/**
+	 * Verify if a stencil of level-set values belongs to a point next to the interface, i.e., if the center node has
+	 * a different sign from at least one of its irradiating immediage neighbors.
+	 * @param [in] phiStencil Stencil with level-set values.  Only the first num_neighbors_cube entries are verified.
+	 * @return true if stencil belongs to a point next to Gamma, false otherwise.
+	 * @throws runtime_error if stencil doesn't have expected size (at least 9 for 2D or 27 for 3D).
+	 */
+	static bool isInterfaceStencil( const std::vector<double>& phiStencil );
 };
 
 

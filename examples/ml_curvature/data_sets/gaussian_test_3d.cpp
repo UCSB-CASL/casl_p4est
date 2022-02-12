@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 10, 2022.
+ * Updated: February 11, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -16,17 +16,16 @@
 #define omp_get_thread_num() 0
 #endif
 
-#ifdef P4_TO_P8
+
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_hierarchy.h>
-#include <src/my_p8est_nodes_along_interface.h>
+#include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
-#endif
-
+#include <random>
 #include "gaussian_3d.h"
 #include <src/parameter_list.h>
 
@@ -35,8 +34,11 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
+	param_t<double> minHK( pl, 0.008, "minHK", "Minimum mean dimensionless curvature (default: 0.008 = twice 0.004 from 2D)" );
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+
+	std::mt19937 gen{}; 	// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
 
 	try
 	{
@@ -90,7 +92,8 @@ int main ( int argc, char* argv[] )
 		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
 
 		watch.start();
-		GaussianLevelSet gaussianLevelSet( trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian, SQR( ULIM ), SQR( VLIM ), 5 );
+		GaussianLevelSet gaussianLevelSet( &mpi, trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian,
+										   SQR( ULIM ), SQR( VLIM ), 5 );
 		PetscPrintf( mpi.comm(), "Creating balltree:\n" );
 		watch.read_duration_current( true );
 		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
@@ -193,9 +196,6 @@ int main ( int argc, char* argv[] )
 		PetscPrintf( mpi.comm(), "Query processing:\n" );
 		watch.read_duration_current( true );
 
-		gaussianLevelSet.toggleCache( false );		// Done with cache: clear it on exit.
-		gaussianLevelSet.clearCache();
-
 		// Reinitialize level-set function.
 		watch.start();
 		my_p4est_level_set_t ls( &ngbd );
@@ -203,50 +203,18 @@ int main ( int argc, char* argv[] )
 		PetscPrintf( mpi.comm(), "Reinitialization:\n" );
 		watch.read_duration_current( true );
 
-		// Once the level-set function is reinitialized, collect nodes on or adjacent to the interface.
+		// Once the level-set function is reinitialized, sample nodes with a normal distribuction aligned with Gaussian.
 		watch.start();
-		NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)OCTREE_MAX_RL );
+		Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
-		// An interface flag vector to distinguish nodes along the interface with full uniform neighborhoods.
-		// By default, its values are set to 0.
-		Vec interfaceFlag;
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &interfaceFlag ) );
+		std::vector<std::vector<double>> samples;
+		gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max, samples, gen, minHK(), sampledFlag );
 
-		double *interfaceFlagPtr;
-		CHKERRXX( VecGetArray( interfaceFlag, &interfaceFlagPtr ) );
-
-		// Getting the full uniform stencils of interface points.
-		std::vector<p4est_locidx_t> indices;
-		nodesAlongInterface.getIndices( &phi, indices );
-
-		const double *phiReadPtr, *exactFlagReadPtr;
+		const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr;
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
-
-		// Now, check nodes next to Gamma.
-		for( auto n : indices )
-		{
-			double xyz[P4EST_DIM];					// Position of node at the center of the stencil.
-			node_xyz_fr_n( n, p4est, nodes, xyz );	// Skip nodes very close to the boundary.
-			if( ABS( xyz[0] - xyz_min[0] ) <= 4 * H || ABS( xyz[0] - xyz_max[0] ) <= 4 * H ||
-				ABS( xyz[1] - xyz_min[1] ) <= 4 * H || ABS( xyz[1] - xyz_max[1] ) <= 4 * H ||
-				ABS( xyz[2] - xyz_min[2] ) <= 4 * H || ABS( xyz[2] - xyz_max[2] ) <= 4 * H )
-				continue;
-
-			std::vector<p4est_locidx_t> stencil;	// Contains 9 values in 2D. // TODO: Get full stencils on demand for select vertices.
-			try
-			{
-				if( nodesAlongInterface.getFullStencilOfNode( n , stencil ) )
-					interfaceFlagPtr[n] = 1;
-			}
-			catch( std::exception &e )
-			{
-				std::cerr << "Node (" << n << "): " << e.what() << std::endl;
-			}
-		}
-
-		CHKERRXX( VecGhostUpdateBegin( interfaceFlag, INSERT_VALUES, SCATTER_FORWARD ) );
-		CHKERRXX( VecGhostUpdateEnd( interfaceFlag, INSERT_VALUES, SCATTER_FORWARD ) );
+		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 
 		PetscPrintf( mpi.comm(), "Collecting nodes:\n" );
 		watch.read_duration_current( true );
@@ -258,16 +226,19 @@ int main ( int argc, char* argv[] )
 								P4EST_TRUE, P4EST_TRUE,
 								3, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
-								VTK_POINT_DATA, "interfaceFlag", interfaceFlagPtr,
+								VTK_POINT_DATA, "sampledFlag", sampledFlagReadPtr,
 								VTK_POINT_DATA, "exactFlag", exactFlagReadPtr );
 
 		// Clean up.
-		CHKERRXX( VecRestoreArray( interfaceFlag, &interfaceFlagPtr ) );
+		gaussianLevelSet.toggleCache( false );		// Done with cache.
+		gaussianLevelSet.clearCache();
+
+		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
 		CHKERRXX( VecDestroy( exactFlag ) );
-		CHKERRXX( VecDestroy( interfaceFlag ) );
+		CHKERRXX( VecDestroy( sampledFlag ) );
 		CHKERRXX( VecDestroy( phi ) );
 
 		// Destroy the p4est and its connectivity structure.
