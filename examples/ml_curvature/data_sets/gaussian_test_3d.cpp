@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 11, 2022.
+ * Updated: February 12, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -38,7 +38,8 @@ int main ( int argc, char* argv[] )
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 
-	std::mt19937 gen{}; 	// NOLINT Standard mersenne_twister_engine with default seed for repeatability.
+	std::mt19937 genNormal{}; 	// NOLINT Standard mersenne_twister_engine for bivariate normal sampling inside limiting ellipse.
+	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing when to consider candidate nodes and avoid clusters.
 
 	try
 	{
@@ -209,7 +210,8 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
-		gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max, samples, gen, minHK(), sampledFlag );
+		gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max, samples, genNormal,
+										 genProb, minHK(), sampledFlag );
 
 		const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr;
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );

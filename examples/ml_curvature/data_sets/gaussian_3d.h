@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3D.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 11, 2022.
+ * Updated: February 12, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -718,17 +718,20 @@ public:
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
 	 * @param [out] samples Array of collected samples.
-	 * @param [in,out] gen Random-number generator device that get's updated in this function.
+	 * @param [in,out] genN Random-number generator device for bivariate normal sampling that gets updated in this function.
+	 * @param [in,out] genP Random-number generator device to decide whether to take an interface or not.
 	 * @param [in] minHK Minimum *target* mean dimensionless curvature (to filter out samples).
 	 * @param [out] sampledFlag Optional parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] NumSamPerH2 How many random normal samples to generate per H^2 (taking as a reference the area of the limiting ellipse).
+	 * @param [in] probKeep Sample valid interface grid points whose uniform probability is <= probKeep.
 	 * @throws runtime_error if more than one node maps to the same discrete coordinates or if cache is disabled or is
 	 * 		   empty or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too).
 	 */
 	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
 						 const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-						 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, std::mt19937& gen,
-						 const double& minHK=0.008, Vec sampledFlag=nullptr, const double& NumSamPerH2=1.0 ) const
+						 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, std::mt19937& genN,
+						 std::mt19937& genP, const double& minHK=0.008, Vec sampledFlag=nullptr,
+						 const double& NumSamPerH2=1.0, const double& probKeep=0.5 ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] GaussianLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -815,16 +818,20 @@ public:
 		// The goal is to generate normally distributed samples in a 2D Gaussian with a diagonal covariance matrix.  To
 		// do this, we sample in canonical uv plane, and then we get the closest point (u,v, Q(u,v)) in world coordina-
 		// tes.  From there, we get multiple samples per normal pair (u,v) (up to 6 in one shot).
-		const auto N_SAMPLES = (size_t)(round( M_PI * sqrt( _ru2 * _rv2 ) / SQR( _h ) ) * NumSamPerH2);	// TODO: Each processor will try all these!
-		const double STD_U = sqrt( _ru2 ) / 2;					// Use these standard deviations, aiming for 95% of data
-		const double STD_V = sqrt( _rv2 ) / 2;					// inside bounding ellipse.
+		// Each processor will try all these!  It's important to use the same genN in all of them with same seed and use
+		// the other generator (genP) for deciding when to take a point or not.
+		// TODO: See if we can improve this with OpenMP too.
+		const auto N_SAMPLES = (size_t)(round( M_PI * sqrt( _ru2 * _rv2 ) / SQR( _h ) ) * NumSamPerH2);
+		const double STD_U = sqrt( _ru2 ) / 3;					// Use these standard deviations, aiming for 99% of data
+		const double STD_V = sqrt( _rv2 ) / 3;					// inside bounding ellipse.
 		std::normal_distribution<double> uNormalDistribution( 0, STD_U );
 		std::normal_distribution<double> vNormalDistribution( 0, STD_V );
+		std::uniform_real_distribution<double> pDistribution;
 		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
 		for( int s = 0; s < N_SAMPLES; s++ )
 		{
-			double u = uNormalDistribution( gen );				// This normal distribution concentrates more samples
-			double v = vNormalDistribution( gen );				// for the tip of the Gaussian surface.
+			double u = uNormalDistribution( genN );				// This normal distribution concentrates more samples
+			double v = vNormalDistribution( genN );				// for the tip of the Gaussian surface.
 
 			if( SQR( u ) / _ru2 + SQR( v ) / _rv2 > 1 )			// Skip coords outside limiting ellipse.
 				continue;
@@ -859,6 +866,9 @@ public:
 									double hk = _h * _gaussian->meanCurvature( nearestPoint.x, nearestPoint.y );
 									if( ABS( hk ) >= minHK )					// Fourth check: target |hk*| >= minHK.
 									{
+										if( pDistribution( genP ) > 1 - probKeep )	// Deciding if we keep this point or not.
+											throw std::invalid_argument( "Invalid due to sampling probability" );
+
 										// Populate sample.
 										std::vector<double> sample;
 										sample.reserve( K_INPUT_SIZE + 1 );			// phi + normals + hk* + ihk.
