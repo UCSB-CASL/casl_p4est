@@ -4,9 +4,11 @@
  *
  * Based on matlab/gaussian_3d_adjusted_domain.m, steps 1 through 4.
  *
+ * @note Only supporting multiprocess in the same machine so far.
+ *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 12, 2022.
+ * Updated: February 13, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -15,7 +17,6 @@
 #else
 #define omp_get_thread_num() 0
 #endif
-
 
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_nodes.h>
@@ -37,6 +38,7 @@ int main ( int argc, char* argv[] )
 	param_t<double> minHK( pl, 0.008, "minHK", "Minimum mean dimensionless curvature (default: 0.008 = twice 0.004 from 2D)" );
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<std::string> outputDir( pl, ".", "outputDir", "Path where files will be written to (default: build folder)" );
 
 	std::mt19937 genNormal{}; 	// NOLINT Standard mersenne_twister_engine for bivariate normal sampling inside limiting ellipse.
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing when to consider candidate nodes and avoid clusters.
@@ -62,6 +64,15 @@ int main ( int argc, char* argv[] )
 
 		std::cout << "Testing Gaussian level-set function in 3D" << std::endl;
 
+		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
+		// initialized data.
+		// File name is gaussian_X.csv, where X is the rank number.  Yes, one file per rank to avoid data races.
+		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() );
+		std::ofstream file;
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian", file );
+
+		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );			// Wait for all files to finish preparation.
+
 		parStopWatch watch( parStopWatch::all_timings );
 
 		/////////////////////////// 1) Defining the Gaussian surface and its shape parameters //////////////////////////
@@ -69,7 +80,8 @@ int main ( int argc, char* argv[] )
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		const double A = 200 *  H;							// Gaussian height.
 		const double start_k_max = 2 / (3 * H);				// Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
-		const double K_MAX = 2 * start_k_max;				// Max curvature at the peak.
+		const double K_MAX = 2 * start_k_max;				// Max curvature at the peak (here, I chose the maximum possible).
+		const double MID_MAX_HKAPPA = (H * K_MAX / 2 + H * K_MAX) / 2;
 		const double SU2 = 2 * A / start_k_max;				// Variances along u and v directions that yield this curvature.
 		const double denom = K_MAX / A * SU2 - 1;
 		assert( denom > 0 );
@@ -93,9 +105,9 @@ int main ( int argc, char* argv[] )
 		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
 
 		watch.start();
+		PetscPrintf( mpi.comm(), "Creating balltree" );
 		GaussianLevelSet gaussianLevelSet( &mpi, trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian,
 										   SQR( ULIM ), SQR( VLIM ), 5 );
-		PetscPrintf( mpi.comm(), "Creating balltree:\n" );
 		watch.read_duration_current( true );
 		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
 
@@ -159,6 +171,7 @@ int main ( int argc, char* argv[] )
 
 		// Refine and partition forest.
 		watch.start();
+		PetscPrintf( mpi.comm(), "Refining/coarsening and partitioning" );
 		gaussianLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
 		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
 		for( int i = 0; i < OCTREE_MAX_RL; i++ )											// queries for grid points.
@@ -166,7 +179,6 @@ int main ( int argc, char* argv[] )
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
 		}
-		PetscPrintf( mpi.comm(), "Refining/coarsening and partitioning:\n" );
 		watch.read_duration_current( true );
 
 		// Create the ghost (cell) and node structures.
@@ -193,34 +205,41 @@ int main ( int argc, char* argv[] )
 
 		// Populate phi values and compute the exact distance for vertices within a (linearly estimated) shell around Gamma.
 		watch.start();
+		PetscPrintf( mpi.comm(), "Query processing" );
 		gaussianLevelSet.evaluate( p4est, nodes, phi, exactFlag );
-		PetscPrintf( mpi.comm(), "Query processing:\n" );
 		watch.read_duration_current( true );
 
 		// Reinitialize level-set function.
 		watch.start();
+		PetscPrintf( mpi.comm(), "Reinitialization" );
 		my_p4est_level_set_t ls( &ngbd );
 		ls.reinitialize_2nd_order( phi, reinitNumIters() );
-		PetscPrintf( mpi.comm(), "Reinitialization:\n" );
 		watch.read_duration_current( true );
 
 		// Once the level-set function is reinitialized, sample nodes with a normal distribuction aligned with Gaussian.
 		watch.start();
+		PetscPrintf( mpi.comm(), "Collecting nodes\n" );
 		Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
 		gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max, samples, genNormal,
-										 genProb, minHK(), sampledFlag );
+										 genProb, MID_MAX_HKAPPA, 1.0, minHK(), 0.05, sampledFlag, 1.0 );
+		watch.read_duration_current( true );
+
+		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );	// Wait for all processes to finish collecting samples.
+
+		watch.start();
+		PetscPrintf( mpi.comm(), "Saving samples to files" );
+		kml::utils::processSamplesAndSaveToFile( samples, file, H );
+		file.close();
+		watch.read_duration_current( true );
+		watch.stop();
 
 		const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr;
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-
-		PetscPrintf( mpi.comm(), "Collecting nodes:\n" );
-		watch.read_duration_current( true );
-		watch.stop();
 
 		std::ostringstream oss;
 		oss << "gaussian_test";

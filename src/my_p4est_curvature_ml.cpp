@@ -2,6 +2,18 @@
 
 //////////////////////////////////////////////// Scaler Abstract Class /////////////////////////////////////////////////
 
+#ifdef P4_TO_P8
+const int kml::Scaler::PHI_COLS[K_INPUT_PHI_SIZE] = { 0,  1,  2,  3,  4,  5,  6,  7,  8,	// Phi column indices.
+													  9, 10, 11, 12, 13, 14, 15, 16, 17, 	// Not defining the indices for
+													 18, 19, 20, 21, 22, 23, 24, 25, 26};	// normals and ihk since they're
+																							// not needed.
+#else
+const int    PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
+const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
+											  18,19,20,21,22,23,24,25,26};	// then y.
+const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
+#endif
+
 void kml::Scaler::_printParams( const kml::Scaler::json& params, const std::string& paramsFileName )
 {
 	std::cout << "===----------------------------- Loaded parameters -----------------------------===" << std::endl;
@@ -218,7 +230,7 @@ void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[
 	{
 		if( hNormalize )
 		{
-			for( const int& j : _pcaScaler.PHI_COLS )
+			for( const int& j : Scaler::PHI_COLS )
 				inputs[i][j] /= H;
 		}
 
@@ -484,7 +496,7 @@ void kml::utils::rotateStencilToFirstQuadrant( double stencil[] )
 	// Rotate only if theta not in [0, pi/2].
 	if( theta > M_PI_2 )
 	{
-		if( theta <= M_PI )								// Quadrant/octant V?
+		if( theta <= M_PI )								// Octant V?
 		{
 			rotateStencil90y( stencil, -1 );			// Rotate by -pi/2.
 		}
@@ -494,6 +506,113 @@ void kml::utils::rotateStencilToFirstQuadrant( double stencil[] )
 		}
 	}
 #endif
+
+	const double gradNew[P4EST_DIM] = {DIM( stencil[num_neighbors_cube*1 + CENTER_IDX],
+									   		stencil[num_neighbors_cube*2 + CENTER_IDX],
+									   		stencil[num_neighbors_cube*3 + CENTER_IDX] )};
+	if( ORD( gradNew[0] < 0, gradNew[1] < 0, gradNew[2] < 0 ) )
+		throw std::runtime_error( "[CASL_ERROR] kml::utils::rotateStencilToFirstOctant: One or more reoriented gradient"
+								  " components is negative!" );
+}
+
+
+void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK )
+{
+	if( refHK <= 0 )
+		return;
+
+	for( auto& feature : stencil )	// Flip sign of level-set, gradient, and curvature data.
+		feature *= -1;
+}
+
+
+void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
+									 const std::string& fileNamePrefix, std::ofstream& file )
+{
+	std::string errorPrefix = "[CASL_ERROR] kml::utils::prepareSamplesFile: ";
+
+	if( create_directory( directory, mpi.rank(), mpi.comm() ) )
+		throw std::runtime_error( errorPrefix + "Couldn't create directory: " + directory );
+
+	const int NUM_COLUMNS = K_INPUT_SIZE + 1;			// We need to include the true hk* too.
+	std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
+	kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: phi + normal + hk + ihk.
+	std::string fileName = directory + "/" + fileNamePrefix + "_" + std::to_string( mpi.rank() ) + ".csv";
+	file.open( fileName, std::ofstream::trunc );
+	if( !file.is_open() )
+		throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fileName + " couldn't be opened!" );
+
+	std::ostringstream headerStream;					// Write column headers: enforcing strings by adding quotes.
+	for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+		headerStream << "\"" << COLUMN_NAMES[i] << "\",";
+	headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
+	file << headerStream.str() << std::endl;
+	file.precision( 8 );								// Write data to preserve single precision.
+
+	std::cout << "Rank " << mpi.rank() << " successfully created samples file: " << fileName << "." << std::endl;
+}
+
+
+void kml::utils::processSamplesAndSaveToFile( std::vector<std::vector<double>>& samples, std::ofstream& file,
+											  const double& h )
+{
+	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
+	// So, why bother to save samples in double?
+	auto D = new FDEEP_FLOAT_TYPE [samples.size()*2][K_INPUT_SIZE + 1];			// Type with `using ARR2D = FDEEP_FLOAT_TYPE(*)[K_INPUT_SIZE + 1]`.
+
+	for( size_t i = 0; i < samples.size(); i++ )
+	{
+		normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE] );	// Use numerical ihk to determine sign.
+		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
+
+		// Normalize phi: Mainly to avoid losing precision when we move to floats.
+		for( size_t j : Scaler::PHI_COLS )
+			samples[i][j] /= h;
+
+		// First copy: reoriented data packet.
+		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
+			D[i*2][j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+
+		reflectStencil_yEqx( samples[i] );										// Reflect about plane y - x = 0.
+
+		// Second copy: reflected data packe.
+		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
+			D[i*2 + 1][j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+	}
+
+	for( size_t i = 0; i < samples.size() * 2; i++ )
+	{
+		size_t j;
+		for( j = 0; j < K_INPUT_SIZE; j++ )	// Write data to output file.  To save space, it should be in 32b precision.
+			file << D[i][j] << ",";			// Inner elements.
+		file << D[i][j] << std::endl;		// Last element is ihk.
+	}
+
+	// Cleaning up.
+	delete [] D;
+}
+
+
+double kml::utils::easingOffProbability( double x, const double& lowVal, const double& lowProb, const double& upVal,
+										 const double& upProb )
+{
+	// Some checks.
+	if( lowVal >= upVal )
+		throw std::invalid_argument( "kml::utils::easingOffProbability: lowVal must be strictly less than upVal!" );
+
+	if( lowProb < 0 || lowProb > 1 || upProb < 0 || upProb > 1 || lowProb >= upProb )
+		throw std::invalid_argument( "kml::utils::easingOffProbability: lowProb must be strictly less than upProb and "
+									 "both must be in the range of [0,1]!" );
+
+	if( x <= lowVal )		// Lower-bound edge case.
+		return lowProb;
+
+	if( x >= upVal )		// Upper-bound edge case.
+		return upProb;
+
+	// Compute the probability with help of the sinusoidal function.
+	x = (x - lowVal) / (upVal - lowVal);		// Normalize between 0 and 1.
+	return lowProb + (sin( -M_PI_2 + x * M_PI ) + 1) * (upProb - lowProb) / 2;
 }
 
 
@@ -590,7 +709,6 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 	outIdxToSampleIdx.reserve( samples.size() );
 	std::vector<std::vector<double>> negSamples;
 	negSamples.reserve( samples.size() );
-	int gradIdx = num_neighbors_cube / 2 + num_neighbors_cube;
 	for( int i = 0; i < samples.size(); i++ )
 	{
 		if( ABS( samples[i][K_INPUT_SIZE-1] ) < LO_MIN_HK )		// Skip well resolved stencils; use the numerical estimation.
@@ -604,7 +722,6 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 			negSamples.back()[j] = (samples[i][K_INPUT_SIZE-1] > 0)? -samples[i][j] : samples[i][j];
 
 #ifdef P4_TO_P8
-		// TODO: Check this in 3D.
 		utils::rotateStencilToFirstOctant( negSamples.back() );
 #else
 		utils::rotateStencilToFirstQuadrant( negSamples.back() );

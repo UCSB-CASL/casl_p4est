@@ -40,7 +40,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: January 30, 2022.
+ * Updated: February 13, 2022.
  */
 namespace kml
 {
@@ -76,15 +76,11 @@ namespace kml
 
 	public:
 #ifndef P4_TO_P8
-		const int                            PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
-		__attribute__((unused)) const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
-																			  18,19,20,21,22,23,24,25,26};	// then y.
-		__attribute__((unused)) const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
+		static const int                         PHI_COLS   [K_INPUT_PHI_SIZE   ];	// Phi column indices.
+		__attribute__((unused)) static const int NORMAL_COLS[K_INPUT_NORMAL_SIZE];	// Normal components: x first, then y.
+		__attribute__((unused)) static const int     HK_COLS[K_INPUT_HK_SIZE    ];	// Numerical hk column index.
 #else
-		const int PHI_COLS[K_INPUT_PHI_SIZE] = { 0,  1,  2,  3,  4,  5,  6,  7,  8,		// Phi column indices.
-												 9, 10, 11, 12, 13, 14, 15, 16, 17, 	// Not defining the indices for
-												18, 19, 20, 21, 22, 23, 24, 25, 26};	// normals and ihk since they're
-																						// not needed.
+		static const int PHI_COLS[K_INPUT_PHI_SIZE];
 #endif
 
 		/**
@@ -314,6 +310,7 @@ namespace kml
 		 * @note Exploits the fact that curvature is invariant to rotation.  Before calling this function you must have
 		 * flipped the sign of the stencil (and gradient) so that the curvature is negative.
 		 * @param [in,out] stencil Feature array in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
+		 * @throws runtime_error If one or more reoriented gradient component components is negative after the process.
 		 */
 #ifdef P4_TO_P8
 		void rotateStencilToFirstOctant( double stencil[] );
@@ -328,6 +325,49 @@ namespace kml
 			rotateStencilToFirstQuadrant( stencil.data() );
 		}
 #endif
+
+		/**
+		 * Normalize a stencil to negative curvature spectrum.
+		 * @param [in,out] stencil Feature vector with phi, normal, and (dimensionless) curvature.
+		 * @param [in] refHK Reference dimensionless curvature to determine normalization.
+		 */
+		void normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK );
+
+		/**
+		 * Prepare sampling file by opening, writing the header, and setting its precision to preserve accurate 32-bit
+		 * float numbers.
+		 * @param [in] mpi MPI environment.
+		 * @param [in] directory Where to place samples' file.  If it doesn't exist, it'll be created by rank 0 only.
+		 * @param [in] fileNamePrefix File name prefix so that the proper file name is prefix_#.csv, where # is the rank.
+		 * @param [in,out] file File object.
+		 * @throws runtime_error if directory can't be accessed or file can't be opened.
+		 */
+		void prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
+								 const std::string& fileNamePrefix, std::ofstream& file );
+
+		/**
+		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and
+		 * reflection.  Then, write these samples to a file using single precision.
+		 * @param [in,out] samples List of feature vectors.
+		 * @param [in,out] file File stream where to write data (should be opened already).
+		 * @param [in] h Mesh size for h-normalizing phi values.
+		 */
+		void processSamplesAndSaveToFile( std::vector<std::vector<double>>& samples, std::ofstream& file, const double& h );
+
+		/**
+		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].
+		 * To this end, we need the minimum probability (lowProb) corresponding to sin(-pi/2) and maximum probability
+		 * (upProb) corresponding to sin(+pi/2).  Similarly, we need the lowVal and upVal values matched to -pi/2 and
+		 * +pi/2, respectively.  This way, the function Pr(x) returns the probability between lowProb and upProb.
+		 * @param [in] x The value for which we want to compute the easing-off probability.
+		 * @param [in] lowVal Lower-bound value such that Pr(x <= lowVal) = lowProb.
+		 * @param [in] lowProb Lower-bound probability.
+		 * @param [in] upVal Upper-bound value such that Pr(x >= upVal) = upProb.
+		 * @param [in] upProb Upper-bound probability.
+		 * @return Pr(x).
+		 */
+		double easingOffProbability( double x, const double& lowVal=0, const double& lowProb=0, const double& upVal=1,
+									 const double& upProb=1 );
 	}
 
 
