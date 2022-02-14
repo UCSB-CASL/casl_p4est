@@ -530,36 +530,42 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 									 const std::string& fileNamePrefix, std::ofstream& file )
 {
 	std::string errorPrefix = "[CASL_ERROR] kml::utils::prepareSamplesFile: ";
+	std::string fileName = directory + "/" + fileNamePrefix + ".csv";
 
 	if( create_directory( directory, mpi.rank(), mpi.comm() ) )
 		throw std::runtime_error( errorPrefix + "Couldn't create directory: " + directory );
 
-	const int NUM_COLUMNS = K_INPUT_SIZE + 1;			// We need to include the true hk* too.
-	std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
-	kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: phi + normal + hk + ihk.
-	std::string fileName = directory + "/" + fileNamePrefix + "_" + std::to_string( mpi.rank() ) + ".csv";
-	file.open( fileName, std::ofstream::trunc );
-	if( !file.is_open() )
-		throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fileName + " couldn't be opened!" );
+	if( mpi.rank() == 0 )
+	{
+		const int NUM_COLUMNS = K_INPUT_SIZE + 1;			// We need to include the true hk* too.
+		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
+		kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: phi + normal + hk + ihk.
+		file.open( fileName, std::ofstream::trunc );
+		if( !file.is_open() )
+			throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fileName + " couldn't be opened!" );
 
-	std::ostringstream headerStream;					// Write column headers: enforcing strings by adding quotes.
-	for( int i = 0; i < NUM_COLUMNS - 1; i++ )
-		headerStream << "\"" << COLUMN_NAMES[i] << "\",";
-	headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
-	file << headerStream.str() << std::endl;
-	file.precision( 8 );								// Write data to preserve single precision.
+		std::ostringstream headerStream;					// Write column headers: enforcing strings by adding quotes.
+		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
+			headerStream << "\"" << COLUMN_NAMES[i] << "\",";
+		headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
+		file << headerStream.str() << std::endl;
+		file.precision( 8 );								// Write data to preserve single precision.
+	}
 
-	std::cout << "Rank " << mpi.rank() << " successfully created samples file: " << fileName << "." << std::endl;
+	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fileName.c_str() ) );
+	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
 }
 
 
-void kml::utils::processSamplesAndSaveToFile( std::vector<std::vector<double>>& samples, std::ofstream& file,
-											  const double& h )
+void kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+											  std::ofstream& file, const double& h )
 {
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
 	// So, why bother to save samples in double?
-	auto D = new FDEEP_FLOAT_TYPE [samples.size()*2][K_INPUT_SIZE + 1];			// Type with `using ARR2D = FDEEP_FLOAT_TYPE(*)[K_INPUT_SIZE + 1]`.
+	const int RANK_TOTAL_SAMPLES = (int)samples.size() * 2;
+	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1)];	// Let's put everying in a long array.
 
+//#pragma omp parallel for default( none ) num_threads( 4 ) shared( samples, h, D ) schedule(static, 500)
 	for( size_t i = 0; i < samples.size(); i++ )
 	{
 		normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE] );	// Use numerical ihk to determine sign.
@@ -571,25 +577,73 @@ void kml::utils::processSamplesAndSaveToFile( std::vector<std::vector<double>>& 
 
 		// First copy: reoriented data packet.
 		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
-			D[i*2][j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+			D[i*2*(K_INPUT_SIZE + 1) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 
 		reflectStencil_yEqx( samples[i] );										// Reflect about plane y - x = 0.
 
 		// Second copy: reflected data packe.
 		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
-			D[i*2 + 1][j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+			D[(i*2 + 1)*(K_INPUT_SIZE + 1) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 	}
 
-	for( size_t i = 0; i < samples.size() * 2; i++ )
+	// First, gather the number of effective samples processed by each rank.
+	int *totalValuesPerRank = nullptr;
+	int *displacements = nullptr;			// Indicates where to place rank i data relative to beginning of recvbuf.
+	float *allData = nullptr;				// Receive data from all processes here.
+	if( mpi.rank() == 0 )
 	{
-		size_t j;
-		for( j = 0; j < K_INPUT_SIZE; j++ )	// Write data to output file.  To save space, it should be in 32b precision.
-			file << D[i][j] << ",";			// Inner elements.
-		file << D[i][j] << std::endl;		// Last element is ihk.
+		totalValuesPerRank = new int[mpi.size()];
+		displacements = new int[mpi.size()];
+	}
+
+	SC_CHECK_MPI( MPI_Gather( &RANK_TOTAL_SAMPLES, 1, MPI_INT, totalValuesPerRank, 1, MPI_INT, 0, mpi.comm() ) );
+
+	// Then, modify the totalValuesPerRank to contain the actual number of floats (not just the samples).
+	int allRankTotalSamples = 0;
+	if( mpi.rank() == 0 )
+	{
+		int beginning = 0;
+#ifdef DEBUG
+		CHKERRXX( PetscPrintf( mpi.comm(), "\nThe total number of values (samples x features) per rank is:\n" ) );
+#endif
+		for( int i = 0; i < mpi.size(); i++ )
+		{
+			displacements[i] = beginning;	// We need to know where each rank must start placing it data.
+			totalValuesPerRank[i] *= (K_INPUT_SIZE + 1);
+			beginning += totalValuesPerRank[i];
+#ifdef DEBUG
+			CHKERRXX( PetscPrintf( mpi.comm(), "* Rank %d: %d samples (%d values), starting at index %d\n",
+								   i, totalValuesPerRank[i] / (K_INPUT_SIZE + 1), totalValuesPerRank[i], displacements[i] ) );
+#endif
+		}
+
+		allData = new FDEEP_FLOAT_TYPE[beginning];
+		allRankTotalSamples = beginning / (K_INPUT_SIZE + 1);
+	}
+
+	// Gather samples data.
+	SC_CHECK_MPI( MPI_Gatherv( D, RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1), MPI_FLOAT, allData, totalValuesPerRank,
+							   displacements, MPI_FLOAT, 0, mpi.comm() ) );
+
+	// Write data to output file.  To save space, it should be in 32b precision.  Only rank 0 does this.
+	if( mpi.rank() == 0 )
+	{
+		for( int i = 0; i < allRankTotalSamples; i++ )
+		{
+			int j;
+			for( j = 0; j < K_INPUT_SIZE; j++ )
+				file << allData[i*(K_INPUT_SIZE + 1) + j] << ",";		// Inner elements.
+			file << allData[i*(K_INPUT_SIZE + 1) + j] << std::endl;		// Last element is ihk.
+		}
 	}
 
 	// Cleaning up.
+	delete [] allData;
+	delete [] displacements;
+	delete [] totalValuesPerRank;
 	delete [] D;
+
+	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );	// Wait for all processes to finish, especially rank 0.
 }
 
 

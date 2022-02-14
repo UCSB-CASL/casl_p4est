@@ -40,7 +40,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: February 13, 2022.
+ * Updated: February 14, 2022.
  */
 namespace kml
 {
@@ -348,11 +348,14 @@ namespace kml
 		/**
 		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and
 		 * reflection.  Then, write these samples to a file using single precision.
+		 * @note Only rank 0 writes samples to a file.
+		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] file File stream where to write data (should be opened already).
 		 * @param [in] h Mesh size for h-normalizing phi values.
 		 */
-		void processSamplesAndSaveToFile( std::vector<std::vector<double>>& samples, std::ofstream& file, const double& h );
+		void processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+										  std::ofstream& file, const double& h );
 
 		/**
 		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].

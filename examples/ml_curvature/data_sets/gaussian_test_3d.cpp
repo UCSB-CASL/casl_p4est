@@ -8,7 +8,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 13, 2022.
+ * Updated: February 14, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -65,13 +65,10 @@ int main ( int argc, char* argv[] )
 		std::cout << "Testing Gaussian level-set function in 3D" << std::endl;
 
 		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
-		// initialized data.
-		// File name is gaussian_X.csv, where X is the rank number.  Yes, one file per rank to avoid data races.
+		// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() );
 		std::ofstream file;
 		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian", file );
-
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );			// Wait for all files to finish preparation.
 
 		parStopWatch watch( parStopWatch::all_timings );
 
@@ -218,7 +215,7 @@ int main ( int argc, char* argv[] )
 
 		// Once the level-set function is reinitialized, sample nodes with a normal distribuction aligned with Gaussian.
 		watch.start();
-		PetscPrintf( mpi.comm(), "Collecting nodes\n" );
+		PetscPrintf( mpi.comm(), "Collecting nodes" );
 		Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
@@ -227,12 +224,13 @@ int main ( int argc, char* argv[] )
 										 genProb, MID_MAX_HKAPPA, 1.0, minHK(), 0.05, sampledFlag, 1.0 );
 		watch.read_duration_current( true );
 
-		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );	// Wait for all processes to finish collecting samples.
-
 		watch.start();
-		PetscPrintf( mpi.comm(), "Saving samples to files" );
-		kml::utils::processSamplesAndSaveToFile( samples, file, H );
-		file.close();
+		PetscPrintf( mpi.comm(), "Saving samples to a file" );
+		kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
+
+		if( mpi.rank() == 0 )
+			file.close();
+
 		watch.read_duration_current( true );
 		watch.stop();
 
