@@ -726,15 +726,17 @@ public:
 	 * @param [in] probMinHK Probability for keeping points whose true |hk| is minHK.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] NumSamPerH2 How many random normal samples to generate per H^2 (taking as a reference the area of the limiting ellipse).
+	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws runtime_error if more than one node maps to the same discrete coordinates or if cache is disabled or is
-	 * 		   empty or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too).
+	 * 		   empty or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too), or if
+	 * 		   the probability for mid max HK is invalid.
 	 */
-	void collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
-						 const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-						 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, std::mt19937& genN,
-						 std::mt19937& genP, const double& midMaxHK, const double& probMidMaxHK=1,
-						 const double& minHK=0.008, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						 const double& NumSamPerH2=1.0 ) const
+	double collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
+						   const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
+						   const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, std::mt19937& genN,
+						   std::mt19937& genP, const double& midMaxHK, const double& probMidMaxHK=1,
+						   const double& minHK=0.008, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
+						   const double& NumSamPerH2=1.0 ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] GaussianLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -742,6 +744,9 @@ public:
 
 		if( !phi )
 			throw std::runtime_error( errorPrefix + "Phi vector can't be null!" );
+
+		if( probMidMaxHK <= 0 || probMidMaxHK > 1 )
+			throw std::runtime_error( errorPrefix + "Mid max HK probability should be in the range of (0, 1]!" );
 
 		// Get indices for candidate locally owned nodes next to Gamma.
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octreeMaxRL );
@@ -947,10 +952,11 @@ public:
 		}
 		delete [] outKappa;
 
-#ifdef DEBUG	// Printing the errors.
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMinHK, 1, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHK, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHKError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+
+#ifdef DEBUG	// Printing the errors.
 		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked HK in the range of [%f, %f]\n", trackedMinHK, trackedMaxHK ) );
 		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked MAX HK Error = %f\n", trackedMaxHKError ) );
 #endif
@@ -974,6 +980,8 @@ public:
 		for( auto& component : normal )
 			CHKERRXX( VecDestroy( component ) );
 		CHKERRXX( VecDestroy( sampledStatus ) );
+
+		return trackedMaxHKError;
 	}
 
 	/**
@@ -981,7 +989,7 @@ public:
 	 * @param [in] filename Output file.
 	 * @throws Runtime error if file can't be opened.
 	 */
-	void dumpTriangles( const std::string& filename )
+	__attribute__((unused)) void dumpTriangles( const std::string& filename )
 	{
 		std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
 		trianglesFile.open( filename, std::ofstream::trunc );

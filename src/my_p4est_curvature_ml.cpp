@@ -557,7 +557,7 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 }
 
 
-void kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 											  std::ofstream& file, const double& h )
 {
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
@@ -643,7 +643,9 @@ void kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std:
 	delete [] totalValuesPerRank;
 	delete [] D;
 
-	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );	// Wait for all processes to finish, especially rank 0.
+	// Comunicate to everyone the total number of samples across processes.
+	SC_CHECK_MPI( MPI_Bcast( &allRankTotalSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too
+	return allRankTotalSamples;
 }
 
 

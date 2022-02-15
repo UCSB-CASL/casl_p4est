@@ -4,8 +4,6 @@
  *
  * Based on matlab/gaussian_3d_adjusted_domain.m, steps 1 through 4.
  *
- * @note Only supporting multiprocess in the same machine so far.
- *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
  * Updated: February 14, 2022.
@@ -220,13 +218,16 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
-		gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max, samples, genNormal,
-										 genProb, MID_MAX_HKAPPA, 1.0, minHK(), 0.05, sampledFlag, 1.0 );
+		double maxHKError = gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
+															 samples, genNormal, genProb, MID_MAX_HKAPPA, 1.0, minHK(),
+															 0.05, sampledFlag, 1.0 );
+		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );
 
 		watch.start();
 		PetscPrintf( mpi.comm(), "Saving samples to a file" );
-		kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
+		size_t numSamples = kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
+		PetscPrintf( mpi.comm(), " %u samples in total", numSamples );
 
 		if( mpi.rank() == 0 )
 			file.close();
