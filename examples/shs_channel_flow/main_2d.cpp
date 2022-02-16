@@ -1325,16 +1325,16 @@ bool monitor_simulation(const simulation_setup &setup, const mass_flow_controlle
 
   PetscErrorCode ierr;
   if (external_acceleration[0]->get_value() > 0.0){
-    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f, \tQ = %.2f\n",
                        setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
                        channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()),
-                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()), controller->read_latest_mass_flow()); CHKERRXX(ierr); }
   else{
     ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : driving bulk force is currently negative\n", setup.iter); CHKERRXX(ierr);
-    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.2f%%, \t max_L2_norm_u = %.5e, \t leaves = %d, \t f_x = %.2f, \t Re_b = %.2f, \tQ = %.2f\n",
                        setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
                        external_acceleration[0]->get_value(),
-                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()), controller->read_latest_mass_flow()); CHKERRXX(ierr); }
 
   if (ns->get_max_L2_norm_u() > setup.max_tolerated_velocity(controller, external_acceleration, channel))
   {
