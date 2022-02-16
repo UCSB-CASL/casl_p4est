@@ -5,7 +5,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 14, 2022.
+ * Updated: February 15, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -21,11 +21,11 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_hierarchy.h>
-#include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <random>
 #include "gaussian_3d.h"
 #include <src/parameter_list.h>
+#include <cassert>
 
 
 int main ( int argc, char* argv[] )
@@ -36,7 +36,7 @@ int main ( int argc, char* argv[] )
 	param_t<double>        maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
 	param_t<u_char>        maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int>     reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double> probMidMaxHK( pl,  1.0, "probMidMaxHK", "Easing-off distribution max probability to keep midpoint max HK (default: 1.0)" );
+	param_t<double> probMidMaxHK( pl,  0.9, "probMidMaxHK", "Easing-off distribution max probability to keep midpoint max HK (default: 0.9)" );
 	param_t<std::string>  outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
 
 	// These random generators are initialized to the same seed across processes; and that's fine -- we need that to
@@ -81,7 +81,7 @@ int main ( int argc, char* argv[] )
 		const double HK_MAX_LO = maxHK() / 2;				// Maximum HK bounds at the peak.
 		const double HK_MAX_UP = maxHK();
 		const double MID_MAX_HKAPPA = (HK_MAX_LO + HK_MAX_UP) / 2;
-		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (2 * H) );
+		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (3 * H) );
 
 		// Affine transformation parameters.
 		const Point3 ROT_AXES[P4EST_DIM] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Let's use Euler angles; here, the rotation axes.
@@ -103,11 +103,17 @@ int main ( int argc, char* argv[] )
 
 		///////////////////////////////////////////// Data-production loop /////////////////////////////////////////////
 
+		const size_t TOT_ITERS = 3 * NUM_HK_MAX * (NUM_HK_MAX + 1) / 2;	// Num of axes times num of pairs of hk_max.
+		size_t step = 0;
+
 		// Logging header.
-		CHKERRXX( PetscPrintf( mpi.comm(), "Height \tStart_MaxK \tEnd_MaxK \tMaxK_Error \tNum_Samples \tTime\n" ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per height and %d hk_max steps\n\n", TOT_ITERS, NUM_HK_MAX ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples \t(%%_Done) \tTime\n" ) );
 
 		for( const auto& A : linspaceA )					// For each height, vary the u and v variances to achieve a
 		{													// maximum curvature at the peak.
+			size_t iters = 0;
+
 			for( int s = 0; s < NUM_HK_MAX; s++ )			// Define a starting HK_MAX to define u-variance: SU2.
 			{
 				const double START_MAX_K = linspaceHK_MAX[s] / H;
@@ -139,13 +145,14 @@ int main ( int argc, char* argv[] )
 						{0, -VLIM,    0}, {0, +VLIM,    0}
 					};
 
-					double maxHKError = 0;							// Tracking the maximum error and number of samples
-					size_t numSamples = 0;							// collectively shared across processes.
-
-					for( const auto& ROT_AXIS : ROT_AXES )	// Using Euler angles for the rotation transformation.
+					for( int axisIdx = 0; axisIdx < P4EST_DIM; axisIdx++ )	// Use Euler angles to rotate canonical coord system.
 					{
-						for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same axis (skip-
-						{												// (ping last endpoint because of augmentation).
+						const Point3 ROT_AXIS = ROT_AXES[axisIdx];
+						double maxHKError = 0;							// Tracking the maximum error and number of samples
+						size_t numSamples = 0;							// collectively shared across processes.
+
+						for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same axis (skip last one).
+						{
 
 							/////////////////// Defining the transformed Gaussian level-set function ///////////////////
 
@@ -234,69 +241,48 @@ int main ( int argc, char* argv[] )
 							nodes = my_p4est_nodes_new( p4est, ghost );
 
 							// Initialize the neighbor nodes structure.
-							my_p4est_hierarchy_t hierarchy( p4est, ghost, &brick );
-							my_p4est_node_neighbors_t ngbd( &hierarchy, nodes );
-							ngbd.init_neighbors();
+							auto *hierarchy = new my_p4est_hierarchy_t( p4est, ghost, &brick );
+							auto *ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
+							ngbd->init_neighbors();
 
 							// Verify mesh size is H, as expected.
 							double dxyz[P4EST_DIM];
 							get_dxyz_min( p4est, dxyz );
 							assert( dxyz[0] == dxyz[1] && dxyz[1] == dxyz[2] && dxyz[2] == H );
 
-							// A ghosted parallel PETSc vector to store level-set function values and exact flag.
-							Vec phi, exactFlag;
+							// A ghosted parallel PETSc vector to store level-set function values and a couple of flags.
+							Vec phi = nullptr, exactFlag = nullptr, sampledFlag = nullptr;
 							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &exactFlag ) );
+							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 							// Populate phi and compute exact distance for vertices within a (linearly estimated) shell
 							// around Gamma.  Reinitialization perturbs the otherwise calculated exact distances.
 							gLS.evaluate( p4est, nodes, phi, exactFlag );
 
 							// Reinitialize level-set function.
-							my_p4est_level_set_t ls( &ngbd );
+							my_p4est_level_set_t ls( ngbd );
 							ls.reinitialize_2nd_order( phi, reinitIters() );
 
-							// Sample nodes with a normal distribuction aligned with Gaussian.
-							Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
-							CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
-
 							std::vector<std::vector<double>> samples;
-							double hkError = gLS.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min,
+							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
 																 xyz_max, samples, genNormal, genProb, MID_MAX_HKAPPA,
-																 probMidMaxHK(), minHK(), 0.05, sampledFlag, 1.0 );
+																 probMidMaxHK(), minHK(), 0.05, sampledFlag, 0.5 );
 							maxHKError = MAX( maxHKError, hkError );
 
 							// Save samples to dataset file.
 							numSamples += kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
 
-							// Create a VTK visualization when debugging.
-							const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr;
-							CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
-							CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
-							CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-
-							std::ostringstream oss;
-							oss << "gaussian_ds_test";
-							my_p4est_vtk_write_all( p4est, nodes, ghost,
-													P4EST_TRUE, P4EST_TRUE,
-													3, 0, oss.str().c_str(),
-													VTK_POINT_DATA, "phi", phiReadPtr,
-													VTK_POINT_DATA, "sampledFlag", sampledFlagReadPtr,
-													VTK_POINT_DATA, "exactFlag", exactFlagReadPtr );
-
-							// Clean up.
 							gLS.toggleCache( false );		// Done with cache.
 							gLS.clearCache();
 
-							CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
-							CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
-							CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
-
-							CHKERRXX( VecDestroy( exactFlag ) );
 							CHKERRXX( VecDestroy( sampledFlag ) );
+							CHKERRXX( VecDestroy( exactFlag ) );
 							CHKERRXX( VecDestroy( phi ) );
 
 							// Destroy the p4est and its connectivity structure.
+							delete ngbd;
+							delete hierarchy;
 							p4est_nodes_destroy( nodes );
 							p4est_ghost_destroy( ghost );
 							p4est_destroy( p4est );
@@ -304,18 +290,15 @@ int main ( int argc, char* argv[] )
 
 							// Synchronize.
 							SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
-
-							break; // TODO: remove...
 						}
 
-						break; // TODO: remove...
+						// Logging stats.
+						iters++;
+						CHKERRXX( PetscPrintf( mpi.comm(), "[%6d] \t%.8f \t(%2d) %.8f \t(%2d) %.8f \t%i \t%.8f \t%u \t(%7.3f%%) \t%g\n",
+											   step, A, s, H * START_MAX_K, t, H * END_MAX_K, axisIdx, maxHKError,
+											   numSamples, (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
+						step++;
 					}
-
-					// Logging stats
-					CHKERRXX( PetscPrintf( mpi.comm(), "%g \t%g \t%g \t%g \t%u \t%g\n",
-										   A, START_MAX_K, END_MAX_K, maxHKError, numSamples, watch.get_duration_current() ) );
-
-					break; // TODO: remove...
 				}
 
 				break; // TODO: remove...

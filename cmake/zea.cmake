@@ -12,14 +12,14 @@ message( "" )
 if( CMAKE_BUILD_TYPE MATCHES Debug )
 	message( "******* CASL CMAKE IN DEBUG MODE *******" )
 
-	set( PETSC_DIR /usr/local/petsc-3.12.0-debug )	# PETSc.
+	set( PETSC_DIR /usr/local/petsc-3.16.4-debug )	# PETSc.
 	set( P4EST_DIR /usr/local/p4est-2.2-debug )		# p4est.
 	set( VORO_DIR  /usr/local )						# Voro++.
 
 elseif( CMAKE_BUILD_TYPE MATCHES Release )
 	message( "******* CASL CMAKE IN RELEASE MODE *******" )
 
-	set( PETSC_DIR /usr/local/petsc )				# PETSc.
+	set( PETSC_DIR /usr/local/petsc-3.16.4 )		# PETSc.
 	set( P4EST_DIR /usr/local/p4est-2.2 )			# p4est.
 	set( VORO_DIR  /usr/local )						# Voro++
 

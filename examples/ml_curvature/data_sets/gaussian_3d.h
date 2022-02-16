@@ -1028,6 +1028,15 @@ public:
 		_cache.reserve( n );
 		_canonicalCoordsCache.reserve( n );
 	}
+
+	/**
+	 * Retrieve the cache size.
+	 * @return _cache (and _canonicalCoordsCache) size.
+	 */
+	__attribute__((unused)) size_t getCacheSize() const
+	{
+		return _cache.size();
+	}
 };
 
 #endif //ML_CURVATURE_GAUSSIAN_3D_H
