@@ -8,10 +8,10 @@ const int kml::Scaler::PHI_COLS[K_INPUT_PHI_SIZE] = { 0,  1,  2,  3,  4,  5,  6,
 													 18, 19, 20, 21, 22, 23, 24, 25, 26};	// normals and ihk since they're
 																							// not needed.
 #else
-const int    PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
-const int NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
-											  18,19,20,21,22,23,24,25,26};	// then y.
-const int     HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
+const int    kml::Scaler::PHI_COLS[K_INPUT_PHI_SIZE   ] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};	// Phi column indices.
+const int kml::Scaler::NORMAL_COLS[K_INPUT_NORMAL_SIZE] = { 9,10,11,12,13,14,15,16,17,	// Normal components: x first,
+											  			   18,19,20,21,22,23,24,25,26};	// then y.
+const int     kml::Scaler::HK_COLS[K_INPUT_HK_SIZE    ] = {27};							// Numerical hk column index.
 #endif
 
 void kml::Scaler::_printParams( const kml::Scaler::json& params, const std::string& paramsFileName )
@@ -569,7 +569,11 @@ int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::
 	for( size_t i = 0; i < samples.size(); i++ )
 	{
 		normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE] );	// Use numerical ihk to determine sign.
+#ifdef P4_TO_P8
 		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
+#else
+		rotateStencilToFirstQuadrant( samples[i] );								// Reorientation.
+#endif
 
 		// Normalize phi: Mainly to avoid losing precision when we move to floats.
 		for( size_t j : Scaler::PHI_COLS )
