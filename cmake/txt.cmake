@@ -72,11 +72,11 @@ message( "** Boost   : " ${BOOST_DIR} )
 
 if( ENABLE_ML MATCHES 1 )		# Set this CMake variable as -DENABLE_ML=1.
 
-	set( OpenBLAS_DIR / ) 	# OpenBLAS.
-	set( DLIB_DIR / )					# dlib.
-	set( JSON_DIR / )					# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
+	set( OpenBLAS_DIR /usr/local/OpenBlas ) 	# OpenBLAS.
+	set( DLIB_DIR /usr/local )					# dlib.
+	set( JSON_DIR /usr/local )					# json: only headers.  You can also add `nlohmann_json::nlohmann_json`
 												# to LIBS list if you use `find_package( nlohmann_json CONFIG REQUIRED )`.
-	set( FDEEP_DIR / )					# frugally-deep: only headers.
+	set( FDEEP_DIR /usr/local )					# frugally-deep: only headers.
 
 	# Append to lists.
 	list( APPEND INC_DIRS					# Include directories.
