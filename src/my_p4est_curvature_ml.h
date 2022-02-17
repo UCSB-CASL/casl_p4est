@@ -25,6 +25,8 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <cblas.h>
+#include <algorithm>
+#include <random>
 
 /**
  * Machine-learning-based curvature namespace.
@@ -40,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: February 14, 2022.
+ * Updated: February 17, 2022.
  */
 namespace kml
 {
@@ -338,7 +340,7 @@ namespace kml
 		 * float numbers.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] directory Where to place samples' file.  If it doesn't exist, it'll be created by rank 0 only.
-		 * @param [in] fileNamePrefix File name prefix so that the proper file name is prefix_#.csv, where # is the rank.
+		 * @param [in] fileNamePrefix File name prefix such that the full path is 'directory/fileNamePrefix.csv'.
 		 * @param [in,out] file File object.
 		 * @throws runtime_error if directory can't be accessed or file can't be opened.
 		 */
@@ -346,17 +348,61 @@ namespace kml
 								 const std::string& fileNamePrefix, std::ofstream& file );
 
 		/**
+		 * Save buffered samples to a file.
+		 * @param [in] mpi MPI environment.
+		 * @param [in,out] file File object.
+		 * @param [in] buffer Samples buffer.
+		 * @return Number of samples written to file.
+		 */
+		int saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofstream& file,
+									 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer );
+
+		/**
 		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and
-		 * reflection.  Then, write these samples to a file using single precision.
+		 * reflection.  Then, place these samples in a cumulative array.
+		 * @note Only rank 0 accumulates processed samples, but all processes receive the total number of them.
+		 * @param [in] mpi MPI environment.
+		 * @param [in,out] samples List of feature vectors.
+		 * @param [in,out] buffer Cumulative array of feature vectors.
+		 * @param [in] h Mesh size for h-normalizing phi values.
+		 * @return Number of samples collected from all processes.
+		 */
+		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h );
+
+		/**
+		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and augmenta-
+		 * tion based on reflection.  Then, write these samples to a file using single precision.
 		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] file File stream where to write data (should be opened already).
 		 * @param [in] h Mesh size for h-normalizing phi values.
-		 * @return Number of samples collected from all processes.
+		 * @param [in] preAllocateSize Estimate number of samples to preallocate intermediate buffer (only rank 0).
+		 * @return Number of samples saved to the input file.
 		 */
 		int processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-										 std::ofstream& file, const double& h );
+										 std::ofstream& file, const double& h, const int& preAllocateSize=1000 );
+
+		/**
+		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true hk*.
+		 * Then, compute the median and subsample the intervals until the number of items in each bin is at most
+		 * frac*median.  After that, save the remaining samples into a file.
+		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
+		 * @param [in] mpi MPI environment.
+		 * @param [in] buffer Array of buffered (already normalized and augmented) samples.
+		 * @param [in,out] file File object.
+		 * @param [in] minHK Minimum tracked |hk*| for provided buffer; if not provided, it'll be computed.
+		 * @param [in] maxHK Maximum tracked |hk*| for provided buffer; if not provided, it'll be computed.
+		 * @param [in] nbins Number of bins or intervals in the histogram.
+		 * @param [in] frac Fraction of the median to be used for subsampling.
+		 * @return Number of samples that made it to the input file after subsampling.
+		 * @throws invalid_argument and runtime_error if minHK >= maxHK, or if computing the histogram fails.
+		 */
+		int histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
+										  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
+										  std::ofstream& file, FDEEP_FLOAT_TYPE minHK=NAN, FDEEP_FLOAT_TYPE maxHK=NAN,
+										  const unsigned short& nbins=100, const FDEEP_FLOAT_TYPE& frac=1 );
 
 		/**
 		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].

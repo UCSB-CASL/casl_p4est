@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 16, 2022.
+ * Updated: February 17, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -220,8 +220,10 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
+		double trackedMinHK, trackedMaxHK;
 		double maxHKError = gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
-															 samples, genProb, H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01,
+															 samples, trackedMinHK, trackedMaxHK, genProb,
+															 H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01,
 															 sampledFlag, SQR( U_ZERO ), SQR( V_ZERO ) );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );

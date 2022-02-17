@@ -1,5 +1,7 @@
 #include "my_p4est_curvature_ml.h"
 
+#include <random>
+
 //////////////////////////////////////////////// Scaler Abstract Class /////////////////////////////////////////////////
 
 #ifdef P4_TO_P8
@@ -557,11 +559,11 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 }
 
 
-int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-											  std::ofstream& file, const double& h )
+int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+											 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h )
 {
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
-	// So, why bother to save samples in double?
+	// So, why bother to keep samples in double?
 	const int RANK_TOTAL_SAMPLES = (int)samples.size() * 2;
 	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1)];	// Let's put everying in a long array.
 
@@ -585,7 +587,7 @@ int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::
 
 		reflectStencil_yEqx( samples[i] );										// Reflect about plane y - x = 0.
 
-		// Second copy: reflected data packe.
+		// Second copy: reflected data packet.
 		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
 			D[(i*2 + 1)*(K_INPUT_SIZE + 1) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 	}
@@ -629,15 +631,14 @@ int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::
 	SC_CHECK_MPI( MPI_Gatherv( D, RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1), MPI_FLOAT, allData, totalValuesPerRank,
 							   displacements, MPI_FLOAT, 0, mpi.comm() ) );
 
-	// Write data to output file.  To save space, it should be in 32b precision.  Only rank 0 does this.
+	// Accumulate samples.  Only rank 0 does this.
 	if( mpi.rank() == 0 )
 	{
 		for( int i = 0; i < allRankTotalSamples; i++ )
 		{
-			int j;
-			for( j = 0; j < K_INPUT_SIZE; j++ )
-				file << allData[i*(K_INPUT_SIZE + 1) + j] << ",";		// Inner elements.
-			file << allData[i*(K_INPUT_SIZE + 1) + j] << std::endl;		// Last element is ihk.
+			buffer.emplace_back( K_INPUT_SIZE + 1 );
+			for( int j = 0; j < K_INPUT_SIZE + 1; j++ )
+				buffer.back()[j] = allData[i*(K_INPUT_SIZE + 1) + j];
 		}
 	}
 
@@ -648,8 +649,129 @@ int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::
 	delete [] D;
 
 	// Comunicate to everyone the total number of samples across processes.
-	SC_CHECK_MPI( MPI_Bcast( &allRankTotalSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too
+	SC_CHECK_MPI( MPI_Bcast( &allRankTotalSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too.
 	return allRankTotalSamples;
+}
+
+
+int kml::utils::saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofstream& file,
+										 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer )
+{
+	int savedSamples;
+	if( mpi.rank() == 0 )
+	{
+		int i;
+		for( i = 0; i < buffer.size(); i++ )
+		{
+			int j;
+			for( j = 0; j < K_INPUT_SIZE; j++ )
+				file << buffer[i][j] << ",";		// Inner elements.
+			file << buffer[i][j] << std::endl;		// Last element is ihk.
+		}
+		savedSamples = i;
+	}
+
+	// Comunicate to everyone the total number of saved samples.
+	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too.
+	return savedSamples;
+}
+
+
+int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
+											 std::ofstream& file, const double& h, const int& preAllocateSize )
+{
+	std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;
+	if( mpi.rank() == 0 )
+		buffer.reserve( preAllocateSize );
+	processSamplesAndAccumulate( mpi, samples, buffer, h );
+	return saveSamplesBufferToFile( mpi, file, buffer );
+}
+
+
+int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
+											  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
+											  std::ofstream& file, FDEEP_FLOAT_TYPE minHK, FDEEP_FLOAT_TYPE maxHK,
+											  const unsigned short& nbins, const FDEEP_FLOAT_TYPE& frac )
+{
+	const std::string errorPrefix = "[CASL_ERROR] kml::utils::histSubSamplingAndSaveToFile: ";
+	int savedSamples = 0;
+	if( mpi.rank() == 0 )
+	{
+		if( !buffer.empty() )
+		{
+			// Begin by finding the range of |hk*| if not given.
+			if( isnan( minHK ) || isnan( maxHK ) )
+			{
+				minHK = FLT_MAX;
+				maxHK = 0;
+				for( const auto& sample : buffer )
+				{
+					minHK = MIN( minHK, ABS( sample[K_INPUT_SIZE - 1] ) );
+					maxHK = MAX( maxHK, ABS( sample[K_INPUT_SIZE - 1] ) );
+				}
+			}
+
+			if( minHK >= maxHK )
+				throw std::invalid_argument( errorPrefix + "MinHK must be smaller than MaxHK!" );
+
+			minHK -= FLT_EPSILON;		// Some padding to the histogran end points.
+			maxHK += FLT_EPSILON;
+
+			// Build the histogram.
+			std::vector<FDEEP_FLOAT_TYPE> limits;										// Bin i specifies the semi-open interval [limits[i], limits[i+1]),
+			const FDEEP_FLOAT_TYPE dx = linspace( minHK, maxHK, nbins + 1, limits );	// except the end points, which extend numerically to -inf and +inf.
+
+			std::vector<std::vector<int>> bins( nbins, std::vector<int>() );	// Bins act like buckets holding sample indices.
+			std::vector<int>counts( nbins, 0 );									// Keeps track of how many samples lie in each bin.
+			for( int i = 0; i < buffer.size(); i++ )
+			{
+				FDEEP_FLOAT_TYPE hk = ABS( buffer[i][K_INPUT_SIZE - 1] );
+				int idx = (int)MAX( 0.0f, MIN( floor( (hk - minHK) / dx ), (FDEEP_FLOAT_TYPE)nbins - 1.0f ) );
+				if( !(hk >= limits[idx] && hk < limits[idx+1]) )				// Check that |hk| does fall in the range.
+				{
+					if( idx > 0 && (hk >= limits[idx-1] && hk < limits[idx]) )					// Does it fit to the left?
+						idx--;
+					else if( idx < nbins - 1 && (hk >= limits[idx+1] && hk < limits[idx+2]) )	// Does it fit to the right?
+						idx++;
+					else
+						throw std::runtime_error( errorPrefix + "Wrong histogram configuration!" );
+				}
+
+				if( bins[idx].empty() )								// First sample arriving to idx bin?
+					bins[idx].reserve( (size_t)(0.25 * nbins) );	// Pre-allocate size.
+
+				bins[idx].push_back( i );
+				counts[idx]++;
+			}
+
+			// Find the median.
+			std::sort( counts.begin(), counts.end() );
+			int mIdx = floor( nbins / 2.0 );
+			auto median = (nbins % 2 == 0)? (FDEEP_FLOAT_TYPE)ceil( (counts[mIdx] + counts[mIdx - 1]) / 2.0 ) : (FDEEP_FLOAT_TYPE)counts[mIdx];
+
+			// Probabilistic subsampling by shuffling the indices within overpopulated bins.  Then, writing samples tofile.
+			int cap = (int)ceil( frac * median );
+			for( int b = 0; b < nbins; b++ )
+			{
+				if( bins[b].size() > cap )
+					std::shuffle( bins[b].begin(), bins[b].end(), std::mt19937( b ) );
+
+				for( int i = 0; i < MIN( (int)bins[b].size(), cap ); i++ )
+				{
+					int j;
+					int idx = bins[b][i];
+					for( j = 0; j < K_INPUT_SIZE; j++ )
+						file << buffer[idx][j] << ",";		// Inner elements.
+					file << buffer[idx][j] << std::endl;	// Last element is ihk.
+					savedSamples++;
+				}
+			}
+		}
+	}
+
+	// Communicate to everyone the total number of saved samples.
+	SC_CHECK_MPI( MPI_Bcast( &savedSamples, 1, MPI_INT, 0, mpi.comm() ) );	// Acts as an MPI_Barrier, too.
+	return savedSamples;
 }
 
 

@@ -719,6 +719,8 @@ public:
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
 	 * @param [out] samples Array of collected samples.
+	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples.
+	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
 	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
 	 * @param [in] easingOffMaxHK Upper bound max hk for easing-off probability.
 	 * @param [in] easingOffProbMaxHK Probability for keeping points whose true |hk| is at least easigOffMaxHK.
@@ -736,7 +738,8 @@ public:
 	double collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
 						   const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
 						   const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples,
-						   std::mt19937& genP, const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
+						   double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
+						   const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
 						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
 						   double ru2=NAN, double rv2=NAN ) const
 	{
@@ -797,8 +800,8 @@ public:
 
 		std::uniform_real_distribution<double> pDistribution;
 		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
-		double trackedMinHK = DBL_MAX, trackedMaxHK = 0;		// For debugging, track the min and max |hk*| and error.
-		double trackedMaxHKError = 0;
+		trackedMinHK = DBL_MAX, trackedMaxHK = 0;				// For debugging and binning, track the min and max
+		double trackedMaxHKError = 0;							// |hk*| and error.
 
 #ifdef DEBUG
 		std::cout << "Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;

@@ -5,7 +5,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 16, 2022.
+ * Updated: February 17, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -101,6 +101,13 @@ int main ( int argc, char* argv[] )
 
 		const size_t TOT_ITERS = 3 * NUM_HK_MAX * (NUM_HK_MAX + 1) / 2;	// Num of axes times num of pairs of hk_max.
 		size_t step = 0;
+		const int BUFFER_MIN_SIZE = 100000;
+		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
+		if( mpi.rank() == 0 )								// Only rank 0 controls the buffer.
+			buffer.reserve( BUFFER_MIN_SIZE );
+		int bufferSize = 0;									// But everyone knows the buffer size to keep them in sync.
+		double trackedMinHK = DBL_MAX, trackedMaxHK = 0;	// We need to track the min and max |hk*| from processed
+		SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );			// samples until we save the buffered feature vectors.
 
 		// Logging header.
 		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per height and %d hk_max steps\n\n", TOT_ITERS, NUM_HK_MAX ) );
@@ -148,7 +155,7 @@ int main ( int argc, char* argv[] )
 					{
 						const Point3 ROT_AXIS = ROT_AXES[axisIdx];
 						double maxHKError = 0;							// Tracking the maximum error and number of samples
-						size_t numSamples = 0;							// collectively shared across processes.
+						size_t loggedSamples = 0;						// collectively shared across processes for this rot axis.
 
 						for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same axis (skip last one).
 						{
@@ -265,13 +272,19 @@ int main ( int argc, char* argv[] )
 
 							// Collect samples using an overriden limiting ellipse on the canonical uv plane.
 							std::vector<std::vector<double>> samples;
+							double minHKInBatch, maxHKInBatch;
 							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
-																 xyz_max, samples, genProb, HK_MAX_LO, probMaxHKLB(),
-																 minHK(), 0.01, sampledFlag, SQR( U_ZERO ), SQR( V_ZERO ) );
+																 xyz_max, samples, minHKInBatch, maxHKInBatch, genProb,
+																 HK_MAX_LO, probMaxHKLB(), minHK(), 0.01, sampledFlag,
+																 SQR( U_ZERO ), SQR( V_ZERO ) );
 							maxHKError = MAX( maxHKError, hkError );
+							trackedMinHK = MIN( minHKInBatch, trackedMinHK );	// Update the tracked |hk*| bounds.
+							trackedMaxHK = MAX( maxHKInBatch, trackedMaxHK );	// These are shared across processes.
 
 							// Save samples to dataset file.
-							numSamples += kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
+							int batchSize = kml::utils::processSamplesAndAccumulate( mpi, samples, buffer, H );
+							loggedSamples += batchSize;
+							bufferSize += batchSize;
 
 							gLS.toggleCache( false );		// Done with cache.
 							gLS.clearCache();
@@ -296,7 +309,26 @@ int main ( int argc, char* argv[] )
 						iters++;
 						CHKERRXX( PetscPrintf( mpi.comm(), "[%6d] \t%.8f \t(%2d) %.8f \t(%2d) %.8f \t%i \t%.8f \t\t%u \t\t(%7.3f%%) \t%g\n",
 											   step, A, s, H * START_MAX_K, t, H * END_MAX_K, axisIdx, maxHKError,
-											   numSamples, (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
+											   loggedSamples, (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
+
+						// Is it time to save to file?
+						if( bufferSize >= BUFFER_MIN_SIZE )
+						{
+							int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
+																						 (FDEEP_FLOAT_TYPE)trackedMinHK,
+																						 (FDEEP_FLOAT_TYPE)trackedMaxHK );
+							CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file, with |hk*| in [%f, %f].\n",
+												   savedSamples, bufferSize, trackedMinHK, trackedMaxHK ) );
+
+							buffer.clear();							// Reset control variables.
+							if( mpi.rank() == 0 )
+								buffer.reserve( BUFFER_MIN_SIZE );
+							trackedMinHK = DBL_MAX;
+							trackedMaxHK = 0;
+							bufferSize = 0;
+							SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+						}
+
 						step++;
 					}
 				}
@@ -305,6 +337,18 @@ int main ( int argc, char* argv[] )
 			}
 
 			break; // TODO: remove...
+		}
+
+		// Save any samples left in the buffer.
+		if( bufferSize > 0 )
+		{
+			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
+																		 ( FDEEP_FLOAT_TYPE ) trackedMinHK,
+																		 ( FDEEP_FLOAT_TYPE ) trackedMaxHK );
+			CHKERRXX(
+				PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file, with |hk*| in [%f, %f].\n",
+							 savedSamples, bufferSize, trackedMinHK, trackedMaxHK ));
+			buffer.clear();
 		}
 
 		if( mpi.rank() == 0 )
