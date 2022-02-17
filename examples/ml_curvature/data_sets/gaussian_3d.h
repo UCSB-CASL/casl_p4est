@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3D.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 13, 2022.
+ * Updated: February 16, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -22,6 +22,7 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <dlib/optimization.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -708,7 +709,7 @@ public:
 	}
 
 	/**
-	 * Collect samples using a bivariate normal distribution to pick points within the limiting ellipse.
+	 * Collect samples within the limiting ellipse using an easing-off probability distribution based on curvature.
 	 * @note Samples are not normalized in any way: not negative curvature or reoriented to first octant
 	 * @param [in] p4est P4est data structure.
 	 * @param [in] nodes Nodes data structure.
@@ -718,25 +719,26 @@ public:
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
 	 * @param [out] samples Array of collected samples.
-	 * @param [in,out] genN Random-number generator device for bivariate normal sampling that gets updated in this function.
-	 * @param [in,out] genP Random-number generator device to decide whether to take an interface or not.
-	 * @param [in] midMaxHK The mid point between the lower and upper bound for the desired max hk at the tip.
-	 * @param [in] probMidMaxHK Probability for keeping points whose true |hk| is at least midMaxHK.
+	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
+	 * @param [in] easingOffMaxHK Upper bound max hk for easing-off probability.
+	 * @param [in] easingOffProbMaxHK Probability for keeping points whose true |hk| is at least easigOffMaxHK.
 	 * @param [in] minHK Minimum true hk.
 	 * @param [in] probMinHK Probability for keeping points whose true |hk| is minHK.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
-	 * @param [in] NumSamPerH2 How many random normal samples to generate per H^2 (taking as a reference the area of the limiting ellipse).
+	 * @param [in] ru2 Override limiting ellipse u semiaxis squared just for sampling.
+	 * @param [in] rv2 Override limiting ellipse v semiaxis squared just for sampling.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
-	 * @throws runtime_error if more than one node maps to the same discrete coordinates or if cache is disabled or is
-	 * 		   empty or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too), or if
-	 * 		   the probability for mid max HK is invalid.
+	 * @throws runtime_error if more than one node maps to the same discrete coordinates, or if cache is disabled or is
+	 * 		   empty, or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too), or if
+	 * 		   the probability for lower bound max HK is invalid, or if the overriding ru2 and rv2 are non positive or
+	 * 		   larger than the original _ru2 and _rv2.
 	 */
 	double collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
 						   const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-						   const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples, std::mt19937& genN,
-						   std::mt19937& genP, const double& midMaxHK, const double& probMidMaxHK=1,
-						   const double& minHK=0.008, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						   const double& NumSamPerH2=1.0 ) const
+						   const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples,
+						   std::mt19937& genP, const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
+						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
+						   double ru2=NAN, double rv2=NAN ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] GaussianLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -745,18 +747,65 @@ public:
 		if( !phi )
 			throw std::runtime_error( errorPrefix + "Phi vector can't be null!" );
 
-		if( probMidMaxHK <= 0 || probMidMaxHK > 1 )
-			throw std::runtime_error( errorPrefix + "Mid max HK probability should be in the range of (0, 1]!" );
+		if( easingOffProbMaxHK <= 0 || easingOffProbMaxHK > 1 )
+			throw std::runtime_error( errorPrefix + "Easing-off max HK probability should be in the range of (0, 1]!" );
+
+		if( !isnan( ru2 ) && (ru2 > _ru2 || ru2 <= 0) )
+			throw std::runtime_error( errorPrefix + "Overriding ru2 can't be greater than " + std::to_string( _ru2 ) + " or non positive" );
+		ru2 = (isnan( ru2 )? _ru2 : ru2);
+
+		if( !isnan( rv2 ) && (rv2 > _rv2 || rv2 <= 0) )
+			throw std::runtime_error( errorPrefix + "Overriding rv2 can't be greater than " + std::to_string( _rv2 ) + " or non positive" );
+		rv2 = (isnan( rv2 )? _rv2 : rv2);
 
 		// Get indices for candidate locally owned nodes next to Gamma.
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octreeMaxRL );
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
 
-		// Populate a hash map to go from discrete coordinates of the form "i,j,k" to nodal indices, where i,j,k are
-		// H-based integers.  This hash map also works as a filter for points we can sample from (i.e., valid candidates).
-		std::unordered_map<std::string, p4est_locidx_t> coordsToNodeIdx;
-		coordsToNodeIdx.reserve( indices.size() );
+		// Compute normal vectors and mean curvature.
+		Vec normal[P4EST_DIM], kappa;
+		for( auto& component : normal )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappa ) );
+
+		compute_normals( *ngbd, phi, normal );
+		compute_mean_curvature( *ngbd, normal, kappa );
+
+		const double *phiReadPtr;
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+
+		const double *normalReadPtr[P4EST_DIM];
+		for( int i = 0; i < P4EST_DIM; i++ )
+			CHKERRXX( VecGetArrayRead( normal[i], &normalReadPtr[i] ) );
+
+		samples.clear();										// We'll get (possibly) as many as points next to Gamma
+		samples.reserve( indices.size() );						// and within (poss. overriden) limiting ellipse.
+
+		// Reset interface flag vector if given.
+		double *sampledFlagPtr;
+		if( sampledFlag )
+		{
+			CHKERRXX( VecGetArray( sampledFlag, &sampledFlagPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				sampledFlagPtr[n] = 0;
+		}
+
+		// Prepare curvature interpolation.
+		my_p4est_interpolation_nodes_t kInterp( ngbd );
+		kInterp.set_input( kappa, interpolation_method::linear );
+
+		std::uniform_real_distribution<double> pDistribution;
+		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
+		double trackedMinHK = DBL_MAX, trackedMaxHK = 0;		// For debugging, track the min and max |hk*| and error.
+		double trackedMaxHKError = 0;
+
+#ifdef DEBUG
+		std::cout << "Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
+#endif
+
+		std::unordered_set<std::string> coordsSet;	// Validation set that stores coordinates of the form "i,j,k" for
+		coordsSet.reserve( indices.size() );		// nodal indices, where i,j,k are H-based integers.
 
 		for( const auto& n : indices )
 		{
@@ -773,161 +822,68 @@ public:
 				throw std::runtime_error( errorPrefix + "Couldn't locate node in cache!" );
 			Point3 p = recordCCoords->second;
 
-			if( SQR( p.x ) / _ru2 + SQR( p.y ) / _rv2 > 1 )		// Skip nodes whose canonical projection falls outside
-				continue;										// the limiting ellipse.
+			if( SQR( p.x ) / ru2 + SQR( p.y ) / rv2 > 1 )		// First check: Skip nodes whose canonical projection
+				continue;										// falls outside the (poss. overriden) limiting ellipse.
 
-			auto record = coordsToNodeIdx.find( coords );		// Last check: Coords should be unique!
-			if( record != coordsToNodeIdx.end() )
+			if( coordsSet.find( coords ) != coordsSet.end() )	// Coords should be unique!
 				throw std::runtime_error( errorPrefix + "Non-unique discrete node coords!" );
-			coordsToNodeIdx[coords] = n;
-		}
+			coordsSet.insert( coords );
 
-#ifdef DEBUG
-		std::cout << "Rank " << _mpi->rank() << " reports " << coordsToNodeIdx.size() << " candidate nodes for sampling." << std::endl;
-#endif
-
-		// Compute normal vectors and mean curvature.
-		Vec normal[P4EST_DIM], kappa;
-		for( auto& component : normal )
-			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappa ) );
-
-		compute_normals( *ngbd, phi, normal );
-		compute_mean_curvature( *ngbd, normal, kappa );
-
-		Vec sampledStatus;													// Set to 1 if node has been sampled, 0 if
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledStatus ) );	// hasn't been checked, and 2 if checked but
-		double *sampledStatusPtr;											// invalid (e.g., without a uniform stencil).
-		CHKERRXX( VecGetArray( sampledStatus, &sampledStatusPtr ) );
-
-		const double *phiReadPtr;
-		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
-
-		const double *normalReadPtr[P4EST_DIM];
-		for( int i = 0; i < P4EST_DIM; i++ )
-			CHKERRXX( VecGetArrayRead( normal[i], &normalReadPtr[i] ) );
-
-		samples.clear();										// We'll get (possibly) as many as points next to Gamma
-		samples.reserve( coordsToNodeIdx.size() );				// and within limiting ellipse.
-
-		// Reset interface flag vector if given.
-		double *sampledFlagPtr;
-		if( sampledFlag )
-		{
-			CHKERRXX( VecGetArray( sampledFlag, &sampledFlagPtr ) );
-			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
-				sampledFlagPtr[n] = 0;
-		}
-
-		// Prepare curvature interpolation.
-		my_p4est_interpolation_nodes_t kInterp( ngbd );
-		kInterp.set_input( kappa, interpolation_method::linear );
-
-		// The goal is to generate normally distributed samples in a 2D Gaussian with a diagonal covariance matrix.  To
-		// do this, we sample in canonical uv plane, and then we get the closest point (u,v, Q(u,v)) in world coordina-
-		// tes.  From there, we get multiple samples per normal pair (u,v) (up to 6 in one shot).
-		// Each processor will try all these!  It's important to use the same genN in all of them with same seed and use
-		// the other generator (genP) for deciding when to take a point or not.
-		const auto N_NORMAL_SAMPLES = (size_t)(round( M_PI * sqrt( _ru2 * _rv2 ) / SQR( _h ) ) * NumSamPerH2);
-
-#ifdef DEBUG
-		std::cout << "Rank " << _mpi->rank() << " says " << N_NORMAL_SAMPLES << " normal points will be tested" << std::endl;
-#endif
-
-		const double STD_U = sqrt( _ru2 ) / 3;					// Use these standard deviations, aiming for 99% of data
-		const double STD_V = sqrt( _rv2 ) / 3;					// inside bounding ellipse.
-		std::normal_distribution<double> uNormalDistribution( 0, STD_U );
-		std::normal_distribution<double> vNormalDistribution( 0, STD_V );
-		std::uniform_real_distribution<double> pDistribution;
-		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
-		double trackedMinHK = DBL_MAX, trackedMaxHK = DBL_MIN;	// For debugging, track the min and max |hk*| and error.
-		double trackedMaxHKError = DBL_MIN;
-		for( int s = 0; s < N_NORMAL_SAMPLES; s++ )
-		{
-			double u = uNormalDistribution( genN );				// This normal distribution concentrates more samples
-			double v = vNormalDistribution( genN );				// for the tip of the Gaussian surface.
-
-			if( SQR( u ) / _ru2 + SQR( v ) / _rv2 > 1 )			// Skip coords outside limiting ellipse.
-				continue;
-			double q = (*_gaussian)( u, v );					// Now we have (u,v,q); transform it to world coords.
-			Point3 r = toWorldCoordinates( u, v, q );
-			int i = (int)round( r.x / _h );						// Discrete coords normalized by h.
-			int j = (int)round( r.y / _h );
-			int k = (int)round( r.z / _h );
-
-			// Pull the seven-point stencil and check if we can create samples for each of them.
-			int triplets[P4EST_DIM * 2 + 1][P4EST_DIM] = {
-				{i-1, j, k}, {i, j, k}, {i+1, j, k}, {i, j-1, k}, {i, j+1, k}, {i, j, k-1}, {i, j, k+1}
-			};
-			for( const auto& triplet : triplets )
+			std::vector<p4est_locidx_t> stencil;
+			try
 			{
-				std::string coords = std::to_string( triplet[0] ) + "," + std::to_string( triplet[1] ) + "," + std::to_string( triplet[2] );
-				auto nodeIdxRecord = coordsToNodeIdx.find( coords );
-				if( nodeIdxRecord != coordsToNodeIdx.end() )	// First check: is it a valid candidate? I.e., locally owned, within limiting ellipse?
-				{
-					p4est_locidx_t n = nodeIdxRecord->second;
-					if( sampledStatusPtr[n] == 0 )				// Second check: haven't we looked at this node yet?
-					{
-						std::vector<p4est_locidx_t> stencil;
-						try
-						{
-							if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	// Third check: does it have a valid stencil?
-								throw std::invalid_argument( "Invalid node!" );				// Deliberate exception to be captured below.
+				if( !nodesAlongInterface.getFullStencilOfNode( n , stencil ) )	// Second check: Does it have a valid stencil?
+					continue;
 
-							auto record = _cache.find( coords );		// Use cache created during level-set computati-
-							if( record == _cache.end() )				// on: see computeExactSignedDistance() function.
-								throw std::runtime_error( errorPrefix + "Nearest point not found in the cache!" );	// Not captured!
+				auto record = _cache.find( coords );			// Use cache created during level-set computation: see
+				if( record == _cache.end() )					// see computeExactSignedDistance() function above.
+					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
-							Point3 nearestPoint = record->second.second;
-							double hk = _h * _gaussian->meanCurvature( nearestPoint.x, nearestPoint.y );
-							if( ABS( hk ) < minHK )						// Fourth check: target |hk*| must be >= minHK.
-								throw std::invalid_argument( "Invalid node due to curvature" );
+				Point3 nearestPoint = record->second.second;
+				double hk = _h * _gaussian->meanCurvature( nearestPoint.x, nearestPoint.y );
+				if( ABS( hk ) < minHK )							// Third check: Target |hk*| must be >= minHK.
+					continue;
 
-							double p = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, midMaxHK, probMidMaxHK );
-							if( pDistribution( genP ) > p )				// Using an easing-off probability to keep samples.
-								continue;								// Notice: not invalidating point: can be picked up by another normal sample.
+				double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
+				if( pDistribution( genP ) > prob )				// Fourth check: Use an easing-off prob to keep samples.
+					continue;
 
-							// Populate sample.
-							std::vector<double> sample;
-							sample.reserve( K_INPUT_SIZE + 1 );			// phi + normals + hk* + ihk.
+				// Populate sample.
+				std::vector<double> sample;
+				sample.reserve( K_INPUT_SIZE + 1 );				// phi + normals + hk* + ihk.
 
-							for( const auto& idx : stencil )			// First, phi values.
-								sample.push_back( phiReadPtr[idx] );
+				for( const auto& idx : stencil )				// First, phi values.
+					sample.push_back( phiReadPtr[idx] );
 
 #ifdef DEBUG
-							// Verify that phi(center)'s sign differs with any of its irradiating neighbors.
+				// Verify that phi(center)'s sign differs with any of its irradiating neighbors.
 							if( !NodesAlongInterface::isInterfaceStencil( sample ) )
 								throw std::runtime_error( errorPrefix + "Detected a non-interface stencil!" );
 #endif
 
-							for( const auto &component : normalReadPtr)	// Next, normal components (in groups).
-							{
-								for( const auto& idx: stencil )
-									sample.push_back( component[idx] );
-							}
-
-							sample.push_back( hk );					// Then, attach target hk*.
-
-							double xyz[P4EST_DIM];					// Finally, arrange for the location
-							node_xyz_fr_n( n, p4est, nodes, xyz );	// where to (linearly) interpolate num hk.
-							for( int c = 0; c < P4EST_DIM; c++ )
-								xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
-							kInterp.add_point( outIdx, xyz );
-
-							samples.push_back( sample );
-							outIdx++;
-
-							// Update flags.
-							sampledStatusPtr[n] = 1;				// Status: checked and valid!  Don't visit it anymore.
-							if( sampledFlag )
-								sampledFlagPtr[n] = 1;				// Flag it as (valid) interface node.
-						}
-						catch( std::invalid_argument &ia )
-						{
-							sampledStatusPtr[n] = 2;			// Status: checked and invalid!
-						}
-					}
+				for( const auto &component : normalReadPtr)		// Next, normal components (in groups: First x, then y, etc.).
+				{
+					for( const auto& idx: stencil )
+						sample.push_back( component[idx] );
 				}
+
+				sample.push_back( hk );							// Then, attach target hk*.
+
+				for( int c = 0; c < P4EST_DIM; c++ )			// Finally, arrange for the location where to (linearly) interpolate num hk.
+					xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
+				kInterp.add_point( outIdx, xyz );
+
+				samples.push_back( sample );
+				outIdx++;
+
+				// Update flags.
+				if( sampledFlag )
+					sampledFlagPtr[n] = 1;						// Flag it as (valid) interface node.
+			}
+			catch( std::runtime_error &rt ) {}
+			catch( std::invalid_argument &ia )
+			{
+				throw std::runtime_error( ia.what() );			// Raise again the exception for points not found in the cache.
 			}
 		}
 
@@ -974,12 +930,10 @@ public:
 		for( int i = 0; i < P4EST_DIM; i++ )
 			CHKERRXX( VecRestoreArrayRead( normal[i], &normalReadPtr[i] ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
-		CHKERRXX( VecRestoreArray( sampledStatus, &sampledStatusPtr ) );
 
 		CHKERRXX( VecDestroy( kappa ) );
 		for( auto& component : normal )
 			CHKERRXX( VecDestroy( component ) );
-		CHKERRXX( VecDestroy( sampledStatus ) );
 
 		return trackedMaxHKError;
 	}

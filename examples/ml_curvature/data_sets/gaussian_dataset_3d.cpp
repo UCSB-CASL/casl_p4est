@@ -5,7 +5,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 15, 2022.
+ * Updated: February 16, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -36,14 +36,11 @@ int main ( int argc, char* argv[] )
 	param_t<double>        maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
 	param_t<u_char>        maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int>     reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double> probMidMaxHK( pl,  0.9, "probMidMaxHK", "Easing-off distribution max probability to keep midpoint max HK (default: 0.9)" );
+	param_t<double>  probMaxHKLB( pl,  0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
 	param_t<std::string>  outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
 
-	// These random generators are initialized to the same seed across processes; and that's fine -- we need that to
-	// replicate the normal samples during data collection.  Unlike the 2D case, here we are not sweeping all the candi-
-	// date nodes, only those selected by another bivariate normal distribution.
-	std::mt19937 genNormal{};	// NOLINT Standard mersenne_twister_engine for bivariate normal sampling inside limiting ellipse.
-	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes and to avoid clusters.
+	// These random generators are initialized to the same seed across processes.
+	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.
 	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the Gaussian's canonical frame.
 
 	try
@@ -80,7 +77,6 @@ int main ( int argc, char* argv[] )
 		const int NUM_A = (int)((MAX_A - MIN_A) / H / 7);	// Number of distinct heights.
 		const double HK_MAX_LO = maxHK() / 2;				// Maximum HK bounds at the peak.
 		const double HK_MAX_UP = maxHK();
-		const double MID_MAX_HKAPPA = (HK_MAX_LO + HK_MAX_UP) / 2;
 		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (3 * H) );
 
 		// Affine transformation parameters.
@@ -108,7 +104,7 @@ int main ( int argc, char* argv[] )
 
 		// Logging header.
 		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per height and %d hk_max steps\n\n", TOT_ITERS, NUM_HK_MAX ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples \t(%%_Done) \tTime\n" ) );
+		CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
 
 		for( const auto& A : linspaceA )					// For each height, vary the u and v variances to achieve a
 		{													// maximum curvature at the peak.
@@ -132,17 +128,20 @@ int main ( int argc, char* argv[] )
 					// this region.  Note: this Gaussian surface will remain constant throughout level-set variations.
 					const double U_ZERO = gaussian.findKappaZero( H, dir::x );
 					const double V_ZERO = gaussian.findKappaZero( H, dir::y );
-					const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes.
+					const double ULIM = U_ZERO + gaussian.su();		// Limiting ellipse semi-axes for triangulation.
 					const double VLIM = V_ZERO + gaussian.sv();
-					const double QLIM = A + 6 * H;					// Adding some padding so that we can sample points correctly at the tip.
+					const double QTOP = A + 4 * H;					// Adding some padding so that we can sample points correctly at the tip.
+					double quZero = gaussian( U_ZERO, 0 );			// Let's find the lowest Q.
+					double qvZero = gaussian( 0, V_ZERO );
+					const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * H );
 					const size_t HALF_U_H = ceil(ULIM / H);			// Half u axis in H units.
 					const size_t HALF_V_H = ceil(VLIM / H);			// Half v axis in H units.
 
 					const double QCylCCoords[8][P4EST_DIM] = {		// Cylinder in canonical coords containing the Gaussian surface.
-						{-ULIM, 0, QLIM}, {+ULIM, 0, QLIM}, 		// Top coords (the four points lying on the same QLIM found above).
-						{0, -VLIM, QLIM}, {0, +VLIM, QLIM},
-						{-ULIM, 0,    0}, {+ULIM, 0,    0},			// Base coords (the four points lying on the uv-plane).
-						{0, -VLIM,    0}, {0, +VLIM,    0}
+						{-U_ZERO, 0, QTOP}, {+U_ZERO, 0, QTOP}, 	// Top coords (the four points lying on the same QTOP found above).
+						{0, -V_ZERO, QTOP}, {0, +V_ZERO, QTOP},
+						{-U_ZERO, 0, QBOT}, {+U_ZERO, 0, QBOT},		// Base coords (the four points lying on the same QBOT found above).
+						{0, -V_ZERO, QBOT}, {0, +V_ZERO, QBOT}
 					};
 
 					for( int axisIdx = 0; axisIdx < P4EST_DIM; axisIdx++ )	// Use Euler angles to rotate canonical coord system.
@@ -264,10 +263,11 @@ int main ( int argc, char* argv[] )
 							my_p4est_level_set_t ls( ngbd );
 							ls.reinitialize_2nd_order( phi, reinitIters() );
 
+							// Collect samples using an overriden limiting ellipse on the canonical uv plane.
 							std::vector<std::vector<double>> samples;
 							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
-																 xyz_max, samples, genNormal, genProb, MID_MAX_HKAPPA,
-																 probMidMaxHK(), minHK(), 0.05, sampledFlag, 0.5 );
+																 xyz_max, samples, genProb, HK_MAX_LO, probMaxHKLB(),
+																 minHK(), 0.01, sampledFlag, SQR( U_ZERO ), SQR( V_ZERO ) );
 							maxHKError = MAX( maxHKError, hkError );
 
 							// Save samples to dataset file.
@@ -294,7 +294,7 @@ int main ( int argc, char* argv[] )
 
 						// Logging stats.
 						iters++;
-						CHKERRXX( PetscPrintf( mpi.comm(), "[%6d] \t%.8f \t(%2d) %.8f \t(%2d) %.8f \t%i \t%.8f \t%u \t(%7.3f%%) \t%g\n",
+						CHKERRXX( PetscPrintf( mpi.comm(), "[%6d] \t%.8f \t(%2d) %.8f \t(%2d) %.8f \t%i \t%.8f \t\t%u \t\t(%7.3f%%) \t%g\n",
 											   step, A, s, H * START_MAX_K, t, H * END_MAX_K, axisIdx, maxHKError,
 											   numSamples, (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
 						step++;

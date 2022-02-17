@@ -1,7 +1,7 @@
 % Investigating Gaussian patch to generate samples.
 % Questions are: how big the domain should be?  where does Q(u,v) reach a zero curvature?
 clear; clc;
-h = 1/128;				% Mesh size.
+h = 1/64;				% Mesh size.
 start_k_max = 2/(3*h);	% Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
 A = 200*h;				% Equivalent to the sphere of max radius: hk_min = 0.01 (0.005 in 2D), and 4*r_min = 6h.
 su = sqrt(2*A / start_k_max);
@@ -43,7 +43,7 @@ G = Q(U,V);
 surf(U,V,G);
 shading interp;
 hold on;
-plot3(zeroEllipseX, zeroEllipseY, zeroEllipseQ, "k-");		% Approximate curvature's zero level set with an ellipse.
+plot3(zeroEllipseX, zeroEllipseY, zeroEllipseQ, "k-");		% Zero ellipse.
 plot3(limitEllipseX, limitEllipseY, limitEllipseQ, "y-");	% Limiting ellipse.
 xlabel("u");
 ylabel("v");
@@ -54,20 +54,20 @@ axis equal;
 % Plotting curvature.
 figure;
 K = kappa(U,V);
-surf(U,V,K);
-shading interp;
+surf(U,V,abs(K));
+% shading interp;
 hold on;
-plot3(uZero, 0, kappa(uZero,0), "b*");
-plot3(0, vZero, kappa(0,vZero), "m*");
-plot3(zeroEllipseX, zeroEllipseY, zeros(size(t)), "k-");	% Approximate curvature's zero level set with an ellipse.
-plot3(limitEllipseX, limitEllipseY, kappa(limitEllipseX, limitEllipseY), "b-");	% Limiting ellipse.
+plot3(uZero, 0, abs(kappa(uZero,0)), "y*");
+plot3(0, vZero, abs(kappa(0,vZero)), "m*");
+plot3(zeroEllipseX, zeroEllipseY, abs(kappa(zeroEllipseX, zeroEllipseY)), "k-");		% Zero ellipse.
+plot3(limitEllipseX, limitEllipseY, abs(kappa(limitEllipseX, limitEllipseY)), "r-");	% Limiting ellipse.
 xlabel("u");
 ylabel("v");
 zlabel("\kappa(u,v)");
 title( "Curvature" );
 
 % Is the isoline at curvature level 0 an ellipse?
-z = sum(abs(kappa(uZero*cos(t), vZero*sin(t))));	% Should be zero, but it's not.
+z = sum(abs(kappa(uZero*cos(t), vZero*sin(t))));	% It's not.
 fprintf( "Sum of Q along zero-ellipse is %g\n", z );
 
 % Plotting curvature's isolines.

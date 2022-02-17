@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 14, 2022.
+ * Updated: February 16, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -33,13 +33,13 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double> minHK( pl, 0.008, "minHK", "Minimum mean dimensionless curvature (default: 0.008 = twice 0.004 from 2D)" );
+	param_t<double> minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 in 2D)" );
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<double> probMaxHKLB( pl, 0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
 	param_t<std::string> outputDir( pl, ".", "outputDir", "Path where files will be written to (default: build folder)" );
 
-	std::mt19937 genNormal{}; 	// NOLINT Standard mersenne_twister_engine for bivariate normal sampling inside limiting ellipse.
-	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing when to consider candidate nodes and avoid clusters.
+	std::mt19937 genProb{};	// NOLINT Random engine for probability for selecting or not a sampled point.
 
 	try
 	{
@@ -76,7 +76,6 @@ int main ( int argc, char* argv[] )
 		const double A = 200 *  H;							// Gaussian height.
 		const double start_k_max = 2 / (3 * H);				// Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
 		const double K_MAX = 2 * start_k_max;				// Max curvature at the peak (here, I chose the maximum possible).
-		const double MID_MAX_HKAPPA = (H * K_MAX / 2 + H * K_MAX) / 2;
 		const double SU2 = 2 * A / start_k_max;				// Variances along u and v directions that yield this curvature.
 		const double denom = K_MAX / A * SU2 - 1;
 		assert( denom > 0 );
@@ -87,9 +86,12 @@ int main ( int argc, char* argv[] )
 		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
 		const double U_ZERO = gaussian.findKappaZero( H, dir::x );
 		const double V_ZERO = gaussian.findKappaZero( H, dir::y );
-		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes.
+		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes for triangulation.
 		const double VLIM = V_ZERO + gaussian.sv();
-		const double QLIM = A + 6 * H;						// Adding some padding so that we can sample points correctly at the tip.
+		const double QTOP = A + 4 * H;						// Adding some padding so that we can sample points correctly at the tip.
+		double quZero = gaussian( U_ZERO, 0 );				// Let's find the lowest Q.
+		double qvZero = gaussian( 0, V_ZERO );
+		const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * H );
 		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
 		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
 
@@ -109,8 +111,8 @@ int main ( int argc, char* argv[] )
 		//////////////////// 3) Finding the world coords of (canonical) cylinder containing Q(u,v) /////////////////////
 
 		const double QCylCCoords[8][P4EST_DIM] = {
-			{-ULIM, 0, QLIM}, {+ULIM, 0, QLIM}, {0, -VLIM, QLIM}, {0, +VLIM, QLIM},	// Top coords (the four points lying on the same QLIM found above).
-			{-ULIM, 0,    0}, {+ULIM, 0,    0}, {0, -VLIM,    0}, {0, +VLIM,    0}	// Base coords (the four points lying on the uv-plane).
+			{-U_ZERO, 0, QTOP}, {+U_ZERO, 0, QTOP}, {0, -V_ZERO, QTOP}, {0, +V_ZERO, QTOP},	// Top coords (the four points lying on the same QTOP found above).
+			{-U_ZERO, 0, QBOT}, {+U_ZERO, 0, QBOT}, {0, -V_ZERO, QBOT}, {0, +V_ZERO, QBOT}	// Base coords (the four points lying on the same QBOT found above).
 		};
 
 		double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};		// Hold the minimum and maximum cylinder
@@ -213,19 +215,19 @@ int main ( int argc, char* argv[] )
 
 		// Once the level-set function is reinitialized, sample nodes with a normal distribuction aligned with Gaussian.
 		watch.start();
-		PetscPrintf( mpi.comm(), "Collecting nodes" );
+		PetscPrintf( mpi.comm(), "Collecting samples" );
 		Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
 		double maxHKError = gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
-															 samples, genNormal, genProb, MID_MAX_HKAPPA, 1.0, minHK(),
-															 0.05, sampledFlag, 1.0 );
+															 samples, genProb, H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01,
+															 sampledFlag, SQR( U_ZERO ), SQR( V_ZERO ) );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );
 
 		watch.start();
-		PetscPrintf( mpi.comm(), "Saving samples to a file" );
+		PetscPrintf( mpi.comm(), "Saving samples to a file; " );
 		size_t numSamples = kml::utils::processSamplesAndSaveToFile( mpi, samples, file, H );
 		PetscPrintf( mpi.comm(), " %u samples in total", numSamples );
 
