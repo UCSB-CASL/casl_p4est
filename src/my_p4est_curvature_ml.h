@@ -340,12 +340,12 @@ namespace kml
 		 * float numbers.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] directory Where to place samples' file.  If it doesn't exist, it'll be created by rank 0 only.
-		 * @param [in] fileNamePrefix File name prefix such that the full path is 'directory/fileNamePrefix.csv'.
+		 * @param [in] fileName File name such that the full path is 'directory/fileName'.
 		 * @param [in,out] file File object.
 		 * @throws runtime_error if directory can't be accessed or file can't be opened.
 		 */
 		void prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
-								 const std::string& fileNamePrefix, std::ofstream& file );
+								 const std::string& fileName, std::ofstream& file );
 
 		/**
 		 * Save buffered samples to a file.

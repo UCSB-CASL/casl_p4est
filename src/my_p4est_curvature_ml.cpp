@@ -529,10 +529,10 @@ void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, con
 
 
 void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::string& directory,
-									 const std::string& fileNamePrefix, std::ofstream& file )
+									 const std::string& fileName, std::ofstream& file )
 {
 	std::string errorPrefix = "[CASL_ERROR] kml::utils::prepareSamplesFile: ";
-	std::string fileName = directory + "/" + fileNamePrefix + ".csv";
+	std::string fullFileName = directory + "/" + fileName;
 
 	if( create_directory( directory, mpi.rank(), mpi.comm() ) )
 		throw std::runtime_error( errorPrefix + "Couldn't create directory: " + directory );
@@ -542,9 +542,9 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 		const int NUM_COLUMNS = K_INPUT_SIZE + 1;			// We need to include the true hk* too.
 		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
 		kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: phi + normal + hk + ihk.
-		file.open( fileName, std::ofstream::trunc );
+		file.open( fullFileName, std::ofstream::trunc );
 		if( !file.is_open() )
-			throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fileName + " couldn't be opened!" );
+			throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fullFileName + " couldn't be opened!" );
 
 		std::ostringstream headerStream;					// Write column headers: enforcing strings by adding quotes.
 		for( int i = 0; i < NUM_COLUMNS - 1; i++ )
@@ -554,7 +554,7 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 		file.precision( 8 );								// Write data to preserve single precision.
 	}
 
-	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fileName.c_str() ) );
+	CHKERRXX( PetscPrintf( mpi.comm(), "Rank %d successfully created samples file '%s'\n", mpi.rank(), fullFileName.c_str() ) );
 	SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );				// Wait here until rank 0 is done.
 }
 

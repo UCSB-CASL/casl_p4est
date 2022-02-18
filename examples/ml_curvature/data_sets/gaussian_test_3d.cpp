@@ -66,7 +66,7 @@ int main ( int argc, char* argv[] )
 		// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() );
 		std::ofstream file;
-		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian", file );
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian.csv", file );
 
 		parStopWatch watch( parStopWatch::all_timings );
 

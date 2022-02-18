@@ -1,7 +1,8 @@
 /**
  * Generating samples using a 2D Gaussian surface embedded in 3D.
  *
- * @note Only supporting multiprocess in the same machine so far.
+ * Files written to file are of the form "#/gaussian_$.csv", where # is the unit-cube maximum level of refinement and $
+ * is the Gaussian height index (i.e., 0, 1,... ).
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
@@ -28,16 +29,21 @@
 #include <cassert>
 
 
+void printLogHeader( const mpi_environment_t& mpi );
+
+
 int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>        minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
-	param_t<double>        maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
-	param_t<u_char>        maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
-	param_t<int>     reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>  probMaxHKLB( pl,  0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
-	param_t<std::string>  outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
+	param_t<double>         minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
+	param_t<double>         maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
+	param_t<u_char>         maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<int>      reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<double>   probMaxHKLB( pl,  0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
+	param_t<u_short>    startAIdx( pl,    0, "startAIdx", "Start index for Gaussian height (default: 0)" );
+	param_t<float> histMedianFrac( pl,  0.4, "histMedianFrac", "Histogram subsampling median fraction (default: 0.4)" );
+	param_t<std::string>   outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
 
 	// These random generators are initialized to the same seed across processes.
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.
@@ -57,12 +63,6 @@ int main ( int argc, char* argv[] )
 		pl.set_from_cmd_all( cmd );
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "\n**************** Generating a Gaussian data set in 3D ****************\n" ) );
-
-		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
-		// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
-		const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() );
-		std::ofstream file;
-		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian", file );
 
 		parStopWatch watch;
 		watch.start();
@@ -111,10 +111,20 @@ int main ( int argc, char* argv[] )
 
 		// Logging header.
 		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per height and %d hk_max steps\n\n", TOT_ITERS, NUM_HK_MAX ) );
-		CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
 
-		for( const auto& A : linspaceA )					// For each height, vary the u and v variances to achieve a
+		for( u_short a = startAIdx(); a < NUM_A; a++ )		// For each height, vary the u and v variances to achieve a
 		{													// maximum curvature at the peak.
+			const double A = linspaceA[a];
+
+			// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
+			// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
+			const std::string DATA_PATH = outDir() + "/" + std::to_string( maxRL() );
+			std::ofstream file;
+			std::string fileName = "gaussian_" + std::to_string( a ) + ".csv";
+			kml::utils::prepareSamplesFile( mpi, DATA_PATH, fileName, file );
+
+			printLogHeader( mpi );
+
 			size_t iters = 0;
 
 			for( int s = 0; s < NUM_HK_MAX; s++ )			// Define a starting HK_MAX to define u-variance: SU2.
@@ -275,7 +285,7 @@ int main ( int argc, char* argv[] )
 							double minHKInBatch, maxHKInBatch;
 							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
 																 xyz_max, samples, minHKInBatch, maxHKInBatch, genProb,
-																 HK_MAX_LO, probMaxHKLB(), minHK(), 0.01, sampledFlag,
+																 HK_MAX_LO, probMaxHKLB(), minHK(), 0.05, sampledFlag,
 																 SQR( U_ZERO ), SQR( V_ZERO ) );
 							maxHKError = MAX( maxHKError, hkError );
 							trackedMinHK = MIN( minHKInBatch, trackedMinHK );	// Update the tracked |hk*| bounds.
@@ -315,10 +325,12 @@ int main ( int argc, char* argv[] )
 						if( bufferSize >= BUFFER_MIN_SIZE )
 						{
 							int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																						 (FDEEP_FLOAT_TYPE)trackedMinHK,
-																						 (FDEEP_FLOAT_TYPE)trackedMaxHK );
-							CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file, with |hk*| in [%f, %f].\n",
-												   savedSamples, bufferSize, trackedMinHK, trackedMaxHK ) );
+																						 (FDEEP_FLOAT_TYPE)minHK(),
+																						 (FDEEP_FLOAT_TYPE)maxHK(),
+																						 100, histMedianFrac() );
+							CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
+												   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );
+							printLogHeader( mpi );
 
 							buffer.clear();							// Reset control variables.
 							if( mpi.rank() == 0 )
@@ -332,27 +344,26 @@ int main ( int argc, char* argv[] )
 						step++;
 					}
 				}
-
-				break; // TODO: remove...
 			}
 
-			break; // TODO: remove...
-		}
+			// Save any samples left in the buffer.
+			if( bufferSize > 0 )
+			{
+				int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
+																			 (FDEEP_FLOAT_TYPE)minHK(),
+																			 (FDEEP_FLOAT_TYPE)maxHK(),
+																			 100, histMedianFrac() );
+				CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
+									   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );
+				buffer.clear();
+			}
 
-		// Save any samples left in the buffer.
-		if( bufferSize > 0 )
-		{
-			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																		 ( FDEEP_FLOAT_TYPE ) trackedMinHK,
-																		 ( FDEEP_FLOAT_TYPE ) trackedMaxHK );
-			CHKERRXX(
-				PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file, with |hk*| in [%f, %f].\n",
-							 savedSamples, bufferSize, trackedMinHK, trackedMaxHK ));
-			buffer.clear();
-		}
+			if( mpi.rank() == 0 )
+				file.close();
 
-		if( mpi.rank() == 0 )
-			file.close();
+			CHKERRXX( PetscPrintf( mpi.comm(), "<<< Done with A = %f, index %d\n", A, a ) );
+			SC_CHECK_MPI( MPI_Barrier( mpi.comm() ) );
+		}
 
 		watch.read_duration_current( true );
 		watch.stop();
@@ -361,4 +372,11 @@ int main ( int argc, char* argv[] )
 	{
 		std::cerr << e.what() << std::endl;
 	}
+}
+
+
+void printLogHeader( const mpi_environment_t& mpi )
+{
+	CHKERRXX( PetscPrintf( mpi.comm(), "_____________________________________________________________________________________________________________________\n") );
+	CHKERRXX( PetscPrintf( mpi.comm(), "[Step  ] \tHeight \t\t(ss) Start_MaxHK \t(tt) End_MaxHK \tAxis \tMaxHK_Error \tNum_Samples\t(%%_Done) \tTime\n" ) );
 }
