@@ -6,7 +6,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 17, 2022.
+ * Updated: February 21, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -40,9 +40,9 @@ int main ( int argc, char* argv[] )
 	param_t<double>         maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
 	param_t<u_char>         maxRL( pl,    6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int>      reinitIters( pl,   10, "reinitIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>   probMaxHKLB( pl,  0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
+	param_t<double>  probMidMaxHK( pl,  1.0, "probMidMaxHK", "Easing-off max probability for mean max HK (default: 1.0)" );
 	param_t<u_short>    startAIdx( pl,    0, "startAIdx", "Start index for Gaussian height (default: 0)" );
-	param_t<float> histMedianFrac( pl,  0.4, "histMedianFrac", "Histogram subsampling median fraction (default: 0.4)" );
+	param_t<float> histMedianFrac( pl,  0.2, "histMedianFrac", "Histogram subsampling median fraction (default: 0.2)" );
 	param_t<std::string>   outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
 
 	// These random generators are initialized to the same seed across processes.
@@ -72,18 +72,20 @@ int main ( int argc, char* argv[] )
 		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
 		const double MIN_K = minHK() / H;					// Curvature bounds.
 		const double MAX_K = maxHK() / H;
-		const double MAX_A = 2 / MIN_K;						// Height bounds: MAX_A, which is also the max sphere radius and
-		const double MIN_A = 8 / MAX_K;						// MIN_A = 4*(min radius).
+		const double MAX_A = 2 / MIN_K / 2;					// Height bounds: MAX_A, which is half the max sphere radius and
+		const double MIN_A = 10 / MAX_K;					// MIN_A = 5*(min radius).
 		const int NUM_A = (int)((MAX_A - MIN_A) / H / 7);	// Number of distinct heights.
 		const double HK_MAX_LO = maxHK() / 2;				// Maximum HK bounds at the peak.
 		const double HK_MAX_UP = maxHK();
+		const double MID_HK_MAX = (HK_MAX_LO + HK_MAX_UP) / 2;
 		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (3 * H) );
 
 		// Affine transformation parameters.
-		const Point3 ROT_AXES[P4EST_DIM] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Let's use Euler angles; here, the rotation axes.
+		const int NUM_AXES = P4EST_DIM;
+		const Point3 ROT_AXES[NUM_AXES] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Let's use Euler angles; here, the rotation axes.
 		const double MIN_THETA = -M_PI_2;								// For each axis, we vary the angle from -pi/2
 		const double MAX_THETA = +M_PI_2;								// +pi/2 without the end point.
-		const int NUM_THETAS = 38;
+		const int NUM_THETAS = 80;
 		std::uniform_real_distribution<double> uniformDistributionH_2( -H/2, +H/2 );	// Random translation.
 
 		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i distinct heights, MaxRL=%i, H=%g\n", NUM_A, maxRL(), H );
@@ -101,7 +103,7 @@ int main ( int argc, char* argv[] )
 
 		const size_t TOT_ITERS = 3 * NUM_HK_MAX * (NUM_HK_MAX + 1) / 2;	// Num of axes times num of pairs of hk_max.
 		size_t step = 0;
-		const int BUFFER_MIN_SIZE = 100000;
+		const int BUFFER_MIN_SIZE = 150000;
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
 		if( mpi.rank() == 0 )								// Only rank 0 controls the buffer.
 			buffer.reserve( BUFFER_MIN_SIZE );
@@ -285,7 +287,7 @@ int main ( int argc, char* argv[] )
 							double minHKInBatch, maxHKInBatch;
 							double hkError = gLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
 																 xyz_max, samples, minHKInBatch, maxHKInBatch, genProb,
-																 HK_MAX_LO, probMaxHKLB(), minHK(), 0.05, sampledFlag,
+																 MID_HK_MAX, probMidMaxHK(), minHK(), 0.0035, sampledFlag,
 																 SQR( U_ZERO ), SQR( V_ZERO ) );
 							maxHKError = MAX( maxHKError, hkError );
 							trackedMinHK = MIN( minHKInBatch, trackedMinHK );	// Update the tracked |hk*| bounds.
