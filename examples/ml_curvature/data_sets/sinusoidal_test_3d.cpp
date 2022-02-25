@@ -1,12 +1,9 @@
 /**
- * Testing distance computation from a point to 2D Gaussian manifold immersed in 3D and triangulated into a cloud of
+ * Testing distance computation from a point to sinusoidal manifold immersed in 3D and triangulated into a cloud of
  * points organized into a balltree for fast querying.
  *
- * Based on matlab/gaussian_3d_adjusted_domain.m, steps 1 through 4.
- *
  * Developer: Luis Ángel.
- * Created: February 5, 2022.
- * Updated: February 24, 2022.
+ * Created: February 24, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -25,7 +22,7 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_level_set.h>
 #include <random>
-#include "gaussian_3d.h"
+#include "sinusoidal_3d.h"
 #include <src/parameter_list.h>
 
 
@@ -33,13 +30,14 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double> minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 in 2D)" );
+	param_t<double>         minHK( pl, 0.01, "minHK", "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
+	param_t<double>         maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<double> probMaxHKLB( pl, 0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
 	param_t<std::string> outputDir( pl, ".", "outputDir", "Path where files will be written to (default: build folder)" );
 
-	std::mt19937 genProb{};	// NOLINT Random engine for probability for selecting or not a sampled point.
+	std::mt19937 genProb{};	// NOLINT Random engine for probability for choosing whether to sample a grid point or not.
 
 	try
 	{
@@ -56,89 +54,40 @@ int main ( int argc, char* argv[] )
 		// Loading parameters from command line.
 		cmdParser cmd;
 		pl.initialize_parser( cmd );
-		if( cmd.parse( argc, argv, "Gaussian data set test" ) )
+		if( cmd.parse( argc, argv, "Three-dimensional sinusoidal data set test" ) )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
-		std::cout << "Testing Gaussian level-set function in 3D" << std::endl;
+		std::cout << "Testing sinusoidal level-set function in 3D" << std::endl;
 
 		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
-		// initialized data.  File name is gaussian.csv; only rank 0 writes the samples to a file.
+		// initialized data.  File name is sinusoid.csv; only rank 0 writes the samples to a file.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() );
 		std::ofstream file;
-		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "gaussian.csv", file );
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "sinusoid.csv", file );
 
 		parStopWatch watch( parStopWatch::all_timings );
 
-		/////////////////////////// 1) Defining the Gaussian surface and its shape parameters //////////////////////////
+		////////////////////////// 1) Defining the sinusoidal surface and its shape parameters /////////////////////////
 
-		const double H = 1. / (1 << maxRL());				// Highest spatial resolution in x/y directions.
-		const double A = 200 *  H;							// Gaussian height.
+		const double H = 1. / (1 << maxRL());				// Highest spatial resolution.
+		const double MAX_K = maxHK() / H;					// Steepest curvature.
+		const double MIN_K = minHK() / H;					// Flattest curvature.
+		const double MAX_A = 2 / MIN_K / 2;					// Height bounds: MAX_A, which is half the max sphere radius and
+		const double MIN_A = 10 / MAX_K;					// MIN_A = 5*(min radius).
+		const double A = MAX_A;								// Sinusoid amplitude.
 		const double start_k_max = 2 / (3 * H);				// Starting max desired curvature; hk_max^up = 4/3  and  hk_max^low = 2/3 (2/3 and 1/3 in 2D).
 		const double K_MAX = 2 * start_k_max;				// Max curvature at the peak (here, I chose the maximum possible).
-		const double SU2 = 2 * A / start_k_max;				// Variances along u and v directions that yield this curvature.
-		const double denom = K_MAX / A * SU2 - 1;
-		assert( denom > 0 );
-		const double SV2 = SU2 / denom;
+		const double WU = sqrt( start_k_max / (2 * A) );	// Frequencies along u and v directions that yield this curvature.
+		const double WV = sqrt( K_MAX / A - SQR( WU ) );
 
-		Gaussian gaussian( A, SU2, SV2 );					// Gaussian surface: Q(u,v) = A * exp(-0.5*(u^2/su^2 + v^2/sv^2)).
+		Sinusoid sinusoid( A, WU, WV );						// Sinusoidal surface: Q(u,v) = A * sin(wu*u) * sin(wv*v).
 
-		// Finding how far to go in the limiting ellipse half-axes.  We'll tringulate surface only within this region.
-		const double U_ZERO = gaussian.findKappaZero( H, dir::x );
-		const double V_ZERO = gaussian.findKappaZero( H, dir::y );
-		const double ULIM = U_ZERO + gaussian.su();			// Limiting ellipse semi-axes for triangulation.
-		const double VLIM = V_ZERO + gaussian.sv();
-		const double QTOP = A + 4 * H;						// Adding some padding so that we can sample points correctly at the tip.
-		double quZero = gaussian( U_ZERO, 0 );				// Let's find the lowest Q.
-		double qvZero = gaussian( 0, V_ZERO );
-		const double QBOT = MAX( 0., MIN( quZero, qvZero ) - 4 * H );
-		const size_t halfU = ceil(ULIM / H);				// Half u axis in H units.
-		const size_t halfV = ceil(VLIM / H);				// Half v axis in H units.
+		/////////////////////// 2) Finding the limits for both triangulation and physical domain ///////////////////////
 
-		//////////////////////////// 2) Defining the transformed Gaussian level-set function ///////////////////////////
+		const double SAM_RADIUS = 1.125 * MAX_A;			// Sampling radius.
 
-		const Point3 trans = {-0.125, 0.125, -0.125};		// Translation of canonical coordinate system.
-		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
-		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
-
-		watch.start();
-		PetscPrintf( mpi.comm(), "Creating balltree" );
-		GaussianLevelSet gaussianLevelSet( &mpi, trans, rotAxis.normalize(), rotAngle, halfU, halfV, maxRL(), &gaussian,
-										   SQR( ULIM ), SQR( VLIM ) );
-		watch.read_duration_current( true );
-		gaussianLevelSet.dumpTriangles( "gaussian_triangles.csv" );
-
-		//////////////////// 3) Finding the world coords of (canonical) cylinder containing Q(u,v) /////////////////////
-
-		const double QCylCCoords[8][P4EST_DIM] = {
-			{-U_ZERO, 0, QTOP}, {+U_ZERO, 0, QTOP}, {0, -V_ZERO, QTOP}, {0, +V_ZERO, QTOP},	// Top coords (the four points lying on the same QTOP found above).
-			{-U_ZERO, 0, QBOT}, {+U_ZERO, 0, QBOT}, {0, -V_ZERO, QBOT}, {0, +V_ZERO, QBOT}	// Base coords (the four points lying on the same QBOT found above).
-		};
-
-		double minQCylWCoords[P4EST_DIM] = {+DBL_MAX, +DBL_MAX, +DBL_MAX};		// Hold the minimum and maximum cylinder
-		double maxQCylWCoords[P4EST_DIM] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};		// world coordinates.
-		for( const auto& cylCPoint : QCylCCoords )
-		{
-			Point3 cylWPoint = gaussianLevelSet.toWorldCoordinates( cylCPoint[0], cylCPoint[1], cylCPoint[2] );
-			for( int i = 0; i < P4EST_DIM; i++ )
-			{
-				minQCylWCoords[i] = MIN( minQCylWCoords[i], cylWPoint.xyz( i ) );
-				maxQCylWCoords[i] = MAX( maxQCylWCoords[i], cylWPoint.xyz( i ) );
-			}
-		}
-
-		//////////////////// 4) Use the x,y,z ranges to find the domain's length in each direction /////////////////////
-
-		double QCylWRange[P4EST_DIM];
-		double WCentroid[P4EST_DIM];
-		for( int i = 0; i < P4EST_DIM; i++ )
-		{
-			QCylWRange[i] = maxQCylWCoords[i] - minQCylWCoords[i];
-			WCentroid[i] = (minQCylWCoords[i] + maxQCylWCoords[i]) / 2;		// Raw centroid.
-			WCentroid[i] = round( WCentroid[i] / H ) * H;					// A numerically good centroid as a multiple of H.
-		}
-
-		const double CUBE_SIDE_LEN = MAX( QCylWRange[0], MAX( QCylWRange[1], QCylWRange[2] ) );
+		const double CUBE_SIDE_LEN = 2 * SAM_RADIUS;						// We want a cubic domain of a relatively small size.
 		const unsigned char OCTREE_RL_FOR_LEN = MAX( 0, maxRL() - 5 );		// Defines the log2 of octree's len (i.e., octree's len is a power of two).
 		const double OCTREE_LEN = 1. / (1 << OCTREE_RL_FOR_LEN);
 		const unsigned char OCTREE_MAX_RL = maxRL() - OCTREE_RL_FOR_LEN;	// Effective max refinement level to achieve desired H.
@@ -146,10 +95,29 @@ int main ( int argc, char* argv[] )
 		const double D_CUBE_SIDE_LEN = N_TREES * OCTREE_LEN;				// Adjusted domain cube len as a multiple of H and octree len.
 		const double HALF_D_CUBE_SIDE_LEN = D_CUBE_SIDE_LEN / 2;
 
-		// Defining a cubic domain that contains at least the Gaussian and its limiting ellipse.
+		const double D_CUBE_DIAG_LEN = sqrt( 3 ) * D_CUBE_SIDE_LEN;			// Use this diag to determine triangulated surface.
+		const double UVLIM = D_CUBE_DIAG_LEN / 2 + 4 * H;					// Notice the padding.
+		const size_t halfUV = ceil( UVLIM / H );							// Half UV domain in H units.
+
+		////////////////////////// 3) Defining the transformed sinusoidal level-set function ///////////////////////////
+
+		const Point3 trans = {-0.125, 0.125, -0.125};		// Translation of canonical coordinate system.
+		const Point3 rotAxis = {1, -1, 0};					// Axis of rotation (normalized when constructing level-set).
+		const double rotAngle = 11 * M_PI / 36;				// Rotation angle about rotAxis.
+
+		watch.start();
+		PetscPrintf( mpi.comm(), "Creating balltree" );
+		SinusoidalLevelSet sinusoidalLevelSet( &mpi, trans, rotAxis.normalize(), rotAngle, halfUV, halfUV, maxRL(), &sinusoid );
+		watch.read_duration_current( true );
+
+		sinusoidalLevelSet.dumpTriangles( "sinusoidal_triangles.csv" );
+
+		////////////////////////////////////////////// 4) Set up macromesh /////////////////////////////////////////////
+
+		// Defining a symmetric cubic domain whose dimensions are multiples of H.
 		int n_xyz[] = {N_TREES, N_TREES, N_TREES};
-		double xyz_min[] = {WCentroid[0] - HALF_D_CUBE_SIDE_LEN, WCentroid[1] - HALF_D_CUBE_SIDE_LEN, WCentroid[2] - HALF_D_CUBE_SIDE_LEN};
-		double xyz_max[] = {  xyz_min[0] + D_CUBE_SIDE_LEN     ,   xyz_min[1] + D_CUBE_SIDE_LEN     ,   xyz_min[2] + D_CUBE_SIDE_LEN     };
+		double xyz_min[] = {-HALF_D_CUBE_SIDE_LEN, -HALF_D_CUBE_SIDE_LEN, -HALF_D_CUBE_SIDE_LEN};
+		double xyz_max[] = {+HALF_D_CUBE_SIDE_LEN, +HALF_D_CUBE_SIDE_LEN, +HALF_D_CUBE_SIDE_LEN};
 		int periodic[] = {0, 0, 0};											// Non-periodic domain.
 
 		// p4est variables and data structures.
@@ -161,17 +129,17 @@ int main ( int argc, char* argv[] )
 
 		////////////////////////////////// 5) Proceed with discretization and sampling /////////////////////////////////
 
-		// Create the forest using the Gaussian level-set as a refinement criterion.
-		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, OCTREE_MAX_RL, &gaussianLevelSet, 2.0 );
+		// Create the forest using the sinusoidal level-set as a refinement criterion.
+		splitting_criteria_cf_and_uniform_band_t levelSetSplittingCriterion( 0, OCTREE_MAX_RL, &sinusoidalLevelSet, 2.0 );
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
 		p4est->user_pointer = (void *)( &levelSetSplittingCriterion );
 
 		// Refine and partition forest.
 		watch.start();
 		PetscPrintf( mpi.comm(), "Refining/coarsening and partitioning" );
-		gaussianLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
-		gaussianLevelSet.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
-		for( int i = 0; i < OCTREE_MAX_RL; i++ )											// queries for grid points.
+		sinusoidalLevelSet.toggleCache( true );				// Turn on cache to speed up repeated signed distance
+		sinusoidalLevelSet.reserveCache( (size_t)pow( 0.75 * HALF_D_CUBE_SIDE_LEN / H, 3 ) );	// Reserve space in cache to improve hashing.
+		for( int i = 0; i < OCTREE_MAX_RL; i++ )												// queries for grid points.
 		{
 			my_p4est_refine( p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, nullptr );
 			my_p4est_partition( p4est, P4EST_FALSE, nullptr );
@@ -203,7 +171,7 @@ int main ( int argc, char* argv[] )
 		// Populate phi values and compute the exact distance for vertices within a (linearly estimated) shell around Gamma.
 		watch.start();
 		PetscPrintf( mpi.comm(), "Query processing" );
-		gaussianLevelSet.evaluate( p4est, nodes, phi, exactFlag );
+		sinusoidalLevelSet.evaluate( p4est, nodes, phi, exactFlag );
 		watch.read_duration_current( true );
 
 		// Reinitialize level-set function.
@@ -213,18 +181,18 @@ int main ( int argc, char* argv[] )
 		ls.reinitialize_2nd_order( phi, reinitNumIters() );
 		watch.read_duration_current( true );
 
-		// Once the level-set function is reinitialized, sample nodes with a normal distribuction aligned with Gaussian.
+		// Once the level-set function is reinitialized, sample nodes next to Gamma.
 		watch.start();
 		PetscPrintf( mpi.comm(), "Collecting samples" );
-		Vec sampledFlag;							// An flag vector to distinguish sampled nodes along the interface.
+		Vec sampledFlag;							// A flag vector to distinguish sampled nodes along the interface.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
 
 		std::vector<std::vector<double>> samples;
 		double trackedMinHK, trackedMaxHK;
-		double maxHKError = gaussianLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
-															 samples, trackedMinHK, trackedMaxHK, genProb,
-															 H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01,
-															 sampledFlag, SQR( U_ZERO ), SQR( V_ZERO ) );
+		double maxHKError = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
+															   samples, trackedMinHK, trackedMaxHK, genProb,
+															   H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01, sampledFlag,
+															   SAM_RADIUS, exactFlag );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );
 
@@ -245,7 +213,7 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 
 		std::ostringstream oss;
-		oss << "gaussian_test";
+		oss << "sinusoid_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
 								3, 0, oss.str().c_str(),
@@ -254,8 +222,8 @@ int main ( int argc, char* argv[] )
 								VTK_POINT_DATA, "exactFlag", exactFlagReadPtr );
 
 		// Clean up.
-		gaussianLevelSet.toggleCache( false );		// Done with cache.
-		gaussianLevelSet.clearCache();
+		sinusoidalLevelSet.toggleCache( false );		// Done with cache.
+		sinusoidalLevelSet.clearCache();
 
 		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );

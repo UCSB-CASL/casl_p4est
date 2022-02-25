@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: February 8, 2022.
+ * Updated: February 24, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -15,6 +15,7 @@
 #include <src/point2.h>
 #include <src/point3.h>
 #include <random>
+#include <unordered_set>
 
 namespace geom
 {
@@ -548,27 +549,46 @@ namespace geom
 		}
 
 		/**
-		 * Find the closest point in a list S to a query point q.
+		 * Find the k closest points in a list S to a query point q.
 		 * @param [in] q Query point.
 		 * @param [in] S List of (pointers) to test.
 		 * @param [out] d Shortest distance with closest point.
+		 * @param [in] k Maximum number of nearest neighbors to keep track of.
+		 * @param [in] init Whether to discard the contents of xs and ds through initialization.
 		 * @return Closest point.
 		 */
-		static const Point3 *_findClosest( const Point3& q, const std::vector<const Point3 *>& S, double& d )
+		static void _findKClosest( const Point3& q, const std::vector<const Point3 *>& S, Point3 const **xs, double *ds,
+								   const unsigned char& k=1, const bool& init=true )
 		{
-			d = DBL_MAX;
-			const Point3 *closest = nullptr;
-			for( const auto& s : S )
+			// Initialize as needed.
+			if( init )
 			{
-				double dist = (q - *s).norm_L2();
-				if( dist < d )
+				for( int i = 0; i < k; i++ )
 				{
-					d = dist;
-					closest = s;
+					xs[i] = nullptr;
+					ds[i] = DBL_MAX;
 				}
 			}
 
-			return closest;
+			// Search.
+			for( const auto& s : S )
+			{
+				double dist = (q - *s).norm_L2();
+				for( int i = 0; i < k; i++ )	// Find where to place the new closest point and distance.
+				{
+					if( dist < ds[i] )			// ith location must be updated; shift everything after that.
+					{
+						for( int j = k - 1; j > i; j-- )	// Shift data.
+						{
+							xs[j] = xs[j-1];
+							ds[j] = ds[j-1];
+						}
+						xs[i] = s;
+						ds[i] = dist;
+						break;
+					}
+				}
+			}
 		}
 
 		/**
@@ -660,27 +680,24 @@ namespace geom
 		}
 
 		/**
-		 * Explore the (sub)tree rooted at n recursively to find the closest data point x (with distance d) to the query
-		 * point q.
+		 * Explore the (sub)tree rooted at n recursively to find the k closest data points x (with distances d) to the
+		 * query point q.
+		 * @note Prior to calling this function for the first time, make sure the output arrays contain nullptr values.
 		 * @param [in] q Query point.
-		 * @param [out] x Closest point to q in currently explored (sub)tree.
-		 * @param [out] d Distance from q to closest point x.
+		 * @param [out] xs Closest points to q in currently explored (sub)tree.
+		 * @param [out] ds Distances from q to closest points x.
 		 * @param [in] n (Sub)tree root or node to explore (if a leaf).
+		 * @param [in] k Maximum number of closest points to keep track of.
 		 */
-		void _findNearestNeighbor( const Point3& q, const Point3*& x, double& d, const BalltreeNode *n ) const
+		void _findKNearestNeighbors( const Point3& q, Point3 const **xs, double *ds, const BalltreeNode *n,
+									 const unsigned char& k=1 ) const
 		{
 			if( _trace )
 				std::cout << n->id << " ";
 
-			if( !n->leftChild && !n->rightChild )	// If a leaf, compare against all nodes in it.
+			if( !n->leftChild && !n->rightChild )					// If a leaf, compare against all nodes in it.
 			{
-				double dist;
-				const Point3 *closest = _findClosest( q, n->points, dist );
-				if( dist < d )						// Update closest point and shortest distance.
-				{
-					d = dist;
-					x = closest;
-				}
+				_findKClosest( q, n->points, xs, ds, k, false );	// Find k closest without overwriting current results.
 
 				if( _trace )
 					std::cout << "* tested leaf points" << std::endl;
@@ -703,11 +720,11 @@ namespace geom
 					second = n->leftChild;
 				}
 
-				if( (first->center - q).norm_L2() - first->radius < d )		// Probe and prune left subtree if no
-					_findNearestNeighbor( q, x, d, first );					// member in it is within distance d from q.
+				if( (first->center - q).norm_L2() - first->radius < ds[k - 1] )	// Probe and prune left subtree if no
+					_findKNearestNeighbors( q, xs, ds, first, k );				// member in it is within distance d from q.
 
-				if( (second->center - q).norm_L2() - second->radius < d )	// Probe and prune right subtree if no
-					_findNearestNeighbor( q, x, d, second );				// member in it is within distance d from q.
+				if( (second->center - q).norm_L2() - second->radius < ds[k - 1] )	// Probe and prune right subtree if no
+					_findKNearestNeighbors( q, xs, ds, second, k );					// member in it is within distance d from q.
 			}
 		}
 
@@ -764,26 +781,51 @@ namespace geom
 		}
 
 		/**
-		 * Find the nearest point in the structure to a query point q.
+		 * Find the k nearest neighbors to a query point q and send them back in distance-ascending order.
 		 * @param [in] q Query point.
-		 * @param [out] d Shortest distance.
-		 * @return Nearest neighbor.
+		 * @param [out] xs Nearest neighbor points.
+		 * @param [out] ds Nearest neighbor distances.
+		 * @param [in] k Maximum number of neighbors to keep track of.
+		 * @param [in] init Whether to override xs and ds through initialization.
+		 * @throws invalid_argument exception if k is not at least 1.
 		 */
-		const Point3 *findNearestNeighbor( const Point3& q, double& d ) const
+		void findKNearestNeighbors( const Point3& q, Point3 const **xs, double *ds, const unsigned char& k=1,
+									const bool& init=true ) const
 		{
+			if( k == 0 )
+				throw std::invalid_argument( "[CASL_ERROR] geom::Balltree::findKNearestNeighbors: k must be at least 1!" );
+
+			if( init )	// Reset output arrays through initialization?
+			{
+				for( int i = 0; i < k; i++ )
+				{
+					xs[i] = nullptr;
+					ds[i] = DBL_MAX;
+				}
+			}
+
 			if( _trace )
 			{
 				std::cout << "Tracing query for [" << q.x << ", " << q.y << ", " << q.z << "]" << std::endl;
 				std::cout << "--- Visited nodes ---" << std::endl;
 			}
 
-			const Point3 *x = nullptr;
-			d = DBL_MAX;
-			_findNearestNeighbor( q, x, d, _root );
+			_findKNearestNeighbors( q, xs, ds, _root, k );
 
 			if( _trace )
 				std::cout << "--- end ---" << std::endl;
+		}
 
+		/**
+		 * Find the nearest point to a query point q.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance.
+		 * @return Nearest neighbor.
+		 */
+		const Point3 *findNearestNeighbor( const Point3& q, double& d ) const
+		{
+			Point3 const* x;
+			findKNearestNeighbors( q, &x, &d, 1, true );
 			return x;
 		}
 
@@ -922,7 +964,7 @@ namespace geom
 			}
 
 			// Organize the points into a balltree for fast knn search.
-			_balltree = new Balltree( balltreePoints );
+			_balltree = new Balltree( balltreePoints, btKLeaf );
 
 			// Triangulation.  The pattern is the following, starting from the bottom-left corner of the domain.
 			//     :    :    :    :
@@ -990,7 +1032,62 @@ namespace geom
 		}
 
 		/**
-		 * Find nearest point to triangulated surface.
+		 * Find nearest point to triangulated surface using a k-nearest-neighbor approach.
+		 * @param [in] q Query point.
+		 * @param [out] d Shortest distance to triangulated surface.
+		 * @param [out] t Triangle where shortest distance was found.
+		 * @param [in] k Maximum number of neighbors to find and pull triangles from.
+		 * @return Nearest point.
+		 * @throws invalid_argument exception if k == 0.
+		 */
+		Point3 findNearestPointFromKNN( const Point3& q, double& d, const Triangle *& t, const unsigned char& k ) const
+		{
+			if( k == 0 )
+				throw std::invalid_argument( "[CASL_ERROR] geom::DiscretizedMongePatch::findKNearestPointFromKNN: k must be at least 1!" );
+
+			// First, find the closest discrete points in the cloud.
+			auto *ds = new double[k];
+			auto const* *xs = new Point3 const*[k];
+			_balltree->findKNearestNeighbors( q, xs, ds, k, true );		// This function also initializes vars to correct value.
+
+			// Next, compute distance to triangles, and keep the minimum.
+			int nn = 0;
+			d = DBL_MAX;
+			Point3 closestPoint;
+			std::unordered_set<Triangle const*> visitedT( k * 8 );		// Memoization to avoid double-checking triangles.
+			while( nn < k && xs[nn] )							// Check triangles attached to each found nearest point.
+			{
+				auto j = (size_t)((xs[nn]->y - _vMin) / _h);	// Row.
+				auto i = (size_t)((xs[nn]->x - _uMin) / _h);	// Col.
+				size_t idx = j * _nPointsAlongU + i;			// Node id.
+				for( const auto& triangle : _pointsToTriangles[idx] )
+				{
+					if( visitedT.count( triangle ) )			// Skip triangles already visited.
+						continue;
+					visitedT.insert( triangle );
+
+					Point3 p = triangle->findClosestPointToQuery( &q );
+					double d1 = (p - q).norm_L2();
+					if( d1 < d )								// Found a closer point?
+					{
+						closestPoint = p;
+						d = d1;
+						t = triangle;
+					}
+				}
+
+				nn++;
+			}
+
+			// Clean up.
+			delete [] ds;
+			delete [] xs;
+
+			return closestPoint;
+		}
+
+		/**
+		 * Find nearest point to triangulated surface using a k-nearest-neighbor approach with k = 1.
 		 * @param [in] q Query point.
 		 * @param [out] d Shortest distance to triangulated surface.
 		 * @param [out] t Triangle where shortest distance was found.
@@ -998,29 +1095,7 @@ namespace geom
 		 */
 		Point3 findNearestPoint( const Point3& q, double& d, const Triangle *& t ) const
 		{
-			// First, find the closest discrete point in the cloud.
-			double d0 = DBL_MAX;
-			const Point3* nn = _balltree->findNearestNeighbor( q, d0 );
-
-			// Next, compute distance to triangles, and keep the minimum.
-			auto j = (size_t)((nn->y - _vMin) / _h);		// Row.
-			auto i = (size_t)((nn->x - _uMin) / _h);		// Col.
-			size_t idx = j * _nPointsAlongU + i;			// Node id.
-			d = DBL_MAX;
-			Point3 closestPoint;
-			for( const auto& triangle : _pointsToTriangles[idx] )
-			{
-				Point3 p = triangle->findClosestPointToQuery( &q );
-				double d1 = (p - q).norm_L2();
-				if( d1 < d )								// Found a closer point?
-				{
-					closestPoint = p;
-					d = d1;
-					t = triangle;
-				}
-			}
-
-			return closestPoint;
+			return findNearestPointFromKNN( q, d, t, 1 );
 		}
 
 		/**
