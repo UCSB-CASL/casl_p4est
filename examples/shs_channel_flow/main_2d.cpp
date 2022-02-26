@@ -1154,11 +1154,13 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   ns->set_external_forces_per_unit_mass(tmp);
 }
 
-void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup)
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup,
+								external_force_per_unit_mass_t* const external_acceleration[P4EST_DIM],
+								const mass_flow_controller_t* controller)
 {
   double my_errors[2*P4EST_DIM];
-  for (unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
-    my_errors[dir] = 0.0;
+  for( double& my_error : my_errors )
+    my_error = 0.0;
   PetscErrorCode ierr;
 
   // calculate the analytical solution if not done, yet
@@ -1186,8 +1188,8 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
   // Compute the node errors
 
   const Vec* v_nodes; v_nodes = ns->get_velocity_np1();
-  Vec v_exact_nodes[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
-  Vec error_nodes[P4EST_DIM]  = { DIM(NULL, NULL, NULL) };
+  Vec v_exact_nodes[P4EST_DIM] = { DIM(nullptr, nullptr, nullptr) };
+  Vec error_nodes[P4EST_DIM]  = { DIM(nullptr, nullptr, nullptr) };
   const double *v_nodes_p[P4EST_DIM];
   double *v_exact_nodes_p[P4EST_DIM], *error_nodes_p[P4EST_DIM];
 
@@ -1202,7 +1204,7 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
     }
   }
 
-  for (size_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
+  for (p4est_locidx_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM]; node_xyz_fr_n(n, ns->get_p4est(), ns->get_nodes(), xyz);
     double v_exact_tmp[P4EST_DIM];
@@ -1259,12 +1261,13 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
   }
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    if (error_nodes[dir] != NULL){
+    if (error_nodes[dir] != nullptr){
       ierr = VecDestroy(error_nodes[dir]); CHKERRXX(ierr); }
-    if (v_exact_nodes[dir] != NULL){
+    if (v_exact_nodes[dir] != nullptr){
       ierr = VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr); }
   }
 
+  ierr = PetscPrintf(ns->get_mpicomm(), "Friction velocity u_tau is %.6E\n", channel.canonical_u_tau(external_acceleration[0]->get_value())); CHKERRXX( ierr );
   ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on u is %.6E\n", my_errors[0]); CHKERRXX(ierr);
   ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on v is %.6E\n", my_errors[1]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
@@ -1275,6 +1278,18 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_chann
 #ifdef P4_TO_P8
   ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on w is %.6E\n", my_errors[P4EST_DIM + 2]); CHKERRXX(ierr);
 #endif
+
+  // Let's compute the analytical Re_b and compare it with the estimation.
+  double Re_b = channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu());
+  double cosPi_GF_2 = cos( M_PI * channel.GF() / 2 );
+  if( cosPi_GF_2 <= 0 )
+	  throw std::domain_error( "[CASL_ERROR] check_accuracy_of_solution: we can't compute log of infty or a negative number!" );
+  double lambda = channel.get_pitch() / M_PI * log( 1 / cosPi_GF_2 );
+  double Re_b_star = SQR(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu())) * (lambda / channel.delta() + 1./3);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Estimated  Re_b   = %.6E\n", Re_b ); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Analytical Re_b^* = %.6E\n", Re_b_star ); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "Relative error |Re_b - Re_b^*|/|Re_b^*| = %.6E\n", ABS(Re_b - Re_b_star) / ABS(Re_b_star) ); CHKERRXX(ierr);
+
   setup.accuracy_check_done = true;
 }
 
@@ -1286,6 +1301,7 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
                      DIM(setup.Reynolds, (int) (channel.length()/channel.delta()), (int) (channel.width()/channel.delta())), channel.pitch_to_delta(), channel.GF()); CHKERRXX(ierr);
 
   ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g)\n", ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(), ns->get_mu(), 1.0/ns->get_mu());
+  CHKERRXX( ierr );
 
   if (create_directory(setup.export_dir, ns->get_mpirank(), ns->get_mpicomm()))
     throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory " + setup.export_dir);
@@ -1302,9 +1318,8 @@ void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, 
   initialize_monitoring(setup, ns);
 
   // exportation of slice-averaged and line-averaged velocity profile(s)
-  if (profiler != NULL)
-    delete  profiler;
-  profiler = NULL;
+  delete profiler;
+  profiler = nullptr;
 
   if (setup.save_profiles)
     profiler = new velocity_profiler_t(cmd, ns, setup, channel);
@@ -1315,7 +1330,7 @@ bool monitor_simulation(const simulation_setup &setup, const mass_flow_controlle
   if (ns->get_mpirank() == 0)
   {
     FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "a");
-    if (fp_monitor == NULL)
+    if (fp_monitor == nullptr)
       throw std::runtime_error("monitor_simulation: could not open monitoring file.");
     fprintf(fp_monitor, "%g %g %g\n", setup.tn,
             (external_acceleration[0]->get_value() > 0.0 ?  channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) : -1.0),
@@ -1356,10 +1371,10 @@ void export_drag(const simulation_setup &setup, const my_p4est_navier_stokes_t* 
   if (ns->get_mpirank() == 0)
   {
     const double U_b = channel.mean_u(controller->read_latest_mass_flow(), ns->get_rho());
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      drag[dir] /= (-2.0*SQR(U_b)*MULTD(ns->get_rho(), channel.length(), channel.width()));
+    for(double& dir : drag)
+      dir /= (-2.0*SQR(U_b)*MULTD(ns->get_rho(), channel.length(), channel.width()));
     FILE* fp_drag = fopen(setup.file_drag.c_str(), "a");
-    if (fp_drag == NULL)
+    if (fp_drag == nullptr)
       throw std::runtime_error("export_drag: could not open file for drag output.");
     fprintf(fp_drag, drag_output_format.c_str(), setup.tn, DIM(drag[0], drag[1], drag[2]));
     fclose(fp_drag);
@@ -1388,7 +1403,7 @@ void check_voronoi_tesselation_and_print_warnings_if_wrong(const my_p4est_navier
 
 int main (int argc, char* argv[])
 {
-  mpi_environment_t mpi;
+  mpi_environment_t mpi{};
   mpi.init(argc, argv);
 
   cmdParser cmd;
@@ -1449,11 +1464,11 @@ int main (int argc, char* argv[])
 
   simulation_setup setup(mpi, cmd);
 
-  my_p4est_navier_stokes_t* ns                    = NULL;
-  my_p4est_brick_t* brick                         = NULL;
-  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
-  mass_flow_controller_t *flow_controller         = NULL;
-  external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
+  my_p4est_navier_stokes_t* ns                    = nullptr;
+  my_p4est_brick_t* brick                         = nullptr;
+  splitting_criteria_cf_and_uniform_band_t* data  = nullptr;
+  mass_flow_controller_t *flow_controller         = nullptr;
+  external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(nullptr, nullptr, nullptr) };
 
   my_p4est_shs_channel_t channel(mpi);
 
@@ -1463,7 +1478,7 @@ int main (int argc, char* argv[])
   else
     create_solver_from_scratch(mpi, cmd, ns, brick, channel, external_acceleration, data, flow_controller, setup);
 
-  velocity_profiler_t *profiler = NULL;
+  velocity_profiler_t *profiler = nullptr;
   initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
 
   if(setup.save_timing)
@@ -1472,8 +1487,8 @@ int main (int argc, char* argv[])
   setup.tn = setup.tstart;
   setup.update_save_data_idx(); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
-  my_p4est_poisson_cells_t* cell_solver = NULL;
-  my_p4est_poisson_faces_t* face_solver = NULL;
+  my_p4est_poisson_cells_t* cell_solver = nullptr;
+  my_p4est_poisson_faces_t* face_solver = nullptr;
   Vec dxyz_hodge_old[P4EST_DIM];
 
   while (!setup.done())
@@ -1481,13 +1496,13 @@ int main (int argc, char* argv[])
     if (setup.iter > 0)
     {
       if (flow_controller->read_latest_mass_flow() <= 0.0)
-        std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
+        throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
 
       bool solvers_can_be_reused = setup.set_dt_and_update_grid(ns);
-      if (cell_solver != NULL && !solvers_can_be_reused){
-        delete cell_solver; cell_solver = NULL; }
-      if (face_solver != NULL && !solvers_can_be_reused){
-        delete face_solver; face_solver = NULL; }
+      if (cell_solver != nullptr && !solvers_can_be_reused){
+        delete cell_solver; cell_solver = nullptr; }
+      if (face_solver != nullptr && !solvers_can_be_reused){
+        delete face_solver; face_solver = nullptr; }
     }
 
     if (setup.time_to_save_state())
@@ -1504,12 +1519,12 @@ int main (int argc, char* argv[])
     {
       ns->copy_dxyz_hodge(dxyz_hodge_old);
 
-      ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
+      ns->solve_viscosity(face_solver, (face_solver != nullptr), KSPBCGS, setup.pc_face);
 #ifdef P4EST_DEBUG
       check_voronoi_tesselation_and_print_warnings_if_wrong(ns, face_solver);
 #endif
 
-      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, NULL, dxyz_hodge_old, setup.control_hodge);
+      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != nullptr), setup.cell_solver_type, setup.pc_cell, false, nullptr, dxyz_hodge_old, setup.control_hodge);
 
       flow_controller->evaluate_current_mass_flow(ns);
       if (setup.flow_condition == constant_mass_flow)
@@ -1526,8 +1541,9 @@ int main (int argc, char* argv[])
       }
       iter_hodge++;
     }
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecDestroy(dxyz_hodge_old[dir]); CHKERRXX(ierr); }
+    for( auto& dir : dxyz_hodge_old ) {
+      ierr = VecDestroy(dir); CHKERRXX(ierr);
+	}
 
     ns->compute_velocity_at_nodes(setup.steps_grid_update > 1);
 
@@ -1564,7 +1580,7 @@ int main (int argc, char* argv[])
     }
 
     if (setup.do_accuracy_check)
-      check_accuracy_of_solution(ns, channel, setup);
+      check_accuracy_of_solution(ns, channel, setup, external_acceleration, flow_controller);
 
     setup.iter++;
   }
@@ -1573,19 +1589,16 @@ int main (int argc, char* argv[])
   if(setup.save_timing)
     setup.print_averaged_timings(mpi);
 
-  if (cell_solver != NULL)
-    delete  cell_solver;
-  if (face_solver != NULL)
-    delete face_solver;
+  delete cell_solver;
+  delete face_solver;
 
   delete ns;        // deletes the navier-stokes solver
-  // the brick and the connectivity are deleted within the above destructor...
+  					// the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
-  if (flow_controller != NULL)
-    delete flow_controller;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    if(external_acceleration[dir] != NULL)
-      delete external_acceleration[dir];
+  delete flow_controller;
+  for(auto& dir : external_acceleration)
+    delete dir;
+  delete profiler;
 
   return 0;
 }
