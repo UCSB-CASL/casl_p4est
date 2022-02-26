@@ -2,6 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
+ * Updated: February 25, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -351,14 +352,15 @@ public:
 	 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
 	 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
 	 * @param [in] sinusoid Sinusoid surface object in canonical coordinates.
+	 * @param [in] limR2 Squared limiting radius for triangulation.
 	 * @param [in] btKLeaf (Optional) maximum number of points in balltree leaf nodes.
 	 */
 	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis,
 						const double& rotAngle, const size_t& ku, const size_t& kv, const size_t& L,
-						const Sinusoid *sinusoid, const size_t& btKLeaf=40 )
+						const Sinusoid *sinusoid, const double& limR2, const size_t& btKLeaf=40 )
 						: _mpi( mpi ), _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle),
 						_sinusoid( sinusoid ), _c( cos( rotAngle ) ), _s( sin( rotAngle ) ),
-						_one_m_c( 1 - cos( rotAngle ) ), DiscretizedMongePatch( ku, kv, L, sinusoid, btKLeaf )
+						_one_m_c( 1 - cos( rotAngle ) ), DiscretizedMongePatch( ku, kv, L, sinusoid, btKLeaf, limR2, limR2 )
 	{
 		const std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::constructor: ";
 
@@ -643,6 +645,7 @@ public:
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] samR Sampling radius on the uv plane.
 	 * @param [in] filter Filter vector with 1s for nodes we can sample and anything else for non-sampling nodes.
+	 * @param [in] hkError Vector to hold |hk| error for sampled nodes.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws runtime_error if more than one node maps to the same discrete coordinates, or if cache is disabled or is
 	 * 		   empty, or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too), or if
@@ -654,7 +657,7 @@ public:
 						   double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
 						   const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
 						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						   const double& samR=DBL_MAX, const Vec& filter=nullptr ) const
+						   const double& samR=DBL_MAX, const Vec& filter=nullptr, Vec hkError=nullptr ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -708,6 +711,15 @@ public:
 		if( filter )
 			CHKERRXX( VecGetArrayRead( filter, &filterReadPtr ) );
 
+		// Reset the hk error vector if given.
+		double *hkErrorPtr;
+		if( hkError )
+		{
+			CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				hkErrorPtr[n] = 0;
+		}
+
 		// Prepare curvature interpolation.
 		my_p4est_interpolation_nodes_t kInterp( ngbd );
 		kInterp.set_input( kappa, interpolation_method::linear );
@@ -723,6 +735,8 @@ public:
 		std::unordered_set<std::string> coordsSet;	// Validation set that stores coordinates of the form "i,j,k" for
 		coordsSet.reserve( indices.size() );		// nodal indices, where i,j,k are h-based integers.
 #endif
+		std::vector<p4est_locidx_t> outIdxToNodeIdx;			// Allows to know which node outIdx refers to.
+		outIdxToNodeIdx.reserve( indices.size() );
 
 		for( const auto& n : indices )
 		{
@@ -805,6 +819,7 @@ public:
 				kInterp.add_point( outIdx, xyz );
 
 				samples.push_back( sample );
+				outIdxToNodeIdx.push_back( n );					// Keep track of node idx associated with this out idx.
 				outIdx++;
 
 				// Update flags.
@@ -836,6 +851,8 @@ public:
 			trackedMinHK = MIN( trackedMinHK, ABS( samples[i][K_INPUT_SIZE - 1] ) );	// Collect stats.
 			trackedMaxHK = MAX( trackedMaxHK, ABS( samples[i][K_INPUT_SIZE - 1] ) );
 			double error = ABS( samples[i][K_INPUT_SIZE - 1] - samples[i][K_INPUT_SIZE] );
+			if( hkError )										// Are we also recording the hk error?
+				hkErrorPtr[outIdxToNodeIdx[i]] = error;
 			trackedMaxHKError = MAX( trackedMaxHKError, error );
 		}
 		delete [] outKappa;
@@ -856,6 +873,15 @@ public:
 			// Synchronize sampling flag among processes.
 			CHKERRXX( VecGhostUpdateBegin( sampledFlag, INSERT_VALUES, SCATTER_FORWARD ) );
 			CHKERRXX( VecGhostUpdateEnd( sampledFlag, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
+		if( hkError )
+		{
+			CHKERRXX( VecRestoreArray( hkError, &hkErrorPtr ) );
+
+			// Synchronize sampling hk error among processes.
+			CHKERRXX( VecGhostUpdateBegin( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
 
 		// Clean up.
