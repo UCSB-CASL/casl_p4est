@@ -427,7 +427,7 @@ public:
 					  : _mpi( mpi ), _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _gaussian( gaussian ),
 					  _c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
 					  _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ), DiscretizedMongePatch( ku, kv, L, gaussian, btKLeaf, ru2, rv2 ),
-					  _sdsu2( SQR( sqrt( _ru2 ) + 3 * _h ) ), _sdsv2( SQR( sqrt( _rv2 ) + 3 * _h ) )		// Notice the padding.
+					  _sdsu2( SQR( sqrt( _ru2 ) + 4 * _h ) ), _sdsv2( SQR( sqrt( _rv2 ) + 4 * _h ) )	// Notice the padding.
 	{
 		const std::string errorPrefix = "[CASL_ERROR] ParaboloidLevelSet::constructor: ";
 
@@ -654,28 +654,19 @@ public:
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
-		const double H = _h;
-		auto gls = [this](const double& x, const double& y, const double& z){
-			return (*this)( x, y, z );
-		};
-
 		auto gdist = [this]( const double xyz[P4EST_DIM], bool& updated ){
 			return (*this).computeExactSignedDistance( xyz, updated );
 		};
 
-//#pragma omp parallel for default( none ) shared( nodes, p4est, phiPtr, gls, H, nodesForExactDist )	// Doesn't work with OpenMP.
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 		{
 			double xyz[P4EST_DIM];
 			node_xyz_fr_n( n, p4est, nodes, xyz );
-			phiPtr[n] = gls( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
+			phiPtr[n] = (*this)( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
 
-			// Points we are interested in lie within 3h away from Gamma (at least based on distance calculated from the triangulation).
-			if( ABS( phiPtr[n] ) <= 3 * H )
-			{
-#pragma omp critical
+			// Points we are interested in lie close to Gamma (at least based on distance calculated from the triangulation).
+			if( ABS( phiPtr[n] ) <= 2 * _h * sqrt( 3 ) )
 				nodesForExactDist.emplace_back( n );
-			}
 		}
 
 #pragma omp parallel for default( none ) num_threads( 4 ) \

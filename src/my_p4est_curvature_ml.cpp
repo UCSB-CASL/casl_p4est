@@ -691,9 +691,17 @@ int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::
 int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 											  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
 											  std::ofstream& file, FDEEP_FLOAT_TYPE minHK, FDEEP_FLOAT_TYPE maxHK,
-											  const unsigned short& nbins, const FDEEP_FLOAT_TYPE& frac )
+											  const unsigned short& nbins, const FDEEP_FLOAT_TYPE& frac,
+											  const FDEEP_FLOAT_TYPE& minFold)
 {
 	const std::string errorPrefix = "[CASL_ERROR] kml::utils::histSubSamplingAndSaveToFile: ";
+
+	if( minHK >= maxHK )
+		throw std::invalid_argument( errorPrefix + "MinHK must be smaller than MaxHK!" );
+
+	if( minFold < 1 )
+		throw std::invalid_argument( errorPrefix + "minFold must be at least 1!" );
+
 	int savedSamples = 0;
 	if( mpi.rank() == 0 )
 	{
@@ -710,9 +718,6 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 					maxHK = MAX( maxHK, ABS( sample[K_INPUT_SIZE - 1] ) );
 				}
 			}
-
-			if( minHK >= maxHK )
-				throw std::invalid_argument( errorPrefix + "MinHK must be smaller than MaxHK!" );
 
 			minHK -= FLT_EPSILON;		// Some padding to the histogran end points.
 			maxHK += FLT_EPSILON;
@@ -749,9 +754,18 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 			int mIdx = floor( nbins / 2.0 );
 			auto median = (nbins % 2 == 0)? (FDEEP_FLOAT_TYPE)ceil( (counts[mIdx] + counts[mIdx - 1]) / 2.0 ) : (FDEEP_FLOAT_TYPE)counts[mIdx];
 
+			// Find the smallest non-zero bin count.
+			int minCount = 0;
+			int b = 0;
+			while( b < nbins && (minCount = counts[b]) == 0 )
+				b++;
+
+			if( minCount == 0 )
+				throw std::runtime_error( errorPrefix + "Min count is zero?!" );
+
 			// Probabilistic subsampling by shuffling the indices within overpopulated bins.  Then, writing samples tofile.
-			int cap = (int)ceil( frac * median );
-			for( int b = 0; b < nbins; b++ )
+			int cap = (int)MAX( ceil( frac * median ), minFold * (FDEEP_FLOAT_TYPE)minCount );
+			for( b = 0; b < nbins; b++ )
 			{
 				if( bins[b].size() > cap )
 					std::shuffle( bins[b].begin(), bins[b].end(), std::mt19937( b ) );

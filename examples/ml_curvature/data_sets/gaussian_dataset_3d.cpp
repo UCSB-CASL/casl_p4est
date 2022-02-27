@@ -1,8 +1,8 @@
 /**
  * Generating samples using a 2D Gaussian surface embedded in 3D.
  *
- * Files written to file are of the form "#/gaussian_$.csv", where # is the unit-cube maximum level of refinement and $
- * is the Gaussian height index (i.e., 0, 1,... ).
+ * Filenames are of the form "#/gaussian_$.csv", where # is the unit-cube maximum level of refinement and $ is the
+ * Gaussian height index (i.e., 0, 1,... ).
  *
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
@@ -43,7 +43,7 @@ int main ( int argc, char* argv[] )
 	param_t<double>  probMidMaxHK( pl,  1.0, "probMidMaxHK", "Easing-off max probability for mean max HK (default: 1.0)" );
 	param_t<u_short>    startAIdx( pl,    0, "startAIdx", "Start index for Gaussian height (default: 0)" );
 	param_t<float> histMedianFrac( pl,  0.2, "histMedianFrac", "Histogram subsampling median fraction (default: 0.2)" );
-	param_t<std::string>   outDir( pl, "/Volumes/YoungMinEXT/k_ecnet_3d", "outDir", "Path where files will be written to (default: build folder)" );
+	param_t<std::string>   outDir( pl,  ".", "outDir", "Path where files will be written to (default: build folder)" );
 
 	// These random generators are initialized to the same seed across processes.
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.

@@ -109,7 +109,7 @@ int main ( int argc, char* argv[] )
 		watch.start();
 		PetscPrintf( mpi.comm(), "Creating balltree" );
 		SinusoidalLevelSet sinusoidalLevelSet( &mpi, trans, rotAxis.normalize(), rotAngle, halfUV, halfUV, maxRL(),
-											   &sinusoid, SQR( UVLIM ) );
+											   &sinusoid, SQR( UVLIM ), SAM_RADIUS );
 		watch.read_duration_current( true );
 
 		sinusoidalLevelSet.dumpTriangles( "sinusoidal_triangles.csv" );
@@ -196,7 +196,7 @@ int main ( int argc, char* argv[] )
 		double maxHKError = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
 															   samples, trackedMinHK, trackedMaxHK, genProb,
 															   H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01, sampledFlag,
-															   SAM_RADIUS, exactFlag, hkError );
+															   NAN, exactFlag, hkError );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );
 
@@ -236,6 +236,7 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
+		CHKERRXX( VecDestroy( hkError ) );
 		CHKERRXX( VecDestroy( exactFlag ) );
 		CHKERRXX( VecDestroy( sampledFlag ) );
 		CHKERRXX( VecDestroy( phi ) );

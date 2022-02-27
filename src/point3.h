@@ -38,6 +38,12 @@ public:
   Point3(double c1, double c2, double c3);
 
   /*!
+   * \brief constructor for Point3 with given coordinates in an array.
+   * \param [in] xyz Coordinates.
+   */
+  Point3(const double xyz[3]);
+
+  /*!
      * \brief copy constructor for Point2
      * \param pt the Point2 to copy (z coordinate is set to 0)
      */

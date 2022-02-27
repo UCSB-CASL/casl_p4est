@@ -148,24 +148,6 @@ public:
 	}
 
 	/**
-	 * Retrieve the frequency on the u direction.
-	 * @return _wu.
-	 */
-	double wu() const
-	{
-		return _wu;
-	}
-
-	/**
-	 * Retrieve the frequency on the v direction.
-	 * @return _wv.
-	 */
-	double wv() const
-	{
-		return _wv;
-	}
-
-	/**
 	 * Retrieve the squared frequency on the u direction.
 	 * @return _wu2.
 	 */
@@ -316,6 +298,9 @@ private:
 	mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// distances and nearest points.  Also,
 	mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// cache canonical coordinates for grid points.
 
+	const double _samR2;						// Squared sampling radius.
+	const double _sdR2;							// Sign-distance computation squared radius.
+
 	/**
 	 * Find nearest point and signed distance to triangulated surface using knn search.
 	 * @param [in] p Query point in canonical coords.
@@ -353,23 +338,29 @@ public:
 	 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
 	 * @param [in] sinusoid Sinusoid surface object in canonical coordinates.
 	 * @param [in] limR2 Squared limiting radius for triangulation.
-	 * @param [in] btKLeaf (Optional) maximum number of points in balltree leaf nodes.
+	 * @param [in] samR Sampling radius.
+	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
 	 */
-	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis,
-						const double& rotAngle, const size_t& ku, const size_t& kv, const size_t& L,
-						const Sinusoid *sinusoid, const double& limR2, const size_t& btKLeaf=40 )
+	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
+						const size_t& ku, const size_t& kv, const size_t& L, const Sinusoid *sinusoid,
+						const double& limR2, const double& samR=DBL_MAX, const size_t& btKLeaf=40 )
 						: _mpi( mpi ), _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle),
 						_sinusoid( sinusoid ), _c( cos( rotAngle ) ), _s( sin( rotAngle ) ),
-						_one_m_c( 1 - cos( rotAngle ) ), DiscretizedMongePatch( ku, kv, L, sinusoid, btKLeaf, limR2, limR2 )
+						_one_m_c( 1 - cos( rotAngle ) ), DiscretizedMongePatch( ku, kv, L, sinusoid, btKLeaf, limR2, limR2 ),
+						_samR2( samR == DBL_MAX? samR : SQR( samR ) ),
+						_sdR2( samR == DBL_MAX? samR : SQR( ABS( samR ) + 4 * _h ) )
 	{
 		const std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::constructor: ";
 
 		if( !sinusoid )
-			throw std::runtime_error( errorPrefix + "Sinusoid surface object can't be null!" );
+			throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
 
 		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
-			throw std::runtime_error( errorPrefix + "Rotation axis shouldn't be 0!" );
+			throw std::invalid_argument( errorPrefix + "Rotation axis shouldn't be 0!" );
 		_deltaStop = 1e-8 * _h;
+
+		if( samR < 1.5 * _h )				// Very small sampling radius?
+			throw std::invalid_argument( errorPrefix + "Sampling radius must be at least 1.5h!" );
 	}
 
 	/**
@@ -485,65 +476,70 @@ public:
 			auto ccRecord = _canonicalCoordsCache.find( coords );
 			if( record != _cache.end() && ccRecord != _canonicalCoordsCache.end() )
 			{
-				unsigned char k = 1;				// Tracks number of nearest neighbors to retrieve if tests fails.
+				const Point3& p = ccRecord->second;		// Canonical-coordinated point.
+				double exactSign = (p.z >= (*_sinusoid)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to sinusoid.
 
-				while( true )
+				if( SQR( p.x ) + SQR( p.y ) <= _sdR2 )	// Skip points projected outside padded sampling circle on the uv plane.
 				{
-					double initialTrustRadius = MAX( _h, ABS( (record->second).first ) );
-					column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// Initial (u,v) come from cached closest point.
-					Point3 p = ccRecord->second;		// Canonical-coordinated point.
+					unsigned char k = 1;				// Tracks number of nearest neighbors to retrieve if tests fails.
 
-					dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
-												 SinusoidPointDistanceModel( p, *_sinusoid ), initialPoint, initialTrustRadius );
-
-					// Check if minimization produced a better d* distance from q to the sinusoid.
-					Point3 q( initialPoint(0), initialPoint(1), (*_sinusoid)( initialPoint(0), initialPoint(1) ) );
-					double exactSign = (p.z >= (*_sinusoid)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to sinusoid.
-					double dist = (p - q).norm_L2();
-
-					if( dist > ABS( record->second.first ) )		// If d* is smaller, it's fine.  The problem is if d*>d.
+					while( true )
 					{
-						if( exactSign * record->second.first >= 0 )	// Same sign?  Let's check reference point r.
-						{
-							Point3 r( (record->second).second.x,	// This reference point will tell us if we can accept a
-									  (record->second).second.y, 	// larger distance than the one computed linearly.
-									  (*_sinusoid)((record->second).second.x, (record->second).second.y));
-							double dr = (p - r).norm_L2();
+						double initialTrustRadius = MAX( _h, ABS( (record->second).first ) );
+						column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// Initial (u,v) come from cached closest point.
 
-							if( dr < ABS( record->second.first ) )	// If reference point on surface is closer to query, q
-							{										// should have been closer to surface since the sinusoid
-								updated = 2;						// bends/bunches toward p.
-								return record->second.first;		// Bad case: optimization failed!
+						dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
+													 SinusoidPointDistanceModel( p, *_sinusoid ), initialPoint, initialTrustRadius );
+
+						// Check if minimization produced a better d* distance from q to the sinusoid.
+						Point3 q( initialPoint(0), initialPoint(1), (*_sinusoid)( initialPoint(0), initialPoint(1) ) );
+						double dist = (p - q).norm_L2();
+
+						if( dist > ABS( record->second.first ) )		// If d* is smaller, it's fine.  The problem is if d*>d.
+						{
+							if( exactSign * record->second.first >= 0 )	// Same sign?  Let's check reference point r.
+							{
+								Point3 r( (record->second).second.x,	// This reference point will tell us if we can accept a
+										  (record->second).second.y, 	// larger distance than the one computed linearly.
+										  (*_sinusoid)((record->second).second.x, (record->second).second.y));
+								double dr = (p - r).norm_L2();
+
+								if( dr < ABS( record->second.first ) )	// If reference point on surface is closer to query, q
+								{										// should have been closer to surface since the sinusoid
+									updated = 2;						// bends/bunches toward p.
+									return record->second.first;		// Bad case: optimization failed!
+								}
+							}
+							else	// If signs differ, p lies between a triangle and the surface.
+							{
+								if( ABS( dist - ABS( record->second.first ) ) > 0.15 * _h ) // Gap between linear approx and
+								{															// surface shouldn't be large.
+									updated = 2;					// Bad case: optimization failed!
+									return record->second.first;
+								}
 							}
 						}
-						else	// If signs differ, p lies between a triangle and the surface.
-						{
-							if( ABS( dist - ABS( record->second.first ) ) > 0.15 * _h ) // Gap between linear approx and
-							{															// surface shouldn't be large.
-								updated = 2;					// Bad case: optimization failed!
+
+						if( ABS( dist - ABS( record->second.first ) ) > 0.5 * _h ) 	// New distance shouldn't be too far from the linear approx-
+						{															// imation anyways.  If so, repeat search with more neighbors.
+							k++;
+							if( k > 5 )								// Bad case: we shouldn't search indefinitely.
+							{
+								updated = 2;
 								return record->second.first;
 							}
+							record->second.second = _findNearestPointAndSignedDistance( p, record->second.first, k );
 						}
-					}
-
-					if( ABS( dist - ABS( record->second.first ) ) > 0.5 * _h ) 	// New distance shouldn't be too far from the linear approx-
-					{															// imation anyways.  If so, repeat search with more neighbors.
-						k++;
-						if( k > 5 )								// Bad case: we shouldn't search indefinitely.
+						else
 						{
-							updated = 2;
+							updated = 1;
+							record->second.first = exactSign * dist;	// Update shortest distance and closest point on
+							record->second.second = q;					// sinusoid by fixing the sign too (if needed).
 							return record->second.first;
 						}
-						record->second.second = _findNearestPointAndSignedDistance( p, record->second.first, k );
-					}
-					else
-					{
-						updated = 1;
-						record->second.first = exactSign * dist;	// Update shortest distance and closest point on
-						record->second.second = q;					// sinusoid by fixing the sign too (if needed).
-						return record->second.first;
 					}
 				}
+				return record->second.first;
 			}
 			else
 				throw std::runtime_error( errorPrefix + "Can't locate point in cache!" );
@@ -570,12 +566,12 @@ public:
 	 * @param [in] nodes Pointer to nodes structure.
 	 * @param [out] phi Parallel PETSc vector where to place (linearly approximated) level-set values and exact distances.
 	 * @param [out] exactFlag Parallel PETSc vector to indicate if exact distance was computed (1) or not (0).
-	 * @throws runtime_error if phi vector is null.
+	 * @throws invalid_argument exception if phi is null.
 	 */
 	void evaluate( const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec exactFlag )
 	{
 		if( !phi )
-			throw std::runtime_error( "[CASL_ERROR] SinusoidalLevelSet::evaluate: Phi vector can't be null!" );
+			throw std::invalid_argument( "[CASL_ERROR] SinusoidalLevelSet::evaluate: Phi vector can't be null!" );
 
 		double *phiPtr, *exactFlagPtr;
 		CHKERRXX( VecGetArray( phi, &phiPtr ) );
@@ -583,8 +579,6 @@ public:
 
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
-
-		const double H = _h;
 
 		auto sdist = [this]( const double xyz[P4EST_DIM], unsigned char& updated ){
 			return (*this).computeExactSignedDistance( xyz,updated );
@@ -596,8 +590,8 @@ public:
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 			phiPtr[n] = (*this)( xyz[0], xyz[1], xyz[2] );	// Retrieves (or sets) the value from the cache.
 
-			// Points we are interested in lie within 3h around Gamma (based on distance calculated from triangles).
-			if( ABS( phiPtr[n] ) <= 3 * H )
+			// Points we are interested in lie close to Gamma (based on distance calculated from triangles).
+			if( ABS( phiPtr[n] ) <= 2 * _h * sqrt( 3 ) )
 				nodesForExactDist.emplace_back( n );
 		}
 
@@ -643,13 +637,14 @@ public:
 	 * @param [in] minHK Minimum target |hk|.
 	 * @param [in] probMinHK Probability for keeping points whose true |hk| is minHK.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
-	 * @param [in] samR Sampling radius on the uv plane.
+	 * @param [in] samR Overriding sampling radius on the uv plane (to be used instead of the one provided during instantiation).
 	 * @param [in] filter Filter vector with 1s for nodes we can sample and anything else for non-sampling nodes.
 	 * @param [in] hkError Vector to hold |hk| error for sampled nodes.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
-	 * @throws runtime_error if more than one node maps to the same discrete coordinates, or if cache is disabled or is
-	 * 		   empty, or if we can't locate the nodes' exact nearest points on Gamma (which should be cached too), or if
-	 * 		   the probability for lower bound max HK is invalid, or if the sampling radius is less than 1.5h.
+	 * @throws runtime_error or invalid_argument if more than one node maps to the same discrete coordinates, or if
+	 * 		   cache is disabled or is empty, or if we can't locate the nodes' exact nearest points on Gamma (which
+	 * 		   should be cached too), or if the probability for lower bound max HK is invalid, or if the overriding
+	 * 		   sampling radius is less than 1.5h or bigger than local sampling radius.
 	 */
 	double collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
 						   const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
@@ -657,21 +652,21 @@ public:
 						   double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
 						   const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
 						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						   const double& samR=DBL_MAX, const Vec& filter=nullptr, Vec hkError=nullptr ) const
+						   const double& samR=NAN, const Vec& filter=nullptr, Vec hkError=nullptr ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
 			throw std::runtime_error( errorPrefix + "Cache must be enabled and nonempty!" );
 
 		if( !phi )
-			throw std::runtime_error( errorPrefix + "Phi vector can't be null!" );
+			throw std::invalid_argument( errorPrefix + "phi vector can't be null!" );
 
 		if( easingOffProbMaxHK <= 0 || easingOffProbMaxHK > 1 )
-			throw std::runtime_error( errorPrefix + "Easing-off max HK probability should be in the range of (0, 1]!" );
+			throw std::invalid_argument( errorPrefix + "Easing-off max HK probability should be in the range of (0, 1]!" );
 
-		if( samR <= 1.5 * _h )
-			throw std::runtime_error( errorPrefix + "Sampling radius should be at least 1.5h!" );
-		const double SAM_R2 = (samR == DBL_MAX? DBL_MAX : SQR( samR ) );	// Squared sampling radius.
+		if( !isnan( samR ) && (SQR(samR) > _samR2 || samR < 1.5 * _h) )
+			throw std::invalid_argument( errorPrefix + "Overriding sampling radius can't be larer than local sampling radius or less than 1.5h!" );
+		const double SAM_R2 = (isnan( samR )? _samR2 : SQR( samR ));	// Squared sampling radius.
 
 		// Get indices for locally owned candidate nodes next to Gamma.
 		NodesAlongInterface nodesAlongInterface( p4est, nodes, ngbd, (char)octreeMaxRL );

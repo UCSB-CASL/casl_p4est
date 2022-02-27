@@ -15,6 +15,8 @@ Point3::Point3 (double c1, double c2, double c3)
     z = c3;
 }
 
+Point3::Point3(const double xyz[3]): Point3(xyz[0], xyz[1], xyz[3]) {}
+
 Point3::Point3 (const Point2& pt)
 {
 	x = pt.x;

@@ -385,24 +385,27 @@ namespace kml
 										 std::ofstream& file, const double& h, const int& preAllocateSize=1000 );
 
 		/**
-		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true hk*.
+		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true |hk*|.
 		 * Then, compute the median and subsample the intervals until the number of items in each bin is at most
-		 * frac*median.  After that, save the remaining samples into a file.
+		 * max(frac*median, minFold*minCount), where minFold >= 1 and minCount is the smallest number of samples in any
+		 * bin.  After that, save the remaining samples into a file.
 		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] buffer Array of buffered (already normalized and augmented) samples.
 		 * @param [in,out] file File object.
-		 * @param [in] minHK Minimum tracked |hk*| for provided buffer; if not provided, it'll be computed.
-		 * @param [in] maxHK Maximum tracked |hk*| for provided buffer; if not provided, it'll be computed.
+		 * @param [in] minHK Minimum |hk*| to consider for provided buffer; if not given, it'll be computed.
+		 * @param [in] maxHK Maximum |hk*| to consider for provided buffer; if not given, it'll be computed.
 		 * @param [in] nbins Number of bins or intervals in the histogram.
 		 * @param [in] frac Fraction of the median to be used for subsampling.
+		 * @param [in] minFold Number of times to consider the count of the bin with the least samples.
 		 * @return Number of samples that made it to the input file after subsampling.
 		 * @throws invalid_argument and runtime_error if minHK >= maxHK, or if computing the histogram fails.
 		 */
 		int histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 										  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,
 										  std::ofstream& file, FDEEP_FLOAT_TYPE minHK=NAN, FDEEP_FLOAT_TYPE maxHK=NAN,
-										  const unsigned short& nbins=100, const FDEEP_FLOAT_TYPE& frac=1 );
+										  const unsigned short& nbins=100, const FDEEP_FLOAT_TYPE& frac=1,
+										  const FDEEP_FLOAT_TYPE& minFold=2 );
 
 		/**
 		 * Compute an easing-off probability value based on a sinusoidal distribution in the domain [-pi/2, +pi/2].
