@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: February 24, 2022.
+ * Updated: February 27, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -16,6 +16,7 @@
 #include <src/point3.h>
 #include <random>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace geom
 {
@@ -847,7 +848,7 @@ namespace geom
 	class MongeFunction : public CF_2
 	{
 	public:
-		__attribute__((unused)) virtual double meanCurvature( const double& u, const double& v ) const = 0;
+		virtual double meanCurvature( const double& u, const double& v ) const = 0;
 	};
 
 	/**
@@ -1167,6 +1168,211 @@ namespace geom
 				v = triangle.getVertex( 2 );
 				output << v->x << "," << v->y << "," << v->z << std::endl;
 			}
+		}
+	};
+
+	/**
+	 * An abstract class for a level-set function whose zero isocontour is discretized into an affine-transformed Monge
+	 * patch.
+	 */
+	class DiscretizedLevelSet : public geom::DiscretizedMongePatch
+	{
+	protected:
+		__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world
+		const Point3 _axis;							// coordinate system.  These include a rotation (unit) axis and
+		const Point3 _trns;							// angle, and a translation vector that sets the origin of the
+													// canonical system to any point in space.
+		const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
+		const double _one_m_c;						// (1-cos(beta)).
+
+		bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
+		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// distances and nearest points.  Also,
+		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// cache canonical coordinates for grid points.
+
+		/**
+		 * Find nearest point and signed distance to triangulated surface using knn search.
+		 * @param [in] p Query point in canonical coords.
+		 * @param [out] d Computed signed distance.
+		 * @param [in] k Number of nearest neighbors to use.
+		 * @return Nearest point.
+		 */
+		Point3 _findNearestPointAndSignedDistance( const Point3& p, double& d, const unsigned char& k=1 ) const
+		{
+			d = DBL_MAX;
+			const geom::Triangle *nearestTriangle;
+			Point3 nearestPoint;
+			nearestPoint = findNearestPointFromKNN( p, d, nearestTriangle, k );		// Use knn for higher accuracy.
+
+			// Fix sign: points above sinusoid are negative and below are positive.  Because of the way we created the
+			// triangles, their normals point up in the canonical coord system (i.e., into the negative region Omega-).
+			Point3 w = p - *(nearestTriangle->getVertex(0));
+			if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
+				d *= -1;
+
+			return nearestPoint;
+		}
+
+	public:
+		/**
+		 * Constructor.
+		 * @param [in] trans Translation vector.
+		 * @param [in] rotAxis Rotation axis (must be nonzero).
+		 * @param [in] rotAngle Rotation angle about rotAxis.
+		 * @param [in] ku Number of min cells in u half direction to define a symmetric domain.
+		 * @param [in] kv Number of min cells in v half direction to define a symmetric domain.
+		 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
+		 * @param [in] mongeFunction Monge patch in canonical coordinates.
+		 * @param [in] sau2 Squared half-axis length on the u direction for the limiting ellipse on the uv plane.
+		 * @param [in] sav2 Squared half-axis length on the v direction for the limiting ellipse on the uv plane.
+		 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
+		 */
+		DiscretizedLevelSet( const Point3& trans, const Point3& rotAxis, const double& rotAngle, const size_t& ku,
+							 const size_t& kv, const size_t& L, const MongeFunction *mongeFunction,
+							 const double& sau2=DBL_MAX, const double& sav2=DBL_MAX, const size_t& btKLeaf=40 )
+							 : _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle),
+							 _c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
+							 DiscretizedMongePatch( ku, kv, L, mongeFunction, btKLeaf, sau2, sav2 )
+		{
+			const std::string errorPrefix = "[CASL_ERROR] DiscretizedLevelSet::constructor: ";
+
+			if( !mongeFunction )
+				throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
+
+			if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
+				throw std::invalid_argument( errorPrefix + "Rotation axis shouldn't be 0!" );
+		}
+
+		/**
+		 * Compute exact signed distance to Gamma.
+		 * @param [in] x Query x-coordinate.
+		 * @param [in] y Query y-coordinate.
+		 * @param [in] z Query z-coordinate.
+		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
+		 * @return Shortest signed distance.
+		 */
+		virtual double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const = 0;
+
+		/**
+		 * @see DiscretizedLevelSet::computeExactSignedDistance( double x, double y, double z, unsigned char& updated ).
+		 * @param [in] xyz Query point in world coordinates.
+		 * @param [out] updated Status flag set to 1 if exact-distance computation succeeded, 2 otherwise.
+		 * @return Shortest signed distance.
+		 */
+		double computeExactSignedDistance( const double xyz[P4EST_DIM], unsigned char& updated ) const
+		{
+			return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
+		}
+
+		/**
+		 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates of (x,y,z) in the representation of the canonical coordinate system.
+		 */
+		Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
+			const double ymt = isVector? y : y - _trns.y;
+			const double zmt = isVector? z : z - _trns.z;
+			r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
+			r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
+			r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
+
+			return r;
+		}
+
+		/**
+		 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
+		 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
+		 */
+		Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
+		{
+			Point3 r;
+			r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
+			r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
+			r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
+
+			if( !isVector )
+			{
+				r.x += _trns.x;
+				r.y += _trns.y;
+				r.z += _trns.z;
+			}
+
+			return r;
+		}
+
+		/**
+		 * Retrieve discrete coordinates as a triplet normalized by h.
+		 * @param [in] x x-coordinate.
+		 * @param [in] y y-coordinate.
+		 * @param [in] z z-coordinate.
+		 * @return "i,j,k".
+		 */
+		std::string getDiscreteCoords( const double& x, const double& y, const double& z ) const
+		{
+			return std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
+		}
+
+		/**
+		 * Dump triangles into a data file for debugging/visualizing.
+		 * @param [in] filename Output file.
+		 * @throws runtime_error if file can't be opened.
+		 */
+		void dumpTriangles( const std::string& filename )
+		{
+			std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
+			trianglesFile.open( filename, std::ofstream::trunc );
+			if( !trianglesFile.is_open() )
+				throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
+			trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
+			trianglesFile.precision( 15 );
+			geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
+			trianglesFile.close();
+		}
+
+		/**
+		 * Turn on/off cache for faster distance retrieval.
+		 * @param [in] useCache True to enable cache, false to disable it.
+		 */
+		void toggleCache( const bool& useCache )
+		{
+			_useCache = useCache;
+		}
+
+		/**
+		 * Empty cache.
+		 */
+		void clearCache()
+		{
+			_cache.clear();
+			_canonicalCoordsCache.clear();
+		}
+
+		/**
+		 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
+		 * @param [in] n Reserve size.
+		 */
+		void reserveCache( const size_t& n )
+		{
+			_cache.reserve( n );
+			_canonicalCoordsCache.reserve( n );
+		}
+
+		/**
+		 * Retrieve the cache size.
+		 * @return _cache (and _canonicalCoordsCache) size.
+		 */
+		size_t getCacheSize() const
+		{
+			return _cache.size();
 		}
 	};
 

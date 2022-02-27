@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: February 25, 2022.
+ * Updated: February 27, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -278,51 +278,16 @@ public:
 
 ////////////////////////////// Signed distance function to a discretized sinusoidal patch //////////////////////////////
 
-class SinusoidalLevelSet : public geom::DiscretizedMongePatch
+class SinusoidalLevelSet : public geom::DiscretizedLevelSet
 {
 private:
-	__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coor-
-	const Point3 _axis;							// dinate system.  These include a rotation (unit) axis and angle, and a
-	const Point3 _trns;							// translation vector that sets the origin of the canonical system to
-												// any point in space.
-	const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
-	const double _one_m_c;						// (1-cos(beta)).
-
 	double _deltaStop;							// Convergence for Newton's method for finding close-to-analytical
 												// distance from a fixed point to sinusoidal surface.
 
-	const Sinusoid *_sinusoid;					// Sinusoidal surface in canonical coordinates.
 	const mpi_environment_t *_mpi;				// MPI environment.
-
-	bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
-	mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// distances and nearest points.  Also,
-	mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// cache canonical coordinates for grid points.
 
 	const double _samR2;						// Squared sampling radius.
 	const double _sdR2;							// Sign-distance computation squared radius.
-
-	/**
-	 * Find nearest point and signed distance to triangulated surface using knn search.
-	 * @param [in] p Query point in canonical coords.
-	 * @param [out] d Computed signed distance.
-	 * @param [in] k Number of nearest neighbors to use.
-	 * @return Nearest point.
-	 */
-	Point3 _findNearestPointAndSignedDistance( const Point3& p, double& d, const unsigned char& k=1 ) const
-	{
-		d = DBL_MAX;
-		const geom::Triangle *nearestTriangle;
-		Point3 nearestPoint;
-		nearestPoint = findNearestPointFromKNN( p, d, nearestTriangle, k );		// Use knn for higher accuracy.
-
-		// Fix sign: points above sinusoid are negative and below are positive.  Because of the way we created the tri-
-		// angles, their normal vectors point up in the canonical coord system (i.e., into the negative region Omega-).
-		Point3 w = p - *(nearestTriangle->getVertex(0));
-		if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
-			d *= -1;
-
-		return nearestPoint;
-	}
 
 public:
 	typedef dlib::matrix<double,0,1> column_vector;
@@ -344,69 +309,15 @@ public:
 	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 						const size_t& ku, const size_t& kv, const size_t& L, const Sinusoid *sinusoid,
 						const double& limR2, const double& samR=DBL_MAX, const size_t& btKLeaf=40 )
-						: _mpi( mpi ), _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle),
-						_sinusoid( sinusoid ), _c( cos( rotAngle ) ), _s( sin( rotAngle ) ),
-						_one_m_c( 1 - cos( rotAngle ) ), DiscretizedMongePatch( ku, kv, L, sinusoid, btKLeaf, limR2, limR2 ),
+						: _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, sinusoid, limR2, limR2, btKLeaf ),
 						_samR2( samR == DBL_MAX? samR : SQR( samR ) ),
 						_sdR2( samR == DBL_MAX? samR : SQR( ABS( samR ) + 4 * _h ) )
 	{
 		const std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::constructor: ";
-
-		if( !sinusoid )
-			throw std::invalid_argument( errorPrefix + "Sinusoid surface object can't be null!" );
-
-		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
-			throw std::invalid_argument( errorPrefix + "Rotation axis shouldn't be 0!" );
 		_deltaStop = 1e-8 * _h;
 
 		if( samR < 1.5 * _h )				// Very small sampling radius?
 			throw std::invalid_argument( errorPrefix + "Sampling radius must be at least 1.5h!" );
-	}
-
-	/**
-	 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates of (x,y,z) in the representation of the canonical coordinate system.
-	 */
-	Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
-		const double ymt = isVector? y : y - _trns.y;
-		const double zmt = isVector? z : z - _trns.z;
-		r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
-		r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
-		r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
-
-		return r;
-	}
-
-	/**
-	 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
-	 */
-	Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
-		r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
-		r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
-
-		if( !isVector )
-		{
-			r.x += _trns.x;
-			r.y += _trns.y;
-			r.z += _trns.z;
-		}
-
-		return r;
 	}
 
 	/**
@@ -445,18 +356,6 @@ public:
 	}
 
 	/**
-	 * Retrieve discrete coordinates as a triplet normalized by h.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @return "i,j,k".
-	 */
-	std::string getDiscreteCoords( const double& x, const double& y, const double& z ) const
-	{
-		return std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
-	}
-
-	/**
 	 * Compute exact signed distance to sinusoid using Newton's method and trust region in dlib.
 	 * @param [in] x Query x-coordinate.
 	 * @param [in] y Query y-coordinate.
@@ -466,7 +365,7 @@ public:
 	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if estimated exact distance
 	 * 		   deviates by more than 0.15h from linear estimation.
 	 */
-	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const
+	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const override
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::computeExactSignedDistance: ";
 		if( _useCache )		// Assume that the coordinates normalized by h yield integers!
@@ -477,7 +376,7 @@ public:
 			if( record != _cache.end() && ccRecord != _canonicalCoordsCache.end() )
 			{
 				const Point3& p = ccRecord->second;		// Canonical-coordinated point.
-				double exactSign = (p.z >= (*_sinusoid)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to sinusoid.
+				double exactSign = (p.z >= (*_mongeFunction)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to sinusoid.
 
 				if( SQR( p.x ) + SQR( p.y ) <= _sdR2 )	// Skip points projected outside padded sampling circle on the uv plane.
 				{
@@ -489,10 +388,10 @@ public:
 						column_vector initialPoint = {(record->second).second.x, (record->second).second.y};	// Initial (u,v) come from cached closest point.
 
 						dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
-													 SinusoidPointDistanceModel( p, *_sinusoid ), initialPoint, initialTrustRadius );
+													 SinusoidPointDistanceModel( p, *((Sinusoid*)_mongeFunction) ), initialPoint, initialTrustRadius );
 
 						// Check if minimization produced a better d* distance from q to the sinusoid.
-						Point3 q( initialPoint(0), initialPoint(1), (*_sinusoid)( initialPoint(0), initialPoint(1) ) );
+						Point3 q( initialPoint(0), initialPoint(1), (*_mongeFunction)( initialPoint(0), initialPoint(1) ) );
 						double dist = (p - q).norm_L2();
 
 						if( dist > ABS( record->second.first ) )		// If d* is smaller, it's fine.  The problem is if d*>d.
@@ -501,7 +400,7 @@ public:
 							{
 								Point3 r( (record->second).second.x,	// This reference point will tell us if we can accept a
 										  (record->second).second.y, 	// larger distance than the one computed linearly.
-										  (*_sinusoid)((record->second).second.x, (record->second).second.y));
+										  (*_mongeFunction)((record->second).second.x, (record->second).second.y));
 								double dr = (p - r).norm_L2();
 
 								if( dr < ABS( record->second.first ) )	// If reference point on surface is closer to query, q
@@ -549,19 +448,8 @@ public:
 	}
 
 	/**
-	 * @see computeExactSignedDistance( double x, double y, double z )
-	 * @param [in] xyz Query point in world coordinates.
-	 * @param [out] updated Set to 1 if exact-distance computation succeeded, 2 otherwise.
-	 * @return Shortest distance to sinusoid.
-	 */
-	double computeExactSignedDistance( const double xyz[P4EST_DIM], unsigned char& updated ) const
-	{
-		return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
-	}
-
-	/**
 	 * Evaluate sinusoidal level-set function and compute "exact" signed distances for points in a (linearly reconstruc-
-	 * ted shell) of half-width 3h around Gamma.
+	 * ted shell) around Gamma.
 	 * @param [in] p4est Pointer to p4est data structure.
 	 * @param [in] nodes Pointer to nodes structure.
 	 * @param [out] phi Parallel PETSc vector where to place (linearly approximated) level-set values and exact distances.
@@ -581,7 +469,7 @@ public:
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
 		auto sdist = [this]( const double xyz[P4EST_DIM], unsigned char& updated ){
-			return (*this).computeExactSignedDistance( xyz,updated );
+			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz,updated );
 		};
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
@@ -780,7 +668,7 @@ public:
 					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
 				Point3 nearestPoint = record->second.second;
-				double hk = _h * _sinusoid->meanCurvature( nearestPoint.x, nearestPoint.y );
+				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );
 				if( ABS( hk ) < minHK )							// Third check: Target |hk*| must be >= minHK.
 					continue;
 
@@ -892,60 +780,6 @@ public:
 			CHKERRXX( VecDestroy( component ) );
 
 		return trackedMaxHKError;
-	}
-
-	/**
-	 * Dump triangles into a data file for debugging/visualizing.
-	 * @param [in] filename Output file.
-	 * @throws Runtime error if file can't be opened.
-	 */
-	__attribute__((unused)) void dumpTriangles( const std::string& filename )
-	{
-		std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
-		trianglesFile.open( filename, std::ofstream::trunc );
-		if( !trianglesFile.is_open() )
-			throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
-		trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
-		trianglesFile.precision( 15 );
-		geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
-		trianglesFile.close();
-	}
-
-	/**
-	 * Turn on/off cache for faster distance retrieval.
-	 * @param [in] useCache True to enable cache, false to disable it.
-	 */
-	void toggleCache( const bool& useCache )
-	{
-		_useCache = useCache;
-	}
-
-	/**
-	 * Empty cache.
-	 */
-	void clearCache()
-	{
-		_cache.clear();
-		_canonicalCoordsCache.clear();
-	}
-
-	/**
-	 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
-	 * @param n
-	 */
-	void reserveCache( size_t n )
-	{
-		_cache.reserve( n );
-		_canonicalCoordsCache.reserve( n );
-	}
-
-	/**
-	 * Retrieve the cache size.
-	 * @return _cache (and _canonicalCoordsCache) size.
-	 */
-	__attribute__((unused)) size_t getCacheSize() const
-	{
-		return _cache.size();
 	}
 };
 

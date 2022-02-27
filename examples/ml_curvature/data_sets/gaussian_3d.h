@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a Gaussian surface embedded in 3D.
  * Developer: Luis Ángel.
  * Created: February 5, 2022.
- * Updated: February 16, 2022.
+ * Updated: February 27, 2022.
  */
 
 #ifndef ML_CURVATURE_GAUSSIAN_3D_H
@@ -370,25 +370,12 @@ public:
 
 /////////////////////////////// Signed distance function to a discretized Gaussian patch ///////////////////////////////
 
-class GaussianLevelSet : public geom::DiscretizedMongePatch
+class GaussianLevelSet : public geom::DiscretizedLevelSet
 {
 private:
-	__attribute__((unused)) const double _beta;	// Transformation parameters to vary canonical system w.r.t. world coor-
-	const Point3 _axis;							// dinate system.  These include a rotation (unit) axis and angle, and a
-	const Point3 _trns;							// translation vector that sets the origin of the canonical system to
-												// any point in space.
-	const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
-	const double _one_m_c;						// (1-cos(beta)).
-
 	double _deltaStop;							// Convergence for Newton's method for finding close-to-analytical
 												// distance from a fixed point to Gaussian.
-
-	const Gaussian *_gaussian;					// Gaussian surface in canonical coordinates.
 	const mpi_environment_t *_mpi;				// MPI environment.
-
-	bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
-	mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;		// distances and nearest points.
-	mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;			// Also cache canonical coordinates.
 
 	const double _ru2, _rv2;					// Squared half-axis lengths on the canonical uv plane for the bounding ellipse.
 	const double _sdsu2, _sdsv2;				// Squared half-axis lengths on canonical uv plane for signed-distance-computation bounding ellipse.
@@ -419,73 +406,20 @@ public:
 	 * @param [in] gaussian Gaussian object in canonical coordinates.
 	 * @param [in] ru2 Squared half-axis length on the u direction for the limiting ellipse on the canonical uv plane.
 	 * @param [in] rv2 Squared half-axis length on the v direction for the limiting ellipse on the canonical uv plane.
-	 * @param [in] btKLeaf (Optional) maximum number of points in balltree leaf nodes.
+	 * @param [in] btKLeaf Maximum number of points in balltree leaves.
 	 */
 	GaussianLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
 					  const size_t& ku, const size_t& kv, const size_t& L, const Gaussian *gaussian,
 					  const double& ru2, const double& rv2, const size_t& btKLeaf=40 )
-					  : _mpi( mpi ), _trns( trans ), _axis( rotAxis.normalize() ), _beta( rotAngle), _gaussian( gaussian ),
-					  _c( cos( rotAngle ) ), _s( sin( rotAngle ) ), _one_m_c( 1 - cos( rotAngle ) ),
-					  _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ), DiscretizedMongePatch( ku, kv, L, gaussian, btKLeaf, ru2, rv2 ),
+					  : _mpi( mpi ), DiscretizedLevelSet( trans, rotAxis, rotAngle, ku, kv, L, gaussian, ru2, rv2, btKLeaf ),
+					  _ru2( ABS( ru2 ) ), _rv2( ABS( rv2 ) ),
 					  _sdsu2( SQR( sqrt( _ru2 ) + 4 * _h ) ), _sdsv2( SQR( sqrt( _rv2 ) + 4 * _h ) )	// Notice the padding.
 	{
 		const std::string errorPrefix = "[CASL_ERROR] ParaboloidLevelSet::constructor: ";
-
-		if( !gaussian )
-			throw std::runtime_error( errorPrefix + "Gaussian surface object can't be null!" );
-
-		if( rotAxis.norm_L2() < EPS )		// Singular rotation axis?
-			throw std::runtime_error( errorPrefix + "Rotation axis shouldn't be 0!" );
 		_deltaStop = 1e-8 * _h;
 
 		if( _ru2 == DBL_MAX || _rv2 == DBL_MAX )
 			throw std::runtime_error( errorPrefix + "Squared half-axes must be smaller than DBL_MAX!" );
-	}
-
-	/**
-	 * Transform a point/vector in world coordinates to canonical coordinates using the tranformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates of (x,y,z) in the representation of the Gaussian canonical coordinate system.
-	 */
-	Point3 toCanonicalCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		const double xmt = isVector? x : x - _trns.x;		// Displacements affect points only.
-		const double ymt = isVector? y : y - _trns.y;
-		const double zmt = isVector? z : z - _trns.z;
-		r.x = (_c + _one_m_c*SQR(_axis.x))*xmt + (_one_m_c*_axis.x*_axis.y + _s*_axis.z)*ymt + (_one_m_c*_axis.x*_axis.z - _s*_axis.y)*zmt;
-		r.y = (_one_m_c*_axis.y*_axis.x - _s*_axis.z)*xmt + (_c + _one_m_c*SQR(_axis.y))*ymt + (_one_m_c*_axis.y*_axis.z + _s*_axis.x)*zmt;
-		r.z = (_one_m_c*_axis.z*_axis.x + _s*_axis.y)*xmt + (_one_m_c*_axis.z*_axis.y - _s*_axis.x)*ymt + (_c + _one_m_c*SQR(_axis.z))*zmt;
-
-		return r;
-	}
-
-	/**
-	 * Transform a point/vector from canonical coordinates to world coordinates using the transformation info.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @param [in] isVector True if input is a vector (unnaffected by translation), false if input is a point.
-	 * @return The coordinates (x,y,z) in the representation of the world coordinate system.
-	 */
-	Point3 toWorldCoordinates( const double& x, const double& y, const double& z, const bool& isVector=false ) const
-	{
-		Point3 r;
-		r.x = x*(_c + _one_m_c*SQR(_axis.x)) + y*(_one_m_c*_axis.y*_axis.x - _s*_axis.z) + z*(_one_m_c*_axis.z*_axis.x + _s*_axis.y);
-		r.y = x*(_one_m_c*_axis.x*_axis.y + _s*_axis.z) + y*(_c + _one_m_c*SQR(_axis.y)) + z*(_one_m_c*_axis.z*_axis.y - _s*_axis.x);
-		r.z = x*(_one_m_c*_axis.x*_axis.z - _s*_axis.y) + y*(_one_m_c*_axis.y*_axis.z + _s*_axis.x) + z*(_c + _one_m_c*SQR(_axis.z));
-
-		if( !isVector )
-		{
-			r.x += _trns.x;
-			r.y += _trns.y;
-			r.z += _trns.z;
-		}
-
-		return r;
 	}
 
 	/**
@@ -526,7 +460,7 @@ public:
 		// Let's handle distances for points beyond limiting ellipse or closer to boundary triangles.
 		if( !_inOutTest( p.x, p.y ) || nearestTriangle->getRelPosType() == geom::RelPosType::BOUNDARY )
 		{
-			Point3 nearestPoint2( p.x, p.y, (*_gaussian)( p.x, p.y ) );	// Let's try this new point.
+			Point3 nearestPoint2( p.x, p.y, (*_mongeFunction)( p.x, p.y ) );	// Let's try this new point.
 			double d2 = (p - nearestPoint2).norm_L2();
 			if( d2 < ABS( d ) )		// When we are far from the sampling region, the distance to the Gaussian falls
 			{						// back to the point's (canonical) z-coordinate.  Note the sign: above Gaussian
@@ -547,29 +481,17 @@ public:
 	}
 
 	/**
-	 * Retrieve discrete coordinates as a triplet normalized by h.
-	 * @param [in] x x-coordinate.
-	 * @param [in] y y-coordinate.
-	 * @param [in] z z-coordinate.
-	 * @return "i,j,k".
-	 */
-	std::string getDiscreteCoords( const double& x, const double& y, const double& z ) const
-	{
-		return std::to_string( (int)(x/_h) ) + "," + std::to_string( (int)(y/_h) ) + "," + std::to_string( (int)(z/_h) );
-	}
-
-	/**
 	 * Compute exact signed distance to Gaussian using Newton's method and trust region in dlib for points whose projec-
 	 * tions fall within the limiting ellipse enlarged by 3h in the u and v directions.
 	 * @param [in] x Query x-coordinate.
 	 * @param [in] y Query y-coordinate.
 	 * @param [in] z Query z-coordinate.
-	 * @param [out] updated Set to true if exact distance was computed, false otherwise.
+	 * @param [out] updated Set to 1 if exact distance was computed, 2 otherwise.
 	 * @return Shortest distance.
-	 * @throws runtime error if not using cache, if point wasn't located in cache, or if exact distance deviates by more
+	 * @throws runtime_error if not using cache, if point wasn't located in cache, or if exact distance deviates by more
 	 * 		   than 0.15h from linear estimation.
 	 */
-	double computeExactSignedDistance( double x, double y, double z, bool& updated ) const
+	double computeExactSignedDistance( double x, double y, double z, unsigned char& updated ) const override
 	{
 		if( _useCache )		// Use this only if you know that the coordinates normalized by h yield integers!
 		{
@@ -585,15 +507,15 @@ public:
 				{
 					// Let's compute exact distances only for points within the limiting ellipse (enlaged by a few H).
 					Point3 p = ccRecord->second;
-					updated = false;
+					updated = 2;
 					if( SQR( p.x ) / _sdsu2 + SQR( p.y ) / _sdsv2 <= 1 )
 					{
 						dlib::find_min_trust_region( dlib::objective_delta_stop_strategy( _deltaStop ),			// Append .be_verbose() for debugging.
-													 GaussianPointDistanceModel( p, *_gaussian ), initialPoint, initialTrustRadius );
+													 GaussianPointDistanceModel( p, *((Gaussian*)_mongeFunction) ), initialPoint, initialTrustRadius );
 
 						// Check if minimization produced a better d* distance from q to the Gaussian.
-						Point3 q( initialPoint(0), initialPoint(1), (*_gaussian)( initialPoint(0), initialPoint(1) ) );
-						double refSign = (p.z >= (*_gaussian)( p.x, p.y ))? -1 : 1;		// Exact sign for the distance to Gaussian.
+						Point3 q( initialPoint(0), initialPoint(1), (*_mongeFunction)( initialPoint(0), initialPoint(1) ) );
+						double refSign = (p.z >= (*_mongeFunction)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to Gaussian.
 						double dist = (p - q).norm_L2();
 
 						if( dist >= ABS( record->second.first ) )		// If d* is smaller, it's fine.  The problem is if d*>d.
@@ -608,7 +530,7 @@ public:
 
 						record->second.first = refSign * dist;	// Update shortest distance and closest point on Gaussian by
 						record->second.second = q;				// fixing the sign too (if needed).
-						updated = true;
+						updated = 1;
 					}
 					return record->second.first;
 				}
@@ -620,17 +542,6 @@ public:
 		}
 		else
 			throw std::runtime_error( "[CASL_ERROR] GaussianLevelSet::computeExactSignedDistance: Method works only with cache enabled and nonempty!" );
-	}
-
-	/**
-	 * @see computeExactSignedDistance( double x, double y, double z )
-	 * @param [in] xyz Query point in world coordinates.
-	 * @param [out] updated Set to true if exact distance was computed, false otherwise.
-	 * @return Shortest distance to Gaussian.
-	 */
-	double computeExactSignedDistance( const double xyz[P4EST_DIM], bool& updated ) const
-	{
-		return computeExactSignedDistance( xyz[0], xyz[1], xyz[2], updated );
 	}
 
 	/**
@@ -654,8 +565,8 @@ public:
 		std::vector<p4est_locidx_t> nodesForExactDist;
 		nodesForExactDist.reserve( nodes->num_owned_indeps );
 
-		auto gdist = [this]( const double xyz[P4EST_DIM], bool& updated ){
-			return (*this).computeExactSignedDistance( xyz, updated );
+		auto gdist = [this]( const double xyz[P4EST_DIM], unsigned char& updated ){
+			return (*this).geom::DiscretizedLevelSet::computeExactSignedDistance( xyz, updated );
 		};
 
 		for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
@@ -678,7 +589,7 @@ public:
 			node_xyz_fr_n( n, p4est, nodes, xyz );
 			try
 			{
-				bool updated;	// True if exact dist was computed for node within limit ellipse (enlarged by 3h in each dir).
+				unsigned char updated;							// 1 if exact dist was computed for node within limiting ellipse.
 				phiPtr[n] = gdist( xyz, updated );				// Also modifies the cache.
 				exactFlagPtr[n] = updated;
 			}
@@ -834,7 +745,7 @@ public:
 					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
 				Point3 nearestPoint = record->second.second;
-				double hk = _h * _gaussian->meanCurvature( nearestPoint.x, nearestPoint.y );
+				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );
 				if( ABS( hk ) < minHK )							// Third check: Target |hk*| must be >= minHK.
 					continue;
 
@@ -930,60 +841,6 @@ public:
 			CHKERRXX( VecDestroy( component ) );
 
 		return trackedMaxHKError;
-	}
-
-	/**
-	 * Dump triangles into a data file for debugging/visualizing.
-	 * @param [in] filename Output file.
-	 * @throws Runtime error if file can't be opened.
-	 */
-	__attribute__((unused)) void dumpTriangles( const std::string& filename )
-	{
-		std::ofstream trianglesFile;				// Dumping triangles' vertices into a file for debugging/visualizing.
-		trianglesFile.open( filename, std::ofstream::trunc );
-		if( !trianglesFile.is_open() )
-			throw std::runtime_error( filename + " couldn't be opened for dumping mesh!" );
-		trianglesFile << R"("x0","y0","z0","x1","y1","z1","x2","y2","z2")" << std::endl;
-		trianglesFile.precision( 15 );
-		geom::DiscretizedMongePatch::dumpTriangles( trianglesFile );
-		trianglesFile.close();
-	}
-
-	/**
-	 * Turn on/off cache for faster distance retrieval.
-	 * @param [in] useCache True to enable cache, false to disable it.
-	 */
-	void toggleCache( const bool& useCache )
-	{
-		_useCache = useCache;
-	}
-
-	/**
-	 * Empty cache.
-	 */
-	void clearCache()
-	{
-		_cache.clear();
-		_canonicalCoordsCache.clear();
-	}
-
-	/**
-	 * Reserve space for cache.  Call this function, preferably, at the beginning of queries or octree construction.
-	 * @param n
-	 */
-	void reserveCache( size_t n )
-	{
-		_cache.reserve( n );
-		_canonicalCoordsCache.reserve( n );
-	}
-
-	/**
-	 * Retrieve the cache size.
-	 * @return _cache (and _canonicalCoordsCache) size.
-	 */
-	__attribute__((unused)) size_t getCacheSize() const
-	{
-		return _cache.size();
 	}
 };
 
