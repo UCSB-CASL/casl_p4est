@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: February 17, 2022.
+ * Updated: February 27, 2022.
  */
 namespace kml
 {
@@ -399,7 +399,8 @@ namespace kml
 		 * @param [in] frac Fraction of the median to be used for subsampling.
 		 * @param [in] minFold Number of times to consider the count of the bin with the least samples.
 		 * @return Number of samples that made it to the input file after subsampling.
-		 * @throws invalid_argument and runtime_error if minHK >= maxHK, or if computing the histogram fails.
+		 * @throws invalid_argument and runtime_error if minHK >= maxHK, or if computing the histogram fails, or if frac
+		 * 		   is non-positive, or if minFold is less than 1, or if the number of bins is less than 10.
 		 */
 		int histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 										  const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer,

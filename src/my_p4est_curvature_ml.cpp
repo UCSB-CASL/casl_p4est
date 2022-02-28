@@ -697,10 +697,16 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 	const std::string errorPrefix = "[CASL_ERROR] kml::utils::histSubSamplingAndSaveToFile: ";
 
 	if( minHK >= maxHK )
-		throw std::invalid_argument( errorPrefix + "MinHK must be smaller than MaxHK!" );
+		throw std::invalid_argument( errorPrefix + "minHK must be smaller than maxHK!" );
 
 	if( minFold < 1 )
 		throw std::invalid_argument( errorPrefix + "minFold must be at least 1!" );
+
+	if( frac <= 0 )
+		throw std::invalid_argument( errorPrefix + "frac must be strictly positive!" );
+
+	if( nbins < 10 )
+		throw std::invalid_argument( errorPrefix + "nbins must be at least 10!" );
 
 	int savedSamples = 0;
 	if( mpi.rank() == 0 )
@@ -742,8 +748,8 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 						throw std::runtime_error( errorPrefix + "Wrong histogram configuration!" );
 				}
 
-				if( bins[idx].empty() )								// First sample arriving to idx bin?
-					bins[idx].reserve( (size_t)(0.25 * nbins) );	// Pre-allocate size.
+				if( bins[idx].empty() )														// First sample arriving to idx bin?
+					bins[idx].reserve( (size_t)(1.25 * (double)buffer.size() / nbins) );	// Pre-allocate size.
 
 				bins[idx].push_back( i );
 				counts[idx]++;
@@ -763,8 +769,11 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 			if( minCount == 0 )
 				throw std::runtime_error( errorPrefix + "Min count is zero?!" );
 
-			// Probabilistic subsampling by shuffling the indices within overpopulated bins.  Then, writing samples tofile.
+			// Probabilistic subsampling by shuffling the indices within overpopulated bins.  Then, writing samples to file.
 			int cap = (int)MAX( ceil( frac * median ), minFold * (FDEEP_FLOAT_TYPE)minCount );
+
+			CHKERRXX( PetscPrintf( mpi.comm(), "[-] Nonzero min count = %d, median = %.2f, cap = %d\n", minCount, median, cap ) );
+
 			for( b = 0; b < nbins; b++ )
 			{
 				if( bins[b].size() > cap )

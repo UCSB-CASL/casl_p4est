@@ -17,6 +17,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
+ * Updated: February 27, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -45,17 +46,21 @@ int main ( int argc, char* argv[] )
 {
 	// Setting up parameters from command line.
 	param_list_t pl;
-	param_t<double>         minHK( pl,  0.01, "minHK"			, "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
-	param_t<double>         maxHK( pl,  4./3, "maxHK"			, "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
-	param_t<u_char>         maxRL( pl,     6, "maxRL"			, "Maximum level of refinement per unit-square quadtree (default: 6)" );
-	param_t<int>      reinitIters( pl,    10, "reinitIters"		, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>  probMidMaxHK( pl,   1.0, "probMidMaxHK"	, "Easing-off max probability for mean max HK (default: 1.0)" );
-	param_t<u_short>    startAIdx( pl,     0, "startAIdx"		, "Start index for sinusoidal amplitude (default: 0)" );
-	param_t<float> histMedianFrac( pl,   0.3, "histMedianFrac"	, "Histogram subsampling median fraction (default: 0.3)" );
-	param_t<float>    histMinFold( pl,   2.0, "histMinFold"		, "Histogram subsampling min count fold (default: 2.0)" );
-	param_t<u_short>    nHistBins( pl,   100, "nHistBins"		, "Number of bins in histogram (default: 100)" );
-	param_t<std::string>   outDir( pl,   ".", "outDir"			, "Path where files will be written to (default: build folder)" );
-	param_t<size_t> bufferMinSize( pl, 1.5e5, "bufferMinSize"	, "Buffer minimum size to trigger histogram-based subsampling (default: 150,000" );
+	param_t<double>            minHK( pl,  0.01, "minHK"			, "Minimum mean dimensionless curvature (default: 0.01 = twice 0.005 from 2D)" );
+	param_t<double>            maxHK( pl,  4./3, "maxHK"			, "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
+	param_t<u_char>            maxRL( pl,     6, "maxRL"			, "Maximum level of refinement per unit-square quadtree (default: 6)" );
+	param_t<u_short>     reinitIters( pl,    10, "reinitIters"		, "Number of iterations for reinitialization (default: 10)" );
+	param_t<double> easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"	, "Easing-off probability for |hk*| upper bound (default: 0.25)" );
+	param_t<double> easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"	, "Easing-off probability for |hk*| lower bound (default: 0.005)" );
+	param_t<u_short>       startAIdx( pl,     0, "startAIdx"		, "Start index for sinusoidal amplitude (default: 0)" );
+	param_t<float>    histMedianFrac( pl,  1./3, "histMedianFrac"	, "Histogram subsampling median fraction (default: 1/3)" );
+	param_t<float>       histMinFold( pl,   1.5, "histMinFold"		, "Histogram subsampling min count fold (default: 1.5)" );
+	param_t<u_short>       nHistBins( pl,   100, "nHistBins"		, "Number of bins in histogram (default: 100)" );
+	param_t<std::string>      outDir( pl,   ".", "outDir"			, "Path where files will be written to (default: build folder)" );
+	param_t<size_t>    bufferMinSize( pl,   3e5, "bufferMinSize"	, "Buffer minimum size to trigger histogram-based subsampling (default: 300K)" );
+	param_t<u_short>   numHKMaxSteps( pl,     7, "numHKMaxSteps" 	, "Number of steps to vary target max hk (default: 7)" );
+	param_t<u_short>       numThetas( pl,     8, "numThetas"		, "Number of angular steps from -pi/2 to +pi/2 (inclusive) (default: 8)" );
+	param_t<u_short>   numAmplitudes( pl,     9, "numAmplitudes"	, "Number of amplitude steps (default: 9)" );
 
 	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.
 	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the sinusoid's canonical frame.
@@ -85,34 +90,47 @@ int main ( int argc, char* argv[] )
 		const double MAX_K = maxHK() / H;
 		const double MAX_A = 2 / MIN_K / 2;						// Amplitude bounds: MAX_A, which is half the max sphere radius.
 		const double MIN_A = 10 / MAX_K;						// MIN_A = 5*(min radius).
-		const auto NUM_A = (u_short)((MAX_A - MIN_A) / H / 7);	// Number of distinct amplitudes.
 		const double HK_MAX_LO = maxHK() / 2;					// Maximum HK bounds at the peaks.
 		const double HK_MAX_UP = maxHK();
-		const double MID_HK_MAX = (HK_MAX_LO + HK_MAX_UP) / 2;
-		const int NUM_HK_MAX = (int)ceil( (HK_MAX_UP - HK_MAX_LO) / (3 * H) );
 
 		// Affine transformation parameters.
 		const int NUM_AXES = P4EST_DIM;
 		const Point3 ROT_AXES[NUM_AXES] = {{1,0,0}, {0,1,0}, {0,0,1}};	// Let's use Euler angles; the rotation axes.
 		const double MIN_THETA = -M_PI_2;								// For each axis, we vary the angle from -pi/2
 		const double MAX_THETA = +M_PI_2;								// +pi/2 without the end point.
-		const int NUM_THETAS = 38;
 		std::uniform_real_distribution<double> uniformDistributionH_2( -H/2, +H/2 );	// Random translation.
 
+		// Parameter validation.
+
+		if( numAmplitudes() < 2 )
+			throw std::invalid_argument( "[CASL_ERROR] There must be at least 2 amplitude steps!" );
+
+		if( startAIdx() >= numAmplitudes() )
+			throw std::invalid_argument( "[CASL_ERROR] Initial amplitude index is invalid!" );
+
+		if( numHKMaxSteps() < 2 )
+			throw std::invalid_argument( "[CASL_ERROR] There should be at least two steps for hk max!" );
+
+		if( numThetas() < 2 )
+			throw std::invalid_argument( "[CASL_ERROR] There should be at least two angular steps!" );
+
+		if( easeOffProbMinHK() < 0 || easeOffProbMinHK() >= 1 ||
+			easeOffProbMaxHK() <= 0 || easeOffProbMaxHK() > 1 ||
+			easeOffProbMinHK() > easeOffProbMaxHK() )
+			throw std::invalid_argument( "[CASL_ERROR] Invalid probabilities! We expect easeOffProbMinHK in [0, 1), "
+										 "easeOffProbMaxHK in (0, 1], and easeOffProbMinHK < easeOffProbMaxHK." );
+
 		PetscPrintf( mpi.comm(), ">> Began to generate dataset for %i distinct amplitudes, starting at A index %i, "
-								 "with MaxRL=%i and H=%g\n", NUM_A, startAIdx(), maxRL(), H );
+								 "with MaxRL=%i and H=%g\n", numAmplitudes(), startAIdx(), maxRL(), H );
 
 		std::vector<double> linspaceA;						// Amplitude values.
-		linspace( MIN_A, MAX_A, NUM_A, linspaceA );
+		linspace( MIN_A, MAX_A, numAmplitudes(), linspaceA );
 
 		std::vector<double> linspaceHK_MAX;					// HK_MAX values (i.e., the desired max hk at the peaks).
-		linspace( HK_MAX_LO, HK_MAX_UP, NUM_HK_MAX, linspaceHK_MAX );
+		linspace( HK_MAX_LO, HK_MAX_UP, numHKMaxSteps(), linspaceHK_MAX );
 
 		std::vector<double> linspaceTheta;					// Angular values for each standard axis.
-		linspace( MIN_THETA, MAX_THETA, NUM_THETAS, linspaceTheta );
-
-		if( startAIdx() >= NUM_A )
-			throw std::invalid_argument( "[CASL_ERROR] Initial amplitude index is invalid!" );
+		linspace( MIN_THETA, MAX_THETA, numThetas(), linspaceTheta );
 
 		///////////////////// Setting the limits for both triangulation and common physical domain /////////////////////
 
@@ -138,7 +156,7 @@ int main ( int argc, char* argv[] )
 
 		///////////////////////////////////////////// Data-production loop /////////////////////////////////////////////
 
-		const size_t TOT_ITERS = 3 * NUM_HK_MAX * (NUM_HK_MAX + 1) / 2;		// Num of axes times num of pairs of hk_max for each A.
+		const size_t TOT_ITERS = 3 * numHKMaxSteps() * (numHKMaxSteps() + 1) / 2;	// Num of axes times num of pairs of hk_max for each A.
 		size_t step = 0;
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;	// Buffer of accumulated (normalized and augmented) samples.
 		if( mpi.rank() == 0 )								// Only rank 0 controls the buffer.
@@ -149,10 +167,10 @@ int main ( int argc, char* argv[] )
 
 		// Logging header.
 		CHKERRXX( PetscPrintf( mpi.comm(), "Expecting %u iterations per amplitude and %d hk_max steps\n\n",
-							   TOT_ITERS, NUM_HK_MAX ) );
+							   TOT_ITERS, numHKMaxSteps() ) );
 
-		for( u_short a = startAIdx(); a < NUM_A; a++ )		// For each amplitude, vary the u and v freqs to achieve a
-		{													// desired maximum curvature at the peak.
+		for( u_short a = startAIdx(); a < numAmplitudes(); a++ )	// For each amplitude, vary the u and v freqs to
+		{															// achieve a desired maximum curvature at the peak.
 			const double A = linspaceA[a];
 
 			// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only
@@ -165,12 +183,12 @@ int main ( int argc, char* argv[] )
 			printLogHeader( mpi );
 			size_t iters = 0;
 
-			for( int s = 0; s < NUM_HK_MAX; s++ )			// Define a starting HK_MAX to define u-frequency: wu.
+			for( int s = 0; s < numHKMaxSteps(); s++ )		// Define a starting HK_MAX to define u-frequency wu.
 			{
 				const double START_MAX_K = linspaceHK_MAX[s] / H;	// Init max desired kappa; recall hk_max^up = 4/3
 				const double WU = sqrt( START_MAX_K / (2 * A) );	// and hk_max^low = 2/3 (2/3 and 1/3 in 2D).
 
-				for( int t = s; t < NUM_HK_MAX; t++ )				// Then, define HK_MAX at the peak to find wv.
+				for( int t = s; t < numHKMaxSteps(); t++ )			// Then, define HK_MAX at the peak to find wv.
 				{													// Intuitively, we start with circular peaks, and
 					const double END_MAX_K = linspaceHK_MAX[t] / H;	// we transition to elliptical in uniform steps.
 					const double WV = sqrt( END_MAX_K / A - SQR( WU ) );
@@ -183,7 +201,7 @@ int main ( int argc, char* argv[] )
 						double maxHKError = 0;							// Tracking the maximum error and number of samples
 						size_t loggedSamples = 0;						// collectively shared across processes for this rot axis.
 
-						for( int nt = 0; nt < NUM_THETAS - 1; nt++ )	// Various rotation angles for same axis (skip last one).
+						for( int nt = 0; nt < numThetas() - 1; nt++ )	// Various rotation angles for same axis (skip last one).
 						{
 							////////////////// Defining the transformed sinusoidal level-set function //////////////////
 
@@ -198,7 +216,7 @@ int main ( int argc, char* argv[] )
 
 							// Also discretizes the surface using a balltree to speed up queries during grid refinment.
 							SinusoidalLevelSet sLS( &mpi, Point3( TRANS ), ROT_AXIS.normalize(), THETA, halfUV, halfUV,
-													maxRL(), &sinusoid, SQR( UVLIM ) );
+													maxRL(), &sinusoid, SQR( UVLIM ), SAM_RADIUS );
 
 							// Macromesh variables and data structures.
 							p4est_t *p4est;
@@ -256,8 +274,8 @@ int main ( int argc, char* argv[] )
 							double minHKInBatch, maxHKInBatch;
 							double hkError = sLS.collectSamples( p4est, nodes, ngbd, phi, OCTREE_MAX_RL, xyz_min,
 																 xyz_max, samples, minHKInBatch, maxHKInBatch, genProb,
-																 MID_HK_MAX, probMidMaxHK(), minHK(), 0.01, sampledFlag,
-																 SAM_RADIUS, exactFlag );
+																 HK_MAX_LO, easeOffProbMaxHK(), minHK(), easeOffProbMinHK(),
+																 sampledFlag, NAN, exactFlag );
 
 							maxHKError = MAX( maxHKError, hkError );
 							trackedMinHK = MIN( minHKInBatch, trackedMinHK );	// Update the tracked |hk*| bounds.
@@ -297,7 +315,7 @@ int main ( int argc, char* argv[] )
 						if( bufferSize >= bufferMinSize() )
 						{
 							int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																						 (FDEEP_FLOAT_TYPE)minHK(), (FDEEP_FLOAT_TYPE)maxHK(),
+																						 (FDEEP_FLOAT_TYPE)trackedMinHK, (FDEEP_FLOAT_TYPE)trackedMaxHK,
 																						 nHistBins(), histMedianFrac(), histMinFold() );
 							CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
 												   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );
@@ -321,7 +339,7 @@ int main ( int argc, char* argv[] )
 			if( bufferSize > 0 )
 			{
 				int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer, file,
-																			 (FDEEP_FLOAT_TYPE)minHK(), (FDEEP_FLOAT_TYPE)maxHK(),
+																			 (FDEEP_FLOAT_TYPE)trackedMinHK, (FDEEP_FLOAT_TYPE)trackedMaxHK,
 																			 nHistBins(), histMedianFrac(), histMinFold() );
 				CHKERRXX( PetscPrintf( mpi.comm(), "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
 									   savedSamples, bufferSize, fileName.c_str(), trackedMinHK, trackedMaxHK ) );

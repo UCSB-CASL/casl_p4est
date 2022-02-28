@@ -41,7 +41,7 @@ public:
    * \brief constructor for Point3 with given coordinates in an array.
    * \param [in] xyz Coordinates.
    */
-  Point3(const double xyz[3]);
+  explicit Point3(const double xyz[3]);
 
   /*!
      * \brief copy constructor for Point2
