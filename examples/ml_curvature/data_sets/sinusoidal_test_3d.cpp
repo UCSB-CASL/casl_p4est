@@ -4,7 +4,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: February 25, 2022.
+ * Updated: February 28, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -35,7 +35,7 @@ int main ( int argc, char* argv[] )
 	param_t<double>         maxHK( pl, 4./3, "maxHK", "Maximum mean dimensionless curvature (default: 4/3 = twice 2/3 from 2D)" );
 	param_t<unsigned short> maxRL( pl, 6, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
-	param_t<double> probMaxHKLB( pl, 0.9, "probMaxHKLB", "Easing-off max probability for lower bound max HK (default: 0.9)" );
+	param_t<double> probMaxHKLB( pl, 1.0, "probMaxHKLB", "Easing-off probability for |hk*| upper bound (default: 1.0)" );
 	param_t<std::string> outputDir( pl, ".", "outputDir", "Path where files will be written to (default: build folder)" );
 
 	std::mt19937 genProb{};	// NOLINT Random engine for probability for choosing whether to sample a grid point or not.
@@ -188,15 +188,17 @@ int main ( int argc, char* argv[] )
 		PetscPrintf( mpi.comm(), "Collecting samples" );
 		Vec sampledFlag;							// A flag vector to distinguish sampled nodes along the interface.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &sampledFlag ) );
-		Vec hkError;								// A vector with sampled |hk| error.
+		Vec hkError;								// A vector with sampled |hk error|.
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &hkError ) );
+		Vec ihk;									// A vector with interpolated hk at the interface for sampled nodes.
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ihk ) );
 
 		std::vector<std::vector<double>> samples;
 		double trackedMinHK, trackedMaxHK;
 		double maxHKError = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
 															   samples, trackedMinHK, trackedMaxHK, genProb,
-															   H * K_MAX / 2, probMaxHKLB(), minHK(), 0.01, sampledFlag,
-															   NAN, exactFlag, hkError );
+															   H * K_MAX / 2, probMaxHKLB(), minHK(), 0.5, sampledFlag,
+															   NAN, exactFlag, hkError, ihk );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g", maxHKError );
 		watch.read_duration_current( true );
 
@@ -211,31 +213,35 @@ int main ( int argc, char* argv[] )
 		watch.read_duration_current( true );
 		watch.stop();
 
-		const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr, *hkErrorReadPtr;
+		const double *phiReadPtr, *exactFlagReadPtr, *sampledFlagReadPtr, *hkErrorReadPtr, *ihkReadPtr;
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 		CHKERRXX( VecGetArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecGetArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 		CHKERRXX( VecGetArrayRead( hkError, &hkErrorReadPtr ) );
+		CHKERRXX( VecGetArrayRead( ihk, &ihkReadPtr ) );
 
 		std::ostringstream oss;
 		oss << "sinusoid_test";
 		my_p4est_vtk_write_all( p4est, nodes, ghost,
 								P4EST_TRUE, P4EST_TRUE,
-								4, 0, oss.str().c_str(),
+								5, 0, oss.str().c_str(),
 								VTK_POINT_DATA, "phi", phiReadPtr,
 								VTK_POINT_DATA, "sampledFlag", sampledFlagReadPtr,
 								VTK_POINT_DATA, "exactFlag", exactFlagReadPtr,
-								VTK_POINT_DATA, "hkError", hkErrorReadPtr );
+								VTK_POINT_DATA, "hkError", hkErrorReadPtr,
+								VTK_POINT_DATA, "ihk", ihkReadPtr );
 
 		// Clean up.
 		sinusoidalLevelSet.toggleCache( false );		// Done with cache.
 		sinusoidalLevelSet.clearCache();
 
+		CHKERRXX( VecRestoreArrayRead( ihk, &ihkReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( hkError, &hkErrorReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( sampledFlag, &sampledFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( exactFlag, &exactFlagReadPtr ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 
+		CHKERRXX( VecDestroy( ihk ) );
 		CHKERRXX( VecDestroy( hkError ) );
 		CHKERRXX( VecDestroy( exactFlag ) );
 		CHKERRXX( VecDestroy( sampledFlag ) );

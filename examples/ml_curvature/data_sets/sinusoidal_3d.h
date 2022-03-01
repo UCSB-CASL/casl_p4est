@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: February 27, 2022.
+ * Updated: February 28, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -527,7 +527,8 @@ public:
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] samR Overriding sampling radius on the uv plane (to be used instead of the one provided during instantiation).
 	 * @param [in] filter Filter vector with 1s for nodes we can sample and anything else for non-sampling nodes.
-	 * @param [in] hkError Vector to hold |hk| error for sampled nodes.
+	 * @param [in] hkError Vector to hold absolute hk error for sampled nodes.
+	 * @param [in] ihk Vector to hold linearly interpolated hk for sampled nodes.
 	 * @return Maximum error in dimensionless curvature (reduced across processes).
 	 * @throws runtime_error or invalid_argument if more than one node maps to the same discrete coordinates, or if
 	 * 		   cache is disabled or is empty, or if we can't locate the nodes' exact nearest points on Gamma (which
@@ -540,7 +541,7 @@ public:
 						   double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
 						   const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
 						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						   const double& samR=NAN, const Vec& filter=nullptr, Vec hkError=nullptr ) const
+						   const double& samR=NAN, const Vec& filter=nullptr, Vec hkError=nullptr, Vec ihk=nullptr ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -601,6 +602,15 @@ public:
 			CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
 			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
 				hkErrorPtr[n] = 0;
+		}
+
+		// Reset ihk vector if given.
+		double *ihkPtr;
+		if( ihk  )
+		{
+			CHKERRXX( VecGetArray( ihk, &ihkPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				ihkPtr[n] = 0;
 		}
 
 		// Prepare curvature interpolation.
@@ -737,6 +747,9 @@ public:
 			if( hkError )										// Are we also recording the hk error?
 				hkErrorPtr[outIdxToNodeIdx[i]] = error;
 			trackedMaxHKError = MAX( trackedMaxHKError, error );
+
+			if( ihk )											// Are we also recording ihk?
+				ihkPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE];
 		}
 		delete [] outKappa;
 
@@ -765,6 +778,15 @@ public:
 			// Synchronize sampling hk error among processes.
 			CHKERRXX( VecGhostUpdateBegin( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
 			CHKERRXX( VecGhostUpdateEnd( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
+		if( ihk )
+		{
+			CHKERRXX( VecRestoreArray( ihk, &ihkPtr ) );
+
+			// Synchronize interpolated hk among processes.
+			CHKERRXX( VecGhostUpdateBegin( ihk, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( ihk, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
 
 		// Clean up.
