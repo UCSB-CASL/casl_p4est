@@ -159,7 +159,11 @@ DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whethe
 
 DEFINE_PARAMETER(pl, bool, use_regularize_front, false, "True/false to describe whether or not we use Daniil's algorithm for smoothing problem geometries and bridging gaps of a certain proximity. Default:false \n");
 
-DEFINE_PARAMETER(pl, double, proximity_smoothing, 1.1, "Parameter for front regularization. default: 1.1 \n");
+DEFINE_PARAMETER(pl, bool, use_collapse_onto_substrate, false, "True/false to describe whether or not we use algorithm for collapsing interface onto a substrate within a certain proximity. Default:false \n");
+
+DEFINE_PARAMETER(pl, double, proximity_smoothing, 2.5, "Parameter for front regularization. default: 2.5 \n");
+DEFINE_PARAMETER(pl, double, proximity_collapse, 3.0, "Parameter for collapse onto front. default: 3.0 \n");
+
 
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
@@ -4138,6 +4142,231 @@ void prepare_refinement_fields(vec_and_ptr_t phi, vec_and_ptr_t vorticity, vec_a
 }
 
 
+// (WIP -- currently unused:)
+void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t& phi)
+{
+  // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
+  // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
+
+  double proximity_smoothing_ = proximity_smoothing;
+
+  double dxyz_[P4EST_DIM];
+  dxyz_min(p4est,dxyz_);
+
+  double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dxyz_[2]));
+  double new_phi_val = .5*dxyz_min_;
+
+
+  PetscErrorCode ierr;
+  int mpi_comm = p4est->mpicomm;
+
+  ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
+
+  int num_nodes_smoothed = 0;
+  if (fabs(proximity_smoothing_)>EPS) {
+
+
+    // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
+    // shift level-set upwards and reinitialize
+
+    // Updated Daniil comment:
+    // first pass: bridge too narrow regions by lifting level-set function, reinitializing,
+    // brigning it down and checking which nodes flipped sign
+    // (note that it also smooths out too sharp corners which are usually formed by
+    // solidifying front ``getting stuck'' on grid nodes)
+    my_p4est_level_set_t ls(ngbd);
+    vec_and_ptr_t front_phi_tmp(phi.vec);
+
+    // Shift the LSF:
+    double shift = dxyz_min_*proximity_smoothing_;
+    ierr = VecCopyGhost(phi.vec, front_phi_tmp.vec);CHKERRXX(ierr);
+    ierr = VecShiftGhost(front_phi_tmp.vec, shift);CHKERRXX(ierr);
+
+    // eliminate small pools created by lifting
+    int num_islands = 0;
+    vec_and_ptr_t island_number(phi.vec);
+
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+
+    if (num_islands > 1)
+    {
+      ierr = PetscPrintf(mpi_comm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
+      island_number.get_array();
+      front_phi_tmp.get_array();
+
+      // compute liquid pools areas
+      // TODO: make it real area instead of number of points
+      std::vector<double> island_area(num_islands, 0);
+
+      foreach_local_node(n, nodes) {
+        if (island_number.ptr[n] >= 0) {
+          ++island_area[ (int) island_number.ptr[n] ];
+        }
+      }
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+      // find the biggest liquid pool
+      int main_island = 0;
+      int island_area_max = island_area[0];
+
+      for (int i = 1; i < num_islands; ++i) {
+        if (island_area[i] > island_area_max) {
+          main_island     = i;
+          island_area_max = island_area[i];
+        }
+      }
+
+      if (main_island < 0) throw;
+
+      // remove all but the biggest pool
+      foreach_node(n, nodes) {
+        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
+          front_phi_tmp.ptr[n] = new_phi_val;
+        }
+      }
+
+      island_number.restore_array();
+      front_phi_tmp.restore_array();
+
+      // TODO: make the decision whether to solidify a liquid pool or not independently
+      // for each pool based on its size and shape
+    }
+
+    island_number.destroy();
+    // reinitilize and bring it down
+
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+    ierr = VecShiftGhost(front_phi_tmp.vec, -shift); CHKERRXX(ierr);
+
+    // "solidify" nodes that changed sign
+    phi.get_array();
+    front_phi_tmp.get_array();
+
+    foreach_node(n, nodes) {
+      if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
+        phi.ptr[n] = front_phi_tmp.ptr[n];
+        num_nodes_smoothed++;
+      }
+    }
+
+    phi.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+  }
+
+  if (fabs(proximity_smoothing_)>0. && 0) {
+    // (Optional, not used anymore)
+    // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
+    // shift level-set downwards and reinitialize
+    my_p4est_level_set_t ls(ngbd);
+    vec_and_ptr_t front_phi_tmp(phi.vec);
+
+    // shift up
+    double shift = -0.1*dxyz_min_*proximity_smoothing_;
+    VecCopyGhost(phi.vec, front_phi_tmp.vec);
+    VecShiftGhost(front_phi_tmp.vec, shift);
+
+    // reinitialize
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+
+    // shift back
+    VecShiftGhost(front_phi_tmp.vec, -shift);
+
+    // "solidify" nodes that changed sign
+    phi.get_array();
+    front_phi_tmp.get_array();
+
+    foreach_node(n, nodes) {
+      if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
+        phi.ptr[n] = front_phi_tmp.ptr[n];
+        num_nodes_smoothed++;
+      }
+    }
+
+    phi.restore_array();
+    front_phi_tmp.restore_array();
+    front_phi_tmp.destroy();
+  }
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
+
+//  vec_and_ptr_t front_phi_tmp;
+//  front_phi_tmp.set(phi.vec); // <- that is a big memory leak situation I think
+
+  // ELYCE TO DO-- THIS THIRD PART DOES NOT GET USED, SHOULD PROBABLY BYPASS THIS --> jk, I think it does get used , i think set() makes the two things the same so it's actually updating phi
+  // third pass: look for isolated pools of liquid and remove them
+  if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+  {
+    ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
+    int num_islands = 0;
+    vec_and_ptr_t island_number(phi.vec);
+
+    VecScaleGhost(phi.vec, -1.);
+    compute_islands_numbers(*ngbd, phi.vec, num_islands, island_number.vec);
+    VecScaleGhost(phi.vec, -1.);
+
+    if (num_islands > 1)
+    {
+      ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
+      island_number.get_array();
+      phi.get_array();
+
+      // compute liquid pools areas
+      // TODO: make it real area instead of number of points
+      std::vector<double> island_area(num_islands, 0);
+
+      foreach_local_node(n, nodes)
+      {
+        if (island_number.ptr[n] >= 0)
+        {
+          ++island_area[ (int) island_number.ptr[n] ];
+        }
+      }
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+      // find the biggest liquid pool
+      int main_island = 0;
+      int island_area_max = island_area[0];
+
+      for (int i = 1; i < num_islands; ++i)
+      {
+        if (island_area[i] > island_area_max)
+        {
+          main_island     = i;
+          island_area_max = island_area[i];
+        }
+      }
+
+      if (main_island < 0) throw;
+
+      // solidify all but the biggest pool
+      foreach_node(n, nodes)
+      {
+        if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
+        {
+          phi.ptr[n] = new_phi_val;
+        }
+      }
+
+      island_number.restore_array();
+      phi.restore_array();
+
+      // TODO: make the decision whether to solidify a liquid pool or not independently
+      // for each pool based on its size and shape
+    }
+
+    island_number.destroy();
+  }
+
+  ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+
 void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                      p4est_t* &p4est, p4est_nodes_t* &nodes,
@@ -4256,6 +4485,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
     if(example_uses_inner_LSF){
       phi_cylinder.create(p4est,nodes); // create to refine around, then will destroy
       sample_cf_on_nodes(p4est, nodes, mini_level_set, phi_cylinder.vec);
+//      if(start_w_merged_grains){regularize_front(p4est, nodes, ngbd, phi_cylinder.vec);}
     }
     // Call advection and refinement
     sl.update_p4est(v_interface.vec, dt,
@@ -4736,7 +4966,7 @@ bool are_we_saving_vtk(double tstep_, double tn_,bool is_load_step, int& out_idx
   return out;
 }
 
-bool are_we_saving_fluid_forces(double tn_,bool is_load_step, int& out_idx, bool get_new_outidx){
+bool are_we_saving_fluid_forces(double& tn_,bool is_load_step, int out_idx, bool get_new_outidx){
   bool out = false;
   if(save_fluid_forces){
       out= ((int (floor(tn_/save_fluid_forces_every_dt) )) !=out_idx) && (!is_load_step);
@@ -4748,13 +4978,15 @@ bool are_we_saving_fluid_forces(double tn_,bool is_load_step, int& out_idx, bool
 }
 
 
-// (WIP -- currently unused:)
-void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t phi)
-{
-  // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
-  // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
+void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate){
+  // Some things to set if you want to save collapse results and see what's going on:
+  bool save_collapse_vtk = false; // set this to true if you want to save collapse files
+  char collapse_folder[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flushing_growth_off/collapse_vtks";
 
-  double proximity_smoothing_ = proximity_smoothing;
+
+
+  // Define values of interest:
+  double proximity_smoothing_ = proximity_collapse;
 
   double dxyz_[P4EST_DIM];
   dxyz_min(p4est,dxyz_);
@@ -4766,247 +4998,248 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
   PetscErrorCode ierr;
   int mpi_comm = p4est->mpicomm;
 
-  ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi_comm, "Checking collapse onto substrate... "); CHKERRXX(ierr);
 
   int num_nodes_smoothed = 0;
-  if (fabs(proximity_smoothing_)>EPS) {
 
-    // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
-    // shift level-set upwards and reinitialize
+  // Check the distance bw the LSF and substrate at all points along the interface first, only trigger techqniue if we are within proximity:
 
-    // Updated Daniil comment:
-    // first pass: bridge too narrow regions by lifting level-set function, reinitializing,
-    // brigning it down and checking which nodes flipped sign
-    // (note that it also smooths out too sharp corners which are usually formed by
-    // solidifying front ``getting stuck'' on grid nodes)
+  bool substrate_is_within_proximity = false;
+  phi.get_array(); phi_substrate.get_array();
+  foreach_node(n, nodes){
+    if(fabs(phi.ptr[n]) < dxyz_min_*1.2){
+      double substrate_dist = fabs(phi_substrate.ptr[n]);
+      bool is_collapsed_already = fabs(phi.ptr[n] - phi_substrate.ptr[n]) < EPS;
+
+      if((substrate_dist < proximity_smoothing_*dxyz_min_) && !is_collapsed_already){
+        substrate_is_within_proximity = true;
+      }
+    }
+  }
+  phi.restore_array();
+  phi_substrate.restore_array();
+
+//  printf("Rank %d has substrate_within_proximity = %d \n", p4est->mpirank, substrate_is_within_proximity);
+
+  ierr = MPI_Allreduce(MPI_IN_PLACE, &substrate_is_within_proximity, 1, MPI_INT, MPI_LOR, mpi_comm); SC_CHECK_MPI(ierr);
+  if(substrate_is_within_proximity){
+    PetscPrintf(mpi_comm, "Interface is within proximity of substrate, proceeding with collapse ... \n");
+  }
+
+
+
+
+
+  // Begin procedure of checking distance bw LSF and substrate, and collapsing if necessary
+  if((fabs(proximity_smoothing_) > EPS) && substrate_is_within_proximity){
     my_p4est_level_set_t ls(ngbd);
-    vec_and_ptr_t front_phi_tmp(phi.vec);
+    vec_and_ptr_t phi_solid; phi_solid.create(phi.vec);
+    vec_and_ptr_t front_phi_tmp; front_phi_tmp.create(phi.vec);
 
-    // Shift the LSF:
+    // Compute phi_solid:
+    VecCopyGhost(phi.vec, phi_solid.vec);
+    VecScaleGhost(phi_solid.vec, -1.0);
+
+    // Compute the effective LSF for this situation:
+    std::vector<Vec> phi_list;
+    std::vector<mls_opn_t> phi_opn;
+
+    phi_list.push_back(phi_solid.vec); phi_list.push_back(phi_substrate.vec);
+    phi_opn.push_back(MLS_INTERSECTION); phi_opn.push_back(MLS_INTERSECTION);
+
+    compute_phi_eff(front_phi_tmp.vec, nodes, phi_list, phi_opn);
+
+    // Reinitialize the effective LSF
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
+
+    if(save_collapse_vtk){
+      // Save to vtk before: ---------------------------------------------------
+      std::vector<Vec_for_vtk_export_t> point_fields;
+      point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
+      point_fields.push_back(Vec_for_vtk_export_t(front_phi_tmp.vec, "phi_tmp"));
+      std::vector<Vec_for_vtk_export_t> cell_fields = {};
+      char filename[PATH_MAX];
+      sprintf(filename, "%s/before_collapse_tstep_%d", collapse_folder, tstep);
+      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+                                   P4EST_TRUE,P4EST_TRUE,filename,
+                                   point_fields, cell_fields);
+
+
+      point_fields.clear();
+      cell_fields.clear();
+      // -------------------------------------------------------------------------
+    }
+
+
+    // Create some vectors for vtk saving purposes (to visualize this process)
+    vec_and_ptr_t phi_tmp_up;
+    vec_and_ptr_t phi_tmp_up_reinit;
+    if(save_collapse_vtk) {
+      phi_tmp_up.create(front_phi_tmp.vec);
+      phi_tmp_up_reinit.create(front_phi_tmp.vec);
+    }
+
+    // Now shift the effective LSF up:
     double shift = dxyz_min_*proximity_smoothing_;
-    ierr = VecCopyGhost(phi.vec, front_phi_tmp.vec);CHKERRXX(ierr);
     ierr = VecShiftGhost(front_phi_tmp.vec, shift);CHKERRXX(ierr);
 
-    // eliminate small pools created by lifting
-    int num_islands = 0;
-    vec_and_ptr_t island_number(phi.vec);
+    if(save_collapse_vtk) VecCopyGhost(front_phi_tmp.vec, phi_tmp_up.vec);
 
-    VecScaleGhost(front_phi_tmp.vec, -1.);
-    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
-    VecScaleGhost(front_phi_tmp.vec, -1.);
+    // Reinitialize:
+    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
 
-    if (num_islands > 1)
+    if(save_collapse_vtk) VecCopyGhost(front_phi_tmp.vec, phi_tmp_up_reinit.vec);
+
+    // Shift back down:
+    ierr = VecShiftGhost(front_phi_tmp.vec, -shift);CHKERRXX(ierr);
+
+
+    if(save_collapse_vtk){
+      // Save to vtk intermediate: ---------------------------------------------------
+      std::vector<Vec_for_vtk_export_t> point_fields;
+      std::vector<Vec_for_vtk_export_t> cell_fields = {};
+      char filename[PATH_MAX];
+
+
+      point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_tmp_up.vec, "phi_tmp_up"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_tmp_up_reinit.vec, "phi_tmp_reinit"));
+      point_fields.push_back(Vec_for_vtk_export_t(front_phi_tmp.vec, "phi_tmp"));
+
+
+      sprintf(filename, "%s/collapse_vtks/intermediate_collapse_tstep_%d", collapse_folder, tstep);
+      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+                                   P4EST_TRUE,P4EST_TRUE,filename,
+                                   point_fields, cell_fields);
+
+
+      point_fields.clear();
+      cell_fields.clear();
+    }
+
+    // Destroy the vectors if we saved the collapse
+    if(save_collapse_vtk){
+      phi_tmp_up.destroy();
+      phi_tmp_up_reinit.destroy();
+    }
+
+
+    // Collapse/Solidify nodes that changed sign:
+    front_phi_tmp.get_array(); phi_solid.get_array();
+    phi.get_array(); phi_substrate.get_array();
+    foreach_node(n, nodes){
+      if((phi_solid.ptr[n] < 0) && (front_phi_tmp.ptr[n] >0)){
+        phi.ptr[n] = MAX(-front_phi_tmp.ptr[n], phi_substrate.ptr[n]);
+        num_nodes_smoothed++;
+      }
+    }
+    front_phi_tmp.restore_array(); phi_solid.restore_array();
+    phi.restore_array(); phi_substrate.restore_array();
+
+
+    // Look for isolated pools of liquid and remove them
+    if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
     {
-      ierr = PetscPrintf(mpi_comm, "%d subpools removed... ", num_islands-1); CHKERRXX(ierr);
-      island_number.get_array();
-      front_phi_tmp.get_array();
+      ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
+      int num_islands = 0;
+      vec_and_ptr_t island_number; island_number.create(phi.vec);
 
-      // compute liquid pools areas
-      // TODO: make it real area instead of number of points
-      std::vector<double> island_area(num_islands, 0);
+      VecScaleGhost(phi.vec, -1.);
+      compute_islands_numbers(*ngbd, phi.vec, num_islands, island_number.vec);
+      VecScaleGhost(phi.vec, -1.);
 
-      foreach_local_node(n, nodes) {
-        if (island_number.ptr[n] >= 0) {
-          ++island_area[ (int) island_number.ptr[n] ];
+      if (num_islands > 1)
+      {
+        ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
+        island_number.get_array();
+        phi.get_array();
+
+        // compute liquid pools areas
+        // TODO: make it real area instead of number of points
+        std::vector<double> island_area(num_islands, 0);
+
+        foreach_local_node(n, nodes)
+        {
+          if (island_number.ptr[n] >= 0)
+          {
+            ++island_area[ (int) island_number.ptr[n] ];
+          }
         }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+
+        // find the biggest liquid pool
+        int main_island = 0;
+        int island_area_max = island_area[0];
+
+        for (int i = 1; i < num_islands; ++i)
+        {
+          if (island_area[i] > island_area_max)
+          {
+            main_island     = i;
+            island_area_max = island_area[i];
+          }
+        }
+
+        if (main_island < 0) throw;
+
+        // solidify all but the biggest pool
+        foreach_node(n, nodes)
+        {
+          if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
+          {
+            phi.ptr[n] = new_phi_val;
+          }
+        }
+
+        island_number.restore_array();
+        phi.restore_array();
+
       }
 
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-
-      // find the biggest liquid pool
-      int main_island = 0;
-      int island_area_max = island_area[0];
-
-      for (int i = 1; i < num_islands; ++i) {
-        if (island_area[i] > island_area_max) {
-          main_island     = i;
-          island_area_max = island_area[i];
-        }
-      }
-
-      if (main_island < 0) throw;
-
-      // remove all but the biggest pool
-      foreach_node(n, nodes) {
-        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
-          front_phi_tmp.ptr[n] = new_phi_val;
-        }
-      }
-
-      island_number.restore_array();
-      front_phi_tmp.restore_array();
-
-      // TODO: make the decision whether to solidify a liquid pool or not independently
-      // for each pool based on its size and shape
+      island_number.destroy();
     }
 
-    island_number.destroy();
-    // reinitilize and bring it down
+    // Reinitialize the final result
+    ls.reinitialize_2nd_order(phi.vec, 50);
 
-    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
-    ierr = VecShiftGhost(front_phi_tmp.vec, -shift); CHKERRXX(ierr);
+    if(save_collapse_vtk){
+      // Save to vtk after: ---------------------------------------------------
+      std::vector<Vec_for_vtk_export_t> point_fields;
+      std::vector<Vec_for_vtk_export_t> cell_fields = {};
+      char filename[PATH_MAX];
 
-    // "solidify" nodes that changed sign
-    phi.get_array();
-    front_phi_tmp.get_array();
 
-    foreach_node(n, nodes) {
-      if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
-        phi.ptr[n] = front_phi_tmp.ptr[n];
-        num_nodes_smoothed++;
-      }
+      point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
+      point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
+
+      sprintf(filename, "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flushing_growth_off/collapse_vtks/after_collapse_tstep_%d", tstep);
+      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+                                   P4EST_TRUE,P4EST_TRUE,filename,
+                                   point_fields, cell_fields);
+
+
+      point_fields.clear();
+      cell_fields.clear();
+      // -------------------------------------------------------------------------
     }
 
-    phi.restore_array();
-    front_phi_tmp.restore_array();
+    // Destroy necessary things:
+    phi_solid.destroy();
     front_phi_tmp.destroy();
-  }
 
-  if (fabs(proximity_smoothing_)>0. && 0) {
-    // (Optional, not used anymore)
-    // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
-    // shift level-set downwards and reinitialize
-    my_p4est_level_set_t ls(ngbd);
-    vec_and_ptr_t front_phi_tmp(phi.vec);
-
-    // shift up
-    double shift = -0.1*dxyz_min_*proximity_smoothing_;
-    VecCopyGhost(phi.vec, front_phi_tmp.vec);
-    VecShiftGhost(front_phi_tmp.vec, shift);
-
-    // reinitialize
-    ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
-
-    // shift back
-    VecShiftGhost(front_phi_tmp.vec, -shift);
-
-    // "solidify" nodes that changed sign
-    phi.get_array();
-    front_phi_tmp.get_array();
-
-    foreach_node(n, nodes) {
-      if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
-        phi.ptr[n] = front_phi_tmp.ptr[n];
-        num_nodes_smoothed++;
-      }
-    }
-
-    phi.restore_array();
-    front_phi_tmp.restore_array();
-    front_phi_tmp.destroy();
-  }
-  ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
-
-  vec_and_ptr_t front_phi_tmp;
-  front_phi_tmp.set(phi.vec);
-
-  // third pass: look for isolated pools of liquid and remove them
-  if (num_nodes_smoothed > 0) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
-  {
+    // Report:
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
     ierr = PetscPrintf(mpi_comm, "%d nodes smoothed... ", num_nodes_smoothed); CHKERRXX(ierr);
-    int num_islands = 0;
-    vec_and_ptr_t island_number(phi.vec);
 
-    VecScaleGhost(front_phi_tmp.vec, -1.);
-    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
-    VecScaleGhost(front_phi_tmp.vec, -1.);
-
-    if (num_islands > 1)
-    {
-      ierr = PetscPrintf(mpi_comm, "%d pools removed... ", num_islands-1); CHKERRXX(ierr);
-      island_number.get_array();
-      front_phi_tmp.get_array();
-
-      // compute liquid pools areas
-      // TODO: make it real area instead of number of points
-      std::vector<double> island_area(num_islands, 0);
-
-      foreach_local_node(n, nodes)
-      {
-        if (island_number.ptr[n] >= 0)
-        {
-          ++island_area[ (int) island_number.ptr[n] ];
-        }
-      }
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-
-      // find the biggest liquid pool
-      int main_island = 0;
-      int island_area_max = island_area[0];
-
-      for (int i = 1; i < num_islands; ++i)
-      {
-        if (island_area[i] > island_area_max)
-        {
-          main_island     = i;
-          island_area_max = island_area[i];
-        }
-      }
-
-      if (main_island < 0) throw;
-
-      // solidify all but the biggest pool
-      foreach_node(n, nodes)
-      {
-        if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island)
-        {
-          front_phi_tmp.ptr[n] = new_phi_val;
-        }
-      }
-
-      island_number.restore_array();
-      front_phi_tmp.restore_array();
-
-      // TODO: make the decision whether to solidify a liquid pool or not independently
-      // for each pool based on its size and shape
-    }
-
-    island_number.destroy();
   }
-
-//  front_phi_cur.destroy();
-//  front_phi_cur.set(front_phi_tmp.vec);
-//  VecCopyGhost(front_phi_tmp.vec, front_phi_cur.vec);
-//  front_phi_tmp.destroy();
-
-  // iterpolate back onto fine grid
-//  if (front_smoothing_ != 0)
-//  {
-//    my_p4est_level_set_t ls(ngbd);
-//    ls.reinitialize_2nd_order(phi.vec, 20);
-
-//    my_p4est_interpolation_nodes_t interp(ngbd_cur);
-
-//    double xyz[P4EST_DIM];
-//    foreach_node(n, nodes_)
-//    {
-//      node_xyz_fr_n(n, p4est_, nodes_, xyz);
-//      interp.add_point(n, xyz);
-//    }
-
-//    interp.set_input(front_phi_cur.vec, quadratic);
-//    interp.interpolate(front_phi_.vec);
-
-//    front_phi_cur.destroy();
-//    delete ngbd_cur;
-//    delete hierarchy_cur;
-//    p4est_nodes_destroy(nodes_cur);
-//    p4est_ghost_destroy(ghost_cur);
-//    p4est_destroy(p4est_cur);
-//  } else {
-//    phi.set(front_phi_cur.vec);
-//  }
-
-  ierr = PetscPrintf(mpi_comm, "done!\n"); CHKERRXX(ierr);
-  ierr = PetscLogEventEnd(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 
-
 void track_evolving_geometry(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd,
-                             vec_and_ptr_t phi, vec_and_ptr_t island_numbers, int out_idx){
+                             vec_and_ptr_t& phi, vec_and_ptr_t& island_numbers, int out_idx){
 
 
 
@@ -5298,6 +5531,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
       // Create the cylinder just for visualization purposes, then destroy after saving
       phi_cylinder.create(p4est,nodes);
       sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+//      if(start_w_merged_grains){regularize_front(p4est, nodes, ngbd, phi_cylinder.vec);}
     }
 
     if(is_crash){
@@ -6606,7 +6840,7 @@ int main(int argc, char** argv) {
       sample_cf_on_nodes(p4est,nodes,level_set,phi.vec);
       if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
-      if(start_w_merged_grains) regularize_front(p4est, nodes, ngbd, phi);
+      if(start_w_merged_grains) {regularize_front(p4est, nodes, ngbd, phi);}
 
 
 
@@ -7172,6 +7406,7 @@ int main(int argc, char** argv) {
         // Get inner LSF and derivatives if required:
         if(example_uses_inner_LSF){
             sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
+//            if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_cylinder.vec);}
             ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
           }
         // -------------------------------
@@ -7356,11 +7591,12 @@ int main(int argc, char** argv) {
                                             NULL, false, NULL, NULL);
         }
 
-        if(example_uses_inner_LSF){
+        if(example_uses_inner_LSF && do_we_solve_for_Ts){
           phi_cylinder.create(p4est_np1,nodes_np1);
           cyl_normals.create(p4est_np1,nodes_np1);
 
           sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
+//          if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_cylinder.vec);}
           compute_normals(*ngbd_np1,phi_cylinder.vec,cyl_normals.vec);
 
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling extension over phi_cylinder \n");
@@ -7566,7 +7802,7 @@ int main(int argc, char** argv) {
         bool compute_pressure_to_save = false;
         compute_pressure_to_save =
             are_we_saving_vtk(tstep,tn, false,out_idx,false) ||
-            are_we_saving_fluid_forces(tn,false,pressure_save_out_idx,true);
+            are_we_saving_fluid_forces(tn, false, pressure_save_out_idx, true);
 
         compute_pressure_to_save = compute_pressure_to_save || example_is_a_test_case;
         // Check if we are going to be saving to vtk for the next timestep... if so, we will compute pressure at nodes for saving
@@ -7945,14 +8181,20 @@ int main(int argc, char** argv) {
           if(tstep==0)ls.reinitialize_2nd_order(phi.vec,30);
         }
 
-//        if(example_ == DENDRITE_TEST){
-//          // 12/15/21 -- this may need to be turned on, we will see
-////          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi); // ELYCE DEBUGGING: commented this out
-//        }
-
         if(use_regularize_front){
           PetscPrintf(mpi.comm(), "Calling regularlize front: \n");
-          regularize_front(p4est_np1,nodes_np1,ngbd_np1,phi);
+          regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);
+        }
+
+        if(example_uses_inner_LSF && use_collapse_onto_substrate){
+          PetscPrintf(mpi.comm(), "Checking collapse \n ");
+          phi_cylinder.create(p4est_np1,nodes_np1);
+          sample_cf_on_nodes(p4est_np1, nodes_np1, mini_level_set, phi_cylinder.vec);
+          //            if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_cylinder.vec);}
+
+          check_collapse_on_substrate(p4est_np1,nodes_np1,ngbd_np1, phi, phi_cylinder);
+
+          phi_cylinder.destroy();
         }
         // --------------------------------------------------------------------------------------------------------------
         // Interpolate Values onto New Grid:
