@@ -156,7 +156,7 @@ DEFINE_PARAMETER(pl, bool, use_boussinesq, false, "True/false to describe whethe
 
 DEFINE_PARAMETER(pl, bool, use_regularize_front, false, "True/false to describe whether or not we use Daniil's algorithm for smoothing problem geometries and bridging gaps of a certain proximity. Default:false \n");
 
-DEFINE_PARAMETER(pl, double, proximity_smoothing, 1.1, "Parameter for front regularization. default: 1.1 \n");
+DEFINE_PARAMETER(pl, double, proximity_smoothing, 5.1, "Parameter for front regularization. default: 1.1 \n");
 
 DEFINE_PARAMETER(pl, bool, is_dissolution_case, false, "True/false to describe whether or not we are solving dissolution. Default: false. This is set true for the dissolving disk benchmark case. This is used to distinguish the dissolution-specific stefan condition, as contrasted with other concentration driven problems in solidification. \n");
 DEFINE_PARAMETER(pl, int, nondim_type_used, -1., "Integer value to overwrite the nondimensionalization type used for a given problem. The default is -1. If this is specified to a nonnegative number, it will overwrite the particular example's default. 0 - nondim by fluid velocity, 1 - nondim by diffusivity (thermal or conc), 2 - dimensional.  \n");
@@ -587,7 +587,7 @@ void set_geometry(){
       x0_lsf = 0.; y0_lsf = 0.; // TO-DO: can remove the x0_lsf and y0_lsf since they are not being used
 
       // Number of trees:
-      nx = 2; ny = 2;
+      nx = 1; ny = 1;
       px = 0; py = 0;
 
       // Radius of the level set function:
@@ -612,12 +612,12 @@ void set_geometry(){
       // TO-DO: clean this out
       // (WIP) : was added to further verify coupled solver by demonstrating dendritic solidification of a pure substance, but never fully fledged this out.
       // Domain size:
-      xmin = 0.; xmax = 1600.;
-      ymin = 0.; ymax = 1600.;
+      xmin = 0.; xmax = 3200.;
+      ymin = 0.; ymax = 3200.;
 
       // Number of trees and periodicity:
       nx = 2; ny = 2;
-      px = 1; py = 0;
+      px = 0; py = 0;
 
       // level set size (initial seed size)
       r0 = 30.; // to match the paper we are comparing with
@@ -950,6 +950,9 @@ void set_physical_properties(){
       break;
     }
     case DENDRITE_TEST:{
+      mu_l=1.0;//660000;
+      rho_l=1.0;//1000;
+      alpha_l=1.0;//28.5714;
       // can be specified by the user
       break;
     }
@@ -1159,6 +1162,7 @@ void set_nondimensional_groups(){
     // From these, we compute a characteristic velocity, Peclet number, Stefan number, etc.
     // This is also then used to specify the time_nondim_to_dim and vel_nondim_to_dim conversions
     u_inf = (Re*mu_l)/(rho_l * l_char);
+    // Rochi temp change
 
     if(!is_dissolution_case){
       Pe = l_char * u_inf/alpha_l;
@@ -1319,7 +1323,7 @@ void set_NS_info(){
     }
     case DENDRITE_TEST:{
       u0 = 0.;
-      v0 = -1.;
+      v0 = -0.035;
       hodge_percentage_of_max_u = 1.e-2;
       break;
     }
@@ -2228,11 +2232,12 @@ public:
       }
       case DENDRITE_TEST:{
         // check this later to-do
-        double noise = 0.3;
+        double noise = 0.001;
         double xc =xmax/2.0;
         double yc =ymax/2.0;
         double theta = atan2(y-yc,x-xc);
-        return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        //return r0*(1.0 - noise*fabs(sin(theta)) - noise*fabs(cos(theta))) - sqrt(SQR(x - xc) + SQR(y - yc));
+        return r0*(1.0 - noise*fabs(pow(sin(2*theta),2)))- sqrt(SQR(x - xc) + SQR(y - yc));
       }
       case PLANE_POIS_FLOW:{
         if(y > r0){
@@ -2592,7 +2597,7 @@ bool dirichlet_velocity_walls(DIM(double x, double y, double z)){
   switch(example_){
     case DENDRITE_TEST:{
     // Dirichlet on y upper wall (where bulk flow is incoming
-      return ( yupper_wall(DIM(x,y,z)));
+      return ( yupper_wall(DIM(x,y,z)) || xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)));
     }
     case FLOW_PAST_CYLINDER:
     case MELTING_POROUS_MEDIA:{
@@ -2988,7 +2993,6 @@ public:
       case PLANE_POIS_FLOW:
         return 0.; // homogeneous dirichlet no slip
       case FLOW_PAST_CYLINDER:
-      case DENDRITE_TEST:
       case MELTING_POROUS_MEDIA:
       case MELTING_ICE_SPHERE_NAT_CONV:
       case MELTING_ICE_SPHERE:
@@ -3016,6 +3020,9 @@ public:
       case COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP:
       case COUPLED_PROBLEM_EXAMPLE:
         return (*velocity_field[dir])(x,y);
+      case DENDRITE_TEST:{
+        return 0.0;
+      }
     default:
       throw std::runtime_error("BC INTERFACE VALUE VELOCITY: unrecognized example ");
       }
@@ -4721,27 +4728,27 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
   ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
   ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
 
-  // auxiliary pointers (in case a corser grid is used further)
+//  // auxiliary pointers (in case a corser grid is used further)
 //  vec_and_ptr_t front_phi_cur;
-//  front_phi_cur.set(front_phi_.vec);
-//  p4est_t       *p4est_cur = p4est_;
-//  p4est_nodes_t *nodes_cur = nodes_;
-//  p4est_ghost_t *ghost_cur = ghost_;
+//  front_phi_cur.set(phi.vec);
+//  p4est_t       *p4est_cur = p4est;
+//  p4est_nodes_t *nodes_cur = nodes;
+//  p4est_ghost_t *ghost_cur = ghost;
 //  my_p4est_node_neighbors_t *ngbd_cur = ngbd_;
 //  my_p4est_hierarchy_t *hierarchy_cur = hierarchy_;
 
 
-  // interpolate level-set function onto a coarses grid (not really used)
+//   //interpolate level-set function onto a coarses grid (not really used)
 //  if (front_smoothing_ != 0)
 //  {
-//    p4est_cur = p4est_copy(p4est_, P4EST_FALSE);
+//    p4est_cur = p4est_copy(p4est, P4EST_FALSE);
 //    ghost_cur = my_p4est_ghost_new(p4est_cur, P4EST_CONNECT_FULL);
 //    nodes_cur = my_p4est_nodes_new(p4est_cur, ghost_cur);
 
-//    front_phi_cur.create(front_phi_.vec);
-//    VecCopyGhost(front_phi_.vec, front_phi_cur.vec);
+//    front_phi_cur.create(phi.vec);
+//    VecCopyGhost(phi.vec, front_phi_cur.vec);
 
-//    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
+//    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
 //    bool is_grid_changing = true;
 //    while (is_grid_changing)
 //    {
@@ -4761,7 +4768,7 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
 //        front_phi_cur.destroy();
 //        front_phi_cur.create(p4est_cur, nodes_cur);
 
-//        my_p4est_interpolation_nodes_t interp(ngbd_);
+//        my_p4est_interpolation_nodes_t interp(ngbd);
 
 //        double xyz[P4EST_DIM];
 //        foreach_node(n, nodes_cur)
@@ -4770,7 +4777,7 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
 //          interp.add_point(n, xyz);
 //        }
 
-//        interp.set_input(front_phi_.vec, linear); // we know that it is not really an interpolation, rather just a transfer, so therefore linear
+//        interp.set_input(phi.vec, linear); // we know that it is not really an interpolation, rather just a transfer, so therefore linear
 //        interp.interpolate(front_phi_cur.vec);
 //      }
 //    }
@@ -4885,7 +4892,7 @@ void regularize_front(p4est_t* p4est,p4est_nodes_t* nodes,my_p4est_node_neighbor
 //      ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 //    }
   }
-
+//   printf("Hello World\n");
 //  bool is_changed = false;
   int num_nodes_smoothed = 0;
   if (proximity_smoothing_ > 0) { // First pass -- shift LSF up, see if there are any islands, remove subpools if there. Then reinitialize, shift back. "Solidify" any nodes that changed sign.
