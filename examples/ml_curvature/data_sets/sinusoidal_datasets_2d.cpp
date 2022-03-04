@@ -10,7 +10,7 @@
  *
  * Developer: Luis Ángel.
  * Date: May 28, 2020.
- * Updated: November 25, 2021.
+ * Updated: March 3, 2022.
  *
  * [Update on May 3, 2020] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, pi/2].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -151,7 +151,7 @@ int main ( int argc, char* argv[] )
 	param_t<double> minHK( pl, 0.004, "minHK", "Minimum dimensionless curvature (default: 0.004)" );
 	param_t<double> maxHK( pl, 2./3, "maxHK", "Maximum dimensionless curvature (default: 2./3)" );
 	param_t<double> easeOffMaxProb( pl, 0.4, "easeOffMaxProb", "Easing-off distribution max probability to keep midpoint hk (default: 0.4)" );
-	param_t<int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<u_short> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
 	param_t<bool> writeSDF( pl, true, "writeSDF", "Write signed distance function samples (default: 1)" );
 	param_t<bool> verbose( pl, false, "verbose", "Show or not debugging messages (default: 0)" );
@@ -385,6 +385,7 @@ int main ( int argc, char* argv[] )
 					ls.reinitialize_2nd_order( rlsPhi, reinitNumIters() );
 
 					// Compute curvature with reinitialized data, which will be interpolated at the interface.
+					// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( nodeNeighbors, rlsNormal, curvature ) for compatibility with 3D.
 					compute_normals( nodeNeighbors, rlsPhi, rlsNormal );
 					compute_normals( nodeNeighbors, sdfPhi, sdfNormal );
 					compute_mean_curvature( nodeNeighbors, rlsPhi, rlsNormal, curvature );

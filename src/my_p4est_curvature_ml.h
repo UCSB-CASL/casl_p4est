@@ -42,7 +42,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: February 27, 2022.
+ * Updated: March 3, 2022.
  */
 namespace kml
 {
@@ -445,7 +445,7 @@ namespace kml
 		 * be considered as a preprocessing step in the function that invokes the neural inference.
 		 * @param [in] ngbd Node neighborhood struct.
 		 * @param [in] phi Reinitialized level-set values.
-		 * @param [in] normal Nodal normal components.
+		 * @param [in] normal Nodal unit normal vectors.
 		 * @param [in] numCurvature Numerical curvature (which we use for linear interpolation at Gamma).
 		 * @param [out] samples Vector of samples for valid nodes next to Gamma.
 		 * @param [out] indices Center nodal indices for collected samples (a one-to-one mapping).
@@ -474,24 +474,26 @@ namespace kml
 		Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK=0.004, const double& upMinHK=0.007 );
 
 		/**
-		 * Compute curvature.  There are two output modes in this function.  First, it computes the numerical curvature
-		 * at the nodes as usual and place the results in the numCurvature vector.  Then, it computes the curvature for
-		 * grid points next to the interface using the hybrid approach.  The resulting approximation is placed in the
-		 * hybCurvature vector and corresponds to the curvature *at* the normal projection of those nodes onto Gamma.
+		 * Compute curvature.  There are two output modes in this function.  First, it computes the unit normals and
+		 * the numerical mean curvature and place the results in the normal and numCurvature vectors.
+		 * Then, it computes the mean curvature for grid points next to the interface using the hybrid approach.  The
+		 * resulting approximation is placed in the hybCurvature vector and corresponds to the mean curvature *at* the
+		 * normal projection of those nodes onto Gamma.
 		 * The ancillary output hybFlag vector is populated with 1s where we used the hybrid approach and 0s everywhere
 		 * else.
+		 * TODO: Need to adjust to using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
 		 * @param [in] ngbd Node neighborhood structure.
 		 * @param [in] phi Nodal level-set values (assuming we have already reinitialized them).
-		 * @param [in] normal Nodal normal vector components.
-		 * @param [out] numCurvature Numerical curvature computed at the nodes using the conventional approach.
-		 * @param [out] hybCurvature Hybrid curvature computed at the normal interface-projection of nodes next to Gamma.
+		 * @param [out] normal Nodal unit normal vectors.
+		 * @param [out] numCurvature Numerical mean curvature computed at all the nodes.
+		 * @param [out] hybCurvature Hybrid mean curvature computed at the normal projection of nodes next to Gamma.
 		 * @param [out] hybFlag Indicator vector with 1s where we used the hybrid approach and 0s everywhere else.
 		 * @param [in] dimensionless Whether to scale curvature by h.
 		 * @param [in] watch Optional timer.  If given, we will time numerical and hybrid curvature computations.  Timer
 		 *        must be ready (i.e., called its start() method) before calling this function.
 		 * @return A pair with <numerical, hybrid> timings in seconds if watch parameter is not nullptr, otherwise, the
 		 *         values are set to -1.
-		 * @throws Runtime exception if any vector is nullptr.
+		 * @throws runtime_error if any vector is nullptr.
 		 */
 		std::pair<double, double> compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
 										   Vec numCurvature, Vec hybCurvature, Vec hybFlag,

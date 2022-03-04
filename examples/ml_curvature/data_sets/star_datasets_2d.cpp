@@ -24,7 +24,7 @@
  *
  * Developer: Luis Ángel.
  * Date: July 22, 2020.
- * Updated: November 11, 2021.
+ * Updated: March 3, 2022.
  *
  * [Update on May 3, 2021] Adapted code to handle data sets where the gradient of the negative-curvature stencil has an
  * angle in the range [0, 2pi].  That is, we collect samples where the gradient points towards the first quadrant of
@@ -76,10 +76,10 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
-	param_t<unsigned int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<u_short> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> outputDir( pl, "/Volumes/YoungMinEXT/k_ecnet_data", "outputDir", "Path where files will be written (default: same folder as the executable)" );
 	param_t<bool> verbose( pl, true, "verbose", "Show or not debugging messages (default: 1)" );
-	param_t<bool> exportVTK( pl, true, "exportVTK", "Export VTK file (default: 1)" );
+	param_t<bool> exportVTK( pl, false, "exportVTK", "Export VTK file (default: 0)" );
 
 	try
 	{
@@ -242,7 +242,7 @@ int main ( int argc, char* argv[] )
 
 		// Reinitialize level-set function.
 		my_p4est_level_set_t ls( &nodeNeighbors );
-		ls.reinitialize_2nd_order( phi, (int)reinitNumIters() );
+		ls.reinitialize_2nd_order( phi, reinitNumIters() );
 
 		// Compute numerical curvature and normal unit vectors.
 		Vec curvature, normal[P4EST_DIM], hk;
@@ -251,6 +251,7 @@ int main ( int argc, char* argv[] )
 		for( auto& dim : normal )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
+		// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( nodeNeighbors, normal, curvature ) for compatibility with 3D.
 		compute_normals( nodeNeighbors, phi, normal );
 		compute_mean_curvature( nodeNeighbors, phi, normal, curvature );
 

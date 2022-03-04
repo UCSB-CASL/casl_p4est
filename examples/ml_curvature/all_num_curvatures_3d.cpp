@@ -26,18 +26,22 @@
 #include <src/casl_math.h>
 #include <src/parameter_list.h>
 
-template<typename F>
+template<typename M, typename G>
 void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
-							  Vec kappaM, const F& exactMeanK, Vec errorKappaM, double& maxErrorKappaM )
+							  Vec kappaM, const M& exactMeanK, Vec errorKappaM, double& maxErrorKappaM,
+							  Vec kappaG, const G& exactGaussK, Vec errorKappaG, double& maxErrorKappaG )
 {
-	const double *kappaMReadPtr, *phiReadPtr;
-	double *errorKappaMPtr;
-	CHKERRXX( VecGetArrayRead( kappaM, &kappaMReadPtr) );
+	const double *kappaMReadPtr, *kappaGReadPtr, *phiReadPtr;
+	double *errorKappaMPtr, *errorKappaGPtr;
+	CHKERRXX( VecGetArrayRead( kappaM, &kappaMReadPtr ) );
+	CHKERRXX( VecGetArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 	CHKERRXX( VecGetArray( errorKappaM, &errorKappaMPtr ) );
+	CHKERRXX( VecGetArray( errorKappaG, &errorKappaGPtr ) );
 
 	double diag_min = p4est_diag_min( ngbd->get_p4est() );
 	maxErrorKappaM = 0;
+	maxErrorKappaG = 0;
 	double xyz[P4EST_DIM];
 	foreach_node( n, ngbd->get_nodes() ) 							// Checks *all independent* nodes.
 	{
@@ -45,17 +49,23 @@ void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 		{
 			node_xyz_fr_n( n, ngbd->get_p4est(), ngbd->get_nodes(), xyz );
 			const double kM = exactMeanK( xyz );					// Exact (doubled) mean curvature.
+			const double kG = exactGaussK( xyz );					// Exact Gaussian curvature.
 			errorKappaMPtr[n] = ABS( kappaMReadPtr[n] - kM );
+			errorKappaGPtr[n] = ABS( kappaGReadPtr[n] - kG );
 			maxErrorKappaM = MAX( maxErrorKappaM, errorKappaMPtr[n] );
+			maxErrorKappaG = MAX( maxErrorKappaG, errorKappaGPtr[n] );
 		}
 	}
 
 	// Get max errors across processes.
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappaM, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappaG, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
 
 	// Clean up.
+	CHKERRXX( VecRestoreArray( errorKappaG, &errorKappaGPtr ) );
 	CHKERRXX( VecRestoreArray( errorKappaM, &errorKappaMPtr ) );
 	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+	CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecRestoreArrayRead( kappaM, &kappaMReadPtr ) );
 }
 
@@ -102,11 +112,15 @@ int main( int argc, char** argv )
 	// Refine based on distance to a spherical-interface level-set function.
 	geom::Sphere sphere( 0, 0, 0, 0.5 );
 
-	auto exactMeanK = [](const double xyz[P4EST_DIM]){		// Mean curvature lambda function.
+	auto exactMeanK = [](const double xyz[P4EST_DIM]){		// Mean curvature lambda function (actually, doubled meanK).
 		return 2. / sqrt( SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) ) );
 	};
 
-	double err[1][nsp()];
+	auto exactGaussK = [](const double xyz[P4EST_DIM]){		// Gaussian curvature lambda function.
+		return 1. / SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) );
+	};
+
+	double err[2][nsp()];
 	for( int s = 0; s < nsp(); s++)
 	{
 		// Create, refine, and partition the forest.
@@ -125,11 +139,15 @@ int main( int argc, char** argv )
 		auto ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
 		ngbd->init_neighbors();
 
-		Vec phi, kappaM, errorKappaM;
+		Vec phi, kappaM, errorKappaM, kappaG, errorKappaG, kappa12[2];
 		Vec normal[P4EST_DIM];
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaM ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &errorKappaM ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaG ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &errorKappaG ) );
+		for( auto& kappa : kappa12 )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappa ) );
 		for( auto& dim : normal )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
@@ -144,9 +162,10 @@ int main( int argc, char** argv )
 		// compute_mean_curvature( ngbd, phi, normal, kappa ) <- this yielded higher error than nonnormalized gradient!
 		// Instead, use compute_mean_curvature(ngbd, normal, kappa) to get mean curvature as the divergence of the unit
 		// normals.
-		compute_normals( *ngbd, phi, normal );
-		compute_mean_curvature( *ngbd, normal, kappaM );
-		computeCurvaturesErrors( ngbd, phi, kappaM, exactMeanK, errorKappaM, err[0][s] );
+		compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
+		computeCurvaturesErrors( ngbd, phi,
+								 kappaM, exactMeanK, errorKappaM, err[0][s],
+								 kappaG, exactGaussK, errorKappaG, err[1][s] );
 
 		if( vtk() )
 		{
@@ -180,6 +199,11 @@ int main( int argc, char** argv )
 		CHKERRXX( VecDestroy( phi ) );
 		CHKERRXX( VecDestroy( kappaM ) );
 		CHKERRXX( VecDestroy( errorKappaM ) );
+		CHKERRXX( VecDestroy( kappaG ) );
+		CHKERRXX( VecDestroy( errorKappaG ) );
+
+		for( auto& kappa : kappa12 )
+			CHKERRXX( VecDestroy( kappa ) );
 
 		for( auto& dim : normal )
 			CHKERRXX( VecDestroy( dim ) );

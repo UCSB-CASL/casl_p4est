@@ -7,6 +7,7 @@
  *
  * Developer: Luis Ángel.
  * Created: January 4, 2021.
+ * Updated: March 3, 2022.
  */
 
 #ifdef _OPENMP
@@ -47,9 +48,9 @@ int main ( int argc, char* argv[] )
 	// Setting up parameters from command line.
 	param_list_t pl;
 	param_t<unsigned short> maxRL( pl, 7, "maxRL", "Maximum level of refinement per unit-square quadtree (default: 7)" );
-	param_t<unsigned int> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
+	param_t<u_short> reinitNumIters( pl, 10, "reinitNumIters", "Number of iterations for reinitialization (default: 10)" );
 	param_t<std::string> nnetsDir( pl, "/Users/youngmin/k_nnets", "nnetsDir", "Folder where nnets are found (default: same folder as the executable)" );
-	param_t<bool> exportVTK( pl, true, "exportVTK", "Export VTK file (default: 1)" );
+	param_t<bool> exportVTK( pl, false, "exportVTK", "Export VTK file (default: false)" );
 
 	try
 	{
@@ -66,7 +67,7 @@ int main ( int argc, char* argv[] )
 
 		/////////////////////////////////////////////// Parameter setup ////////////////////////////////////////////////
 
-		const std::string ROOT = nnetsDir() + (P4EST_DIM > 2? "/3d/" : "/2d/") + std::to_string( maxRL() );	// NOLINT.
+		const std::string ROOT = nnetsDir() + "/2d/" + std::to_string( maxRL() );
 
 		const double H = 1. / (1 << maxRL());
 
@@ -166,9 +167,9 @@ int main ( int argc, char* argv[] )
 		parStopWatch watch;
 		watch.start();
 		my_p4est_level_set_t ls( &nodeNeighbors );
-		ls.reinitialize_2nd_order( phi, (int)reinitNumIters() );
+		ls.reinitialize_2nd_order( phi, reinitNumIters() );
 
-		// Compute normal unit vectors: we'll use them to compute the numerical curvature.
+		// Working vectors.
 		Vec numCurvature, hybHK, hybFlag, normal[P4EST_DIM];
 		CHKERRXX( VecDuplicate( phi, &numCurvature ) );
 		CHKERRXX( VecDuplicate( phi, &hybHK ) );
@@ -176,7 +177,6 @@ int main ( int argc, char* argv[] )
 		for( auto& dim : normal )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
-		compute_normals( nodeNeighbors, phi, normal );
 		double prepTime = watch.get_duration_current();
 
 		// Compute hybrid (dimensionless) curvature.
@@ -220,8 +220,8 @@ int main ( int argc, char* argv[] )
 					else
 					{
 						const char *coords = key.c_str();
-						sprintf( msg, "xxxx Rank %i: Node %i's (%s) hybHK %.7f doesn't match with the offline value %.7f!",
-								 mpi.rank(), n, coords, onlineHK, offlineHK );
+						sprintf( msg, "xxxx Rank %i: Node %i's (%s) hybHK %.7f doesn't match with the offline value %.7f; diff is: %.7f!",
+								 mpi.rank(), n, coords, onlineHK, offlineHK, ABS(onlineHK - offlineHK) );
 						std::cerr << msg << std::endl;
 					}
 				}

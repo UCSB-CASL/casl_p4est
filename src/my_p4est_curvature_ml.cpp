@@ -988,8 +988,10 @@ std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors
 	// Data accessors.
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
 
-	// We start by computing the numerical mean curvature (as a byproduct of calling this function).
+	// We start by computing the unit normals and numerical mean curvature (as a byproduct of calling this function).
+	// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
 	double startTime = watch? watch->get_duration_current() : 0;
+	compute_normals( ngbd, phi, normal );
 	compute_mean_curvature( ngbd, phi, normal, numCurvature );
 	double totalNumericalTime = watch? watch->get_duration_current() - startTime : -1;
 

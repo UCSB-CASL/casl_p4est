@@ -2802,6 +2802,40 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
   foreach_dimension(dim) { ierr = VecRestoreArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
 }
 
+
+#ifdef P4_TO_P8
+void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+									 Vec kappaM, Vec kappaG, Vec kappa12[2] )
+{
+	if( !phi || !normals || !kappaM || !kappaG || !kappa12 )	// Invalid vectors?
+		throw std::invalid_argument( "[CASL_ERROR] None of the input/output vectors can be null!" );
+
+	const p4est_nodes_t *nodes = ngbd.get_nodes();
+	ngbd.first_derivatives_central( phi, normals );				// Make normals hold the (non-normalized) gradient.
+
+	// TODO: reuse these derivatives to compute kappaG and kappa12.
+
+	// Normalized gradient vector to compute mean curvature as divergence of the unit normals.
+	double *normalsPtr[P4EST_DIM];
+	for( int i = 0; i < P4EST_DIM; i++ )
+		CHKERRXX( VecGetArray( normals[i], &normalsPtr[i] ) );
+
+	for( p4est_locidx_t n = 0; nodes->indep_nodes.elem_count; n++ )
+	{
+		double norm = sqrt( SUMD( SQR( normalsPtr[0][n] ), SQR( normalsPtr[1][n] ), SQR( normalsPtr[2][n] ) ) );
+		for( auto & dim : normalsPtr )							// Normalization.
+			dim[n] = norm < EPS ? 0 : dim[n] / norm;
+	}
+
+	compute_mean_curvature( ngbd, normals, kappaM );			// kappaM = div(n).
+
+	// Clean up.
+	for( int i = 0; i < P4EST_DIM; i++ )
+		CHKERRXX( VecRestoreArray( normals[i], &normalsPtr[i] ) );
+}
+#endif
+
+
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode, char delim)
 {
   std::ofstream ofs;
@@ -3408,6 +3442,7 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
   }
 }
 
+
 void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, double data[P4EST_DIM][2][2] )
 {
 	// Some convenient arrangement nodal solution values and their distances w.r.t. center node in its stencil of neighbors.
@@ -3421,6 +3456,8 @@ void getStencil( const quad_neighbor_nodes_of_node_t *qnnnPtr, const double *f, 
 	data[2][1][0] = qnnnPtr->f_00p_linear( f ); data[2][1][1] = qnnnPtr->d_00p;			// Front.
 #endif
 }
+
+
 void truncate_exportation_file_up_to_tstart(const double& tstart, const std::string &filename, const u_int& n_extra_values_exported_per_line)
 {
   FILE* fp = fopen(filename.c_str(), "r+");

@@ -2791,6 +2791,26 @@ struct vec_and_ptr_array_t
 
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
 
+#ifdef P4_TO_P8
+/**
+ * Compute unit normal vectors and the mean, Gaussian, and principal curvatures for all grid nodes.  To compute the mean
+ * curvature, we use div(n), where n is a unit normal vector (which is less prone to noise).
+ * @note For compatibility with the rest of the library, kappaM is actually 2H, where H is the true mean curvature.
+ * That is, H = 0.5(k1 + k2) and K = k1*k2 are the true mean and Gaussian curvatures, and k1 and k2 are the principal
+ * curvatures.
+ * @note This function is only available in three dimensions.
+ * @param [in] ngbd Neighborhood structure.
+ * @param [in] phi Level-set values.
+ * @param [out] normals Unit normal vectors, component by component.
+ * @param [out] kappaM (Twice) mean curvature.
+ * @param [out] kappaG Gaussian curvature.
+ * @param [out] kappa12 Principal curvatures.
+ * @throws invalid_argument exception if any of the input/output vectors are null.
+ */
+void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+									 Vec kappaM, Vec kappaG, Vec kappa12[2] );
+#endif
+
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
 
 template<typename T>
