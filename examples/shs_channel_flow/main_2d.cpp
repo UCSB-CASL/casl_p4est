@@ -962,7 +962,7 @@ void initialize_timing_output(simulation_setup & setup, const my_p4est_navier_st
 
 void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
                             my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
-                            external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                            external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_shs_t* &data,
                             mass_flow_controller_t* &controller, simulation_setup &setup)
 {
   const std::string backup_directory = cmd.get<std::string>("restart", "");
@@ -1030,8 +1030,8 @@ void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
   if (data != NULL) {
     delete data; data = NULL;
   }
-  P4EST_ASSERT(data == NULL);
-  data = new splitting_criteria_cf_and_uniform_band_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl), channel.lmax(), &channel, uniform_band, lip);
+  P4EST_ASSERT(data == nullptr);
+  data = new splitting_criteria_cf_and_uniform_band_shs_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl), channel.lmax(), &channel, uniform_band, channel.delta(), lip);
   splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
   bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
   delete to_delete;
@@ -1077,7 +1077,7 @@ p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick,
 
 void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
                                 my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
-                                external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                                external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_shs_t* &data,
                                 mass_flow_controller_t* &controller, simulation_setup &setup)
 {
   p4est_connectivity_t* connectivity = build_brick_and_get_connectivity(brick, cmd);
@@ -1464,10 +1464,10 @@ int main (int argc, char* argv[])
 
   simulation_setup setup(mpi, cmd);
 
-  my_p4est_navier_stokes_t* ns                    = nullptr;
-  my_p4est_brick_t* brick                         = nullptr;
-  splitting_criteria_cf_and_uniform_band_t* data  = nullptr;
-  mass_flow_controller_t *flow_controller         = nullptr;
+  my_p4est_navier_stokes_t* ns                        = nullptr;
+  my_p4est_brick_t* brick                             = nullptr;
+  splitting_criteria_cf_and_uniform_band_shs_t* data  = nullptr;
+  mass_flow_controller_t *flow_controller             = nullptr;
   external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(nullptr, nullptr, nullptr) };
 
   my_p4est_shs_channel_t channel(mpi);

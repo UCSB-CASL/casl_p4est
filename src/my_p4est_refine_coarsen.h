@@ -98,6 +98,33 @@ struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
     : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
 };
 
+/**
+ * Class for refining an superhydrophic channel where the ridges and air interface lie at y=+-DELTA, where DELTA is half
+ * the channel height.  The goal of this refining criteria is to use the traditional Lipschitz-based & uniform band app-
+ * roach to refine the grid based on distances to the solid ridges.  Since that approach doesn't enforce uniform refine-
+ * ment along the air interfaces, here we add a condition (independent of the Lipschitz condition) so that the Voronio
+ * tesellation doesn't fail in later computations.
+ * @note This class is to be used with the refine_levelset_cf_and_uniform_band_shs() method.
+ */
+struct splitting_criteria_cf_and_uniform_band_shs_t : splitting_criteria_cf_and_uniform_band_t
+{
+	const double DELTA;		// Channel half-height (on the y-axis).
+
+	/**
+	 * Constructor.
+	 * @param [in] minLvl Quad/Octree minimum level of refinement.
+	 * @param [in] maxLvl Quad/Octree maximum level of refinement.
+	 * @param [in] phi Level-set object.
+	 * @param [in] uniformBand Desired uniform band next to the wall (regardless of type of interface: solid or gas).
+	 * @param [in] delta Channel half-height.
+	 * @param [in] lip Lipschitz constant.
+	 */
+	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi,
+												  const double& uniformBand, const double& delta, const double& lip ) :
+		splitting_criteria_cf_and_uniform_band_t( minLvl, maxLvl, phi, uniformBand, lip ), DELTA( delta )
+	{}
+};
+
 /*!
  * \class splitting_criteria_thresh_t
  * \brief Class for refinement based on the threshold of a function. The function
@@ -384,6 +411,17 @@ coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t
  */
 p4est_bool_t
 refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/**
+ * Refine the grid based on level-set distances (for solid ridges) and a uniform band along the wall (independently of
+ * whether we deal with a solid or air interface).
+ * @note This is an especialization of the refine_levelset_cf_and_uniform_band function.
+ * @param [in] p4est Forest object.
+ * @param [in] which_tree Current tree to which the quadrant belongs.
+ * @param [in] quad Current quadrant.
+ * @return 0/1 describing if refinement is needed.
+ */
+p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad );
 
 /*!
  * \fn    refine_levelset_thres
