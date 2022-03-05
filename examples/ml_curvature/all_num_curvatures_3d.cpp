@@ -1,6 +1,6 @@
 /**
  * Compute all the numerical curvatures in 3D: mean, Gaussian, and principal curvatures, for a spherical interface.
- * For a sphere of radius R, the numerical method computes 2*K_M = 2/R, where K_M is the mean curvature.  Also, the num-
+ * For a sphere of radius R, the numerical method computes K_M = 1/R, where K_M is the mean curvature.  Also, the num-
  * erical method computes K_G = 1/R^2, where K_G is the Gaussian curvature.  To relate these with the principal curvatu-
  * res, we know that K_M = 0.5(k1 + k2) and K_G = k1*k2, where k1 and k2 are the principal curvatures.  In the case of
  * the sphere, k1 = k2 = 1/R.
@@ -8,7 +8,8 @@
  * Based on example in curvature/main_2d.cpp and the draft in matlab/principal_curvatues.m
  *
  * Developer: Luis Ángel.
- * Created: March 3, 2022
+ * Created: March 3, 2022.
+ * Updated: March 5, 2022.
  */
 
 #include <src/my_p4est_to_p8est.h>
@@ -48,7 +49,7 @@ void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 		if( ABS( phiReadPtr[n] ) < diag_min )						// Look only immediately next to Gamma.
 		{
 			node_xyz_fr_n( n, ngbd->get_p4est(), ngbd->get_nodes(), xyz );
-			const double kM = exactMeanK( xyz );					// Exact (doubled) mean curvature.
+			const double kM = exactMeanK( xyz );					// Exact mean curvature.
 			const double kG = exactGaussK( xyz );					// Exact Gaussian curvature.
 			errorKappaMPtr[n] = ABS( kappaMReadPtr[n] - kM );
 			errorKappaGPtr[n] = ABS( kappaGReadPtr[n] - kG );
@@ -112,15 +113,19 @@ int main( int argc, char** argv )
 	// Refine based on distance to a spherical-interface level-set function.
 	geom::Sphere sphere( 0, 0, 0, 0.5 );
 
-	auto exactMeanK = [](const double xyz[P4EST_DIM]){		// Mean curvature lambda function (actually, doubled meanK).
-		return 2. / sqrt( SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) ) );
+	auto exactMeanK = [](const double xyz[P4EST_DIM]){		// Mean curvature lambda function.
+		return 1. / sqrt( SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) ) );
 	};
 
 	auto exactGaussK = [](const double xyz[P4EST_DIM]){		// Gaussian curvature lambda function.
 		return 1. / SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) );
 	};
 
-	double err[2][nsp()];
+	const int N_CURVATURES = 4;
+	std::string curvatureNames[N_CURVATURES] = {"K_M", "K_G", "k_1", "k_2"};
+	double err[N_CURVATURES][nsp()];
+	const int computedThusFar = 1;		// TODO: Remove this once Gaussian and principal curvatures are available.
+
 	for( int s = 0; s < nsp(); s++)
 	{
 		// Create, refine, and partition the forest.
@@ -161,7 +166,7 @@ int main( int argc, char** argv )
 		// Before, I was using compute_normals(), and then using these unit-length normals to compute curvature with
 		// compute_mean_curvature( ngbd, phi, normal, kappa ) <- this yielded higher error than nonnormalized gradient!
 		// Instead, use compute_mean_curvature(ngbd, normal, kappa) to get mean curvature as the divergence of the unit
-		// normals.
+		// normals.  The latter uses larger stencils and is more robust to noise.
 		compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
 		computeCurvaturesErrors( ngbd, phi,
 								 kappaM, exactMeanK, errorKappaM, err[0][s],
@@ -169,30 +174,32 @@ int main( int argc, char** argv )
 
 		if( vtk() )
 		{
-			const double *phiReadPtr, *errorKappaMReadPtr;
+			const double *phiReadPtr, *errorKappaMReadPtr, *errorKappaGReadPtr;
 			CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 			CHKERRXX( VecGetArrayRead( errorKappaM, &errorKappaMReadPtr ) );
+			CHKERRXX( VecGetArrayRead( errorKappaG, &errorKappaGReadPtr ) );
 
 			char filename[FILENAME_MAX];
 			sprintf( filename, "all_curvatures_errors.%d", s );
-			my_p4est_vtk_write_all( p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 2, 0, filename,
+			my_p4est_vtk_write_all( p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 3, 0, filename,
 									VTK_POINT_DATA, "phi", phiReadPtr,
-									VTK_POINT_DATA, "errorKappaM", errorKappaM );
+									VTK_POINT_DATA, "errorKappaM", errorKappaMReadPtr,
+									VTK_POINT_DATA, "errorKappaG", errorKappaGReadPtr );
 
 			CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 			CHKERRXX( VecRestoreArrayRead( errorKappaM, &errorKappaMReadPtr ) );
+			CHKERRXX( VecRestoreArrayRead( errorKappaG, &errorKappaGReadPtr ) );
 		}
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "Resolution: (%d,%d)\n", minRL() + s, maxRL() + s ) );
-		if(s > 0)
+		for( int i = 0; i < computedThusFar; i++ )
 		{
-			CHKERRXX( PetscPrintf( mpi.comm(), "Error K_M = %e, order = %f\n", err[0][s], log2( err[0][s-1] / err[0][s] ) ) );
+			if(s > 0)
+				CHKERRXX( PetscPrintf( mpi.comm(), "Error %s = %e, order = %f\n", curvatureNames[i].c_str(), err[i][s],
+									   log2( err[i][s-1] / err[i][s] ) ) );
+			else
+				CHKERRXX( PetscPrintf( mpi.comm(), "Error %s = %e\n", curvatureNames[i].c_str(), err[i][s] ) );
 		}
-		else
-		{
-			CHKERRXX( PetscPrintf( mpi.comm(), "Error K_M = %e\n", err[0][s] ) );
-		}
-
 		CHKERRXX( PetscPrintf( mpi.comm(), "\n" ) );
 
 		// Clean up.

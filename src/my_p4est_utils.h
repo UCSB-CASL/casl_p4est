@@ -2789,15 +2789,32 @@ struct vec_and_ptr_array_t
   }
 };
 
-void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
+/**
+ * Normalize the components of nodal gradient vectors.  If the numerical norm of the vectors falls below EPS, the compo-
+ * nents are set to 0.
+ * @param [in,out] gradient Gradient vectors, component by component.
+ * @param [in] nodes Nodes structure.
+ * @throws invalid_argument exception if the gradient or any of its components evaluates to nullptr.
+ */
+void normalize_gradient( Vec gradient[P4EST_DIM], const p4est_nodes_t *nodes );
+
+/**
+ * Compute unit normal vectors and (twice) the (3D) mean curvature using compact stencils.
+ * TODO: Revise once we agree to start using the true mean curvature in 3D.
+ * @param [in] neighbors Neighbors' structure.
+ * @param [in] phi Level-set values.
+ * @param [out] normals Unit normal vectors.
+ * @param [out] kappa (Doubled) geometric mean curvature.
+ */
+void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec& phi, Vec normals[], Vec kappa);
 
 #ifdef P4_TO_P8
 /**
  * Compute unit normal vectors and the mean, Gaussian, and principal curvatures for all grid nodes.  To compute the mean
- * curvature, we use div(n), where n is a unit normal vector (which is less prone to noise).
- * @note For compatibility with the rest of the library, kappaM is actually 2H, where H is the true mean curvature.
- * That is, H = 0.5(k1 + k2) and K = k1*k2 are the true mean and Gaussian curvatures, and k1 and k2 are the principal
- * curvatures.
+ * curvature, we use div(n), where n is a unit normal vector (i.e., this method is more robust to noise).
+ * @note kappaM is defined as 1/(DIM-1)*(k1 + k2), which in 2D reduces to just k1 (i.e., the principal curvature).
+ * That is, kappaM = 0.5(k1 + k2) and kappaG = k1*k2 are the geometrical mean and Gaussian curvatures, and k1 and k2 are
+ * the principal curvatures.
  * @note This function is only available in three dimensions.
  * @param [in] ngbd Neighborhood structure.
  * @param [in] phi Level-set values.

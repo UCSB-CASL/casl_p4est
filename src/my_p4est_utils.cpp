@@ -2773,33 +2773,38 @@ void invert_phi(p4est_nodes_t *nodes, Vec phi)
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 }
 
-void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa)
+
+void normalize_gradient( Vec gradient[P4EST_DIM], const p4est_nodes_t *nodes )
 {
-  PetscErrorCode ierr;
-  const p4est_nodes_t *nodes = neighbors.get_nodes();
+	if( !gradient || ORD( !gradient[0], !gradient[1], !gradient[2] ) )
+		throw std::invalid_argument( "[CASL_ERROR] The gradient or any of its components can't be null!" );
 
-  /* compute first derivatives */
-  neighbors.first_derivatives_central(phi, normals);
+	double *normalPtr[P4EST_DIM];
+	foreach_dimension( dim )
+		CHKERRXX( VecGetArray(gradient[dim], &normalPtr[dim]) );
 
-  /* compute curvature */
-  compute_mean_curvature(neighbors, phi, normals, kappa);
+	foreach_node( n, nodes )
+	{
+		double norm = sqrt( SUMD( SQR( normalPtr[0][n] ), SQR( normalPtr[1][n] ), SQR( normalPtr[2][n] ) ) );
+		for( auto& component : normalPtr )
+			component[n] = norm < EPS ? 0 : component[n] / norm;
+	}
 
-  /* compute normals */
-  double *normal_p[P4EST_DIM];
-  foreach_dimension(dim) { ierr = VecGetArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
+	foreach_dimension( dim )
+		CHKERRXX( VecRestoreArray( gradient[dim], &normalPtr[dim] ) );
+}
 
-  foreach_node(n, nodes)
-  {
-    double norm = sqrt(SUMD(SQR(normal_p[0][n]), SQR(normal_p[1][n]), SQR(normal_p[2][n])));
 
-    normal_p[0][n] = norm < EPS ? 0 : normal_p[0][n]/norm;
-    normal_p[1][n] = norm < EPS ? 0 : normal_p[1][n]/norm;
-#ifdef P4_TO_P8
-    normal_p[2][n] = norm < EPS ? 0 : normal_p[2][n]/norm;
-#endif
-  }
+void compute_normals_and_mean_curvature( const my_p4est_node_neighbors_t &neighbors, const Vec& phi, Vec normals[], Vec kappa )
+{
+  // Compute first derivatives.
+  neighbors.first_derivatives_central( phi, normals );
 
-  foreach_dimension(dim) { ierr = VecRestoreArray(normals[dim], &normal_p[dim]); CHKERRXX(ierr); }
+  // Compute curvature using compact stencils (i.e., with non-normalized gradient).
+  compute_mean_curvature( neighbors, phi, normals, kappa );
+
+  // Compute normals (by normalizing the gradient).
+  normalize_gradient( normals, neighbors.get_nodes() );
 }
 
 
@@ -2813,25 +2818,36 @@ void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, cons
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
 	ngbd.first_derivatives_central( phi, normals );				// Make normals hold the (non-normalized) gradient.
 
-	// TODO: reuse these derivatives to compute kappaG and kappa12.
+	// TODO: reuse these derivatives to compute kappaG.
 
 	// Normalized gradient vector to compute mean curvature as divergence of the unit normals.
-	double *normalsPtr[P4EST_DIM];
-	for( int i = 0; i < P4EST_DIM; i++ )
-		CHKERRXX( VecGetArray( normals[i], &normalsPtr[i] ) );
+	normalize_gradient( normals, nodes );
 
-	for( p4est_locidx_t n = 0; nodes->indep_nodes.elem_count; n++ )
+	// Compute mean curvature and principal curvatures using the Gaussian curvature calculated above.
+	compute_mean_curvature( ngbd, normals, kappaM );			// This function returns twice the mean curvature.
+	double *kappaMPtr;
+	CHKERRXX( VecGetArray( kappaM, &kappaMPtr ) );
+
+	const double *kappaGReadPtr;								// Accessing Gaussian curvature.
+	CHKERRXX( VecGetArrayRead( kappaG, &kappaGReadPtr ) );
+
+	double *kappa12Ptr[2] = {nullptr, nullptr};					// Accessing principal curvatures vectors.
+	for( int i = 0; i < 2; i++ )
+		CHKERRXX( VecGetArray( kappa12[i], &kappa12Ptr[i] ) );
+
+	foreach_node( n, nodes )
 	{
-		double norm = sqrt( SUMD( SQR( normalsPtr[0][n] ), SQR( normalsPtr[1][n] ), SQR( normalsPtr[2][n] ) ) );
-		for( auto & dim : normalsPtr )							// Normalization.
-			dim[n] = norm < EPS ? 0 : dim[n] / norm;
+		kappaMPtr[n] *= 0.5;						// Lets get the right value: kappaM = 0.5*div(n) = 0.5*(k1 + k2).
+		double radical = sqrt( SQR( kappaMPtr[n] ) - kappaGReadPtr[n] );
+		kappa12Ptr[0][n] = kappaMPtr[n] + radical;	// First principal curvature.
+		kappa12Ptr[1][n] = kappaMPtr[n] - radical;	// Second principal curvature.
 	}
 
-	compute_mean_curvature( ngbd, normals, kappaM );			// kappaM = div(n).
-
 	// Clean up.
-	for( int i = 0; i < P4EST_DIM; i++ )
-		CHKERRXX( VecRestoreArray( normals[i], &normalsPtr[i] ) );
+	for( int i = 0; i < 2; i++ )
+		CHKERRXX( VecRestoreArray( kappa12[i], &kappa12Ptr[i] ) );
+	CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
+	CHKERRXX( VecRestoreArray( kappaM, &kappaMPtr ) );
 }
 #endif
 
