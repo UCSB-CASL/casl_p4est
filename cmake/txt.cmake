@@ -106,5 +106,5 @@ message( "" )
 
 ###################################################### Compilers #######################################################
 
-set( CMAKE_C_COMPILER mpicc )
-set( CMAKE_CXX_COMPILER mpicxx )
+set( CMAKE_C_COMPILER /usr/local/mpich-3.4.3/bin/mpicc )
+set( CMAKE_CXX_COMPILER /usr/local/mpich-3.4.3/bin/mpicxx )
