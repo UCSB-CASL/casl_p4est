@@ -2869,7 +2869,7 @@ void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Ve
 }
 
 
-bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
 									 Vec kappaM, Vec kappaG, Vec kappa12[2] )
 {
 	if( !phi || !normals || !kappaM || !kappaG || !kappa12 )	// Invalid vectors?
@@ -2898,20 +2898,11 @@ bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, cons
 	for( int i = 0; i < 2; i++ )
 		CHKERRXX( VecGetArray( kappa12[i], &kappa12Ptr[i] ) );
 
-	bool validK12 = true;
-	auto computePrincipalCurvatures = [&validK12, kappaMPtr, kappaGReadPtr, kappa12Ptr]( p4est_locidx_t n ){
+	auto computePrincipalCurvatures = [kappaMPtr, kappaGReadPtr, kappa12Ptr]( p4est_locidx_t n ){
 		kappaMPtr[n] *= 0.5;				// Lets get the right value: kappaM = 0.5*div(n) = 0.5*(k1 + k2).
-		double radicand = SQR( kappaMPtr[n] ) - kappaGReadPtr[n];
-		if( radicand < 0 )
-		{
-			kappa12Ptr[0][n] = kappa12Ptr[1][n] = NAN;
-			validK12 = false;				// Notify the user that k1 & k2 computation failed for at least one node.
-		}
-		else
-		{
-			kappa12Ptr[0][n] = kappaMPtr[n] + sqrt( radicand );	// First principal curvature.
-			kappa12Ptr[1][n] = kappaMPtr[n] - sqrt( radicand );	// Second principal curvature.
-		}
+		double radical = sqrt( ABS( SQR( kappaMPtr[n] ) - kappaGReadPtr[n] ) );
+		kappa12Ptr[0][n] = kappaMPtr[n] + radical;	// First principal curvature.
+		kappa12Ptr[1][n] = kappaMPtr[n] - radical;	// Second principal curvature.
 	};
 
 	// Compute principal curvatures and *half* the *doubled* mean curvature on layer nodes.
@@ -2926,7 +2917,7 @@ bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, cons
 	CHKERRXX( VecGhostUpdateBegin( kappa12[1], INSERT_VALUES, SCATTER_FORWARD ) );
 	CHKERRXX( VecGhostUpdateBegin( kappaM, INSERT_VALUES, SCATTER_FORWARD ) );
 
-	// Compute principal curvatures and *half* the *doubled* mean curvature on local nodes.
+	// Compute principal curvatures and *half* of the *doubled* mean curvature on local nodes.
 	for( size_t i = 0; i < ngbd.get_local_size(); i++ )
 	{
 		p4est_locidx_t n = ngbd.get_local_node( i );
@@ -2943,10 +2934,6 @@ bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, cons
 		CHKERRXX( VecRestoreArray( kappa12[i], &kappa12Ptr[i] ) );
 	CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecRestoreArray( kappaM, &kappaMPtr ) );
-
-	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &validK12, 1, MPI_C_BOOL, MPI_LAND, ngbd.get_p4est()->mpicomm ) );
-
-	return validK12;
 }
 #endif
 

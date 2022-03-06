@@ -2837,11 +2837,9 @@ void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Ve
  * @param [out] kappaM Mean curvature.
  * @param [out] kappaG Gaussian curvature.
  * @param [out] kappa12 Principal curvatures (with NAN values if they couldn't be computed).
- * @return True if computing k1 and k2 succeeded, false otherwise (i.e., at least a node had k1 & k2 set to NAN due to a
- * 		   negative radicand).
  * @throws invalid_argument exception if any of the input/output vectors are null.
  */
-bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
 									 Vec kappaM, Vec kappaG, Vec kappa12[2] );
 #endif
 

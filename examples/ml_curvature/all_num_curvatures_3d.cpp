@@ -9,7 +9,7 @@
  *
  * Developer: Luis Ángel.
  * Created: March 3, 2022.
- * Updated: March 5, 2022.
+ * Updated: March 6, 2022.
  */
 
 #include <src/my_p4est_to_p8est.h>
@@ -52,7 +52,6 @@ void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 	maxErrorKappa1 = 0;
 	maxErrorKappa2 = 0;
 	double xyz[P4EST_DIM];
-	bool detected = false;
 	foreach_node( n, ngbd->get_nodes() ) 							// Checks *all independent* nodes.
 	{
 		if( ABS( phiReadPtr[n] ) < diag_min )						// Look only immediately next to Gamma.
@@ -193,7 +192,7 @@ int main( int argc, char** argv )
 		// compute_mean_curvature(ngbd, phi, normal, kappa) <--- this yielded higher error than nonnormalized gradient!
 		// Instead, use compute_mean_curvature(ngbd, normal, kappa) to get mean curvature as the divergence of the unit
 		// normals.  The latter uses larger stencils and is more robust to noise.
-		bool validK12 = compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
+		compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
 		computeCurvaturesErrors( ngbd, phi,
 								 kappaM, exactMeanK, errorKappaM, err[0][s],
 								 kappaG, exactGaussK, errorKappaG, err[1][s],
@@ -225,8 +224,6 @@ int main( int argc, char** argv )
 		}
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "Resolution: (%d,%d)\n", minRL() + s, maxRL() + s ) );
-		if( !validK12 )
-			CHKERRXX( PetscPrintf( mpi.comm(), "Warning!  At least one principal curvature is invalid (NAN)!\n" ) );
 		for( int i = 0; i < N_CURVATURES; i++ )
 		{
 			if(s > 0)
