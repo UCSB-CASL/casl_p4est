@@ -2212,13 +2212,74 @@ public:
 
   inline double get_curvature(const double *grad_phi_p, const double *phi_p, const double *phi_xxyyzz_p = NULL) const
   {
-    return get_curvature(phi_p, grad_phi_p, NULL, phi_xxyyzz_p, NULL);
+    return get_curvature(phi_p, grad_phi_p, nullptr, phi_xxyyzz_p, nullptr);
   }
 
   inline double get_curvature(const double *grad_phi_p[P4EST_DIM], const double *phi_p, const double *phi_xxyyzz_p[P4EST_DIM] = NULL) const
   {
-    return get_curvature(phi_p, NULL, grad_phi_p, NULL, phi_xxyyzz_p);
+    return get_curvature(phi_p, nullptr, grad_phi_p, nullptr, phi_xxyyzz_p);
   }
+
+
+#ifdef P4_TO_P8
+	/**
+	 * Compute Gaussian curvature.  The user MUST provide nabla of phi to enable local calculation.
+	 * @note If the second derivatives are supplied, these will be used and phi will be disregarded.
+	 * @note If the norm of the gradient falls below EPS, the function returns 0.
+	 * @note This functionality is only available in three dimensions.
+	 * @param [in] phiReadPtr Pointer to the data of a node-sampled vector storing the values of phi.
+	 * @param [in] gradReadPtr Pointer to a 3-array for the components of the gradient of phi.
+	 * @param [in] phi_xxyyzzReadPtr Pointer to a 3-array for the second derivatives of phi: phi_xx, phi_yy, and phi_zz.
+	 * @return The local Gaussian curvature.
+	 * @throws invalid_argument if the gradient pointers are null, or if both phi and its second derivative vectors are null.
+	 */
+	double get_gaussian_curvature( const double *phiReadPtr, const double *gradReadPtr[P4EST_DIM],
+								   const double *phi_xxyyzzReadPtr[P4EST_DIM] ) const
+	{
+	  	std::string errorPrefix = "[CASL_ERROR] quad_neighbor_nodes_of_node_t::get_gaussian_curvature: ";
+		if( !gradReadPtr || ORD( !gradReadPtr[0], !gradReadPtr[1], !gradReadPtr[2] ) )
+			throw std::invalid_argument( errorPrefix + "The gradient or any of its components can't be null!" );
+
+		bool allSecondDerivativesGiven = phi_xxyyzzReadPtr && ANDD( phi_xxyyzzReadPtr[0], phi_xxyyzzReadPtr[1], phi_xxyyzzReadPtr[2] );
+		if( !phiReadPtr && !allSecondDerivativesGiven )
+			throw std::invalid_argument( errorPrefix + "You must provide either phi or all its second derivatives!" );
+
+		// Fetch first derivatives.
+		double gradNorm2 = 0.0;
+		const double dx = gradReadPtr[0][node_000]; gradNorm2 += SQR(dx);
+		const double dy = gradReadPtr[1][node_000]; gradNorm2 += SQR(dy);
+		const double dz = gradReadPtr[2][node_000]; gradNorm2 += SQR(dz);
+
+		if( sqrt( gradNorm2 ) > EPS )	// Perform computations only if gradient is nonzero.
+		{
+			// Compute second derivatives.
+			double dxxyyzz[P4EST_DIM];
+			if( allSecondDerivativesGiven )
+			{
+				for( u_char der = 0; der < P4EST_DIM; der++ )
+					dxxyyzz[der] = phi_xxyyzzReadPtr[der][node_000];
+			}
+			else
+				laplace( phiReadPtr, dxxyyzz );
+
+			const double dxx = dxxyyzz[0];					// d/dx{d/dx}
+			const double dyy = dxxyyzz[1];					// d/dy{d/dy}
+			const double dzz = dxxyyzz[2];					// d/dz{d/dz}
+
+			const double dxy = dy_central(gradReadPtr[0]);	// d/dy{d/dx}
+			const double dxz = dz_central(gradReadPtr[0]);	// d/dz{d/dx}
+			const double dyz = dz_central(gradReadPtr[1]);	// d/dz{d/dy}
+
+			const double num = SQR(dx) * (dyy*dzz - SQR(dyz)) + SQR(dy) * (dxx*dzz - SQR(dxz)) + SQR(dz) * (dxx*dyy - SQR(dxy))
+				+ 2 * (dx * dy * (dxz*dyz - dxy*dzz) + dy * dz * (dxy*dxz - dyz*dxx) + dx * dz * (dxy*dyz - dxz*dyy));
+
+			return num / gradNorm2;
+		}
+		else
+			return 0.0; 	// Nothing better to suggest for now, sorry.
+	}
+#endif
+
 
   /*!
    * \brief get_curvature evaluates the local mean curvature as divergence of (normals). It is the user's responsibility

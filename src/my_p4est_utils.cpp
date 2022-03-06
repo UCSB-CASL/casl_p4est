@@ -2777,7 +2777,7 @@ void invert_phi(p4est_nodes_t *nodes, Vec phi)
 void normalize_gradient( Vec gradient[P4EST_DIM], const p4est_nodes_t *nodes )
 {
 	if( !gradient || ORD( !gradient[0], !gradient[1], !gradient[2] ) )
-		throw std::invalid_argument( "[CASL_ERROR] The gradient or any of its components can't be null!" );
+		throw std::invalid_argument( "[CASL_ERROR] normalize_gradient: The gradient or any of its components can't be null!" );
 
 	double *normalPtr[P4EST_DIM];
 	foreach_dimension( dim )
@@ -2809,22 +2809,85 @@ void compute_normals_and_mean_curvature( const my_p4est_node_neighbors_t &neighb
 
 
 #ifdef P4_TO_P8
-void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Vec& phi, const Vec gradient[P4EST_DIM],
+								 const Vec phi_xxyyzz[P4EST_DIM], Vec kappaG )
+{
+	bool allSecondDerivativesGiven = phi_xxyyzz && ANDD( phi_xxyyzz[0], phi_xxyyzz[1], phi_xxyyzz[2] );
+	if( !gradient || !kappaG || (!phi && !allSecondDerivativesGiven) )
+		throw std::invalid_argument( "[CASL_ERROR] Gradient and kappaG vectors and both phi and second derivatives "
+									 "vectors can't be null!" );
+
+	const double *phiReadPtr = nullptr;
+	const double *gradientReadPtr[P4EST_DIM] = {nullptr, nullptr, nullptr};
+	const double **phi_xxyyzzReadPtr = phi_xxyyzz? new const double *[P4EST_DIM] : nullptr;
+	double *kappaGPtr = nullptr;
+	if( phi )
+		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
+	CHKERRXX( VecGetArray( kappaG, &kappaGPtr ) );
+
+	foreach_dimension( dim )
+	{
+		CHKERRXX( VecGetArrayRead( gradient[dim], &gradientReadPtr[dim] ) );
+		if( allSecondDerivativesGiven )										// If second derivatives, all must
+			VecGetArrayRead( phi_xxyyzz[dim], &phi_xxyyzzReadPtr[dim] );	// not be null.
+	}
+
+	// Compute kappaG on layer nodes.
+	quad_neighbor_nodes_of_node_t qnnn{};
+	for( size_t i = 0; i < ngbd.get_layer_size(); i++ )
+	{
+		p4est_locidx_t n = ngbd.get_layer_node( i );
+		ngbd.get_neighbors( n, qnnn );
+		kappaGPtr[n] = qnnn.get_gaussian_curvature( phiReadPtr, gradientReadPtr, phi_xxyyzzReadPtr );
+	}
+
+	// Initiate layer communication.
+	CHKERRXX( VecGhostUpdateBegin( kappaG, INSERT_VALUES, SCATTER_FORWARD ) );
+
+	// Compute on local nodes.
+	for( size_t i = 0; i < ngbd.get_local_size(); i++ )
+	{
+		p4est_locidx_t n = ngbd.get_local_node( i );
+		ngbd.get_neighbors( n, qnnn );
+		kappaGPtr[n] = qnnn.get_gaussian_curvature( phiReadPtr, gradientReadPtr, phi_xxyyzzReadPtr );
+	}
+
+	// Finish layer communication.
+	CHKERRXX( VecGhostUpdateEnd( kappaG, INSERT_VALUES, SCATTER_FORWARD ) );
+
+	if( phi )
+		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+	CHKERRXX( VecRestoreArray( kappaG, &kappaGPtr ) );
+	foreach_dimension(dim)
+	{
+		CHKERRXX( VecRestoreArrayRead( gradient[dim], &gradientReadPtr[dim] ) );
+		if( phi_xxyyzz )
+			CHKERRXX( VecRestoreArrayRead( phi_xxyyzz[dim], &phi_xxyyzzReadPtr[dim] ) );
+	}
+
+	delete [] phi_xxyyzzReadPtr;
+}
+
+
+bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
 									 Vec kappaM, Vec kappaG, Vec kappa12[2] )
 {
 	if( !phi || !normals || !kappaM || !kappaG || !kappa12 )	// Invalid vectors?
-		throw std::invalid_argument( "[CASL_ERROR] None of the input/output vectors can be null!" );
+		throw std::invalid_argument( "[CASL_ERROR] compute_normals_and_curvatures: None of the input/output vectors can be null!" );
 
 	const p4est_nodes_t *nodes = ngbd.get_nodes();
-	ngbd.first_derivatives_central( phi, normals );				// Make normals hold the (non-normalized) gradient.
+	ngbd.first_derivatives_central( phi, normals );				// Compute (non-normalized) gradient.
 
-	// TODO: reuse these derivatives to compute kappaG.
+	// Reuse these derivatives to compute kappaG.
+	compute_gaussian_curvature( ngbd, phi, normals, nullptr, kappaG );
 
-	// Normalized gradient vector to compute mean curvature as divergence of the unit normals.
+	// Normalize gradient vector to return unit normals and compute more robust mean curvature.
 	normalize_gradient( normals, nodes );
 
-	// Compute mean curvature and principal curvatures using the Gaussian curvature calculated above.
-	compute_mean_curvature( ngbd, normals, kappaM );			// This function returns twice the mean curvature.
+	// Compute the (doubled) mean curvature.
+	compute_mean_curvature( ngbd, normals, kappaM );
+
+	// Preparing principal curvature computation.
 	double *kappaMPtr;
 	CHKERRXX( VecGetArray( kappaM, &kappaMPtr ) );
 
@@ -2835,19 +2898,55 @@ void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, cons
 	for( int i = 0; i < 2; i++ )
 		CHKERRXX( VecGetArray( kappa12[i], &kappa12Ptr[i] ) );
 
-	foreach_node( n, nodes )
+	bool validK12 = true;
+	auto computePrincipalCurvatures = [&validK12, kappaMPtr, kappaGReadPtr, kappa12Ptr]( p4est_locidx_t n ){
+		kappaMPtr[n] *= 0.5;				// Lets get the right value: kappaM = 0.5*div(n) = 0.5*(k1 + k2).
+		double radicand = SQR( kappaMPtr[n] ) - kappaGReadPtr[n];
+		if( radicand < 0 )
+		{
+			kappa12Ptr[0][n] = kappa12Ptr[1][n] = NAN;
+			validK12 = false;				// Notify the user that k1 & k2 computation failed for at least one node.
+		}
+		else
+		{
+			kappa12Ptr[0][n] = kappaMPtr[n] + sqrt( radicand );	// First principal curvature.
+			kappa12Ptr[1][n] = kappaMPtr[n] - sqrt( radicand );	// Second principal curvature.
+		}
+	};
+
+	// Compute principal curvatures and *half* the *doubled* mean curvature on layer nodes.
+	for( size_t i = 0; i < ngbd.get_layer_size(); i++ )
 	{
-		kappaMPtr[n] *= 0.5;						// Lets get the right value: kappaM = 0.5*div(n) = 0.5*(k1 + k2).
-		double radical = sqrt( SQR( kappaMPtr[n] ) - kappaGReadPtr[n] );
-		kappa12Ptr[0][n] = kappaMPtr[n] + radical;	// First principal curvature.
-		kappa12Ptr[1][n] = kappaMPtr[n] - radical;	// Second principal curvature.
+		p4est_locidx_t n = ngbd.get_layer_node( i );
+		computePrincipalCurvatures( n );
 	}
+
+	// Initiate layer communication.
+	CHKERRXX( VecGhostUpdateBegin( kappa12[0], INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( kappa12[1], INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( kappaM, INSERT_VALUES, SCATTER_FORWARD ) );
+
+	// Compute principal curvatures and *half* the *doubled* mean curvature on local nodes.
+	for( size_t i = 0; i < ngbd.get_local_size(); i++ )
+	{
+		p4est_locidx_t n = ngbd.get_local_node( i );
+		computePrincipalCurvatures( n );
+	}
+
+	// Finish layer communication.
+	CHKERRXX( VecGhostUpdateEnd( kappa12[0], INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( kappa12[1], INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( kappaM, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	// Clean up.
 	for( int i = 0; i < 2; i++ )
 		CHKERRXX( VecRestoreArray( kappa12[i], &kappa12Ptr[i] ) );
 	CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecRestoreArray( kappaM, &kappaMPtr ) );
+
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &validK12, 1, MPI_C_BOOL, MPI_LAND, ngbd.get_p4est()->mpicomm ) );
+
+	return validK12;
 }
 #endif
 

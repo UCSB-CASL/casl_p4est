@@ -27,23 +27,32 @@
 #include <src/casl_math.h>
 #include <src/parameter_list.h>
 
-template<typename M, typename G>
+template<typename M, typename G, typename K>
 void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 							  Vec kappaM, const M& exactMeanK, Vec errorKappaM, double& maxErrorKappaM,
-							  Vec kappaG, const G& exactGaussK, Vec errorKappaG, double& maxErrorKappaG )
+							  Vec kappaG, const G& exactGaussK, Vec errorKappaG, double& maxErrorKappaG,
+							  Vec kappa12[2], const K& exactK12, Vec errorKappa12[2], double& maxErrorKappa1, double& maxErrorKappa2 )
 {
-	const double *kappaMReadPtr, *kappaGReadPtr, *phiReadPtr;
-	double *errorKappaMPtr, *errorKappaGPtr;
+	const double *kappaMReadPtr, *kappaGReadPtr, *kappa12ReadPtr[2], *phiReadPtr;
+	double *errorKappaMPtr, *errorKappaGPtr, *errorKappa12Ptr[2];
 	CHKERRXX( VecGetArrayRead( kappaM, &kappaMReadPtr ) );
 	CHKERRXX( VecGetArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 	CHKERRXX( VecGetArray( errorKappaM, &errorKappaMPtr ) );
 	CHKERRXX( VecGetArray( errorKappaG, &errorKappaGPtr ) );
+	for( int i = 0; i < 2; i++ )
+	{
+		CHKERRXX( VecGetArrayRead( kappa12[i], &kappa12ReadPtr[i] ) );
+		CHKERRXX( VecGetArray( errorKappa12[i], &errorKappa12Ptr[i] ) );
+	}
 
 	double diag_min = p4est_diag_min( ngbd->get_p4est() );
 	maxErrorKappaM = 0;
 	maxErrorKappaG = 0;
+	maxErrorKappa1 = 0;
+	maxErrorKappa2 = 0;
 	double xyz[P4EST_DIM];
+	bool detected = false;
 	foreach_node( n, ngbd->get_nodes() ) 							// Checks *all independent* nodes.
 	{
 		if( ABS( phiReadPtr[n] ) < diag_min )						// Look only immediately next to Gamma.
@@ -51,16 +60,23 @@ void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 			node_xyz_fr_n( n, ngbd->get_p4est(), ngbd->get_nodes(), xyz );
 			const double kM = exactMeanK( xyz );					// Exact mean curvature.
 			const double kG = exactGaussK( xyz );					// Exact Gaussian curvature.
+			const double k12 = exactK12( xyz );						// Exact principal curvatures k1 = k2.
 			errorKappaMPtr[n] = ABS( kappaMReadPtr[n] - kM );
 			errorKappaGPtr[n] = ABS( kappaGReadPtr[n] - kG );
+			errorKappa12Ptr[0][n] = isnan( kappa12ReadPtr[0][n] )? DBL_MAX : ABS( kappa12ReadPtr[0][n] - k12 );
+			errorKappa12Ptr[1][n] = isnan( kappa12ReadPtr[1][n] )? DBL_MAX : ABS( kappa12ReadPtr[1][n] - k12 );
 			maxErrorKappaM = MAX( maxErrorKappaM, errorKappaMPtr[n] );
 			maxErrorKappaG = MAX( maxErrorKappaG, errorKappaGPtr[n] );
+			maxErrorKappa1 = MAX( maxErrorKappa1, errorKappa12Ptr[0][n] );
+			maxErrorKappa2 = MAX( maxErrorKappa2, errorKappa12Ptr[1][n] );
 		}
 	}
 
 	// Get max errors across processes.
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappaM, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
 	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappaG, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappa1, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
+	SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &maxErrorKappa2, 1, MPI_DOUBLE, MPI_MAX, ngbd->get_p4est()->mpicomm ) );
 
 	// Clean up.
 	CHKERRXX( VecRestoreArray( errorKappaG, &errorKappaGPtr ) );
@@ -68,6 +84,11 @@ void computeCurvaturesErrors( const my_p4est_node_neighbors_t *ngbd, Vec phi,
 	CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 	CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 	CHKERRXX( VecRestoreArrayRead( kappaM, &kappaMReadPtr ) );
+	for( int i = 0; i < 2; i++ )
+	{
+		CHKERRXX( VecRestoreArrayRead( kappa12[i], &kappa12ReadPtr[i] ) );
+		CHKERRXX( VecRestoreArray( errorKappa12[i], &errorKappa12Ptr[i] ) );
+	}
 }
 
 
@@ -81,7 +102,7 @@ int main( int argc, char** argv )
 	param_list_t pl;
 	param_t<u_char>        minRL( pl,     1, "minRL"		, "Minimum level of refinement (default: 1)" );
 	param_t<u_char>        maxRL( pl,     6, "maxRL"		, "Maximum level of refinement (default: 6)" );
-	param_t<u_char>          nsp( pl,     4, "nsp"			, "Number of splits (default: 4)" );
+	param_t<u_char>          nsp( pl,     3, "nsp"			, "Number of splits (default: 3)" );
 	param_t<u_short> reinitIters( pl,    10, "reinitIters"	, "Number of iterations for reinitialization (default: 10)" );
 	param_t<bool>            vtk( pl, false, "vtk"			, "Activate visualization exports (default: 0)" );
 
@@ -110,29 +131,32 @@ int main( int argc, char** argv )
 	const int periodic [P4EST_DIM] = {0, 0, 0};
 	connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
-	// Refine based on distance to a spherical-interface level-set function.
-	geom::Sphere sphere( 0, 0, 0, 0.5 );
+	// Refine based on distance to a 0.5-radius spherical-interface level-set function.
+	geom::SphereNSD sphere( 0, 0, 0, 0.5 );
 
-	auto exactMeanK = [](const double xyz[P4EST_DIM]){		// Mean curvature lambda function.
+	auto exactMeanK = []( const double xyz[P4EST_DIM] ){		// Mean curvature lambda function.
 		return 1. / sqrt( SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) ) );
 	};
 
-	auto exactGaussK = [](const double xyz[P4EST_DIM]){		// Gaussian curvature lambda function.
+	auto exactGaussK = []( const double xyz[P4EST_DIM] ){		// Gaussian curvature lambda function.
 		return 1. / SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) );
+	};
+
+	auto exactK12 = []( const double xyz[P4EST_DIM] ){			// Principal curvature(s) lambda function.
+		return 1. / sqrt( SUMD( SQR( xyz[0] ), SQR( xyz[1] ), SQR( xyz[2] ) ) );
 	};
 
 	const int N_CURVATURES = 4;
 	std::string curvatureNames[N_CURVATURES] = {"K_M", "K_G", "k_1", "k_2"};
 	double err[N_CURVATURES][nsp()];
-	const int computedThusFar = 1;		// TODO: Remove this once Gaussian and principal curvatures are available.
 
 	for( int s = 0; s < nsp(); s++)
 	{
 		// Create, refine, and partition the forest.
 		p4est = my_p4est_new( mpi.comm(), connectivity, 0, nullptr, nullptr );
-		splitting_criteria_cf_t sp( minRL() + s, maxRL() + s, &sphere, 2.0 );
+		splitting_criteria_cf_and_uniform_band_t sp( minRL() + s, maxRL() + s, &sphere, 3.0 );
 		p4est->user_pointer = &sp;
-		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf, nullptr );
+		my_p4est_refine( p4est, P4EST_TRUE, refine_levelset_cf_and_uniform_band, nullptr );
 		my_p4est_partition( p4est, P4EST_TRUE, nullptr );
 
 		// Create ghost layer and node structure.
@@ -144,7 +168,7 @@ int main( int argc, char** argv )
 		auto ngbd = new my_p4est_node_neighbors_t( hierarchy, nodes );
 		ngbd->init_neighbors();
 
-		Vec phi, kappaM, errorKappaM, kappaG, errorKappaG, kappa12[2];
+		Vec phi, kappaM, errorKappaM, kappaG, errorKappaG, kappa12[2], errorKappa12[2];
 		Vec normal[P4EST_DIM];
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &phi ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaM ) );
@@ -153,6 +177,8 @@ int main( int argc, char** argv )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &errorKappaG ) );
 		for( auto& kappa : kappa12 )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappa ) );
+		for( auto& errorKappa : errorKappa12 )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &errorKappa ) );
 		for( auto& dim : normal )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &dim ) );
 
@@ -164,35 +190,44 @@ int main( int argc, char** argv )
 		ls.reinitialize_2nd_order( phi, reinitIters() );
 
 		// Before, I was using compute_normals(), and then using these unit-length normals to compute curvature with
-		// compute_mean_curvature( ngbd, phi, normal, kappa ) <- this yielded higher error than nonnormalized gradient!
+		// compute_mean_curvature(ngbd, phi, normal, kappa) <--- this yielded higher error than nonnormalized gradient!
 		// Instead, use compute_mean_curvature(ngbd, normal, kappa) to get mean curvature as the divergence of the unit
 		// normals.  The latter uses larger stencils and is more robust to noise.
-		compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
+		bool validK12 = compute_normals_and_curvatures( *ngbd, phi, normal, kappaM, kappaG, kappa12 );
 		computeCurvaturesErrors( ngbd, phi,
 								 kappaM, exactMeanK, errorKappaM, err[0][s],
-								 kappaG, exactGaussK, errorKappaG, err[1][s] );
+								 kappaG, exactGaussK, errorKappaG, err[1][s],
+								 kappa12, exactK12, errorKappa12, err[2][s], err[3][s] );
 
 		if( vtk() )
 		{
-			const double *phiReadPtr, *errorKappaMReadPtr, *errorKappaGReadPtr;
+			const double *phiReadPtr, *errorKappaMReadPtr, *errorKappaGReadPtr, *errorKappa12ReadPtr[2];
 			CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 			CHKERRXX( VecGetArrayRead( errorKappaM, &errorKappaMReadPtr ) );
 			CHKERRXX( VecGetArrayRead( errorKappaG, &errorKappaGReadPtr ) );
+			for( int i = 0; i < 2; i++ )
+				CHKERRXX( VecGetArrayRead( errorKappa12[i], &errorKappa12ReadPtr[i] ) );
 
 			char filename[FILENAME_MAX];
 			sprintf( filename, "all_curvatures_errors.%d", s );
-			my_p4est_vtk_write_all( p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 3, 0, filename,
+			my_p4est_vtk_write_all( p4est, nodes, ghost, P4EST_TRUE, P4EST_TRUE, 5, 0, filename,
 									VTK_POINT_DATA, "phi", phiReadPtr,
 									VTK_POINT_DATA, "errorKappaM", errorKappaMReadPtr,
-									VTK_POINT_DATA, "errorKappaG", errorKappaGReadPtr );
+									VTK_POINT_DATA, "errorKappaG", errorKappaGReadPtr,
+									VTK_POINT_DATA, "errorKappa1", errorKappa12ReadPtr[0],
+									VTK_POINT_DATA, "errorKappa2", errorKappa12ReadPtr[1] );
 
 			CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
 			CHKERRXX( VecRestoreArrayRead( errorKappaM, &errorKappaMReadPtr ) );
 			CHKERRXX( VecRestoreArrayRead( errorKappaG, &errorKappaGReadPtr ) );
+			for( int i = 0; i < 2; i++ )
+				CHKERRXX( VecRestoreArrayRead( errorKappa12[i], &errorKappa12ReadPtr[i] ) );
 		}
 
 		CHKERRXX( PetscPrintf( mpi.comm(), "Resolution: (%d,%d)\n", minRL() + s, maxRL() + s ) );
-		for( int i = 0; i < computedThusFar; i++ )
+		if( !validK12 )
+			CHKERRXX( PetscPrintf( mpi.comm(), "Warning!  At least one principal curvature is invalid (NAN)!\n" ) );
+		for( int i = 0; i < N_CURVATURES; i++ )
 		{
 			if(s > 0)
 				CHKERRXX( PetscPrintf( mpi.comm(), "Error %s = %e, order = %f\n", curvatureNames[i].c_str(), err[i][s],
@@ -211,6 +246,8 @@ int main( int argc, char** argv )
 
 		for( auto& kappa : kappa12 )
 			CHKERRXX( VecDestroy( kappa ) );
+		for( auto& errorKappa : errorKappa12 )
+			CHKERRXX( VecDestroy( errorKappa ) );
 
 		for( auto& dim : normal )
 			CHKERRXX( VecDestroy( dim ) );

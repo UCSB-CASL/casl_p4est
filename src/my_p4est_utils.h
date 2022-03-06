@@ -2810,21 +2810,38 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
 
 #ifdef P4_TO_P8
 /**
+ * Compute Gaussian curvature for all grid nodes using compact stencils (with non-normalized gradient).
+ * @note This function is only available in three dimensions.
+ * @note If second derivatives are provided, phi will be ignored.
+ * @param [in] ngbd Neigborhood structure.
+ * @param [in] phi Level-set values.
+ * @param [in] gradient (Non-normalized) gradient.
+ * @param [in] phi_xxyyzz Vector of second derivatives: phi_xx, phi_yy, and phi_zz.
+ * @param [out] kappaG Gaussian curvature.
+ * @throws invalid_argument exception if either the gradient or the output kappa vector is null, or if both phi and
+ * 		   phi_xxyyzz are null.
+ */
+void compute_gaussian_curvature( const my_p4est_node_neighbors_t &ngbd, const Vec& phi, const Vec gradient[P4EST_DIM],
+								 const Vec phi_xxyyzz[P4EST_DIM], Vec kappaG );
+
+/**
  * Compute unit normal vectors and the mean, Gaussian, and principal curvatures for all grid nodes.  To compute the mean
- * curvature, we use div(n), where n is a unit normal vector (i.e., this method is more robust to noise).
- * @note kappaM is defined as 1/(DIM-1)*(k1 + k2), which in 2D reduces to just k1 (i.e., the principal curvature).
- * That is, kappaM = 0.5(k1 + k2) and kappaG = k1*k2 are the geometrical mean and Gaussian curvatures, and k1 and k2 are
- * the principal curvatures.
+ * curvature, we use div(n), where n is a unit normal (i.e., the most robust approach).
+ * @note kappaM is defined as 1/(DIM-1)*(k1 + k2), which in 2D reduces to just k1 (i.e., the principal curvature).  That
+ * is, kappaM = 0.5(k1 + k2) and kappaG = k1*k2 are the geometrical mean and Gaussian curvatures, and k1 and k2 are the
+ * principal curvatures.
  * @note This function is only available in three dimensions.
  * @param [in] ngbd Neighborhood structure.
  * @param [in] phi Level-set values.
  * @param [out] normals Unit normal vectors, component by component.
- * @param [out] kappaM (Twice) mean curvature.
+ * @param [out] kappaM Mean curvature.
  * @param [out] kappaG Gaussian curvature.
- * @param [out] kappa12 Principal curvatures.
+ * @param [out] kappa12 Principal curvatures (with NAN values if they couldn't be computed).
+ * @return True if computing k1 and k2 succeeded, false otherwise (i.e., at least a node had k1 & k2 set to NAN due to a
+ * 		   negative radicand).
  * @throws invalid_argument exception if any of the input/output vectors are null.
  */
-void compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
+bool compute_normals_and_curvatures( const my_p4est_node_neighbors_t& ngbd, const Vec& phi, Vec normals[P4EST_DIM],
 									 Vec kappaM, Vec kappaG, Vec kappa12[2] );
 #endif
 
