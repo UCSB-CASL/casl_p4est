@@ -180,7 +180,7 @@ void kml::StandardScaler::transform( double samples[][K_INPUT_SIZE], const int& 
 //////////////////////////////////////////////////// NeuralNetwork /////////////////////////////////////////////////////
 
 kml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, const bool& verbose )
-								   : H( h ), _pcaScaler( folder + "/k_pca_scaler.json", verbose ),
+								   : _h( h ), _pcaScaler( folder + "/k_pca_scaler.json", verbose ),
 								   _stdScaler( folder + "/k_std_scaler.json", verbose )
 {
 	const std::string errorPrefix = "[CASL_ERROR] kml::NeuralNetwork::Constructor: ";
@@ -227,22 +227,22 @@ kml::NeuralNetwork::NeuralNetwork( const std::string& folder, const double& h, c
 
 void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[], const int& nSamples, const bool& hNormalize ) const
 {
-	// Normalize phi values by h (if needed) and leave hk as a negative value.
+	// Normalize phi values by h (if needed) and leave mean hk as a negative value.
 	for( int i = 0; i < nSamples; i++ )
 	{
 		if( hNormalize )
 		{
 			for( const int& j : Scaler::PHI_COLS )
-				inputs[i][j] /= H;
+				inputs[i][j] /= _h;
 		}
 
-		inputs[i][K_INPUT_SIZE-1] = -ABS( inputs[i][K_INPUT_SIZE-1] );
+		inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] = -ABS( inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );
 	}
 
-	// Second part of inputs is the numerical dimensionless curvature.  Note that we cast to float type (not double).
+	// Second part of inputs is the numerical dimensionless mean curvature.  Note we cast to float type (not double).
 	auto *inputsPt2 = new FDEEP_FLOAT_TYPE[nSamples];
 	for( int i = 0; i < nSamples; i++ )
-		inputsPt2[i] = static_cast<FDEEP_FLOAT_TYPE>( inputs[i][K_INPUT_SIZE-1] );
+		inputsPt2[i] = static_cast<FDEEP_FLOAT_TYPE>( inputs[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );
 
 	// First, preprocess inputs in part 1 (still doubles).
 	_stdScaler.transform( inputs, nSamples );
@@ -302,7 +302,7 @@ void kml::NeuralNetwork::predict( double inputs[][K_INPUT_SIZE], double outputs[
 
 double kml::NeuralNetwork::getH() const
 {
-	return H;
+	return _h;
 }
 
 
@@ -314,7 +314,7 @@ FDEEP_FLOAT_TYPE kml::NeuralNetwork::_reLU( const FDEEP_FLOAT_TYPE& x )
 
 ///////////////////////////////////////////////////// Utilities //////////////////////////////////////////////////////
 
-void kml::utils::generateColumnHeaders( std::string header[], const bool& includeTargetHK )
+void kml::utils::generateColumnHeaders( std::string header[], const bool& includeTrueCurvatures )
 {
 	const int STEPS = 3;
 	std::string states[] = {"m", "0", "p"};			// States for x, y, and z directions.
@@ -335,9 +335,14 @@ void kml::utils::generateColumnHeaders( std::string header[], const bool& includ
 #endif
 		}
 	i += P4EST_DIM * num_neighbors_cube;
-	if( includeTargetHK )
-		header[++i] = "hk";							// Don't forget the target hk column if requested!
+	if( includeTrueCurvatures )						// Don't forget the true mean curvature column if requested!
+		header[++i] = "hk";
 	header[++i] = "ihk";
+#ifdef P4_TO_P8
+	if( includeTrueCurvatures )						// Don't forget the true Gaussian curvature column if requested!
+		header[++i] = "h2kg";
+	header[++i] = "ih2kg";
+#endif
 }
 
 
@@ -518,13 +523,14 @@ void kml::utils::rotateStencilToFirstQuadrant( double stencil[] )
 }
 
 
-void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK )
+void kml::utils::normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK, const bool& learning )
 {
 	if( refHK <= 0 )
 		return;
 
-	for( auto& feature : stencil )	// Flip sign of level-set, gradient, and curvature data.
-		feature *= -1;
+	const int ELMTS_TO_CHANGE = K_INPUT_SIZE - (P4EST_DIM - 2) + learning;
+	for( int i = 0; i < ELMTS_TO_CHANGE; i++ )	// Flip sign of level-set, gradient, and mean curvature data
+		stencil[i] *= -1;						// (the last position(s) are left unchanged for Gaussian K).
 }
 
 
@@ -539,9 +545,9 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 
 	if( mpi.rank() == 0 )
 	{
-		const int NUM_COLUMNS = K_INPUT_SIZE + 1;			// We need to include the true hk* too.
-		std::string COLUMN_NAMES[NUM_COLUMNS];				// Column headers following the x-y truth table of 3-state
-		kml::utils::generateColumnHeaders( COLUMN_NAMES );	// variables: phi + normal + hk + ihk.
+		const int NUM_COLUMNS = K_INPUT_SIZE_LEARN;					// We need to include the true curvatures too.
+		std::string COLUMN_NAMES[NUM_COLUMNS];						// Headers follow the xy[z] truth table of 3-state
+		kml::utils::generateColumnHeaders( COLUMN_NAMES, true );	// variables: phi + normal + hk + ihk + hkg + ihkg.
 		file.open( fullFileName, std::ofstream::trunc );
 		if( !file.is_open() )
 			throw std::runtime_error( "[CASL_ERROR] kml::utils::prepareSamplesFile: Output file " + fullFileName + " couldn't be opened!" );
@@ -565,12 +571,13 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
 	// So, why bother to keep samples in double?
 	const int RANK_TOTAL_SAMPLES = (int)samples.size() * 2;
-	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1)];	// Let's put everying in a long array.
+	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * K_INPUT_SIZE_LEARN];	// Let's put everying in a long array.
 
 //#pragma omp parallel for default( none ) num_threads( 4 ) shared( samples, h, D ) schedule(static, 500)
 	for( size_t i = 0; i < samples.size(); i++ )
 	{
-		normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE] );	// Use numerical ihk to determine sign.
+		// Use numerical mean ihk to determine sign: ihk comes after true hk.
+		normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE - (P4EST_DIM - 2)], true );
 #ifdef P4_TO_P8
 		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
 #else
@@ -582,17 +589,17 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 			samples[i][j] /= h;
 
 		// First copy: reoriented data packet.
-		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
-			D[i*2*(K_INPUT_SIZE + 1) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )
+			D[i*2*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 
 		reflectStencil_yEqx( samples[i] );										// Reflect about plane y - x = 0.
 
 		// Second copy: reflected data packet.
-		for( size_t j = 0; j < K_INPUT_SIZE + 1; j++ )
-			D[(i*2 + 1)*(K_INPUT_SIZE + 1) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
+		for( size_t j = 0; j < K_INPUT_SIZE_LEARN; j++ )
+			D[(i*2 + 1)*(K_INPUT_SIZE_LEARN) + j] = (FDEEP_FLOAT_TYPE)samples[i][j];
 	}
 
-	// First, gather the number of effective samples processed by each rank.
+	// First, rank 0 gathers the number of effective samples processed by each rank (including itself).
 	int *totalValuesPerRank = nullptr;
 	int *displacements = nullptr;			// Indicates where to place rank i data relative to beginning of recvbuf.
 	float *allData = nullptr;				// Receive data from all processes here.
@@ -614,21 +621,21 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 #endif
 		for( int i = 0; i < mpi.size(); i++ )
 		{
-			displacements[i] = beginning;	// We need to know where each rank must start placing it data.
-			totalValuesPerRank[i] *= (K_INPUT_SIZE + 1);
+			displacements[i] = beginning;			// We need to know where each rank must start placing it data.
+			totalValuesPerRank[i] *= K_INPUT_SIZE_LEARN;
 			beginning += totalValuesPerRank[i];
 #ifdef DEBUG
 			CHKERRXX( PetscPrintf( mpi.comm(), "* Rank %d: %d samples (%d values), starting at index %d\n",
-								   i, totalValuesPerRank[i] / (K_INPUT_SIZE + 1), totalValuesPerRank[i], displacements[i] ) );
+								   i, totalValuesPerRank[i] / (K_INPUT_SIZE_LEARN), totalValuesPerRank[i], displacements[i] ) );
 #endif
 		}
 
 		allData = new FDEEP_FLOAT_TYPE[beginning];
-		allRankTotalSamples = beginning / (K_INPUT_SIZE + 1);
+		allRankTotalSamples = beginning / K_INPUT_SIZE_LEARN;
 	}
 
 	// Gather samples data.
-	SC_CHECK_MPI( MPI_Gatherv( D, RANK_TOTAL_SAMPLES * (K_INPUT_SIZE + 1), MPI_FLOAT, allData, totalValuesPerRank,
+	SC_CHECK_MPI( MPI_Gatherv( D, RANK_TOTAL_SAMPLES * K_INPUT_SIZE_LEARN, MPI_FLOAT, allData, totalValuesPerRank,
 							   displacements, MPI_FLOAT, 0, mpi.comm() ) );
 
 	// Accumulate samples.  Only rank 0 does this.
@@ -636,9 +643,9 @@ int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::
 	{
 		for( int i = 0; i < allRankTotalSamples; i++ )
 		{
-			buffer.emplace_back( K_INPUT_SIZE + 1 );
-			for( int j = 0; j < K_INPUT_SIZE + 1; j++ )
-				buffer.back()[j] = allData[i*(K_INPUT_SIZE + 1) + j];
+			buffer.emplace_back( K_INPUT_SIZE_LEARN );
+			for( int j = 0; j < K_INPUT_SIZE_LEARN; j++ )
+				buffer.back()[j] = allData[i*K_INPUT_SIZE_LEARN + j];
 		}
 	}
 
@@ -664,9 +671,9 @@ int kml::utils::saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofst
 		for( i = 0; i < buffer.size(); i++ )
 		{
 			int j;
-			for( j = 0; j < K_INPUT_SIZE; j++ )
+			for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )
 				file << buffer[i][j] << ",";		// Inner elements.
-			file << buffer[i][j] << std::endl;		// Last element is ihk.
+			file << buffer[i][j] << std::endl;		// Last element is ihk in 2D or ih2kg in 3D.
 		}
 		savedSamples = i;
 	}
@@ -713,15 +720,15 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 	{
 		if( !buffer.empty() )
 		{
-			// Begin by finding the range of |hk*| if not given.
+			// Begin by finding the range of mean |hk*| if not given.
 			if( isnan( minHK ) || isnan( maxHK ) )
 			{
 				minHK = FLT_MAX;
 				maxHK = 0;
 				for( const auto& sample : buffer )
 				{
-					minHK = MIN( minHK, ABS( sample[K_INPUT_SIZE - 1] ) );
-					maxHK = MAX( maxHK, ABS( sample[K_INPUT_SIZE - 1] ) );
+					minHK = MIN( minHK, ABS( sample[K_INPUT_SIZE - (P4EST_DIM - 1)] ) );
+					maxHK = MAX( maxHK, ABS( sample[K_INPUT_SIZE - (P4EST_DIM - 1)] ) );
 				}
 			}
 
@@ -736,7 +743,7 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 			std::vector<int>counts( nbins, 0 );									// Keeps track of how many samples lie in each bin.
 			for( int i = 0; i < buffer.size(); i++ )
 			{
-				FDEEP_FLOAT_TYPE hk = ABS( buffer[i][K_INPUT_SIZE - 1] );
+				FDEEP_FLOAT_TYPE hk = ABS( buffer[i][K_INPUT_SIZE - (P4EST_DIM - 1)] );	// Mean |hk*|
 				int idx = (int)MAX( 0.0f, MIN( floor( (hk - minHK) / dx ), (FDEEP_FLOAT_TYPE)nbins - 1.0f ) );
 				if( !(hk >= limits[idx] && hk < limits[idx+1]) )				// Check that |hk| does fall in the range.
 				{
@@ -783,9 +790,9 @@ int kml::utils::histSubSamplingAndSaveToFile( const mpi_environment_t& mpi,
 				{
 					int j;
 					int idx = bins[b][i];
-					for( j = 0; j < K_INPUT_SIZE; j++ )
+					for( j = 0; j < K_INPUT_SIZE_LEARN - 1; j++ )
 						file << buffer[idx][j] << ",";		// Inner elements.
-					file << buffer[idx][j] << std::endl;	// Last element is ihk.
+					file << buffer[idx][j] << std::endl;	// Last element is ihk in 2D or ih2kg in 3D.
 					savedSamples++;
 				}
 			}
@@ -824,17 +831,17 @@ double kml::utils::easingOffProbability( double x, const double& lowVal, const d
 ////////////////////////////////////////////////////// Curvature ///////////////////////////////////////////////////////
 
 kml::Curvature::Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK, const double& upMinHK )
-						   : H( h ), LO_MIN_HK( loMinHK ), UP_MIN_HK( upMinHK ), _nnet( nnet )
+						   : _h( h ), LO_MIN_HK( loMinHK ), UP_MIN_HK( upMinHK ), _nnet( nnet )
 {
-	if( ABS( H - _nnet->getH() ) > PETSC_MACHINE_EPSILON )
+	if( ABS( _h - _nnet->getH() ) > PETSC_MACHINE_EPSILON )
 		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: Neural network and current spacing are incompatible!" );
 
 	if( loMinHK >= upMinHK || loMinHK < 0 )
-		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: HK lower- and upper-bound must be positive!" );
+		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::Constructor: minHK lower- and upper-bound must be positive!" );
 }
 
 
-void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
+void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numMeanK,
 									  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const
 {
 	// Data accessors.
@@ -852,7 +859,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 
 	// We'll interpolate numerical hk at the interface linearly: prepare structure.
 	my_p4est_interpolation_nodes_t interp( &ngbd );
-	interp.set_input( numCurvature, interpolation_method::linear );
+	interp.set_input( numMeanK, interpolation_method::linear );
 
 	// Collect samples: one per valid (i.e., with full h-uniform stencil) locally owned node next to Gamma.
 	NodesAlongInterface nodesAlongInterface( p4est, nodes, &ngbd, (char)maxRL );
@@ -864,7 +871,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 	samples.reserve( nodes->num_owned_indeps );
 	indices.reserve( nodes->num_owned_indeps );
 	double xyz[P4EST_DIM];
-	const double ONE_OVER_H = 1. / H;
+	const double ONE_OVER_H = 1. / _h;
 
 	for( auto n : ngIndices )
 	{
@@ -887,7 +894,7 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 				node_xyz_fr_n( n, p4est, nodes, xyz );				// Finally, the interpolated numerical hk on Gamma.
 				for( int dim = 0; dim < P4EST_DIM; dim++ )
 					xyz[dim] -= normalReadPtr[dim][n] * phiReadPtr[n];
-				sample.push_back( interp( xyz ) * H );
+				sample.push_back( interp( xyz ) * _h );
 
 				samples.push_back( sample );
 				indices.push_back( n );		// Keep track of which locally owned nodes we are looking at.
@@ -903,28 +910,27 @@ void kml::Curvature::_collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec
 }
 
 
-void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybHK ) const
+void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybMeanHK ) const
 {
-	hybHK.clear();
-	hybHK.resize( samples.size() );
+	hybMeanHK.clear();
+	hybMeanHK.resize( samples.size() );
 
-	// Since we receive samples with phi h-normalization, let's put them into negative-curvature form and reorient them.
-	int outIdx = 0;				// To avoid unnecessary neural evaluations, skip samples for which |ihk| < LO_MIN_HK.
+	// Since we receive samples with phi h-normalization, let's put them into negative-mean-curvature form and reorient them.
+	int outIdx = 0;			// To avoid unnecessary neural evaluations, skip samples for which mean |ihk| < LO_MIN_HK.
 	std::vector<int> outIdxToSampleIdx;
 	outIdxToSampleIdx.reserve( samples.size() );
 	std::vector<std::vector<double>> negSamples;
 	negSamples.reserve( samples.size() );
 	for( int i = 0; i < samples.size(); i++ )
 	{
-		if( ABS( samples[i][K_INPUT_SIZE-1] ) < LO_MIN_HK )		// Skip well resolved stencils; use the numerical estimation.
+		if( ABS( samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)] ) < LO_MIN_HK )		// Skip well resolved stencils; use the numerical mean kappa estimation.
 		{
-			hybHK[i] = samples[i][K_INPUT_SIZE-1];
+			hybMeanHK[i] = samples[i][K_INPUT_SIZE - (P4EST_DIM - 1)];
 			continue;
 		}
 
-		negSamples.emplace_back( std::vector<double>( K_INPUT_SIZE ) );
-		for( int j = 0; j < K_INPUT_SIZE; j++ )
-			negSamples.back()[j] = (samples[i][K_INPUT_SIZE-1] > 0)? -samples[i][j] : samples[i][j];
+		negSamples.emplace_back( std::vector<double>( samples[i] ) );
+		utils::normalizeToNegativeCurvature( negSamples.back(), negSamples.back()[K_INPUT_SIZE - (P4EST_DIM - 1)] );
 
 #ifdef P4_TO_P8
 		utils::rotateStencilToFirstOctant( negSamples.back() );
@@ -946,7 +952,7 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 		for( int j = 0; j < K_INPUT_SIZE; j++ )			// We'll give it two takes: original.
 			inputs[idx + 0][j] = negSamples[i][j];
 
-		utils::reflectStencil_yEqx( negSamples[i] );	// And reflected about y=x.
+		utils::reflectStencil_yEqx( negSamples[i] );	// And reflected about x - y = 0 plane.
 		for( int j = 0; j < K_INPUT_SIZE; j++ )
 			inputs[idx + 1][j] = negSamples[i][j];
 	}
@@ -960,16 +966,16 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 		int idx = i * N_INPUTS_PER_SAMPLE;
 		double hk = (outputs[idx + 0] + outputs[idx + 1]) / 2.0;	// Average predictions produces a better one.
 
-		// Blend with numerical ihk within the range of [0.004, 0.007] (using ihk as the indicator).
-		double ihk = samples[outIdxToSampleIdx[i]][K_INPUT_SIZE-1];
+		// Blend with numerical mean ihk within the range of [0.004, 0.007] (using ihk as the indicator).
+		double ihk = samples[outIdxToSampleIdx[i]][K_INPUT_SIZE - (P4EST_DIM - 1)];
 		if( ABS( ihk ) <= UP_MIN_HK )
 		{
 			double lam = (UP_MIN_HK - ABS( ihk )) / (UP_MIN_HK - LO_MIN_HK);
 			hk = (1 - lam) * hk + lam * -ABS( ihk );
 		}
 
-		// Fix sign according to (untouched) curvature.
-		hybHK[outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );
+		// Fix sign according to (untouched) mean curvature.
+		hybMeanHK[outIdxToSampleIdx[i]] = SIGN( ihk ) * ABS( hk );
 	}
 
 	// Clean up.
@@ -979,10 +985,10 @@ void kml::Curvature::_computeHybridHK( const std::vector<std::vector<double>>& s
 
 
 std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
-												   Vec numCurvature, Vec hybCurvature, Vec hybFlag,
-												   const bool& dimensionless, parStopWatch *watch ) const
+												   Vec numMeanK, Vec hybMeanK, Vec hybFlag, const bool& dimensionless,
+												   parStopWatch *watch ) const
 {
-	if( !phi || !normal || !numCurvature || !hybCurvature || !hybFlag )
+	if( !phi || !normal || !numMeanK || !hybMeanK || !hybFlag )
 		throw std::runtime_error( "[CASL_ERROR] kml::Curvature::compute: One of the provided vectors is null!" );
 
 	// Data accessors.
@@ -992,35 +998,35 @@ std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors
 	// TODO: Need to retrain 2d k_ecnets using compute_mean_curvature( ngbd, normal, numCurvature ) for compatibility with 3D.
 	double startTime = watch? watch->get_duration_current() : 0;
 	compute_normals( ngbd, phi, normal );
-	compute_mean_curvature( ngbd, phi, normal, numCurvature );
+	compute_mean_curvature( ngbd, phi, normal, numMeanK );
 	double totalNumericalTime = watch? watch->get_duration_current() - startTime : -1;
 
 	// Collect samples.
 	std::vector<std::vector<double>> samples;
 	std::vector<p4est_locidx_t> indices;
-	_collectSamples( ngbd, phi, normal, numCurvature, samples, indices );
+	_collectSamples( ngbd, phi, normal, numMeanK, samples, indices );
 
-	// Compute hybrid (dimensionless) curvature.
-	std::vector<double> hybHK;
-	_computeHybridHK( samples, hybHK );
+	// Compute hybrid (dimensionless) mean curvature.
+	std::vector<double> hybMeanHK;
+	_computeHybridHK( samples, hybMeanHK );
 
 	// Copy solution to parallel vectors.
-	double *hybCurvaturePtr, *hybFlagPtr;
+	double *hybMeanKPtr, *hybFlagPtr;
 	CHKERRXX( VecGetArray( hybFlag, &hybFlagPtr ) );
-	CHKERRXX( VecGetArray( hybCurvature, &hybCurvaturePtr ) );
+	CHKERRXX( VecGetArray( hybMeanK, &hybMeanKPtr ) );
 
 	for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )		// Initialization.
-		hybCurvaturePtr[n] = hybFlagPtr[n] = 0;
+		hybMeanKPtr[n] = hybFlagPtr[n] = 0;
 
 	for( int i = 0; i < indices.size(); i++ )	// Go through the nodes where we computed the hybrid solution.
 	{
 		p4est_locidx_t idx = indices[i];
-		hybCurvaturePtr[idx] = dimensionless? hybHK[i] : hybHK[i] / H;
-		hybFlagPtr[idx] = 1;					// Signal that node idx contains kappa "at" the interface.
+		hybMeanKPtr[idx] = dimensionless? hybMeanHK[i] : hybMeanHK[i] / _h;
+		hybFlagPtr[idx] = 1;					// Signal that node idx contains mean kappa "at" the interface.
 	}
 
 	// Cleaning up.
-	CHKERRXX( VecRestoreArray( hybCurvature, &hybCurvaturePtr ) );
+	CHKERRXX( VecRestoreArray( hybMeanK, &hybMeanKPtr ) );
 	CHKERRXX( VecRestoreArray( hybFlag, &hybFlagPtr ) );
 
 	// Let's synchronize the machine learning flag vector among all processes.
@@ -1028,8 +1034,8 @@ std::pair<double, double> kml::Curvature::compute( const my_p4est_node_neighbors
 	CHKERRXX( VecGhostUpdateEnd( hybFlag, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	// Let's synchronize the curvature values among all processes.
-	CHKERRXX( VecGhostUpdateBegin( hybCurvature, INSERT_VALUES, SCATTER_FORWARD ) );
-	CHKERRXX( VecGhostUpdateEnd( hybCurvature, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateBegin( hybMeanK, INSERT_VALUES, SCATTER_FORWARD ) );
+	CHKERRXX( VecGhostUpdateEnd( hybMeanK, INSERT_VALUES, SCATTER_FORWARD ) );
 
 	double totalHybridTime = watch? watch->get_duration_current() - startTime : -1;
 	return std::make_pair( totalNumericalTime, totalHybridTime );

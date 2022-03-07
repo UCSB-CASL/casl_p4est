@@ -2,16 +2,19 @@
 #define MY_P4EST_CURVATURE_ML_H
 
 #ifdef P4_TO_P8
-#define K_INPUT_SIZE			109	// Includes h-normalized phi values, unit normal vector components, and numerical hk.
+#define K_INPUT_SIZE			110	// Includes h-normalized phi values, unit normal vectors, and numerical mean ihk and Gaussian ih^2k.
+#define K_INPUT_SIZE_LEARN		112	// Includes two additional slots for true curvatures.
 #define K_INPUT_PHI_SIZE		 27
 #define K_INPUT_NORMAL_SIZE		 81
-#define K_INPUT_HK_SIZE			  1
+#define K_INPUT_HK_SIZE			  1	// Dimensionless mean curvature = h * H.
+#define K_INPUT_H2KG_SIZE		  1	// Dimensionless Gaussian curvature = h^2 * K.
 
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_nodes_along_interface.h>
 #else
-#define K_INPUT_SIZE			28	// Includes h-normalized phi values, unit normal vector components, and numerical hk.
+#define K_INPUT_SIZE			28	// Includes h-normalized phi values, unit normal vector components, and numerical ihk.
+#define K_INPUT_SIZE_LEARN		29	// Includes an additional slot for true ihk.
 #define K_INPUT_PHI_SIZE		 9
 #define K_INPUT_NORMAL_SIZE		18
 #define K_INPUT_HK_SIZE			 1
@@ -181,7 +184,7 @@ namespace kml
 	////////////////////////////////////////////////// NeuralNetwork ///////////////////////////////////////////////////
 
 	/**
-	 * Curvature error-correcting neural network.
+	 * Mean curvature error-correcting neural network.
 	 * Internally, processes batches of samples in the following format:
 	 * 										Samples (n)
 	 * 						s_0  s_1  ...  s_i  ... s_{n-2}  s_{n-1}
@@ -208,7 +211,7 @@ namespace kml
 		std::vector<std::vector<int>> _sizes;	// Matrix size tuples (m, k).  m = layer size, k = input size, (n = number of samples).
 		std::vector<std::vector<FDEEP_FLOAT_TYPE>> W;	// Weight matrices flattened.  Matrices are given in row-major order.
 
-		const double H;							// Mesh size.
+		const double _h;						// Mesh size.
 		unsigned long _inputSize;				// Expected input size (excludes bias).
 
 		/**
@@ -229,11 +232,11 @@ namespace kml
 		explicit NeuralNetwork( const std::string& folder, const double& h, const bool& verbose=true );
 
 		/**
-		 * Predict corrected dimensionless curvature at the closest point on the interface.
-		 * @note This function assumes that the inputs have been already negated when curvature is positive.  User must
-		 * take care of fixing the predictions' sign accordingly.
+		 * Predict corrected dimensionless mean curvature at the closest point on the interface.
+		 * @note This function assumes that the inputs have been already negated when mean curvature is positive.
+		 * User must take care of fixing the predictions' sign accordingly.
 		 * @param [in,out] inputs Array of sample inputs with raw data (they'll be transformed).
-		 * @param [out] outputs Array of predicted dimensionless curvature values
+		 * @param [out] outputs Array of predicted dimensionless mean curvature values
 		 * @param [in] nSamples Batch size.
 		 * @param [in] hNormalize Whether to normalize phi values by mesh size h.
 		 */
@@ -271,11 +274,11 @@ namespace kml
 		 * 		normal x components	- second group of 27 strings: "nx_mmm", "nx_mm0", "nx_mmp", ..., "nx_ppm", "nx_pp0", "nx_ppp".
 		 * 		normal y components - third group of 27 strings:  "ny_mmm", "ny_mm0", "ny_mmp", ..., "ny_ppm", "ny_pp0", "ny_ppp".
 		 * 		normal z components - fourth group of 27 strings: "nz_mmm", "nz_mm0", "nz_mmp", ..., "nz_ppm", "nz_pp0", "nz_ppp".
-		 * At the end, we append true "hk" (optional) and numerical "ihk".
+		 * At the end, we append true mean "hk" (optional), numerical "ihk", true Gaussian "h2kg" (optional), and numerical "ih2kg".
  		 * @param [out] header Array of column headers to be filled up.  Must be backed by a correctly allocated array.
-		 * @param [in] includeTargetHK Whether to include or not the "hk" column.
+		 * @param [in] includeTrueCurvatures Whether to include or not the (scaled) true curvature columns.
 		 */
-		void generateColumnHeaders( std::string header[], const bool& includeTargetHK=true );
+		void generateColumnHeaders( std::string header[], const bool& includeTrueCurvatures=true );
 
 		/**
 		 * Rotate stencil in a sample vector by 90 degrees about the z axis.
@@ -308,9 +311,9 @@ namespace kml
 
 		/**
 		 * Rotate stencil in such a way that the gradient computed at the stencil's center node has all its Cartesian
-		 * components positive.
+		 * components positive.  The function doesn't modify any of the invariant quantities, such as the curvature(s).
 		 * @note Exploits the fact that curvature is invariant to rotation.  Before calling this function you must have
-		 * flipped the sign of the stencil (and gradient) so that the curvature is negative.
+		 * flipped the sign of the stencil (and gradient) to the desired configuration (possibly negatively normalized).
 		 * @param [in,out] stencil Feature array in standard order (e.g., mm[m], m0[m], mp[m],..., [p]pm, [p]p0, [p]pp).
 		 * @throws runtime_error If one or more reoriented gradient component components is negative after the process.
 		 */
@@ -329,15 +332,18 @@ namespace kml
 #endif
 
 		/**
-		 * Normalize a stencil to negative curvature spectrum.
-		 * @param [in,out] stencil Feature vector with phi, normal, and (dimensionless) curvature.
+		 * Normalize a stencil to negative (mean) curvature spectrum.
+		 * @note This function doesn't modify (true and numerically interpolated) Gaussian curvature(s).  The learning
+		 * flag helps to account for the additional true columns present only for training data sets.
+		 * @param [in,out] stencil Feature vector with phi, normal, and (dimensionless) curvature(s).
 		 * @param [in] refHK Reference dimensionless curvature to determine normalization.
+		 * @param [in] learning Whether we are treating samples for learning or on-line inference.
 		 */
-		void normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK );
+		void normalizeToNegativeCurvature( std::vector<double>& stencil, const double& refHK, const bool& learning=false );
 
 		/**
-		 * Prepare sampling file by opening, writing the header, and setting its precision to preserve accurate 32-bit
-		 * float numbers.
+		 * Prepare sampling file by opening, writing the header, and setting its precision to 32-bit floating-point
+		 * numbers.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] directory Where to place samples' file.  If it doesn't exist, it'll be created by rank 0 only.
 		 * @param [in] fileName File name such that the full path is 'directory/fileName'.
@@ -358,7 +364,7 @@ namespace kml
 									 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer );
 
 		/**
-		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and
+		 * Transform samples with negative-mean-curvature and phi-by-h normalization, followed by reorientation and
 		 * reflection.  Then, place these samples in a cumulative array.
 		 * @note Only rank 0 accumulates processed samples, but all processes receive the total number of them.
 		 * @param [in] mpi MPI environment.
@@ -371,8 +377,8 @@ namespace kml
 										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h );
 
 		/**
-		 * Transform samples with negative-curvature and phi-by-h normalization, followed by reorientation and augmenta-
-		 * tion based on reflection.  Then, write these samples to a file using single precision.
+		 * Transform samples with negative-mean-curvature and phi-by-h normalization, followed by reorientation and
+		 * augmentation based on reflection.  Then, write these samples to a file using single precision.
 		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
@@ -385,16 +391,16 @@ namespace kml
 										 std::ofstream& file, const double& h, const int& preAllocateSize=1000 );
 
 		/**
-		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true |hk*|.
-		 * Then, compute the median and subsample the intervals until the number of items in each bin is at most
+		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true mean
+		 * |hk*|.  Then, compute the median and subsample the intervals until the number of items in each bin is at most
 		 * max(frac*median, minFold*minCount), where minFold >= 1 and minCount is the smallest number of samples in any
 		 * bin.  After that, save the remaining samples into a file.
-		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
+		 * @note Only rank 0 writes samples to a file, but all processes receive the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in] buffer Array of buffered (already normalized and augmented) samples.
 		 * @param [in,out] file File object.
-		 * @param [in] minHK Minimum |hk*| to consider for provided buffer; if not given, it'll be computed.
-		 * @param [in] maxHK Maximum |hk*| to consider for provided buffer; if not given, it'll be computed.
+		 * @param [in] minHK Minimum mean |hk*| to consider for provided buffer; if not given, it'll be computed.
+		 * @param [in] maxHK Maximum mean |hk*| to consider for provided buffer; if not given, it'll be computed.
 		 * @param [in] nbins Number of bins or intervals in the histogram.
 		 * @param [in] frac Fraction of the median to be used for subsampling.
 		 * @param [in] minFold Number of times to consider the count of the bin with the least samples.
@@ -428,38 +434,39 @@ namespace kml
 	////////////////////////////////////////////////// Curvature //////////////////////////////////////////////////
 
 	/**
- 	 * Curvature computation using machine learning and neural networks.
+ 	 * Mean curvature computation using machine learning and neural networks.
  	 */
 	class Curvature
 	{
 	private:
-		const double H;						// Smallest (square-)cell width.
-		const double LO_MIN_HK;				// Lower- and upper-bound for minimum |hk| where we blend numerical with
-		const double UP_MIN_HK;				// neural estimation for better results.
+		const double _h;					// Smallest (square-)cell width.
+		const double LO_MIN_HK;				// Lower- and upper-bound for minimum mean |hk| where we blend numerical
+		const double UP_MIN_HK;				// with neural estimation for better results.
 		const NeuralNetwork * const _nnet;	// Error-correcting neural network.
 
 		/**
 		 * Collect samples for locally owned nodes with full h-uniform stencil next to Gamma.  Samples include phi
-		 * values and normal unit vector components plus the linearly interpolated dimensionless curvature at the
-		 * interface.  Note that no negative-curvature normalization and reorientation are performed here.  Those will
-		 * be considered as a preprocessing step in the function that invokes the neural inference.
+		 * values, normal unit vector components, plus the linearly interpolated dimensionless (mean) curvature and
+		 * Gaussian curvature at the interface.
+		 * @note No negative-curvature normalization and reorientation are performed here.  Those will be considered as
+		 * a preprocessing step in the function that invokes the neural inference.
 		 * @param [in] ngbd Node neighborhood struct.
 		 * @param [in] phi Reinitialized level-set values.
 		 * @param [in] normal Nodal unit normal vectors.
-		 * @param [in] numCurvature Numerical curvature (which we use for linear interpolation at Gamma).
+		 * @param [in] numMeanK Numerical mean curvature (which we use for linear interpolation at Gamma).
 		 * @param [out] samples Vector of samples for valid nodes next to Gamma.
 		 * @param [out] indices Center nodal indices for collected samples (a one-to-one mapping).
 		 */
-		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numCurvature,
+		void _collectSamples( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM], Vec numMeanK,
 							  std::vector<std::vector<double>>& samples, std::vector<p4est_locidx_t>& indices ) const;
 
 		/**
-		 * Compute the hybrid dimensionless curvature from the samples provided by using the neural network and the
-		 * numerically interpolated dimensionless curvature at the interface.
+		 * Compute the hybrid dimensionless mean curvature from the provided samples by using the neural network and the
+		 * numerically interpolated dimensionless curvature(s) at the interface.
 		 * @param [in] samples Vector of samples for locally owned valid nodes next to Gamma.
-		 * @param [out] hybHK Output dimensionless curvature computed with hybrid approach.
+		 * @param [out] hybMeanHK Output dimensionless mean curvature computed with hybrid approach.
 		 */
-		void _computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybHK ) const;
+		void _computeHybridHK( const std::vector<std::vector<double>>& samples, std::vector<double>& hybMeanHK ) const;
 
 	public:
 		/**
@@ -467,17 +474,17 @@ namespace kml
 		 * @note The loMinHK constant must be at least the MIN_HK used for training.
 		 * @param [in] nnet Pointer to neural network, which should be created externally to avoid recurrent spawning.
 		 * @param [in] h Mesh size.
-		 * @param [in] loMinHK Strictly positive lower-bound for dimensionless curvature (e.g. 0.004) to use the nnet.
-		 * @param [in] upMinHK Strictly positive upper-bound for blending nnet-computed dimensionless curvature with
-		 * 		  numerical estimation (e.g. 0.007).
+		 * @param [in] loMinHK Positive lower-bound for dimensionless mean curvature (e.g., 0.004) to use the nnet.
+		 * @param [in] upMinHK Positive upper-bound for blending nnet-computed dimensionless mean curvature with
+		 * 		  numerical estimation (e.g., 0.007).
 		 */
 		Curvature( const NeuralNetwork *nnet, const double& h, const double& loMinHK=0.004, const double& upMinHK=0.007 );
 
 		/**
-		 * Compute curvature.  There are two output modes in this function.  First, it computes the unit normals and
-		 * the numerical mean curvature and place the results in the normal and numCurvature vectors.
+		 * Compute mean curvature.  There are two output modes in this function.  First, it computes the unit normals
+		 * and the numerical mean curvature and place the results in the normal and numMeanK vectors.
 		 * Then, it computes the mean curvature for grid points next to the interface using the hybrid approach.  The
-		 * resulting approximation is placed in the hybCurvature vector and corresponds to the mean curvature *at* the
+		 * resulting approximation is placed in the hybMeanK vector and corresponds to the mean curvature *at* the
 		 * normal projection of those nodes onto Gamma.
 		 * The ancillary output hybFlag vector is populated with 1s where we used the hybrid approach and 0s everywhere
 		 * else.
@@ -485,19 +492,19 @@ namespace kml
 		 * @param [in] ngbd Node neighborhood structure.
 		 * @param [in] phi Nodal level-set values (assuming we have already reinitialized them).
 		 * @param [out] normal Nodal unit normal vectors.
-		 * @param [out] numCurvature Numerical mean curvature computed at all the nodes.
-		 * @param [out] hybCurvature Hybrid mean curvature computed at the normal projection of nodes next to Gamma.
+		 * @param [out] numMeanK Numerical mean curvature computed at all the nodes.
+		 * @param [out] hybMeanK Hybrid mean curvature computed at the normal projection of nodes next to Gamma.
 		 * @param [out] hybFlag Indicator vector with 1s where we used the hybrid approach and 0s everywhere else.
 		 * @param [in] dimensionless Whether to scale curvature by h.
 		 * @param [in] watch Optional timer.  If given, we will time numerical and hybrid curvature computations.  Timer
 		 *        must be ready (i.e., called its start() method) before calling this function.
 		 * @return A pair with <numerical, hybrid> timings in seconds if watch parameter is not nullptr, otherwise, the
 		 *         values are set to -1.
-		 * @throws runtime_error if any vector is nullptr.
+		 * @throws invalid_argument if any vector is nullptr.
 		 */
 		std::pair<double, double> compute( const my_p4est_node_neighbors_t& ngbd, Vec phi, Vec normal[P4EST_DIM],
-										   Vec numCurvature, Vec hybCurvature, Vec hybFlag,
-										   const bool& dimensionless=false, parStopWatch *watch=nullptr ) const;
+										   Vec numMeanK, Vec hybMeanK, Vec hybFlag, const bool& dimensionless=false,
+										   parStopWatch *watch=nullptr ) const;
 	};
 }
 
