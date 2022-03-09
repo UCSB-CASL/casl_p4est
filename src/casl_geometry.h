@@ -2,7 +2,7 @@
  * A collection of geometric functions and classes involving points, vectors, planes, polygons, etc.
  * Developer: Luis Ángel.
  * Created: April 30, 2020.
- * Updated: February 27, 2022.
+ * Updated: March 8, 2022.
  */
 
 #ifndef CASL_GEOMETRY_H
@@ -849,6 +849,7 @@ namespace geom
 	{
 	public:
 		virtual double meanCurvature( const double& u, const double& v ) const = 0;
+		virtual double gaussianCurvature( const double& u, const double& v ) const = 0;
 	};
 
 	/**
@@ -1185,9 +1186,9 @@ namespace geom
 		const double _c, _s;						// Since we use cosine and sine of beta a lot, let's precompute them.
 		const double _one_m_c;						// (1-cos(beta)).
 
-		bool _useCache = false;						// Computing distance to triangulated surface is expensive --let's cache
-		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// distances and nearest points.  Also,
-		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// cache canonical coordinates for grid points.
+		bool _useCache = false;	// Computing distance to triangulated surface is expensive --let's cache distances and
+		mutable std::unordered_map<std::string, std::pair<double, Point3>> _cache;	// nearest points.  Also, cache can-
+		mutable std::unordered_map<std::string, Point3> _canonicalCoordsCache;		// onical coords for grid points.
 
 		/**
 		 * Find nearest point and signed distance to triangulated surface using knn search.
@@ -1203,7 +1204,7 @@ namespace geom
 			Point3 nearestPoint;
 			nearestPoint = findNearestPointFromKNN( p, d, nearestTriangle, k );		// Use knn for higher accuracy.
 
-			// Fix sign: points above sinusoid are negative and below are positive.  Because of the way we created the
+			// Fix sign: points above surface are negative and below are positive.  Because of the way we created the
 			// triangles, their normals point up in the canonical coord system (i.e., into the negative region Omega-).
 			Point3 w = p - *(nearestTriangle->getVertex(0));
 			if( w.dot( *(nearestTriangle->getNormal()) ) >= 0 )	// In the direction of the normal?
@@ -1323,7 +1324,7 @@ namespace geom
 
 		/**
 		 * Dump triangles into a data file for debugging/visualizing.
-		 * @param [in] filename Output file.
+		 * @param [in] filename Output file name.
 		 * @throws runtime_error if file can't be opened.
 		 */
 		void dumpTriangles( const std::string& filename )

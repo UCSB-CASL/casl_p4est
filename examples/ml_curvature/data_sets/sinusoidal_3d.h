@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: February 28, 2022.
+ * Updated: March 8, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -129,7 +129,9 @@ public:
 	}
 
 	/**
-	 * Compute mean curvature (which actually is twice that).
+	 * Compute mean curvature.
+	 * @note It used to be twice the mean curvature for compatibility with other library functions, but we now return
+	 * the true mean (i.e., 0.5*(k1+k2)) curvature.
 	 * @param [in] u Value along the u direction.
 	 * @param [in] v Value along the v direction.
 	 * @return 2H, where H is the true mean curvature at (u,v,Q(u,v)) on the surface.
@@ -143,8 +145,23 @@ public:
 		double Qvv = d2Qdv2( u, v, Q );
 		double Quv = d2Qdudv( u, v );
 		double kappa = ((1 + SQR( Qv )) * Quu - 2 * Qu * Qv * Quv + (1 + SQR( Qu )) * Qvv)
-					   / pow( 1 + SQR( Qu ) + SQR( Qv ), 1.5 );
+					   / (2 * pow( 1 + SQR( Qu ) + SQR( Qv ), 1.5 ) );
 		return kappa;
+	}
+
+	/**
+	 * Compute the Gaussian curvature.
+	 * @param [in] u Value along the u direction.
+	 * @param [in] v Value along the v direction.
+	 * @return
+	 */
+	double gaussianCurvature( const double& u, const double& v ) const override
+	{
+		double Q = this->operator()( u, v );
+		double Qu = dQdu( u, v );
+		double Qv = dQdv( u, v );
+		double Quv = d2Qdudv( u, v );
+		return -(_wu2 * _wv2 * SQR( Q ) + SQR( Quv )) / SQR( 1 + SQR( Qu ) + SQR( Qv ) );
 	}
 
 	/**
@@ -171,7 +188,7 @@ public:
 /**
  * A function model for the distance function to the sinusoid.  To be used with find_min_trust_region() from dlib.
  * This class represents the function 0.5*norm(Q(u,v) - P)^2, where Q(u,v) = a*sin(wu*u)*sin(wv*v) for positive a, wu,
- * and wv, and P is the query (but fixed) point.  The goal is to find the closest point on Q(u,v) to P.
+ * and wv, and P is the query (but fixed) point.  The goal is to find the closest point on canonical Q(u,v) to P.
  */
 class SinusoidPointDistanceModel
 {
@@ -314,7 +331,7 @@ public:
 						_sdR2( samR == DBL_MAX? samR : SQR( ABS( samR ) + 4 * _h ) )
 	{
 		const std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::constructor: ";
-		_deltaStop = 1e-8 * _h;
+		_deltaStop = 1e-8 * _h;				// Stopping condition for trust-region minimizatin problem.
 
 		if( samR < 1.5 * _h )				// Very small sampling radius?
 			throw std::invalid_argument( errorPrefix + "Sampling radius must be at least 1.5h!" );
@@ -322,12 +339,11 @@ public:
 
 	/**
 	 * Get signed distance to discretized sinusoid (triangulated and with vertices structured into a balltree).
-	 * @note You can speed up the process by caching grid point distance to the surface iff these map to integer-based
-	 * coordinates.
+	 * @note To speed up the process, we cache grid point distances to Gamma since vertices map to integer-based coords.
 	 * @param [in] x x-coordinate.
 	 * @param [in] y y-coordinate.
 	 * @param [in] z z-coordinate.
-	 * @return phi(x,y,z).
+	 * @return linearly approximated phi(x,y,z).
 	 */
 	double operator()( double x, double y, double z ) const override
 	{
@@ -340,7 +356,7 @@ public:
 				return (record->second).first;
 		}
 
-		Point3 p = toCanonicalCoordinates( x, y, z );					// Transform query point to canonical coords to perform search.
+		Point3 p = toCanonicalCoordinates( x, y, z );	// Transform query point to canonical coords to perform search.
 		double d;
 		Point3 nearestPoint = _findNearestPointAndSignedDistance( p, d );
 
@@ -377,6 +393,7 @@ public:
 			{
 				const Point3& p = ccRecord->second;		// Canonical-coordinated point.
 				double exactSign = (p.z >= (*_mongeFunction)( p.x, p.y ))? -1 : 1;	// Exact sign for the distance to sinusoid.
+				updated = 0;
 
 				if( SQR( p.x ) + SQR( p.y ) <= _sdR2 )	// Skip points projected outside padded sampling circle on the uv plane.
 				{
@@ -444,7 +461,7 @@ public:
 				throw std::runtime_error( errorPrefix + "Can't locate point in cache!" );
 		}
 		else
-			throw std::runtime_error( errorPrefix + "Method works only with cache enabled and nonempty!" );
+			throw std::runtime_error( errorPrefix + "Method works only with a non-empty, enabled cache!" );
 	}
 
 	/**
@@ -483,8 +500,9 @@ public:
 				nodesForExactDist.emplace_back( n );
 		}
 
-#pragma omp parallel for default( none ) shared(nodes, p4est, nodesForExactDist, phiPtr, exactFlagPtr, std::cerr, sdist)
-		for( int i = 0; i < nodesForExactDist.size(); i++ )	// NOLINT.  It can't be a range-based loop for OpenMP.
+		int i;
+#pragma omp parallel for default(none) private(i) shared(nodes, p4est, nodesForExactDist, phiPtr, exactFlagPtr, sdist)
+		for( i = 0; i < nodesForExactDist.size(); i++ )	// NOLINT.  It can't be a range-based loop for OpenMP.
 		{
 			p4est_locidx_t n = nodesForExactDist[i];
 			double xyz[P4EST_DIM];
@@ -507,8 +525,11 @@ public:
 	}
 
 	/**
-	 * Collect samples using an easing-off probability distribution based on curvature.
-	 * @note Samples are not normalized in any way: not negative curvature nor reoriented to first octant
+	 * Collect samples using an easing-off probability distribution based on mean curvature if the Gaussian curvature is
+	 * positive.  For (numerical) negative-Gaussian-curvature points, we keep the sample without using any subsampling
+	 * as they belong to saddle regions in the manifold.  We want to preserve as much information as possible from sad-
+	 * dle regions since they do not represent the majority of the data.
+	 * @note Samples are not normalized in any way: not negative curvature nor reoriented to first octant.
 	 * @param [in] p4est P4est data structure.
 	 * @param [in] nodes Nodes data structure.
 	 * @param [in] ngbd Nodes' neighborhood data structure.
@@ -520,28 +541,32 @@ public:
 	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples.
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
 	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
-	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability.
-	 * @param [in] easingOffProbMaxHK Probability for keeping points whose true |hk| is at least easigOffMaxHK.
-	 * @param [in] minHK Minimum target |hk|.
-	 * @param [in] probMinHK Probability for keeping points whose true |hk| is minHK.
+	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability based on mean curvature.
+	 * @param [in] easingOffProbMaxHK Probability for keeping points whose true mean |hk*| is at least easigOffMaxHK.
+	 * @param [in] minHK Minimum true mean |hk*|.
+	 * @param [in] probMinHK Probability for keeping points whose true mean |hk*| is minHK.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] samR Overriding sampling radius on the uv plane (to be used instead of the one provided during instantiation).
-	 * @param [in] filter Filter vector with 1s for nodes we can sample and anything else for non-sampling nodes.
-	 * @param [in] hkError Vector to hold absolute hk error for sampled nodes.
-	 * @param [in] ihk Vector to hold linearly interpolated hk for sampled nodes.
-	 * @return Maximum error in dimensionless curvature (reduced across processes).
+	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
+	 * @param [out] hkError Vector to hold absolute mean hk error for sampled nodes.
+	 * @param [out] ihk Vector to hold linearly interpolated hk for sampled nodes.
+	 * @param [out] h2kgError Vector to hold absolute Gaussian h^2*k error for sampled nodes.
+	 * @param [out] ih2kg Vector to hold linearly interpolated Gaussian h^2*k for sampled nodes.
+	 * @return Maximum errors in dimensionless mean and Gaussian curvatures (reduced across processes).
 	 * @throws runtime_error or invalid_argument if more than one node maps to the same discrete coordinates, or if
-	 * 		   cache is disabled or is empty, or if we can't locate the nodes' exact nearest points on Gamma (which
-	 * 		   should be cached too), or if the probability for lower bound max HK is invalid, or if the overriding
-	 * 		   sampling radius is less than 1.5h or bigger than local sampling radius.
+	 * 		   cache is disabled or empty, or if we can't locate the nodes' exact nearest points on Gamma (which should
+	 * 		   be cached too), or if the probability for lower bound max HK is invalid, or if the overriding sampling
+	 * 		   radius is less than 1.5h or bigger than local sampling radius.
 	 */
-	double collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
-						   const Vec& phi, const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-						   const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples,
-						   double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
-						   const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
-						   const double& minHK=0.01, const double& probMinHK=0.01, Vec sampledFlag=nullptr,
-						   const double& samR=NAN, const Vec& filter=nullptr, Vec hkError=nullptr, Vec ihk=nullptr ) const
+	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes,
+											 const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
+											 const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
+											 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples,
+											 double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
+											 const double& easingOffMaxHK, const double& easingOffProbMaxHK=1.0,
+											 const double& minHK=0.005, const double& probMinHK=0.01,
+											 Vec sampledFlag=nullptr, const double& samR=NAN, const Vec& filter=nullptr,
+											 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr ) const
 	{
 		std::string errorPrefix = "[CASL_ERROR] SinusoidalLevelSet::collectSamples: ";
 		if( !_useCache || _cache.empty() || _canonicalCoordsCache.empty() )
@@ -562,21 +587,26 @@ public:
 		std::vector<p4est_locidx_t> indices;
 		nodesAlongInterface.getIndices( &phi, indices );
 
-		// Compute normal vectors and mean curvature.
-		Vec normal[P4EST_DIM], kappa;
-		for( auto& component : normal )
+		// Compute normal vectors and mean/Gaussian/principal curvatures.
+		Vec normals[P4EST_DIM],	kappaM, kappaG, kappa12[2];
+		for( auto& component : normals )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappa ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaM ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaG ) );
+		for( auto& pk : kappa12 )
+			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &pk ) );
 
-		compute_normals( *ngbd, phi, normal );
-		compute_mean_curvature( *ngbd, normal, kappa );
+		compute_normals_and_curvatures( *ngbd, phi, normals, kappaM, kappaG, kappa12 );
 
-		const double *phiReadPtr;
+		const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
 
-		const double *normalReadPtr[P4EST_DIM];
+		const double *kappaGReadPtr;							// Use Gaussian curvature for subsampling points away
+		CHKERRXX( VecGetArrayRead( kappaG, &kappaGReadPtr ) );	// saddle regions.
+
+		const double *normalsReadPtr[P4EST_DIM];
 		for( int i = 0; i < P4EST_DIM; i++ )
-			CHKERRXX( VecGetArrayRead( normal[i], &normalReadPtr[i] ) );
+			CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
 
 		samples.clear();										// We'll get (possibly) as many as points next to Gamma
 		samples.reserve( indices.size() );						// and within limiting sampling circle.
@@ -595,8 +625,8 @@ public:
 		if( filter )
 			CHKERRXX( VecGetArrayRead( filter, &filterReadPtr ) );
 
-		// Reset the hk error vector if given.
-		double *hkErrorPtr;
+		// Reset the mean curvature error vector if given.
+		double *hkErrorPtr = nullptr;
 		if( hkError )
 		{
 			CHKERRXX( VecGetArray( hkError, &hkErrorPtr ) );
@@ -604,8 +634,8 @@ public:
 				hkErrorPtr[n] = 0;
 		}
 
-		// Reset ihk vector if given.
-		double *ihkPtr;
+		// Reset mean ihk vector if given.
+		double *ihkPtr = nullptr;
 		if( ihk  )
 		{
 			CHKERRXX( VecGetArray( ihk, &ihkPtr ) );
@@ -613,14 +643,35 @@ public:
 				ihkPtr[n] = 0;
 		}
 
-		// Prepare curvature interpolation.
-		my_p4est_interpolation_nodes_t kInterp( ngbd );
-		kInterp.set_input( kappa, interpolation_method::linear );
+		// Reset the Gaussian curvature error vector if given.
+		double *h2kgErrorPtr = nullptr;
+		if( h2kgError )
+		{
+			CHKERRXX( VecGetArray( h2kgError, &h2kgErrorPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				h2kgErrorPtr[n] = 0;
+		}
+
+		// Reset the Gaussian ih2kg vector if given.
+		double *ih2kgPtr;
+		if( ih2kg )
+		{
+			CHKERRXX( VecGetArray( ih2kg, &ih2kgPtr ) );
+			for( p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++ )
+				ih2kgPtr[n] = 0;
+		}
+
+		// Prepare curvatures interpolation.
+		my_p4est_interpolation_nodes_t kappaMInterp( ngbd );
+		kappaMInterp.set_input( kappaM, interpolation_method::linear );
+		my_p4est_interpolation_nodes_t kappaGInterp( ngbd );
+		kappaGInterp.set_input( kappaG, interpolation_method::linear );
 
 		std::uniform_real_distribution<double> pDistribution;
 		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
 		trackedMinHK = DBL_MAX, trackedMaxHK = 0;				// For debugging and binning, track the min and max
-		double trackedMaxHKError = 0;							// |hk*| and error.
+		double trackedMaxHKError = 0;							// mean |hk*| and Gaussian curvature errors.
+		double trackedMaxH2KGError = 0;
 
 #ifdef DEBUG
 		std::cout << "Rank " << _mpi->rank() << " reports " << indices.size() << " candidate nodes for sampling." << std::endl;
@@ -674,21 +725,27 @@ public:
 				}
 
 				auto record = _cache.find( coords );			// Use cache created during level-set computation: see
-				if( record == _cache.end() )					// see computeExactSignedDistance() function above.
+				if( record == _cache.end() )					// the computeExactSignedDistance(...) function above.
 					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
+				// Starting at this point, we collect samples in two ways:
+				// If the Gaussian curvature is <= 0 *at* the point, we're likely near a saddle point => keep its sample.
+				// If the Gaussian curvature is > 0 *at* the point, we're not near a saddle point => do probabilistic subsampling.
 				Point3 nearestPoint = record->second.second;
-				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );
-				if( ABS( hk ) < minHK )							// Third check: Target |hk*| must be >= minHK.
-					continue;
+				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );	// Mean hk at the *exact* projection onto Gamma.
+				if( kappaGReadPtr[n] > 0 )						// Non-saddle?  Do more validations.
+				{
+					if( ABS( hk ) < minHK )						// Third check: Target mean |hk*| must be >= minHK for non-saddle regions.
+						continue;
 
-				double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
-				if( pDistribution( genP ) > prob )				// Fourth check: Use an easing-off prob to keep samples.
-					continue;
+					double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
+					if( pDistribution( genP ) > prob )			// Fourth check: Use an easing-off prob to keep samples.
+						continue;
+				}
 
-				// Populate sample.
+				// Up to this point, we got a good sample.  Populate its features.
 				std::vector<double> sample;
-				sample.reserve( K_INPUT_SIZE + 1 );				// phi + normals + hk* + ihk.
+				sample.reserve( K_INPUT_SIZE_LEARN );			// phi + normals + hk* + ihk + h2kg* + ih2kg = 112 fields.
 
 				for( const auto& idx : stencil )				// First, phi values.
 					sample.push_back( phiReadPtr[idx] );
@@ -699,17 +756,22 @@ public:
 					throw std::runtime_error( errorPrefix + "Detected a non-interface stencil!" );
 #endif
 
-				for( const auto &component : normalReadPtr)		// Next, normal components (First x group, then y, then z).
+				for( const auto &component : normalsReadPtr)	// Next, normal components (First x group, then y, then z).
 				{
 					for( const auto& idx: stencil )
 						sample.push_back( component[idx] );
 				}
 
-				sample.push_back( hk );							// Then, attach target hk*.
+				sample.push_back( hk );							// Then, attach target mean hk* and 0 for ihk.
+				sample.push_back( 0 );
+				double h2kg = SQR( _h ) * _mongeFunction->gaussianCurvature( nearestPoint.x, nearestPoint.y );
+				sample.push_back( h2kg );						// And, attach true Gaussian h^2*kg and 0 for ih2kg.
+				sample.push_back( 0 );
 
-				for( int c = 0; c < P4EST_DIM; c++ )			// Finally, find the location where to (linearly) interpolate num hk.
-					xyz[c] -= phiReadPtr[n] * normalReadPtr[c][n];
-				kInterp.add_point( outIdx, xyz );
+				for( int c = 0; c < P4EST_DIM; c++ )			// Finally, find the location where to (linearly) inter-
+					xyz[c] -= phiReadPtr[n] * normalsReadPtr[c][n];	// polate mean and Gaussian curvatures.
+				kappaMInterp.add_point( outIdx, xyz );
+				kappaGInterp.add_point( outIdx, xyz );
 
 				samples.push_back( sample );
 				outIdxToNodeIdx.push_back( n );					// Keep track of node idx associated with this out idx.
@@ -733,33 +795,45 @@ public:
 		std::cout << "Rank " << _mpi->rank() << " collected " << outIdx << " *unique* samples." << std::endl;
 #endif
 
-		// Perform bulk curvature interpolation at sampled nodes' nearest points on Gamma.
-		auto *outKappa = new double[outIdx];
-		kInterp.interpolate( outKappa );
-		kInterp.clear();
-		for( int i = 0; i < outIdx; i++ )						// Write ihk in sampled data.
+		// Perform bulk curvature(s) interpolation at sampled nodes' nearest points on Gamma.
+		auto *outKappaM = new double[outIdx];
+		auto *outKappaG = new double[outIdx];
+		kappaMInterp.interpolate( outKappaM );
+		kappaGInterp.interpolate( outKappaG );
+		kappaMInterp.clear();
+		kappaGInterp.clear();
+		for( int i = 0; i < outIdx; i++ )						// Write ihk and ih2kg in sampled data.
 		{
-			samples[i].push_back( outKappa[i] * _h );
+			samples[i][K_INPUT_SIZE_LEARN - 3] = outKappaM[i] * _h;
+			samples[i][K_INPUT_SIZE_LEARN - 1] = outKappaG[i] * SQR( _h );
 
-			trackedMinHK = MIN( trackedMinHK, ABS( samples[i][K_INPUT_SIZE - 1] ) );	// Collect stats.
-			trackedMaxHK = MAX( trackedMaxHK, ABS( samples[i][K_INPUT_SIZE - 1] ) );
-			double error = ABS( samples[i][K_INPUT_SIZE - 1] - samples[i][K_INPUT_SIZE] );
-			if( hkError )										// Are we also recording the hk error?
-				hkErrorPtr[outIdxToNodeIdx[i]] = error;
-			trackedMaxHKError = MAX( trackedMaxHKError, error );
-
-			if( ihk )											// Are we also recording ihk?
-				ihkPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE];
+			trackedMinHK = MIN( trackedMinHK, ABS( samples[i][K_INPUT_SIZE_LEARN - 4] ) );	// Collect stats.
+			trackedMaxHK = MAX( trackedMaxHK, ABS( samples[i][K_INPUT_SIZE_LEARN - 4] ) );
+			double errorHK = ABS( samples[i][K_INPUT_SIZE_LEARN - 4] - samples[i][K_INPUT_SIZE_LEARN - 3] );
+			double errorH2KG = ABS( samples[i][K_INPUT_SIZE_LEARN - 2] - samples[i][K_INPUT_SIZE_LEARN - 1] );
+			if( hkError )										// Are we also recording the mean hk and Gaussian h^2*kg errors?
+				hkErrorPtr[outIdxToNodeIdx[i]] = errorHK;
+			trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
+			trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
+			if( h2kgError )
+				h2kgErrorPtr[outIdxToNodeIdx[i]] = errorH2KG;
+			if( ihk )											// Are we also recording ihk and ih2kg?
+				ihkPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE_LEARN - 3];
+			if( ih2kg )
+				ih2kgPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE_LEARN - 1];
 		}
-		delete [] outKappa;
+		delete [] outKappaM;
+		delete [] outKappaG;
 
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMinHK, 1, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHK, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHKError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxH2KGError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 
 #ifdef DEBUG	// Printing the errors.
-		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked HK in the range of [%f, %f]\n", trackedMinHK, trackedMaxHK ) );
-		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked MAX HK Error = %f\n", trackedMaxHKError ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked mean hk in the range of [%g, %g]\n", trackedMinHK, trackedMaxHK ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max mean hk error = %f\n", trackedMaxHKError ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max Gaussian h^2k error = %f\n", trackedMaxH2KGError ) );
 #endif
 
 		if( sampledFlag )
@@ -775,7 +849,7 @@ public:
 		{
 			CHKERRXX( VecRestoreArray( hkError, &hkErrorPtr ) );
 
-			// Synchronize sampling hk error among processes.
+			// Synchronize sampling mean hk error among processes.
 			CHKERRXX( VecGhostUpdateBegin( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
 			CHKERRXX( VecGhostUpdateEnd( hkError, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
@@ -784,9 +858,27 @@ public:
 		{
 			CHKERRXX( VecRestoreArray( ihk, &ihkPtr ) );
 
-			// Synchronize interpolated hk among processes.
+			// Synchronize interpolated mean hk among processes.
 			CHKERRXX( VecGhostUpdateBegin( ihk, INSERT_VALUES, SCATTER_FORWARD ) );
 			CHKERRXX( VecGhostUpdateEnd( ihk, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
+		if( h2kgError )
+		{
+			CHKERRXX( VecRestoreArray( h2kgError, &h2kgErrorPtr ) );
+
+			// Synchronize sampling Gaussian h^2*k error among processes.
+			CHKERRXX( VecGhostUpdateBegin( h2kgError, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( h2kgError, INSERT_VALUES, SCATTER_FORWARD ) );
+		}
+
+		if( ih2kg )
+		{
+			CHKERRXX( VecRestoreArray( ih2kg, &ih2kgPtr ) );
+
+			// Synchronize interpolated Gaussian h^2*k among processes.
+			CHKERRXX( VecGhostUpdateBegin( ih2kg, INSERT_VALUES, SCATTER_FORWARD ) );
+			CHKERRXX( VecGhostUpdateEnd( ih2kg, INSERT_VALUES, SCATTER_FORWARD ) );
 		}
 
 		// Clean up.
@@ -794,14 +886,18 @@ public:
 			CHKERRXX( VecRestoreArrayRead( filter, &filterReadPtr ) );
 
 		for( int i = 0; i < P4EST_DIM; i++ )
-			CHKERRXX( VecRestoreArrayRead( normal[i], &normalReadPtr[i] ) );
+			CHKERRXX( VecRestoreArrayRead( normals[i], &normalsReadPtr[i] ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
+		CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 
-		CHKERRXX( VecDestroy( kappa ) );
-		for( auto& component : normal )
+		for( auto& pk : kappa12 )
+			CHKERRXX( VecDestroy( pk ) );
+		CHKERRXX( VecDestroy( kappaG ) );
+		CHKERRXX( VecDestroy( kappaM ) );
+		for( auto& component : normals )
 			CHKERRXX( VecDestroy( component ) );
 
-		return trackedMaxHKError;
+		return std::make_pair( trackedMaxHKError, trackedMaxH2KGError );
 	}
 };
 
