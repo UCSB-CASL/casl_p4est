@@ -371,29 +371,27 @@ namespace kml
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] buffer Cumulative array of feature vectors.
 		 * @param [in] h Mesh size for h-normalizing phi values.
-		 * @param [in] negMeanKNormalize Vector of booleans determining if a sample must be negative-mean-curvature
-		 * 			   normalized; if vector is empty, all samples will be normalized.
+		 * @param [in] negMeanKNormalize True if we need negative-mean-curvature normalization, false otherwise.
 		 * @return Number of samples collected from all processes.
 		 */
 		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-										 const std::vector<bool>& negMeanKNormalize );
+										 const bool& negMeanKNormalize );
 
 		/**
-		 * Transform samples with negative-mean-curvature and phi-by-h normalization, followed by reorientation and
-		 * augmentation based on reflection.  Then, write these samples to a file using single precision.
+		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by reorienta-
+		 * tion and augmentation based on reflection.  Then, write these samples to a file using single precision.
 		 * @note Only rank 0 writes samples to a file, but all processes received the total number of saved samples.
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] file File stream where to write data (should be opened already).
 		 * @param [in] h Mesh size for h-normalizing phi values.
-		 * @param [in] negMeanKNormalize Vector of booleans determining if a sample must be negative-mean-curvature
-		 * 			   normalized; if vector is empty, all samples will be normalized.
+		 * @param [in] negMeanKNormalize True if we need negative-mean-curvature normalization, false otherwise.
 		 * @param [in] preAllocateSize Estimate number of samples to preallocate intermediate buffer (only rank 0).
 		 * @return Number of samples saved to the input file.
 		 */
 		int processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-										 std::ofstream& file, const double& h, const std::vector<bool>& negMeanKNormalize,
+										 std::ofstream& file, const double& h, const bool& negMeanKNormalize,
 										 const int& preAllocateSize=1000 );
 
 		/**

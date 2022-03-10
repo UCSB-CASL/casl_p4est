@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 9, 2022.
+ * Updated: March 10, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -526,10 +526,9 @@ public:
 
 	/**
 	 * Collect samples using an easing-off probability distribution based on mean curvature if the Gaussian curvature is
-	 * positive.  For (numerical) negative-Gaussian-curvature points, we keep the sample without using any subsampling
-	 * as they belong to saddle regions in the manifold.  We want to preserve as much information as possible from sad-
-	 * dle regions since they do not represent the majority of the data.
-	 * @note Samples are not normalized in any way: not negative curvature nor reoriented to first octant.
+	 * positive.  For (numerical) negative-Gaussian-curvature points, we perform subsampling based on the numerically
+	 * interpolated Gaussian curvature at Gamma and place samples in a separate array.
+	 * @note Samples are not normalized in any way: not negative-mean-curvature nor gradient-reoriented to first octant.
 	 * @param [in] p4est P4est data structure.
 	 * @param [in] nodes Nodes data structure.
 	 * @param [in] ngbd Nodes' neighborhood data structure.
@@ -537,15 +536,19 @@ public:
 	 * @param [in] octreeMaxRL Effective octree maximum level of refinement (octree's side length must be a multiple of h).
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
-	 * @param [out] samples Array of collected samples.
 	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples.
 	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
 	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
-	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability based on mean curvature.
+	 * @param [out] nonSaddleSamples Array of collected samples for non-saddle regions (i.e., ih2kg > 0).
+	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability based on mean curvature for non-saddle points.
 	 * @param [in] easingOffProbMaxHK Probability for keeping points whose true mean |hk*| is at least easigOffMaxHK.
-	 * @param [in] minHK Minimum true mean |hk*|.
+	 * @param [in] minHK Minimum true mean |hk*| for non-saddle regions.
 	 * @param [in] probMinHK Probability for keeping points whose true mean |hk*| is minHK.
-	 * @param [out] nonSaddle Vector of booleans indicating if a sampled point doesn't belong to a saddle region.
+	 * @param [out] saddleSamples Array of collected samples for saddle regions (i.e., ih2kg <= 0).
+	 * @param [in] easingOffMaxIH2KG Upper bound max |ih2kg| for easing-off probability based on Gaussian curvature for saddle points.
+	 * @param [in] easingOffProbMaxIH2KG Probability for keeping points whose |ih2kg| is at least easigOffMaxIH2KG.
+	 * @param [in] minIH2KG Minimum (linearly interpolated) numerical |ih2kg| for saddle points.
+	 * @param [in] probMinIH2KG Probability for keeping points whose numerical |ih2kg| is minIH2KG.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
 	 * @param [in] samR Overriding sampling radius on the uv plane (to be used instead of the one provided during instantiation).
 	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
@@ -562,10 +565,13 @@ public:
 	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes,
 											 const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 											 const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-											 const double xyzMax[P4EST_DIM], std::vector<std::vector<double>>& samples,
-											 double& trackedMinHK, double& trackedMaxHK, std::mt19937& genP,
-											 const double& easingOffMaxHK, const double& easingOffProbMaxHK,
-											 const double& minHK, const double& probMinHK, std::vector<bool>& nonSaddle,
+											 const double xyzMax[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
+											 std::mt19937& genP, std::vector<std::vector<double>>& nonSaddleSamples,
+											 const double& easingOffMaxHK, const double& easingOffProbMaxHK,	// These 4 params apply
+											 const double& minHK, const double& probMinHK, 						// to non-saddle points.
+											 std::vector<std::vector<double>>& saddleSamples,
+											 const double& easingOffMaxIH2KG, const double& easingOffProbMaxIH2KG,	// And these 4 apply
+											 const double& minIH2KG=0, const double& probMinIH2KG=0.01,				// to saddle points.
 											 Vec sampledFlag=nullptr, const double& samR=NAN, const Vec& filter=nullptr,
 											 Vec hkError=nullptr, Vec ihk=nullptr, Vec h2kgError=nullptr, Vec ih2kg=nullptr ) const
 	{
@@ -589,29 +595,27 @@ public:
 		nodesAlongInterface.getIndices( &phi, indices );
 
 		// Compute normal vectors and mean/Gaussian/principal curvatures.
-		Vec normals[P4EST_DIM],	kappaM, kappaG, kappa12[2];
+		Vec normals[P4EST_DIM],	kappaMG[2], kappa12[2];
 		for( auto& component : normals )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &component ) );
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaM ) );
-		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaG ) );
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[0] ) );	// This is mean curvature, and
+		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &kappaMG[1] ) );	// this is Gaussian curvature.
 		for( auto& pk : kappa12 )
 			CHKERRXX( VecCreateGhostNodes( p4est, nodes, &pk ) );
 
-		compute_normals_and_curvatures( *ngbd, phi, normals, kappaM, kappaG, kappa12 );
+		compute_normals_and_curvatures( *ngbd, phi, normals, kappaMG[0], kappaMG[1], kappa12 );
 
 		const double *phiReadPtr;								// We need access to phi to project points onto Gamma.
 		CHKERRXX( VecGetArrayRead( phi, &phiReadPtr ) );
-
-		const double *kappaGReadPtr;							// Use Gaussian curvature for subsampling points away
-		CHKERRXX( VecGetArrayRead( kappaG, &kappaGReadPtr ) );	// saddle regions.
 
 		const double *normalsReadPtr[P4EST_DIM];
 		for( int i = 0; i < P4EST_DIM; i++ )
 			CHKERRXX( VecGetArrayRead( normals[i], &normalsReadPtr[i] ) );
 
-		samples.clear();										// We'll get (possibly) as many as points next to Gamma
-		samples.reserve( indices.size() );						// and within limiting sampling circle.
-		nonSaddle.reserve( indices.size() );
+		nonSaddleSamples.clear();								// We'll get (possibly) as many as points next to Gamma
+		nonSaddleSamples.reserve( indices.size() );				// and within limiting sampling circle.
+		saddleSamples.clear();
+		saddleSamples.reserve( indices.size() );
 
 		// Reset interface flag vector if given.
 		double *sampledFlagPtr;
@@ -663,14 +667,11 @@ public:
 				ih2kgPtr[n] = 0;
 		}
 
-		// Prepare curvatures interpolation.
-		my_p4est_interpolation_nodes_t kappaMInterp( ngbd );
-		kappaMInterp.set_input( kappaM, interpolation_method::linear );
-		my_p4est_interpolation_nodes_t kappaGInterp( ngbd );
-		kappaGInterp.set_input( kappaG, interpolation_method::linear );
+		// Prepare mean and Gaussian curvatures interpolation.
+		my_p4est_interpolation_nodes_t kappaMGInterp( ngbd );
+		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
 
 		std::uniform_real_distribution<double> pDistribution;
-		int outIdx = 0;											// Keeps track of interpolation (and sample) indices.
 		trackedMinHK = DBL_MAX, trackedMaxHK = 0;				// For debugging and binning, track the min and max
 		double trackedMaxHKError = 0;							// mean |hk*| and Gaussian curvature errors.
 		double trackedMaxH2KGError = 0;
@@ -681,8 +682,6 @@ public:
 		std::unordered_set<std::string> coordsSet;	// Validation set that stores coordinates of the form "i,j,k" for
 		coordsSet.reserve( indices.size() );		// nodal indices, where i,j,k are h-based integers.
 #endif
-		std::vector<p4est_locidx_t> outIdxToNodeIdx;			// Allows to know which node outIdx refers to.
-		outIdxToNodeIdx.reserve( indices.size() );
 
 		for( const auto& n : indices )
 		{
@@ -702,7 +701,7 @@ public:
 				throw std::runtime_error( errorPrefix + "Couldn't locate node in cache!" );
 			Point3 p = recordCCoords->second;
 
-			if( SQR( p.x ) + SQR( p.y ) > SAM_R2 )				// First check: Skip nodes whose canonical projection
+			if( SQR( p.x ) + SQR( p.y ) > SAM_R2 )				// Skip nodes whose canonical projection
 				continue;										// falls outside the sampling circle.
 
 #ifdef DEBUG
@@ -731,61 +730,97 @@ public:
 					throw std::invalid_argument( errorPrefix + "Point not found in the cache!" );	// Exception not captured!
 
 				// Starting at this point, we collect samples in two ways:
-				// If the Gaussian curvature is <= 0 at Gamma, we're near a saddle point => keep its sample.
-				// If the Gaussian curvature is > 0 at Gamma, we're safely away from a saddle point => do probabilistic subsampling.
+				// If the Gaussian curvature is <= 0 at Gamma, we're near a saddle point => subsample based on |ih2kg|.
+				// If the Gaussian curvature is > 0 at Gamma, we're away from a saddle point => subsample based on true mean |hk*|.
 				Point3 nearestPoint = record->second.second;
 				double hk = _h * _mongeFunction->meanCurvature( nearestPoint.x, nearestPoint.y );	// Mean hk at the *exact* projection onto Gamma.
 				for( int c = 0; c < P4EST_DIM; c++ )			// Find the location where to (linearly) interpolate curvatures.
 					xyz[c] -= phiReadPtr[n] * normalsReadPtr[c][n];
-				double ih2kgVal = SQR( _h ) * kappaGInterp( xyz );
-				if( ih2kgVal > 0 )								// Not a saddle?  Do more validations.
+				double kappaMGValues[2];
+				kappaMGInterp( xyz, kappaMGValues );			// Get linearly interpolated mean and Gaussian curvature in one shot.
+				double ihkVal = _h * kappaMGValues[0];
+				double ih2kgVal = SQR( _h ) * kappaMGValues[1];
+				bool isNonSaddle;
+				if( ih2kgVal > 0 )								// Not a saddle?  Continue filtering based on true mean hk.
 				{
-					if( ABS( hk ) < minHK )						// Third check: Target mean |hk*| must be >= minHK for non-saddle regions.
+					if( ABS( hk ) < minHK )						// Target mean |hk*| must be >= minHK for non-saddle regions.
 						continue;
 
 					double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
-					if( pDistribution( genP ) > prob )			// Fourth check: Use an easing-off prob to keep samples.
+					if( pDistribution( genP ) > prob )			// Use an easing-off prob to keep samples.
 						continue;
 
-					nonSaddle.push_back( true );				// These flags help us later to negative-mean-curvature-
-				}												// normalize the collected samples.
+					isNonSaddle = true;							// Flag point as non-saddle.
+				}
 				else
-					nonSaddle.push_back( false );
+				{
+					if( ABS( ih2kgVal ) < minIH2KG )			// Interpolated |ihk2kg| must be >= minIH2KG for saddle regions.
+						continue;
+
+					double prob = kml::utils::easingOffProbability( ABS( ih2kgVal ), minIH2KG, probMinIH2KG, easingOffMaxIH2KG, easingOffProbMaxIH2KG );
+					if( pDistribution( genP ) > prob )
+						continue;								// Use an easing-off prob to keep samples.
+
+					isNonSaddle = false;
+				}
 
 				// Up to this point, we got a good sample.  Populate its features.
-				std::vector<double> sample;
-				sample.reserve( K_INPUT_SIZE_LEARN );			// phi + normals + hk* + ihk + h2kg* + ih2kg = 112 fields.
+				std::vector<double> *sample;					// Points to new sample in the appropriate array.
+				if( isNonSaddle )
+				{
+					nonSaddleSamples.emplace_back();
+					sample = &nonSaddleSamples.back();
+				}
+				else
+				{
+					saddleSamples.emplace_back();
+					sample = &saddleSamples.back();
+				}
+				sample->reserve( K_INPUT_SIZE_LEARN );			// phi + normals + hk* + ihk + h2kg* + ih2kg = 112 fields.
 
 				for( const auto& idx : stencil )				// First, phi values.
-					sample.push_back( phiReadPtr[idx] );
+					sample->push_back( phiReadPtr[idx] );
 
 #ifdef DEBUG
 				// Verify that phi(center)'s sign differs with any of its irradiating neighbors.
-				if( !NodesAlongInterface::isInterfaceStencil( sample ) )
+				if( !NodesAlongInterface::isInterfaceStencil( *sample ) )
 					throw std::runtime_error( errorPrefix + "Detected a non-interface stencil!" );
 #endif
 
 				for( const auto &component : normalsReadPtr)	// Next, normal components (First x group, then y, then z).
 				{
 					for( const auto& idx: stencil )
-						sample.push_back( component[idx] );
+						sample->push_back( component[idx] );
 				}
 
-				sample.push_back( hk );							// Then, attach target mean hk* and 0 for ihk.
-				sample.push_back( 0 );
+				sample->push_back( hk );						// Then, attach target mean hk* and numerical ihk.
+				sample->push_back( ihkVal );
 				double h2kg = SQR( _h ) * _mongeFunction->gaussianCurvature( nearestPoint.x, nearestPoint.y );
-				sample.push_back( h2kg );						// And, attach true Gaussian h^2*kg and ih2kg.
-				sample.push_back( ih2kgVal );
-
-				kappaMInterp.add_point( outIdx, xyz );			// Finally, record the point where we want to interpolate the mean curvature.
-
-				samples.push_back( sample );
-				outIdxToNodeIdx.push_back( n );					// Keep track of node idx associated with this out idx.
-				outIdx++;
+				sample->push_back( h2kg );						// And, attach true Gaussian h^2*kg and ih2kg.
+				sample->push_back( ih2kgVal );
 
 				// Update flags.
 				if( sampledFlag )
 					sampledFlagPtr[n] = 1;						// Flag it as (valid) interface node.
+
+				// Update stats.
+				trackedMinHK = MIN( trackedMinHK, ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+				trackedMaxHK = MAX( trackedMaxHK, ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+
+				double errorHK = ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] - (*sample)[K_INPUT_SIZE_LEARN - 3] );
+				double errorH2KG = ABS( (*sample)[K_INPUT_SIZE_LEARN - 2] - (*sample)[K_INPUT_SIZE_LEARN - 1] );
+
+				if( hkError )									// Are we also recording the mean hk and Gaussian h^2*kg errors?
+					hkErrorPtr[n] = errorHK;
+				if( h2kgError )
+					h2kgErrorPtr[n] = errorH2KG;
+				if( ihk )										// Are we also recording ihk and ih2kg?
+					ihkPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 3];
+				if( ih2kg )
+					ih2kgPtr[n] = (*sample)[K_INPUT_SIZE_LEARN - 1];
+
+				trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
+				trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
 			}
 			catch( std::runtime_error &rt ) {}
 			catch( std::invalid_argument &ia )
@@ -794,38 +829,11 @@ public:
 			}
 		}
 
-		if( outIdx != samples.size() )
-			throw std::runtime_error( errorPrefix + "Mismatch between interpolation queued nodes and num of samples!" );
-
 #ifdef DEBUG
-		std::cout << "Rank " << _mpi->rank() << " collected " << outIdx << " *unique* samples." << std::endl;
+		std::cout << "Rank " << _mpi->rank() << " collected " << nonSaddleSamples.size() + saddleSamples.size()
+				  << " *unique* samples." << std::endl;
 #endif
-
-		// Perform bulk curvature(s) interpolation at sampled nodes' nearest points on Gamma.
-		auto *outKappaM = new double[outIdx];
-		kappaMInterp.interpolate( outKappaM );
-		kappaMInterp.clear();
-		kappaGInterp.clear();
-		for( int i = 0; i < outIdx; i++ )						// Write ihk and ih2kg in sampled data.
-		{
-			samples[i][K_INPUT_SIZE_LEARN - 3] = outKappaM[i] * _h;
-
-			trackedMinHK = MIN( trackedMinHK, ABS( samples[i][K_INPUT_SIZE_LEARN - 4] ) );	// Collect stats.
-			trackedMaxHK = MAX( trackedMaxHK, ABS( samples[i][K_INPUT_SIZE_LEARN - 4] ) );
-			double errorHK = ABS( samples[i][K_INPUT_SIZE_LEARN - 4] - samples[i][K_INPUT_SIZE_LEARN - 3] );
-			double errorH2KG = ABS( samples[i][K_INPUT_SIZE_LEARN - 2] - samples[i][K_INPUT_SIZE_LEARN - 1] );
-			if( hkError )										// Are we also recording the mean hk and Gaussian h^2*kg errors?
-				hkErrorPtr[outIdxToNodeIdx[i]] = errorHK;
-			trackedMaxHKError = MAX( trackedMaxHKError, errorHK );
-			trackedMaxH2KGError = MAX( trackedMaxH2KGError, errorH2KG );
-			if( h2kgError )
-				h2kgErrorPtr[outIdxToNodeIdx[i]] = errorH2KG;
-			if( ihk )											// Are we also recording ihk and ih2kg?
-				ihkPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE_LEARN - 3];
-			if( ih2kg )
-				ih2kgPtr[outIdxToNodeIdx[i]] = samples[i][K_INPUT_SIZE_LEARN - 1];
-		}
-		delete [] outKappaM;
+		kappaMGInterp.clear();
 
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMinHK, 1, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHK, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
@@ -890,12 +898,11 @@ public:
 		for( int i = 0; i < P4EST_DIM; i++ )
 			CHKERRXX( VecRestoreArrayRead( normals[i], &normalsReadPtr[i] ) );
 		CHKERRXX( VecRestoreArrayRead( phi, &phiReadPtr ) );
-		CHKERRXX( VecRestoreArrayRead( kappaG, &kappaGReadPtr ) );
 
 		for( auto& pk : kappa12 )
 			CHKERRXX( VecDestroy( pk ) );
-		CHKERRXX( VecDestroy( kappaG ) );
-		CHKERRXX( VecDestroy( kappaM ) );
+		CHKERRXX( VecDestroy( kappaMG[0] ) );
+		CHKERRXX( VecDestroy( kappaMG[1] ) );
 		for( auto& component : normals )
 			CHKERRXX( VecDestroy( component ) );
 

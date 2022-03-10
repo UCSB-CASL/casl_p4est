@@ -3,11 +3,12 @@
  *
  * Now using mean (i.e., 0.5*(k1+k2)) and Gaussian (i.e., k1*k2) curvatures.
  * When collecting samples, we use a probabilistic approach for those whose local Gaussian K > 0 (i.e., not belonging to
- * a saddle region).  For grid points with K <= 0, we always retrieve theirfeatures.
+ * a saddle region).  For grid points with K <= 0, the probabilistic subsampling is based on the numerically interpola-
+ * ted K at Gamma.  As a result, we get two sample files: non_saddle_sinusoid.csv and saddle_sinusoid.csv.
  *
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 9, 2022.
+ * Updated: March 10, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -65,11 +66,12 @@ int main ( int argc, char* argv[] )
 
 		PetscPrintf( mpi.comm(), "Testing sinusoidal level-set function in 3d" );
 
-		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
-		// initialized data.  File name is sinusoid.csv; only rank 0 writes the samples to a file.
+		// Preping the samples' files.  Notice we are no longer interested on exact-signed distance functions, only re-
+		// initialized data.  Only rank 0 writes the samples to a file.
 		const std::string DATA_PATH = outputDir() + "/" + std::to_string( maxRL() );
-		std::ofstream file;
-		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "sinusoid.csv", file );
+		std::ofstream nonSaddleFile, saddleFile;
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "non_saddle_sinusoid.csv", nonSaddleFile );
+		kml::utils::prepareSamplesFile( mpi, DATA_PATH, "saddle_sinusoid.csv", saddleFile );
 
 		parStopWatch watch( parStopWatch::all_timings );
 
@@ -202,24 +204,30 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &h2kgError ) );
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ih2kg ) );
 
-		std::vector<std::vector<double>> samples;
-		std::vector<bool> nonSaddle;
+		std::vector<std::vector<double>> nonSaddleSamples;
+		std::vector<std::vector<double>> saddleSamples;
 		double trackedMinHK, trackedMaxHK;
 		std::pair<double, double> maxErrors;
 		maxErrors = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
-													   samples, trackedMinHK, trackedMaxHK, genProb, h * K_MAX / 2,
-													   probMaxHKLB(), minHK(), 0.5, nonSaddle, sampledFlag, NAN,
-													   exactFlag, hkError, ihk, h2kgError, ih2kg );
+													   trackedMinHK, trackedMaxHK, genProb, nonSaddleSamples, h * K_MAX / 2,
+													   probMaxHKLB(), minHK(), 0.5, saddleSamples, 4e-5, 1, 0, 0.01,
+													   sampledFlag, NAN, exactFlag, hkError, ihk, h2kgError, ih2kg );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g and max h2kg error of %g", maxErrors.first, maxErrors.second );
 		watch.read_duration_current( true );
 
 		watch.start();
-		PetscPrintf( mpi.comm(), "Saving samples to a file; " );
-		size_t numSamples = kml::utils::processSamplesAndSaveToFile( mpi, samples, file, h, nonSaddle );
-		PetscPrintf( mpi.comm(), " %u samples in total", numSamples );
+		PetscPrintf( mpi.comm(), "Saving non-saddle samples to a file; " );
+		size_t numNonSaddleSamples = kml::utils::processSamplesAndSaveToFile( mpi, nonSaddleSamples, nonSaddleFile, h, true );
+		PetscPrintf( mpi.comm(), " %u samples in total\n", numNonSaddleSamples );
+		PetscPrintf( mpi.comm(), "Saving saddle samples to a file; " );
+		size_t numSaddleSamples = kml::utils::processSamplesAndSaveToFile( mpi, saddleSamples, saddleFile, h, false );
+		PetscPrintf( mpi.comm(), " %u samples in total ", numSaddleSamples );
 
 		if( mpi.rank() == 0 )
-			file.close();
+		{
+			nonSaddleFile.close();
+			saddleFile.close();
+		}
 
 		watch.read_duration_current( true );
 		watch.stop();

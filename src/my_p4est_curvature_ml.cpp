@@ -567,19 +567,18 @@ void kml::utils::prepareSamplesFile( const mpi_environment_t& mpi, const std::st
 
 int kml::utils::processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
 											 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
-											 const std::vector<bool>& negMeanKNormalize)
+											 const bool& negMeanKNormalize )
 {
 	// Let's reduce precision from 64b to 32b and normalize phi by h; Tensorflow trains on single precision anyways.
 	// So, why bother to keep samples in double?
 	const int RANK_TOTAL_SAMPLES = (int)samples.size() * 2;
 	auto D = new FDEEP_FLOAT_TYPE [RANK_TOTAL_SAMPLES * K_INPUT_SIZE_LEARN];	// Let's put everying in a long array.
-	bool normalizeAll = negMeanKNormalize.empty() || negMeanKNormalize.size() != samples.size();
 
 //#pragma omp parallel for default( none ) num_threads( 4 ) shared( samples, h, D ) schedule(static, 500)
 	for( size_t i = 0; i < samples.size(); i++ )
 	{
 		// Use numerical mean ihk to determine sign: ihk comes after true hk.  Normalize only if requested.
-		if( normalizeAll || negMeanKNormalize[i] )
+		if( negMeanKNormalize )
 			normalizeToNegativeCurvature( samples[i], samples[i][K_INPUT_SIZE - (P4EST_DIM - 2)], true );
 #ifdef P4_TO_P8
 		rotateStencilToFirstOctant( samples[i] );								// Reorientation.
@@ -688,7 +687,7 @@ int kml::utils::saveSamplesBufferToFile( const mpi_environment_t& mpi, std::ofst
 
 
 int kml::utils::processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-											 std::ofstream& file, const double& h, const std::vector<bool>& negMeanKNormalize,
+											 std::ofstream& file, const double& h, const bool& negMeanKNormalize,
 											 const int& preAllocateSize )
 {
 	std::vector<std::vector<FDEEP_FLOAT_TYPE>> buffer;
