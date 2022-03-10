@@ -7,7 +7,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 8, 2022.
+ * Updated: March 9, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -63,7 +63,7 @@ int main ( int argc, char* argv[] )
 			return 0;
 		pl.set_from_cmd_all( cmd );
 
-		std::cout << "Testing sinusoidal level-set function in 3d" << std::endl;
+		PetscPrintf( mpi.comm(), "Testing sinusoidal level-set function in 3d" );
 
 		// Preping the samples' file.  Notice we are no longer interested on exact-signed distance functions, only re-
 		// initialized data.  File name is sinusoid.csv; only rank 0 writes the samples to a file.
@@ -203,18 +203,19 @@ int main ( int argc, char* argv[] )
 		CHKERRXX( VecCreateGhostNodes( p4est, nodes, &ih2kg ) );
 
 		std::vector<std::vector<double>> samples;
+		std::vector<bool> nonSaddle;
 		double trackedMinHK, trackedMaxHK;
 		std::pair<double, double> maxErrors;
 		maxErrors = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
 													   samples, trackedMinHK, trackedMaxHK, genProb, h * K_MAX / 2,
-													   probMaxHKLB(), minHK(), 0.5, sampledFlag, NAN, exactFlag,
-													   hkError, ihk, h2kgError, ih2kg );
+													   probMaxHKLB(), minHK(), 0.5, nonSaddle, sampledFlag, NAN,
+													   exactFlag, hkError, ihk, h2kgError, ih2kg );
 		PetscPrintf( mpi.comm(), " with a max hk error of %g and max h2kg error of %g", maxErrors.first, maxErrors.second );
 		watch.read_duration_current( true );
 
 		watch.start();
 		PetscPrintf( mpi.comm(), "Saving samples to a file; " );
-		size_t numSamples = kml::utils::processSamplesAndSaveToFile( mpi, samples, file, h );
+		size_t numSamples = kml::utils::processSamplesAndSaveToFile( mpi, samples, file, h, nonSaddle );
 		PetscPrintf( mpi.comm(), " %u samples in total", numSamples );
 
 		if( mpi.rank() == 0 )

@@ -45,7 +45,7 @@
  *
  * Author: Luis Ángel.
  * Created: November 11, 2021.
- * Updated: March 3, 2022.
+ * Updated: March 9, 2022.
  */
 namespace kml
 {
@@ -364,17 +364,20 @@ namespace kml
 									 const std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer );
 
 		/**
-		 * Transform samples with negative-mean-curvature and phi-by-h normalization, followed by reorientation and
-		 * reflection.  Then, place these samples in a cumulative array.
+		 * Transform samples with (optional) negative-mean-curvature and phi-by-h normalization, followed by
+		 * reorientation and reflection.  Then, place these samples in a cumulative array.
 		 * @note Only rank 0 accumulates processed samples, but all processes receive the total number of them.
 		 * @param [in] mpi MPI environment.
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] buffer Cumulative array of feature vectors.
 		 * @param [in] h Mesh size for h-normalizing phi values.
+		 * @param [in] negMeanKNormalize Vector of booleans determining if a sample must be negative-mean-curvature
+		 * 			   normalized; if vector is empty, all samples will be normalized.
 		 * @return Number of samples collected from all processes.
 		 */
 		int processSamplesAndAccumulate( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h );
+										 std::vector<std::vector<FDEEP_FLOAT_TYPE>>& buffer, const double& h,
+										 const std::vector<bool>& negMeanKNormalize );
 
 		/**
 		 * Transform samples with negative-mean-curvature and phi-by-h normalization, followed by reorientation and
@@ -384,11 +387,14 @@ namespace kml
 		 * @param [in,out] samples List of feature vectors.
 		 * @param [in,out] file File stream where to write data (should be opened already).
 		 * @param [in] h Mesh size for h-normalizing phi values.
+		 * @param [in] negMeanKNormalize Vector of booleans determining if a sample must be negative-mean-curvature
+		 * 			   normalized; if vector is empty, all samples will be normalized.
 		 * @param [in] preAllocateSize Estimate number of samples to preallocate intermediate buffer (only rank 0).
 		 * @return Number of samples saved to the input file.
 		 */
 		int processSamplesAndSaveToFile( const mpi_environment_t& mpi, std::vector<std::vector<double>>& samples,
-										 std::ofstream& file, const double& h, const int& preAllocateSize=1000 );
+										 std::ofstream& file, const double& h, const std::vector<bool>& negMeanKNormalize,
+										 const int& preAllocateSize=1000 );
 
 		/**
 		 * Perform histogram-based subsampling by first splitting the data set into nbins intervals based on true mean
