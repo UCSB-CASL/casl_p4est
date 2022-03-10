@@ -545,6 +545,7 @@ public:
 
   inline p4est_t *get_p4est() { return p4est_n; }
 
+  // ---------------------------------------------------
   // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
   inline void nullify_p4est_nm1() {
     p4est_nm1 = NULL;
@@ -553,7 +554,10 @@ public:
     hierarchy_nm1=NULL;
     ngbd_nm1 = NULL;
   }
-
+  inline void nullify_phi(){
+    phi = NULL;
+  }
+  // ---------------------------------------------------
 
   inline const BoundaryConditionsDIM &get_bc_hodge() const { return bc_hodge; }
   inline p4est_t *get_p4est_nm1() { return p4est_nm1; }
