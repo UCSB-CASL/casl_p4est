@@ -206,7 +206,7 @@ int main ( int argc, char* argv[] )
 
 		std::vector<std::vector<double>> nonSaddleSamples;
 		std::vector<std::vector<double>> saddleSamples;
-		double trackedMinHK, trackedMaxHK;
+		double trackedMinHK[SAMPLE_TYPES], trackedMaxHK[SAMPLE_TYPES];
 		std::pair<double, double> maxErrors;
 		maxErrors = sinusoidalLevelSet.collectSamples( p4est, nodes, &ngbd, phi, OCTREE_MAX_RL, xyz_min, xyz_max,
 													   trackedMinHK, trackedMaxHK, genProb, nonSaddleSamples, h * K_MAX / 2,

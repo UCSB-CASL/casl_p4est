@@ -8,6 +8,8 @@
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
 #define ML_CURVATURE_SINUSOIDAL_3D_H
 
+#define SAMPLE_TYPES 	2				// Two types of samples: from non-saddle points (0), and from saddle points (1).
+
 #ifdef _OPENMP
 #include <omp.h>
 #else
@@ -536,8 +538,8 @@ public:
 	 * @param [in] octreeMaxRL Effective octree maximum level of refinement (octree's side length must be a multiple of h).
 	 * @param [in] xyzMin Domain's minimum coordinates.
 	 * @param [in] xyzMax Domain's maximum coordinates.
-	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples.
-	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples.
+	 * @param [out] trackedMinHK Minimum |hk*| detected across processes for this batch of samples (non-saddle pos 0, saddle pos 1).
+	 * @param [out] trackedMaxHK Maximum |hk*| detected across processes for this batch of samples (non-saddle pos 0, saddle pos 1).
 	 * @param [in,out] genP Random-number generator device to decide whether to take a sample or not.
 	 * @param [out] nonSaddleSamples Array of collected samples for non-saddle regions (i.e., ih2kg > 0).
 	 * @param [in] easingOffMaxHK Upper bound max |hk| for easing-off probability based on mean curvature for non-saddle points.
@@ -565,7 +567,7 @@ public:
 	std::pair<double,double> collectSamples( const p4est_t *p4est, const p4est_nodes_t *nodes,
 											 const my_p4est_node_neighbors_t *ngbd, const Vec& phi,
 											 const unsigned char octreeMaxRL, const double xyzMin[P4EST_DIM],
-											 const double xyzMax[P4EST_DIM], double& trackedMinHK, double& trackedMaxHK,
+											 const double xyzMax[P4EST_DIM], double trackedMinHK[SAMPLE_TYPES], double trackedMaxHK[SAMPLE_TYPES],
 											 std::mt19937& genP, std::vector<std::vector<double>>& nonSaddleSamples,
 											 const double& easingOffMaxHK, const double& easingOffProbMaxHK,	// These 4 params apply
 											 const double& minHK, const double& probMinHK, 						// to non-saddle points.
@@ -672,8 +674,8 @@ public:
 		kappaMGInterp.set_input( kappaMG, interpolation_method::linear, 2 );
 
 		std::uniform_real_distribution<double> pDistribution;
-		trackedMinHK = DBL_MAX, trackedMaxHK = 0;				// For debugging and binning, track the min and max
-		double trackedMaxHKError = 0;							// mean |hk*| and Gaussian curvature errors.
+		trackedMinHK[0] = DBL_MAX, trackedMinHK[1] = DBL_MAX, trackedMaxHK[0] = 0, trackedMaxHK[1] = 0;	// Track the min and max mean |hk*|
+		double trackedMaxHKError = 0;																	// and Gaussian curvature errors.
 		double trackedMaxH2KGError = 0;
 
 #ifdef DEBUG
@@ -804,8 +806,9 @@ public:
 					sampledFlagPtr[n] = 1;						// Flag it as (valid) interface node.
 
 				// Update stats.
-				trackedMinHK = MIN( trackedMinHK, ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
-				trackedMaxHK = MAX( trackedMaxHK, ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+				int which = isNonSaddle? 0 : 1;
+				trackedMinHK[which] = MIN( trackedMinHK[which], ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
+				trackedMaxHK[which] = MAX( trackedMaxHK[which], ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] ) );
 
 				double errorHK = ABS( (*sample)[K_INPUT_SIZE_LEARN - 4] - (*sample)[K_INPUT_SIZE_LEARN - 3] );
 				double errorH2KG = ABS( (*sample)[K_INPUT_SIZE_LEARN - 2] - (*sample)[K_INPUT_SIZE_LEARN - 1] );
@@ -835,13 +838,14 @@ public:
 #endif
 		kappaMGInterp.clear();
 
-		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMinHK, 1, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
-		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHK, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, trackedMinHK, SAMPLE_TYPES, MPI_DOUBLE, MPI_MIN, _mpi->comm() ) );
+		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, trackedMaxHK, SAMPLE_TYPES, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxHKError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 		SC_CHECK_MPI( MPI_Allreduce( MPI_IN_PLACE, &trackedMaxH2KGError, 1, MPI_DOUBLE, MPI_MAX, _mpi->comm() ) );
 
 #ifdef DEBUG	// Printing the errors.
-		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked mean hk in the range of [%g, %g]\n", trackedMinHK, trackedMaxHK ) );
+		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked mean hk in the range of [%g, %g] for non-saddles and [%g, %g] for saddles\n",
+							   trackedMinHK[0], trackedMaxHK[0], trackedMinHK[1], trackedMaxHK[1] ) );
 		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max mean hk error = %f\n", trackedMaxHKError ) );
 		CHKERRXX( PetscPrintf( _mpi->comm(), "Tracked max Gaussian h^2k error = %f\n", trackedMaxH2KGError ) );
 #endif
