@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 10, 2022.
+ * Updated: March 11, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -167,6 +167,15 @@ public:
 	}
 
 	/**
+	 * Retrieve the amplitude.
+	 * @return _a.
+	 */
+	double A() const
+	{
+		return _a;
+	}
+
+	/**
 	 * Retrieve the squared frequency on the u direction.
 	 * @return _wu2.
 	 */
@@ -182,6 +191,24 @@ public:
 	double wv2() const
 	{
 		return _wv2;
+	}
+
+	/**
+	 * Retrieve the frequency on the u direction.
+	 * @return _wu.
+	 */
+	double wu() const
+	{
+		return _wu;
+	}
+
+	/**
+	 * Retrieve the frequency on the v direction.
+	 * @return _wv.
+	 */
+	double wv() const
+	{
+		return _wv;
 	}
 };
 
