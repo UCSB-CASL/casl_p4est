@@ -2,7 +2,7 @@
  * A collection of classes and functions related to a sinusoidal surface in 3D.
  * Developer: Luis Ángel.
  * Created: February 24, 2022.
- * Updated: March 11, 2022.
+ * Updated: March 12, 2022.
  */
 
 #ifndef ML_CURVATURE_SINUSOIDAL_3D_H
@@ -349,7 +349,7 @@ public:
 	 * @param [in] L Number of refinement levels per unit length (so that h=2^{-L} is a power of two).
 	 * @param [in] sinusoid Sinusoid surface object in canonical coordinates.
 	 * @param [in] limR2 Squared limiting radius for triangulation.
-	 * @param [in] samR Sampling radius.
+	 * @param [in] samR Sampling radius to exclude points lying outside canonical sphere.
 	 * @param [in] btKLeaf Maximum number of points in balltree leaf nodes.
 	 */
 	SinusoidalLevelSet( const mpi_environment_t *mpi, const Point3& trans, const Point3& rotAxis, const double& rotAngle,
@@ -579,7 +579,7 @@ public:
 	 * @param [in] minIH2KG Minimum (linearly interpolated) numerical |ih2kg| for saddle points.
 	 * @param [in] probMinIH2KG Probability for keeping points whose numerical |ih2kg| is minIH2KG.
 	 * @param [out] sampledFlag Parallel vector with 1s for sampled nodes (next to Gamma), 0s otherwise.
-	 * @param [in] samR Overriding sampling radius on the uv plane (to be used instead of the one provided during instantiation).
+	 * @param [in] samR Overriding sphere sampling radius on canonical space (to be used instead of the one provided during instantiation).
 	 * @param [in] filter Vector with 1s for nodes we are allowed to sample from and anything else for non-sampling nodes.
 	 * @param [out] hkError Vector to hold absolute mean hk error for sampled nodes.
 	 * @param [out] ihk Vector to hold linearly interpolated hk for sampled nodes.
@@ -615,7 +615,7 @@ public:
 			throw std::invalid_argument( errorPrefix + "Easing-off max HK probability should be in the range of (0, 1]!" );
 
 		if( !isnan( samR ) && (SQR(samR) > _samR2 || samR < 1.5 * _h) )
-			throw std::invalid_argument( errorPrefix + "Overriding sampling radius can't be larer than local sampling radius or less than 1.5h!" );
+			throw std::invalid_argument( errorPrefix + "Overriding sampling radius can't be larger than local sampling radius or less than 1.5h!" );
 		const double SAM_R2 = (isnan( samR )? _samR2 : SQR( samR ));	// Squared sampling radius.
 
 		// Get indices for locally owned candidate nodes next to Gamma.
@@ -730,8 +730,8 @@ public:
 				throw std::runtime_error( errorPrefix + "Couldn't locate node in cache!" );
 			Point3 p = recordCCoords->second;
 
-			if( SQR( p.x ) + SQR( p.y ) > SAM_R2 )				// Skip nodes whose canonical projection
-				continue;										// falls outside the sampling circle.
+			if( SQR( p.x ) + SQR( p.y ) + SQR( p.z ) > SAM_R2 )	// Skip nodes whose point on the surface lies outiside
+				continue;										// the sampling sphere.
 
 #ifdef DEBUG
 			if( coordsSet.find( coords ) != coordsSet.end() )	// Coords should be unique!
@@ -775,9 +775,18 @@ public:
 					if( ABS( hk ) < minHK )						// Target mean |hk*| must be >= minHK for non-saddle regions.
 						continue;
 
-					double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
-					if( pDistribution( genP ) > prob )			// Use an easing-off prob to keep samples.
-						continue;
+					if( ABS( hk ) <= easingOffMaxHK )
+					{
+						double prob = kml::utils::easingOffProbability( ABS( hk ), minHK, probMinHK, easingOffMaxHK, easingOffProbMaxHK );
+						if( pDistribution( genP ) > prob )		// Use an easing-off prob to keep samples in [minHK, easingOffMaxHK].
+							continue;
+					}
+					else
+					{
+						double prob = kml::utils::easingOffProbability( ABS( hk ), easingOffMaxHK, easingOffProbMaxHK, 2./3, 0.75 );	// TODO: Set these as parameters.
+						if( pDistribution( genP ) > prob )		// Use an easing-off prob to keep samples in [easingOffMaxHK, 2/3].
+							continue;
+					}
 
 					isNonSaddle = true;							// Flag point as non-saddle.
 				}

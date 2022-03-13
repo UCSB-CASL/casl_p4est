@@ -15,7 +15,8 @@
  * nerates two separate files for saddle/non-saddle regions.  However, in all cases we do gradient-based normalization,
  * which entails reorienting the stencil so that nabla phi at the center point has all its components positive.  Simi-
  * larly, we perform sample augmentation by reflecting stencils about the x - y = 0 plane (which preserves mean and
- * Gaussian curvature).
+ * Gaussian curvature).  Finally, histogram subsampling helps keep well-balanced data sets (regarding mean |hk*|) as
+ * much as possible.
  *
  * Negative-curvature normalization depends on the sign of the linearly interpolated mean ihk at the interface.
  * As for the Gaussian curvature, we normalize it by scaling it with h^2 ---which leads to the true h2kg and the linear-
@@ -29,7 +30,7 @@
  *
  * Developer: Luis Ángel.
  * Created: February 26, 2022.
- * Updated: March 11, 2022.
+ * Updated: March 12, 2022.
  */
 #include <src/my_p4est_to_p8est.h>		// Defines the P4_TO_P8 macro.
 
@@ -53,10 +54,11 @@
 
 void printLogHeader( const mpi_environment_t& mpi );
 
-void saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
+bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
 				  int bufferSize[SAMPLE_TYPES], std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES],
-				  double trackedMaxHK[SAMPLE_TYPES], const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize,
-				  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force=false );
+				  double trackedMaxHK[SAMPLE_TYPES], const double& hkDist, const std::string fileName[SAMPLE_TYPES],
+				  const size_t& bufferMinSize, const u_short& nHistBins, const float& histMedianFrac,
+				  const float& histMinFold, const bool& force );
 
 void setupDomain( const Sinusoid& sinusoid, const double& N_WAVES, const double& h, const double& MAX_A,
 				  const u_char& MAX_RL, double& samRadius, u_char& octreeMaxRL, double& uvLim, size_t& halfUV,
@@ -71,22 +73,22 @@ int main ( int argc, char* argv[] )
 	param_t<double>               maxHK( pl,  2./3, "maxHK"					, "Maximum mean dimensionless curvature (default: 2/3)" );
 	param_t<u_char>               maxRL( pl,     6, "maxRL"					, "Maximum level of refinement per unit-square quadtree (default: 6)" );
 	param_t<u_short>        reinitIters( pl,    10, "reinitIters"			, "Number of iterations for reinitialization (default: 10)" );
-	param_t<double>    easeOffProbMaxHK( pl,   0.5, "easeOffProbMaxHK"		, "Easing-off probability for |hk*| upper bound for subsampling non-saddle points (default: 0.5)" );
-	param_t<double>    easeOffProbMinHK( pl,  0.01, "easeOffProbMinHK"		, "Easing-off probability for |hk*| lower bound for subsampling non-saddle points (default: 0.01)" );
-	param_t<double> easeOffProbMaxIH2KG( pl,   0.2, "easeOffProbMaxIH2KG"	, "Easing-off probability for |ih2kg| upper bound for subsampling saddle points (default: 0.2)" );
-	param_t<double> easeOffProbMinIH2KG( pl,  0.01, "easeOffProbMinIH2KG"	, "Easing-off probability for |ih2kg| lower bound for subsampling saddle points (default: 0.01)" );
+	param_t<double>    easeOffProbMaxHK( pl,  0.25, "easeOffProbMaxHK"		, "Easing-off probability for |hk*| upper bound for subsampling non-saddle points (default: 0.25)" );
+	param_t<double>    easeOffProbMinHK( pl, 0.005, "easeOffProbMinHK"		, "Easing-off probability for |hk*| lower bound for subsampling non-saddle points (default: 0.005)" );
+	param_t<double> easeOffProbMaxIH2KG( pl,  0.15, "easeOffProbMaxIH2KG"	, "Easing-off probability for |ih2kg| upper bound for subsampling saddle points (default: 0.15)" );
+	param_t<double> easeOffProbMinIH2KG( pl, 0.005, "easeOffProbMinIH2KG"	, "Easing-off probability for |ih2kg| lower bound for subsampling saddle points (default: 0.005)" );
 	param_t<u_short>          startAIdx( pl,     0, "startAIdx"				, "Start index for sinusoidal amplitude (default: 0)" );
-	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"		, "Post-histogram subsampling median fraction for non-saddle points (default: 1/3)" );
-	param_t<float>          histMinFold( pl,   1.5, "histMinFold"			, "Post-histogram subsampling min count fold for non-saddle points (default: 1.5)" );
+	param_t<float>       histMedianFrac( pl,  1./3, "histMedianFrac"		, "Post-histogram subsampling median fraction (default: 1/3)" );
+	param_t<float>          histMinFold( pl,   1.5, "histMinFold"			, "Post-histogram subsampling min count fold (default: 1.5)" );
 	param_t<u_short>          nHistBins( pl,   100, "nHistBins"				, "Number of bins in histogram (default: 100)" );
 	param_t<std::string>         outDir( pl,   ".", "outDir"				, "Path where files will be written to (default: build folder)" );
-	param_t<size_t>       bufferMinSize( pl, 1.5e5, "bufferMinSize"			, "Buffer minimum size to trigger histogram-based subsampling for both saddle/non-saddle points (default: 150K)" );
+	param_t<size_t>       bufferMinSize( pl,   3e5, "bufferMinSize"			, "Buffer minimum overflow size to trigger histogram-based subsampling and storage (default: 300K)" );
 	param_t<u_short>      numHKMaxSteps( pl,     7, "numHKMaxSteps" 		, "Number of steps to vary target max hk (default: 7)" );
-	param_t<u_short>          numThetas( pl,     8, "numThetas"				, "Number of angular steps from -pi/2 to +pi/2 (inclusive) (default: 8)" );
-	param_t<u_short>      numAmplitudes( pl,     9, "numAmplitudes"			, "Number of amplitude steps (default: 9)" );
-	param_t<double>        numFullWaves( pl,   2.5, "numFullWaves"          , "How many full cycles we'd like to have inside the domain for sampling (default: 2.5)" );
+	param_t<u_short>          numThetas( pl,    10, "numThetas"				, "Number of angular steps from -pi/2 to +pi/2 (inclusive) (default: 10)" );
+	param_t<u_short>      numAmplitudes( pl,    11, "numAmplitudes"			, "Number of amplitude steps (default: 11)" );
+	param_t<double>        numFullWaves( pl,   2.0, "numFullWaves"          , "How many full cycles we'd like to have inside the domain for sampling (default: 2.0)" );
 
-	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes.
+	std::mt19937 genProb{};		// NOLINT Random engine for probability when choosing candidate nodes (it's OK that it's not in sync among processes).
 	std::mt19937 genTrans{};	// NOLINT This engine is used for the random shift of the sinusoid's canonical frame.
 
 	try
@@ -112,7 +114,7 @@ int main ( int argc, char* argv[] )
 		const double h = 1. / (1 << maxRL());					// Highest spatial resolution in x/y directions.
 		const double MIN_K = minHK() / h;						// Target mean curvature bounds.
 		const double MAX_K = maxHK() / h;
-		const double MAX_A = 1 / MIN_K / 2;						// Amplitude bounds: MAX_A, which is half the max sphere radius.
+		const double MAX_A = 1 / MIN_K / 2;						// Amplitude bounds: MAX_A is half the max sphere radius.
 		const double MIN_A = 5 / MAX_K;							// MIN_A = 5*(min radius).
 		const double HK_MAX_LO = maxHK() / 2;					// Maximum HK bounds at the peaks.
 		const double HK_MAX_UP = maxHK();
@@ -246,7 +248,7 @@ int main ( int argc, char* argv[] )
 								for( auto& dim : TRANS )
 									dim = uniformDistributionH_2( genTrans );
 							}
-							SC_CHECK_MPI( MPI_Bcast( TRANS, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same shift.
+							SC_CHECK_MPI( MPI_Bcast( TRANS, P4EST_DIM, MPI_DOUBLE, 0, mpi.comm() ) );	// All processes use the same random shift.
 
 							// Also discretizes the surface using a balltree to speed up queries during grid refinment.
 							SinusoidalLevelSet sLS( &mpi, Point3( TRANS ), ROT_AXIS.normalize(), THETA, halfUV, halfUV,
@@ -297,7 +299,7 @@ int main ( int argc, char* argv[] )
 
 							// Populate phi and compute exact distance for vertices within a (linearly estimated) shell
 							// around Gamma.  Reinitialization perturbs the otherwise calculated exact distances. exact-
-							// Flag vector holds nodes status: only those with 1's can be used for sampling.
+							// Flag vector holds nodes' status: only those with 1's can be used for sampling.
 							sLS.evaluate( p4est, nodes, phi, exactFlag );
 
 							// Reinitialize level-set function.
@@ -306,11 +308,11 @@ int main ( int argc, char* argv[] )
 
 							std::vector<std::vector<double>> samples[SAMPLE_TYPES];
 							std::pair<double, double> maxErrors;
-							double minHKInBatch[2], maxHKInBatch[SAMPLE_TYPES];		// 0 for non-saddles, 1 for saddles.
+							double minHKInBatch[SAMPLE_TYPES], maxHKInBatch[SAMPLE_TYPES];	// 0 for non-saddles, 1 for saddles.
 							maxErrors = sLS.collectSamples( p4est, nodes, ngbd, phi, octreeMaxRL, xyz_min, xyz_max,
 															minHKInBatch, maxHKInBatch, genProb,
 															samples[0], HK_MAX_LO, easeOffProbMaxHK(), minHK(), easeOffProbMinHK(),	// Non-saddle params.
-															samples[1], 1e-2, easeOffProbMaxIH2KG(), 0, easeOffProbMinIH2KG(),	// Saddle params.
+															samples[1], 1e-2, easeOffProbMaxIH2KG(), 0, easeOffProbMinIH2KG(),		// Saddle params.
 															sampledFlag, NAN, exactFlag );
 
 							maxHKError = MAX( maxHKError, maxErrors.first );
@@ -353,18 +355,17 @@ int main ( int argc, char* argv[] )
 											   loggedSamples[0] + loggedSamples[1], (100.0 * iters / TOT_ITERS), watch.get_duration_current() ) );
 
 						// Save samples if it's time.
-						saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, fileName,
-									 bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), true );
+						saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ),
+									 fileName, bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), false );
 
 						step++;
-						return 0;	// TODO: Remove.
 					}
 				}
 			}
 
-			// Save any samples left in the buffer (by forcing the process) and start afresh for next A value.
-			saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, fileName,
-						 bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), true );
+			// Save any samples left in the buffers (by forcing the process) and start afresh for next A value.
+			saveSamples( mpi, buffer, bufferSize, file, trackedMinHK, trackedMaxHK, ABS( maxHK() - minHK() ),
+						 fileName, bufferMinSize(), nHistBins(), histMedianFrac(), histMinFold(), true );
 
 			if( mpi.rank() == 0 )
 			{
@@ -407,39 +408,36 @@ void printLogHeader( const mpi_environment_t& mpi )
  * @param [in,out] file Files where to write samples.
  * @param [in,out] trackedMinHK Currently tracked minimum true |hk*| for non-saddles and saddles.
  * @param [in,out] trackedMaxHK Currently tracked maximum true |hk*| for non-saddles and saddles.
+ * @param [in] hkDist Distance between min and max |hk*| one would expect (i.e., 100).
  * @param [in] fileName File names array.
  * @param [in] bufferMinSize Predefined minimum size to trigger file saving (same value for non-saddles and saddles).
- * @param [in] nHistBins Number of bins for histogram-based subsampling (applicable to non-saddles only).
- * @param [in] histMedianFrac Median scaling factor for histogram-based subsampling (applicable to non-saddles only).
- * @param [in] histMinFold Fold factor for minimum non-zero count in histogram-based subsampling (applicable to non-saddles only).
- * @param [in] force Set to true if we want to bypass the overflow condition (i.e., if we're done but there are samples left in the buffers).
+ * @param [in] nHistBins Number of bins one would expect for histogram-based subsampling.
+ * @param [in] histMedianFrac Median scaling factor for histogram-based subsampling.
+ * @param [in] histMinFold Fold factor for minimum non-zero count in histogram-based subsampling.
+ * @param [in] force Set it to true if you want to bypass the overflow condition (i.e., if there are samples left in the buffers).
+ * @return true if wrote any type of samples, false otherwise.
  */
-void saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
+bool saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>> buffer[SAMPLE_TYPES],
 				  int bufferSize[SAMPLE_TYPES], std::ofstream file[SAMPLE_TYPES], double trackedMinHK[SAMPLE_TYPES],
-				  double trackedMaxHK[SAMPLE_TYPES], const std::string fileName[SAMPLE_TYPES], const size_t& bufferMinSize,
-				  const u_short& nHistBins, const float& histMedianFrac, const float& histMinFold, const bool& force )
+				  double trackedMaxHK[SAMPLE_TYPES], const double& hkDist, const std::string fileName[SAMPLE_TYPES],
+				  const size_t& bufferMinSize, const u_short& nHistBins, const float& histMedianFrac,
+				  const float& histMinFold, const bool& force )
 {
 	bool wroteSamples = false;
 	for( int i = 0; i < SAMPLE_TYPES; i++ )				// Do this for 0: non-saddle points and 1: saddle points.
 	{
 		if( force || bufferSize[i] >= bufferMinSize )	// Check if it's time to save samples.
 		{
-			int savedSamples;
-			if( i == 0 )		// Do histogram-based subsampling only for non-saddle points.
-			{
-				savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer[i], file[i],
-																		 (FDEEP_FLOAT_TYPE)trackedMinHK[i],
-																		 (FDEEP_FLOAT_TYPE)trackedMaxHK[i],
-																		 nHistBins, histMedianFrac, histMinFold );
-			}
-			else
-			{
-				savedSamples = kml::utils::saveSamplesBufferToFile( mpi, file[i], buffer[i] );
-			}
+			// Effective number of bins is proportional to the difference between tracked min and max mean |hk*|, but not less than 50 and more than nHistBins.
+			const u_short nBins = MAX( (u_short)50, MIN( (u_short)ceil(nHistBins * (trackedMaxHK[i] - trackedMinHK[i]) / hkDist), nHistBins ) );
+			int savedSamples = kml::utils::histSubSamplingAndSaveToFile( mpi, buffer[i], file[i],
+																		 (FDEEP_FLOAT_TYPE) trackedMinHK[i],
+																		 (FDEEP_FLOAT_TYPE) trackedMaxHK[i],
+																		 nBins, histMedianFrac, histMinFold );
 
 			CHKERRXX( PetscPrintf( mpi.comm(),
-								   "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f].\n",
-								   savedSamples, bufferSize[i], fileName[i].c_str(), trackedMinHK[i], trackedMaxHK[i] ) );
+								   "[*] Saved %d out of %d samples to output file %s, with |hk*| in the range of [%f, %f] using %i bins.\n",
+								   savedSamples, bufferSize[i], fileName[i].c_str(), trackedMinHK[i], trackedMaxHK[i], nBins ) );
 			wroteSamples = true;
 
 			buffer[i].clear();							// Reset control variables.
@@ -455,6 +453,8 @@ void saveSamples( const mpi_environment_t& mpi, vector<vector<FDEEP_FLOAT_TYPE>>
 
 	if( wroteSamples )
 		printLogHeader( mpi );
+
+	return wroteSamples;
 }
 
 /**

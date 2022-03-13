@@ -37,6 +37,7 @@ CMakeLists.txt.user
 sync
 .rsync.exclude
 Info.plist
+*.asv
 
 # What directories to ignore
 *[Dd]ebug*
