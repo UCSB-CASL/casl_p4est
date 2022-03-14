@@ -3835,11 +3835,17 @@ void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
 }
 
 // Elyce to do -- how to change this fxn to pass by reference?
-void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
-                                      Vec v_interface[P4EST_DIM],
-                                      Vec v_external[P4EST_DIM],
-                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new,
-                                      my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method/*,
+//void interpolate_fields_onto_new_grid(Vec *T_l, Vec *T_s,
+//                                      Vec v_interface[P4EST_DIM],
+//                                      Vec v_external[P4EST_DIM],
+//                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new,
+//                                      my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method/*,
+//                                      Vec *all_fields_old=NULL, Vec *all_fields_new=NULL*/){
+void interpolate_fields_onto_new_grid(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
+                                      vec_and_ptr_dim_t& v_interface,
+                                      vec_and_ptr_dim_t& v_n,
+                                      p4est_nodes_t *nodes_np1, p4est_t *p4est_np1,
+                                      my_p4est_node_neighbors_t *ngbd_n,interpolation_method interp_method/*,
                                       Vec *all_fields_old=NULL, Vec *all_fields_new=NULL*/){
   // Need neighbors of old grid to create interpolation object
   // Need nodes of new grid to get the points that we must interpolate to
@@ -3847,24 +3853,24 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   Vec all_fields_old[num_fields_interp];
   Vec all_fields_new[num_fields_interp];
 
-  my_p4est_interpolation_nodes_t interp_nodes(ngbd_old_grid);
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
 //  my_p4est_interpolation_nodes_t* interp_nodes = NULL;
 //  interp_nodes = new my_p4est_interpolation_nodes_t(ngbd_old_grid);
+
 
   // Set existing vectors as elements of the array of vectors: --------------------------
   unsigned int i = 0;
   if(solve_stefan){
-
-      all_fields_old[i++] = *T_l; // Now, all_fields_old[0] and T_l both point to same object (where old T_l vec sits)
-      if(do_we_solve_for_Ts) all_fields_old[i++] = *T_s;
+      all_fields_old[i++] = T_l_n.vec; // Now, all_fields_old[0] and T_l both point to same object (where old T_l vec sits)
+      if(do_we_solve_for_Ts) all_fields_old[i++] = T_s_n.vec;
 
       foreach_dimension(d){
-        all_fields_old[i++] = v_interface[d];
+        all_fields_old[i++] = v_interface.vec[d];
       }
     }
   if(solve_navier_stokes){
       foreach_dimension(d){
-        all_fields_old[i++] = v_external[d];
+        all_fields_old[i++] = v_n.vec[d];
       }
     }
   P4EST_ASSERT(i == num_fields_interp);
@@ -3872,7 +3878,7 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   // Create the array of vectors to hold the new values: ------------------------------
   PetscErrorCode ierr;
   for(unsigned int j = 0;j<num_fields_interp;j++){
-    ierr = VecCreateGhostNodes(p4est_new,nodes_new_grid,&all_fields_new[j]);CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &all_fields_new[j]);CHKERRXX(ierr);
     }
 
   // Do interpolation:--------------------------------------------
@@ -3880,8 +3886,8 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
 
   // Grab points on the new grid that we want to interpolate to:
   double xyz[P4EST_DIM];
-  foreach_node(n,nodes_new_grid){
-    node_xyz_fr_n(n,p4est_new,nodes_new_grid,xyz);
+  foreach_node(n, nodes_np1){
+    node_xyz_fr_n(n, p4est_np1, nodes_np1,  xyz);
     interp_nodes.add_point(n,xyz);
   }
 
@@ -3889,25 +3895,25 @@ void interpolate_values_onto_new_grid(Vec *T_l, Vec *T_s,
   interp_nodes.clear();
   // Destroy the old fields no longer in use:------------------------
   for(unsigned int k=0;k<num_fields_interp;k++){
-    ierr = VecDestroy(all_fields_old[k]);CHKERRXX(ierr); // Destroy objects where the old vectors were
+    ierr = VecDestroy(all_fields_old[k]); CHKERRXX(ierr); // Destroy objects where the old vectors were
   }
   // Slide the newly interpolated fields to back to their passed objects
   i = 0;
   if(solve_stefan){
-      *T_l = all_fields_new[i++]; // Now, T_l points to (new T_l vec)
-      if(do_we_solve_for_Ts) *T_s = all_fields_new[i++];
+      T_l_n.vec = all_fields_new[i++]; // Now, T_l points to (new T_l vec)
+      if(do_we_solve_for_Ts) T_s_n.vec = all_fields_new[i++];
 
       foreach_dimension(d){
-        v_interface[d] = all_fields_new[i++];
+        v_interface.vec[d] = all_fields_new[i++];
       }
     }
   if(solve_navier_stokes){
       foreach_dimension(d){
-        v_external[d] = all_fields_new[i++];
+        v_n.vec[d] = all_fields_new[i++];
       }
     }
   P4EST_ASSERT(i==num_fields_interp);
-} // end of interpolate_values_onto_new_grid
+} // end of slide_and_interpolate_fields_onto_new_grid
 
 
 double interfacial_velocity_expression(double Tl_d, double Ts_d){
@@ -8295,6 +8301,7 @@ int main(int argc, char** argv) {
         // -------------------------------------------------------------------------------------------------------------
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
+        // ELYCE TO-DO: why do we need to do this sliding for tstep=0? Can we do away with this?
         if(tstep==0){
           // Slide fields
           if(solve_navier_stokes){
@@ -8309,9 +8316,12 @@ int main(int argc, char** argv) {
           }
 
         } // end of "if tstep ==0"
-        interpolate_values_onto_new_grid(&T_l_n.vec,&T_s_n.vec,
-                                         v_interface.vec,v_n.vec,
-                                         nodes_np1,p4est_np1,ngbd,interp_bw_grids);
+//        interpolate_fields_onto_new_grid(&T_l_n.vec,&T_s_n.vec,
+//                                         v_interface.vec,v_n.vec,
+//                                         nodes_np1,p4est_np1,ngbd,interp_bw_grids);
+        interpolate_fields_onto_new_grid(T_l_n, T_s_n,
+                                         v_interface, v_n,
+                                         nodes_np1, p4est_np1, ngbd, interp_bw_grids);
       } // end of "if tstep !=last tstep"
 
 
