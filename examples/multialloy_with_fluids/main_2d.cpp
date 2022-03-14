@@ -5236,7 +5236,7 @@ bool are_we_saving_fluid_forces(double& tn_,bool is_load_step, int& out_idx, boo
 }
 
 
-void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate){
+void check_collapse_on_substrate(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate){
   // Some things to set if you want to save collapse results and see what's going on:
   bool save_collapse_vtk = false; // set this to true if you want to save collapse files
   char collapse_folder[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flushing_growth_off/collapse_vtks";
@@ -5247,14 +5247,14 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
   double proximity_smoothing_ = proximity_collapse;
 
   double dxyz_[P4EST_DIM];
-  dxyz_min(p4est,dxyz_);
+  dxyz_min(p4est_np1,dxyz_);
 
   double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dxyz_[2]));
   double new_phi_val = .5*dxyz_min_;
 
 
   PetscErrorCode ierr;
-  int mpi_comm = p4est->mpicomm;
+  int mpi_comm = p4est_np1->mpicomm;
 
   ierr = PetscPrintf(mpi_comm, "Checking collapse onto substrate... "); CHKERRXX(ierr);
 
@@ -5264,7 +5264,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
 
   bool substrate_is_within_proximity = false;
   phi.get_array(); phi_substrate.get_array();
-  foreach_node(n, nodes){
+  foreach_node(n, nodes_np1){
     if(fabs(phi.ptr[n]) < dxyz_min_*1.2){
       double substrate_dist = fabs(phi_substrate.ptr[n]);
       bool is_collapsed_already = fabs(phi.ptr[n] - phi_substrate.ptr[n]) < EPS;
@@ -5290,7 +5290,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
 
   // Begin procedure of checking distance bw LSF and substrate, and collapsing if necessary
   if((fabs(proximity_smoothing_) > EPS) && substrate_is_within_proximity){
-    my_p4est_level_set_t ls(ngbd);
+    my_p4est_level_set_t ls(ngbd_np1);
     vec_and_ptr_t phi_solid; phi_solid.create(phi.vec);
     vec_and_ptr_t front_phi_tmp; front_phi_tmp.create(phi.vec);
 
@@ -5305,7 +5305,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
     phi_list.push_back(phi_solid.vec); phi_list.push_back(phi_substrate.vec);
     phi_opn.push_back(MLS_INTERSECTION); phi_opn.push_back(MLS_INTERSECTION);
 
-    compute_phi_eff(front_phi_tmp.vec, nodes, phi_list, phi_opn);
+    compute_phi_eff(front_phi_tmp.vec, nodes_np1, phi_list, phi_opn);
 
     // Reinitialize the effective LSF
     ls.reinitialize_2nd_order(front_phi_tmp.vec, 50);
@@ -5319,7 +5319,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
       std::vector<Vec_for_vtk_export_t> cell_fields = {};
       char filename[PATH_MAX];
       sprintf(filename, "%s/before_collapse_tstep_%d", collapse_folder, tstep);
-      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+      my_p4est_vtk_write_all_lists(p4est_np1,nodes_np1,ngbd_np1->get_ghost(),
                                    P4EST_TRUE,P4EST_TRUE,filename,
                                    point_fields, cell_fields);
 
@@ -5368,7 +5368,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
 
 
       sprintf(filename, "%s/collapse_vtks/intermediate_collapse_tstep_%d", collapse_folder, tstep);
-      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+      my_p4est_vtk_write_all_lists(p4est_np1,nodes_np1,ngbd_np1->get_ghost(),
                                    P4EST_TRUE,P4EST_TRUE,filename,
                                    point_fields, cell_fields);
 
@@ -5387,7 +5387,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
     // Collapse/Solidify nodes that changed sign:
     front_phi_tmp.get_array(); phi_solid.get_array();
     phi.get_array(); phi_substrate.get_array();
-    foreach_node(n, nodes){
+    foreach_node(n, nodes_np1){
       if((phi_solid.ptr[n] < 0) && (front_phi_tmp.ptr[n] >0)){
         phi.ptr[n] = MAX(-front_phi_tmp.ptr[n], phi_substrate.ptr[n]);
         num_nodes_smoothed++;
@@ -5405,7 +5405,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
       vec_and_ptr_t island_number; island_number.create(phi.vec);
 
       VecScaleGhost(phi.vec, -1.);
-      compute_islands_numbers(*ngbd, phi.vec, num_islands, island_number.vec);
+      compute_islands_numbers(*ngbd_np1, phi.vec, num_islands, island_number.vec);
       VecScaleGhost(phi.vec, -1.);
 
       if (num_islands > 1)
@@ -5418,7 +5418,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
         // TODO: make it real area instead of number of points
         std::vector<double> island_area(num_islands, 0);
 
-        foreach_local_node(n, nodes)
+        foreach_local_node(n, nodes_np1)
         {
           if (island_number.ptr[n] >= 0)
           {
@@ -5444,7 +5444,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
         if (main_island < 0) throw;
 
         // solidify all but the biggest pool
-        foreach_node(n, nodes)
+        foreach_node(n, nodes_np1)
         {
           if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
           {
@@ -5474,7 +5474,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
       point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
 
       sprintf(filename, "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flushing_growth_off/collapse_vtks/after_collapse_tstep_%d", tstep);
-      my_p4est_vtk_write_all_lists(p4est,nodes,ngbd->get_ghost(),
+      my_p4est_vtk_write_all_lists(p4est_np1,nodes_np1,ngbd_np1->get_ghost(),
                                    P4EST_TRUE,P4EST_TRUE,filename,
                                    point_fields, cell_fields);
 
@@ -5496,7 +5496,7 @@ void check_collapse_on_substrate(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_
 }
 
 
-void track_evolving_geometry(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd,
+void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
                              vec_and_ptr_t& phi, vec_and_ptr_t& island_numbers, int out_idx){
 
 
@@ -5505,7 +5505,7 @@ void track_evolving_geometry(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node
   int num_islands = 0;
 
 
-  compute_islands_numbers(*ngbd, phi.vec, num_islands, island_numbers.vec);
+  compute_islands_numbers(*ngbd_np1, phi.vec, num_islands, island_numbers.vec);
 
   // Scale phi since we want to compute area of grains (which are in solid domain)
   VecScaleGhost(phi.vec, -1.);
@@ -5568,10 +5568,10 @@ void track_evolving_geometry(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node
 */
 
   // Extend the island numbers across the interface a little bit (for paraview analysis purposes):
-  my_p4est_level_set_t ls(ngbd);
+  my_p4est_level_set_t ls(ngbd_np1);
 
   double dxyz_[P4EST_DIM];
-  dxyz_min(p4est, dxyz_);
+  dxyz_min(p4est_np1, dxyz_);
   double dxyz_min_ = max(DIM(dxyz_[0], dxyz_[1], dxyz_[2]));
 
   ls.extend_Over_Interface_TVD_Full(phi.vec, island_numbers.vec, 20, 2,
@@ -5640,15 +5640,12 @@ void track_evolving_geometry(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node
 } // end of track evolving geometry
 
 
-
-
-
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving to VTK:
 // --------------------------------------------------------------------------------------------------------------
-void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,
-                     vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff, vec_and_ptr_t& phi_substrate, vec_and_ptr_t& Tl, vec_and_ptr_t& Ts, vec_and_ptr_dim_t& v_int,
-                     vec_and_ptr_dim_t& v_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity, vec_and_ptr_t& island_numbers, char* filename, bool is_crash){
+void save_everything(p4est_t *p4est_np1, p4est_nodes_t *nodes_np1, p4est_ghost_t *ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                     vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff, vec_and_ptr_t& phi_substrate, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_dim_t& v_int,
+                     vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_t& press, vec_and_ptr_t& vorticity, vec_and_ptr_t& island_numbers, char* filename, bool is_crash){
 // Things we want to save:
 /*
  * LSF
@@ -5667,12 +5664,12 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   vec_and_ptr_t kappa;
   vec_and_ptr_dim_t normal;
 
-  kappa.create(p4est,nodes);
-  normal.create(p4est,nodes);
+  kappa.create(p4est_np1, nodes_np1);
+  normal.create(p4est_np1, nodes_np1);
 
   VecScaleGhost(phi.vec,-1.0);
-  compute_normals(*ngbd,phi.vec,normal.vec);
-  compute_mean_curvature(*ngbd,normal.vec,kappa.vec);
+  compute_normals(*ngbd_np1, phi.vec,normal.vec);
+  compute_mean_curvature(*ngbd_np1, normal.vec,kappa.vec);
 
   VecScaleGhost(phi.vec,-1.0);
 
@@ -5688,9 +5685,9 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   }
   // stefan related fields
   if(solve_stefan){
-      point_fields.push_back(Vec_for_vtk_export_t(Tl.vec, "Tl"));
+      point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
     if(do_we_solve_for_Ts){
-        point_fields.push_back(Vec_for_vtk_export_t(Ts.vec, "Ts"));
+        point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "Ts"));
     }
     point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[0], "v_interface_x"));
     point_fields.push_back(Vec_for_vtk_export_t(v_int.vec[1], "v_interface_y"));
@@ -5698,8 +5695,8 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   // Elyce TO-DO: what is the purpose of the no_flow flag ?
   if(solve_navier_stokes && !no_flow){
-      point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[0], "u"));
-      point_fields.push_back(Vec_for_vtk_export_t(v_NS.vec[1], "v"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_n_NS.vec[0], "u"));
+      point_fields.push_back(Vec_for_vtk_export_t(v_n_NS.vec[1], "v"));
       point_fields.push_back(Vec_for_vtk_export_t(vorticity.vec, "vorticity"));
       point_fields.push_back(Vec_for_vtk_export_t(press.vec, "pressure"));
   }
@@ -5709,7 +5706,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   std::vector<Vec_for_vtk_export_t> cell_fields = {};
 
-  my_p4est_vtk_write_all_lists(p4est,nodes,ghost,
+  my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1,
                                P4EST_TRUE,P4EST_TRUE,filename,
                                point_fields, cell_fields);
 
@@ -5722,8 +5719,8 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
 }
 
-void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
-                       p4est_ghost_t* ghost, my_p4est_node_neighbors_t* ngbd,
+void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                       p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1,
                        int out_idx, int grid_res_iter,
                        vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff, vec_and_ptr_t& phi_substrate,
                        vec_and_ptr_t& T_l_n,vec_and_ptr_t& T_s_n,
@@ -5731,7 +5728,7 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
                        vec_and_ptr_dim_t& v_n, vec_and_ptr_t& press_nodes, vec_and_ptr_t& vorticity,
                         vec_and_ptr_t& island_numbers,
                         bool is_crash=false){
-  int mpi_comm = p4est->mpicomm;
+  int mpi_comm = p4est_np1->mpicomm;
 
   // If it's a test case, we ignore, we have our own special save functions for those cases that have error checking as well
   bool test_cases = example_is_a_test_case;
@@ -5744,10 +5741,10 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
     sprintf(output, "%s/grid_lmin%d_lint%d_lmax%d", out_dir, lmin, lint, lmax);
     // Create outdir if it does not exist:
     if(!file_exists(output)){
-      create_directory(output, p4est->mpirank,p4est->mpicomm);
+      create_directory(output, p4est_np1->mpirank, p4est_np1->mpicomm);
     }
     if(!is_folder(output)){
-      if(!create_directory(output, p4est->mpirank, p4est->mpicomm))
+      if(!create_directory(output, p4est_np1->mpirank, p4est_np1->mpicomm))
       {
         char error_msg[1024];
         sprintf(error_msg, "saving geometry information: the path %s is invalid and the directory could not be created", output);
@@ -5765,14 +5762,14 @@ void save_fields_to_vtk(p4est_t* p4est, p4est_nodes_t* nodes,
 
     if(is_crash){
       sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_CRASH", output, lmin+grid_res_iter, lmax+grid_res_iter);
-      save_everything(p4est,nodes,ghost,ngbd,
+      save_everything(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
                       phi, phi_eff, phi_substrate,T_l_n,T_s_n,v_interface,
                       v_n,press_nodes,vorticity,
                       island_numbers, output, is_crash);
     }
     else{
       sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d", output, lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-      save_everything(p4est,nodes,ghost,ngbd,
+      save_everything(p4est_np1, nodes_np1, ghost_np1, ngbd_np1,
                       phi,phi_eff, phi_substrate,T_l_n,T_s_n,v_interface,
                       v_n,press_nodes,vorticity,
                       island_numbers,output, is_crash);
