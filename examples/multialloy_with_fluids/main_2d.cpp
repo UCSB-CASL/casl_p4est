@@ -3951,7 +3951,7 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
                                   vec_and_ptr_dim_t& T_l_d, vec_and_ptr_dim_t& T_s_d,
                                   vec_and_ptr_dim_t& jump, vec_and_ptr_dim_t &v_interface,
                                   vec_and_ptr_t& phi, vec_and_ptr_t& phi_eff, vec_and_ptr_t& phi_sub,
-                                  p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t *ngbd,
+                                  p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1,
                                   double extension_band){
 
   if(!force_interfacial_velocity_to_zero){
@@ -3960,30 +3960,30 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
 
 
       // Get the first derivatives to compute the jump
-      T_l_d.create(p4est,nodes);
-      ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
+      T_l_d.create(p4est_np1, nodes_np1);
+      ngbd_np1->first_derivatives_central(T_l_n.vec, T_l_d.vec);
 
       if(do_we_solve_for_Ts){
         T_s_d.create(T_l_d.vec);
-        ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
+        ngbd_np1->first_derivatives_central(T_s_n.vec, T_s_d.vec);
        }
 
 
       // Initialize level set object -- used in curvature computation, and in extending v interface computed values to entire domain
-      my_p4est_level_set_t ls(ngbd);
+      my_p4est_level_set_t ls(ngbd_np1);
 
       vec_and_ptr_t vgamma_n;
-      vgamma_n.create(p4est, nodes);
+      vgamma_n.create(p4est_np1, nodes_np1);
       vgamma_n.get_array();
 
       vec_and_ptr_dim_t normal;
-      normal.create(p4est, nodes);
+      normal.create(p4est_np1, nodes_np1);
 
-      compute_normals(*ngbd, phi.vec, normal.vec);
+      compute_normals(*ngbd_np1, phi.vec, normal.vec);
       normal.get_array();
 
       // Create vector to hold the jump values:
-      jump.create(p4est,nodes);
+      jump.create(p4est_np1, nodes_np1);
 
       // Get arrays:
       jump.get_array();
@@ -3992,8 +3992,8 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
       phi.get_array();
 
       // First, compute jump in the layer nodes:
-      for(size_t i=0; i<ngbd->get_layer_size();i++){
-        p4est_locidx_t n = ngbd->get_layer_node(i);
+      for(size_t i=0; i<ngbd_np1->get_layer_size();i++){
+        p4est_locidx_t n = ngbd_np1->get_layer_node(i);
 
         if(fabs(phi.ptr[n])<extension_band){ // TO-DO: should be nondim for ALL cases
 
@@ -4018,8 +4018,8 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
       }
 
       // Compute the jump in the local nodes:
-      for(size_t i = 0; i<ngbd->get_local_size();i++){
-          p4est_locidx_t n = ngbd->get_local_node(i);
+      for(size_t i = 0; i<ngbd_np1->get_local_size();i++){
+          p4est_locidx_t n = ngbd_np1->get_local_node(i);
           if(fabs(phi.ptr[n])<extension_band){
               vgamma_n.ptr[n] = 0.; // initialize
               foreach_dimension(d){
@@ -4066,8 +4066,8 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
         phi_sub.get_array();
         v_interface.get_array();
         // Layer nodes:
-        for(size_t i=0; i<ngbd->get_layer_size();i++){
-          p4est_locidx_t n = ngbd->get_layer_node(i);
+        for(size_t i=0; i<ngbd_np1->get_layer_size();i++){
+          p4est_locidx_t n = ngbd_np1->get_layer_node(i);
 
           foreach_dimension(d){
             if(phi_sub.ptr[n]>0.){
@@ -4083,8 +4083,8 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
           VecGhostUpdateBegin(v_interface.vec[d],INSERT_VALUES,SCATTER_FORWARD);
         }
         // Local nodes:
-        for(size_t i = 0; i<ngbd->get_local_size();i++){
-          p4est_locidx_t n = ngbd->get_local_node(i);
+        for(size_t i = 0; i<ngbd_np1->get_local_size();i++){
+          p4est_locidx_t n = ngbd_np1->get_local_node(i);
           foreach_dimension(d){
             if(phi_sub.ptr[n]>0.){
               v_interface.ptr[d][n] = 0.;
@@ -4123,7 +4123,7 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
         //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
         char filename[1000];
         sprintf(filename, "%s/snapshot_interfacial_velocity_process_%d", out_dir, tstep);
-        my_p4est_vtk_write_all_lists(p4est, nodes, ngbd->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
+        my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
         point_fields.clear();
 
       }
@@ -4150,10 +4150,10 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
 
 void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
                       double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],
-                      p4est_nodes_t *nodes, p4est_t *p4est, my_p4est_navier_stokes_t* ns,
+                      p4est_nodes_t *nodes_np1, p4est_t *p4est_np1, my_p4est_navier_stokes_t* ns,
                       const int load_tstep, int &last_tstep ){
 
-  int mpicomm = p4est->mpicomm;
+  int mpicomm = p4est_np1->mpicomm;
 
   // Initialize variables and set max vint if known:
   double max_v_norm = 0.0;
@@ -4165,7 +4165,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
 
   // Compute initial timestep if relevant:
   if(tstep==0){
-    dxyz_min(p4est,dxyz_smallest);
+    dxyz_min(p4est_np1,dxyz_smallest);
 
     // Initialize timesteps to use:
     if(solve_stefan){
@@ -4206,7 +4206,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
               // Check the values of v_interface locally:
               v_interface.get_array();
               phi.get_array();
-              foreach_local_node(n,nodes){
+              foreach_local_node(n, nodes_np1){
                   if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
                       max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
                       // For checking dendrite tip velocity case:
@@ -4227,7 +4227,7 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
               phi.restore_array();
 
               // Get the maximum v norm across all the processors:
-              int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+              int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est_np1->mpicomm);
               SC_CHECK_MPI(mpi_ret);
           }
           else{
@@ -4400,7 +4400,7 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
 
 
 // (WIP :)
-void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t& phi)
+void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi)
 {
   // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
   // adapted from function in my_p4est_multialloy_t originally developed by Daniil Bochkov, adapted by Elyce Bayat 08/24/2020
@@ -4408,14 +4408,14 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
   double proximity_smoothing_ = proximity_smoothing;
 
   double dxyz_[P4EST_DIM];
-  dxyz_min(p4est,dxyz_);
+  dxyz_min(p4est_np1,dxyz_);
 
   double dxyz_min_ = MIN(DIM(dxyz_[0],dxyz_[1],dxyz_[2]));
   double new_phi_val = .5*dxyz_min_;
 
 
   PetscErrorCode ierr;
-  int mpi_comm = p4est->mpicomm;
+  int mpi_comm = p4est_np1->mpicomm;
 
   ierr = PetscLogEventBegin(log_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
   ierr = PetscPrintf(mpi_comm, "Removing problem geometries... "); CHKERRXX(ierr);
@@ -4432,7 +4432,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     // brigning it down and checking which nodes flipped sign
     // (note that it also smooths out too sharp corners which are usually formed by
     // solidifying front ``getting stuck'' on grid nodes)
-    my_p4est_level_set_t ls(ngbd);
+    my_p4est_level_set_t ls(ngbd_np1);
     vec_and_ptr_t front_phi_tmp(phi.vec);
 
     // Shift the LSF:
@@ -4445,7 +4445,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     vec_and_ptr_t island_number(phi.vec);
 
     VecScaleGhost(front_phi_tmp.vec, -1.);
-    compute_islands_numbers(*ngbd, front_phi_tmp.vec, num_islands, island_number.vec);
+    compute_islands_numbers(*ngbd_np1, front_phi_tmp.vec, num_islands, island_number.vec);
     VecScaleGhost(front_phi_tmp.vec, -1.);
 
     if (num_islands > 1)
@@ -4458,7 +4458,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
       // TODO: make it real area instead of number of points
       std::vector<double> island_area(num_islands, 0);
 
-      foreach_local_node(n, nodes) {
+      foreach_local_node(n, nodes_np1) {
         if (island_number.ptr[n] >= 0) {
           ++island_area[ (int) island_number.ptr[n] ];
         }
@@ -4480,7 +4480,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
       if (main_island < 0) throw;
 
       // remove all but the biggest pool
-      foreach_node(n, nodes) {
+      foreach_node(n, nodes_np1) {
         if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island) {
           front_phi_tmp.ptr[n] = new_phi_val;
         }
@@ -4503,7 +4503,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     phi.get_array();
     front_phi_tmp.get_array();
 
-    foreach_node(n, nodes) {
+    foreach_node(n, nodes_np1) {
       if (phi.ptr[n] < 0 && front_phi_tmp.ptr[n] > 0) {
         phi.ptr[n] = front_phi_tmp.ptr[n];
         num_nodes_smoothed++;
@@ -4519,7 +4519,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     // (Optional, not used anymore)
     // Second pass --  we shift LSF down, reinitialize, shift back, and see if some of those nodes are still "stuck"
     // shift level-set downwards and reinitialize
-    my_p4est_level_set_t ls(ngbd);
+    my_p4est_level_set_t ls(ngbd_np1);
     vec_and_ptr_t front_phi_tmp(phi.vec);
 
     // shift up
@@ -4537,7 +4537,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     phi.get_array();
     front_phi_tmp.get_array();
 
-    foreach_node(n, nodes) {
+    foreach_node(n, nodes_np1) {
       if (phi.ptr[n] > 0 && front_phi_tmp.ptr[n] < 0) {
         phi.ptr[n] = front_phi_tmp.ptr[n];
         num_nodes_smoothed++;
@@ -4559,7 +4559,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     vec_and_ptr_t island_number(phi.vec);
 
     VecScaleGhost(phi.vec, -1.);
-    compute_islands_numbers(*ngbd, phi.vec, num_islands, island_number.vec);
+    compute_islands_numbers(*ngbd_np1, phi.vec, num_islands, island_number.vec);
     VecScaleGhost(phi.vec, -1.);
 
     if (num_islands > 1)
@@ -4572,7 +4572,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
       // TODO: make it real area instead of number of points
       std::vector<double> island_area(num_islands, 0);
 
-      foreach_local_node(n, nodes)
+      foreach_local_node(n, nodes_np1)
       {
         if (island_number.ptr[n] >= 0)
         {
@@ -4598,7 +4598,7 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
       if (main_island < 0) throw;
 
       // solidify all but the biggest pool
-      foreach_node(n, nodes)
+      foreach_node(n, nodes_np1)
       {
         if (phi.ptr[n] < 0 && island_number.ptr[n] != main_island)
         {
@@ -7805,9 +7805,9 @@ int main(int argc, char** argv) {
           v_interface.create(p4est_np1,nodes_np1);
 
 
-          compute_interfacial_velocity(T_l_n,T_s_n,
-                                       T_l_d,T_s_d,
-                                       jump,v_interface,
+          compute_interfacial_velocity(T_l_n, T_s_n,
+                                       T_l_d, T_s_d,
+                                       jump, v_interface,
                                        phi, phi_eff, phi_substrate,
                                        p4est_np1, nodes_np1, ngbd_np1,
                                        extension_band_extend_);
