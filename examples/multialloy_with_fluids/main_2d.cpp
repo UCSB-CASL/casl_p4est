@@ -4650,7 +4650,9 @@ void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_nod
 }
 
 
-void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
+
+
+void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                      p4est_t* &p4est, p4est_nodes_t* &nodes,
                      vec_and_ptr_t &phi, vec_and_ptr_dim_t& v_interface,
@@ -4661,7 +4663,9 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
                      my_p4est_node_neighbors_t* ngbd){
   PetscErrorCode ierr;
   int mpi_comm = p4est_np1->mpicomm;
-
+  // ------------------------------------------------------------
+  // Define the things needed for the refinement/coarsening tool:
+  // ------------------------------------------------------------
   if(!solve_stefan) refine_by_d2T=false; // override settings if there *is* no temperature field
 
   bool use_block = false;
@@ -4673,26 +4677,34 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   std::vector<int> custom_lmax;
 
   PetscInt num_fields = 0;
-  if(solve_navier_stokes) num_fields+=1;// for vorticity
-  if(refine_by_d2T)num_fields+=2; // for second derivatives of temperature
+  // -----------------------
+  // Count number of refinement fields and create vectors for necessary fields:
+  // ------------------------
+  if(solve_navier_stokes) {
+    num_fields+=1;
+    vorticity_refine.create(p4est, nodes);
+  }// for vorticity
+  if(refine_by_d2T){
+    num_fields+=2;
+    T_l_dd.create(p4est,nodes);
+    ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
+  } // for second derivatives of temperature
 
   // Create array of fields we wish to refine by, to pass to the refinement tools
   Vec fields_[num_fields];
 
-  // Create vectors for our refinement fields:
+  // ------------------------------------------------------------
+  // Begin preparing the refine/coarsen criteria:
+  // ------------------------------------------------------------
   if(num_fields>0){
-    // Only use values of vorticity and d2T in the positive subdomain for refinement:
-    if(solve_navier_stokes)vorticity_refine.create(p4est,nodes);
-
-    if(refine_by_d2T){
-        T_l_dd.create(p4est,nodes);
-        ngbd->second_derivatives_central(T_l_n.vec,T_l_dd.vec);
-      }
-
+    // ------------------------------------------------------------
     // Prepare refinement fields:
+    // ------------------------------------------------------------
     prepare_refinement_fields(phi,vorticity,vorticity_refine,T_l_dd,ngbd);
 
+    // ------------------------------------------------------------
     // Add our refinement fields to the array:
+    // ------------------------------------------------------------
     PetscInt fields_idx = 0;
     if(solve_navier_stokes)fields_[fields_idx++] = vorticity_refine.vec;
     if(refine_by_d2T){
@@ -4702,7 +4714,9 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
     P4EST_ASSERT(fields_idx ==num_fields);
 
+    // ------------------------------------------------------------
     // Add our instructions:
+    // ------------------------------------------------------------
     // Coarsening instructions: (for vorticity)
     if(solve_navier_stokes){
       compare_opn.push_back(LESS_THAN);
@@ -4755,6 +4769,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       else{custom_lmax.push_back(sp.max_lvl);}
       }
     } // end of "if num_fields!=0"
+
   // -------------------------------
   // Call grid advection and update:
   // -------------------------------
@@ -4785,7 +4800,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   } // case for stefan or coupled
   else {
       // NS only case --> no advection --> do grid update iteration manually:
-      splitting_criteria_tag_t sp_NS(sp.min_lvl,sp.max_lvl,sp.lip);
+      splitting_criteria_tag_t sp_NS(sp.min_lvl, sp.max_lvl, sp.lip);
 
       // Create a new vector which will hold the updated values of the fields -- since we will interpolate with each grid iteration
       Vec fields_new_[num_fields];
@@ -4800,7 +4815,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       // Create a vector which will hold the updated values of the LSF:
       vec_and_ptr_t phi_new;
       phi_new.create(p4est,nodes);
-      ierr = VecCopyGhost(phi.vec,phi_new.vec);
+      ierr = VecCopyGhost(phi.vec, phi_new.vec);
 
       bool is_grid_changing = true;
       int no_grid_changes = 0;
@@ -4863,7 +4878,7 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
 
           // Do last balancing of the grid, and final interp of phi:
           if(no_grid_changes>10) {PetscPrintf(mpi_comm,"NS grid did not converge!\n"); break;}
-        } // end of while grid is changing
+      } // end of while grid is changing
 
       // Update the LSF accordingly:
       phi.destroy();
@@ -4873,17 +4888,20 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
       // Destroy the vectors we created for refine and coarsen:
       for(unsigned int k = 0;k<num_fields; k++){
           ierr = VecDestroy(fields_new_[k]);
-        }
+      }
       phi_new.destroy();
-    } // end of if only navier stokes
+  } // end of if only navier stokes
 
   // -------------------------------
   // Destroy refinement fields now that they're not in use:
   // -------------------------------
   if(solve_navier_stokes){
       vorticity_refine.destroy();
-    }
-  if(refine_by_d2T){T_l_dd.destroy();}
+  }
+  if(refine_by_d2T){
+    T_l_dd.destroy();
+  }
+
   // -------------------------------
   // Clear up the memory from the std vectors holding refinement info:
   // -------------------------------
@@ -4891,6 +4909,108 @@ void update_the_grid(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_un
   compare_opn.shrink_to_fit(); diag_opn.shrink_to_fit(); criteria.shrink_to_fit();
   custom_lmax.clear(); custom_lmax.shrink_to_fit();
 };
+
+
+void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
+                     p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, my_p4est_node_neighbors_t* &ngbd_np1,
+                     p4est_ghost_t* &ghost_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                     p4est_t* &p4est, p4est_nodes_t* &nodes, my_p4est_node_neighbors_t* &ngbd,
+                     p4est_ghost_t* &ghost, my_p4est_hierarchy_t* &hierarchy,
+                     my_p4est_brick_t &brick, my_p4est_navier_stokes_t* ns,
+                     vec_and_ptr_t &phi, vec_and_ptr_t &phi_nm1, vec_and_ptr_dim_t& v_interface,
+                     vec_and_ptr_t& phi_substrate, vec_and_ptr_t &phi_eff,
+                     vec_and_ptr_dim_t& phi_dd,
+                     vec_and_ptr_t& vorticity, vec_and_ptr_t& vorticity_refine,
+                     vec_and_ptr_t& T_l_n,vec_and_ptr_dim_t& T_l_dd){
+
+  int ierr;
+  int mpi_comm = p4est_np1->mpicomm;
+
+
+  // --------------------------------
+  // Destroy p4est at n and slide grids:
+  // -----------------------------------
+  p4est_destroy(p4est);
+  p4est_ghost_destroy(ghost);
+  p4est_nodes_destroy(nodes);
+  delete ngbd;
+  delete hierarchy;
+
+  p4est = p4est_np1;
+  ghost = ghost_np1;
+  nodes = nodes_np1;
+
+  hierarchy = hierarchy_np1;
+  ngbd = ngbd_np1;
+
+  // -------------------------------
+  // Create the new p4est at time np1:
+  // -------------------------------
+  p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
+  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_np1,ghost_np1);
+  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+  // Get the new neighbors: // TO-DO : no need to do this here, is there ?
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, &brick);
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+
+  // Initialize the neigbors:
+  ngbd_np1->init_neighbors();
+
+  // ------------------------------------------------------
+  // Nullify the nm1 grid inside the NS solver if relevant:
+  // ------------------------------------------------------
+  if(solve_navier_stokes && (tstep>1)){
+    ns->nullify_p4est_nm1(); // the nm1 grid has just been destroyed, but pointer within NS has not been updated, so it needs to be nullified (p4est_nm1 in NS == p4est in main)
+  }
+
+  // -------------------------------
+  // Perform the advection/grid update:
+  // -------------------------------
+  // If solving NS, save the previous LSF to provide to NS solver, to correctly
+  // interpolate hodge variable to new grid
+
+  if(solve_navier_stokes){
+    // Rochi addition 10/1/22 solved memory leak
+    if (phi_nm1.vec!= NULL){
+      phi_nm1.destroy();
+    }
+    phi_nm1.create(p4est,nodes);
+    ierr = VecCopyGhost((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
+    // copy over phi eff if we are using a substrate
+    // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
+    // for NS update procedure
+    if(print_checkpoints) ierr= PetscPrintf(mpi_comm,"Phi nm1 copy is created ... \n");
+  }
+
+  my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
+
+  refine_and_coarsen_grid_and_advect_lsf_if_applicable(sl, sp,
+                                                       p4est_np1, nodes_np1, ghost_np1,
+                                                       p4est, nodes,
+                                                       phi, v_interface,
+                                                       phi_substrate, phi_dd,
+                                                       vorticity, vorticity_refine,
+                                                       T_l_n, T_l_dd,
+                                                       ngbd);
+
+  // -------------------------------
+  // Update hierarchy and neighbors to match new updated grid:
+  // -------------------------------
+  hierarchy_np1->update(p4est_np1,ghost_np1);
+  ngbd_np1->update(hierarchy_np1,nodes_np1);
+
+  // Initialize the neigbors:
+  ngbd_np1->init_neighbors();
+
+
+
+};
+
+
+
+
 
 // Elyce to-do: why don't we just pass in vec_and_ptr here?
 void poisson_step(Vec phi, Vec phi_solid,
@@ -8201,80 +8321,12 @@ int main(int argc, char** argv) {
       if(tstep!=last_tstep){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
                                                      "Refine by d2T = %s \n",refine_by_d2T? "true": "false");
-        // --------------------------------
-        // Destroy p4est at n and slide grids:
-        // -----------------------------------
-        p4est_destroy(p4est);
-        p4est_ghost_destroy(ghost);
-        p4est_nodes_destroy(nodes);
-        delete ngbd;
-        delete hierarchy;
 
-        p4est = p4est_np1;
-        ghost = ghost_np1;
-        nodes = nodes_np1;
-
-        hierarchy = hierarchy_np1;
-        ngbd = ngbd_np1;
-
-        // -------------------------------
-        // Create the new p4est at time np1:
-        // -------------------------------
-        p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
-        ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-        my_p4est_ghost_expand(p4est_np1,ghost_np1);
-        nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-        // Get the new neighbors: // TO-DO : no need to do this here, is there ?
-        hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
-        ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-
-        // Initialize the neigbors:
-        ngbd_np1->init_neighbors();
-
-
-        if(solve_navier_stokes && (tstep>1)){
-          ns->nullify_p4est_nm1(); // the nm1 grid has just been destroyed, but pointer within NS has not been updated, so it needs to be nullified (p4est_nm1 in NS == p4est in main)
-        }
-        // -------------------------------
-        // Create the semi-lagrangian object and do the advection/grid update:
-        // -------------------------------
-        // If solving NS, save the previous LSF to provide to NS solver, to correctly
-        // interpolate hodge variable to new grid
-
-        if(solve_navier_stokes){
-          // Rochi addition 10/1/22 solved memory leak
-          if (phi_nm1.vec!= NULL){
-            phi_nm1.destroy();
-          }
-          phi_nm1.create(p4est,nodes);
-          ierr = VecCopyGhost((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec); CHKERRXX(ierr); //--> this will need to be provided to NS update_from_tn_to_tnp1_grid_external
-          // copy over phi eff if we are using a substrate
-          // Note: this is done because the update_p4est destroys the old LSF, but we need to keep it
-          // for NS update procedure
-          if(print_checkpoints) ierr= PetscPrintf(mpi.comm(),"Phi nm1 copy is created ... \n");
-        }
-
-        my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
-
-        update_the_grid(sl,sp,
-                        p4est_np1,nodes_np1,ghost_np1,
-                        p4est,nodes,
-                        phi,v_interface,
-                        phi_substrate,phi_dd,
-                        vorticity,vorticity_refine,
-                        T_l_n,T_l_dd,
-                        ngbd);
-
-        // -------------------------------
-        // Update hierarchy and neighbors to match new updated grid:
-        // -------------------------------
-
-        hierarchy_np1->update(p4est_np1,ghost_np1);
-        ngbd_np1->update(hierarchy_np1,nodes_np1);
-
-        // Initialize the neigbors:
-        ngbd_np1->init_neighbors();
+        update_the_grid(sp, p4est_np1, nodes_np1, ngbd_np1, ghost_np1, hierarchy_np1,
+                        p4est, nodes, ngbd, ghost, hierarchy,
+                        brick, ns,
+                        phi, phi_nm1, v_interface, phi_substrate, phi_eff, phi_dd,
+                        vorticity, vorticity_refine, T_l_n, T_l_dd);
 
         // -------------------------------
         // Reinitialize the LSF on the new grid (if it has been advected):
