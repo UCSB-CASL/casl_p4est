@@ -4398,6 +4398,29 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
   phi.restore_array();
 }
 
+void perform_reinitialization(int mpi_comm, my_p4est_level_set_t ls, vec_and_ptr_t& phi){
+  // Time to reinitialize in a clever way depending on the scenario:
+
+  if(solve_stefan && !force_interfacial_velocity_to_zero){
+    // If interface velocity *is* forced to zero, we do not reinitialize -- that way we don't degrade the LSF through unnecessary reinitializations
+
+
+
+   // There are some cases where we may not want to reinitialize after every time iteration
+   // i.e.) In the coupled case, if fluid velocity is much larger than interfacial velocity, may not need to reinitialize as much
+   // (bc the timestepping is much smaller than necessary for the interface growth, and we don't want the reinitialization to govern more of the interface change than the actual physical interface change)
+    // For this reason, we have the user option of reinit_every_iter (which is default set to 1)
+
+    if((tstep % reinit_every_iter) == 0){
+      ls.reinitialize_2nd_order(phi.vec);
+      PetscPrintf(mpi_comm, "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
+    }
+  }
+  else{
+    // If only solving Navier-Stokes, or just no interface motion, only need to do this once, not every single timestep
+    if(tstep==0) ls.reinitialize_2nd_order(phi.vec);
+  }
+};
 
 // (WIP :)
 void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi)
@@ -5780,7 +5803,7 @@ void save_fields_to_vtk(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
 };
 
 // --------------------------------------------------------------------------------------------------------------
-// Functions for checking the error in test cases (and then saving to vtk):
+// Functions for checking the error in test cases (and then saving to vtk): // NOTE: eventually, we will move these to be owned by the examples class
 // --------------------------------------------------------------------------------------------------------------
 void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_and_ptr_t& phi, vec_and_ptr_dim_t& v_interface,  double dxyz_close_to_interface, bool are_we_saving_vtk, char* filename_vtk,char *name, FILE *fich){
   PetscErrorCode ierr;
@@ -8252,48 +8275,21 @@ int main(int argc, char** argv) {
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Reinitializing LSF... \n");
         ls.update(ngbd_np1);
+        perform_reinitialization(mpi.comm(), ls, phi);
 
-        // Okay, time to reinitialize in a clever way depending on the scenario:
-
-        if(solve_stefan){
-          // If interface velocity *is* forced to zero, we do not reinitialize -- that way we don't degrade the LSF through unnecessary reinitializations
-          if(!force_interfacial_velocity_to_zero){
-            // If we do need to reinitialize, let's think about the time scales
-            if(solve_navier_stokes && tstep>0){
-              // If we are solving the coupled problem -- let's check the time scales of the interfacial velocity versus the fluid one.
-              // If fluid velocity is much larger than interfacial velocity, may not need to reinitialize as much
-              // (bc the timestepping is much smaller than necessary for the interface growth, and we don't want the reinitialization to govern more of the interface change than the actual physical interface change)
-
-              if((tstep % reinit_every_iter) == 0){
-                ls.reinitialize_2nd_order(phi.vec,30);
-                PetscPrintf(mpi.comm(), "reinit every iter =%d, LSF was reinitialized \n", reinit_every_iter);
-              }
-            }
-            else{
-              // if just stefan, go ahead and reinitialize
-              ls.reinitialize_2nd_order(phi.vec,30);
-            }
-          }
-        }
-
-        if(solve_navier_stokes && !solve_stefan){
-          // If only solving Navier-Stokes, only need to do this once, not every single timestep
-          if(tstep==0)ls.reinitialize_2nd_order(phi.vec,30);
-        }
-
+        // Regularize the front (if we are doing that)
         if(use_regularize_front){
           PetscPrintf(mpi.comm(), "Calling regularlize front: \n");
           regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);
         }
 
+        // Check collapse on the substrate (if we are doing that)
         if(example_uses_inner_LSF && use_collapse_onto_substrate){
           PetscPrintf(mpi.comm(), "Checking collapse \n ");
-
-          //            if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_substrate.vec);}
-
+//          if(start_w_merged_grains){regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi_substrate.vec);}
           check_collapse_on_substrate(p4est_np1,nodes_np1,ngbd_np1, phi, phi_substrate);
-
         }
+
         // --------------------------------------------------------------------------------------------------------------
         // Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
