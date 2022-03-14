@@ -3564,7 +3564,7 @@ void create_and_prepare_auxiliary_fields_for_poisson_step(p4est_t* p4est_np1, p4
 void destroy_auxiliary_fields_for_poisson_step();
 
 
-void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,vec_and_ptr_t& T_l_backtrace, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd, external_heat_source** external_heat_source_term=NULL){
+void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source** external_heat_source_term=NULL){
 
   // In building RHS, if we are doing advection, we have two options:
   // (1) 1st order -- approx is (dT/dt + u dot grad(T)) ~ (T(n+1) - Td(n))/dt --> so we add Td/dt to the RHS
@@ -3584,12 +3584,12 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
   vec_and_ptr_t forcing_term_solid;
 
   if(analytical_IC_BC_forcing_term){
-    forcing_term_liquid.create(p4est,nodes);
-    sample_cf_on_nodes(p4est,nodes,*external_heat_source_term[LIQUID_DOMAIN],forcing_term_liquid.vec);
+    forcing_term_liquid.create(p4est_np1, nodes_np1);
+    sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[LIQUID_DOMAIN], forcing_term_liquid.vec);
 
     if(do_we_solve_for_Ts) {
-      forcing_term_solid.create(p4est,nodes);
-      sample_cf_on_nodes(p4est,nodes,*external_heat_source_term[SOLID_DOMAIN],forcing_term_solid.vec);
+      forcing_term_solid.create(p4est_np1, nodes_np1);
+      sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[SOLID_DOMAIN], forcing_term_solid.vec);
     }
   }
 
@@ -3598,13 +3598,13 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
   vec_and_ptr_dim_t T_s_dd;
   if(method_ ==2){
     if(do_we_solve_for_Ts){
-      T_s_dd.create(p4est,nodes);
-      ngbd->second_derivatives_central(T_s.vec,T_s_dd.vec[0],T_s_dd.vec[1]);
+      T_s_dd.create(p4est_np1, nodes_np1);
+      ngbd_np1->second_derivatives_central(T_s_n.vec,T_s_dd.vec[0], T_s_dd.vec[1]);
       T_s_dd.get_array();
     }
     if(!solve_navier_stokes) {
-        T_l_dd.create(p4est,nodes);
-        ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1]);
+        T_l_dd.create(p4est_np1,nodes_np1);
+        ngbd_np1->second_derivatives_central(T_l_n.vec,T_l_dd.vec[0], T_l_dd.vec[1]);
         T_l_dd.get_array();
       }
     }
@@ -3616,18 +3616,18 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
     }
   // Get Ts arrays:
   if(do_we_solve_for_Ts){
-    T_s.get_array();
+    T_s_n.get_array();
     rhs_Ts.get_array();
   }
 
   // Get Tl arrays:
   rhs_Tl.get_array();
   if(solve_navier_stokes){
-      T_l_backtrace.get_array();
+      T_l_backtrace_n.get_array();
       if(advection_sl_order ==2) T_l_backtrace_nm1.get_array();
     }
   else{
-      T_l.get_array();
+      T_l_n.get_array();
     }
 
   if(analytical_IC_BC_forcing_term){
@@ -3637,32 +3637,32 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
 
   phi.get_array();
   // 3-7-22 : Elyce changed from foreach_local_node to foreach_node --> when I visualized rhs it was patchy ...
-  foreach_node(n,nodes){
+  foreach_node(n, nodes_np1){
     if(do_we_solve_for_Ts){
       // First, assemble system for Ts depending on case:
       if(method_ == 2){ // Crank Nicholson
-        rhs_Ts.ptr[n] = 2.*T_s.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
+        rhs_Ts.ptr[n] = 2.*T_s_n.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
       }
       else{ // Backward Euler
-        rhs_Ts.ptr[n] = T_s.ptr[n]/dt;
+        rhs_Ts.ptr[n] = T_s_n.ptr[n]/dt;
       }
     }
 
     // Now for Tl depending on case:
     if(solve_navier_stokes){
       if(advection_sl_order ==2){
-        rhs_Tl.ptr[n] = T_l_backtrace.ptr[n]*((advection_alpha_coeff/dt) - (advection_beta_coeff/dt_nm1)) + T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1);
+        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]*((advection_alpha_coeff/dt) - (advection_beta_coeff/dt_nm1)) + T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1);
         }
       else{
-        rhs_Tl.ptr[n] = T_l_backtrace.ptr[n]/dt;
+        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]/dt;
         }
      }
     else{
       if(method_ ==2){//Crank Nicholson
-        rhs_Tl.ptr[n] = 2.*T_l.ptr[n]/dt + alpha_l*(T_l_dd.ptr[0][n] + T_l_dd.ptr[1][n]);
+        rhs_Tl.ptr[n] = 2.*T_l_n.ptr[n]/dt + alpha_l*(T_l_dd.ptr[0][n] + T_l_dd.ptr[1][n]);
         }
       else{ // Backward Euler
-        rhs_Tl.ptr[n] = T_l.ptr[n]/dt;
+        rhs_Tl.ptr[n] = T_l_n.ptr[n]/dt;
         }
       }
     if(analytical_IC_BC_forcing_term){
@@ -3677,17 +3677,17 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
   phi.restore_array();
 
   if(do_we_solve_for_Ts){
-    T_s.restore_array();
+    T_s_n.restore_array();
     rhs_Ts.restore_array();
   }
 
   rhs_Tl.restore_array();
   if(solve_navier_stokes){
-      T_l_backtrace.restore_array();
+      T_l_backtrace_n.restore_array();
       if(advection_sl_order==2) T_l_backtrace_nm1.restore_array();
     }
   else{
-      T_l.restore_array();
+      T_l_n.restore_array();
     }
   if(method_ ==2){
     if(do_we_solve_for_Ts){
@@ -3709,16 +3709,29 @@ void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l, vec_and_ptr_t& T_s, vec_an
 
     // Destroy these if they were created
     forcing_term_liquid.destroy();
-
   }
 }
 
-void do_backtrace(vec_and_ptr_t& T_l, vec_and_ptr_t& T_l_nm1,
-                  vec_and_ptr_t& T_l_backtrace, vec_and_ptr_t& T_l_backtrace_nm1,
-                  vec_and_ptr_dim_t& v, vec_and_ptr_dim_t& v_nm1,
-                  p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd,
-                  p4est_t* p4est_nm1, p4est_nodes_t* nodes_nm1, my_p4est_node_neighbors_t* ngbd_nm1){
-  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Beginning to do backtrace \n");
+void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
+                  vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1,
+                  vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_dim_t& v_nm1_NS,
+                  p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                  p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n){
+  // -------------------
+  // A note on notation:
+  // -------------------
+  // Recall that at this stage, we are computing backtrace points for
+  // -- T_n (sampled on the grid np1) and T_nm1 (sampled on the grid n)
+  // using the fluid velocities
+  // -- v_n_NS (sampled on grid np1) and v_nm1_NS (sampled on the grid n)
+
+  // This notation can be a bit confusing, but stems from the fact that the grid np1 has been chosen around the interface location at time np1,
+  // and all the fields at n have been interpolated to this new grid to solve for fields at np1.
+  // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
+
+
+
+  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Beginning to do backtrace \n");
   PetscErrorCode ierr;
   // Initialize objects we will use in this function:
   // PETSC Vectors for second derivatives
@@ -3730,26 +3743,24 @@ void do_backtrace(vec_and_ptr_t& T_l, vec_and_ptr_t& T_l_nm1,
   vector <double> xyz_d[P4EST_DIM];
   vector <double> xyz_d_nm1[P4EST_DIM];
 
-  // Interpolators
-  my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd); /*= NULL;*/
-//  SL_backtrace_interp = new my_p4est_interpolation_nodes_t(ngbd);
+  // Create the necessary interpolators
+  my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
+  my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
 
-  my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_nm1);/* = NULL;*/
-//  SL_backtrace_interp_nm1 = new my_p4est_interpolation_nodes_t(ngbd_nm1);
   // Get the relevant second derivatives
-  T_l_dd.create(p4est,nodes);
-  ngbd->second_derivatives_central(T_l.vec,T_l_dd.vec);
+  T_l_dd.create(p4est_np1, nodes_np1);
+  ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
 
   if(advection_sl_order==2) {
-      T_l_dd_nm1.create(p4est_nm1,nodes_nm1);
-      ngbd_nm1->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
+      T_l_dd_nm1.create(p4est_n, nodes_n);
+      ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
     }
 
   foreach_dimension(d){
     foreach_dimension(dd){
-      ierr = VecCreateGhostNodes(p4est, nodes, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
       if(advection_sl_order==2){
-          ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
+          ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
         }
     }
   }
@@ -3757,22 +3768,22 @@ void do_backtrace(vec_and_ptr_t& T_l, vec_and_ptr_t& T_l_nm1,
   // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
   // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
 
-  ngbd->second_derivatives_central(v.vec,v_dd[0],v_dd[1],P4EST_DIM);
+  ngbd_np1->second_derivatives_central(v_n_NS.vec,v_dd[0],v_dd[1],P4EST_DIM);
   if(advection_sl_order ==2){
-      ngbd_nm1->second_derivatives_central(v_nm1.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
+      ngbd_n->second_derivatives_central(v_nm1_NS.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
     }
 
   // Do the Semi-Lagrangian backtrace:
   if(advection_sl_order ==2){
-      trajectory_from_np1_to_nm1(p4est,nodes,ngbd_nm1,ngbd,v_nm1.vec,v_dd_nm1,v.vec,v_dd,dt_nm1,dt,xyz_d_nm1,xyz_d);
-      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Completes backtrace trajectory \n");
+      trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1_NS.vec, v_dd_nm1, v_n_NS.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
+      if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace trajectory \n");
     }
   else{
-      trajectory_from_np1_to_n(p4est,nodes,ngbd,dt,v.vec,v_dd,xyz_d);
+      trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n_NS.vec, v_dd, xyz_d);
     }
 
   // Add backtrace points to the interpolator(s):
-  foreach_local_node(n,nodes){
+  foreach_local_node(n, nodes_np1){
     double xyz_temp[P4EST_DIM];
     double xyz_temp_nm1[P4EST_DIM];
 
@@ -3789,11 +3800,11 @@ void do_backtrace(vec_and_ptr_t& T_l, vec_and_ptr_t& T_l_nm1,
   } // end of loop over local nodes
 
   // Interpolate the Temperature data to back-traced points:
-  SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
-  SL_backtrace_interp.interpolate(T_l_backtrace.vec);
+  SL_backtrace_interp.set_input(T_l_n.vec, T_l_dd.vec[0], T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
+  SL_backtrace_interp.interpolate(T_l_backtrace_n.vec);
 
   if(advection_sl_order ==2){
-      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1], quadratic_non_oscillatory_continuous_v2);
+      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec, T_l_dd_nm1.vec[0], T_l_dd_nm1.vec[1], quadratic_non_oscillatory_continuous_v2);
       SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
     }
 
@@ -3820,7 +3831,7 @@ void do_backtrace(vec_and_ptr_t& T_l, vec_and_ptr_t& T_l_nm1,
   SL_backtrace_interp.clear();
   SL_backtrace_interp_nm1.clear();
 
-  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Completes backtrace \n");
+  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
 }
 
 // Elyce to do -- how to change this fxn to pass by reference?
@@ -4091,7 +4102,7 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
 
       }
 
-      if(1){
+      if(0){
         // -------------------------------
         // TEMPORARY: save phi_eff fields to see what we are working with
         // -------------------------------
@@ -4388,7 +4399,7 @@ void prepare_refinement_fields(vec_and_ptr_t& phi, vec_and_ptr_t& vorticity, vec
 }
 
 
-// (WIP -- currently unused:)
+// (WIP :)
 void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd, vec_and_ptr_t& phi)
 {
   // FUNCTION FOR REGULARIZING THE SOLIDIFICATION FRONT:
@@ -4538,9 +4549,6 @@ void regularize_front(p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighb
     front_phi_tmp.destroy();
   }
   ierr = MPI_Allreduce(MPI_IN_PLACE, &num_nodes_smoothed, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(ierr);
-
-//  vec_and_ptr_t front_phi_tmp;
-//  front_phi_tmp.set(phi.vec); // <- that is a big memory leak situation I think
 
   // ELYCE TO DO-- THIS THIRD PART DOES NOT GET USED, SHOULD PROBABLY BYPASS THIS --> jk, I think it does get used , i think set() makes the two things the same so it's actually updating phi
   // third pass: look for isolated pools of liquid and remove them
@@ -7652,10 +7660,10 @@ int main(int argc, char** argv) {
         // -------------------------------
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
 
-        setup_rhs(phi,T_l_n,T_s_n,
-                  rhs_Tl,rhs_Ts,
-                  T_l_backtrace,T_l_backtrace_nm1,
-                  p4est_np1,nodes_np1,ngbd_np1,external_heat_source_T);
+        setup_rhs(phi, T_l_n, T_s_n,
+                  rhs_Tl, rhs_Ts,
+                  T_l_backtrace, T_l_backtrace_nm1,
+                  p4est_np1, nodes_np1, ngbd_np1, external_heat_source_T);
 
         // -------------------------------
         // Execute the Poisson step:
@@ -7681,7 +7689,7 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
 
 
-        if(1){
+        if(0){
           // -------------------------------
           // TEMPORARY: save fields right after poisson step to see why we are having issues w Ts soln:
           // -------------------------------
@@ -7859,11 +7867,11 @@ int main(int argc, char** argv) {
             ierr = VecCopyGhost(v_n.vec[d],v_n_NS.vec[d]); CHKERRXX(ierr);
           }
 
-          initialize_ns_solver(ns,p4est_np1,ghost_np1,ngbd_np1,ngbd,
-                               hierarchy_np1,&brick,
+          initialize_ns_solver(ns, p4est_np1, ghost_np1, ngbd_np1,ngbd,
+                               hierarchy_np1, &brick,
                                (example_uses_inner_LSF ? phi_eff.vec:phi.vec),
-                               v_n_NS.vec,v_nm1_NS.vec,
-                               faces_np1,ngbd_c_np1);
+                               v_n_NS.vec, v_nm1_NS.vec,
+                               faces_np1, ngbd_c_np1);
         }
         else{
           ns->update_from_tn_to_tnp1_grid_external((example_uses_inner_LSF? phi_eff.vec : phi.vec), phi_nm1.vec,

@@ -2295,7 +2295,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   }
 
   // (3.5) Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n + 1 grid to become the vn values at upcoming the (n + 1) timestep
-  interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+  interp_nodes.set_input(vnp1_nodes, quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
   interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
