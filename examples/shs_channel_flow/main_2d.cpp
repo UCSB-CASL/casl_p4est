@@ -83,7 +83,7 @@ const int default_lmin                        = 4;
 const int default_lmax                        = 6;
 const double default_thresh                   = 0.1;
 const int default_wall_layer                  = 6;
-const double default_lmid_delta_percent		  = 0.3;
+const double default_lmid_delta_percent		  = 0;
 const double default_lip                      = 1.2;
 const int default_ntree_y                     = 2;
 const double default_length                   = 6.0;
@@ -1416,7 +1416,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax",                "max level of the trees, default is " + std::to_string(default_lmax) + " or value read from solver state if restarted.");
   cmd.add_option("thresh",              "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
   cmd.add_option("wall_layer",          "number of finest cells desired to layer the channel walls, default is " + std::to_string(default_wall_layer) + " or value deduced from solver state if restarted.");
-  cmd.add_option("lmid_delta_percent", 	"how far to use mid-level refinement cells away from the wall (as percent w.r.t. delta), default is " + std::to_string( default_lmid_delta_percent ) );
+  cmd.add_option("lmid_delta_percent", 	"how far to use mid-level refinement cells away from the wall (as percent w.r.t. delta); provide 0 to disable this option; default is " + std::to_string( default_lmid_delta_percent ) );
   cmd.add_option("lip",                 "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the top/bottom wall in case of spanwise grooves or to the closest no-slip region with streamwise grooves. \n\tWarning: this application uses a modified criterion comparin the levelset value to L\\Delta y (as opposed to L*diag(C)). \n\tDefault value is " + std::to_string(default_lip) + (default_lip < 10.0 ? " (fyi: that's thin for turbulent cases)" : "") + " or value read from solver state if restarted.");
   cmd.add_option("nx",                  "number of trees in the x-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*length/height  to ensure aspect ratio of cells = 1 when using default dimensions");
   cmd.add_option("ny",                  "number of trees in the y-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "                to ensure aspect ratio of cells = 1 when using default dimensions");

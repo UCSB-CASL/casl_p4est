@@ -183,12 +183,11 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 		const int NUM_MID_LEVELS = data->max_lvl - data->min_lvl - 1;
 		double midEffectiveDist = data->DELTA * data->LMID_DELTA_PERCENT - data->uniform_band * smallest_dy;
 		std::vector<double> midBounds;
-		bool midLvlCellsOK = true;
-		if( NUM_MID_LEVELS > 0 )
+		bool midLvlCellsOK = false;
+		if( NUM_MID_LEVELS > 0 && data->LMID_DELTA_PERCENT > 0 )	// Use option only if user allowed it with a percent > 0.
 		{
 			if( midEffectiveDist <= 0 )		// Check mid-level cells have space to be placed; if not, don't enforce anything.
 			{
-				midLvlCellsOK = false;
 				std::cerr << "[CASL_WARNING] refine_levelset_cf_and_uniform_band_shs: The uniform band of finest cells "
 						  << "extends beyond the requested space for mid-level cells!  Check your calculations..."
 						  << std::endl;
@@ -204,6 +203,7 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 					else
 						midBounds.push_back( midBounds.back() + (1 << i) * b );
 				}
+				midLvlCellsOK = true;
 			}
 		}
 
@@ -239,7 +239,7 @@ p4est_bool_t refine_levelset_cf_and_uniform_band_shs( p4est_t *p4est, p4est_topi
 						if( minDistToWall < data->uniform_band * smallest_dy )
 							return P4EST_TRUE;	// Enforce uniform band along the wall, regardless of interface type.
 
-						// Check the mid-level cells (and their bands).
+						// Check the mid-level cells (and their bands) only if requested and valid.
 						if( NUM_MID_LEVELS > 0 && midLvlCellsOK )
 						{
 							int boundIdx = MAX( 0, MIN( (data->max_lvl - 1) - (quad->level + 1), NUM_MID_LEVELS - 1 ) );	// We want to check if we can go one level up.

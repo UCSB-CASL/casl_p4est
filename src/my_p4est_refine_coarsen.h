@@ -99,7 +99,7 @@ struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
 };
 
 /**
- * Class for refining an superhydrophic-surfaced channel where the ridges and air interface lie at y=+-DELTA, where
+ * Class for refining an superhydrophic-surfaced channel where the solid ridges and air interface lie at y=+-DELTA, and
  * DELTA is half the channel height.  The goal of this refining criteria is to use uniform bands for the distinct levels
  * of refinements based on cell distances to the solid ridges.  Since the traditional approach doesn't enforce uniform
  * refinement along the air interfaces, here we add conditions (independent of the Lipschitz condition) so that the
@@ -109,7 +109,7 @@ struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
 struct splitting_criteria_cf_and_uniform_band_shs_t : splitting_criteria_cf_and_uniform_band_t
 {
 	const double DELTA;					// Channel half-height (on the y-axis).
-	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells.
+	const double LMID_DELTA_PERCENT;	// How far to extend mid-level cells (use 0 to disable this option).
 
 	/**
 	 * Constructor.
@@ -118,7 +118,7 @@ struct splitting_criteria_cf_and_uniform_band_shs_t : splitting_criteria_cf_and_
 	 * @param [in] phi Level-set object.
 	 * @param [in] uniformBand Desired uniform band next to the wall (regardless of type of interface: solid or gas).
 	 * @param [in] delta Channel half-height.
-	 * @param [in] lmidDeltaPercent How far to extend mid-level cells away from the wall.  Value must be in (0,1).
+	 * @param [in] lmidDeltaPercent How far to extend mid-level cells away from the wall.  Value must be in [0,1), where 0 disables the option.
 	 * @param [in] lip Lipschitz constant.
 	 */
 	splitting_criteria_cf_and_uniform_band_shs_t( const int& minLvl, const int& maxLvl, const CF_DIM *phi,
@@ -132,8 +132,9 @@ struct splitting_criteria_cf_and_uniform_band_shs_t : splitting_criteria_cf_and_
 		if( minLvl < 0 || minLvl > maxLvl )
 			throw std::invalid_argument( errorPrefix + "Invalid min and max levels of refinement!" );
 
-		if( maxLvl > minLvl && (lmidDeltaPercent <= 0 || lmidDeltaPercent >= 1) )	// Validate only if we expect mid-level cells.
-			throw std::invalid_argument( errorPrefix + "Mid-level-cell extension must be positive and no more than 1*delta away from the wall." );
+		// Validate only if we expect mid-level cells and user wants to use mid-level cell percentage option.
+		if( maxLvl > minLvl && (lmidDeltaPercent < 0 || lmidDeltaPercent >= 1) )
+			throw std::invalid_argument( errorPrefix + "Mid-level-cell extension must non-negative and no more than 1*delta away from the wall." );
 	}
 };
 
