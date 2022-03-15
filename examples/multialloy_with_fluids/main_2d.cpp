@@ -5152,7 +5152,7 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
 
   // Solve the system:
   solver_Tl->solve(T_l_n.vec, false, true, KSPBCGS, PCHYPRE);
-  if(do_we_solve_for_Ts) solver_Ts->solve(T_l_n.vec, false, true, KSPBCGS, PCHYPRE);
+  if(do_we_solve_for_Ts) solver_Ts->solve(T_s_n.vec, false, true, KSPBCGS, PCHYPRE);
 
   // Delete solvers:
   delete solver_Tl;
