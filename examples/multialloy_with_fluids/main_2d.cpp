@@ -3556,275 +3556,6 @@ void extend_relevant_fields(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
   }
 }
 
-void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts, vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source** external_heat_source_term=NULL){
-
-  // In building RHS, if we are doing advection, we have two options:
-  // (1) 1st order -- approx is (dT/dt + u dot grad(T)) ~ (T(n+1) - Td(n))/dt --> so we add Td/dt to the RHS
-  // (2) 2nd order -- approx is (dT/dt + u dot grad(T)) ~ alpha*(T(n+1) - Td(n))/dt + beta*(Td(n) - Td(n-1))/dt_nm1
-  //                       --> so we add Td(n)*(alpha/dt - beta/dt_nm1) + Td(n-1)*(beta/dt_nm1) to the RHS
-  //               -- where alpha and beta are weights of the two timesteps
-  // See Semi-Lagrangian backtrace advection schemes for more details
-
-  // If we are not doing advection, then we have:
-  // (1) dT/dt = (T(n+1) - T(n)/dt) --> which is a backward euler 1st order approximation (since the RHS is discretized spatially at T(n+1))
-  // (2) dT/dt = alpha*laplace(T) ~ (T(n+1) - T(n)/dt) = (1/2)*(laplace(T(n)) + laplace(T(n+1)) )  ,
-  //                              in which case we need the second derivatives of the temperature field at time n
-
-
-  // Establish forcing terms if applicable:
-  vec_and_ptr_t forcing_term_liquid;
-  vec_and_ptr_t forcing_term_solid;
-
-  if(analytical_IC_BC_forcing_term){
-    forcing_term_liquid.create(p4est_np1, nodes_np1);
-    sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[LIQUID_DOMAIN], forcing_term_liquid.vec);
-
-    if(do_we_solve_for_Ts) {
-      forcing_term_solid.create(p4est_np1, nodes_np1);
-      sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[SOLID_DOMAIN], forcing_term_solid.vec);
-    }
-  }
-
-  // Get derivatives of temperature fields if we are using Crank Nicholson:
-  vec_and_ptr_dim_t T_l_dd;
-  vec_and_ptr_dim_t T_s_dd;
-  if(method_ ==2){
-    if(do_we_solve_for_Ts){
-      T_s_dd.create(p4est_np1, nodes_np1);
-      ngbd_np1->second_derivatives_central(T_s_n.vec,T_s_dd.vec[0], T_s_dd.vec[1]);
-      T_s_dd.get_array();
-    }
-    if(!solve_navier_stokes) {
-        T_l_dd.create(p4est_np1,nodes_np1);
-        ngbd_np1->second_derivatives_central(T_l_n.vec,T_l_dd.vec[0], T_l_dd.vec[1]);
-        T_l_dd.get_array();
-      }
-    }
-
-  // Prep coefficients if we are doing 2nd order advection:
-  if(solve_navier_stokes && advection_sl_order==2){
-      advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
-      advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
-    }
-  // Get Ts arrays:
-  if(do_we_solve_for_Ts){
-    T_s_n.get_array();
-    rhs_Ts.get_array();
-  }
-
-  // Get Tl arrays:
-  rhs_Tl.get_array();
-  if(solve_navier_stokes){
-      T_l_backtrace_n.get_array();
-      if(advection_sl_order ==2) T_l_backtrace_nm1.get_array();
-    }
-  else{
-      T_l_n.get_array();
-    }
-
-  if(analytical_IC_BC_forcing_term){
-    forcing_term_liquid.get_array();
-    if(do_we_solve_for_Ts) forcing_term_solid.get_array();
-  }
-
-  phi.get_array();
-  // 3-7-22 : Elyce changed from foreach_local_node to foreach_node --> when I visualized rhs it was patchy ...
-  foreach_node(n, nodes_np1){
-    if(do_we_solve_for_Ts){
-      // First, assemble system for Ts depending on case:
-      if(method_ == 2){ // Crank Nicholson
-        rhs_Ts.ptr[n] = 2.*T_s_n.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
-      }
-      else{ // Backward Euler
-        rhs_Ts.ptr[n] = T_s_n.ptr[n]/dt;
-      }
-    }
-
-    // Now for Tl depending on case:
-    if(solve_navier_stokes){
-      if(advection_sl_order ==2){
-        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]*((advection_alpha_coeff/dt) - (advection_beta_coeff/dt_nm1)) + T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1);
-        }
-      else{
-        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]/dt;
-        }
-     }
-    else{
-      if(method_ ==2){//Crank Nicholson
-        rhs_Tl.ptr[n] = 2.*T_l_n.ptr[n]/dt + alpha_l*(T_l_dd.ptr[0][n] + T_l_dd.ptr[1][n]);
-        }
-      else{ // Backward Euler
-        rhs_Tl.ptr[n] = T_l_n.ptr[n]/dt;
-        }
-      }
-    if(analytical_IC_BC_forcing_term){
-      // Add forcing terms:
-      rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
-      if(do_we_solve_for_Ts) rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
-    }
-
-  }// end of loop over nodes
-
-  // Restore arrays:
-  phi.restore_array();
-
-  if(do_we_solve_for_Ts){
-    T_s_n.restore_array();
-    rhs_Ts.restore_array();
-  }
-
-  rhs_Tl.restore_array();
-  if(solve_navier_stokes){
-      T_l_backtrace_n.restore_array();
-      if(advection_sl_order==2) T_l_backtrace_nm1.restore_array();
-    }
-  else{
-      T_l_n.restore_array();
-    }
-  if(method_ ==2){
-    if(do_we_solve_for_Ts){
-      T_s_dd.restore_array();
-      T_s_dd.destroy();
-    }
-    if(!solve_navier_stokes){
-        T_l_dd.restore_array();
-        T_l_dd.destroy();
-      }
-  }
-
-  if(analytical_IC_BC_forcing_term){
-    forcing_term_liquid.restore_array();
-
-    if(do_we_solve_for_Ts) {
-      forcing_term_solid.restore_array(); forcing_term_solid.destroy();
-    }
-
-    // Destroy these if they were created
-    forcing_term_liquid.destroy();
-  }
-}
-
-void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
-                  vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1,
-                  vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_dim_t& v_nm1_NS,
-                  p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                  p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n){
-  // -------------------
-  // A note on notation:
-  // -------------------
-  // Recall that at this stage, we are computing backtrace points for
-  // -- T_n (sampled on the grid np1) and T_nm1 (sampled on the grid n)
-  // using the fluid velocities
-  // -- v_n_NS (sampled on grid np1) and v_nm1_NS (sampled on the grid n)
-
-  // This notation can be a bit confusing, but stems from the fact that the grid np1 has been chosen around the interface location at time np1,
-  // and all the fields at n have been interpolated to this new grid to solve for fields at np1.
-  // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
-
-
-  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Beginning to do backtrace \n");
-  PetscErrorCode ierr;
-  // Initialize objects we will use in this function:
-  // PETSC Vectors for second derivatives
-  vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
-  Vec v_dd[P4EST_DIM][P4EST_DIM];
-  Vec v_dd_nm1[P4EST_DIM][P4EST_DIM];
-
-  // Create vector to hold back-trace points:
-  vector <double> xyz_d[P4EST_DIM];
-  vector <double> xyz_d_nm1[P4EST_DIM];
-
-  // Create the necessary interpolators
-  my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
-  my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
-
-  // Get the relevant second derivatives
-  T_l_dd.create(p4est_np1, nodes_np1);
-  ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
-
-  if(advection_sl_order==2) {
-      T_l_dd_nm1.create(p4est_n, nodes_n);
-      ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
-    }
-
-  foreach_dimension(d){
-    foreach_dimension(dd){
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
-      if(advection_sl_order==2){
-          ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
-        }
-    }
-  }
-
-  // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
-  // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
-
-  ngbd_np1->second_derivatives_central(v_n_NS.vec,v_dd[0],v_dd[1],P4EST_DIM);
-  if(advection_sl_order ==2){
-      ngbd_n->second_derivatives_central(v_nm1_NS.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
-    }
-
-  // Do the Semi-Lagrangian backtrace:
-  if(advection_sl_order ==2){
-      trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1_NS.vec, v_dd_nm1, v_n_NS.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
-      if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace trajectory \n");
-    }
-  else{
-      trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n_NS.vec, v_dd, xyz_d);
-    }
-
-  // Add backtrace points to the interpolator(s):
-  foreach_local_node(n, nodes_np1){
-    double xyz_temp[P4EST_DIM];
-    double xyz_temp_nm1[P4EST_DIM];
-
-    foreach_dimension(d){
-      xyz_temp[d] = xyz_d[d][n];
-
-      if(advection_sl_order ==2){
-          xyz_temp_nm1[d] = xyz_d_nm1[d][n];
-        }
-    } // end of "for each dimension"
-
-    SL_backtrace_interp.add_point(n,xyz_temp);
-    if(advection_sl_order ==2 ) SL_backtrace_interp_nm1.add_point(n,xyz_temp_nm1);
-  } // end of loop over local nodes
-
-  // Interpolate the Temperature data to back-traced points:
-  SL_backtrace_interp.set_input(T_l_n.vec, T_l_dd.vec[0], T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
-  SL_backtrace_interp.interpolate(T_l_backtrace_n.vec);
-
-  if(advection_sl_order ==2){
-      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec, T_l_dd_nm1.vec[0], T_l_dd_nm1.vec[1], quadratic_non_oscillatory_continuous_v2);
-      SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
-    }
-
-  // Destroy velocity derivatives now that not needed:
-  foreach_dimension(d){
-    foreach_dimension(dd)
-    {
-      ierr = VecDestroy(v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
-      if(advection_sl_order==2) ierr = VecDestroy(v_dd_nm1[d][dd]); CHKERRXX(ierr);
-    }
-  }
-
-  // Destroy temperature derivatives
-  T_l_dd.destroy();
-  if(advection_sl_order==2) {
-      T_l_dd_nm1.destroy();
-    }
-
-  // Clear interp points:
-  xyz_d->clear();xyz_d->shrink_to_fit();
-  xyz_d_nm1->clear();xyz_d_nm1->shrink_to_fit();
-
-  // Clear and delete interpolators:
-  SL_backtrace_interp.clear();
-  SL_backtrace_interp_nm1.clear();
-
-  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
-}
-
 
 void interpolate_fields_onto_new_grid(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
                                       vec_and_ptr_dim_t& v_interface,
@@ -4949,6 +4680,275 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
 
 };
 
+void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts, vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source* external_heat_source_term[2]){
+
+  // In building RHS, if we are doing advection, we have two options:
+  // (1) 1st order -- approx is (dT/dt + u dot grad(T)) ~ (T(n+1) - Td(n))/dt --> so we add Td/dt to the RHS
+  // (2) 2nd order -- approx is (dT/dt + u dot grad(T)) ~ alpha*(T(n+1) - Td(n))/dt + beta*(Td(n) - Td(n-1))/dt_nm1
+  //                       --> so we add Td(n)*(alpha/dt - beta/dt_nm1) + Td(n-1)*(beta/dt_nm1) to the RHS
+  //               -- where alpha and beta are weights of the two timesteps
+  // See Semi-Lagrangian backtrace advection schemes for more details
+
+  // If we are not doing advection, then we have:
+  // (1) dT/dt = (T(n+1) - T(n)/dt) --> which is a backward euler 1st order approximation (since the RHS is discretized spatially at T(n+1))
+  // (2) dT/dt = alpha*laplace(T) ~ (T(n+1) - T(n)/dt) = (1/2)*(laplace(T(n)) + laplace(T(n+1)) )  ,
+  //                              in which case we need the second derivatives of the temperature field at time n
+
+
+  // Establish forcing terms if applicable:
+  vec_and_ptr_t forcing_term_liquid;
+  vec_and_ptr_t forcing_term_solid;
+
+  if(analytical_IC_BC_forcing_term){
+    forcing_term_liquid.create(p4est_np1, nodes_np1);
+    sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[LIQUID_DOMAIN], forcing_term_liquid.vec);
+
+    if(do_we_solve_for_Ts) {
+      forcing_term_solid.create(p4est_np1, nodes_np1);
+      sample_cf_on_nodes(p4est_np1, nodes_np1, *external_heat_source_term[SOLID_DOMAIN], forcing_term_solid.vec);
+    }
+  }
+
+  // Get derivatives of temperature fields if we are using Crank Nicholson:
+  vec_and_ptr_dim_t T_l_dd;
+  vec_and_ptr_dim_t T_s_dd;
+  if(method_ ==2){
+    if(do_we_solve_for_Ts){
+      T_s_dd.create(p4est_np1, nodes_np1);
+      ngbd_np1->second_derivatives_central(T_s_n.vec,T_s_dd.vec[0], T_s_dd.vec[1]);
+      T_s_dd.get_array();
+    }
+    if(!solve_navier_stokes) {
+      T_l_dd.create(p4est_np1,nodes_np1);
+      ngbd_np1->second_derivatives_central(T_l_n.vec,T_l_dd.vec[0], T_l_dd.vec[1]);
+      T_l_dd.get_array();
+    }
+  }
+
+  // Prep coefficients if we are doing 2nd order advection:
+  if(solve_navier_stokes && advection_sl_order==2){
+    advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
+    advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
+  }
+  // Get Ts arrays:
+  if(do_we_solve_for_Ts){
+    T_s_n.get_array();
+    rhs_Ts.get_array();
+  }
+
+  // Get Tl arrays:
+  rhs_Tl.get_array();
+  if(solve_navier_stokes){
+    T_l_backtrace_n.get_array();
+    if(advection_sl_order ==2) T_l_backtrace_nm1.get_array();
+  }
+  else{
+    T_l_n.get_array();
+  }
+
+  if(analytical_IC_BC_forcing_term){
+    forcing_term_liquid.get_array();
+    if(do_we_solve_for_Ts) forcing_term_solid.get_array();
+  }
+
+  phi.get_array();
+  // 3-7-22 : Elyce changed from foreach_local_node to foreach_node --> when I visualized rhs it was patchy ...
+  foreach_node(n, nodes_np1){
+    if(do_we_solve_for_Ts){
+      // First, assemble system for Ts depending on case:
+      if(method_ == 2){ // Crank Nicholson
+        rhs_Ts.ptr[n] = 2.*T_s_n.ptr[n]/dt + alpha_s*(T_s_dd.ptr[0][n] + T_s_dd.ptr[1][n]);
+      }
+      else{ // Backward Euler
+        rhs_Ts.ptr[n] = T_s_n.ptr[n]/dt;
+      }
+    }
+
+    // Now for Tl depending on case:
+    if(solve_navier_stokes){
+      if(advection_sl_order ==2){
+        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]*((advection_alpha_coeff/dt) - (advection_beta_coeff/dt_nm1)) + T_l_backtrace_nm1.ptr[n]*(advection_beta_coeff/dt_nm1);
+      }
+      else{
+        rhs_Tl.ptr[n] = T_l_backtrace_n.ptr[n]/dt;
+      }
+    }
+    else{
+      if(method_ ==2){//Crank Nicholson
+        rhs_Tl.ptr[n] = 2.*T_l_n.ptr[n]/dt + alpha_l*(T_l_dd.ptr[0][n] + T_l_dd.ptr[1][n]);
+      }
+      else{ // Backward Euler
+        rhs_Tl.ptr[n] = T_l_n.ptr[n]/dt;
+      }
+    }
+    if(analytical_IC_BC_forcing_term){
+      // Add forcing terms:
+      rhs_Tl.ptr[n]+=forcing_term_liquid.ptr[n];
+      if(do_we_solve_for_Ts) rhs_Ts.ptr[n]+=forcing_term_solid.ptr[n];
+    }
+
+  }// end of loop over nodes
+
+  // Restore arrays:
+  phi.restore_array();
+
+  if(do_we_solve_for_Ts){
+    T_s_n.restore_array();
+    rhs_Ts.restore_array();
+  }
+
+  rhs_Tl.restore_array();
+  if(solve_navier_stokes){
+    T_l_backtrace_n.restore_array();
+    if(advection_sl_order==2) T_l_backtrace_nm1.restore_array();
+  }
+  else{
+    T_l_n.restore_array();
+  }
+  if(method_ ==2){
+    if(do_we_solve_for_Ts){
+      T_s_dd.restore_array();
+      T_s_dd.destroy();
+    }
+    if(!solve_navier_stokes){
+      T_l_dd.restore_array();
+      T_l_dd.destroy();
+    }
+  }
+
+  if(analytical_IC_BC_forcing_term){
+    forcing_term_liquid.restore_array();
+
+    if(do_we_solve_for_Ts) {
+      forcing_term_solid.restore_array(); forcing_term_solid.destroy();
+    }
+
+    // Destroy these if they were created
+    forcing_term_liquid.destroy();
+  }
+}
+
+void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
+                  vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1,
+                  vec_and_ptr_dim_t& v_n_NS, vec_and_ptr_dim_t& v_nm1_NS,
+                  p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                  p4est_t* p4est_n, p4est_nodes_t* nodes_n, my_p4est_node_neighbors_t* ngbd_n){
+  // -------------------
+  // A note on notation:
+  // -------------------
+  // Recall that at this stage, we are computing backtrace points for
+  // -- T_n (sampled on the grid np1) and T_nm1 (sampled on the grid n)
+  // using the fluid velocities
+  // -- v_n_NS (sampled on grid np1) and v_nm1_NS (sampled on the grid n)
+
+  // This notation can be a bit confusing, but stems from the fact that the grid np1 has been chosen around the interface location at time np1,
+  // and all the fields at n have been interpolated to this new grid to solve for fields at np1.
+  // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
+
+
+  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Beginning to do backtrace \n");
+  PetscErrorCode ierr;
+  // Initialize objects we will use in this function:
+  // PETSC Vectors for second derivatives
+  vec_and_ptr_dim_t T_l_dd, T_l_dd_nm1;
+  Vec v_dd[P4EST_DIM][P4EST_DIM];
+  Vec v_dd_nm1[P4EST_DIM][P4EST_DIM];
+
+  // Create vector to hold back-trace points:
+  vector <double> xyz_d[P4EST_DIM];
+  vector <double> xyz_d_nm1[P4EST_DIM];
+
+  // Create the necessary interpolators
+  my_p4est_interpolation_nodes_t SL_backtrace_interp(ngbd_np1); /*= NULL;*/
+  my_p4est_interpolation_nodes_t SL_backtrace_interp_nm1(ngbd_n);/* = NULL;*/
+
+  // Get the relevant second derivatives
+  T_l_dd.create(p4est_np1, nodes_np1);
+  ngbd_np1->second_derivatives_central(T_l_n.vec, T_l_dd.vec);
+
+  if(advection_sl_order==2) {
+    T_l_dd_nm1.create(p4est_n, nodes_n);
+    ngbd_n->second_derivatives_central(T_l_nm1.vec,T_l_dd_nm1.vec);
+  }
+
+  foreach_dimension(d){
+    foreach_dimension(dd){
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
+      if(advection_sl_order==2){
+        ierr = VecCreateGhostNodes(p4est_n, nodes_n, &v_dd_nm1[d][dd]); CHKERRXX(ierr);
+      }
+    }
+  }
+
+  // v_dd[k] is the second derivative of the velocity components n along cartesian direction k
+  // v_dd_nm1[k] is the second derivative of the velocity components nm1 along cartesian direction k
+
+  ngbd_np1->second_derivatives_central(v_n_NS.vec,v_dd[0],v_dd[1],P4EST_DIM);
+  if(advection_sl_order ==2){
+    ngbd_n->second_derivatives_central(v_nm1_NS.vec, DIM(v_dd_nm1[0], v_dd_nm1[1], v_dd_nm1[2]), P4EST_DIM);
+  }
+
+  // Do the Semi-Lagrangian backtrace:
+  if(advection_sl_order ==2){
+    trajectory_from_np1_to_nm1(p4est_np1, nodes_np1, ngbd_n, ngbd_np1, v_nm1_NS.vec, v_dd_nm1, v_n_NS.vec, v_dd, dt_nm1, dt, xyz_d_nm1, xyz_d);
+    if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace trajectory \n");
+  }
+  else{
+    trajectory_from_np1_to_n(p4est_np1, nodes_np1, ngbd_np1, dt, v_n_NS.vec, v_dd, xyz_d);
+  }
+
+  // Add backtrace points to the interpolator(s):
+  foreach_local_node(n, nodes_np1){
+    double xyz_temp[P4EST_DIM];
+    double xyz_temp_nm1[P4EST_DIM];
+
+    foreach_dimension(d){
+      xyz_temp[d] = xyz_d[d][n];
+
+      if(advection_sl_order ==2){
+        xyz_temp_nm1[d] = xyz_d_nm1[d][n];
+      }
+    } // end of "for each dimension"
+
+    SL_backtrace_interp.add_point(n,xyz_temp);
+    if(advection_sl_order ==2 ) SL_backtrace_interp_nm1.add_point(n,xyz_temp_nm1);
+  } // end of loop over local nodes
+
+  // Interpolate the Temperature data to back-traced points:
+  SL_backtrace_interp.set_input(T_l_n.vec, T_l_dd.vec[0], T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
+  SL_backtrace_interp.interpolate(T_l_backtrace_n.vec);
+
+  if(advection_sl_order ==2){
+    SL_backtrace_interp_nm1.set_input(T_l_nm1.vec, T_l_dd_nm1.vec[0], T_l_dd_nm1.vec[1], quadratic_non_oscillatory_continuous_v2);
+    SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
+  }
+
+  // Destroy velocity derivatives now that not needed:
+  foreach_dimension(d){
+    foreach_dimension(dd)
+    {
+      ierr = VecDestroy(v_dd[d][dd]); CHKERRXX(ierr); // v_n_dd will be a dxdxn object --> will hold the dxd derivative info at each node n
+      if(advection_sl_order==2) ierr = VecDestroy(v_dd_nm1[d][dd]); CHKERRXX(ierr);
+    }
+  }
+
+  // Destroy temperature derivatives
+  T_l_dd.destroy();
+  if(advection_sl_order==2) {
+    T_l_dd_nm1.destroy();
+  }
+
+  // Clear interp points:
+  xyz_d->clear();xyz_d->shrink_to_fit();
+  xyz_d_nm1->clear();xyz_d_nm1->shrink_to_fit();
+
+  // Clear and delete interpolators:
+  SL_backtrace_interp.clear();
+  SL_backtrace_interp_nm1.clear();
+
+  if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
+}
+
 
 void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                   vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
@@ -5086,9 +5086,211 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
   if(do_we_solve_for_Ts) delete solver_Ts;
 }
 
-//void setup_and_solve_poisson_problem(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, ){
+void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
+                                     p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
+                                     p4est_t* p4est, p4est_nodes_t* nodes, my_p4est_node_neighbors_t* ngbd,
+                                     vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
+                                     vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
+                                     vec_and_ptr_t& phi_substrate, vec_and_ptr_dim_t& phi_substrate_dd,
+                                     vec_and_ptr_dim_t& normal, vec_and_ptr_t& curvature,
+                                     vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
+                                     vec_and_ptr_t& T_l_nm1, vec_and_ptr_t& T_l_backtrace, vec_and_ptr_t& T_l_backtrace_nm1,
+                                     vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                                     vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,
+                                     BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                                     BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                     temperature_field* analytical_T[2],
+                                     external_heat_source* external_heat_source_T[2],
+                                     my_p4est_poisson_nodes_mls_t* &solver_Tl,
+                                     my_p4est_poisson_nodes_mls_t* &solver_Ts,
+                                     int cube_refinement)
+{
+  PetscErrorCode ierr;
+  // -------------------------------
+  // Update BC objects for stefan problem:
+  // -------------------------------
+  if(analytical_IC_BC_forcing_term){
+    for(unsigned char d=0;d<2;d++){
+      analytical_T[d]->t = tn;
+      bc_interface_val_temp[d]->t = tn;
+      bc_wall_value_temp[d]->t = tn;
+      external_heat_source_T[d]->t = tn;
+    }
+  }
+  // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
 
-//}
+  // -------------------------------
+  // Create all vectors that will be used
+  // strictly for the stefan step
+  // (aka created and destroyed in stefan step)
+  // -------------------------------
+
+  // Solid LSF:
+  phi_solid.create(p4est_np1,nodes_np1);
+
+  //Curvature and normal for BC's and setting up solver:
+  normal.create(p4est_np1,nodes_np1);
+  curvature.create(p4est_np1,nodes_np1);
+
+  // Second derivatives of LSF's (for solver):
+  phi_solid_dd.create(p4est_np1,nodes_np1);
+  phi_dd.create(p4est_np1,nodes_np1);
+
+  if(example_uses_inner_LSF){
+    phi_substrate_dd.create(p4est_np1,nodes_np1);
+  }
+  if(solve_navier_stokes){
+    T_l_backtrace.create(p4est_np1,nodes_np1);
+    if(advection_sl_order ==2){
+      T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
+    }
+  }
+  // Create arrays to hold the RHS:
+  rhs_Tl.create(p4est_np1,nodes_np1);
+  if(do_we_solve_for_Ts) rhs_Ts.create(p4est_np1,nodes_np1);
+
+  // -------------------------------
+  // Compute the normal and curvature of the interface
+  //-- curvature is used in some of the interfacial boundary condition(s) on temperature
+  // -------------------------------
+
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
+  // Get the new solid LSF:
+  VecCopyGhost(phi.vec, phi_solid.vec);
+  VecScaleGhost(phi_solid.vec,-1.0);
+
+  // Compute normals on the interface:
+  compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
+
+  // Feed the curvature computed to the interfacial boundary condition:
+  if(interfacial_temp_bc_requires_curvature){
+    // We need curvature of the solid domain, so we use phi_solid and negative of normals
+    compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
+
+    for(unsigned char d=0;d<2;d++){
+      bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
+    }
+  }
+
+  // Feed the normals to the interfacial boundary condition if needed:
+  if(interfacial_temp_bc_requires_normal){
+    for(unsigned char d=0; d<2; d++){
+      bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
+    }
+  }
+
+  // -------------------------------
+  // Get most updated derivatives of the LSF's (on current grid)
+  // -------------------------------
+  if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+
+  // Get derivatives of liquid and solid LSF's
+  if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
+  ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
+  ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
+
+  // Get inner LSF and derivatives if required:
+  if(example_uses_inner_LSF){
+    ngbd_np1->second_derivatives_central(phi_substrate.vec, phi_substrate_dd.vec);
+  }
+
+  // -------------------------------
+  // Compute advection terms (if applicable):
+  // -------------------------------
+  if (solve_navier_stokes){
+    if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
+    do_backtrace(T_l_n, T_l_nm1,
+                 T_l_backtrace, T_l_backtrace_nm1,
+                 v_n, v_nm1,
+                 p4est_np1, nodes_np1, ngbd_np1,
+                 p4est, nodes, ngbd);
+    // Do backtrace with v_n --> navier-stokes fluid velocity
+  } // end of solve_navier_stokes if statement
+
+  // -------------------------------
+  // Set up the RHS for Poisson step:
+  // -------------------------------
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
+
+  setup_rhs(phi, T_l_n, T_s_n,
+            rhs_Tl, rhs_Ts,
+            T_l_backtrace, T_l_backtrace_nm1,
+            p4est_np1, nodes_np1, ngbd_np1, external_heat_source_T);
+
+
+  // -------------------------------
+  // Execute the Poisson step:
+  // -------------------------------
+  // Slide Temp fields:
+  if(solve_navier_stokes && advection_sl_order==2){
+    T_l_nm1.destroy();
+    T_l_nm1.create(p4est_np1, nodes_np1);
+    ierr = VecCopyGhost(T_l_n.vec, T_l_nm1.vec);CHKERRXX(ierr);
+  }
+  // Solve Poisson problem:
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
+
+  poisson_step(phi, phi_solid,
+               phi_dd, phi_solid_dd,
+               T_l_n, T_s_n,
+               rhs_Tl, rhs_Ts,
+               bc_interface_val_temp,bc_wall_value_temp,
+               ngbd_np1, solver_Tl, solver_Ts,
+               cube_refinement,
+               phi_substrate,
+               phi_substrate_dd);
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
+
+  // -------------------------------
+  // Clear interfacial BC if needed (curvature, normals, or both depending on example)
+  // -------------------------------
+  if(interfacial_temp_bc_requires_curvature){
+    for(unsigned char d=0;d<2;++d){
+      if (bc_interface_val_temp[d]!=NULL){
+        bc_interface_val_temp[d]->clear();
+      }
+    }
+  }
+  if(interfacial_temp_bc_requires_normal){
+    for(unsigned char d=0;d<2;++d){
+      if (bc_interface_val_temp[d]!=NULL){
+        bc_interface_val_temp[d]->clear_normals();
+      }
+    }
+  }
+
+  // -------------------------------
+  // Destroy all vectors
+  // that were used strictly for the
+  // stefan step (aka created and destroyed in stefan step)
+  // -------------------------------
+  // Solid LSF:
+  phi_solid.destroy();
+
+  // Curvature and normal for BC's and setting up solver:
+  normal.destroy();
+        curvature.destroy();
+
+  // Second derivatives of LSF's (for solver):
+  phi_solid_dd.destroy();
+  phi_dd.destroy();
+
+  if(example_uses_inner_LSF){
+    phi_substrate_dd.destroy();
+  }
+
+  if(solve_navier_stokes){
+    T_l_backtrace.destroy();
+    if(advection_sl_order ==2){
+      T_l_backtrace_nm1.destroy();
+    }
+  }
+
+  // Destroy arrays to hold the RHS:
+  rhs_Tl.destroy();
+  if(do_we_solve_for_Ts) rhs_Ts.destroy();
+
+}
 
 
 
@@ -7742,185 +7944,202 @@ int main(int argc, char** argv) {
       // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
       if((tstep>0) && solve_stefan){ // mostly memory safe (may have tiniest leak TO-DO)
-        // -------------------------------
-        // Update BC objects for stefan problem:
-        // -------------------------------
-        if((tstep>0) && solve_stefan){
-          if(analytical_IC_BC_forcing_term){
-            for(unsigned char d=0;d<2;d++){
-              analytical_T[d]->t = tn;
-              bc_interface_val_temp[d]->t = tn;
-              bc_wall_value_temp[d]->t = tn;
-              external_heat_source_T[d]->t = tn;
-            }
-          }
-        } // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
+        setup_and_solve_poisson_problem(mpi,
+                                        p4est_np1, nodes_np1, ngbd_np1,
+                                        p4est, nodes, ngbd,
+                                        phi, phi_solid, phi_dd, phi_solid_dd,
+                                        phi_substrate, phi_substrate_dd,
+                                        normal, curvature,
+                                        T_l_n, T_s_n,
+                                        T_l_nm1, T_l_backtrace, T_l_backtrace_nm1,
+                                        v_n, v_nm1,
+                                        rhs_Tl, rhs_Ts,
+                                        bc_interface_val_temp, bc_wall_value_temp,
+                                        analytical_T, external_heat_source_T,
+                                        solver_Tl, solver_Ts, cube_refinement);
 
-        // -------------------------------
-        // Create all vectors that will be used
-        // strictly for the stefan step
-        // (aka created and destroyed in stefan step)
-        // -------------------------------
 
-        // Solid LSF:
-        phi_solid.create(p4est_np1,nodes_np1);
+        //        // -------------------------------
+//        // Update BC objects for stefan problem:
+//        // -------------------------------
+//        if(analytical_IC_BC_forcing_term){
+//          for(unsigned char d=0;d<2;d++){
+//            analytical_T[d]->t = tn;
+//            bc_interface_val_temp[d]->t = tn;
+//            bc_wall_value_temp[d]->t = tn;
+//            external_heat_source_T[d]->t = tn;
+//          }
+//        }
+//         // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
 
-        //Curvature and normal for BC's and setting up solver:
-        normal.create(p4est_np1,nodes_np1);
-        curvature.create(p4est_np1,nodes_np1);
+//        // -------------------------------
+//        // Create all vectors that will be used
+//        // strictly for the stefan step
+//        // (aka created and destroyed in stefan step)
+//        // -------------------------------
 
-        // Second derivatives of LSF's (for solver):
-        phi_solid_dd.create(p4est_np1,nodes_np1);
-        phi_dd.create(p4est_np1,nodes_np1);
+//        // Solid LSF:
+//        phi_solid.create(p4est_np1,nodes_np1);
 
-        if(example_uses_inner_LSF){
-          phi_substrate_dd.create(p4est_np1,nodes_np1);
-        }
-        if(solve_navier_stokes){
-          T_l_backtrace.create(p4est_np1,nodes_np1);
-          if(advection_sl_order ==2){
-              T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
-            }
-        }
-        // Create arrays to hold the RHS:
-        rhs_Tl.create(p4est_np1,nodes_np1);
-        if(do_we_solve_for_Ts) rhs_Ts.create(p4est_np1,nodes_np1);
+//        //Curvature and normal for BC's and setting up solver:
+//        normal.create(p4est_np1,nodes_np1);
+//        curvature.create(p4est_np1,nodes_np1);
 
-        // -------------------------------
-        // Compute the normal and curvature of the interface
-        //-- curvature is used in some of the interfacial boundary condition(s) on temperature
-        // -------------------------------
+//        // Second derivatives of LSF's (for solver):
+//        phi_solid_dd.create(p4est_np1,nodes_np1);
+//        phi_dd.create(p4est_np1,nodes_np1);
 
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
-        // Get the new solid LSF:
-        VecCopyGhost(phi.vec, phi_solid.vec);
-        VecScaleGhost(phi_solid.vec,-1.0);
+//        if(example_uses_inner_LSF){
+//          phi_substrate_dd.create(p4est_np1,nodes_np1);
+//        }
+//        if(solve_navier_stokes){
+//          T_l_backtrace.create(p4est_np1,nodes_np1);
+//          if(advection_sl_order ==2){
+//              T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
+//            }
+//        }
+//        // Create arrays to hold the RHS:
+//        rhs_Tl.create(p4est_np1,nodes_np1);
+//        if(do_we_solve_for_Ts) rhs_Ts.create(p4est_np1,nodes_np1);
 
-        // Compute normals on the interface:
-        compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
+//        // -------------------------------
+//        // Compute the normal and curvature of the interface
+//        //-- curvature is used in some of the interfacial boundary condition(s) on temperature
+//        // -------------------------------
 
-        // Feed the curvature computed to the interfacial boundary condition:
-        if(interfacial_temp_bc_requires_curvature){
-          // We need curvature of the solid domain, so we use phi_solid and negative of normals
-          compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
+//        // Get the new solid LSF:
+//        VecCopyGhost(phi.vec, phi_solid.vec);
+//        VecScaleGhost(phi_solid.vec,-1.0);
 
-          for(unsigned char d=0;d<2;d++){
-            bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
-          }
-        }
+//        // Compute normals on the interface:
+//        compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
 
-        // Feed the normals to the interfacial boundary condition if needed:
-        if(interfacial_temp_bc_requires_normal){
-          for(unsigned char d=0; d<2; d++){
-            bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
-          }
-        }
-        // -------------------------------
-        // Get most updated derivatives of the LSF's (on current grid)
-        // -------------------------------
-        if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+//        // Feed the curvature computed to the interfacial boundary condition:
+//        if(interfacial_temp_bc_requires_curvature){
+//          // We need curvature of the solid domain, so we use phi_solid and negative of normals
+//          compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
 
-        // Get derivatives of liquid and solid LSF's
-        if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
-        ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
-        ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
+//          for(unsigned char d=0;d<2;d++){
+//            bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
+//          }
+//        }
 
-        // Get inner LSF and derivatives if required:
-        if(example_uses_inner_LSF){
-            ngbd_np1->second_derivatives_central(phi_substrate.vec, phi_substrate_dd.vec);
-          }
-        // -------------------------------
-        // Compute advection terms (if applicable):
-        // -------------------------------
-        if (solve_navier_stokes){
-            if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
-            do_backtrace(T_l_n, T_l_nm1,
-                         T_l_backtrace, T_l_backtrace_nm1,
-                         v_n, v_nm1,
-                         p4est_np1, nodes_np1, ngbd_np1,
-                         p4est, nodes, ngbd);
-            // Do backtrace with v_n --> navier-stokes fluid velocity
-        } // end of solve_navier_stokes if statement
-        // -------------------------------
-        // Set up the RHS for Poisson step:
-        // -------------------------------
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
+//        // Feed the normals to the interfacial boundary condition if needed:
+//        if(interfacial_temp_bc_requires_normal){
+//          for(unsigned char d=0; d<2; d++){
+//            bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
+//          }
+//        }
+//        // -------------------------------
+//        // Get most updated derivatives of the LSF's (on current grid)
+//        // -------------------------------
+//        if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
 
-        setup_rhs(phi, T_l_n, T_s_n,
-                  rhs_Tl, rhs_Ts,
-                  T_l_backtrace, T_l_backtrace_nm1,
-                  p4est_np1, nodes_np1, ngbd_np1, external_heat_source_T);
+//        // Get derivatives of liquid and solid LSF's
+//        if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
+//        ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
+//        ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
 
-        // -------------------------------
-        // Execute the Poisson step:
-        // -------------------------------
-        // Slide Temp fields:
-        if(solve_navier_stokes && advection_sl_order==2){
-          T_l_nm1.destroy();
-          T_l_nm1.create(p4est_np1,nodes_np1);
-          ierr = VecCopyGhost(T_l_n.vec,T_l_nm1.vec);CHKERRXX(ierr);
-        }
-        // Solve Poisson problem:
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
+//        // Get inner LSF and derivatives if required:
+//        if(example_uses_inner_LSF){
+//            ngbd_np1->second_derivatives_central(phi_substrate.vec, phi_substrate_dd.vec);
+//        }
+//        // -------------------------------
+//        // Compute advection terms (if applicable):
+//        // -------------------------------
+//        if (solve_navier_stokes){
+//            if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
+//            do_backtrace(T_l_n, T_l_nm1,
+//                         T_l_backtrace, T_l_backtrace_nm1,
+//                         v_n, v_nm1,
+//                         p4est_np1, nodes_np1, ngbd_np1,
+//                         p4est, nodes, ngbd);
+//            // Do backtrace with v_n --> navier-stokes fluid velocity
+//        } // end of solve_navier_stokes if statement
+//        // -------------------------------
+//        // Set up the RHS for Poisson step:
+//        // -------------------------------
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
 
-        poisson_step(phi, phi_solid,
-                     phi_dd, phi_solid_dd,
-                     T_l_n, T_s_n,
-                     rhs_Tl, rhs_Ts,
-                     bc_interface_val_temp,bc_wall_value_temp,
-                     ngbd_np1, solver_Tl, solver_Ts,
-                     cube_refinement,
-                     phi_substrate,
-                     phi_substrate_dd);
-        if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
+//        setup_rhs(phi, T_l_n, T_s_n,
+//                  rhs_Tl, rhs_Ts,
+//                  T_l_backtrace, T_l_backtrace_nm1,
+//                  p4est_np1, nodes_np1, ngbd_np1, external_heat_source_T);
 
-        // -------------------------------
-        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
-        // -------------------------------
-        if(interfacial_temp_bc_requires_curvature){
-          for(unsigned char d=0;d<2;++d){
-            if (bc_interface_val_temp[d]!=NULL){
-              bc_interface_val_temp[d]->clear();
-            }
-          }
-        }
-        if(interfacial_temp_bc_requires_normal){
-          for(unsigned char d=0;d<2;++d){
-            if (bc_interface_val_temp[d]!=NULL){
-              bc_interface_val_temp[d]->clear_normals();
-            }
-          }
-        }
-        // -------------------------------
-        // Destroy all vectors
-        // that were used strictly for the
-        // stefan step (aka created and destroyed in stefan step)
-        // -------------------------------
-        // Solid LSF:
-        phi_solid.destroy();
+//        // -------------------------------
+//        // Execute the Poisson step:
+//        // -------------------------------
+//        // Slide Temp fields:
+//        if(solve_navier_stokes && advection_sl_order==2){
+//          T_l_nm1.destroy();
+//          T_l_nm1.create(p4est_np1, nodes_np1);
+//          ierr = VecCopyGhost(T_l_n.vec, T_l_nm1.vec);CHKERRXX(ierr);
+//        }
+//        // Solve Poisson problem:
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
 
-        // Curvature and normal for BC's and setting up solver:
-        normal.destroy();        
-        curvature.destroy();
+//        poisson_step(phi, phi_solid,
+//                     phi_dd, phi_solid_dd,
+//                     T_l_n, T_s_n,
+//                     rhs_Tl, rhs_Ts,
+//                     bc_interface_val_temp,bc_wall_value_temp,
+//                     ngbd_np1, solver_Tl, solver_Ts,
+//                     cube_refinement,
+//                     phi_substrate,
+//                     phi_substrate_dd);
+//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
 
-        // Second derivatives of LSF's (for solver):
-        phi_solid_dd.destroy();
-        phi_dd.destroy();
+//        // -------------------------------
+//        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
+//        // -------------------------------
+//        if(interfacial_temp_bc_requires_curvature){
+//          for(unsigned char d=0;d<2;++d){
+//            if (bc_interface_val_temp[d]!=NULL){
+//              bc_interface_val_temp[d]->clear();
+//            }
+//          }
+//        }
+//        if(interfacial_temp_bc_requires_normal){
+//          for(unsigned char d=0;d<2;++d){
+//            if (bc_interface_val_temp[d]!=NULL){
+//              bc_interface_val_temp[d]->clear_normals();
+//            }
+//          }
+//        }
+//        // -------------------------------
+//        // Destroy all vectors
+//        // that were used strictly for the
+//        // stefan step (aka created and destroyed in stefan step)
+//        // -------------------------------
+//        // Solid LSF:
+//        phi_solid.destroy();
 
-        if(example_uses_inner_LSF){
-          phi_substrate_dd.destroy();
-        }
+//        // Curvature and normal for BC's and setting up solver:
+//        normal.destroy();
+//        curvature.destroy();
 
-        if(solve_navier_stokes){
-          T_l_backtrace.destroy();
-          if(advection_sl_order ==2){
-              T_l_backtrace_nm1.destroy();
-            }
-        }
+//        // Second derivatives of LSF's (for solver):
+//        phi_solid_dd.destroy();
+//        phi_dd.destroy();
 
-        // Destroy arrays to hold the RHS:
-        rhs_Tl.destroy();
-        if(do_we_solve_for_Ts) rhs_Ts.destroy();
+//        if(example_uses_inner_LSF){
+//          phi_substrate_dd.destroy();
+//        }
+
+//        if(solve_navier_stokes){
+//          T_l_backtrace.destroy();
+//          if(advection_sl_order ==2){
+//              T_l_backtrace_nm1.destroy();
+//            }
+//        }
+
+//        // Destroy arrays to hold the RHS:
+//        rhs_Tl.destroy();
+//        if(do_we_solve_for_Ts) rhs_Ts.destroy();
+
+
+
       } // end of "if solve stefan" AND tstep>0
 
       // ------------------------------------------------------------
@@ -8158,6 +8377,8 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Completed Navier-Stokes step \n");
       } // End of "if solve navier stokes"
 
+      // Elye TO-DO: commenting out below, going to move all that sort of stuff to its own function
+      /*
       // If not solving NS but you still want area data:
 
       // Elyce to-do: clean this up --> need to just make a function that saves area and/or fluid forces
@@ -8184,6 +8405,7 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"forces saved \n");
 
       }
+      */
 
       // --------------------------------------------------------------------------------------------------------------
       // Save simulation state every specified number of iterations
