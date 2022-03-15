@@ -5011,39 +5011,51 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
 
 
 // Elyce to-do: why don't we just pass in vec_and_ptr here?
-void poisson_step(Vec phi, Vec phi_solid,
-                  Vec phi_dd[P4EST_DIM], Vec phi_solid_dd[P4EST_DIM],
-                  Vec* T_l, Vec* T_s,
-                  Vec rhs_Tl, Vec rhs_Ts,
+//void poisson_step(Vec phi, Vec phi_solid,
+//                  Vec phi_dd[P4EST_DIM], Vec phi_solid_dd[P4EST_DIM],
+//                  Vec* T_l, Vec* T_s,
+//                  Vec rhs_Tl, Vec rhs_Ts,
+//                  BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+//                  BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+//                  my_p4est_node_neighbors_t* ngbd,
+//                  my_p4est_poisson_nodes_mls_t* &solver_Tl,
+//                  my_p4est_poisson_nodes_mls_t* &solver_Ts,
+
+//                  int cube_refinement,
+//                  Vec phi_substrate=NULL, Vec phi_substrate_dd[P4EST_DIM]=NULL ){
+void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
+                  vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
+                  vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
+                  vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,
                   BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
                   BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
-                  my_p4est_node_neighbors_t* ngbd,
+                  my_p4est_node_neighbors_t* ngbd_np1,
                   my_p4est_poisson_nodes_mls_t* &solver_Tl,
                   my_p4est_poisson_nodes_mls_t* &solver_Ts,
 
                   int cube_refinement,
-                  Vec phi_substrate=NULL, Vec phi_substrate_dd[P4EST_DIM]=NULL ){
+                  vec_and_ptr_t& phi_substrate, vec_and_ptr_dim_t& phi_substrate_dd){
 
   // Create solvers:
-  solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
-  if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
+  solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
+  if(do_we_solve_for_Ts) solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
 
   // Add the appropriate interfaces and interfacial boundary conditions:
-  solver_Tl->add_boundary(MLS_INTERSECTION, phi, phi_dd[0], phi_dd[1],
+  solver_Tl->add_boundary(MLS_INTERSECTION, phi.vec, phi_dd.vec[0], phi_dd.vec[1],
       interface_bc_type_temp, *bc_interface_val_temp[LIQUID_DOMAIN], bc_interface_coeff);
 
   if(do_we_solve_for_Ts){
-    solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid, phi_solid_dd[0], phi_solid_dd[1],
+    solver_Ts->add_boundary(MLS_INTERSECTION, phi_solid.vec, phi_solid_dd.vec[0], phi_solid_dd.vec[1],
                             interface_bc_type_temp, *bc_interface_val_temp[SOLID_DOMAIN], bc_interface_coeff);
   }
 
   if(example_uses_inner_LSF){
     // Need to add this is the event that phi collapses onto the substrate and we need the phi_substrate BC to take over in that region
-    solver_Tl->add_boundary(MLS_INTERSECTION,phi_substrate,phi_substrate_dd[0],phi_substrate_dd[1],
+    solver_Tl->add_boundary(MLS_INTERSECTION, phi_substrate.vec, phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
                             inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
     if(do_we_solve_for_Ts){
       // Need to add this to fully define the solid domain (assuming solid is sitting on substrate, thus bounded by liquid and substrate)
-      solver_Ts->add_boundary(MLS_INTERSECTION,phi_substrate,phi_substrate_dd[0],phi_substrate_dd[1],
+      solver_Ts->add_boundary(MLS_INTERSECTION, phi_substrate.vec, phi_substrate_dd.vec[0], phi_substrate_dd.vec[1],
           inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
     }
   }
@@ -5116,8 +5128,8 @@ void poisson_step(Vec phi, Vec phi_solid,
   }
 
   // Set RHS:
-  solver_Tl->set_rhs(rhs_Tl);
-  if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts);
+  solver_Tl->set_rhs(rhs_Tl.vec);
+  if(do_we_solve_for_Ts) solver_Ts->set_rhs(rhs_Ts.vec);
 
   // Set some other solver properties:
   solver_Tl->set_integration_order(1);
@@ -5139,13 +5151,24 @@ void poisson_step(Vec phi, Vec phi_solid,
   if(do_we_solve_for_Ts) solver_Ts->preassemble_linear_system();
 
   // Solve the system:
-  solver_Tl->solve(*T_l,false,true,KSPBCGS,PCHYPRE);
-  if(do_we_solve_for_Ts) solver_Ts->solve(*T_s,false,true,KSPBCGS,PCHYPRE);
+  solver_Tl->solve(T_l_n.vec, false, true, KSPBCGS, PCHYPRE);
+  if(do_we_solve_for_Ts) solver_Ts->solve(T_l_n.vec, false, true, KSPBCGS, PCHYPRE);
 
   // Delete solvers:
   delete solver_Tl;
   if(do_we_solve_for_Ts) delete solver_Ts;
 }
+
+//void setup_and_solve_poisson_problem(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, ){
+
+//}
+
+
+
+
+
+
+
 
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
@@ -7831,7 +7854,6 @@ int main(int argc, char** argv) {
           if(advection_sl_order ==2){
               T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
             }
-
         }
         // Create arrays to hold the RHS:
         rhs_Tl.create(p4est_np1,nodes_np1);
@@ -7849,10 +7871,6 @@ int main(int argc, char** argv) {
 
         // Compute normals on the interface:
         compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
-
-        // Compute curvature on the interface:
-//        my_p4est_level_set_t ls_new_new(ngbd_np1);
-//        ls.update(ngbd_np1);
 
         // Feed the curvature computed to the interfacial boundary condition:
         if(interfacial_temp_bc_requires_curvature){
@@ -7918,53 +7936,16 @@ int main(int argc, char** argv) {
         // Solve Poisson problem:
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
 
-        poisson_step(phi.vec,phi_solid.vec,
-                     phi_dd.vec,phi_solid_dd.vec,
-                     &T_l_n.vec,&T_s_n.vec,
-                     rhs_Tl.vec,rhs_Ts.vec,
+        poisson_step(phi, phi_solid,
+                     phi_dd, phi_solid_dd,
+                     T_l_n, T_s_n,
+                     rhs_Tl, rhs_Ts,
                      bc_interface_val_temp,bc_wall_value_temp,
                      ngbd_np1, solver_Tl, solver_Ts,
                      cube_refinement,
-                     example_uses_inner_LSF? phi_substrate.vec:NULL,
-                     example_uses_inner_LSF? phi_substrate_dd.vec:NULL);
+                     phi_substrate,
+                     phi_substrate_dd);
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
-
-
-        if(0){
-          // -------------------------------
-          // TEMPORARY: save fields right after poisson step to see why we are having issues w Ts soln:
-          // -------------------------------
-          PetscPrintf(mpi.comm(), "begin trying to save ... , outidx = %d \n", tstep);
-          std::vector<Vec_for_vtk_export_t> point_fields;
-          std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-          point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
-          point_fields.push_back(Vec_for_vtk_export_t(phi_solid.vec, "phi_solid"));
-          point_fields.push_back(Vec_for_vtk_export_t(phi_substrate.vec, "phi_sub"));
-          point_fields.push_back(Vec_for_vtk_export_t(phi_dd.vec[0], "phi_xx"));
-          point_fields.push_back(Vec_for_vtk_export_t(phi_dd.vec[1], "phi_yy"));
-
-          point_fields.push_back(Vec_for_vtk_export_t(phi_substrate_dd.vec[0], "phi_sub_xx"));
-          point_fields.push_back(Vec_for_vtk_export_t(phi_substrate_dd.vec[1], "phi_sub_yy"));
-
-          point_fields.push_back(Vec_for_vtk_export_t(T_l_n.vec, "Tl"));
-          point_fields.push_back(Vec_for_vtk_export_t(T_s_n.vec, "Ts"));
-          point_fields.push_back(Vec_for_vtk_export_t(rhs_Tl.vec, "rhs_Tl"));
-          point_fields.push_back(Vec_for_vtk_export_t(rhs_Ts.vec, "rhs_Ts"));
-          point_fields.push_back(Vec_for_vtk_export_t(curvature.vec, "kappa"));
-
-          const char* out_dir = getenv("OUT_DIR_VTK");
-          if(!out_dir){
-            throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-          }
-//          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
-          char filename[1000];
-          sprintf(filename, "%s/snapshot_after_poisson_step_tstep_%d", out_dir, tstep);
-          my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ghost_np1, P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-          point_fields.clear();
-
-        }
-
 
         // -------------------------------
         // Clear interfacial BC if needed (curvature, normals, or both depending on example)
@@ -8146,7 +8127,9 @@ int main(int argc, char** argv) {
             CF_DIM *external_forces[P4EST_DIM]=
             {DIM(external_force_components_with_BA[0],external_force_components_with_BA[1],external_force_components_with_BA[2])};
             ns->set_external_forces(external_forces);
-          }else{
+          }
+          else
+          {
             CF_DIM *external_forces[P4EST_DIM]=
             {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
             ns->set_external_forces(external_forces);
@@ -8157,6 +8140,9 @@ int main(int argc, char** argv) {
 //            ns->boussinesq_approx=true;
 //            ns->set_external_forces_using_vector(T_l_n.vec);
 //        }
+
+        // Handle the Boussinesq case setup for the RHS, if relevant:
+        // ---------------------------
         if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
           switch(problem_dimensionalization_type){
             case NONDIM_BY_FLUID_VELOCITY:{
@@ -8190,9 +8176,7 @@ int main(int argc, char** argv) {
             default:{
               throw std::runtime_error("setting natural convection -- unrecognized problem dimensionalization formulation \n");
             }
-
           }
-
         }
 
         // -------------------------------
@@ -8236,12 +8220,6 @@ int main(int argc, char** argv) {
           MPI_Barrier(mpi.comm());
           MPI_Abort(mpi.comm(),0);
         }
-
-        // 12-7 commented out below -- we added a section that handles this with all the other timestep stuff
-//        // -------------------------------
-//        // Update timestep info as needed
-//        // -------------------------------
-//        if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
 
         // -------------------------------
         // Clear out the interfacial BC for the next timestep, if needed
@@ -8309,14 +8287,16 @@ int main(int argc, char** argv) {
       // Saving to VTK: either every specified number of iterations, or every specified dt:
       // Note: we do this after extension of fields to make visualization nicer
       // --------------------------------------------------------------------------------------------------------------
+      // (a) Determine if we are saving this timestep:
+      // ---------------------------
       bool are_we_saving = false;
 
       are_we_saving = are_we_saving_vtk( tstep, tn, tstep==load_tstep, out_idx, true) /*&& (tstep>0)*/;
-
-      // Save to VTK if we are saving this timestep:
+      // ---------------------------
+      // (b) Save to VTK if applicable:
+      // ---------------------------
       if(are_we_saving){
-
-
+        // Get the island numbers to save if we want that
         if(track_evolving_geometries){
           island_numbers.create(p4est_np1, nodes_np1);
           track_evolving_geometry(p4est_np1, nodes_np1, ngbd_np1,
@@ -8334,7 +8314,10 @@ int main(int argc, char** argv) {
         }
       } // end of if "are we saving"
 
-      // Check errors on validation cases if relevant, save errors to vtk if we are saving this timestep
+      // ---------------------------
+      // (c) Check errors on validation cases if relevant,
+      // save errors to vtk if we are saving this timestep
+      // ---------------------------
       if(example_ == NS_GIBOU_EXAMPLE){
           const char* out_dir_ns = getenv("OUT_DIR_VTK");
           char output[1000];
@@ -8381,15 +8364,15 @@ int main(int argc, char** argv) {
           save_stefan_test_case(p4est_np1,nodes_np1,ghost_np1,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
         }
 
-      // --------------------------------------------------------------------------------------------------------------
+      // ---------------------------------------------------
       // Advance the LSF/Update the grid :
-      // --------------------------------------------------------------------------------------------------------------
+      // ---------------------------------------------------
       /* In Coupled case: advect the LSF and update the grid according to vorticity, d2T/dd2, and phi
        * In Stefan case:  advect the LSF and update the grid according to phi
        * In NS case:      update the grid according to phi (no advection)
       */
       // --------------------------------
-      // Compute the timestep
+      // (a) Compute the timestep
       // (needed for the grid advection, and will be used as timestep for np1 step)
       // --------------------------------
       dt_nm1 = dt; // Slide the timestep
@@ -8411,7 +8394,7 @@ int main(int argc, char** argv) {
 
 
       //-------------------------------------------------------------
-      // Update the grids so long as this is not the last timestep:
+      // (b) Update the grids so long as this is not the last timestep:
       //-------------------------------------------------------------
       if(tstep!=last_tstep){
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning grid update process ... \n"
@@ -8443,9 +8426,9 @@ int main(int argc, char** argv) {
           check_collapse_on_substrate(p4est_np1,nodes_np1,ngbd_np1, phi, phi_substrate);
         }
 
-        // --------------------------------------------------------------------------------------------------------------
+        // ---------------------------------------------------
         // Interpolate Values onto New Grid:
-        // -------------------------------------------------------------------------------------------------------------
+        // ---------------------------------------------------
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Interpolating fields to new grid ... \n");
         // ELYCE TO-DO: why do we need to do this sliding for tstep=0? Can we do away with this?
@@ -8463,18 +8446,16 @@ int main(int argc, char** argv) {
           }
 
         } // end of "if tstep ==0"
-//        interpolate_fields_onto_new_grid(&T_l_n.vec,&T_s_n.vec,
-//                                         v_interface.vec,v_n.vec,
-//                                         nodes_np1,p4est_np1,ngbd,interp_bw_grids);
+
         interpolate_fields_onto_new_grid(T_l_n, T_s_n,
                                          v_interface, v_n,
                                          nodes_np1, p4est_np1, ngbd, interp_bw_grids);
       } // end of "if tstep !=last tstep"
 
 
-      //-------------------------------------------------------------
-      // Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
-      //-------------------------------------------------------------
+      //------------------------------------------------------
+      // (c) Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
+      //------------------------------------------------------
       if(example_uses_inner_LSF){
         phi_substrate.destroy();
         phi_eff.destroy();
@@ -8529,7 +8510,7 @@ int main(int argc, char** argv) {
       }
 
       // -------------------------------
-      // Update time: // trying something
+      // Update time:
       // -------------------------------
       if(tstep==0){dt_nm1 = dt;}
       tn+=dt;
@@ -8538,6 +8519,7 @@ int main(int argc, char** argv) {
 
   PetscPrintf(mpi.comm(),"Time loop exited \n");
 
+  // Do the final destructions!
   perform_final_destructions(mpi, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
                              p4est, nodes, ghost, ngbd, hierarchy,
                              brick, conn,
@@ -8549,75 +8531,6 @@ int main(int argc, char** argv) {
                              analytical_soln_v, external_force_components, external_force_components_with_BA,
                              bc_interface_value_velocity, bc_wall_value_velocity, bc_wall_type_velocity);
 
-//  // Final destructions: TO-DO: need to revisit these, make sure they're done correctly
-//  phi.destroy();
-
-//  if(solve_stefan){
-//    T_l_n.destroy();
-//    T_s_n.destroy();
-//    v_interface.destroy();
-
-//    if(advection_sl_order==2) T_l_nm1.destroy();
-
-//    // Destroy relevant BC and RHS info:
-//    for(unsigned char d=0;d<2;++d){
-//      if(analytical_IC_BC_forcing_term){
-//        delete analytical_T[d];
-//        delete external_heat_source_T[d];
-//      }
-//      delete bc_interface_val_temp[d];
-//      delete bc_wall_value_temp[d];
-//    }
-
-//    if(!solve_navier_stokes){
-//      // destroy the structures leftover (in non NS case)
-//      p4est_nodes_destroy(nodes);
-//      p4est_ghost_destroy(ghost);
-//      p4est_destroy      (p4est);
-
-//      p4est_nodes_destroy(nodes_np1);
-//      p4est_ghost_destroy(ghost_np1);
-//      p4est_destroy(p4est_np1);
-
-//      my_p4est_brick_destroy(conn, &brick);
-//      delete hierarchy;
-//      delete ngbd;
-
-//      delete hierarchy_np1;
-//      delete ngbd_np1;
-//    }
-//  }
-
-//  if(solve_navier_stokes){
-//    v_n.destroy();
-//    v_nm1.destroy();
-//    phi_nm1.destroy();
-
-//    // NS takes care of destroying v_NS_n and v_NS_nm1
-//    vorticity.destroy();
-//    press_nodes.destroy();
-//    MPI_Barrier(mpi.comm());
-
-//    for(unsigned char d=0;d<P4EST_DIM;d++){
-//      if(analytical_IC_BC_forcing_term){
-//        delete analytical_soln_v[d];
-//        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-//          delete external_force_components_with_BA[d];
-//        }
-//        else{
-//          delete external_force_components[d];
-//        }
-//      }
-
-//      delete bc_interface_value_velocity[d];
-//      delete bc_wall_value_velocity[d];
-//      delete bc_wall_type_velocity[d];
-//    }
-
-
-//    ns->nullify_phi(); // since we delete it ourselves earlier
-//    delete ns;
-//  }
   }// end of loop through number of splits
 
   MPI_Barrier(mpi.comm());
