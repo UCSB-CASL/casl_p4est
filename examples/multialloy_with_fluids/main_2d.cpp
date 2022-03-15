@@ -3556,15 +3556,7 @@ void extend_relevant_fields(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
   }
 }
 
-
-void create_and_prepare_auxiliary_fields_for_poisson_step(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1,
-                                                          vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid, vec_and_ptr_dim_t& phi_solid_dd,
-                                                          vec_and_ptr_t& phi_substrate);
-
-void destroy_auxiliary_fields_for_poisson_step();
-
-
-void setup_rhs(vec_and_ptr_t& phi,vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts,vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source** external_heat_source_term=NULL){
+void setup_rhs(vec_and_ptr_t& phi, vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& rhs_Tl, vec_and_ptr_t& rhs_Ts, vec_and_ptr_t& T_l_backtrace_n, vec_and_ptr_t& T_l_backtrace_nm1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t *ngbd_np1, external_heat_source** external_heat_source_term=NULL){
 
   // In building RHS, if we are doing advection, we have two options:
   // (1) 1st order -- approx is (dT/dt + u dot grad(T)) ~ (T(n+1) - Td(n))/dt --> so we add Td/dt to the RHS
@@ -3730,7 +3722,6 @@ void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
   // Thus, while T_n is sampled on the grid np1, it is indeed still the field at time n, simply transferred to the grid used to solve for the np1 fields.
 
 
-
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Beginning to do backtrace \n");
   PetscErrorCode ierr;
   // Initialize objects we will use in this function:
@@ -3834,13 +3825,7 @@ void do_backtrace(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_l_nm1,
   if(print_checkpoints) PetscPrintf(p4est_np1->mpicomm,"Completes backtrace \n");
 }
 
-// Elyce to do -- how to change this fxn to pass by reference?
-//void interpolate_fields_onto_new_grid(Vec *T_l, Vec *T_s,
-//                                      Vec v_interface[P4EST_DIM],
-//                                      Vec v_external[P4EST_DIM],
-//                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new,
-//                                      my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method/*,
-//                                      Vec *all_fields_old=NULL, Vec *all_fields_new=NULL*/){
+
 void interpolate_fields_onto_new_grid(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
                                       vec_and_ptr_dim_t& v_interface,
                                       vec_and_ptr_dim_t& v_n,
@@ -4102,36 +4087,8 @@ void compute_interfacial_velocity(vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
         foreach_dimension(d){
           VecGhostUpdateEnd(v_interface.vec[d],INSERT_VALUES,SCATTER_FORWARD);
         }
-
         v_interface.get_array();
         phi_sub.restore_array();
-
-      }
-
-      if(0){
-        // -------------------------------
-        // TEMPORARY: save phi_eff fields to see what we are working with
-        // -------------------------------
-        std::vector<Vec_for_vtk_export_t> point_fields;
-        std::vector<Vec_for_vtk_export_t> cell_fields = {};
-
-        point_fields.push_back(Vec_for_vtk_export_t(phi.vec, "phi"));
-        point_fields.push_back(Vec_for_vtk_export_t(phi_eff.vec, "phi_eff"));
-        point_fields.push_back(Vec_for_vtk_export_t(phi_sub.vec, "phi_sub"));
-        point_fields.push_back(Vec_for_vtk_export_t(jump.vec[0], "jump_x"));
-        point_fields.push_back(Vec_for_vtk_export_t(jump.vec[1], "jump_y"));
-        point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[0], "v_x"));
-        point_fields.push_back(Vec_for_vtk_export_t(v_interface.vec[1], "v_y"));
-        const char* out_dir = getenv("OUT_DIR_VTK");
-        if(!out_dir){
-          throw std::invalid_argument("You need to set the output directory for VTK: OUT_DIR_VTK");
-        }
-        //          char output[] = "/home/elyce/workspace/projects/multialloy_with_fluids/output_two_grain_clogging/gradP_0pt01_St_0pt07/grid57_flush_no_collapse_after_extension_bc_added";
-        char filename[1000];
-        sprintf(filename, "%s/snapshot_interfacial_velocity_process_%d", out_dir, tstep);
-        my_p4est_vtk_write_all_lists(p4est_np1, nodes_np1, ngbd_np1->get_ghost(), P4EST_TRUE, P4EST_TRUE, filename, point_fields, cell_fields);
-        point_fields.clear();
-
       }
 
       // Scale v_interface computed by appropriate sign if we are doing the coupled test case:
@@ -4215,18 +4172,6 @@ void compute_timestep(vec_and_ptr_dim_t& v_interface, vec_and_ptr_t& phi,
               foreach_local_node(n, nodes_np1){
                   if (fabs(phi.ptr[n]) < uniform_band*dxyz_close_to_interface){
                       max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
-                      // For checking dendrite tip velocity case:
-                      //        double xyz_[P4EST_DIM];
-                      //        node_xyz_fr_n(n,p4est,nodes,xyz_);
-                      //        bool is_xaxis = (fabs(xyz_[0] - (xmax - xmin)/2.)<dxyz_close_to_interface);
-                      //        bool is_yaxis = (fabs(xyz_[1] - (ymax - ymin)/2.)<dxyz_close_to_interface);
-                      //        bool is_tip = (is_xaxis && !is_yaxis) || (!is_xaxis && is_yaxis);
-                      //        if(is_tip){
-
-                      //          double vnorm = sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n]));
-                      //          double Pe_tip = vnorm*vel_nondim_to_dim*d0/alpha_s;
-                      //          printf("Pe_tip = %0.4f \n",Pe_tip);
-                      //        }
                   }
               }
               v_interface.restore_array();
@@ -4650,8 +4595,6 @@ void regularize_front(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_nod
 }
 
 
-
-
 void refine_and_coarsen_grid_and_advect_lsf_if_applicable(my_p4est_semi_lagrangian_t sl, splitting_criteria_cf_and_uniform_band_t sp,
                      p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
                      p4est_t* &p4est, p4est_nodes_t* &nodes,
@@ -5007,22 +4950,6 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
 };
 
 
-
-
-
-// Elyce to-do: why don't we just pass in vec_and_ptr here?
-//void poisson_step(Vec phi, Vec phi_solid,
-//                  Vec phi_dd[P4EST_DIM], Vec phi_solid_dd[P4EST_DIM],
-//                  Vec* T_l, Vec* T_s,
-//                  Vec rhs_Tl, Vec rhs_Ts,
-//                  BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
-//                  BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
-//                  my_p4est_node_neighbors_t* ngbd,
-//                  my_p4est_poisson_nodes_mls_t* &solver_Tl,
-//                  my_p4est_poisson_nodes_mls_t* &solver_Ts,
-
-//                  int cube_refinement,
-//                  Vec phi_substrate=NULL, Vec phi_substrate_dd[P4EST_DIM]=NULL ){
 void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
                   vec_and_ptr_dim_t& phi_dd, vec_and_ptr_dim_t& phi_solid_dd,
                   vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n,
@@ -5165,11 +5092,6 @@ void poisson_step(vec_and_ptr_t& phi, vec_and_ptr_t& phi_solid,
 
 
 
-
-
-
-
-
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
     case NONDIM_BY_FLUID_VELOCITY:{
@@ -5202,6 +5124,16 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         my_p4est_faces_t* faces_np1, bool compute_pressure_,
                         bool &did_crash,
                         char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
+
+//void navier_stokes_step(my_p4est_navier_stokes_t* ns,
+//                        p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+//                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM],
+//                        Vec vorticity, Vec press_nodes, Vec phi, double dxyz_close_to_interface,
+//                        KSPType face_solver_type, PCType pc_face,
+//                        KSPType cell_solver_type, PCType pc_cell,
+//                        my_p4est_faces_t* faces_np1, bool compute_pressure_,
+//                        bool &did_crash,
+//                        char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
   PetscErrorCode ierr;
 
   my_p4est_poisson_faces_t* face_solver;
@@ -7885,7 +7817,7 @@ int main(int argc, char** argv) {
         // Feed the normals to the interfacial boundary condition if needed:
         if(interfacial_temp_bc_requires_normal){
           for(unsigned char d=0; d<2; d++){
-            bc_interface_val_temp[d]->set_normals(ngbd_np1,normal.vec[0],normal.vec[1]);
+            bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
           }
         }
         // -------------------------------
@@ -7900,18 +7832,18 @@ int main(int argc, char** argv) {
 
         // Get inner LSF and derivatives if required:
         if(example_uses_inner_LSF){
-            ngbd_np1->second_derivatives_central(phi_substrate.vec,phi_substrate_dd.vec);
+            ngbd_np1->second_derivatives_central(phi_substrate.vec, phi_substrate_dd.vec);
           }
         // -------------------------------
         // Compute advection terms (if applicable):
         // -------------------------------
         if (solve_navier_stokes){
             if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
-            do_backtrace(T_l_n,T_l_nm1,
-                         T_l_backtrace,T_l_backtrace_nm1,
-                         v_n,v_nm1,
-                         p4est_np1,nodes_np1,ngbd_np1,
-                         p4est,nodes,ngbd);
+            do_backtrace(T_l_n, T_l_nm1,
+                         T_l_backtrace, T_l_backtrace_nm1,
+                         v_n, v_nm1,
+                         p4est_np1, nodes_np1, ngbd_np1,
+                         p4est, nodes, ngbd);
             // Do backtrace with v_n --> navier-stokes fluid velocity
         } // end of solve_navier_stokes if statement
         // -------------------------------
