@@ -5106,18 +5106,18 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
                                      int cube_refinement)
 {
   PetscErrorCode ierr;
-  // -------------------------------
-  // Update BC objects for stefan problem:
-  // -------------------------------
-  if(analytical_IC_BC_forcing_term){
-    for(unsigned char d=0;d<2;d++){
-      analytical_T[d]->t = tn;
-      bc_interface_val_temp[d]->t = tn;
-      bc_wall_value_temp[d]->t = tn;
-      external_heat_source_T[d]->t = tn;
-    }
-  }
-  // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
+//  // -------------------------------
+//  // Update BC objects for stefan problem:
+//  // -------------------------------
+//  if(analytical_IC_BC_forcing_term){
+//    for(unsigned char d=0;d<2;d++){
+//      analytical_T[d]->t = tn;
+//      bc_interface_val_temp[d]->t = tn;
+//      bc_wall_value_temp[d]->t = tn;
+//      external_heat_source_T[d]->t = tn;
+//    }
+//  }
+//  // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
 
   // -------------------------------
   // Create all vectors that will be used
@@ -5129,8 +5129,8 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
   phi_solid.create(p4est_np1,nodes_np1);
 
   //Curvature and normal for BC's and setting up solver:
-  normal.create(p4est_np1,nodes_np1);
-  curvature.create(p4est_np1,nodes_np1);
+  if(interfacial_temp_bc_requires_normal || interfacial_temp_bc_requires_curvature) normal.create(p4est_np1,nodes_np1);
+  if(interfacial_temp_bc_requires_curvature)curvature.create(p4est_np1,nodes_np1);
 
   // Second derivatives of LSF's (for solver):
   phi_solid_dd.create(p4est_np1,nodes_np1);
@@ -5159,10 +5159,19 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
   VecCopyGhost(phi.vec, phi_solid.vec);
   VecScaleGhost(phi_solid.vec,-1.0);
 
-  // Compute normals on the interface:
-  compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
+  // Compute normals on the interface (if needed) :
+  if(interfacial_temp_bc_requires_normal || interfacial_temp_bc_requires_curvature){
+    compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
 
-  // Feed the curvature computed to the interfacial boundary condition:
+    // Feed the normals if relevant
+    if(interfacial_temp_bc_requires_normal){
+      for(unsigned char d=0; d<2; d++){
+        bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
+      }
+    }
+  }
+
+  // Compute curvature if needed and feed to bc object:
   if(interfacial_temp_bc_requires_curvature){
     // We need curvature of the solid domain, so we use phi_solid and negative of normals
     compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
@@ -5172,17 +5181,11 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
     }
   }
 
-  // Feed the normals to the interfacial boundary condition if needed:
-  if(interfacial_temp_bc_requires_normal){
-    for(unsigned char d=0; d<2; d++){
-      bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
-    }
-  }
 
   // -------------------------------
   // Get most updated derivatives of the LSF's (on current grid)
   // -------------------------------
-  if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+  if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
 
   // Get derivatives of liquid and solid LSF's
   if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
@@ -5268,8 +5271,8 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
   phi_solid.destroy();
 
   // Curvature and normal for BC's and setting up solver:
-  normal.destroy();
-        curvature.destroy();
+  if(interfacial_temp_bc_requires_normal || interfacial_temp_bc_requires_curvature) normal.destroy();
+  if(interfacial_temp_bc_requires_curvature) curvature.destroy();
 
   // Second derivatives of LSF's (for solver):
   phi_solid_dd.destroy();
@@ -5292,7 +5295,61 @@ void setup_and_solve_poisson_problem(mpi_environment_t& mpi,
 
 }
 
+void setup_analytical_ics_and_bcs_for_this_tstep(BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2],
+                                             BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                             temperature_field* analytical_T[2],
+                                             external_heat_source* external_heat_source_T[2],
+                                             velocity_component* analytical_soln_v[P4EST_DIM],
+                                             BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                             BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                                 BC_WALL_VALUE_PRESSURE& bc_wall_value_pressure,
+                                             external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                             external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                                                 CF_DIM* external_forces_NS[P4EST_DIM]){
+  // Necessary for coupled case:
+  if((tstep>0)){
+    // Note, this object does not actually get used directly, but
+    // forcing terms for some examples depend upon it existing and being updated
 
+    // IN PARTICULAR-- forcing term for liquid temperature problem also depends on this,
+    // which is why it currently gets updated before the poisson problem
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      analytical_soln_v[d]->t = tn;
+    }
+  }
+
+  // -------------------------------
+  // Update BC objects for stefan problem:
+  // -------------------------------
+
+  for(unsigned char d=0;d<2;d++){
+    analytical_T[d]->t = tn;
+    bc_interface_val_temp[d]->t = tn;
+    bc_wall_value_temp[d]->t = tn;
+    external_heat_source_T[d]->t = tn;
+  }
+
+  // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
+
+  // -------------------------------
+  // Update analytical objects for the NS problem:
+  // -------------------------------
+  foreach_dimension(d){
+    bc_interface_value_velocity[d]->t = tn;
+    bc_wall_value_velocity[d]->t = tn;
+
+    if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+      external_force_components_with_BA[d]->t = tn;
+      external_forces_NS[d] = external_force_components_with_BA[d];
+    }
+    else{
+      external_force_components[d]->t = tn;
+      external_forces_NS[d] = external_force_components[d];
+    }
+  }
+  bc_wall_value_pressure.t=tn;
+
+}
 
 void set_ns_parameters(my_p4est_navier_stokes_t* ns){
   switch(problem_dimensionalization_type){
@@ -7240,6 +7297,7 @@ int main(int argc, char** argv) {
   external_force_per_unit_volume_component* external_force_components[P4EST_DIM];
   external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM];
 
+  CF_DIM* external_forces_NS[P4EST_DIM];
   // Coupled/NS boundary conditions:
   velocity_component* analytical_soln_v[P4EST_DIM];
 
@@ -7904,16 +7962,16 @@ int main(int argc, char** argv) {
             }
         }
       // -------------------------------
-      // Update analytical velocity for coupled problem example:
+      // Update analytical velocity for coupled problem example: // TO-DO: move this to the NS step where it belongs (lol)
       // -------------------------------
       if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up appropriate boundary conditions... \n");
 
-      if((tstep>0) && analytical_IC_BC_forcing_term){
-        for(unsigned char d=0;d<P4EST_DIM;d++){
-          analytical_soln_v[d]->t = tn;
-        }
-      }
-
+      if(analytical_IC_BC_forcing_term) setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
+                                                  analytical_T, external_heat_source_T,
+                                                  analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity,
+                                                  bc_wall_value_pressure,
+                                                  external_force_components, external_force_components_with_BA,
+                                                  external_forces_NS);
 
       //-------------------------------------------------------------
       // Create substrate LSF and corresponding phi_eff if that is required for this example, to be used as needed throughout the timestep:
@@ -7939,9 +7997,8 @@ int main(int argc, char** argv) {
         ls.reinitialize_2nd_order(phi_eff.vec);
       }
 
-
       // ------------------------------------------------------------
-      // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
+      // Poisson Problem at Nodes (for temp and/or conc scalar fields): Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
       if((tstep>0) && solve_stefan){ // mostly memory safe (may have tiniest leak TO-DO)
         setup_and_solve_poisson_problem(mpi,
@@ -7957,188 +8014,6 @@ int main(int argc, char** argv) {
                                         bc_interface_val_temp, bc_wall_value_temp,
                                         analytical_T, external_heat_source_T,
                                         solver_Tl, solver_Ts, cube_refinement);
-
-
-        //        // -------------------------------
-//        // Update BC objects for stefan problem:
-//        // -------------------------------
-//        if(analytical_IC_BC_forcing_term){
-//          for(unsigned char d=0;d<2;d++){
-//            analytical_T[d]->t = tn;
-//            bc_interface_val_temp[d]->t = tn;
-//            bc_wall_value_temp[d]->t = tn;
-//            external_heat_source_T[d]->t = tn;
-//          }
-//        }
-//         // If not, we use the curvature and neighbors, but we have to wait till curvature is computed in Poisson step to apply this, so it is applied later
-
-//        // -------------------------------
-//        // Create all vectors that will be used
-//        // strictly for the stefan step
-//        // (aka created and destroyed in stefan step)
-//        // -------------------------------
-
-//        // Solid LSF:
-//        phi_solid.create(p4est_np1,nodes_np1);
-
-//        //Curvature and normal for BC's and setting up solver:
-//        normal.create(p4est_np1,nodes_np1);
-//        curvature.create(p4est_np1,nodes_np1);
-
-//        // Second derivatives of LSF's (for solver):
-//        phi_solid_dd.create(p4est_np1,nodes_np1);
-//        phi_dd.create(p4est_np1,nodes_np1);
-
-//        if(example_uses_inner_LSF){
-//          phi_substrate_dd.create(p4est_np1,nodes_np1);
-//        }
-//        if(solve_navier_stokes){
-//          T_l_backtrace.create(p4est_np1,nodes_np1);
-//          if(advection_sl_order ==2){
-//              T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
-//            }
-//        }
-//        // Create arrays to hold the RHS:
-//        rhs_Tl.create(p4est_np1,nodes_np1);
-//        if(do_we_solve_for_Ts) rhs_Ts.create(p4est_np1,nodes_np1);
-
-//        // -------------------------------
-//        // Compute the normal and curvature of the interface
-//        //-- curvature is used in some of the interfacial boundary condition(s) on temperature
-//        // -------------------------------
-
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing normal and curvature ... \n");
-//        // Get the new solid LSF:
-//        VecCopyGhost(phi.vec, phi_solid.vec);
-//        VecScaleGhost(phi_solid.vec,-1.0);
-
-//        // Compute normals on the interface:
-//        compute_normals(*ngbd_np1, phi_solid.vec, normal.vec); // normal here is outward normal of solid domain
-
-//        // Feed the curvature computed to the interfacial boundary condition:
-//        if(interfacial_temp_bc_requires_curvature){
-//          // We need curvature of the solid domain, so we use phi_solid and negative of normals
-//          compute_mean_curvature(*ngbd_np1, normal.vec, curvature.vec);
-
-//          for(unsigned char d=0;d<2;d++){
-//            bc_interface_val_temp[d]->set(ngbd_np1, curvature.vec);
-//          }
-//        }
-
-//        // Feed the normals to the interfacial boundary condition if needed:
-//        if(interfacial_temp_bc_requires_normal){
-//          for(unsigned char d=0; d<2; d++){
-//            bc_interface_val_temp[d]->set_normals(ngbd_np1, normal.vec[0], normal.vec[1]);
-//          }
-//        }
-//        // -------------------------------
-//        // Get most updated derivatives of the LSF's (on current grid)
-//        // -------------------------------
-//        if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
-
-//        // Get derivatives of liquid and solid LSF's
-//        if (print_checkpoints) PetscPrintf(mpi.comm(),"New solid LSF acquired \n");
-//        ngbd_np1->second_derivatives_central(phi.vec, phi_dd.vec);
-//        ngbd_np1->second_derivatives_central(phi_solid.vec, phi_solid_dd.vec);
-
-//        // Get inner LSF and derivatives if required:
-//        if(example_uses_inner_LSF){
-//            ngbd_np1->second_derivatives_central(phi_substrate.vec, phi_substrate_dd.vec);
-//        }
-//        // -------------------------------
-//        // Compute advection terms (if applicable):
-//        // -------------------------------
-//        if (solve_navier_stokes){
-//            if(print_checkpoints) PetscPrintf(mpi.comm(),"Computing advection terms ... \n");
-//            do_backtrace(T_l_n, T_l_nm1,
-//                         T_l_backtrace, T_l_backtrace_nm1,
-//                         v_n, v_nm1,
-//                         p4est_np1, nodes_np1, ngbd_np1,
-//                         p4est, nodes, ngbd);
-//            // Do backtrace with v_n --> navier-stokes fluid velocity
-//        } // end of solve_navier_stokes if statement
-//        // -------------------------------
-//        // Set up the RHS for Poisson step:
-//        // -------------------------------
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up RHS for Poisson problem ... \n");
-
-//        setup_rhs(phi, T_l_n, T_s_n,
-//                  rhs_Tl, rhs_Ts,
-//                  T_l_backtrace, T_l_backtrace_nm1,
-//                  p4est_np1, nodes_np1, ngbd_np1, external_heat_source_T);
-
-//        // -------------------------------
-//        // Execute the Poisson step:
-//        // -------------------------------
-//        // Slide Temp fields:
-//        if(solve_navier_stokes && advection_sl_order==2){
-//          T_l_nm1.destroy();
-//          T_l_nm1.create(p4est_np1, nodes_np1);
-//          ierr = VecCopyGhost(T_l_n.vec, T_l_nm1.vec);CHKERRXX(ierr);
-//        }
-//        // Solve Poisson problem:
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem solution step... \n");
-
-//        poisson_step(phi, phi_solid,
-//                     phi_dd, phi_solid_dd,
-//                     T_l_n, T_s_n,
-//                     rhs_Tl, rhs_Ts,
-//                     bc_interface_val_temp,bc_wall_value_temp,
-//                     ngbd_np1, solver_Tl, solver_Ts,
-//                     cube_refinement,
-//                     phi_substrate,
-//                     phi_substrate_dd);
-//        if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step completed ... \n");
-
-//        // -------------------------------
-//        // Clear interfacial BC if needed (curvature, normals, or both depending on example)
-//        // -------------------------------
-//        if(interfacial_temp_bc_requires_curvature){
-//          for(unsigned char d=0;d<2;++d){
-//            if (bc_interface_val_temp[d]!=NULL){
-//              bc_interface_val_temp[d]->clear();
-//            }
-//          }
-//        }
-//        if(interfacial_temp_bc_requires_normal){
-//          for(unsigned char d=0;d<2;++d){
-//            if (bc_interface_val_temp[d]!=NULL){
-//              bc_interface_val_temp[d]->clear_normals();
-//            }
-//          }
-//        }
-//        // -------------------------------
-//        // Destroy all vectors
-//        // that were used strictly for the
-//        // stefan step (aka created and destroyed in stefan step)
-//        // -------------------------------
-//        // Solid LSF:
-//        phi_solid.destroy();
-
-//        // Curvature and normal for BC's and setting up solver:
-//        normal.destroy();
-//        curvature.destroy();
-
-//        // Second derivatives of LSF's (for solver):
-//        phi_solid_dd.destroy();
-//        phi_dd.destroy();
-
-//        if(example_uses_inner_LSF){
-//          phi_substrate_dd.destroy();
-//        }
-
-//        if(solve_navier_stokes){
-//          T_l_backtrace.destroy();
-//          if(advection_sl_order ==2){
-//              T_l_backtrace_nm1.destroy();
-//            }
-//        }
-
-//        // Destroy arrays to hold the RHS:
-//        rhs_Tl.destroy();
-//        if(do_we_solve_for_Ts) rhs_Ts.destroy();
-
-
 
       } // end of "if solve stefan" AND tstep>0
 
@@ -8194,8 +8069,8 @@ int main(int argc, char** argv) {
           if(interfacial_vel_bc_requires_vint){
             bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
           }
-          bc_interface_value_velocity[d]->t = tn;
-          bc_wall_value_velocity[d]->t = tn;
+//          bc_interface_value_velocity[d]->t = tn;
+//          bc_wall_value_velocity[d]->t = tn; // handled in analytical fxn
 
           bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
           bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
@@ -8208,17 +8083,17 @@ int main(int argc, char** argv) {
         bc_pressure.setWallTypes(bc_wall_type_pressure);
         bc_pressure.setWallValues(bc_wall_value_pressure);
 
-        // Set external_forces if applicable
-        if(analytical_IC_BC_forcing_term){
-          foreach_dimension(d){
-            if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-              external_force_components_with_BA[d]->t = tn;
-            }else{
-              external_force_components[d]->t = tn;
-            }          
-          }
-          bc_wall_value_pressure.t=tn;
-        }
+//        // Set external_forces if applicable
+//        if(analytical_IC_BC_forcing_term){
+//          foreach_dimension(d){
+//            if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+//              external_force_components_with_BA[d]->t = tn;
+//            }else{
+//              external_force_components[d]->t = tn;
+//            }
+//          }
+//          bc_wall_value_pressure.t=tn;
+//        }
 
         // -------------------------------
         // Update the NS grid (or initialize the solver)
@@ -8270,22 +8145,14 @@ int main(int argc, char** argv) {
         // Set the RHS:
         if(analytical_IC_BC_forcing_term){
           if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-            CF_DIM *external_forces[P4EST_DIM]=
-            {DIM(external_force_components_with_BA[0],external_force_components_with_BA[1],external_force_components_with_BA[2])};
-            ns->set_external_forces(external_forces);
+            ns->set_external_forces(external_forces_NS);
           }
           else
           {
-            CF_DIM *external_forces[P4EST_DIM]=
-            {DIM(external_force_components[0],external_force_components[1],external_force_components[2])};
-            ns->set_external_forces(external_forces);
+            ns->set_external_forces(external_forces_NS);
           }
         }
-//        // For natural convection only:
-//        if (example_==MELTING_ICE_SPHERE_NAT_CONV){
-//            ns->boussinesq_approx=true;
-//            ns->set_external_forces_using_vector(T_l_n.vec);
-//        }
+
 
         // Handle the Boussinesq case setup for the RHS, if relevant:
         // ---------------------------
