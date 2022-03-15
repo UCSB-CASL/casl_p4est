@@ -5115,18 +5115,8 @@ void set_ns_parameters(my_p4est_navier_stokes_t* ns){
 } // end function
 
 // Elyce to-do: why don't we just pass in vec_and_ptr here?
-void navier_stokes_step(my_p4est_navier_stokes_t* ns,
-                        p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
-                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM],
-                        Vec vorticity, Vec press_nodes, Vec phi, double dxyz_close_to_interface,
-                        KSPType face_solver_type, PCType pc_face,
-                        KSPType cell_solver_type, PCType pc_cell,
-                        my_p4est_faces_t* faces_np1, bool compute_pressure_,
-                        bool &did_crash,
-                        char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
-
 //void navier_stokes_step(my_p4est_navier_stokes_t* ns,
-//                        p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+//                        p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
 //                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM],
 //                        Vec vorticity, Vec press_nodes, Vec phi, double dxyz_close_to_interface,
 //                        KSPType face_solver_type, PCType pc_face,
@@ -5134,6 +5124,16 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
 //                        my_p4est_faces_t* faces_np1, bool compute_pressure_,
 //                        bool &did_crash,
 //                        char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
+
+void navier_stokes_step(my_p4est_navier_stokes_t* ns,
+                        p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                        vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                        vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                        double dxyz_close_to_interface,
+                        KSPType face_solver_type, PCType pc_face,
+                        KSPType cell_solver_type, PCType pc_cell,
+                        my_p4est_faces_t* faces_np1, bool compute_pressure_,
+                        bool &did_crash){
   PetscErrorCode ierr;
 
   my_p4est_poisson_faces_t* face_solver;
@@ -5143,8 +5143,8 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   int mpi_comm = p4est_np1->mpicomm;
 
   // Create vector to store old dxyz hodge:
-  for (unsigned char d=0;d<P4EST_DIM;d++){
-    ierr = VecCreateNoGhostFaces(p4est_np1,faces_np1,&dxyz_hodge_old[d],d); CHKERRXX(ierr);
+  for (unsigned char d=0; d<P4EST_DIM; d++){
+    ierr = VecCreateNoGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_old[d], d); CHKERRXX(ierr);
   }
 
   hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
@@ -5185,27 +5185,26 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   ns->compute_velocity_at_nodes();
 
   // Set this timestep's "v_n" to be the "v_nm1" for the next timestep
-  ns->copy_velocity_n(v_nm1);
+  ns->copy_velocity_n(v_nm1.vec);
 
 
   // Now set this step's "v_np1" to be "v_n" for the next timestep -- v_n for next step will be sampled at this grid for now, but will be interpolated onto new grid for next step in beginning of next step
-  ns->copy_velocity_np1(v_n);
+  ns->copy_velocity_np1(v_n.vec);
 
   // Compute the pressure
   if(compute_pressure_){
     ns->compute_pressure(); // note: only compute pressure at nodes when we are saving to VTK (or evaluating some errors)
-    ns->compute_pressure_at_nodes(&press_nodes);
+    ns->compute_pressure_at_nodes(&press_nodes.vec);
   }
 
 
   // Get the computed values of vorticity
-  ns->copy_vorticity(vorticity);
+  ns->copy_vorticity(vorticity.vec);
 
-
+  // Elyce TO-DO: commenting out below for now, going to move fluid force and area computation to its own fxn, not do it here
+/*
   // Compute forces (if we are doing that)
   if((save_fluid_forces && compute_pressure_) || example_requires_area_computation){
-
-
     double forces[P4EST_DIM];
 
     if(save_fluid_forces && compute_pressure_){
@@ -5220,13 +5219,13 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
       // (including the substrate bulk -- Note: this will need to be subtracted later, but cyl area is a constant value so no need to compute it over and over):
 
       // --> First, need to scale phi
-      VecScaleGhost(phi,-1.0);
+      VecScaleGhost(phi.vec, -1.0);
 
       // --> Compute area of negative domain (aka ice bulk)
-      ice_area = area_in_negative_domain(p4est_np1,nodes_np1,phi);
+      ice_area = area_in_negative_domain(p4est_np1, nodes_np1, phi.vec);
 
       //--> Scale phi back to normal:
-      VecScaleGhost(phi,-1.0);
+      VecScaleGhost(phi.vec, -1.0);
       // For melting ice sphere example, check if the ice is melted -- if so, halt the simulation:
       if((example_ == MELTING_ICE_SPHERE)||(example_== MELTING_ICE_SPHERE_NAT_CONV)){
         if((fabs(ice_area) < 0.1*dxyz_close_to_interface) || (ice_area<0.)){
@@ -5255,7 +5254,7 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
     PetscPrintf(mpi_comm,"forces saved \n");
 
   }
-
+*/
   // Check the L2 norm of u to make sure nothing is blowing up
   NS_norm = ns->get_max_L2_norm_u();
 
@@ -5273,10 +5272,6 @@ void navier_stokes_step(my_p4est_navier_stokes_t* ns,
   else{
     did_crash=false;
   }
-
-//  // Compute the corresponding timestep:
-//  ns->compute_dt();
-//  dt_NS = ns->get_dt();
 
 }
 
@@ -8135,13 +8130,11 @@ int main(int argc, char** argv) {
 
         bool did_crash = false;
 
-        navier_stokes_step(ns,p4est_np1,nodes_np1,
-                           v_n.vec, v_nm1.vec, vorticity.vec, press_nodes.vec,
-                           (example_uses_inner_LSF? phi_eff.vec : phi.vec), dxyz_close_to_interface,
+        navier_stokes_step(ns, p4est_np1, nodes_np1,
+                           v_n, v_nm1, vorticity, press_nodes,
+                           dxyz_close_to_interface,
                            face_solver_type,pc_face,cell_solver_type,pc_cell,
-                           faces_np1, compute_pressure_to_save, did_crash,
-                           (save_fluid_forces || example_requires_area_computation)? name_fluid_forces:NULL,
-                           (save_fluid_forces || example_requires_area_computation)? fich_fluid_forces:NULL);
+                           faces_np1, compute_pressure_to_save, did_crash);
 
         if(did_crash){
           PetscPrintf(mpi.comm(),"Outputting crash files ... \n");
