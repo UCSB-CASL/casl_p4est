@@ -5004,8 +5004,6 @@ void update_the_grid(splitting_criteria_cf_and_uniform_band_t sp,
   // Initialize the neigbors:
   ngbd_np1->init_neighbors();
 
-
-
 };
 
 
@@ -5788,6 +5786,103 @@ void track_evolving_geometry(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4
 
 } // end of track evolving geometry
 
+
+// will become constructor (for class)
+void perform_initializations(){}
+
+void perform_initializations_from_load_state(){};
+
+// will become destructor (for class)
+void perform_final_destructions(mpi_environment_t &mpi, p4est_t* &p4est_np1, p4est_nodes_t* &nodes_np1, p4est_ghost_t* &ghost_np1,
+                                my_p4est_node_neighbors_t* &ngbd_np1, my_p4est_hierarchy_t* &hierarchy_np1,
+                                p4est_t* &p4est, p4est_nodes_t* &nodes, p4est_ghost_t* &ghost,
+                                my_p4est_node_neighbors_t* &ngbd, my_p4est_hierarchy_t* &hierarchy,
+                                my_p4est_brick_t& brick, p4est_connectivity* &conn,
+                                vec_and_ptr_t& phi, vec_and_ptr_t& phi_nm1,
+                                vec_and_ptr_t& T_l_n, vec_and_ptr_t& T_s_n, vec_and_ptr_t& T_l_nm1,
+                                vec_and_ptr_dim_t& v_interface,
+                                vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1, vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                                my_p4est_navier_stokes_t* &ns,
+                                temperature_field* analytical_T[2], external_heat_source* external_heat_source_T[2],
+                                BC_INTERFACE_VALUE_TEMP* bc_interface_val_temp[2], BC_WALL_VALUE_TEMP* bc_wall_value_temp[2],
+                                velocity_component* analytical_soln_v[P4EST_DIM],
+                                external_force_per_unit_volume_component* external_force_components[P4EST_DIM],
+                                external_force_per_unit_volume_component_with_boussinesq_approx* external_force_components_with_BA[P4EST_DIM],
+                                BC_interface_value_velocity* bc_interface_value_velocity[P4EST_DIM],
+                                BC_WALL_VALUE_VELOCITY* bc_wall_value_velocity[P4EST_DIM],
+                                BC_WALL_TYPE_VELOCITY* bc_wall_type_velocity[P4EST_DIM])
+{
+
+  // Final destructions: TO-DO: need to revisit these, make sure they're done correctly
+  phi.destroy();
+
+  if(solve_stefan){
+    T_l_n.destroy();
+    T_s_n.destroy();
+    v_interface.destroy();
+
+    if(advection_sl_order==2) T_l_nm1.destroy();
+
+    // Destroy relevant BC and RHS info:
+    for(unsigned char d=0;d<2;++d){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_T[d];
+        delete external_heat_source_T[d];
+      }
+      delete bc_interface_val_temp[d];
+      delete bc_wall_value_temp[d];
+    }
+
+    if(!solve_navier_stokes){
+      // destroy the structures leftover (in non NS case)
+      p4est_nodes_destroy(nodes);
+      p4est_ghost_destroy(ghost);
+      p4est_destroy      (p4est);
+
+      p4est_nodes_destroy(nodes_np1);
+      p4est_ghost_destroy(ghost_np1);
+      p4est_destroy(p4est_np1);
+
+      my_p4est_brick_destroy(conn, &brick);
+      delete hierarchy;
+      delete ngbd;
+
+      delete hierarchy_np1;
+      delete ngbd_np1;
+    }
+  }
+
+  if(solve_navier_stokes){
+    v_n.destroy();
+    v_nm1.destroy();
+    phi_nm1.destroy();
+
+    // NS takes care of destroying v_NS_n and v_NS_nm1
+    vorticity.destroy();
+    press_nodes.destroy();
+    MPI_Barrier(mpi.comm());
+
+    for(unsigned char d=0;d<P4EST_DIM;d++){
+      if(analytical_IC_BC_forcing_term){
+        delete analytical_soln_v[d];
+        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+          delete external_force_components_with_BA[d];
+        }
+        else{
+          delete external_force_components[d];
+        }
+      }
+
+      delete bc_interface_value_velocity[d];
+      delete bc_wall_value_velocity[d];
+      delete bc_wall_type_velocity[d];
+    }
+
+
+    ns->nullify_phi(); // since we delete it ourselves earlier
+    delete ns;
+  }
+}
 
 // --------------------------------------------------------------------------------------------------------------
 // Functions for saving to VTK:
@@ -8443,74 +8538,86 @@ int main(int argc, char** argv) {
 
   PetscPrintf(mpi.comm(),"Time loop exited \n");
 
-  // Final destructions: TO-DO: need to revisit these, make sure they're done correctly
-  phi.destroy();
-  if(solve_stefan){
-    T_l_n.destroy();
-    T_s_n.destroy();
-    v_interface.destroy();
+  perform_final_destructions(mpi, p4est_np1, nodes_np1, ghost_np1, ngbd_np1, hierarchy_np1,
+                             p4est, nodes, ghost, ngbd, hierarchy,
+                             brick, conn,
+                             phi, phi_nm1,
+                             T_l_n, T_s_n, T_l_nm1,
+                             v_interface,
+                             v_n, v_nm1, vorticity, press_nodes, ns,
+                             analytical_T, external_heat_source_T, bc_interface_val_temp, bc_wall_value_temp,
+                             analytical_soln_v, external_force_components, external_force_components_with_BA,
+                             bc_interface_value_velocity, bc_wall_value_velocity, bc_wall_type_velocity);
 
-    if(advection_sl_order==2) T_l_nm1.destroy();
+//  // Final destructions: TO-DO: need to revisit these, make sure they're done correctly
+//  phi.destroy();
 
-    // Destroy relevant BC and RHS info:
-    for(unsigned char d=0;d<2;++d){
-      if(analytical_IC_BC_forcing_term){
-        delete analytical_T[d];
-        delete external_heat_source_T[d];
-      }
-      delete bc_interface_val_temp[d];
-      delete bc_wall_value_temp[d];
-    }
+//  if(solve_stefan){
+//    T_l_n.destroy();
+//    T_s_n.destroy();
+//    v_interface.destroy();
 
-    if(!solve_navier_stokes){
-      // destroy the structures leftover (in non NS case)
-      p4est_nodes_destroy(nodes);
-      p4est_ghost_destroy(ghost);
-      p4est_destroy      (p4est);
+//    if(advection_sl_order==2) T_l_nm1.destroy();
 
-      p4est_nodes_destroy(nodes_np1);
-      p4est_ghost_destroy(ghost_np1);
-      p4est_destroy(p4est_np1);
+//    // Destroy relevant BC and RHS info:
+//    for(unsigned char d=0;d<2;++d){
+//      if(analytical_IC_BC_forcing_term){
+//        delete analytical_T[d];
+//        delete external_heat_source_T[d];
+//      }
+//      delete bc_interface_val_temp[d];
+//      delete bc_wall_value_temp[d];
+//    }
 
-      my_p4est_brick_destroy(conn, &brick);
-      delete hierarchy;
-      delete ngbd;
+//    if(!solve_navier_stokes){
+//      // destroy the structures leftover (in non NS case)
+//      p4est_nodes_destroy(nodes);
+//      p4est_ghost_destroy(ghost);
+//      p4est_destroy      (p4est);
 
-      delete hierarchy_np1;
-      delete ngbd_np1;
-    }
-  }
+//      p4est_nodes_destroy(nodes_np1);
+//      p4est_ghost_destroy(ghost_np1);
+//      p4est_destroy(p4est_np1);
 
-  if(solve_navier_stokes){
-    v_n.destroy();
-    v_nm1.destroy();
-    phi_nm1.destroy();
+//      my_p4est_brick_destroy(conn, &brick);
+//      delete hierarchy;
+//      delete ngbd;
 
-    // NS takes care of destroying v_NS_n and v_NS_nm1
-    vorticity.destroy();
-    press_nodes.destroy();
-    MPI_Barrier(mpi.comm());
+//      delete hierarchy_np1;
+//      delete ngbd_np1;
+//    }
+//  }
 
-    for(unsigned char d=0;d<P4EST_DIM;d++){
-      if(analytical_IC_BC_forcing_term){
-        delete analytical_soln_v[d];
-        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-          delete external_force_components_with_BA[d];
-        }
-        else{
-          delete external_force_components[d];
-        }
-      }
+//  if(solve_navier_stokes){
+//    v_n.destroy();
+//    v_nm1.destroy();
+//    phi_nm1.destroy();
 
-      delete bc_interface_value_velocity[d];
-      delete bc_wall_value_velocity[d];
-      delete bc_wall_type_velocity[d];
-    }
+//    // NS takes care of destroying v_NS_n and v_NS_nm1
+//    vorticity.destroy();
+//    press_nodes.destroy();
+//    MPI_Barrier(mpi.comm());
+
+//    for(unsigned char d=0;d<P4EST_DIM;d++){
+//      if(analytical_IC_BC_forcing_term){
+//        delete analytical_soln_v[d];
+//        if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
+//          delete external_force_components_with_BA[d];
+//        }
+//        else{
+//          delete external_force_components[d];
+//        }
+//      }
+
+//      delete bc_interface_value_velocity[d];
+//      delete bc_wall_value_velocity[d];
+//      delete bc_wall_type_velocity[d];
+//    }
 
 
-    ns->nullify_phi(); // since we delete it ourselves earlier
-    delete ns;
-  }
+//    ns->nullify_phi(); // since we delete it ourselves earlier
+//    delete ns;
+//  }
   }// end of loop through number of splits
 
   MPI_Barrier(mpi.comm());
