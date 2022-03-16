@@ -5373,16 +5373,6 @@ void set_ns_parameters(my_p4est_navier_stokes_t* ns){
 
 } // end function
 
-// Elyce to-do: why don't we just pass in vec_and_ptr here?
-//void navier_stokes_step(my_p4est_navier_stokes_t* ns,
-//                        p4est_t* p4est_np1,p4est_nodes_t* nodes_np1,
-//                        Vec v_n[P4EST_DIM], Vec v_nm1[P4EST_DIM],
-//                        Vec vorticity, Vec press_nodes, Vec phi, double dxyz_close_to_interface,
-//                        KSPType face_solver_type, PCType pc_face,
-//                        KSPType cell_solver_type, PCType pc_cell,
-//                        my_p4est_faces_t* faces_np1, bool compute_pressure_,
-//                        bool &did_crash,
-//                        char* name_fluid_forces=NULL, FILE* fich_fluid_forces=NULL){
 
 void navier_stokes_step(my_p4est_navier_stokes_t* ns,
                         p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
@@ -5591,6 +5581,29 @@ bool are_we_saving_fluid_forces(double& tn_,bool is_load_step, int& out_idx, boo
   return out;
 }
 
+void setup_and_solve_navier_stokes_problem(my_p4est_navier_stokes_t* ns,
+                                           p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                                           vec_and_ptr_dim_t& v_n, vec_and_ptr_dim_t& v_nm1,
+                                           vec_and_ptr_t& vorticity, vec_and_ptr_t& press_nodes,
+                                           double dxyz_close_to_interface,
+                                           KSPType face_solver_type, PCType pc_face,
+                                           KSPType cell_solver_type, PCType pc_cell,
+                                           my_p4est_faces_t* faces_np1, bool compute_pressure_){
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
 
 void check_collapse_on_substrate(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, my_p4est_node_neighbors_t* ngbd_np1, vec_and_ptr_t& phi, vec_and_ptr_t& phi_substrate){
   // Some things to set if you want to save collapse results and see what's going on:
@@ -7524,14 +7537,24 @@ int main(int argc, char** argv) {
     if(!loading_from_previous_state){
       // LSF:
       if(print_checkpoints) PetscPrintf(mpi.comm(),"Initializing the level set function (s) ... \n");
-      phi.create(p4est,nodes);
-      sample_cf_on_nodes(p4est,nodes,level_set,phi.vec);
+      phi.create(p4est_np1, nodes_np1);
+      sample_cf_on_nodes(p4est_np1, nodes_np1, level_set, phi.vec);
       ls.perturb_level_set_function(phi.vec, EPS);
       if(solve_stefan)ls.reinitialize_2nd_order(phi.vec,30); // reinitialize initial LSF to get good signed distance property
 
-      if(start_w_merged_grains) {regularize_front(p4est, nodes, ngbd, phi);}
 
 
+
+      if(start_w_merged_grains) {regularize_front(p4est_np1, nodes_np1, ngbd_np1, phi);}
+
+      if(solve_navier_stokes){
+        // NS solver requires us to keep phi_nm1 for interpolating the hodge variable to the new grid.
+        // Since p4est_np1 = p4est at initialization, it's safe to just copy phi and have them both on p4est_np1.
+        // We will handle sliding these correctly later on
+        // Initialize phi_nm1:
+        phi_nm1.create(p4est_np1, nodes_np1);
+        VecCopyGhost(phi.vec, phi_nm1.vec);
+      }
 
 
       // Temperature fields:
@@ -7560,22 +7583,22 @@ int main(int argc, char** argv) {
           }
         }
 
-        T_l_n.create(p4est,nodes);
-        sample_cf_on_nodes(p4est,nodes,*T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
+        T_l_n.create(p4est_np1, nodes_np1);
+        sample_cf_on_nodes(p4est_np1, nodes_np1, *T_init_cf[LIQUID_DOMAIN],T_l_n.vec);
 
         if(do_we_solve_for_Ts){
-          T_s_n.create(p4est,nodes);
-          sample_cf_on_nodes(p4est,nodes,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
+          T_s_n.create(p4est_np1, nodes_np1);
+          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[SOLID_DOMAIN],T_s_n.vec);
         }
 
         if(solve_navier_stokes && advection_sl_order ==2){
-          T_l_nm1.create(p4est,nodes);
-          sample_cf_on_nodes(p4est,nodes,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
+          T_l_nm1.create(p4est_np1, nodes_np1);
+          sample_cf_on_nodes(p4est_np1, nodes_np1,*T_init_cf[LIQUID_DOMAIN],T_l_nm1.vec);
         }
 
-        v_interface.create(p4est,nodes);
+        v_interface.create(p4est_np1, nodes_np1);
         foreach_dimension(d){
-          sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[d]);
+          sample_cf_on_nodes(p4est_np1, nodes_np1, zero_cf, v_interface.vec[d]);
         }
 
         for(unsigned char d=0;d<2;++d){
@@ -7609,17 +7632,17 @@ int main(int argc, char** argv) {
           }
         }
 
-        v_n.create(p4est,nodes);
-        v_nm1.create(p4est,nodes);
-        vorticity.create(p4est,nodes);
-        press_nodes.create(p4est,nodes);
+        v_n.create(p4est_np1, nodes_np1);
+        v_nm1.create(p4est_np1, nodes_np1);
+        vorticity.create(p4est_np1, nodes_np1);
+        press_nodes.create(p4est_np1, nodes_np1);
 
         foreach_dimension(d){
-          sample_cf_on_nodes(p4est,nodes,*v_init_cf[d],v_n.vec[d]);
-          sample_cf_on_nodes(p4est,nodes,*v_init_cf[d],v_nm1.vec[d]);
+          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
+          sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_nm1.vec[d]);
         }
-        sample_cf_on_nodes(p4est,nodes,zero_cf,vorticity.vec);
-        sample_cf_on_nodes(p4est,nodes,zero_cf,press_nodes.vec);
+        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,vorticity.vec);
+        sample_cf_on_nodes(p4est_np1,nodes_np1,zero_cf,press_nodes.vec);
       }
 
       for(unsigned char d=0;d<P4EST_DIM;d++){
@@ -7826,19 +7849,20 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------
     // Begin stepping through time
     // ------------------------------------------------------------
-//    for (tn=tstart;tn<tfinal; tn+=dt, tstep++){
 
     if(!loading_from_previous_state){tstep=0;}
     tn = tstart;
     int last_tstep=-1;
 
     double cfl_NS_steady = cfl_NS; // store desired CFL, will use it eventually, but always use 0.5 for the first 10 iterations just to make sure NS solver stabilizes nicely
-    // Elyce 2/2/22 -- removing dt_max_allowed_steady --> I think this was causing some bugginess bc sometimes the dt_max_allowed computed for the first 10 timesteps was actually larger than the usual dt_max_allowed and so the vtk out idx was skipping indices. also, i assume this will get handled by itself by imposing the cfl_NS for the initial timesteps and we dont need to also impose the dt
-//    double dt_max_allowed_steady = dt_max_allowed;
     double hodge_percentage_steady = hodge_percentage_of_max_u;
 
-    while(tn<=tfinal){ // trying something
+    // Begin time loop
+    while(tn<=tfinal){
 
+      // -----------------------------
+      // Handle any startup time/startup iterations/ flush time/ etc. // TO-DO: will move this stuff to its own fxn
+      // ------------------------------
       // Enforce startup iterations for verification tests if needed:
       if((startup_iterations>0)){
         if(tstep<startup_iterations){
@@ -7924,17 +7948,13 @@ int main(int argc, char** argv) {
         if(example_uses_inner_LSF){
           theta0 = theta_interface;
         }
-
         flush_time_initiated = true;
-
       }
 
-
-      // ------------------------------------------------------------
+      // ---------------------------------------
       // Print iteration information:
-      // ------------------------------------------------------------
-
-      int num_nodes = nodes->num_owned_indeps; // shouldn't we be using nodes_np1?
+      // ---------------------------------------
+      int num_nodes = nodes_np1->num_owned_indeps;
       MPI_Allreduce(MPI_IN_PLACE,&num_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
       ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
                                     "Iteration %d , Time: %0.3f [nondim] "
@@ -7954,27 +7974,31 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"Current time info : \n");
         w.read_duration_current();
       }
-      if(solve_stefan){
+      if(solve_stefan){ // ELYCE TO-DO: probably want to move this to after the vint computation, along with crash files?
           if(v_interface_max_norm>v_int_max_allowed){
               PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
                                      "Max allowed is : %g \n",v_int_max_allowed);
               MPI_Abort(mpi.comm(),1);
             }
-        }
-      // -------------------------------
-      // Update analytical velocity for coupled problem example: // TO-DO: move this to the NS step where it belongs (lol)
-      // -------------------------------
-      if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up appropriate boundary conditions... \n");
+      }
 
-      if(analytical_IC_BC_forcing_term) setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
-                                                  analytical_T, external_heat_source_T,
-                                                  analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity,
-                                                  bc_wall_value_pressure,
-                                                  external_force_components, external_force_components_with_BA,
-                                                  external_forces_NS);
+      // -------------------------------
+      // Set up analytical ICs/BCs/forcing terms if needed
+      // ------------------------------- 
+      if(analytical_IC_BC_forcing_term) {
+        if(print_checkpoints) PetscPrintf(mpi.comm(),"Setting up analytical ICs/BCs/forcing terms... \n");
+        setup_analytical_ics_and_bcs_for_this_tstep(bc_interface_val_temp, bc_wall_value_temp,
+                                                    analytical_T, external_heat_source_T,
+                                                    analytical_soln_v, bc_interface_value_velocity, bc_wall_value_velocity,
+                                                    bc_wall_value_pressure,
+                                                    external_force_components, external_force_components_with_BA,
+                                                    external_forces_NS);
+
+      }
 
       //-------------------------------------------------------------
-      // Create substrate LSF and corresponding phi_eff if that is required for this example, to be used as needed throughout the timestep:
+      // Create substrate LSF and corresponding phi_eff
+      // if that is required for this example, to be used as needed throughout the timestep:
       //-------------------------------------------------------------
       if(example_uses_inner_LSF){
         phi_substrate.create(p4est_np1, nodes_np1);
@@ -7998,7 +8022,8 @@ int main(int argc, char** argv) {
       }
 
       // ------------------------------------------------------------
-      // Poisson Problem at Nodes (for temp and/or conc scalar fields): Setup and solve a Poisson problem on both the liquid and solidified subdomains
+      // Poisson Problem at Nodes (for temp and/or conc scalar fields):
+      // Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // ------------------------------------------------------------
       if((tstep>0) && solve_stefan){ // mostly memory safe (may have tiniest leak TO-DO)
         setup_and_solve_poisson_problem(mpi,
@@ -8061,39 +8086,6 @@ int main(int argc, char** argv) {
       // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // ---------------------------------------------------------------------------
       if ((tstep>0) && solve_navier_stokes){
-        // -------------------------------
-        // Update BC and RHS objects for navier-stokes problem:
-        // -------------------------------
-        // Setup velocity conditions
-        for(unsigned char d=0;d<P4EST_DIM;d++){
-          if(interfacial_vel_bc_requires_vint){
-            bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
-          }
-//          bc_interface_value_velocity[d]->t = tn;
-//          bc_wall_value_velocity[d]->t = tn; // handled in analytical fxn
-
-          bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
-          bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
-          bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
-          bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
-        }
-        // Setup pressure conditions:
-        bc_pressure.setInterfaceType(interface_bc_type_pressure);
-        bc_pressure.setInterfaceValue(bc_interface_value_pressure);
-        bc_pressure.setWallTypes(bc_wall_type_pressure);
-        bc_pressure.setWallValues(bc_wall_value_pressure);
-
-//        // Set external_forces if applicable
-//        if(analytical_IC_BC_forcing_term){
-//          foreach_dimension(d){
-//            if (example_ == COUPLED_PROBLEM_WTIH_BOUSSINESQ_APP){
-//              external_force_components_with_BA[d]->t = tn;
-//            }else{
-//              external_force_components[d]->t = tn;
-//            }
-//          }
-//          bc_wall_value_pressure.t=tn;
-//        }
 
         // -------------------------------
         // Update the NS grid (or initialize the solver)
@@ -8122,22 +8114,47 @@ int main(int argc, char** argv) {
                                                    ngbd_np1,
                                                    faces_np1,ngbd_c_np1,
                                                    hierarchy_np1);
-          phi_nm1.destroy(); // Now that hodge has been correctly interpolated, we can destroy this
+//          phi_nm1.destroy(); // Now that hodge has been correctly interpolated, we can destroy this
+          // ^ no need for this, should be hanlded properly elsewhere
         }
 
+        // -------------------------------
+        // Set the NS timestep:
+        // -------------------------------
+        if(advection_sl_order ==2){
+          ns->set_dt(dt_nm1,dt);
+        }
+        else{
+          ns->set_dt(dt);
+        }
+
+        // -------------------------------
+        // Update BC and RHS objects for navier-stokes problem:
+        // -------------------------------
         // NOTE: we update NS grid first, THEN set new BCs and forces. This is because the update grid interpolation of the hodge variable
         // requires knowledge of the boundary conditions from that same timestep (the previous one, in our case)
         // -------------------------------
-        // Set the NS timestep: // change to include both timesteps (dtnm1,dtn)
-        // -------------------------------
-        if(advection_sl_order ==2){
-            ns->set_dt(dt_nm1,dt);
+        // Setup velocity conditions
+        for(unsigned char d=0;d<P4EST_DIM;d++){
+          if(interfacial_vel_bc_requires_vint){
+            bc_interface_value_velocity[d]->set(ngbd_np1,v_interface.vec[d]);
           }
-        else{
-            ns->set_dt(dt);
-          }
+
+          bc_velocity[d].setInterfaceType(interface_bc_type_velocity[d]);
+          bc_velocity[d].setInterfaceValue(*bc_interface_value_velocity[d]);
+          bc_velocity[d].setWallValues(*bc_wall_value_velocity[d]);
+          bc_velocity[d].setWallTypes(*bc_wall_type_velocity[d]);
+        }
+        // Setup pressure conditions:
+        bc_pressure.setInterfaceType(interface_bc_type_pressure);
+        bc_pressure.setInterfaceValue(bc_interface_value_pressure);
+        bc_pressure.setWallTypes(bc_wall_type_pressure);
+        bc_pressure.setWallValues(bc_wall_value_pressure);
+
+
         // -------------------------------
         // Set BC's and external forces if relevant
+        // (note: these are actually updated in the fxn dedicated to it, aka setup_analytical_ics_and_bcs_for_this_tstep() )
         // -------------------------------
         // Set the boundary conditions:
         ns->set_bc(bc_velocity,&bc_pressure);
@@ -8153,7 +8170,7 @@ int main(int argc, char** argv) {
           }
         }
 
-
+        // -------------------------------
         // Handle the Boussinesq case setup for the RHS, if relevant:
         // ---------------------------
         if(use_boussinesq && (!analytical_IC_BC_forcing_term)){
@@ -8468,7 +8485,7 @@ int main(int argc, char** argv) {
 
 
       //------------------------------------------------------
-      // (c) Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
+      // Destroy substrate LSF if that is required for this example, we are done using it for this timestep:
       //------------------------------------------------------
       if(example_uses_inner_LSF){
         phi_substrate.destroy();
